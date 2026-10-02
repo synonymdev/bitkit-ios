@@ -56,6 +56,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
+    typealias ProfilePublisher = @Sendable (PubkyProfileData) async throws -> Void
 
     private enum SessionInitializationMode {
         case userVisible
@@ -92,7 +93,9 @@ class PubkyProfileManager: ObservableObject {
     private static var sessionRevision = UUID()
     private static var sessionMutationCount = 0
     private let remoteProfileResolver: RemoteProfileResolver
-    /// Bumped whenever `profile` is written or the identity changes, so a remote read that started earlier is dropped.
+    private let profilePublisher: ProfilePublisher
+    /// Bumped whenever a profile save starts, `profile` is written or the identity changes, so a remote read that started
+    /// earlier is dropped.
     private var profileWriteGeneration = 0
     /// Ring rows whose lookup found nothing. The SDK reports a missing record and an offline failure alike, so a miss
     /// only stops repeat lookups and must never drive sign-up or profile-setup decisions.
@@ -109,8 +112,12 @@ class PubkyProfileManager: ObservableObject {
         sessionMutationCount -= 1
     }
 
-    init(remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) }) {
+    init(
+        remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) },
+        profilePublisher: @escaping ProfilePublisher = { try await PubkyService.publishPaykitProfile($0.toPaykitProfile()) }
+    ) {
         self.remoteProfileResolver = remoteProfileResolver
+        self.profilePublisher = profilePublisher
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
         cachedProfileOwner = UserDefaults.standard.string(forKey: Self.cachedProfileOwnerKey)
@@ -775,7 +782,23 @@ class PubkyProfileManager: ObservableObject {
         newImageUrl: String? = nil
     ) async throws {
         _ = try activeSessionSecret()
+        try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: newImageUrl)
+    }
 
+    /// Starting the write drops every profile read that started before it, so a refresh that finds the profile missing
+    /// while this edit publishes it can no longer clear the profile or start profile setup. A published profile ends any
+    /// pending setup. A save that a sign-out or another identity overtakes changes nothing here, as it belongs to a session
+    /// the user has left.
+    private func publishProfileEdit(
+        name: String,
+        bio: String,
+        links: [PubkyProfileLink],
+        tags: [String],
+        newImageUrl: String?
+    ) async throws {
+        let revision = Self.sessionRevision
+        let editedPublicKey = publicKey
+        invalidateProfileLoads()
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
         try await writeProfile(
@@ -785,10 +808,13 @@ class PubkyProfileManager: ObservableObject {
             links: links,
             tags: tags
         )
+        guard revision == Self.sessionRevision, publicKey == editedPublicKey else {
+            Logger.info("Dropped a profile save that a session change overtook", context: "PubkyProfileManager")
+            return
+        }
 
-        let pk = publicKey ?? ""
         let updatedProfile = PubkyProfile(
-            publicKey: pk,
+            publicKey: editedPublicKey ?? "",
             name: name,
             bio: bio,
             imageUrl: resolvedImageUrl,
@@ -797,6 +823,7 @@ class PubkyProfileManager: ObservableObject {
             status: profile?.status
         )
         commitProfile(updatedProfile)
+        setProfileSetupPending(false)
     }
 
     func deleteProfile() async throws {
@@ -833,8 +860,9 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
 
+        let publish = profilePublisher
         try await Task.detached {
-            try await PubkyService.publishPaykitProfile(profileData.toPaykitProfile())
+            try await publish(profileData)
         }.value
     }
 
@@ -898,6 +926,11 @@ class PubkyProfileManager: ObservableObject {
 
         func completeRingAdoptionForTesting(publicKey: String) async throws -> PubkyProfile? {
             try await completeRingAdoption(publicKey: publicKey)
+        }
+
+        /// `saveProfile` without its check for a stored session secret.
+        func saveProfileForTesting(name: String, bio: String, links: [PubkyProfileLink], tags: [String]) async throws {
+            try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: nil)
         }
 
         func clearAuthenticatedStateForTesting() {

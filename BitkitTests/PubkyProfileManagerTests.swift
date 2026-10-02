@@ -1222,6 +1222,121 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    // MARK: - Profile saves
+
+    /// The review regression: a remembered Ring profile with tags was removed remotely. Adoption reuses its cached row and
+    /// the follow-up lookup is held. The user removes a tag on Profile while the publication is held, the lookup then finds
+    /// the profile missing, and only then does the publication succeed.
+    @MainActor
+    func testProfileSaveKeepsTheSavedProfileWhenAnOlderRefreshFindsItMissing() async throws {
+        try await withRestoredProfileDefaults {
+            let tagged = PubkyProfile(
+                publicKey: ringKeyA, name: "Alice", bio: "bio", imageUrl: nil, links: [], tags: ["friend", "work"], status: nil
+            )
+            let stub = RemoteProfileStub(profiles: [ringKeyA: tagged])
+            let publications = ProfilePublications()
+            await publications.hold()
+            let manager = PubkyProfileManager(
+                remoteProfileResolver: { try await stub.resolve($0) },
+                profilePublisher: { await publications.publish($0) }
+            )
+            await manager.loadRingIdentityProfiles([bareRingKeyA])
+            await stub.setProfile(nil, for: ringKeyA)
+            await stub.setHoldsRequests(true)
+
+            let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+            XCTAssertEqual(adopted?.tags, ["friend", "work"], "Adoption reuses the cached row")
+            await stub.waitForRequests(2)
+
+            let save = Task {
+                try await manager.saveProfileForTesting(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+            }
+            await publications.waitUntilHeld(1)
+            await stub.release(request: 1)
+            await waitUntil("the refresh finds the profile missing") { !manager.isLoadingProfile }
+
+            XCTAssertFalse(manager.isProfileSetupPending, "A missing profile found while a save publishes it starts no profile setup")
+            XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+            XCTAssertEqual(manager.profile?.tags, ["friend", "work"], "Nor does it clear the profile while the save runs")
+
+            await publications.release()
+            try await save.value
+
+            let defaults = UserDefaults.standard
+            XCTAssertEqual(manager.profile?.tags, ["friend"], "The edited profile shows")
+            XCTAssertEqual(manager.profile?.publicKey, ringKeyA)
+            XCTAssertFalse(manager.isProfileSetupPending, "So Create Profile is not prompted")
+            XCTAssertFalse(defaults.bool(forKey: "pubky_profile_setup_pending"))
+            XCTAssertEqual(defaults.string(forKey: "pubky_profile_name"), "Alice")
+            XCTAssertEqual(defaults.string(forKey: "pubky_profile_owner"), ringKeyA)
+            let published = await publications.published
+            XCTAssertEqual(published.map(\.tags), [["friend"]])
+
+            let relaunched = PubkyProfileManager()
+            XCTAssertFalse(relaunched.isProfileSetupPending, "Nor is setup pending after a relaunch")
+            XCTAssertEqual(relaunched.cachedName, "Alice")
+        }
+    }
+
+    /// A setup left pending while the profile exists, as an earlier build could leave it, prompts Create Profile on every
+    /// launch. A saved profile ends it.
+    @MainActor
+    func testProfileSaveEndsAPendingProfileSetup() async throws {
+        try await withRestoredProfileDefaults {
+            UserDefaults.standard.set(true, forKey: "pubky_profile_setup_pending")
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            let publications = ProfilePublications()
+            let manager = PubkyProfileManager(
+                remoteProfileResolver: { try await stub.resolve($0) },
+                profilePublisher: { await publications.publish($0) }
+            )
+            manager.publicKey = ringKeyA
+            await manager.loadProfile()
+            XCTAssertTrue(manager.isProfileSetupPending)
+
+            try await manager.saveProfileForTesting(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+
+            XCTAssertEqual(manager.profile?.tags, ["friend"])
+            XCTAssertFalse(manager.isProfileSetupPending)
+            XCTAssertFalse(PubkyProfileManager().isProfileSetupPending, "Nor is setup pending after a relaunch")
+        }
+    }
+
+    /// The save was admitted, but before its publication returns the user signs out and adopts another identity, which has
+    /// no profile and so starts profile setup.
+    @MainActor
+    func testProfileSaveThatAnotherIdentityOvertakesLeavesThatIdentitysSetupAlone() async throws {
+        try await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+            let publications = ProfilePublications()
+            await publications.hold()
+            let manager = PubkyProfileManager(
+                remoteProfileResolver: { try await stub.resolve($0) },
+                profilePublisher: { await publications.publish($0) }
+            )
+            manager.publicKey = ringKeyA
+            await manager.loadProfile()
+
+            let save = Task {
+                try await manager.saveProfileForTesting(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+            }
+            await publications.waitUntilHeld(1)
+            manager.clearAuthenticatedStateForTesting()
+            let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyB)
+            XCTAssertNil(adopted)
+            XCTAssertTrue(manager.isProfileSetupPending)
+
+            await publications.release()
+            try await save.value
+
+            XCTAssertEqual(manager.publicKey, ringKeyB)
+            XCTAssertTrue(manager.isProfileSetupPending, "The next identity still sets its profile up")
+            XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+            XCTAssertNil(manager.profile, "The earlier identity's profile is not shown for the next one")
+            XCTAssertNil(manager.cachedName)
+        }
+    }
+
     // MARK: - Cached profile preview
 
     @MainActor
@@ -2592,6 +2707,42 @@ private actor RemoteProfileStub {
 
     private func named(_ message: String) -> String {
         caseName.map { "\($0): \(message)" } ?? message
+    }
+}
+
+/// Stands in for publishing the signed-in profile: records each publication and can hold them until released. A wait for
+/// held publications that outlasts the deadline fails the test instead of hanging the suite.
+private actor ProfilePublications {
+    private(set) var published: [PubkyProfileData] = []
+    private var isHolding = false
+    private var held: [CheckedContinuation<Void, Never>] = []
+
+    func hold() {
+        isHolding = true
+    }
+
+    func release() {
+        isHolding = false
+        held.forEach { $0.resume() }
+        held.removeAll()
+    }
+
+    func publish(_ profile: PubkyProfileData) async {
+        if isHolding {
+            await withCheckedContinuation { held.append($0) }
+        }
+        published.append(profile)
+    }
+
+    func waitUntilHeld(_ count: Int, file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while held.count < count {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting for \(count) held publications; saw \(held.count)", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 }
 
