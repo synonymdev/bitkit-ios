@@ -443,10 +443,10 @@ struct AppScene: View {
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
+                        await handlePendingPaykitSubscriptionNotification()
                         try? await contactsManager.loadContacts(for: pk)
                         await refreshPrivateOnlyPaykitApp()
                         await refreshIncomingPaykitPaymentRequests(presentItems: false)
-                        await handlePendingPaykitSubscriptionNotification()
                         if PaykitSubscriptionNotificationTargetStore.load() == nil {
                             await presentNextIncomingPaykitItem()
                         }
@@ -1417,6 +1417,10 @@ struct AppScene: View {
     }
 
     private func handlePendingPaykitSubscriptionNotification() async {
+        guard PaykitFeatureFlags.isUIEnabled,
+              wallet.walletExists == true,
+              pubkyProfile.authState == .authenticated
+        else { return }
         guard let target = PaykitSubscriptionNotificationTargetStore.load() else { return }
         guard let identity = pubkyProfile.publicKey else { return }
         guard target.matches(identity: identity) else {
@@ -1427,7 +1431,7 @@ struct AppScene: View {
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
-        await refreshIncomingPaykitPaymentRequests(presentItems: false)
+        await refreshIncomingPaykitPaymentRequests(presentItems: false, refreshMaintenance: false)
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
                 PaykitSubscriptionNotificationTargetStore.clear()
