@@ -1,10 +1,13 @@
 import SwiftUI
 
 /// Found step: a discovered device with a Connect confirmation. Connect shows a spinner and
-/// surfaces an inline error on failure.
+/// surfaces an inline error on failure. A Jade waiting for its PIN adds a hint to enter it on the
+/// device; Cancel stays available throughout, so the user can back out of the PIN wait.
 struct HwFoundView: View {
     let deviceModel: String
+    var vendor: HwWalletVendor = .trezor
     let isConnecting: Bool
+    var isUnlocking = false
     let errorMessage: String?
     let onConnect: () -> Void
     let onCancel: () -> Void
@@ -15,9 +18,16 @@ struct HwFoundView: View {
                 .padding(.horizontal, 16)
 
             VStack(alignment: .leading, spacing: 8) {
-                DisplayText(t("hardware__found_header"), accentColor: .blueAccent)
+                DisplayText(vendor.foundHeader, accentColor: .blueAccent)
 
                 BodyMText(t("hardware__found_text", variables: ["model": deviceModel]))
+
+                if isUnlocking {
+                    BodySText(t("hardware__jade_enter_pin"), textColor: .textPrimary)
+                        .padding(.top, 8)
+                        .transition(.opacity)
+                        .accessibilityIdentifier("HwFoundUnlockHint")
+                }
 
                 if let errorMessage {
                     BodyMText(errorMessage, textColor: .redAccent)
@@ -27,8 +37,9 @@ struct HwFoundView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 32)
+            .animation(.easeInOut(duration: 0.2), value: isUnlocking)
 
-            Image("trezor-device")
+            Image(vendor.deviceImageName)
                 .resizable()
                 .scaledToFit()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -63,4 +74,19 @@ struct HwFoundView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
         .preferredColorScheme(.dark)
+}
+
+#Preview("Jade unlocking") {
+    HwFoundView(
+        deviceModel: "Jade",
+        vendor: .blockstream,
+        isConnecting: true,
+        isUnlocking: true,
+        errorMessage: nil,
+        onConnect: {},
+        onCancel: {}
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.black)
+    .preferredColorScheme(.dark)
 }

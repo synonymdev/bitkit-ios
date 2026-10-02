@@ -36,7 +36,7 @@ struct ReceiveEdit: View {
             return .auto
         case .spending:
             return .spending
-        case .trezor:
+        case .hardware:
             return .savings
         }
     }

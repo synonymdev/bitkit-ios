@@ -24,6 +24,8 @@ struct HwWallet: Identifiable {
     let deviceIds: Set<String>
     /// Whether reaching this wallet needs a passphrase, i.e. it is a hidden wallet.
     let passphraseProtected: Bool
+    /// The maker of the device holding this wallet, which decides how it is reached and signed with.
+    let vendor: HwWalletVendor
 
     init(
         id: String,
@@ -34,7 +36,8 @@ struct HwWallet: Identifiable {
         balanceSats: UInt64,
         fundingBalanceSats: UInt64? = nil,
         deviceIds: Set<String>? = nil,
-        passphraseProtected: Bool = false
+        passphraseProtected: Bool = false,
+        vendor: HwWalletVendor = .trezor
     ) {
         self.id = id
         self.walletId = walletId
@@ -45,6 +48,7 @@ struct HwWallet: Identifiable {
         self.fundingBalanceSats = fundingBalanceSats ?? balanceSats
         self.deviceIds = deviceIds ?? [id]
         self.passphraseProtected = passphraseProtected
+        self.vendor = vendor
     }
 }
 
