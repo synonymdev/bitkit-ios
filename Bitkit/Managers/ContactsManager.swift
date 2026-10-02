@@ -121,6 +121,8 @@ class ContactsManager: ObservableObject {
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
     private var pendingProfileLookups: [String: Task<Void, Never>] = [:]
+    /// The last tag change queued for each contact, which the next one for that contact waits for.
+    private var tagChanges: [String: Task<Void, Error>] = [:]
     /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes.
     private var resolvedProfiles: [String: PubkyProfile] = [:]
     private var resolvedProfilesOwner: String?
@@ -128,17 +130,22 @@ class ContactsManager: ObservableObject {
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
     private let fetchFollows: @Sendable (String) async throws -> [String]
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
+    private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String) async throws -> Void
 
     init(
         contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords,
         fetchFollows: @escaping @Sendable (String) async throws -> [String] = { try await PubkyService.getContacts(publicKey: $0) },
         fetchRemoteProfile: @escaping @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile? = {
             try await ContactsManager.remoteContactProfile(publicKey: $0, priority: $1)
+        },
+        saveContactLabel: @escaping @Sendable (_ publicKey: String, _ label: String) async throws -> Void = {
+            _ = try await PubkyService.saveContact(publicKey: $0, label: $1)
         }
     ) {
         self.contactRecords = contactRecords
         self.fetchFollows = fetchFollows
         self.fetchRemoteProfile = fetchRemoteProfile
+        self.saveContactLabel = saveContactLabel
     }
 
     /// Profile refreshes replace rows without counting as a change to the saved contacts.
@@ -586,8 +593,9 @@ class ContactsManager: ObservableObject {
             tags: tags
         )
 
+        let saveContactLabel = saveContactLabel
         try await Task.detached {
-            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: name)
+            try await saveContactLabel(prefixedKey, name)
         }.value
         Self.upsertContactProfileOverride(publicKey: prefixedKey, data: contactData)
 
@@ -598,6 +606,34 @@ class ContactsManager: ObservableObject {
         }
 
         Logger.info("Updated contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
+    }
+
+    /// Saves a tag change made on a contact's screen over the contact's latest profile once the changes queued before it
+    /// for that contact are done, so each one applies over the tags the last one saved. It first waits for the lookup of a
+    /// profile the row is still waiting for, so the save keeps the bio, links and avatar that lookup finds. `shownProfile`
+    /// stands in when the contact is no longer listed. A failed change does not stop the ones queued after it.
+    func updateContactTags(
+        publicKey: String,
+        shownProfile: PubkyProfile,
+        transform: @escaping ([String]) -> [String]
+    ) -> Task<Void, Error> {
+        let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        let previousChange = tagChanges[key]
+        let change = Task {
+            _ = await previousChange?.result
+            await resolvePendingContactProfile(publicKey: publicKey)
+            let latest = contacts.first(where: { $0.publicKey == publicKey })?.profile ?? shownProfile
+            try await updateContact(
+                publicKey: publicKey,
+                name: latest.name,
+                bio: latest.bio,
+                imageUrl: latest.imageUrl,
+                links: latest.links,
+                tags: transform(latest.tags)
+            )
+        }
+        tagChanges[key] = change
+        return change
     }
 
     // MARK: - Delete Contact
