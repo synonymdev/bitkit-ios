@@ -1,5 +1,6 @@
 @testable import Bitkit
 import CryptoKit
+import Paykit
 import UIKit
 import XCTest
 
@@ -201,6 +202,101 @@ final class PubkyImageCacheTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))
     }
 
+    /// Contacts refetched each avatar that cannot load every time it appeared: 4 failing URIs, 5 times each, 2 reads a time.
+    func testPermanentFailureSkipsTheNetworkUntilTheCacheIsCleared() async throws {
+        // `PaykitError.Protocol` would name the metatype, so the case is spelled with a contextual type.
+        let oversize: PaykitError = .Protocol(code: "protocol_error", context: "fetch Pubky file: resource exceeds maximum size of 1048576 bytes")
+        let permanentErrors: [Error] = [
+            PubkyServiceError.profileNotFound,
+            PaykitError.NotFound(code: "not_found", context: "fetch Pubky file"),
+            oversize,
+        ]
+        for error in permanentErrors {
+            let directory = try temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let clock = TestClock()
+            let cache = PubkyImageCache(diskDirectory: directory, currentDate: { clock.now() })
+            let fetches = FileFetchStub(failingWith: error)
+            let load = { try await PubkyImage.loadImageOffMain(uri: self.avatarURI, cache: cache, fetchFile: { try await fetches.fetch($0, $1) }) }
+
+            _ = try? await load()
+            _ = try? await load()
+            clock.advance(by: 24 * 60 * 60)
+            _ = try? await load()
+            var count = await fetches.count
+            XCTAssertEqual(count, 1, "\(error): a missing or oversize image is not fetched again")
+
+            await cache.clear()
+            _ = try? await load()
+            count = await fetches.count
+            XCTAssertEqual(count, 2, "\(error): clearing the image cache, as sign-out does, forgets the failure")
+        }
+    }
+
+    func testTransientFailureIsFetchedAgainOnlyAfterItsWindow() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clock = TestClock()
+        let cache = PubkyImageCache(diskDirectory: directory, currentDate: { clock.now() })
+        let fetches = FileFetchStub(failingWith: PaykitError.Transport(code: "transport_error", context: "fetch Pubky file"))
+        let load = { try await PubkyImage.loadImageOffMain(uri: self.avatarURI, cache: cache, fetchFile: { try await fetches.fetch($0, $1) }) }
+
+        _ = try? await load()
+        clock.advance(by: PubkyImagePolicy.transientFailureTTL - 1)
+        _ = try? await load()
+        var count = await fetches.count
+        XCTAssertEqual(count, 1, "A failed fetch is not repeated within its window")
+
+        clock.advance(by: 1)
+        _ = try? await load()
+        count = await fetches.count
+        XCTAssertEqual(count, 2, "A failure that can pass is fetched again once its window ends")
+
+        await cache.clear()
+        _ = try? await load()
+        count = await fetches.count
+        XCTAssertEqual(count, 3, "Clearing the image cache forgets a transient failure too")
+    }
+
+    func testFailureOfAFetchThatAClearOrCancellationOvertookIsNotRemembered() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = PubkyImageCache(diskDirectory: directory)
+        let notFound = PubkyServiceError.profileNotFound
+
+        // A sign-out clears the cache while the fetch runs.
+        _ = try? await PubkyImage.loadImageOffMain(uri: avatarURI, cache: cache, fetchFile: { _, _ in
+            await cache.clear()
+            throw notFound
+        })
+        XCTAssertFalse(cache.hasRecentFailure(for: avatarURI), "A failure from before the clear belongs to the previous identity")
+
+        // The fetch is cancelled, and the read reports cancellation either as such or as an ordinary error.
+        let errorsOnceCancelled: [Error] = [CancellationError(), notFound]
+        for errorOnceCancelled in errorsOnceCancelled {
+            let started = expectation(description: "Fetch started")
+            let load = Task {
+                try await PubkyImage.loadImageOffMain(uri: self.avatarURI, cache: cache, fetchFile: { _, _ in
+                    started.fulfill()
+                    try? await Task.sleep(for: .seconds(30))
+                    throw errorOnceCancelled
+                })
+            }
+            await fulfillment(of: [started], timeout: 2)
+            load.cancel()
+            _ = await load.result
+            XCTAssertFalse(cache.hasRecentFailure(for: avatarURI), "A cancelled fetch (\(errorOnceCancelled)) is not remembered")
+        }
+
+        let fetches = FileFetchStub(failingWith: notFound)
+        _ = try? await PubkyImage.loadImageOffMain(uri: avatarURI, cache: cache, fetchFile: { try await fetches.fetch($0, $1) })
+        let count = await fetches.count
+        XCTAssertEqual(count, 1, "The next appearance fetches the image again")
+        XCTAssertTrue(cache.hasRecentFailure(for: avatarURI))
+    }
+
+    private let avatarURI = "pubky://test-user/pub/pubky.app/files/0033ABCDEFGHJ"
+
     private func pubkyImageDiskPath(for uri: String, directory: URL? = nil) -> URL {
         let caches = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         let hash = SHA256.hash(data: Data(uri.utf8)).compactMap { String(format: "%02x", $0) }.joined()
@@ -239,5 +335,38 @@ final class PubkyImageCacheTests: XCTestCase {
             context.cgContext.setFillColor(color.cgColor)
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         }
+    }
+}
+
+/// Counts file fetches and fails each one with `error`.
+private actor FileFetchStub {
+    private let error: Error
+    private(set) var count = 0
+
+    init(failingWith error: Error) {
+        self.error = error
+    }
+
+    func fetch(_: String, _: UInt64) throws -> Data {
+        count += 1
+        throw error
+    }
+}
+
+/// A clock the test moves by hand.
+private final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSince1970: 1_790_000_000)
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return current
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        current += interval
+        lock.unlock()
     }
 }

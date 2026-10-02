@@ -1,5 +1,6 @@
 import CryptoKit
 import ImageIO
+import Paykit
 import SwiftUI
 
 /// Loads and displays an image from a `pubky://` URI using Paykit's Pubky file fetch.
@@ -60,29 +61,52 @@ struct PubkyImage: View {
                 try await Self.loadImageOffMain(uri: uri)
             }.value
             uiImage = image
+        } catch PubkyImageError.recentlyFailed {
+            hasFailed = true
         } catch {
             Logger.error("Failed to load pubky image: \(error)", context: "PubkyImage")
             hasFailed = true
         }
     }
 
-    /// All heavy work (disk cache, network/FFI) runs off the main actor.
-    private nonisolated static func loadImageOffMain(uri: String) async throws -> UIImage {
-        let cacheGeneration = PubkyImageCache.shared.generation
-        if let cached = await PubkyImageCache.shared.image(for: uri, generation: cacheGeneration) {
+    /// All heavy work (disk cache, network/FFI) runs off the main actor. A URI whose fetch failed recently fails at once
+    /// without the network, while a disk cache hit still wins.
+    nonisolated static func loadImageOffMain(
+        uri: String,
+        cache: PubkyImageCache = .shared,
+        fetchFile: @escaping @Sendable (_ uri: String, _ maxBytes: UInt64) async throws -> Data = {
+            try await PubkyService.fetchFile(uri: $0, maxBytes: $1)
+        }
+    ) async throws -> UIImage {
+        let cacheGeneration = cache.generation
+        if let cached = await cache.image(for: uri, generation: cacheGeneration) {
             return cached
         }
+        guard !cache.hasRecentFailure(for: uri) else {
+            throw PubkyImageError.recentlyFailed
+        }
 
-        let data = try await PubkyService.fetchFile(uri: uri, maxBytes: PubkyImagePolicy.maxDownloadBytes)
-        let blobData = try await resolveImageData(data, originalUri: uri)
+        do {
+            let data = try await fetchFile(uri, PubkyImagePolicy.maxDownloadBytes)
+            let blobData = try await resolveImageData(data, originalUri: uri, fetchFile: fetchFile)
 
-        let image = try PubkyImageDecoder.image(from: blobData)
+            let image = try PubkyImageDecoder.image(from: blobData)
 
-        PubkyImageCache.shared.store(image, data: blobData, for: uri, generation: cacheGeneration)
-        return image
+            cache.store(image, data: blobData, for: uri, generation: cacheGeneration)
+            return image
+        } catch {
+            if !Task.isCancelled {
+                cache.rememberFailure(error, for: uri, generation: cacheGeneration)
+            }
+            throw error
+        }
     }
 
-    private nonisolated static func resolveImageData(_ data: Data, originalUri: String) async throws -> Data {
+    private nonisolated static func resolveImageData(
+        _ data: Data,
+        originalUri: String,
+        fetchFile: @Sendable (_ uri: String, _ maxBytes: UInt64) async throws -> Data
+    ) async throws -> Data {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let src = json["src"] as? String,
               src.hasPrefix("pubky://")
@@ -98,7 +122,7 @@ struct PubkyImage: View {
         }
 
         Logger.debug("File descriptor found, fetching blob from: \(src)", context: "PubkyImage")
-        return try await PubkyService.fetchFile(uri: src, maxBytes: PubkyImagePolicy.maxDownloadBytes)
+        return try await fetchFile(src, PubkyImagePolicy.maxDownloadBytes)
     }
 }
 
@@ -107,6 +131,8 @@ enum PubkyImagePolicy {
     static let maxPixelSize = 512
     static let memoryCacheBytes = 32 * 1024 * 1024
     static let diskCacheBytes = 32 * 1024 * 1024
+    /// How long an image whose fetch failed for a reason that can pass, such as a network error, is not fetched again.
+    static let transientFailureTTL: TimeInterval = 60
 }
 
 enum PubkyImageDecoder {
@@ -132,6 +158,7 @@ private enum PubkyImageError: LocalizedError {
     case decodingFailed(Int)
     case fileTooLarge(Int)
     case crossUserRedirect
+    case recentlyFailed
 
     var errorDescription: String? {
         switch self {
@@ -141,12 +168,19 @@ private enum PubkyImageError: LocalizedError {
             return "Image blob exceeds the byte limit (\(bytes) bytes)"
         case .crossUserRedirect:
             return "Image descriptor references a different user's namespace"
+        case .recentlyFailed:
+            return "Image fetch failed recently"
         }
     }
 }
 
 /// Two-tier cache (memory + disk) so profile images persist across app launches
 /// and multiple PubkyImage views with the same URI don't re-fetch.
+///
+/// It also remembers failed fetches by URI, so an image that cannot load is not fetched again each time it is shown. A
+/// missing file and a file over `PubkyImagePolicy.maxDownloadBytes` are remembered until `clear()`, which sign-out and
+/// a switch to another identity run, and any other failure for `PubkyImagePolicy.transientFailureTTL`. For a file
+/// descriptor, a failed blob fetch counts as a failure of the descriptor URI.
 final class PubkyImageCache: @unchecked Sendable {
     static let shared = PubkyImageCache()
 
@@ -156,7 +190,13 @@ final class PubkyImageCache: @unchecked Sendable {
         var lastAccess: UInt64
     }
 
+    private struct Failure {
+        let expiresAt: Date?
+    }
+
     private var memoryCache: [String: MemoryEntry] = [:]
+    /// Guarded by `memoryLock`, like the memory cache, so `clear()` empties both at once.
+    private var failures: [String: Failure] = [:]
     private var memoryCost = 0
     private var accessSequence: UInt64 = 0
     private var clearGeneration: UInt64 = 0
@@ -166,18 +206,21 @@ final class PubkyImageCache: @unchecked Sendable {
     private let maxFileBytes: Int
     private let maxMemoryBytes: Int
     private let maxDiskBytes: Int
+    private let currentDate: @Sendable () -> Date
 
     init(
         diskDirectory: URL? = nil,
         maxFileBytes: Int = Int(PubkyImagePolicy.maxDownloadBytes),
         memoryCostLimit: Int = PubkyImagePolicy.memoryCacheBytes,
-        diskByteLimit: Int = PubkyImagePolicy.diskCacheBytes
+        diskByteLimit: Int = PubkyImagePolicy.diskCacheBytes,
+        currentDate: @escaping @Sendable () -> Date = { Date() }
     ) {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         self.diskDirectory = diskDirectory ?? caches.appendingPathComponent("pubky-images", isDirectory: true)
         self.maxFileBytes = maxFileBytes
         maxMemoryBytes = memoryCostLimit
         maxDiskBytes = diskByteLimit
+        self.currentDate = currentDate
         try? FileManager.default.createDirectory(at: self.diskDirectory, withIntermediateDirectories: true)
         diskQueue.async { [self] in
             trimDiskCache()
@@ -250,6 +293,48 @@ final class PubkyImageCache: @unchecked Sendable {
         }
     }
 
+    /// True while a failed fetch of `uri` is remembered, so the image shows its failed state without fetching again.
+    func hasRecentFailure(for uri: String) -> Bool {
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        guard let failure = failures[uri] else { return false }
+        if let expiresAt = failure.expiresAt, currentDate() >= expiresAt {
+            failures[uri] = nil
+            return false
+        }
+        return true
+    }
+
+    /// Remembers that a fetch of `uri` failed with `error`. Like `store`, it is dropped when `clear()` ran after
+    /// `generation` was captured, and a cancelled fetch is not remembered.
+    func rememberFailure(_ error: Error, for uri: String, generation: UInt64) {
+        guard !(error is CancellationError) else { return }
+        let expiresAt = Self.isPermanentFailure(error) ? nil : currentDate().addingTimeInterval(PubkyImagePolicy.transientFailureTTL)
+
+        memoryLock.lock()
+        defer { memoryLock.unlock() }
+        guard generation == clearGeneration else { return }
+        failures[uri] = Failure(expiresAt: expiresAt)
+    }
+
+    /// A missing file, or one over the download limit, stays that way until the profile points at another image.
+    private static func isPermanentFailure(_ error: Error) -> Bool {
+        if case .profileNotFound? = error as? PubkyServiceError {
+            return true
+        }
+        if case .fileTooLarge? = error as? PubkyImageError {
+            return true
+        }
+        switch error as? PaykitError {
+        case .NotFound?:
+            return true
+        case let .Protocol(_, context)?:
+            return context.contains("exceeds maximum size")
+        default:
+            return false
+        }
+    }
+
     func clear() async {
         clearMemoryCache()
 
@@ -266,6 +351,7 @@ final class PubkyImageCache: @unchecked Sendable {
         memoryLock.lock()
         clearGeneration &+= 1
         memoryCache.removeAll()
+        failures.removeAll()
         memoryCost = 0
         memoryLock.unlock()
     }
