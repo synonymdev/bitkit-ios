@@ -174,6 +174,156 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         XCTAssertEqual(sdk.registryPublicKeys.count, 7)
     }
 
+    @MainActor
+    func testSessionKeyCacheRefreshesAfterRemoteGenerationFailureWithoutReplayingOperations() async throws {
+        let operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.contactRecords() },
+            { _ = try await $0.cancelPaymentRequest(counterparty: "peer", paymentRequestId: "request") },
+        ]
+        for operation in operations {
+            try await withCachedSessionKey { service, sdk, generationKey in
+                sdk.registry = PaykitAppRegistry(keyGeneration: 3, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+                sdk.operationError = PaykitError.Identity(
+                    code: "identity_error",
+                    context: "Paykit key generation 1 does not match shared-state generation 3"
+                )
+                do {
+                    try await operation(service)
+                    XCTFail("The failed operation must not be retried")
+                } catch {
+                    XCTAssertEqual(String(describing: error), String(describing: sdk.operationError!))
+                }
+                XCTAssertEqual(sdk.operationCalls, 2)
+                XCTAssertEqual(sdk.registryPublicKeys.count, 1)
+                XCTAssertEqual(try Keychain.load(key: generationKey), try JSONEncoder().encode(UInt64(1)))
+
+                sdk.operationError = nil
+                _ = try await service.contactRecords()
+                XCTAssertEqual(sdk.registryPublicKeys.count, 2)
+                XCTAssertEqual(try Keychain.load(key: generationKey), try JSONEncoder().encode(UInt64(3)))
+                _ = try await service.contactRecords()
+                XCTAssertEqual(sdk.registryPublicKeys.count, 2)
+            }
+        }
+    }
+
+    @MainActor
+    func testRemoteGenerationRecoveryPreservesFloorWhenRegistryIsStaleMissingOrUnavailable() async throws {
+        try await withCachedSessionKey { service, sdk, generationKey in
+            for generation: UInt64 in [3, 2] {
+                sdk.operationError = PaykitError.Identity(code: "identity_error", context: "Paykit key generation mismatch")
+                do {
+                    _ = try await service.contactRecords()
+                    XCTFail("Expected an identity failure")
+                } catch {}
+                sdk.operationError = nil
+                sdk.registry = PaykitAppRegistry(
+                    keyGeneration: generation,
+                    noisePublicKey: nil,
+                    apps: [],
+                    defaultAppId: nil,
+                    defaultAppsByEndpoint: [:]
+                )
+                if generation == 3 {
+                    _ = try await service.contactRecords()
+                    continue
+                }
+                let previousCalls = sdk.operationCalls
+                for attempt in 0 ..< 3 {
+                    if attempt > 0 { sdk.registry = nil }
+                    if attempt == 2 { sdk.registryError = PaykitError.Storage(code: "registry_unavailable", context: "unavailable") }
+                    do {
+                        _ = try await service.contactRecords()
+                        XCTFail("An invalid registry must not reuse the cached key")
+                    } catch let PaykitError.Identity(code, _) {
+                        XCTAssertEqual(code, "stale_paykit_key_generation")
+                    } catch let PaykitError.Storage(code, _) {
+                        XCTAssertEqual(code, "registry_unavailable")
+                    }
+                    XCTAssertEqual(sdk.operationCalls, previousCalls)
+                    XCTAssertEqual(try Keychain.load(key: generationKey), try JSONEncoder().encode(UInt64(3)))
+                }
+                XCTAssertEqual(sdk.registryPublicKeys.count, 5)
+                sdk.registryError = nil
+                sdk.registry = PaykitAppRegistry(keyGeneration: 4, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+                _ = try await service.contactRecords()
+                XCTAssertEqual(try Keychain.load(key: generationKey), try JSONEncoder().encode(UInt64(4)))
+            }
+        }
+    }
+
+    @MainActor
+    func testUnrelatedSdkFailuresKeepSessionKeyCache() async throws {
+        try await withCachedSessionKey { service, sdk, _ in
+            for failure in [PaykitError.Storage(code: "unavailable", context: "offline"), CancellationError()] as [Error] {
+                sdk.operationError = failure
+                do {
+                    _ = try await service.contactRecords()
+                    XCTFail("Expected the operation failure")
+                } catch {
+                    XCTAssertEqual(String(describing: error), String(describing: failure))
+                }
+                sdk.operationError = nil
+                _ = try await service.contactRecords()
+                XCTAssertEqual(sdk.registryPublicKeys.count, 1)
+            }
+        }
+    }
+
+    @MainActor
+    func testBestEffortSdkIdentityFailuresInvalidateSessionKeyCache() async throws {
+        for publicationFails in [true, false] {
+            try await withCachedSessionKey { service, sdk, generationKey in
+                let failure = PaykitError.Identity(code: "identity_error", context: "Paykit key generation mismatch")
+                sdk.capability = .privateLinkCapable
+                if publicationFails {
+                    sdk.publicationError = failure
+                    try await service.initialize()
+                } else {
+                    sdk.backupError = failure
+                    try await service.syncPaykitApp(privatePaymentsEnabled: true)
+                }
+                XCTAssertEqual(sdk.publicationCalls, 1)
+                let previousReads = sdk.registryPublicKeys.count
+                sdk.registry = PaykitAppRegistry(keyGeneration: 2, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+                sdk.publicationError = nil
+                sdk.backupError = nil
+                _ = try await service.contactRecords()
+                XCTAssertEqual(sdk.registryPublicKeys.count, previousReads + 1)
+                XCTAssertEqual(try Keychain.load(key: generationKey), try JSONEncoder().encode(UInt64(2)))
+            }
+        }
+    }
+
+    @MainActor
+    private func withCachedSessionKey(
+        _ operation: (PaykitSdkService, CacheActivationSdk, KeychainEntryType) async throws -> Void
+    ) async throws {
+        let secret = String(repeating: "23", count: 32)
+        let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+        let generationKey = KeychainEntryType.paykitKeyGeneration(publicKey: publicKey)
+        let keys: [KeychainEntryType] = [.pubkySecretKey, generationKey]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, saved) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        try Keychain.delete(key: generationKey)
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+        let sdk = CacheActivationSdk(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+        _ = try await service.contactRecords()
+        try await operation(service, sdk, generationKey)
+    }
+
     func testIdentityReadFailurePreservesSavedCredentials() async throws {
         let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let saved = try keys.map { try Keychain.load(key: $0) }
@@ -520,14 +670,20 @@ private final class UnavailableProfileManager: PubkyProfileManager {
 
 private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     var previousKey: String?
+    var capability: PubkyIdentityCapability = .signedOut
     var registry: PaykitAppRegistry?
     var registryPublicKeys: [String] = []
     var registryError: Error?
     var initializationError: Error?
     var activationEvents: [String] = []
+    var operationError: Error?
+    var operationCalls = 0
+    var publicationError: Error?
+    var publicationCalls = 0
+    var backupError: Error?
 
     override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: previousKey, capability: .signedOut)
+        IdentityStatus(publicKey: previousKey, capability: capability)
     }
 
     override func paykitAppRegistry(publicKey: String) async throws -> PaykitAppRegistry? {
@@ -548,7 +704,29 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func contactRecords() async throws -> [ContactRecord] {
-        []
+        operationCalls += 1
+        if let operationError { throw operationError }
+        return []
+    }
+
+    override func cancelPaymentRequest(counterparty _: String, paymentRequestId _: String, reason _: String?) async throws -> PaymentRequestRecord {
+        operationCalls += 1
+        throw operationError ?? PubkyServiceError.sessionNotActive
+    }
+
+    override func publishPaykitApp(displayName _: String, capabilities _: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        publicationCalls += 1
+        if let publicationError { throw publicationError }
+        return registry ?? PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
+
+    override func backupStateRevision() async throws -> String {
+        if let backupError { throw backupError }
+        return "unchanged"
+    }
+
+    override func stateRevision() throws -> String? {
+        "state"
     }
 }
 

@@ -2,9 +2,9 @@
   <description>
     Verifies the contact-payment preference stays off when leaving and returning to Settings.
     Requires an authenticated disposable Pubky identity with contact payments enabled and a saved,
-    linked contact. This iOS journey covers the preference. Cleanup failure injection is a manual
-    check because network and storage fault injection are not journey capabilities, as documented
-    in README.md. Use only one active install of this wallet.
+    linked contact. Cleanup failure injection is a manual check because network and storage fault
+    injection are not journey capabilities, as documented in README.md. Use only one active install
+    of this wallet.
   </description>
   <actions>
     <action>Open the menu and tap Settings (id "DrawerSettings")</action>

@@ -21,7 +21,7 @@ profile must also be absent from the saved contacts.
 ## Contact payment sharing
 
 `contact-payment-sharing.xml` checks disabling sharing and keeping it off after returning to
-Settings. It is an iOS journey for the contact-payment preference.
+Settings.
 
 Network and storage fault injection are outside journey-runner capabilities. With contact sharing
 on, make one private-list withdrawal fail and let the following public endpoint or app-registry
