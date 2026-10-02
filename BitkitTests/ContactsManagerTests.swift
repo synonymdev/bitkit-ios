@@ -189,16 +189,31 @@ final class ContactsManagerTests: XCTestCase {
     }
 
     /// General Settings used to await `loadContactsIfNeeded` in its `.task`, so leaving mid-load surfaced the cancellation
-    /// as an error toast. Another caller still finishes the load whichever screen's load it waited on is cancelled.
+    /// as an error toast. Another caller still finishes the load whichever screen's load it waited on is cancelled. The
+    /// Contacts screen's cancelled load reports no error, also when its record read throws once cancelled, as a read
+    /// waiting for the SDK lock does.
     func testLoadContactsIfNeededFinishesAfterTheLoadItWaitedOnIsCancelled() async throws {
-        let cases: [(name: String, cancelledLoadThrows: Bool, cancelledLoad: @MainActor (ContactsManager) async throws -> Void)] = [
-            ("another loadContactsIfNeeded", true, { try await $0.loadContactsIfNeeded(for: "owner") }),
-            ("the Contacts screen's loadContacts", false, { try await $0.loadContacts(for: "owner") }),
+        let cases: [(
+            name: String,
+            cancelledLoadThrows: Bool,
+            recordReadThrowsOnceCancelled: Bool,
+            cancelledLoad: @MainActor (ContactsManager) async throws -> Void
+        )] = [
+            ("another loadContactsIfNeeded", true, false, { try await $0.loadContactsIfNeeded(for: "owner") }),
+            ("the Contacts screen's loadContacts", false, false, { try await $0.loadContacts(for: "owner") }),
+            ("the Contacts screen's loadContacts, record read throws", false, true, { try await $0.loadContacts(for: "owner") }),
         ]
         for testCase in cases {
             let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
             let source = SuspendedContactRecords(records: [record])
-            let manager = ContactsManager(contactRecords: { await source.load() })
+            let recordReadThrowsOnceCancelled = testCase.recordReadThrowsOnceCancelled
+            let manager = ContactsManager(contactRecords: {
+                let records = await source.load()
+                if recordReadThrowsOnceCancelled {
+                    try Task.checkCancellation()
+                }
+                return records
+            })
             let cancelledLoad = Task { try await testCase.cancelledLoad(manager) }
             while await !(source.isPaused) {
                 await Task.yield()

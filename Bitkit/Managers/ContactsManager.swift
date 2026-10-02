@@ -238,7 +238,8 @@ class ContactsManager: ObservableObject {
 
     /// Publishes the saved records straight away, each with the best profile already known, then looks the remaining
     /// profiles up in the background on the bulk read lane and updates rows as they resolve. A failed lookup leaves its
-    /// row as it is. A cancelled or failed load publishes nothing and leaves a running refresh to finish.
+    /// row as it is. A cancelled or failed load publishes nothing and leaves a running refresh to finish. A cancelled
+    /// load returns without an error even when the record read throws once cancelled, as the SDK lock does.
     func loadContacts(
         for publicKey: String,
         fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
@@ -285,6 +286,7 @@ class ContactsManager: ObservableObject {
                 Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
                 return
             } catch {
+                guard !Task.isCancelled, generation == loadGeneration else { return }
                 guard contactsRevision == revision else { continue }
                 if Self.isMissingContactsDataError(error) {
                     contacts = []
