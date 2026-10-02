@@ -117,6 +117,8 @@ struct ContactSection: Identifiable {
 class ContactsManager: ObservableObject {
     /// How long a contact profile resolved in this session is shown without being looked up again.
     nonisolated static let contactProfileFreshness: TimeInterval = 10 * 60
+    /// Shortest time between two contact list updates of a background profile refresh.
+    nonisolated static let contactRefreshBatchWindow: Duration = .milliseconds(300)
 
     private var contactsRevision = 0
     private var loadGeneration = 0
@@ -350,7 +352,9 @@ class ContactsManager: ObservableObject {
     }
 
     /// Keeps a running refresh that already looks up every one of `records`, so reopening Contacts does not start the same
-    /// lookups again; otherwise replaces it.
+    /// lookups again; otherwise replaces it. The refresh applies the profiles it finds in batches, at most once every
+    /// `contactRefreshBatchWindow`, sorting and publishing the list once per batch rather than once per contact, and
+    /// applies the last batch as soon as its lookups finish.
     private func refreshContactProfiles(
         for records: [Paykit.ContactRecord],
         fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
@@ -359,8 +363,7 @@ class ContactsManager: ObservableObject {
         if let running = profileRefresh, Set(running.labels.keys).isSuperset(of: labels.keys) {
             return
         }
-        profileRefresh?.task.cancel()
-        profileRefresh = nil
+        stopProfileRefresh()
         guard !labels.isEmpty else { return }
 
         profileRefreshCount += 1
@@ -378,18 +381,39 @@ class ContactsManager: ObservableObject {
                     self?.finishRefreshLookup(of: result.publicKey, profile: result.profile, refreshID: refreshID)
                 }
             }
+            self?.applyBatchedProfiles(of: refreshID)
             self?.finishProfileRefresh(refreshID)
         }
         profileRefresh = ContactProfileRefresh(id: refreshID, labels: labels, pendingKeys: Set(labels.keys), task: task)
     }
 
     /// Drops the result for a contact whose lookup a screen took over. A task group cannot cancel one of its lookups, so
-    /// that contact's read still runs.
+    /// that contact's read still runs. Any other profile found joins the next batch.
     private func finishRefreshLookup(of publicKey: String, profile: PubkyProfile?, refreshID: Int) {
-        guard profileRefresh?.id == refreshID, profileRefresh?.pendingKeys.remove(publicKey) != nil else { return }
-        if let profile {
-            applyResolvedProfile(profile, for: publicKey)
+        guard profileRefresh?.id == refreshID, profileRefresh?.pendingKeys.remove(publicKey) != nil, let profile else { return }
+        rememberResolvedProfile(profile, for: publicKey)
+        profileRefresh?.batchedProfiles[publicKey] = profile
+        guard profileRefresh?.batchFlush == nil else { return }
+        profileRefresh?.batchFlush = Task { [weak self] in
+            try? await Task.sleep(for: Self.contactRefreshBatchWindow)
+            guard !Task.isCancelled else { return }
+            self?.applyBatchedProfiles(of: refreshID)
         }
+    }
+
+    /// Applies the profiles the refresh found since its last update. A batch of a refresh that was replaced or stopped,
+    /// as by a reset, a sign-out or another owner's load, is dropped with it and never reaches the rows.
+    private func applyBatchedProfiles(of refreshID: Int) {
+        guard let refresh = profileRefresh, refresh.id == refreshID else { return }
+        refresh.batchFlush?.cancel()
+        profileRefresh?.batchFlush = nil
+        profileRefresh?.batchedProfiles = [:]
+        applyResolvedProfiles(refresh.batchedProfiles)
+    }
+
+    private func stopProfileRefresh() {
+        profileRefresh?.cancel()
+        profileRefresh = nil
     }
 
     private func finishProfileRefresh(_ refreshID: Int) {
@@ -403,7 +427,8 @@ class ContactsManager: ObservableObject {
     /// reads and an edit made there keeps the contact's avatar, bio and links. The lookup takes the contact over from the
     /// running background refresh, which then drops its own result for it, so that refresh cannot change the row under an
     /// edit. Returns at once for any other row, and joins a lookup already running for the contact. When the lookup fails,
-    /// the row keeps its label.
+    /// the row keeps its label. A profile the refresh already found for the contact but holds for its next batch is
+    /// applied at once instead.
     func resolvePendingContactProfile(publicKey: String) async {
         await resolvePendingContactProfile(publicKey: publicKey, fetchRemoteProfile: remoteProfileLookup(on: .interactive))
     }
@@ -413,6 +438,9 @@ class ContactsManager: ObservableObject {
         fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
     ) async {
         guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        if let refresh = profileRefresh, refresh.batchedProfiles[key] != nil {
+            applyBatchedProfiles(of: refresh.id)
+        }
         if let lookup = pendingProfileLookups[key] {
             return await lookup.value
         }
@@ -437,18 +465,29 @@ class ContactsManager: ObservableObject {
         guard generation == resolvedProfilesGeneration else { return }
         pendingProfileLookups[publicKey] = nil
         if let profile {
-            applyResolvedProfile(profile, for: publicKey)
+            rememberResolvedProfile(profile, for: publicKey)
+            applyResolvedProfiles([publicKey: profile])
         }
     }
 
-    private func applyResolvedProfile(_ profile: PubkyProfile, for publicKey: String) {
-        rememberResolvedProfile(profile, for: publicKey)
-        guard Self.loadContactProfileOverrides()[publicKey] == nil,
-              let index = contacts.firstIndex(where: { $0.publicKey == publicKey })
-        else { return }
-
+    /// Replaces the rows of `profiles` in one sorted publish. A row the user edited keeps the edit, and when every row
+    /// already shows its profile nothing is published.
+    private func applyResolvedProfiles(_ profiles: [String: PubkyProfile]) {
+        guard !profiles.isEmpty else { return }
+        let overrides = Self.loadContactProfileOverrides()
         var refreshed = contacts
-        refreshed[index] = PubkyContact(publicKey: publicKey, profile: profile)
+        var hasChanges = false
+        for index in refreshed.indices {
+            let publicKey = refreshed[index].publicKey
+            guard let profile = profiles[publicKey],
+                  overrides[publicKey] == nil,
+                  !refreshed[index].profile.hasSameContent(as: profile)
+            else { continue }
+            refreshed[index] = PubkyContact(publicKey: publicKey, profile: profile)
+            hasChanges = true
+        }
+        guard hasChanges else { return }
+
         refreshed.sort(by: Self.isOrderedByName)
         isApplyingProfileRefresh = true
         contacts = refreshed
@@ -467,8 +506,7 @@ class ContactsManager: ObservableObject {
     private func forgetResolvedProfiles(owner: String?) {
         announcedSavedContactKeys = nil
         resolvedProfilesGeneration += 1
-        profileRefresh?.task.cancel()
-        profileRefresh = nil
+        stopProfileRefresh()
         pendingProfileLookups.values.forEach { $0.cancel() }
         pendingProfileLookups = [:]
         tagChanges = [:]
@@ -485,6 +523,10 @@ class ContactsManager: ObservableObject {
     #if DEBUG
         func waitForProfileRefreshForTesting() async {
             await profileRefresh?.task.value
+        }
+
+        var batchedProfileCountForTesting: Int {
+            profileRefresh?.batchedProfiles.count ?? 0
         }
     #endif
 
@@ -890,6 +932,14 @@ class ContactsManager: ObservableObject {
         let labels: [String: String?]
         var pendingKeys: Set<String>
         let task: Task<Void, Never>
+        /// Profiles found and not applied to the rows yet, applied together once `batchFlush` fires or the refresh ends.
+        var batchedProfiles: [String: PubkyProfile] = [:]
+        var batchFlush: Task<Void, Never>?
+
+        func cancel() {
+            task.cancel()
+            batchFlush?.cancel()
+        }
     }
 
     // MARK: - Contact Profile Resolution
@@ -1126,5 +1176,15 @@ class ContactsManager: ObservableObject {
             || normalized.contains("profile not found")
             || normalized.contains("profilenotfound")
             || (normalized.contains("fetch failed") && normalized.contains("not found"))
+    }
+}
+
+private extension PubkyProfile {
+    /// Compares everything a contact's row and screen show. A `PubkyProfileLink` gets a new id each time one is made, so
+    /// links compare by label and URL.
+    func hasSameContent(as other: PubkyProfile) -> Bool {
+        publicKey == other.publicKey && name == other.name && bio == other.bio && imageUrl == other.imageUrl
+            && tags == other.tags && status == other.status
+            && links.map(\.label) == other.links.map(\.label) && links.map(\.url) == other.links.map(\.url)
     }
 }

@@ -830,6 +830,117 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(counts, [contactProfileKey: 2, unresolvedFollowKey: 3], "A profile resolved ten minutes ago is looked up again")
     }
 
+    /// Each resolved profile used to copy, sort and publish the whole list, 54 times per refresh of 61 contacts, even when
+    /// the row already showed that profile.
+    func testRefreshPublishesNothingForProfilesTheRowsAlreadyShow() async throws {
+        let clock = TestClock()
+        let manager = ContactsManager(currentDate: { clock.now() })
+        let keys = ["e", "j", "k", "m", "c"].map { "pubky" + String(repeating: $0, count: 52) }
+        let lookups = HeldProfileLookups(profiles: Dictionary(uniqueKeysWithValues: keys.enumerated().map { ($1, "Name \($0)") }))
+        let records = keys.map { unprofiledRecord(key: $0, label: nil) }
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(manager.contacts.map(\.displayName), (0 ..< 5).map { "Name \($0)" })
+
+        clock.advance(by: ContactsManager.contactProfileFreshness)
+        var publishes = 0
+        let subscription = manager.$contacts.dropFirst().sink { _ in publishes += 1 }
+        defer { subscription.cancel() }
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        await manager.waitForProfileRefreshForTesting()
+
+        let fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys.count, 10, "Every profile was looked up again once ten minutes passed")
+        XCTAssertEqual(publishes, 1, "Only the load publishes; lookups that find what the rows already show publish nothing")
+    }
+
+    func testRefreshAppliesManyResultsInFewPublishesAndEndsWithTheWholeListSorted() async throws {
+        let manager = ContactsManager()
+        let alphabet = Array("ybndrfg8ejkmcpqxot1uwisza345h769")
+        let keys = (0 ..< 20).map { "pubky" + String(repeating: "q", count: 51) + String(alphabet[$0]) }
+        let names = Dictionary(uniqueKeysWithValues: keys.enumerated().map { ($1, String(format: "Name %02d", 19 - $0)) })
+        let lookups = HeldProfileLookups(profiles: names)
+        await lookups.hold()
+        let records = keys.enumerated().map { unprofiledRecord(key: $1, label: String(format: "Label %02d", $0)) }
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        while await lookups.heldCount < keys.count {
+            await Task.yield()
+        }
+
+        var publishes = 0
+        let subscription = manager.$contacts.dropFirst().sink { _ in publishes += 1 }
+        defer { subscription.cancel() }
+        await lookups.release()
+        await manager.waitForProfileRefreshForTesting()
+
+        XCTAssertLessThanOrEqual(publishes, 3, "20 resolved profiles are applied in a few batches, not one publish each")
+        XCTAssertGreaterThanOrEqual(publishes, 1)
+        XCTAssertEqual(manager.contacts.map(\.displayName), (0 ..< 20).map { String(format: "Name %02d", $0) })
+    }
+
+    func testBatchOvertakenByAResetIsDropped() async throws {
+        let manager = ContactsManager()
+        let heldKey = "pubky" + String(repeating: "r", count: 52)
+        let lookups = PartlyHeldProfileLookups(
+            profiles: [contactProfileKey: "Alice", unresolvedFollowKey: "Bob", heldKey: "Carol"],
+            holding: [heldKey]
+        )
+        let records = [
+            unprofiledRecord(key: contactProfileKey, label: "Label A"),
+            unprofiledRecord(key: unresolvedFollowKey, label: "Label B"),
+            unprofiledRecord(key: heldKey, label: "Label C"),
+        ]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        try await waitUntil { manager.batchedProfileCountForTesting == 2 }
+        XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Label A", "Label B", "Label C"], "The two profiles wait for their batch")
+
+        var published: [Set<String>] = []
+        let subscription = manager.$contacts.dropFirst().sink { published.append(Set($0.map(\.displayName))) }
+        defer { subscription.cancel() }
+        manager.reset()
+        let failing = HeldProfileLookups(profiles: [:])
+        try await manager.loadContacts(for: "next-owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await failing.fetch($0) })
+        try await Task.sleep(for: ContactsManager.contactRefreshBatchWindow * 2)
+
+        XCTAssertFalse(published.contains { $0.contains("Alice") || $0.contains("Bob") }, "A batch from before the reset must never publish")
+        XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Label A", "Label B", "Label C"])
+        await lookups.release()
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(Set(manager.contacts.map(\.displayName)), ["Label A", "Label B", "Label C"])
+    }
+
+    func testContactScreenGetsAProfileHeldForTheNextBatchAtOnce() async throws {
+        let manager = ContactsManager()
+        let heldKey = "pubky" + String(repeating: "r", count: 52)
+        let lookups = PartlyHeldProfileLookups(publishedProfiles: [publishedContactProfile], holding: [heldKey])
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), unprofiledRecord(key: heldKey, label: "Held")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+        try await waitUntil { manager.batchedProfileCountForTesting == 1 }
+        XCTAssertEqual(manager.contacts.first { $0.publicKey == contactProfileKey }?.displayName, "Label only")
+
+        let interactive = ContactProfileFetchStub([.failure(profileTransportError)])
+        await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+
+        let row = manager.contacts.first { $0.publicKey == contactProfileKey }?.profile
+        XCTAssertEqual(row?.name, "Alice", "The screen gets the profile its batch holds without waiting for the batch")
+        XCTAssertEqual(row?.bio, "Hello", "An edit made now keeps the bio the refresh found")
+        let attempts = await interactive.attempts
+        XCTAssertEqual(attempts, 0, "A profile the refresh already found is not looked up again")
+        await lookups.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
+    private func waitUntil(timeout: Duration = .seconds(2), _ condition: @MainActor () -> Bool) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting for the condition")
+                return
+            }
+            await Task.yield()
+        }
+    }
+
     func testResetForgetsResolvedProfilesSoTheNextLoadLooksThemUpAgain() async throws {
         let clock = TestClock()
         let manager = ContactsManager(currentDate: { clock.now() })
@@ -1583,6 +1694,39 @@ private actor HeldProfileLookups {
     func fetch(_ publicKey: String) async throws -> Bitkit.PubkyProfile? {
         fetchedKeys.append(publicKey)
         if isHolding {
+            await withCheckedContinuation { held.append($0) }
+        }
+        guard let profile = profiles[publicKey] else { throw profileTransportError }
+        return profile
+    }
+}
+
+/// Answers profile lookups at once with the scripted profiles, failing for any other key, except for `holding`, whose
+/// lookups wait until released.
+private actor PartlyHeldProfileLookups {
+    private let profiles: [String: Bitkit.PubkyProfile]
+    private let heldKeys: Set<String>
+    private var held: [CheckedContinuation<Void, Never>] = []
+
+    init(profiles names: [String: String], holding heldKeys: Set<String>) {
+        profiles = Dictionary(uniqueKeysWithValues: names.map { publicKey, name in
+            (publicKey, Bitkit.PubkyProfile(publicKey: publicKey, name: name, bio: "", imageUrl: nil, links: [], status: nil))
+        })
+        self.heldKeys = heldKeys
+    }
+
+    init(publishedProfiles: [Bitkit.PubkyProfile], holding heldKeys: Set<String>) {
+        profiles = Dictionary(uniqueKeysWithValues: publishedProfiles.map { ($0.publicKey, $0) })
+        self.heldKeys = heldKeys
+    }
+
+    func release() {
+        held.forEach { $0.resume() }
+        held.removeAll()
+    }
+
+    func fetch(_ publicKey: String) async throws -> Bitkit.PubkyProfile? {
+        if heldKeys.contains(publicKey) {
             await withCheckedContinuation { held.append($0) }
         }
         guard let profile = profiles[publicKey] else { throw profileTransportError }

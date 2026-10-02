@@ -19,8 +19,9 @@ contacts itself is covered by [`journeys/contacts`](../contacts/README.md). Wher
   finishes after you left does not take you to Pay Contacts. Contacts then lists every follow.
 - `contacts-list-loading.xml` relaunches and opens Contacts. The saved contacts show straight away
   under the names they were saved with, and each fills in its profile name and avatar as its lookup
-  finishes. Reopening Contacts in the same session shows the profiles already found straight away,
-  and does not look up again a profile found less than ten minutes ago, so only contacts still
+  finishes. The rows fill in a few at a time, at most every 300 ms, rather than the list re-sorting
+  once per contact. Reopening Contacts in the same session shows the profiles already found straight
+  away, and does not look up again a profile found less than ten minutes ago, so only contacts still
   without a profile get a new lookup. Opening a contact whose profile has not loaded yet looks it up
   at once, and its edit form shows the published bio.
 
