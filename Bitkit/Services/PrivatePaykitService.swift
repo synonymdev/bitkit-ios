@@ -48,14 +48,9 @@ actor PrivatePaykitService {
     static let shared = PrivatePaykitService()
 
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
-    static let initialLinkBurstStartedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         walletBackupDataChangedSubject.eraseToAnyPublisher()
-    }
-
-    nonisolated static var initialLinkBurstStartedPublisher: AnyPublisher<Void, Never> {
-        initialLinkBurstStartedSubject.eraseToAnyPublisher()
     }
 
     static let invoiceRefreshBufferSeconds: TimeInterval = 30 * 60
@@ -73,7 +68,6 @@ actor PrivatePaykitService {
         45_000_000_000,
         90_000_000_000,
     ]
-    static let initialLinkBurstRetryDelays = Array(repeating: UInt64(2_000_000_000), count: 14)
 
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
@@ -82,9 +76,6 @@ actor PrivatePaykitService {
     var pendingMessageDrainRetryGeneration = 0
     // A restart makes the send outcome uncertain, so only live attempts may release a consumed list.
     var privatePaymentListConsumptions: [PrivatePaymentListConsumptionKey: PrivatePaymentListConsumption] = [:]
-    var initialLinkBurstTask: Task<Void, Never>?
-    var initialLinkBurstPublicKeys: Set<String> = []
-    var initialLinkBurstGeneration = 0
     var prePaymentPublicationKeys: Set<String> = []
     private let publicationLock = PrivatePaykitPublicationLock()
 

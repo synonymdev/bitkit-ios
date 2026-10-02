@@ -96,56 +96,6 @@ extension PrivatePaykitService {
         )
     }
 
-    func startInitialLinkBurst(
-        for publicKeys: [String],
-        savedPublicKeys: [String]? = nil,
-        wallet: WalletViewModel,
-        reason: String
-    ) {
-        if let savedPublicKeys {
-            _ = rememberSavedContacts(savedPublicKeys + publicKeys, replacing: false)
-        }
-
-        let publicKeys = normalizedSavedContactKeys(publicKeys)
-        guard !publicKeys.isEmpty else { return }
-
-        initialLinkBurstPublicKeys.formUnion(publicKeys)
-        initialLinkBurstGeneration += 1
-        let generation = initialLinkBurstGeneration
-        initialLinkBurstTask?.cancel()
-        Self.initialLinkBurstStartedSubject.send()
-
-        initialLinkBurstTask = Task { [reason, generation] in
-            defer {
-                if generation == initialLinkBurstGeneration {
-                    initialLinkBurstTask = nil
-                    initialLinkBurstPublicKeys.removeAll()
-                }
-            }
-            for delay in [UInt64(0)] + Self.initialLinkBurstRetryDelays {
-                if delay > 0 {
-                    try? await Task.sleep(nanoseconds: delay)
-                }
-                guard !Task.isCancelled,
-                      generation == initialLinkBurstGeneration
-                else { return }
-
-                let publicKeys = Array(initialLinkBurstPublicKeys)
-                _ = await refreshSavedContactEndpointsReturningError(
-                    for: publicKeys,
-                    wallet: wallet,
-                    forceRefreshLightning: false,
-                    requireImmediatePublication: false,
-                    reason: "\(reason) initial link burst"
-                )
-                guard !Task.isCancelled, generation == initialLinkBurstGeneration else { return }
-                let pendingKeys = await pendingPrivateMessageDrainKeys(publicKeys, retryMissingPeers: true)
-                guard !Task.isCancelled, generation == initialLinkBurstGeneration else { return }
-                if pendingKeys.isEmpty { break }
-            }
-        }
-    }
-
     @discardableResult
     func refreshSavedContactEndpointsReturningError(
         for publicKeys: [String],
@@ -519,7 +469,7 @@ extension PrivatePaykitService {
     }
 
     private func drainAndSchedulePrivateLinkRetries(reason: String, retryKeys: [String]) async {
-        let retryKeys = Array(Set(retryKeys))
+        let retryKeys = Array(Set(retryKeys).subtracting(pendingMessageDrainRetryKeys))
         guard !retryKeys.isEmpty else { return }
 
         let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys, retryMissingPeers: true)
@@ -550,8 +500,6 @@ extension PrivatePaykitService {
             }
             try await PaykitSdkService.shared.processPendingPrivateMessages()
             try await PaykitSdkService.shared.receivePrivateMessagesFromLinkedPeers()
-            try await PaykitSdkService.shared.processPendingPrivateMessages()
-            try await PaykitSdkService.shared.receivePrivateMessagesFromLinkedPeers()
         } catch {
             Logger.warn("Failed to process pending private Paykit messages during \(reason): \(error)", context: "PrivatePaykit")
         }
@@ -561,7 +509,9 @@ extension PrivatePaykitService {
         let retryKeys = Set(retryKeys)
         guard !retryKeys.isEmpty else { return }
 
+        let hasActiveRetry = pendingMessageDrainRetryTask?.isCancelled == false && !pendingMessageDrainRetryKeys.isEmpty
         pendingMessageDrainRetryKeys.formUnion(retryKeys)
+        guard !hasActiveRetry else { return }
         pendingMessageDrainRetryGeneration += 1
         let retryGeneration = pendingMessageDrainRetryGeneration
         pendingMessageDrainRetryTask?.cancel()
@@ -573,13 +523,13 @@ extension PrivatePaykitService {
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(nanoseconds: delay)
                 guard !Task.isCancelled else { return }
-                await PrivatePaykitService.shared.drainPendingPrivateMessageRetryKeys(reason: "\(reason) retry")
-                let hasPending = await PrivatePaykitService.shared.hasPendingMessageDrainRetryKeys(generation: retryGeneration)
+                await self.drainPendingPrivateMessageRetryKeys(reason: "\(reason) retry")
+                let hasPending = self.hasPendingMessageDrainRetryKeys(generation: retryGeneration)
                 guard hasPending else { break }
                 retryIndex += 1
             }
             guard !Task.isCancelled else { return }
-            await PrivatePaykitService.shared.finishPendingPrivateMessageDrainRetries(generation: retryGeneration)
+            self.finishPendingPrivateMessageDrainRetries(generation: retryGeneration)
         }
     }
 

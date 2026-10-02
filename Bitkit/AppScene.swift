@@ -205,8 +205,6 @@ struct PaykitPaymentRequestPollingSchedule {
 }
 
 struct AppScene: View {
-    private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
-
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
 
@@ -243,7 +241,6 @@ struct AppScene: View {
         activityChanges: CoreService.shared.activity.activitiesChangedPublisher
     )
     @State private var paykitAllowanceManager = PaykitAllowanceManager()
-    @State private var initialPaykitSyncGeneration = 0
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -371,7 +368,6 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
-            .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
             .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
@@ -472,17 +468,8 @@ struct AppScene: View {
                 let publicKeys = contacts.map(\.publicKey)
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
-                    await PrivatePaykitService.shared.startInitialLinkBurst(
-                        for: publicKeys,
-                        savedPublicKeys: publicKeys,
-                        wallet: wallet,
-                        reason: "contact sync"
-                    )
                     await refreshIncomingPaykitPaymentRequests()
                 }
-            }
-            .onReceive(PrivatePaykitService.initialLinkBurstStartedPublisher) {
-                initialPaykitSyncGeneration += 1
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
                 Task { await refreshIncomingPaykitPaymentRequests() }
@@ -1051,11 +1038,6 @@ struct AppScene: View {
                     contactsManager.contacts.map(\.publicKey),
                     wallet: wallet
                 )
-                await PrivatePaykitService.shared.startInitialLinkBurst(
-                    for: contactsManager.contacts.map(\.publicKey),
-                    wallet: wallet,
-                    reason: "wallet started"
-                )
                 await refreshIncomingPaykitPaymentRequests()
             }
         } else {
@@ -1098,11 +1080,10 @@ struct AppScene: View {
                     if PaykitFeatureFlags.isUIEnabled {
                         await refreshPrivateOnlyPaykitApp()
                         let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                        await PrivatePaykitService.shared.startInitialLinkBurst(
+                        await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                             for: contactPublicKeys,
                             savedPublicKeys: contactPublicKeys,
-                            wallet: wallet,
-                            reason: "foreground"
+                            wallet: wallet
                         )
                         await refreshIncomingPaykitPaymentRequests()
                     }
@@ -1199,6 +1180,7 @@ struct AppScene: View {
         guard scenePhase == .active, network.isConnected else { return }
 
         await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+        await refreshIncomingPaykitPaymentRequests()
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
@@ -1226,21 +1208,6 @@ struct AppScene: View {
                 )
             }
             await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
-        }
-    }
-
-    private func pollIncomingPaykitPaymentRequestsDuringInitialSync() async {
-        guard scenePhase == .active else { return }
-
-        await refreshIncomingPaykitPaymentRequests()
-        for delay in Self.initialPaykitSyncRetryDelays {
-            do {
-                try await Task.sleep(for: delay)
-            } catch {
-                return
-            }
-            guard scenePhase == .active else { return }
-            await refreshIncomingPaykitPaymentRequests(refreshMaintenance: false)
         }
     }
 
@@ -1627,11 +1594,10 @@ struct AppScene: View {
                 }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                    await PrivatePaykitService.shared.startInitialLinkBurst(
+                    await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                         for: contactPublicKeys,
                         savedPublicKeys: contactPublicKeys,
-                        wallet: wallet,
-                        reason: "network restored"
+                        wallet: wallet
                     )
                 }
                 await refreshIncomingPaykitPaymentRequests()

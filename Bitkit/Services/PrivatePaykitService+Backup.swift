@@ -26,10 +26,6 @@ extension PrivatePaykitService {
             // Wallet restore must not rewind the identity's live state or Noise counters.
             try Keychain.upsert(key: .paykitRecoveryBackup, data: Data(decoded.sdkState.utf8))
         }
-        initialLinkBurstTask?.cancel()
-        initialLinkBurstTask = nil
-        initialLinkBurstPublicKeys.removeAll()
-        initialLinkBurstGeneration += 1
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()

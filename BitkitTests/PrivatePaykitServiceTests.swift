@@ -12,11 +12,6 @@ final class PrivatePaykitServiceTests: XCTestCase {
         snapshotAppDefaultsDomain()
     }
 
-    func testInitialLinkBurstUsesBoundedTwoSecondRetryCadence() {
-        XCTAssertEqual(PrivatePaykitService.initialLinkBurstRetryDelays.count, 14)
-        XCTAssertTrue(PrivatePaykitService.initialLinkBurstRetryDelays.allSatisfy { $0 == 2_000_000_000 })
-    }
-
     func testPrivateMessageDrainKeysRespectLinkStateAndPendingOutbound() {
         let peers: [String: LinkedPeerState] = [
             "idle": .linked, "pending": .linked, "new": .notLinked,
@@ -527,17 +522,25 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(contactState?.hasContactOwnedCacheState == true)
     }
 
-    func testPrivatePaymentRecoveryUsesCounterpartyIdentity() async {
+    func testPrivatePaymentRecoveryKeepsActiveRetryWhenContactsAreAdded() async {
         let service = PrivatePaykitService()
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let otherPublicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
         await service.schedulePrivatePaymentRecovery(for: publicKey)
+        let generation = await service.pendingMessageDrainRetryGeneration
+        await service.schedulePrivatePaymentRecovery(for: publicKey)
+        await service.schedulePrivatePaymentRecovery(for: otherPublicKey)
 
         let retryKeys = await service.testPendingMessageDrainRetryKeys()
-        XCTAssertEqual(
-            retryKeys,
-            [publicKey]
-        )
+        let repeatedGeneration = await service.pendingMessageDrainRetryGeneration
+        XCTAssertEqual(retryKeys, [publicKey, otherPublicKey])
+        XCTAssertEqual(repeatedGeneration, generation)
+        await service.clearTestPendingMessageDrainRetries()
+
+        await service.schedulePrivatePaymentRecovery(for: otherPublicKey)
+        let restartedGeneration = await service.pendingMessageDrainRetryGeneration
+        XCTAssertGreaterThan(restartedGeneration, generation)
         await service.clearTestPendingMessageDrainRetries()
     }
 
