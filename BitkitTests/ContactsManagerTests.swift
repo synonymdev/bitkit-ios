@@ -906,6 +906,52 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(form.links.map(\.url), ["https://alice.example"])
     }
 
+    func testTagChangesQueuedDuringTheContactsLookupKeepTheProfileItFindsAndEachOther() async throws {
+        let savedOverrides = ContactsManager.backupContactProfileOverrides()
+        addTeardownBlock { ContactsManager.restoreContactProfileOverrides(savedOverrides) }
+        let savedLabels = SavedContactLabels()
+        let manager = ContactsManager(
+            fetchRemoteProfile: { _, _ in throw profileTransportError },
+            saveContactLabel: { await savedLabels.save($0, label: $1) }
+        )
+        let bulk = HeldProfileLookups(profiles: [:])
+        await bulk.hold()
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+
+        // The contact's screen looks its label-only row up, and that lookup is held.
+        let interactive = HeldProfileLookups(publishedProfiles: [publishedContactProfile])
+        await interactive.hold()
+        let screenLookup = Task {
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+        }
+        while await interactive.heldCount < 1 {
+            await Task.yield()
+        }
+
+        // The user adds two tags while it is still held.
+        let shown = try XCTUnwrap(manager.contacts.first?.profile)
+        let first = manager.updateContactTags(publicKey: contactProfileKey, shownProfile: shown) { $0 + ["friend"] }
+        let second = manager.updateContactTags(publicKey: contactProfileKey, shownProfile: shown.withTags(["friend"])) { $0 + ["work"] }
+        await interactive.release()
+        await screenLookup.value
+        try await first.value
+        try await second.value
+
+        let saved = try XCTUnwrap(ContactsManager.backupContactProfileOverrides()?[contactProfileKey])
+        XCTAssertEqual(saved.tags, ["friend", "work"], "The second change saves over the first, so neither tag is lost")
+        XCTAssertEqual(saved.name, "Alice", "The changes wait for the lookup, so they save over the profile it finds")
+        XCTAssertEqual(saved.bio, "Hello")
+        XCTAssertEqual(saved.image, "pubky://alice/avatar")
+        XCTAssertEqual(saved.links.map(\.url), ["https://alice.example"])
+        XCTAssertEqual(manager.contacts.first.map { PubkyProfileData.from(profile: $0.profile) }, saved, "The row shows what was saved")
+        let labels = await savedLabels.labels
+        XCTAssertEqual(labels, ["Alice", "Alice"], "Each change saves the contact once, under the name the lookup found")
+
+        await bulk.release()
+        await manager.waitForProfileRefreshForTesting()
+    }
+
     func testPreparingAnImportLooksFollowsUpOnTheInteractiveLane() async throws {
         let lanes = ProfileLookupLanes()
         let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
@@ -1244,6 +1290,15 @@ private actor ContactProfileFetchStub {
         attempts += 1
         let outcome = outcomes.count > 1 ? outcomes.removeFirst() : outcomes[0]
         return try outcome.get()
+    }
+}
+
+/// Records the label of each contact save.
+private actor SavedContactLabels {
+    private(set) var labels: [String] = []
+
+    func save(_: String, label: String) {
+        labels.append(label)
     }
 }
 
