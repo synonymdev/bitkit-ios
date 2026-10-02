@@ -678,6 +678,69 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(changes.last, [contactProfileKey, unresolvedFollowKey, addedKey])
     }
 
+    /// Each announcement starts a private Paykit walk over every saved contact under the publication lock, so a Contacts
+    /// visit that announced its unchanged list queued a full walk that a later Delete Profile waited behind.
+    func testSavedContactsChangeIsAnnouncedOnlyWhenTheSavedKeysChange() async throws {
+        let manager = ContactsManager()
+        var changes: [Set<String>] = []
+        let subscription = manager.savedContactsChangedPublisher.sink { changes.append(Set($0.map(\.publicKey))) }
+        defer { subscription.cancel() }
+        let addedKey = "pubky" + String(repeating: "r", count: 52)
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice", unresolvedFollowKey: "Bob", addedKey: "Carol"])
+        let first = unprofiledRecord(key: contactProfileKey, label: "Label only")
+        let second = unprofiledRecord(key: unresolvedFollowKey, label: nil)
+        let added = unprofiledRecord(key: addedKey, label: nil)
+        let load: @MainActor ([ContactRecord]) async throws -> Void = { records in
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+            await manager.waitForProfileRefreshForTesting()
+        }
+
+        try await load([first, second])
+        try await load([first, second])
+        try await load([second, first])
+        XCTAssertEqual(changes, [[contactProfileKey, unresolvedFollowKey]], "Reloads and profile refreshes with the same keys announce nothing")
+
+        try await load([first, second, added])
+        XCTAssertEqual(changes.count, 2, "Adding a key announces once")
+        XCTAssertEqual(changes.last, [contactProfileKey, unresolvedFollowKey, addedKey])
+
+        try await load([first, added])
+        XCTAssertEqual(changes.count, 3, "Removing a key announces once")
+        XCTAssertEqual(changes.last, [contactProfileKey, addedKey])
+
+        manager.reset()
+        XCTAssertEqual(changes.last, [], "A reset empties the saved contacts")
+        try await load([first, added])
+        XCTAssertEqual(changes.count, 5, "The first load after a reset announces even the keys announced before it")
+        XCTAssertEqual(changes.last, [contactProfileKey, addedKey])
+
+        try await manager.loadContacts(
+            for: "another-owner",
+            fetchContactRecords: { [first, added] },
+            fetchRemoteProfile: { try await lookups.fetch($0) }
+        )
+        await manager.waitForProfileRefreshForTesting()
+        XCTAssertEqual(changes.count, 6, "Another owner's first load announces even the same keys")
+    }
+
+    func testImportAnnouncesTheSavedContactsChangeOnce() async throws {
+        let manager = ContactsManager()
+        var changes: [Set<String>] = []
+        let subscription = manager.savedContactsChangedPublisher.sink { changes.append(Set($0.map(\.publicKey))) }
+        defer { subscription.cancel() }
+        let saved = contactRecord(key: contactProfileKey, name: "Saved")
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [saved] }, fetchRemoteProfile: { _ in nil })
+        XCTAssertEqual(changes.count, 1)
+
+        let imported = ["e", "j", "k"].map { makeContact(publicKey: "pubky" + String(repeating: $0, count: 52)) }
+        try await manager.importContacts(contacts: imported) { _, _ in }
+        XCTAssertEqual(changes.count, 2, "An import announces its new contacts once")
+        XCTAssertEqual(changes.last, Set([contactProfileKey] + imported.map(\.publicKey)))
+
+        try await manager.importContacts(contacts: imported) { _, _ in }
+        XCTAssertEqual(changes.count, 2, "An import that adds nothing announces nothing")
+    }
+
     func testReloadThatPublishesNothingLeavesTheRunningProfileRefreshToFinish() async throws {
         let manager = ContactsManager()
         let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])

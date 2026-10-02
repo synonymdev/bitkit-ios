@@ -154,16 +154,27 @@ class ContactsManager: ObservableObject {
         didSet {
             guard !isApplyingProfileRefresh else { return }
             contactsRevision += 1
-            savedContactsChangedSubject.send(contacts)
+            announceSavedContactsIfKeysChanged()
         }
     }
 
     private let savedContactsChangedSubject = PassthroughSubject<[PubkyContact], Never>()
+    /// The saved contact keys last announced, or nil while nothing was announced for the current owner.
+    private var announcedSavedContactKeys: Set<String>?
 
-    /// The contacts after every change that may have changed the saved contact list. Profiles a background refresh
-    /// fills in do not emit, so work that runs per saved contact, such as private Paykit sync, does not rerun per row.
+    /// The contacts each time the set of saved contact keys changes, and on the first load for each owner even when it
+    /// finds none. A reload, a profile refresh or an edit that keeps the same keys does not emit, so work that runs per
+    /// saved contact, such as private Paykit sync, which walks every saved contact under the publication lock, does not
+    /// rerun each time Contacts opens.
     var savedContactsChangedPublisher: AnyPublisher<[PubkyContact], Never> {
         savedContactsChangedSubject.eraseToAnyPublisher()
+    }
+
+    private func announceSavedContactsIfKeysChanged() {
+        let keys = Set(contacts.map { PubkyPublicKeyFormat.normalized($0.publicKey) ?? $0.publicKey })
+        guard keys != announcedSavedContactKeys else { return }
+        announcedSavedContactKeys = keys
+        savedContactsChangedSubject.send(contacts)
     }
 
     @Published var isLoading = false
@@ -438,8 +449,10 @@ class ContactsManager: ObservableObject {
     }
 
     /// Stops every profile lookup still running for the previous owner, so none of them can fill the next owner's rows
-    /// or cache, and drops that owner's queued tag changes, which then stop without saving.
+    /// or cache, and drops that owner's queued tag changes, which then stop without saving. The next change to the
+    /// contacts is announced as a saved contacts change whatever keys it holds, as it belongs to another session.
     private func forgetResolvedProfiles(owner: String?) {
+        announcedSavedContactKeys = nil
         resolvedProfilesGeneration += 1
         profileRefresh?.task.cancel()
         profileRefresh = nil
@@ -576,8 +589,7 @@ class ContactsManager: ObservableObject {
             rememberResolvedProfile(contact.profile, for: contact.publicKey)
         }
         let currentKeys = Set(contacts.map(\.publicKey))
-        contacts.append(contentsOf: imported.filter { !currentKeys.contains($0.publicKey) })
-        contacts.sort(by: Self.isOrderedByName)
+        contacts = (contacts + imported.filter { !currentKeys.contains($0.publicKey) }).sorted(by: Self.isOrderedByName)
         Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
         if let firstError {
             throw firstError
