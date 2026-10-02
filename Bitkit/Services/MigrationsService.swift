@@ -120,6 +120,13 @@ struct RNMetadata: Codable {
     var lastUsedTags: [String]?
 }
 
+func rnMetadataRetainingUnappliedTags(_ metadata: RNMetadata, unappliedActivityIds: Set<String>) -> RNMetadata? {
+    guard let tags = metadata.tags else { return nil }
+    let remaining = tags.filter { unappliedActivityIds.contains($0.key) }
+    guard !remaining.isEmpty else { return nil }
+    return RNMetadata(tags: remaining, lastUsedTags: nil)
+}
+
 struct RNActivityState: Codable {
     var items: [RNActivityItem]?
 }
@@ -783,6 +790,10 @@ extension MigrationsService {
         // Don't cleanup if there's still pending Blocktank data that needs retry
         if pendingBlocktankOrderIds != nil || pendingRemotePaidOrders != nil {
             Logger.debug("Cannot cleanup: pending Blocktank data exists", context: "Migration")
+            return false
+        }
+        if let tags = pendingMetadata?.tags, !tags.isEmpty {
+            Logger.debug("Cannot cleanup: pending metadata tags exist", context: "Migration")
             return false
         }
         return true
@@ -1631,8 +1642,11 @@ extension MigrationsService {
         // Apply stored metadata (all tags after activities are imported)
         if let metadata = pendingMetadata {
             Logger.info("Applying stored metadata after sync", context: "Migration")
-            await applyAllMetadata(metadata)
-            pendingMetadata = nil
+            let unapplied = await applyPendingTags(metadata.tags ?? [:])
+            if let lastUsedTags = metadata.lastUsedTags {
+                UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
+            }
+            pendingMetadata = rnMetadataRetainingUnappliedTags(metadata, unappliedActivityIds: unapplied)
         }
 
         // Handle pending Blocktank orders that couldn't be fetched during migration (offline)
@@ -1751,7 +1765,7 @@ extension MigrationsService {
 
     private func applyAllMetadata(_ metadata: RNMetadata) async {
         if let tags = metadata.tags, !tags.isEmpty {
-            await applyPendingTags(tags)
+            _ = await applyPendingTags(tags)
         }
 
         if let lastUsedTags = metadata.lastUsedTags {
@@ -1759,18 +1773,17 @@ extension MigrationsService {
         }
     }
 
-    private func applyPendingTags(_ tags: [String: [String]]) async {
+    private func applyPendingTags(_ tags: [String: [String]]) async -> Set<String> {
+        var unapplied = Set<String>()
         var applied = 0
         for (activityId, tagList) in tags {
             do {
-                // Try to find on-chain activity by txId first
                 if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
                     try await CoreService.shared.activity.upsertTags([
                         ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
                     ])
                     applied += 1
                 } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId) {
-                    // Found activity by ID - handle both lightning and on-chain
                     switch activity {
                     case .lightning:
                         try await CoreService.shared.activity.upsertTags([
@@ -1785,12 +1798,15 @@ extension MigrationsService {
                     }
                 } else {
                     Logger.warn("Activity not found for tags: id=\(activityId)", context: "Migration")
+                    unapplied.insert(activityId)
                 }
             } catch {
                 Logger.error("Failed to apply pending tag for \(activityId): \(error)", context: "Migration")
+                unapplied.insert(activityId)
             }
         }
         Logger.info("Applied \(applied)/\(tags.count) pending tags", context: "Migration")
+        return unapplied
     }
 
     private func applyOnchainMetadata(_ items: [RNActivityItem]) async {
