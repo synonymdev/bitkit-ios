@@ -1574,6 +1574,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(canceled.statusLabel(at: paidThrough), t("subscriptions__expired"))
         XCTAssertEqual(canceled.timingTitle(at: paidThrough), t("subscriptions__expired"))
+        XCTAssertEqual(
+            canceled.rowSubtitle(at: paidThrough),
+            t("subscriptions__expires_date", variables: ["date": paidThrough.formatted(.dateTime.month(.wide).day())])
+        )
         XCTAssertTrue(subscriptionSections(subscriptions: [canceled], now: paidThrough).active.isEmpty)
         XCTAssertEqual(subscriptionSections(subscriptions: [canceled], now: paidThrough).expired.map(\.id), [canceled.id])
         XCTAssertEqual(subscriptionMonthlyCostSats(subscriptions: [canceled], now: paidThrough), 0)

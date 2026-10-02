@@ -1095,7 +1095,8 @@ extension PaykitSubscription {
         }
         if isExpired(at: now) {
             guard let endsAt = recurrence.endsAt else { return t("subscriptions__expired") }
-            return t("subscriptions__expires_date", variables: ["date": endsAt.formatted(.dateTime.month(.wide).day())])
+            let end = canceledPaidThrough ?? endsAt
+            return t("subscriptions__expires_date", variables: ["date": end.formatted(.dateTime.month(.wide).day())])
         }
         if let endsAt = recurrence.endsAt {
             return t("subscriptions__expires_date", variables: ["date": endsAt.formatted(.dateTime.month(.wide).day())])
