@@ -1610,7 +1610,8 @@ final class PaykitPaymentRequestManager {
                     } catch {
                         // An interrupted response may follow a committed acceptance. Keep its local owner for reconciliation.
                         switch error {
-                        case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity, PaykitError.ConcurrentUpdate:
+                        case is CancellationError, PaykitError.Transport, PaykitError.Storage,
+                             PaykitError.Identity, PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy:
                             break
                         default:
                             if !alreadySaved, actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) {
@@ -1901,8 +1902,8 @@ final class PaykitPaymentRequestManager {
     func isApprovedForPayment(_ request: PaykitPaymentRequest) -> Bool {
         guard approvedPaymentRequestIds.contains(request.id) else { return false }
         guard let billingPeriod = request.billingPeriod else { return true }
-        return !subscriptions.contains {
-            request.belongs(to: $0) && $0.paidPeriods.contains(billingPeriod)
+        return subscriptions.contains {
+            request.belongs(to: $0) && $0.lifecycleState == .activeRecurring && !$0.paidPeriods.contains(billingPeriod)
         }
     }
 

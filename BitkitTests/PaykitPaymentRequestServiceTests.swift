@@ -1367,6 +1367,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.ensurePaymentAllowed(nextPeriod)
     }
 
+    func testCanceledSubscriptionCannotAuthorizeAnApprovedPeriod() async throws {
+        let clock = try PaymentRequestTestClock(XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-15T08:00:00Z")))
+        var record = try paymentRequestRecord(
+            state: .activeRecurring,
+            recurrence: PaymentRequestRecurrence(
+                every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+            )
+        )
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        try await manager.prepareForPayment(request)
+        XCTAssertTrue(manager.isApprovedForPayment(request))
+        await sdk.pauseNextLinkedPeers()
+
+        let authorization = Task { try await manager.ensurePaymentAllowed(request) }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        record.state = .canceled
+        await sdk.setRecords([record])
+        await manager.refresh(syncPrivateMessages: false)
+        await sdk.resumeLinkedPeers()
+
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        do {
+            try await authorization.value
+            XCTFail("A canceled subscription must not authorize payment")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        do {
+            try await manager.prepareForPayment(request)
+            XCTFail("A canceled subscription must not be approved again")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+    }
+
     func testRefreshKeepsCreatorSubscriptionWithoutGeneratingPayerPayment() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
@@ -4337,6 +4375,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         for error in [
             PaykitError.Transport(code: "transport_error", context: "response lost"),
             PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "response read locked"),
+            PaykitError.SharedStateBusy(code: "shared_state_busy", context: "response read busy"),
         ] {
             let record = try paymentRequestRecord()
             let sdk = PaymentRequestSdkMock(records: [record])

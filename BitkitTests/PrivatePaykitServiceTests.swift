@@ -639,6 +639,12 @@ final class PrivatePaykitServiceTests: XCTestCase {
             localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
             remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
         )
+        var linkingPeer = peer
+        linkingPeer.counterparty = "pubky5rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        linkingPeer.state = .linking
+        var recoveringPeer = peer
+        recoveringPeer.counterparty = "pubky6rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        recoveringPeer.state = .recoveryRequired
         let service = PrivatePaykitService()
         var failLookup = true
         var cleared = [String]()
@@ -646,7 +652,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let operations = PrivatePaykitService.EndpointCleanupOperations(
             linkedPeers: {
                 if failLookup { throw PrivatePaykitError.privateUnavailable }
-                return [peer]
+                return [peer, linkingPeer, recoveringPeer]
             },
             clearPaymentList: {
                 cleared.append($0)
