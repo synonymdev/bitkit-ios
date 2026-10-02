@@ -700,7 +700,8 @@ class ContactsManager: ObservableObject {
     /// result or error is dropped, and it saves nothing, writes no local override and reports no error. The lookup or
     /// upload it waits for can finish after a sign-out, and the next identity may have saved a contact with the same key.
     /// `expectedIdentity` is the pubky signed in when Save was tapped. The save is refused unless it is still signed in
-    /// when the save runs, and that refusal is dropped just as quietly.
+    /// when the save runs, and that refusal, or `makeEdit` throwing `identityChanged` for an avatar upload refused the same
+    /// way, is dropped just as quietly.
     func saveContactEdit(
         publicKey: String,
         expectedIdentity: String,
@@ -713,6 +714,9 @@ class ContactsManager: ObservableObject {
         let edit: ContactEdit
         do {
             edit = try await makeEdit()
+        } catch PubkyServiceError.identityChanged {
+            Logger.info("Dropped a contact edit whose avatar upload was for an identity that is no longer signed in", context: "ContactsManager")
+            return nil
         } catch {
             guard isCurrent() else { return nil }
             throw error

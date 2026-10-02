@@ -354,7 +354,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     /// Upload an avatar image to the user's homeserver blob storage. Returns the `pubky://` URI. With `expectedIdentity`,
-    /// the upload writes nothing and fails unless that identity is still signed in, with a live session, when it runs.
+    /// the upload writes nothing and throws `identityChanged` unless that identity is still signed in when it runs.
     func uploadAvatar(image: UIImage, expectedIdentity: String? = nil) async throws -> String {
         _ = try activeSessionSecret()
         let imageData = try compressAvatar(image)
@@ -812,6 +812,9 @@ class PubkyProfileManager: ObservableObject {
         if let avatarImage {
             do {
                 newImageUrl = try await avatarUploader(compressAvatar(avatarImage), session.publicKey)
+            } catch PubkyServiceError.identityChanged {
+                Logger.info("Dropped a profile save whose avatar upload was for another identity", context: "PubkyProfileManager")
+                return false
             } catch {
                 guard currentSession == session else { return false }
                 throw error

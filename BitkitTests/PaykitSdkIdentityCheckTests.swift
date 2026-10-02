@@ -68,6 +68,60 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertEqual(sdk.writes, ["profile:Alice", "profile:Alice"], "A publication for the signed-in identity, or for none, publishes")
     }
 
+    func testProfileAvatarUploadForAnIdentityThatIsNoLongerSignedInThrowsIdentityChanged() async throws {
+        for signedIn in [identityB, nil] {
+            let message = signedIn == nil ? "after a sign-out" : "with another identity signed in"
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = signedIn
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            do {
+                _ = try await service.uploadAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
+                XCTFail("Expected the upload to be refused \(message)")
+            } catch PubkyServiceError.identityChanged {
+            } catch {
+                XCTFail("Expected identityChanged \(message), got \(error)")
+            }
+            XCTAssertEqual(sdk.writes, [], "Nothing is written \(message)")
+        }
+
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let uri = try await service.uploadAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: bareIdentityA)
+        XCTAssertEqual(uri, "pubky://avatar")
+        XCTAssertEqual(sdk.writes, ["upload"])
+    }
+
+    /// Without a live session, a profile or contact avatar upload for the signed-in identity fails with the SDK's own
+    /// error, as it did before uploads were bound to an identity, so Edit Profile does not show a payment request error.
+    /// The payment request upload still reports `requestUnavailable`.
+    func testProfileAvatarUploadWithoutALiveSessionReportsTheSdksOwnError() async throws {
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        sdk.hasLiveSession = false
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        do {
+            _ = try await service.uploadAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
+            XCTFail("Expected the upload to fail without a live session")
+        } catch let error as PaykitError {
+            guard case .Identity = error else { return XCTFail("Expected the SDK's identity error, got \(error)") }
+            XCTAssertEqual(error.localizedDescription, noLiveSessionError.localizedDescription)
+            XCTAssertNotEqual(error.localizedDescription, PaykitPaymentRequestError.requestUnavailable.localizedDescription)
+        } catch {
+            XCTFail("Expected the SDK's own error, got \(error)")
+        }
+
+        do {
+            _ = try await service.uploadProfileAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
+            XCTFail("Expected the payment request upload to be refused")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable, "The payment request upload is unchanged")
+        }
+        XCTAssertEqual(sdk.writes, [])
+    }
+
     /// The caller checked its session and started the write, which waits for the SDK lock while a sign-out and another
     /// identity's sign-in land. Only then does the write get the lock, so it must check the identity there.
     func testWriteThatAnIdentityChangeOvertakesWhileItWaitsForTheSdkLockWritesNothing() async throws {
@@ -78,7 +132,13 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 if case .identityChanged? = error as? PubkyServiceError { return true }
                 return false
             }),
-            ("avatar upload", { service in
+            ("profile avatar upload", { service in
+                _ = try await service.uploadAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
+            }, { error in
+                if case .identityChanged? = error as? PubkyServiceError { return true }
+                return false
+            }),
+            ("payment request upload", { service in
                 _ = try await service.uploadProfileAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
             }, { error in
                 (error as? PaykitPaymentRequestError) == .requestUnavailable
@@ -148,6 +208,11 @@ private let bareIdentityA = "8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgr
 private let identityB = "pubkyc1nbnzsfgm1g1rf9um6nh5mdtdhq8mz5i5o4r6g8x4qzi3uqhdmo"
 private let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 private let testProfile = PaykitProfile(displayName: "Alice", imageUri: nil, extraJson: nil)
+/// What the SDK reports for a blob upload without a live Pubky session.
+private let noLiveSessionError = PaykitError.Identity(
+    code: "identity_error",
+    context: "cannot publish Paykit blob without an active Pubky session"
+)
 
 /// Holds every call that waits on it while closed.
 private actor IdentityCheckGate {
@@ -198,6 +263,7 @@ private actor IdentityCheckCallLog {
 private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private let lock = NSLock()
     private var signedInIdentity: String?
+    private var liveSession = true
     private var recordedWrites: [String] = []
     private var recordedIdentitiesAtWrites: [String?] = []
     private var recordedContactReads = 0
@@ -207,6 +273,11 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     var identity: String? {
         get { lock.withLock { signedInIdentity } }
         set { lock.withLock { signedInIdentity = newValue } }
+    }
+
+    var hasLiveSession: Bool {
+        get { lock.withLock { liveSession } }
+        set { lock.withLock { liveSession = newValue } }
     }
 
     var writes: [String] {
@@ -230,7 +301,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: identity, liveSessionAvailable: identity != nil)
+        IdentityStatus(publicKey: identity, liveSessionAvailable: identity != nil && hasLiveSession)
     }
 
     override func backupStateRevision() async throws -> String {
@@ -263,6 +334,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func uploadProfileAvatar(bytes: Data, contentType _: String) async throws -> PaykitBlobRecord {
+        guard identity != nil, hasLiveSession else { throw noLiveSessionError }
         recordWrite("upload")
         return PaykitBlobRecord(
             publicKey: identity ?? "", path: "/pub/paykit/blobs/avatar.jpg", uri: "pubky://avatar",

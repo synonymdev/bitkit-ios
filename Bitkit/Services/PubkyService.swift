@@ -283,7 +283,7 @@ enum PubkyService {
     }
 
     static func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
-        try await PaykitSdkService.shared.uploadProfileAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
+        try await PaykitSdkService.shared.uploadAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
     static func deletePaykitProfile() async throws {
@@ -665,6 +665,8 @@ actor PaykitSdkService {
         }
     }
 
+    /// The upload for payment requests, such as a subscription icon. With `expectedIdentity`, it throws
+    /// `requestUnavailable` unless that identity is signed in with a live session.
     func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
         let record = try await withStateRevisionTracking { sdk in
             if let expectedIdentity {
@@ -672,6 +674,20 @@ actor PaykitSdkService {
                       identity.liveSessionAvailable,
                       PubkyPublicKeyFormat.matches(identity.publicKey, expectedIdentity)
                 else { throw PaykitPaymentRequestError.requestUnavailable }
+            }
+            return try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
+        }
+        return record.uri
+    }
+
+    /// The upload for profile and contact avatars. With `expectedIdentity`, it uploads only while that identity is signed
+    /// in, checked in the same locked operation as the upload, so one that a sign-out or another identity's sign-in
+    /// overtakes writes nothing and throws `identityChanged`. Any other failure, such as having no live session, is the
+    /// SDK's own error.
+    func uploadAvatar(bytes: Data, contentType: String, expectedIdentity: String?) async throws -> String {
+        let record = try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             }
             return try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
         }

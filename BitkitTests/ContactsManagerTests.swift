@@ -1478,7 +1478,16 @@ final class ContactsManagerTests: XCTestCase {
         } catch {
             XCTFail("A refused edit must not report an error, so no toast shows: \(error)")
         }
+        var uploadRefusedProfile: Bitkit.PubkyProfile?
+        do {
+            uploadRefusedProfile = try await manager.saveContactEdit(
+                publicKey: contactProfileKey, expectedIdentity: "owner-a", isSessionCurrent: { true }
+            ) { throw PubkyServiceError.identityChanged }
+        } catch {
+            XCTFail("An edit whose avatar upload was refused must not report an error, so no toast shows: \(error)")
+        }
 
+        XCTAssertNil(uploadRefusedProfile, "Nor is an edit whose avatar upload the SDK refused")
         XCTAssertNil(savedProfile, "Nothing is reported saved, so Edit Contact shows no toast and does not navigate")
         let refused = await store.refusedIdentities
         XCTAssertEqual(refused, ["owner-a", "owner-a"])

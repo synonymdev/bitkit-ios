@@ -1469,6 +1469,66 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    /// An avatar upload refused for another identity while the session still looks current is stale like a refused
+    /// publication: the edit reports nothing and publishes nothing.
+    @MainActor
+    func testProfileEditWhoseAvatarUploadIsRefusedForAnotherIdentityIsDroppedQuietly() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let publications = ProfilePublications()
+                let manager = PubkyProfileManager(
+                    remoteProfileResolver: { try await stub.resolve($0) },
+                    profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                    avatarUploader: { _, _ in throw PubkyServiceError.identityChanged }
+                )
+                manager.publicKey = ringKeyA
+                await manager.loadProfile()
+
+                let isSaved = try await manager.saveProfile(
+                    name: "Alice",
+                    bio: "new bio",
+                    links: [],
+                    tags: ["friend"],
+                    avatarImage: makeAvatarImage()
+                )
+
+                XCTAssertFalse(isSaved, "Nothing is reported saved, so no toast shows and the screen does not navigate")
+                let publicationIdentities = await publications.expectedIdentities
+                XCTAssertEqual(publicationIdentities, [], "Nothing is published")
+                XCTAssertEqual(manager.profile?.bio, "bio", "The profile is left as it was")
+            }
+        }
+    }
+
+    /// An avatar upload that fails while the session is current, such as without a live session, reports the upload's own
+    /// error, which Edit Profile shows, and publishes nothing.
+    @MainActor
+    func testProfileEditReportsTheAvatarUploadsOwnError() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let publications = ProfilePublications()
+                let manager = PubkyProfileManager(
+                    remoteProfileResolver: { try await stub.resolve($0) },
+                    profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                    avatarUploader: { _, _ in throw NoLiveSessionUploadError() }
+                )
+                manager.publicKey = ringKeyA
+                await manager.loadProfile()
+
+                do {
+                    _ = try await manager.saveProfile(name: "Alice", bio: "new bio", links: [], tags: [], avatarImage: makeAvatarImage())
+                    XCTFail("Expected the upload's error")
+                } catch {
+                    XCTAssertEqual(error.localizedDescription, NoLiveSessionUploadError().localizedDescription)
+                }
+                let publicationIdentities = await publications.expectedIdentities
+                XCTAssertEqual(publicationIdentities, [])
+            }
+        }
+    }
+
     @MainActor
     func testProfileEditWithAnAvatarPublishesTheUploadedAvatarForItsIdentity() async throws {
         try await withRestoredProfileDefaults {
@@ -2944,6 +3004,12 @@ private actor RemoteProfileStub {
 private let uploadedAvatarUri = "pubky://uploaded/avatar.jpg"
 
 private struct AvatarUploadError: Error {}
+
+private struct NoLiveSessionUploadError: LocalizedError {
+    var errorDescription: String? {
+        "cannot publish Paykit blob without an active Pubky session"
+    }
+}
 
 /// Stands in for the SDK's avatar upload: records the identity each upload is for, and can hold uploads until released,
 /// then let them succeed or fail. A wait for held uploads that outlasts the deadline fails the test instead of hanging.
