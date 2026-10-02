@@ -63,7 +63,8 @@ enum ContactPaymentsService {
     /// contacts, so it first waits for the first contacts load. Once that session ends or changes, the change stops and
     /// returns quietly: it writes no preference, publishing flag or cleared cleanup mark, and its endpoint publications
     /// check the session under the locks that sign-out's endpoint removal also takes, so they never write endpoints back
-    /// after that removal.
+    /// after that removal. Returns true once the change was applied, and false when it stopped for a session change.
+    @discardableResult
     @MainActor
     static func setEnabled(
         _ enabled: Bool,
@@ -71,19 +72,19 @@ enum ContactPaymentsService {
         contactsManager: ContactsManager,
         operations: Operations,
         defaults: UserDefaults = .standard
-    ) async throws {
-        guard let session = pubkyProfile.currentSession else { return }
+    ) async throws -> Bool {
+        guard let session = pubkyProfile.currentSession else { return false }
         let isSessionCurrent: SessionCheck = { pubkyProfile.currentSession == session }
         let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
         if canUsePrivatePayments {
             do {
                 try await contactsManager.loadContactsIfNeeded(for: session.publicKey)
             } catch {
-                guard isSessionCurrent() else { return }
+                guard isSessionCurrent() else { return false }
                 throw error
             }
         }
-        guard isSessionCurrent() else { return }
+        guard isSessionCurrent() else { return false }
 
         do {
             try await setEnabled(
@@ -95,9 +96,12 @@ enum ContactPaymentsService {
                 isSessionCurrent: isSessionCurrent
             )
         } catch {
-            guard isSessionCurrent() else { return }
+            guard isSessionCurrent() else { return false }
             throw error
         }
+        // The change above stops quietly once the session changes, and a changed session never compares current again,
+        // so this also reports that stop.
+        return isSessionCurrent()
     }
 
     /// Once `isSessionCurrent` is false, the preference, flags and cleanup marks belong to the sign-out or other session

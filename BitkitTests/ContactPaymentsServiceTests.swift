@@ -236,7 +236,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
     /// General Settings turns contact payments on in a task that outlives the screen, after the first contacts load. A
     /// Pubky sign-out during that load, finished or still running, stops the change before it writes the preference or
-    /// publishes anything, and a load that then fails reports nothing.
+    /// publishes anything, and a load that then fails reports nothing. The change returns whether it was applied.
     func testContactPaymentsChangeStopsWhenPubkySignsOutDuringTheContactsLoad() async throws {
         enum SignOut {
             case never, finished, running
@@ -298,13 +298,13 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 }
                 releaseLoad.finish()
                 let result = await change.result
-                XCTAssertNoThrow(try result.get(), testCase.name)
+                let enabled = testCase.signOut == .never
+                XCTAssertEqual(try result.get(), enabled, testCase.name)
                 if let runningSignOut {
                     runningSignOut.release.finish()
                     try await runningSignOut.task.value
                 }
 
-                let enabled = testCase.signOut == .never
                 XCTAssertEqual(operations.calls, enabled ? ["private:publish", "public:true"] : [], testCase.name)
                 XCTAssertEqual(operations.privatePublications.map(\.contactPublicKeys), enabled ? [[contactKey]] : [], testCase.name)
                 XCTAssertEqual(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey), enabled, testCase.name)
@@ -318,6 +318,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
     /// an endpoint publication is in flight stops that enable: a publication that gets its lock after sign-out's removal
     /// writes nothing, and the enable writes no preference or flag and restores nothing. A publication that already held
     /// its lock still finishes, but the enable then clears no cleanup mark the sign-out left for a removal that failed.
+    /// Either way the enable returns that it stopped, so Pay Contacts does not open Profile.
     func testContactPaymentsEnableStopsWhenPubkySignsOutDuringPublication() async throws {
         enum HeldPublication {
             case publicBeforeLock, privateBeforeLock, publicHoldingLock
@@ -440,7 +441,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             release.finish()
             let result = await enable.result
 
-            XCTAssertNoThrow(try result.get(), testCase.name)
+            XCTAssertFalse(try result.get(), testCase.name)
             XCTAssertEqual(operations.calls, testCase.calls, testCase.name)
             XCTAssertEqual(writes.entries, testCase.writes, testCase.name)
             XCTAssertEqual(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey), testCase.keepsFlags, testCase.name)
@@ -484,6 +485,27 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 XCTAssertEqual(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), sharing, testCase.name)
                 XCTAssertEqual(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), sharing, testCase.name)
             }
+        }
+    }
+
+    /// Pay Contacts' Continue enables contact payments in a task that outlives the screen. Like an import that finishes
+    /// after the user left it, it opens Profile only for an applied enable while Pay Contacts is still showing.
+    func testPayContactsOpensProfileOnlyForAnAppliedEnableWhilePayContactsIsShowing() {
+        let cases: [(name: String, isApplied: Bool, currentRoute: Route?, destination: Route?)] = [
+            ("applied on Pay Contacts", true, .payContacts, .profile),
+            ("stopped by a Pubky sign-out", false, .payContacts, nil),
+            ("stopped after the user left", false, .settings, nil),
+            ("applied after the user opened another screen", true, .settings, nil),
+            ("applied after the user went back", true, .createProfile, nil),
+            ("applied after the user went back to the start", true, nil, nil),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                PayContactsView.destinationAfterEnable(isApplied: testCase.isApplied, currentRoute: testCase.currentRoute),
+                testCase.destination,
+                testCase.name
+            )
         }
     }
 
