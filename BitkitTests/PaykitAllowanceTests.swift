@@ -294,6 +294,23 @@ final class PaykitAllowanceTests: XCTestCase {
         ])
     }
 
+    // MARK: Trusted time vs subscription clock offset
+
+    func testStatusAndCapacityUseInjectedTimeWhileSubscriptionClockIsOffset() throws {
+        snapshotAppDefaults(SubscriptionClock.offsetDaysKey)
+        UserDefaults.standard.set(365, forKey: SubscriptionClock.offsetDaysKey)
+        try XCTSkipUnless(SubscriptionClock.offsetDays() == 365, "The subscription clock offset is unavailable in this build")
+        let realNow = Date()
+        XCTAssertGreaterThan(SubscriptionClock.subscriptionNow(), realNow.addingTimeInterval(364 * 24 * 60 * 60))
+
+        let allowance = Fixtures.allowance(expiresAt: Fixtures.now.addingTimeInterval(30 * 24 * 60 * 60))
+        XCTAssertEqual(allowance.status(at: Fixtures.now), .active)
+
+        let attempts = [Fixtures.capacityAttempt(sats: 50000, at: "2026-09-10T10:00:00Z")]
+        XCTAssertEqual(Fixtures.usedSats(attempts), 50000)
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 1, allowance: allowance, attempts: attempts, now: Fixtures.now))
+    }
+
     // MARK: Grouping
 
     func testEntryPrimaryIsTheGrantsAllowance() {

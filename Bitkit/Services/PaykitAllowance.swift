@@ -2,7 +2,7 @@ import Foundation
 import Paykit
 
 /// An Allowance between this wallet's identity and one contact's identity, built from the SDK record.
-/// Eligibility runs on the trusted time passed in by the caller, never on a value read from the allowance itself.
+/// Eligibility runs on the trusted time passed in by the caller and never on `SubscriptionClock`, so a clock offset cannot move an allowance window.
 struct PaykitAllowance: Identifiable, Hashable {
     struct ID: Codable, Hashable {
         let counterparty: String
