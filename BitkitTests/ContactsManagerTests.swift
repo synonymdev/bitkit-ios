@@ -125,6 +125,20 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testCancelledContactLoadPropagatesWithoutPublishingAnError() async throws {
+        let manager = ContactsManager(contactRecords: { throw CancellationError() })
+
+        do {
+            try await manager.loadContacts(for: "owner")
+            XCTFail("Contact load should propagate cancellation")
+        } catch is CancellationError {}
+
+        XCTAssertFalse(manager.isLoading)
+        XCTAssertFalse(manager.hasLoaded)
+        XCTAssertTrue(manager.contacts.isEmpty)
+        XCTAssertNil(manager.loadErrorMessage)
+    }
+
     func testInitialLoadPreservesUnchangedContactsAfterLocalMutations() async throws {
         for deletesContact in [true, false] {
             let first = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "First")
