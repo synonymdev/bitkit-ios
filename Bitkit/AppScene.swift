@@ -1111,7 +1111,7 @@ struct AppScene: View {
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh(syncPrivateMessages: refreshMaintenance)
+        await paykitPaymentRequestManager.refresh(processOutgoingMessages: refreshMaintenance)
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return }
