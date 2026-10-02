@@ -114,7 +114,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
         let savedReference = AdoptedPubkyReference.current
-        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedValues = try keys.map { try Keychain.load(key: $0) }
         defer {
             AdoptedPubkyReference.current = savedReference
