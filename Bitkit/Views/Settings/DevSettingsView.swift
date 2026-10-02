@@ -7,6 +7,7 @@ struct DevSettingsView: View {
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(ToastWindowManager.disableAllToastsKey) private var disableAllToasts = false
     @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
 
     @EnvironmentObject var app: AppViewModel
@@ -60,6 +61,13 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Trezor Hardware Wallet")
                     }
                     .accessibilityIdentifier("Trezor")
+
+                    SettingsRow(
+                        title: "Disable All Toasts",
+                        rightIcon: nil,
+                        toggle: $disableAllToasts,
+                        testIdentifier: "DisableAllToastsToggle"
+                    )
 
                     SettingsSectionHeader("SWAPS")
                         .padding(.top, 16)
