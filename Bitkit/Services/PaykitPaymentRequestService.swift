@@ -545,10 +545,12 @@ struct PaykitPaymentRequestService {
         self.logWarning = logWarning
     }
 
-    func synchronize() async throws -> PaykitPaymentRequestSnapshot {
-        try await processPendingMessages()
-        let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers()
-        logIntakeFailures(intakeReports)
+    func synchronize(syncPrivateMessages: Bool = true) async throws -> PaykitPaymentRequestSnapshot {
+        if syncPrivateMessages {
+            try await processPendingMessages()
+            let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers()
+            logIntakeFailures(intakeReports)
+        }
         let synchronizationDate = now()
         let sharedRecords = try await sdk.sharedPaymentRequests()
         let records = sharedRecords.filter(PaykitSdkService.isBitkitPaymentRequest)
@@ -1128,7 +1130,7 @@ final class PaykitPaymentRequestManager {
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
     private var unavailableRequestedPresentations: [PaykitPaymentRequest] = []
     private var isPresentingRequests = false
-    private var refreshTask: Task<Void, Never>?
+    private var refreshTask: (syncPrivateMessages: Bool, task: Task<Void, Never>)?
     private var expirationTask: Task<Void, Never>?
     private var presentationRetryTask: Task<Void, Never>?
     private var refreshGeneration = 0
@@ -1480,8 +1482,8 @@ final class PaykitPaymentRequestManager {
         return subscription
     }
 
-    func refresh() async {
-        await refresh(excludingProtectedRequestId: nil)
+    func refresh(syncPrivateMessages: Bool = true) async {
+        await refresh(excludingProtectedRequestId: nil, syncPrivateMessages: syncPrivateMessages)
     }
 
     func synchronizeSubscriptionNotifications(enabled: Bool) async {
@@ -1496,9 +1498,13 @@ final class PaykitPaymentRequestManager {
         )
     }
 
-    private func refresh(excludingProtectedRequestId: PaykitPaymentRequest.ID?) async {
+    private func refresh(excludingProtectedRequestId: PaykitPaymentRequest.ID?, syncPrivateMessages: Bool = true) async {
         if let refreshTask {
-            await refreshTask.value
+            let generation = stateGeneration
+            await refreshTask.task.value
+            if syncPrivateMessages, !refreshTask.syncPrivateMessages, generation == stateGeneration, !Task.isCancelled {
+                await refresh(excludingProtectedRequestId: excludingProtectedRequestId, syncPrivateMessages: true)
+            }
             return
         }
 
@@ -1506,13 +1512,16 @@ final class PaykitPaymentRequestManager {
         let generation = refreshGeneration
         let task = Task { [weak self] in
             guard let self else { return }
-            await performRefresh(generation: generation, excludingProtectedRequestId: excludingProtectedRequestId)
+            await performRefresh(
+                generation: generation,
+                excludingProtectedRequestId: excludingProtectedRequestId,
+                syncPrivateMessages: syncPrivateMessages
+            )
+            guard generation == refreshGeneration else { return }
+            refreshTask = nil
         }
-        refreshTask = task
+        refreshTask = (syncPrivateMessages, task)
         await task.value
-
-        guard generation == refreshGeneration else { return }
-        refreshTask = nil
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
@@ -2041,10 +2050,11 @@ final class PaykitPaymentRequestManager {
 
     private func performRefresh(
         generation: Int,
-        excludingProtectedRequestId: PaykitPaymentRequest.ID?
+        excludingProtectedRequestId: PaykitPaymentRequest.ID?,
+        syncPrivateMessages: Bool
     ) async {
         do {
-            let snapshot = try await service.synchronize()
+            let snapshot = try await service.synchronize(syncPrivateMessages: syncPrivateMessages)
             guard generation == refreshGeneration, let activeIdentity else { return }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
@@ -2262,7 +2272,7 @@ final class PaykitPaymentRequestManager {
 
     private func invalidateRefresh() {
         refreshGeneration += 1
-        refreshTask?.cancel()
+        refreshTask?.task.cancel()
         refreshTask = nil
     }
 

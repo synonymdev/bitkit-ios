@@ -1137,12 +1137,12 @@ struct AppScene: View {
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh()
+        await paykitPaymentRequestManager.refresh(syncPrivateMessages: refreshMaintenance)
         await paykitAllowanceManager.refresh()
         let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
         let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
         if handledAutomatically || adoptedAcceptances {
-            await paykitPaymentRequestManager.refresh()
+            await paykitPaymentRequestManager.refresh(syncPrivateMessages: false)
         }
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
