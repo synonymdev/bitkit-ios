@@ -51,6 +51,7 @@ class PubkyProfileManager: ObservableObject {
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
+    private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
     private static var sessionMutationCount = 0
@@ -71,9 +72,32 @@ class PubkyProfileManager: ObservableObject {
     }
 
     var hasExistingIdentity: Bool {
-        if isAuthenticated || cachedName != nil { return true }
+        if isAuthenticated || cachedName != nil {
+            return true
+        }
+        if Self.sessionMutationCount == 0, let savedIdentityLookup, savedIdentityLookup.revision == Self.sessionRevision {
+            return savedIdentityLookup.exists
+        }
         // Unreadable credentials must not be treated as a new identity.
         return (try? Self.hasStoredIdentity()) != false
+    }
+
+    func hasExistingIdentityForNavigation(
+        hasStoredIdentity: @escaping @Sendable () throws -> Bool = { try PubkyProfileManager.hasStoredIdentity() }
+    ) async -> Bool {
+        if isAuthenticated || cachedName != nil {
+            return true
+        }
+        let revision = Self.sessionRevision
+        let canCacheLookup = Self.sessionMutationCount == 0
+        let exists = await Task.detached {
+            // Unreadable credentials must not offer identity creation.
+            (try? hasStoredIdentity()) != false
+        }.value
+        if canCacheLookup, Self.sessionMutationCount == 0, revision == Self.sessionRevision {
+            savedIdentityLookup = (revision, exists)
+        }
+        return isAuthenticated || cachedName != nil || exists
     }
 
     // MARK: - Initialization & Session Restoration
