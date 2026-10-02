@@ -10,6 +10,130 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testNavigationLookupReadsStoredIdentityWithoutCachedMetadata() async throws {
+        try await withEmptyIdentityStorage {
+            for source in ["none", "local", "session", "ring"] {
+                for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
+                    try Keychain.delete(key: key)
+                }
+                AdoptedPubkyReference.current = nil
+                switch source {
+                case "local": try Keychain.upsert(key: .pubkySecretKey, data: Data("saved-key".utf8))
+                case "session": try Keychain.upsert(key: .paykitSession, data: Data("saved-session".utf8))
+                case "ring": AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, "saved-ring-key")
+                default: break
+                }
+                let manager = PubkyProfileManager()
+                XCTAssertNil(manager.cachedName)
+                let exists = await manager.hasExistingIdentityForNavigation()
+                XCTAssertEqual(exists, source != "none", source)
+                XCTAssertEqual(manager.hasExistingIdentity, exists, source)
+            }
+        }
+    }
+
+    @MainActor
+    func testNavigationLookupKeepsUnreadableIdentityOnRecoveryWithoutRenderingRead() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = PubkyProfileManager()
+            let exists = await manager.hasExistingIdentityForNavigation {
+                XCTAssertFalse(Thread.isMainThread)
+                throw KeychainError.failedToLoad
+            }
+            XCTAssertTrue(exists)
+            // Empty storage would return false if rendering repeated the lookup.
+            XCTAssertTrue(manager.hasExistingIdentity)
+        }
+    }
+
+    @MainActor
+    func testNavigationLookupRetainsIdentityAfterFailedDisconnectAndInvalidatesAfterSuccess() async throws {
+        try await withEmptyIdentityStorage {
+            try Keychain.upsert(key: .pubkySecretKey, data: Data("saved-key".utf8))
+            let manager = PubkyProfileManager()
+            let exists = await manager.hasExistingIdentityForNavigation()
+            XCTAssertTrue(exists)
+
+            await XCTAssertThrowsErrorAsync {
+                try await manager.signOut(performSessionCleanup: { throw KeychainError.failedToDelete })
+            }
+            XCTAssertTrue(manager.hasExistingIdentity)
+
+            let stillExists = await manager.hasExistingIdentityForNavigation()
+            XCTAssertTrue(stillExists)
+            try await manager.signOut(performSessionCleanup: { try Keychain.delete(key: .pubkySecretKey) })
+            XCTAssertFalse(manager.hasExistingIdentity)
+        }
+    }
+
+    @MainActor
+    func testNavigationLookupSpanningDisconnectDoesNotCacheRemovedIdentity() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = PubkyProfileManager()
+            let started = expectation(description: "identity lookup started")
+            let resume = DispatchSemaphore(value: 0)
+            defer { resume.signal() }
+            let lookup = Task {
+                await manager.hasExistingIdentityForNavigation {
+                    started.fulfill()
+                    XCTAssertEqual(resume.wait(timeout: .now() + 5), .success)
+                    return true
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            try await manager.signOut(performSessionCleanup: {})
+            resume.signal()
+            _ = await lookup.value
+            XCTAssertFalse(manager.hasExistingIdentity)
+        }
+    }
+
+    @MainActor
+    func testNavigationLookupDuringDisconnectDoesNotCacheRemovedIdentity() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = PubkyProfileManager()
+            let started = expectation(description: "disconnect started")
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let disconnect = Task {
+                try await manager.signOut(performSessionCleanup: {
+                    started.fulfill()
+                    for await _ in stream {}
+                })
+            }
+            await fulfillment(of: [started], timeout: 2)
+            _ = await manager.hasExistingIdentityForNavigation { true }
+            continuation.finish()
+            try await disconnect.value
+            XCTAssertFalse(manager.hasExistingIdentity)
+        }
+    }
+
+    @MainActor
+    private func withEmptyIdentityStorage(_ body: @MainActor () async throws -> Void) async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
+        let savedReference = AdoptedPubkyReference.current
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let savedValues = try keys.map { try Keychain.load(key: $0) }
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, savedValues) {
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        try await body()
+    }
+
+    @MainActor
     func testFailedRestorationPreservesCachedProfile() async {
         let keys = ["pubky_profile_name", "pubky_profile_image_uri"]
         let defaults = UserDefaults.standard
