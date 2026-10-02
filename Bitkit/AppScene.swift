@@ -189,17 +189,20 @@ enum PaykitPaymentRequestPollingRound: Equatable {
 
 struct PaykitPaymentRequestPollingSchedule {
     let nextDelay: Duration = .seconds(10)
-    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
+    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60)]
     private var maintenanceIntervalIndex = 0
-    private var maintenanceDelay = Self.maintenanceIntervals[0]
+    private var nextMaintenance: ContinuousClock.Instant
 
-    mutating func takeRound(isConnected: Bool) -> PaykitPaymentRequestPollingRound {
+    init(now: ContinuousClock.Instant = .now) {
+        nextMaintenance = now.advanced(by: Self.maintenanceIntervals[0])
+    }
+
+    mutating func takeRound(isConnected: Bool, now: ContinuousClock.Instant = .now) -> PaykitPaymentRequestPollingRound {
         guard isConnected else { return .skip }
 
-        maintenanceDelay -= nextDelay
-        guard maintenanceDelay <= .zero else { return .refreshInbox }
+        guard now >= nextMaintenance else { return .refreshInbox }
         maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
-        maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
+        nextMaintenance = now.advanced(by: Self.maintenanceIntervals[maintenanceIntervalIndex])
         return .refreshInboxAndMaintenance
     }
 }
@@ -460,12 +463,11 @@ struct AppScene: View {
                     paykitAllowanceManager.deactivate()
                 }
             }
-            .onReceive(contactsManager.$contacts) { contacts in
+            .onReceive(contactsManager.$contacts.map { $0.map(\.publicKey).sorted() }.removeDuplicates()) { publicKeys in
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
                 else { return }
-                let publicKeys = contacts.map(\.publicKey)
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
                     await refreshIncomingPaykitPaymentRequests()
@@ -1080,9 +1082,8 @@ struct AppScene: View {
                     if PaykitFeatureFlags.isUIEnabled {
                         await refreshPrivateOnlyPaykitApp()
                         let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                        await PrivatePaykitService.shared.refreshSavedContactEndpoints(
-                            for: contactPublicKeys,
-                            savedPublicKeys: contactPublicKeys,
+                        await PrivatePaykitService.shared.prepareSavedContacts(
+                            contactPublicKeys,
                             wallet: wallet
                         )
                         await refreshIncomingPaykitPaymentRequests()
@@ -1118,12 +1119,12 @@ struct AppScene: View {
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh(processOutgoingMessages: refreshMaintenance)
+        await paykitPaymentRequestManager.refresh(syncPrivateMessages: refreshMaintenance)
         await paykitAllowanceManager.refresh()
         let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
         let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
         if handledAutomatically || adoptedAcceptances {
-            await paykitPaymentRequestManager.refresh(processOutgoingMessages: false)
+            await paykitPaymentRequestManager.refresh(syncPrivateMessages: false)
         }
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
@@ -1594,9 +1595,8 @@ struct AppScene: View {
                 }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                    await PrivatePaykitService.shared.refreshSavedContactEndpoints(
-                        for: contactPublicKeys,
-                        savedPublicKeys: contactPublicKeys,
+                    await PrivatePaykitService.shared.prepareSavedContacts(
+                        contactPublicKeys,
                         wallet: wallet
                     )
                 }
