@@ -1268,7 +1268,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
-    func testRefreshMapsActiveRecurringRequestAndCurrentUnpaidPeriod() async throws {
+    func testInboxRefreshMapsActiveRecurringRequestAndCurrentUnpaidPeriod() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
             every: 1,
@@ -1283,13 +1283,14 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             recurrence: recurrence,
             metadata: #"{"note":"Mobile plan","subscription":{"version":1,"description":"10 GB every month","benefits":["Roaming"]}}"#
         )
-        let manager = paymentRequestManager(
-            sdk: PaymentRequestSdkMock(records: [record]),
-            clock: PaymentRequestTestClock(now)
-        )
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
 
-        await manager.refresh()
+        await manager.refresh(syncPrivateMessages: false)
 
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.receiveCallCount, 0)
         let subscription = try XCTUnwrap(manager.subscriptions.first)
         XCTAssertEqual(subscription.note, "Mobile plan")
         XCTAssertEqual(subscription.metadata.description, "10 GB every month")
