@@ -1888,7 +1888,11 @@ final class PaykitPaymentRequestManager {
     }
 
     func isApprovedForPayment(_ request: PaykitPaymentRequest) -> Bool {
-        approvedPaymentRequestIds.contains(request.id)
+        guard approvedPaymentRequestIds.contains(request.id) else { return false }
+        guard let billingPeriod = request.billingPeriod else { return true }
+        return !subscriptions.contains {
+            request.belongs(to: $0) && $0.paidPeriods.contains(billingPeriod)
+        }
     }
 
     func finishPayment(_ request: PaykitPaymentRequest) async {
