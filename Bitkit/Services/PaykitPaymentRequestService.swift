@@ -1599,7 +1599,7 @@ final class PaykitPaymentRequestManager {
                     } catch {
                         // An interrupted response may follow a committed acceptance. Keep its local owner for reconciliation.
                         switch error {
-                        case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity:
+                        case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity, PaykitError.ConcurrentUpdate:
                             break
                         default:
                             if !alreadySaved, actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) {

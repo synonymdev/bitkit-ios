@@ -612,6 +612,50 @@ final class PrivatePaykitServiceTests: XCTestCase {
         }
     }
 
+    func testFullCleanupFindsRemotePeersAndRetainsFailedDiscovery() async throws {
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let peer = LinkedPeerRecord(
+            counterparty: publicKey, state: .linked,
+            lastSyncAt: nil, lastPrivateReceiveAt: nil, failureCount: 0,
+            localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
+            remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
+        )
+        let service = PrivatePaykitService()
+        var failLookup = true
+        var cleared = [String]()
+        var registryUpdates = 0
+        let operations = PrivatePaykitService.EndpointCleanupOperations(
+            linkedPeers: {
+                if failLookup { throw PrivatePaykitError.privateUnavailable }
+                return [peer]
+            },
+            clearPaymentList: {
+                cleared.append($0)
+                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            },
+            drainMessages: { XCTAssertEqual($0, [publicKey]) },
+            pendingDrainKeys: { _ in [] },
+            syncApp: {
+                XCTAssertEqual(cleared, [publicKey])
+                registryUpdates += 1
+            }
+        )
+
+        do {
+            try await service.removePublishedEndpoints(operations: operations)
+            XCTFail("Failed discovery must keep cleanup pending")
+        } catch {
+            XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        }
+        XCTAssertTrue(cleared.isEmpty)
+        XCTAssertEqual(registryUpdates, 0)
+        failLookup = false
+        try await service.removePublishedEndpoints(operations: operations)
+        XCTAssertEqual(cleared, [publicKey])
+        XCTAssertEqual(registryUpdates, 1)
+    }
+
     func testCleanupSkipsNeverLinkedContactsWithoutPublishedDetails() async {
         let service = PrivatePaykitService()
         var publishedState = PrivatePaykitService.ContactState()

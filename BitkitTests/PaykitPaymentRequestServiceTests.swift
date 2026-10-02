@@ -4338,26 +4338,32 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testInterruptedAcceptanceCanResumeAfterRefresh() async throws {
-        let record = try paymentRequestRecord()
-        let sdk = PaymentRequestSdkMock(records: [record])
-        let store = PaymentRequestPresentationMemoryStore()
-        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
-        await manager.refresh()
-        let request = try XCTUnwrap(manager.pendingRequests.first)
-        await sdk.setAcceptanceResponseError(PaykitError.Transport(code: "transport_error", context: "response lost"))
+        for error in [
+            PaykitError.Transport(code: "transport_error", context: "response lost"),
+            PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "response read locked"),
+        ] {
+            let record = try paymentRequestRecord()
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let store = PaymentRequestPresentationMemoryStore()
+            let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            await sdk.setAcceptanceResponseError(error)
 
-        do {
-            try await manager.prepareForPayment(request)
-            XCTFail("The interrupted call must not authorize execution")
-        } catch {}
-        XCTAssertFalse(manager.isApprovedForPayment(request))
-        var accepted = record
-        accepted.state = .accepted
-        await sdk.setRecords([accepted])
-        await manager.refresh()
-        let retry = try XCTUnwrap(manager.pendingRequests.first)
-        try await manager.prepareForPayment(retry)
-        try await manager.ensurePaymentAllowed(retry)
+            do {
+                try await manager.prepareForPayment(request)
+                XCTFail("The interrupted call must not authorize execution")
+            } catch {}
+            XCTAssertFalse(manager.isApprovedForPayment(request))
+            var accepted = record
+            accepted.state = .accepted
+            await sdk.setRecords([accepted])
+            let restarted = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+            await restarted.refresh()
+            let retry = try XCTUnwrap(restarted.pendingRequests.first)
+            try await restarted.prepareForPayment(retry)
+            try await restarted.ensurePaymentAllowed(retry)
+        }
     }
 
     func testFailedAcceptancePreservesAnotherRequestsIntent() async throws {
