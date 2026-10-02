@@ -47,8 +47,9 @@ struct PubkyRegisteredIdentity {
 }
 
 /// Which public read slots a read may use. Background work that reads for many contacts at once is `bulk`, so it can
-/// never take every read slot from reads for what the user is looking at. Reads the user is waiting on are
-/// `interactive` even when there are many of them, such as the follow lookups that prepare a contact import.
+/// never take every read slot from reads for what the user is looking at, and a freed read slot goes to those reads
+/// first. Reads the user is waiting on are `interactive` even when there are many of them, such as the follow lookups
+/// that prepare a contact import.
 enum PaykitPublicReadPriority {
     case interactive
     case bulk
@@ -1558,26 +1559,28 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     }
 }
 
-/// Caps concurrent operations. Waiters are served in FIFO order and leave the queue as soon as their task is
-/// cancelled, without taking a slot, so an abandoned read never runs ahead of work queued after it.
+/// Caps concurrent operations. A freed slot goes to the oldest interactive waiter, or to the oldest bulk waiter when no
+/// interactive one is queued, so bulk work already waiting never delays an interactive read that arrives after it.
+/// Waiters leave the queue as soon as their task is cancelled, without taking a slot, so an abandoned read never runs
+/// ahead of work queued after it.
 final class PaykitSdkReadLimiter: @unchecked Sendable {
     private let lock = NSLock()
     private let maxConcurrent: Int
     private var inFlight = 0
-    private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, Error>)] = []
+    private var waiters: [(id: UUID, priority: PaykitPublicReadPriority, continuation: CheckedContinuation<Void, Error>)] = []
 
     init(maxConcurrent: Int) {
         self.maxConcurrent = maxConcurrent
     }
 
-    func withSlot<T>(_ operation: () async throws -> T) async throws -> T {
-        try await acquire()
+    func withSlot<T>(priority: PaykitPublicReadPriority = .interactive, _ operation: () async throws -> T) async throws -> T {
+        try await acquire(priority: priority)
         defer { release() }
         try Task.checkCancellation()
         return try await operation()
     }
 
-    private func acquire() async throws {
+    private func acquire(priority: PaykitPublicReadPriority) async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -1590,7 +1593,7 @@ final class PaykitSdkReadLimiter: @unchecked Sendable {
                     lock.unlock()
                     continuation.resume()
                 } else {
-                    waiters.append((id, continuation))
+                    waiters.append((id, priority, continuation))
                     lock.unlock()
                 }
             }
@@ -1606,7 +1609,7 @@ final class PaykitSdkReadLimiter: @unchecked Sendable {
         return waiters.remove(at: index).continuation
     }
 
-    /// Hands the slot straight to the oldest waiter, so a newcomer cannot overtake the queue.
+    /// Hands the slot straight to the next waiter instead of freeing it, so a newcomer cannot take it first.
     private func release() {
         lock.lock()
         guard !waiters.isEmpty else {
@@ -1614,16 +1617,27 @@ final class PaykitSdkReadLimiter: @unchecked Sendable {
             lock.unlock()
             return
         }
-        let next = waiters.removeFirst()
+        let index = waiters.firstIndex { $0.priority == .interactive } ?? waiters.startIndex
+        let next = waiters.remove(at: index)
         lock.unlock()
         next.continuation.resume()
     }
+
+    #if DEBUG
+        var waiterCountForTesting: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return waiters.count
+        }
+    #endif
 }
 
 /// Slots for the public read lane. Every read holds one of `readCap` read slots while it runs. A bulk read first takes
 /// one of `bulkCap` bulk slots, so bulk work holds at most `bulkCap` read slots and the rest stay free for interactive
-/// reads. A bulk read takes its bulk slot before its read slot and never waits for a bulk slot while holding a read
-/// slot, so the two limiters cannot deadlock. Each limiter keeps its own FIFO order and cancellation behaviour.
+/// reads. A freed read slot goes to a queued interactive read before any bulk read queued for one, so bulk reads wait
+/// while interactive reads keep every read slot busy. A bulk read takes its bulk slot before its read slot and never
+/// waits for a bulk slot while holding a read slot, so the two limiters cannot deadlock. Each limiter keeps arrival
+/// order within a priority and leaves the queue on cancellation.
 final class PaykitPublicReadSlots: Sendable {
     private let readSlots: PaykitSdkReadLimiter
     private let bulkSlots: PaykitSdkReadLimiter
@@ -1639,10 +1653,16 @@ final class PaykitPublicReadSlots: Sendable {
             return try await readSlots.withSlot(operation)
         case .bulk:
             return try await bulkSlots.withSlot {
-                try await readSlots.withSlot(operation)
+                try await readSlots.withSlot(priority: .bulk, operation)
             }
         }
     }
+
+    #if DEBUG
+        var readWaiterCountForTesting: Int {
+            readSlots.waiterCountForTesting
+        }
+    #endif
 }
 
 extension PublicPaykitService.Endpoint {

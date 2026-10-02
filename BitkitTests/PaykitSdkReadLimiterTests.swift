@@ -63,6 +63,14 @@ final class PaykitSdkReadLimiterTests: XCTestCase {
         }
     }
 
+    private func waitForReadWaiters(_ slots: PaykitPublicReadSlots, count: Int) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while slots.readWaiterCountForTesting < count, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        XCTAssertEqual(slots.readWaiterCountForTesting, count, "Reads queued for a read slot")
+    }
+
     func testConcurrentReadsNeverExceedTheCap() async throws {
         let limiter = PaykitSdkReadLimiter(maxConcurrent: 2)
         let recorder = Recorder()
@@ -231,6 +239,55 @@ final class PaykitSdkReadLimiterTests: XCTestCase {
         }
         let finalEvents = await recorder.events
         XCTAssertEqual(finalEvents.last, "bulk4")
+    }
+
+    /// Six interactive reads hold every read slot and four bulk reads, holding all four bulk slots, queue for one. An
+    /// interactive read that queues after them still takes the next freed read slot. The bulk reads then take the read
+    /// slots freed after that in the order they queued.
+    func testInteractiveReadTakesAFreedReadSlotBeforeBulkReadsAlreadyQueuedForOne() async throws {
+        let slots = PaykitPublicReadSlots()
+        let recorder = Recorder()
+        var gates: [String: Gate] = [:]
+        var reads: [String: Task<Void, Error>] = [:]
+        func start(_ name: String, _ priority: PaykitPublicReadPriority) {
+            let gate = Gate()
+            gates[name] = gate
+            reads[name] = startGatedRead(name, on: slots, priority: priority, recorder: recorder, gate: gate)
+        }
+        func finish(_ name: String) async throws {
+            gates[name]?.open()
+            try await reads[name]?.value
+        }
+
+        for index in 0 ..< 6 {
+            start("interactive\(index)", .interactive)
+        }
+        try await waitForEvents(recorder, count: 6)
+        for index in 0 ..< 4 {
+            start("bulk\(index)", .bulk)
+            await waitForReadWaiters(slots, count: index + 1)
+        }
+        start("late interactive", .interactive)
+        await waitForReadWaiters(slots, count: 5)
+
+        try await finish("interactive0")
+        try await waitForEvents(recorder, count: 7)
+        let eventsAfterFirstRelease = await recorder.events
+        XCTAssertEqual(eventsAfterFirstRelease.last, "late interactive", "A freed read slot goes to the queued interactive read")
+        XCTAssertEqual(slots.readWaiterCountForTesting, 4)
+
+        for index in 0 ..< 4 {
+            try await finish("interactive\(index + 1)")
+            try await waitForEvents(recorder, count: 8 + index)
+            let events = await recorder.events
+            XCTAssertEqual(events.last, "bulk\(index)", "Bulk reads take freed read slots in the order they queued")
+        }
+
+        for name in gates.keys {
+            try await finish(name)
+        }
+        let finalEvents = await recorder.events
+        XCTAssertEqual(finalEvents.count, 11)
     }
 
     func testFailingReadReleasesItsSlotToTheNextWaiter() async throws {
