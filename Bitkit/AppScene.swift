@@ -1109,6 +1109,11 @@ struct AppScene: View {
         }
 
         if refreshMaintenance {
+            do {
+                try await PrivatePaykitService.shared.awaitContactPreparation()
+            } catch {
+                return
+            }
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }

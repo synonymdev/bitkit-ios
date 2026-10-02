@@ -19,6 +19,23 @@ extension PrivatePaykitService {
         let buildEndpoints: (_ publicKey: String) async throws -> [PublicPaykitService.Endpoint]
         let syncPaymentLists: (_ updates: [PrivatePaymentListReservationUpdateInput]) async throws -> PrivatePaymentListDeliveryReport
         var linkedPeers: () async throws -> [LinkedPeerRecord] = { [] }
+        var canPublish: () async -> Bool = { true }
+    }
+
+    struct PrivateMessageDrainOperations {
+        let ensureLink: (String) async throws -> Void
+        let pendingOutbound: () async throws -> [String]
+        let linkedPeers: () async throws -> [LinkedPeerRecord]
+        let processPending: () async throws -> Void
+        let receive: () async throws -> Void
+
+        static let live = PrivateMessageDrainOperations(
+            ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0) },
+            pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties() },
+            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
+            processPending: { try await PaykitSdkService.shared.processPendingPrivateMessages() },
+            receive: { try await PaykitSdkService.shared.receivePrivateMessagesFromLinkedPeers() }
+        )
     }
 
     struct EndpointCleanupOperations {
@@ -93,6 +110,23 @@ extension PrivatePaykitService {
         scheduleContactPreparation(Array(knownSavedContactKeys), wallet: wallet, forceRefreshLightning: forceRefreshLightning)
     }
 
+    func awaitContactPreparation() async throws {
+        try Task.checkCancellation()
+        guard let preparationTask else { return }
+        // Cancelling a caller must not cancel preparation shared by other callers.
+        let (completion, continuation) = AsyncStream<Void>.makeStream()
+        let waiter = Task {
+            await preparationTask.value
+            continuation.finish()
+        }
+        defer {
+            waiter.cancel()
+            continuation.finish()
+        }
+        for await _ in completion {}
+        try Task.checkCancellation()
+    }
+
     private func scheduleContactPreparation(_ publicKeys: [String], wallet: WalletViewModel, forceRefreshLightning: Bool = false) {
         scheduleContactPreparation(publicKeys, forceRefreshLightning: forceRefreshLightning) { keys, forceRefresh in
             guard !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey) else { return }
@@ -151,7 +185,8 @@ extension PrivatePaykitService {
         reason: String = "refresh"
     ) async -> Error? {
         let generation = preparationGeneration
-        guard await canPublishPrivateEndpoints(wallet: wallet) else {
+        let operations = endpointPublicationOperations(wallet: wallet, forceRefreshLightning: forceRefreshLightning)
+        guard await operations.canPublish() else {
             await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: reason)
             return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
         }
@@ -161,10 +196,9 @@ extension PrivatePaykitService {
 
         return await syncLocalEndpointPublication(
             for: publicKeys,
-            wallet: wallet,
             reason: reason,
-            forceRefreshLightning: forceRefreshLightning,
-            requireImmediatePublication: requireImmediatePublication
+            requireImmediatePublication: requireImmediatePublication,
+            operations: operations
         )
     }
 
@@ -283,6 +317,7 @@ extension PrivatePaykitService {
     func removeSavedContact(publicKey: String) async {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
         knownSavedContactKeys.remove(normalizedKey)
+        unavailableLinkRetryAt[normalizedKey] = nil
         Self.markDeletedContactCleanupPending([normalizedKey])
         do {
             try await removePublishedEndpoints(for: [normalizedKey])
@@ -299,6 +334,7 @@ extension PrivatePaykitService {
         let normalizedKeys = normalizedSavedContactKeys(publicKeys)
         for publicKey in normalizedKeys {
             knownSavedContactKeys.remove(publicKey)
+            unavailableLinkRetryAt[publicKey] = nil
         }
         Self.markDeletedContactCleanupPending(normalizedKeys)
         do {
@@ -312,8 +348,7 @@ extension PrivatePaykitService {
     }
 
     func pruneUnsavedContactState(savedPublicKeys publicKeys: [String]) async {
-        let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
-        knownSavedContactKeys = savedKeys
+        let savedKeys = Set(rememberSavedContacts(publicKeys, replacing: true))
 
         let staleKeys: Set<String> = Set(state.contacts.compactMap { publicKey, contactState in
             guard !savedKeys.contains(publicKey), contactState.hasContactOwnedCacheState else { return nil }
@@ -416,7 +451,8 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         forceRefreshLightning: Bool
     ) -> EndpointPublicationOperations {
-        EndpointPublicationOperations(
+        if let publicationOperations { return publicationOperations }
+        return EndpointPublicationOperations(
             currentPublicKey: {
                 await PubkyService.currentPublicKey()
             },
@@ -436,7 +472,8 @@ extension PrivatePaykitService {
                     clearUnlistedLinkedPeers: false
                 )
             },
-            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() }
+            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
+            canPublish: { await self.canPublishPrivateEndpoints(wallet: wallet) }
         )
     }
 
@@ -480,7 +517,13 @@ extension PrivatePaykitService {
                 continue
             } catch {
                 if case PaykitError.Transport = error {
-                    unavailableLinkRetryAt[publicKey] = Date().addingTimeInterval(5 * 60)
+                    unavailableLinkRetryAt[publicKey] = nil
+                    if let peers = try? await operations.linkedPeers() {
+                        let state = peers.first { $0.counterparty == publicKey }?.state
+                        if state == nil || state == .notLinked {
+                            unavailableLinkRetryAt[publicKey] = Date().addingTimeInterval(5 * 60)
+                        }
+                    }
                 }
                 Logger.warn(
                     "Failed to prepare private Paykit link for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(error)",
@@ -568,14 +611,18 @@ extension PrivatePaykitService {
         normalizedSavedContactKeys((report.queued + report.cleared).map(\.counterparty) + report.failedToDeliver.map(\.counterparty))
     }
 
-    private func drainPendingPrivateMessages(reason: String, advancing retryKeys: [String]) async {
+    func drainPendingPrivateMessages(
+        reason: String,
+        advancing retryKeys: [String],
+        operations: PrivateMessageDrainOperations = .live
+    ) async {
         do {
             let generation = preparationGeneration
             for retryKey in Set(retryKeys) {
                 guard generation == preparationGeneration else { break }
                 if let retryAt = unavailableLinkRetryAt[retryKey], retryAt > Date() { continue }
                 do {
-                    _ = try await PaykitSdkService.shared.ensureLinkWithPeer(retryKey)
+                    try await operations.ensureLink(retryKey)
                 } catch {
                     Logger.warn(
                         "Failed to advance private Paykit link for \(PubkyPublicKeyFormat.redacted(retryKey)) during \(reason): \(error)",
@@ -583,8 +630,12 @@ extension PrivatePaykitService {
                     )
                 }
             }
-            try await PaykitSdkService.shared.processPendingPrivateMessages()
-            try await PaykitSdkService.shared.receivePrivateMessagesFromLinkedPeers()
+            if try await !operations.pendingOutbound().isEmpty {
+                try await operations.processPending()
+            }
+            if try await operations.linkedPeers().contains(where: { $0.state == .linked }) {
+                try await operations.receive()
+            }
         } catch {
             Logger.warn("Failed to process pending private Paykit messages during \(reason): \(error)", context: "PrivatePaykit")
         }
@@ -763,6 +814,7 @@ extension PrivatePaykitService {
         let normalizedKeys = normalizedSavedContactKeys(publicKeys)
         if replacing {
             knownSavedContactKeys = Set(normalizedKeys)
+            unavailableLinkRetryAt = unavailableLinkRetryAt.filter { knownSavedContactKeys.contains($0.key) }
         } else {
             knownSavedContactKeys.formUnion(normalizedKeys)
         }
