@@ -1239,7 +1239,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             await publications.hold()
             let manager = PubkyProfileManager(
                 remoteProfileResolver: { try await stub.resolve($0) },
-                profilePublisher: { await publications.publish($0) }
+                profilePublisher: { try await publications.publish($0, expectedIdentity: $1) }
             )
             await manager.loadRingIdentityProfiles([bareRingKeyA])
             await stub.setProfile(nil, for: ringKeyA)
@@ -1289,7 +1289,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             let publications = ProfilePublications()
             let manager = PubkyProfileManager(
                 remoteProfileResolver: { try await stub.resolve($0) },
-                profilePublisher: { await publications.publish($0) }
+                profilePublisher: { try await publications.publish($0, expectedIdentity: $1) }
             )
             manager.publicKey = ringKeyA
             await manager.loadProfile()
@@ -1313,7 +1313,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             await publications.hold()
             let manager = PubkyProfileManager(
                 remoteProfileResolver: { try await stub.resolve($0) },
-                profilePublisher: { await publications.publish($0) }
+                profilePublisher: { try await publications.publish($0, expectedIdentity: $1) }
             )
             manager.publicKey = ringKeyA
             await manager.loadProfile()
@@ -1335,6 +1335,196 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
             XCTAssertNil(manager.profile, "The earlier identity's profile is not shown for the next one")
             XCTAssertNil(manager.cachedName)
+        }
+    }
+
+    /// Edit Profile's Save binds the edit to the session it was tapped in. The user signs out and adopts another identity,
+    /// which has no profile and so starts profile setup, while the new avatar still uploads.
+    @MainActor
+    func testProfileEditThatASessionChangeOvertakesDuringItsAvatarUploadStopsQuietly() async {
+        let avatar = makeAvatarImage()
+        for uploadSucceeds in [true, false] {
+            let message = uploadSucceeds ? "after an upload that succeeds" : "after an upload that fails"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    await uploads.hold()
+                    let manager = PubkyProfileManager(
+                        remoteProfileResolver: { try await stub.resolve($0) },
+                        profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                        avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) }
+                    )
+                    manager.publicKey = ringKeyA
+                    await manager.loadProfile()
+
+                    let save = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+                    manager.clearAuthenticatedStateForTesting()
+                    let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyB)
+                    XCTAssertNil(adopted, message)
+                    XCTAssertTrue(manager.isProfileSetupPending, message)
+
+                    await uploads.release(failing: !uploadSucceeds)
+                    let isSaved = try await save.value
+
+                    XCTAssertFalse(isSaved, "Nothing is reported saved, so no toast shows and the screen does not navigate, \(message)")
+                    let uploadIdentities = await uploads.expectedIdentities
+                    XCTAssertEqual(uploadIdentities, [ringKeyA], "The upload is for the identity Save was tapped in, \(message)")
+                    let publicationIdentities = await publications.expectedIdentities
+                    XCTAssertEqual(publicationIdentities, [], "Nothing is published once the session changed, \(message)")
+                    XCTAssertEqual(manager.publicKey, ringKeyB, message)
+                    XCTAssertTrue(manager.isProfileSetupPending, "The next identity still sets its profile up, \(message)")
+                    XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    XCTAssertNil(manager.profile, "The earlier identity's profile is not shown for the next one, \(message)")
+                    XCTAssertNil(manager.cachedName, message)
+                }
+            }
+        }
+    }
+
+    /// The edit's publication waits for the SDK while the user signs out and adopts another identity. The SDK refuses it for
+    /// the identity that signed out, so the next identity's profile is not overwritten, and the edit reports nothing.
+    @MainActor
+    func testProfileEditThatASessionChangeOvertakesWhileItPublishesWritesNothing() async {
+        let avatar = makeAvatarImage()
+        for withAvatar in [false, true] {
+            let message = withAvatar ? "with a new avatar" : "without a new avatar"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                    let publications = ProfilePublications()
+                    await publications.signIn(ringKeyA)
+                    await publications.hold()
+                    let uploads = AvatarUploads()
+                    let manager = PubkyProfileManager(
+                        remoteProfileResolver: { try await stub.resolve($0) },
+                        profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                        avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) }
+                    )
+                    manager.publicKey = ringKeyA
+                    await manager.loadProfile()
+
+                    let save = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: withAvatar ? avatar : nil)
+                    }
+                    await publications.waitUntilHeld(1)
+                    manager.clearAuthenticatedStateForTesting()
+                    _ = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyB)
+                    await publications.signIn(ringKeyB)
+
+                    await publications.release()
+                    let isSaved = try await save.value
+
+                    XCTAssertFalse(isSaved, "Nothing is reported saved, so no toast shows and the screen does not navigate, \(message)")
+                    let published = await publications.published
+                    XCTAssertEqual(published, [], "The next identity's profile is not overwritten, \(message)")
+                    let publicationIdentities = await publications.expectedIdentities
+                    XCTAssertEqual(publicationIdentities, [ringKeyA], "The publication is for the identity Save was tapped in, \(message)")
+                    let uploadIdentities = await uploads.expectedIdentities
+                    XCTAssertEqual(uploadIdentities, withAvatar ? [ringKeyA] : [], message)
+                    XCTAssertEqual(manager.publicKey, ringKeyB, message)
+                    XCTAssertTrue(manager.isProfileSetupPending, "The next identity still sets its profile up, \(message)")
+                    XCTAssertNil(manager.profile, message)
+                    XCTAssertNil(manager.cachedName, message)
+                }
+            }
+        }
+    }
+
+    /// The SDK refuses the publication because another identity is signed in while the session still looks current, as it
+    /// can for a sign-in the session has not caught up with. The edit treats the refusal as stale: it reports nothing and
+    /// leaves the profile and a pending setup as they were.
+    @MainActor
+    func testProfileEditTheSdkRefusesForAnotherIdentityIsDroppedQuietly() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                UserDefaults.standard.set(true, forKey: "pubky_profile_setup_pending")
+                let loaded = makeProfile(publicKey: ringKeyA, name: "Alice")
+                let stub = RemoteProfileStub(profiles: [ringKeyA: loaded])
+                let publications = ProfilePublications()
+                await publications.signIn(ringKeyB)
+                let manager = PubkyProfileManager(
+                    remoteProfileResolver: { try await stub.resolve($0) },
+                    profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                    avatarUploader: { _, _ in uploadedAvatarUri }
+                )
+                manager.publicKey = ringKeyA
+                await manager.loadProfile()
+
+                let isSaved = try await manager.saveProfile(name: "Alice", bio: "new bio", links: [], tags: ["friend"])
+
+                XCTAssertFalse(isSaved, "Nothing is reported saved, so no toast shows and the screen does not navigate")
+                let published = await publications.published
+                XCTAssertEqual(published, [])
+                XCTAssertEqual(manager.profile?.publicKey, ringKeyA, "The profile is left as it was")
+                XCTAssertEqual(manager.profile?.bio, loaded.bio)
+                XCTAssertEqual(manager.profile?.tags, loaded.tags)
+                XCTAssertTrue(manager.isProfileSetupPending, "So is the pending setup")
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+            }
+        }
+    }
+
+    @MainActor
+    func testProfileEditWithAnAvatarPublishesTheUploadedAvatarForItsIdentity() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
+                let publications = ProfilePublications()
+                await publications.signIn(ringKeyA)
+                let uploads = AvatarUploads()
+                let manager = PubkyProfileManager(
+                    remoteProfileResolver: { try await stub.resolve($0) },
+                    profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                    avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) }
+                )
+                manager.publicKey = ringKeyA
+                await manager.loadProfile()
+
+                let isSaved = try await manager.saveProfile(
+                    name: "Alice",
+                    bio: "new bio",
+                    links: [],
+                    tags: ["friend"],
+                    avatarImage: makeAvatarImage()
+                )
+
+                XCTAssertTrue(isSaved)
+                let uploadIdentities = await uploads.expectedIdentities
+                XCTAssertEqual(uploadIdentities, [ringKeyA])
+                let publicationIdentities = await publications.expectedIdentities
+                XCTAssertEqual(publicationIdentities, [ringKeyA])
+                let published = await publications.published
+                XCTAssertEqual(published.map(\.image), [uploadedAvatarUri])
+                XCTAssertEqual(manager.profile?.imageUrl, uploadedAvatarUri)
+                XCTAssertEqual(manager.profile?.bio, "new bio")
+                XCTAssertEqual(manager.profile?.tags, ["friend"])
+            }
+        }
+    }
+
+    /// Save on a profile screen while nothing is signed in, such as during a sign-out, does nothing and reports nothing.
+    @MainActor
+    func testProfileEditWithoutASignedInSessionSavesNothing() async throws {
+        try await withRestoredProfileDefaults {
+            let publications = ProfilePublications()
+            let uploads = AvatarUploads()
+            let manager = PubkyProfileManager(
+                profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+                avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) }
+            )
+
+            let isSaved = try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: [], avatarImage: makeAvatarImage())
+
+            XCTAssertFalse(isSaved)
+            let uploadIdentities = await uploads.expectedIdentities
+            XCTAssertEqual(uploadIdentities, [])
+            let publicationIdentities = await publications.expectedIdentities
+            XCTAssertEqual(publicationIdentities, [])
         }
     }
 
@@ -2753,22 +2943,64 @@ private actor RemoteProfileStub {
 
 private let uploadedAvatarUri = "pubky://uploaded/avatar.jpg"
 
-/// Stands in for the SDK's avatar upload: records the identity each upload is for.
+private struct AvatarUploadError: Error {}
+
+/// Stands in for the SDK's avatar upload: records the identity each upload is for, and can hold uploads until released,
+/// then let them succeed or fail. A wait for held uploads that outlasts the deadline fails the test instead of hanging.
 private actor AvatarUploads {
     private(set) var expectedIdentities: [String?] = []
+    private var isHolding = false
+    private var failsReleasedUploads = false
+    private var held: [CheckedContinuation<Void, Never>] = []
 
-    func upload(_: Data, expectedIdentity: String?) -> String {
+    func hold() {
+        isHolding = true
+    }
+
+    func release(failing: Bool = false) {
+        isHolding = false
+        failsReleasedUploads = failing
+        held.forEach { $0.resume() }
+        held.removeAll()
+    }
+
+    func upload(_: Data, expectedIdentity: String?) async throws -> String {
         expectedIdentities.append(expectedIdentity)
+        if isHolding {
+            await withCheckedContinuation { held.append($0) }
+            if failsReleasedUploads {
+                throw AvatarUploadError()
+            }
+        }
         return uploadedAvatarUri
+    }
+
+    func waitUntilHeld(_ count: Int, file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while held.count < count {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting for \(count) held uploads; saw \(held.count)", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 }
 
-/// Stands in for publishing the signed-in profile: records each publication and can hold them until released. A wait for
-/// held publications that outlasts the deadline fails the test instead of hanging the suite.
+/// Stands in for publishing the signed-in profile: records the identity each publication is for and each one published,
+/// and can hold them until released. Once told which identity is signed in, it refuses, like the SDK, a publication for
+/// another identity, checked together with the write. A wait for held publications that outlasts the deadline fails the
+/// test instead of hanging the suite.
 private actor ProfilePublications {
     private(set) var published: [PubkyProfileData] = []
+    private(set) var expectedIdentities: [String?] = []
+    private var signedInIdentity: String?
     private var isHolding = false
     private var held: [CheckedContinuation<Void, Never>] = []
+
+    func signIn(_ identity: String) {
+        signedInIdentity = identity
+    }
 
     func hold() {
         isHolding = true
@@ -2780,9 +3012,13 @@ private actor ProfilePublications {
         held.removeAll()
     }
 
-    func publish(_ profile: PubkyProfileData) async {
+    func publish(_ profile: PubkyProfileData, expectedIdentity: String?) async throws {
+        expectedIdentities.append(expectedIdentity)
         if isHolding {
             await withCheckedContinuation { held.append($0) }
+        }
+        if let signedInIdentity, let expectedIdentity, expectedIdentity != signedInIdentity {
+            throw PubkyServiceError.identityChanged
         }
         published.append(profile)
     }

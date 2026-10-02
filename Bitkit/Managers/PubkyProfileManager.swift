@@ -56,7 +56,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
-    typealias ProfilePublisher = @Sendable (PubkyProfileData) async throws -> Void
+    typealias ProfilePublisher = @Sendable (_ profile: PubkyProfileData, _ expectedIdentity: String?) async throws -> Void
     typealias AvatarUploader = @Sendable (_ jpegData: Data, _ expectedIdentity: String?) async throws -> String
 
     private enum SessionInitializationMode {
@@ -116,7 +116,9 @@ class PubkyProfileManager: ObservableObject {
 
     init(
         remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) },
-        profilePublisher: @escaping ProfilePublisher = { try await PubkyService.publishPaykitProfile($0.toPaykitProfile()) },
+        profilePublisher: @escaping ProfilePublisher = {
+            try await PubkyService.publishPaykitProfile($0.toPaykitProfile(), expectedIdentity: $1)
+        },
         avatarUploader: @escaping AvatarUploader = {
             try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
         }
@@ -781,47 +783,86 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    /// Saves an edit to the signed-in profile, uploading `avatarImage` first when there is one, and returns whether it was
+    /// saved. The edit belongs to the session it was started in, bound before it uploads anything. Once that session ends
+    /// or changes, or nothing is signed in, it stops quietly and returns false: it reports no error, the upload and the
+    /// publication each write nothing once another identity is signed in, and the profile and setup state stay as they are.
+    @discardableResult
     func saveProfile(
         name: String,
         bio: String,
         links: [PubkyProfileLink],
         tags: [String] = [],
-        newImageUrl: String? = nil
-    ) async throws {
+        avatarImage: UIImage? = nil
+    ) async throws -> Bool {
+        guard let session = currentSession else { return false }
         _ = try activeSessionSecret()
-        try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: newImageUrl)
+        return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+    }
+
+    private func saveProfileEdit(
+        name: String,
+        bio: String,
+        links: [PubkyProfileLink],
+        tags: [String],
+        avatarImage: UIImage?,
+        session: SignedInSession
+    ) async throws -> Bool {
+        var newImageUrl: String?
+        if let avatarImage {
+            do {
+                newImageUrl = try await avatarUploader(compressAvatar(avatarImage), session.publicKey)
+            } catch {
+                guard currentSession == session else { return false }
+                throw error
+            }
+            guard currentSession == session else {
+                Logger.info("Dropped a profile save that a session change overtook during its avatar upload", context: "PubkyProfileManager")
+                return false
+            }
+        }
+        return try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: newImageUrl, session: session)
     }
 
     /// Starting the write drops every profile read that started before it, so a refresh that finds the profile missing
     /// while this edit publishes it can no longer clear the profile or start profile setup. A published profile ends any
-    /// pending setup. A save that a sign-out or another identity overtakes changes nothing here, as it belongs to a session
-    /// the user has left.
+    /// pending setup. The SDK publishes only while the session's identity is still signed in, and a save that a sign-out or
+    /// another identity overtakes changes nothing here, as it belongs to a session the user has left. Returns whether the
+    /// edit was saved.
     private func publishProfileEdit(
         name: String,
         bio: String,
         links: [PubkyProfileLink],
         tags: [String],
-        newImageUrl: String?
-    ) async throws {
-        let revision = Self.sessionRevision
-        let editedPublicKey = publicKey
+        newImageUrl: String?,
+        session: SignedInSession
+    ) async throws -> Bool {
         invalidateProfileLoads()
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
-        try await writeProfile(
-            name: name,
-            bio: bio,
-            imageUrl: resolvedImageUrl,
-            links: links,
-            tags: tags
-        )
-        guard revision == Self.sessionRevision, publicKey == editedPublicKey else {
+        do {
+            try await writeProfile(
+                name: name,
+                bio: bio,
+                imageUrl: resolvedImageUrl,
+                links: links,
+                tags: tags,
+                expectedIdentity: session.publicKey
+            )
+        } catch PubkyServiceError.identityChanged {
+            Logger.info("Dropped a profile save for an identity that is no longer signed in", context: "PubkyProfileManager")
+            return false
+        } catch {
+            guard currentSession == session else { return false }
+            throw error
+        }
+        guard currentSession == session else {
             Logger.info("Dropped a profile save that a session change overtook", context: "PubkyProfileManager")
-            return
+            return false
         }
 
         let updatedProfile = PubkyProfile(
-            publicKey: editedPublicKey ?? "",
+            publicKey: session.publicKey,
             name: name,
             bio: bio,
             imageUrl: resolvedImageUrl,
@@ -831,6 +872,7 @@ class PubkyProfileManager: ObservableObject {
         )
         commitProfile(updatedProfile)
         setProfileSetupPending(false)
+        return true
     }
 
     func deleteProfile() async throws {
@@ -857,7 +899,8 @@ class PubkyProfileManager: ObservableObject {
         bio: String,
         imageUrl: String?,
         links: [PubkyProfileLink],
-        tags: [String] = []
+        tags: [String] = [],
+        expectedIdentity: String? = nil
     ) async throws {
         let profileData = PubkyProfileData(
             name: name,
@@ -869,7 +912,7 @@ class PubkyProfileManager: ObservableObject {
 
         let publish = profilePublisher
         try await Task.detached {
-            try await publish(profileData)
+            try await publish(profileData, expectedIdentity)
         }.value
     }
 
@@ -936,8 +979,16 @@ class PubkyProfileManager: ObservableObject {
         }
 
         /// `saveProfile` without its check for a stored session secret.
-        func saveProfileForTesting(name: String, bio: String, links: [PubkyProfileLink], tags: [String]) async throws {
-            try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: nil)
+        @discardableResult
+        func saveProfileForTesting(
+            name: String,
+            bio: String,
+            links: [PubkyProfileLink],
+            tags: [String],
+            avatarImage: UIImage? = nil
+        ) async throws -> Bool {
+            guard let session = currentSession else { return false }
+            return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
         }
 
         func clearAuthenticatedStateForTesting() {

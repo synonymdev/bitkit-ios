@@ -43,6 +43,31 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertEqual(sdk.writes, ["save:Alice", "save:Unbound"], "A save for no identity saves for whichever one is signed in")
     }
 
+    func testProfilePublicationForAnIdentityThatIsNoLongerSignedInWritesNothing() async throws {
+        for signedIn in [identityB, nil] {
+            let message = signedIn == nil ? "after a sign-out" : "with another identity signed in"
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = signedIn
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            do {
+                _ = try await service.publishPaykitProfile(testProfile, expectedIdentity: identityA)
+                XCTFail("Expected the publication to be refused \(message)")
+            } catch PubkyServiceError.identityChanged {
+            } catch {
+                XCTFail("Expected identityChanged \(message), got \(error)")
+            }
+            XCTAssertEqual(sdk.writes, [], "Nothing is written \(message)")
+        }
+
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        _ = try await service.publishPaykitProfile(testProfile, expectedIdentity: bareIdentityA)
+        _ = try await service.publishPaykitProfile(testProfile)
+        XCTAssertEqual(sdk.writes, ["profile:Alice", "profile:Alice"], "A publication for the signed-in identity, or for none, publishes")
+    }
+
     /// The caller checked its session and started the write, which waits for the SDK lock while a sign-out and another
     /// identity's sign-in land. Only then does the write get the lock, so it must check the identity there.
     func testWriteThatAnIdentityChangeOvertakesWhileItWaitsForTheSdkLockWritesNothing() async throws {
@@ -57,6 +82,12 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 _ = try await service.uploadProfileAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
             }, { error in
                 (error as? PaykitPaymentRequestError) == .requestUnavailable
+            }),
+            ("profile publication", { service in
+                _ = try await service.publishPaykitProfile(testProfile, expectedIdentity: identityA)
+            }, { error in
+                if case .identityChanged? = error as? PubkyServiceError { return true }
+                return false
             }),
         ]
         for testCase in writes {
@@ -116,6 +147,7 @@ private let identityA = "pubky8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mg
 private let bareIdentityA = "8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgro"
 private let identityB = "pubkyc1nbnzsfgm1g1rf9um6nh5mdtdhq8mz5i5o4r6g8x4qzi3uqhdmo"
 private let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+private let testProfile = PaykitProfile(displayName: "Alice", imageUri: nil, extraJson: nil)
 
 /// Holds every call that waits on it while closed.
 private actor IdentityCheckGate {
@@ -236,6 +268,11 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
             publicKey: identity ?? "", path: "/pub/paykit/blobs/avatar.jpg", uri: "pubky://avatar",
             sizeBytes: UInt64(bytes.count), updatedAt: "2026-10-02T00:00:00Z"
         )
+    }
+
+    override func publishPaykitProfile(profile: PaykitProfile) async throws -> PaykitProfileRecord {
+        recordWrite("profile:\(profile.displayName ?? "")")
+        return PaykitProfileRecord(publicKey: identity ?? "", profile: profile, path: "/pub/paykit/profile.json", updatedAt: "2026-10-02T00:00:00Z")
     }
 
     private static func record(publicKey: String, label: String?) -> ContactRecord {

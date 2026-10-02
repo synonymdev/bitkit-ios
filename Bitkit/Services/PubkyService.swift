@@ -278,8 +278,8 @@ enum PubkyService {
 
     // MARK: - Profile
 
-    static func publishPaykitProfile(_ profile: Paykit.PaykitProfile) async throws {
-        _ = try await PaykitSdkService.shared.publishPaykitProfile(profile)
+    static func publishPaykitProfile(_ profile: Paykit.PaykitProfile, expectedIdentity: String? = nil) async throws {
+        _ = try await PaykitSdkService.shared.publishPaykitProfile(profile, expectedIdentity: expectedIdentity)
     }
 
     static func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
@@ -653,9 +653,15 @@ actor PaykitSdkService {
         return data
     }
 
-    func publishPaykitProfile(_ profile: Paykit.PaykitProfile) async throws -> Paykit.PaykitProfileRecord {
+    /// With `expectedIdentity`, it publishes only while that identity is signed in, checked in the same locked operation as
+    /// the publication, so one that a sign-out or another identity's sign-in overtakes writes nothing and throws
+    /// `identityChanged`.
+    func publishPaykitProfile(_ profile: Paykit.PaykitProfile, expectedIdentity: String? = nil) async throws -> Paykit.PaykitProfileRecord {
         try await withStateRevisionTracking { sdk in
-            try await sdk.publishPaykitProfile(profile: profile)
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
+            return try await sdk.publishPaykitProfile(profile: profile)
         }
     }
 
