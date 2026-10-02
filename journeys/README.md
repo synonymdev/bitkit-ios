@@ -155,6 +155,8 @@ journey PR, which is what made this file conflict on every merge.
 | LNURL pay, withdraw, channel and auth, and Lightning Addresses | the `bitkit-docker` `lnurl-server` on local regtest, reached by a simulator app built with `E2E_BUILD`, whose default `E2E_BACKEND=local` targets the host at `127.0.0.1`; it issues memo invoices, so a check that needs a description-hash invoice needs another endpoint |
 | Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup`, `bitkit://contact?pubky=`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [deeplinks](deeplinks), [Not ported](#not-ported) |
 
+Device-clock fault injection requires a separate manual run: [Paykit clock changes](paykit-clock-changes.md).
+
 ## Not ported
 
 **`onchain-receive/confirmed-only-background-notification.xml`.** It covers the notification Android's
@@ -179,6 +181,12 @@ Some suites are adapted rather than ported verbatim: `amount-limits` because iOS
 spending maximum differently, `cjit-notifications` because the notification copy differs, and
 `pubky-marketplace` because the two-wallet payment runs on regtest here. `pubky-auth` is
 iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Android counterpart.
+
+`profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
+after staging signup. Android also supports this signup flow, but this journey has not been ported there.
+
+`contacts/contacts-entry-points.xml` covers onboarding without an identity and the
+authenticated Contacts list. It has not yet been ported to Android.
 
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`

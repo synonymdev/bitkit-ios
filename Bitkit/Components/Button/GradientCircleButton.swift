@@ -5,12 +5,14 @@ struct GradientCircleButton: View {
     let icon: String?
     let systemIcon: String?
     let accessibilityLabel: String
+    let isLoading: Bool
     let action: () -> Void
 
-    init(icon: String, accessibilityLabel: String, action: @escaping () -> Void) {
+    init(icon: String, accessibilityLabel: String, isLoading: Bool = false, action: @escaping () -> Void) {
         self.icon = icon
         systemIcon = nil
         self.accessibilityLabel = accessibilityLabel
+        self.isLoading = isLoading
         self.action = action
     }
 
@@ -18,6 +20,7 @@ struct GradientCircleButton: View {
         icon = nil
         self.systemIcon = systemIcon
         self.accessibilityLabel = accessibilityLabel
+        isLoading = false
         self.action = action
     }
 
@@ -34,7 +37,9 @@ struct GradientCircleButton: View {
                     )
                     .shadow(color: .white10, radius: 0, x: 0, y: -1)
 
-                if let icon {
+                if isLoading {
+                    ActivityIndicator(size: 24)
+                } else if let icon {
                     Image(icon)
                         .resizable()
                         .scaledToFit()
@@ -48,6 +53,7 @@ struct GradientCircleButton: View {
             }
             .frame(width: 48, height: 48)
         }
+        .disabled(isLoading)
         .accessibilityLabel(accessibilityLabel)
     }
 }

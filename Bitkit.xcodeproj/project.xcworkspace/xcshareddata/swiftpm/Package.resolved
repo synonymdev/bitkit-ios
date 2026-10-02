@@ -1,5 +1,5 @@
 {
-  "originHash" : "746cacd44d171f1c992b592ea1224d0562117bffd2907a54dee9d441395ac6b4",
+  "originHash" : "86914da7e92df3dff5ecfc5ee3ce34ea4b3f911278d0c81ac20b137bacf28367",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "4613beee25d1680ed8bc849446498e9bfb2cdb16",
-        "version" : "0.1.0-rc55"
+        "revision" : "24162ebbcc703251d8038f2e176d1f4cfb117c6a",
+        "version" : "0.1.0-rc56"
       }
     },
     {

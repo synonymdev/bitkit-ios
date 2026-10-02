@@ -1,15 +1,18 @@
 import SwiftUI
 
 struct InitializingWalletView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @State private var rocketOffset: CGSize = .zero
     @State private var rotation: Double = 0
     @State private var percentage: Double = 0
     @State private var timer: Timer?
     @State private var shouldStopAnimation = false
 
-    @Binding var shouldFinish: Bool
+    @Binding var nodeLifecycleState: NodeLifecycleState
     let onComplete: () -> Void
+
+    private var shouldFinish: Bool {
+        nodeLifecycleState == .running
+    }
 
     private func handleCompletion() {
         timer?.invalidate()
@@ -176,13 +179,11 @@ struct InitializingWalletView: View {
 }
 
 #Preview("Dark") {
-    InitializingWalletView(shouldFinish: .constant(false)) {}
-        .environmentObject(WalletViewModel())
+    InitializingWalletView(nodeLifecycleState: .constant(.initializing)) {}
         .preferredColorScheme(.dark)
 }
 
 #Preview("Light") {
-    InitializingWalletView(shouldFinish: .constant(false)) {}
-        .environmentObject(WalletViewModel())
+    InitializingWalletView(nodeLifecycleState: .constant(.initializing)) {}
         .preferredColorScheme(.light)
 }

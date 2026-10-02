@@ -12,6 +12,7 @@ enum KeychainEntryType {
     case paykitSubscriptionState
     case paykitReceiverNoiseSecretKey
     case paykitSdkState
+    case paykitPendingBackupRestore
     case pubkySecretKey
 
     var storageKey: String {
@@ -26,6 +27,7 @@ enum KeychainEntryType {
         case .paykitSubscriptionState: "paykit_subscription_state"
         case .paykitReceiverNoiseSecretKey: "paykit_receiver_noise_secret_key"
         case .paykitSdkState: "paykit_sdk_state"
+        case .paykitPendingBackupRestore: "paykit_pending_backup_restore"
         case .pubkySecretKey: "pubky_secret_key"
         }
     }

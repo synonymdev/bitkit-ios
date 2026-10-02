@@ -8,6 +8,7 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
         let titleKey: String
         let descriptionKey: String
         let accessibilityIdentifier: String
+        let isInformational: Bool
     }
 
     let diagnosticReason: IncomingPaykitPaymentRequestFailureReason
@@ -28,7 +29,8 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
             toast = Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_unavailable",
-                accessibilityIdentifier: "PaymentRequestUnavailableToast"
+                accessibilityIdentifier: "PaymentRequestUnavailableToast",
+                isInformational: false
             )
         case let .requestExpired(wasRequested):
             diagnosticReason = .requestExpired
@@ -37,7 +39,8 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
             toast = wasRequested ? Toast(
                 titleKey: "wallet__payment_request",
                 descriptionKey: "wallet__payment_request_expired",
-                accessibilityIdentifier: "PaymentRequestExpiredToast"
+                accessibilityIdentifier: "PaymentRequestExpiredToast",
+                isInformational: false
             ) : nil
         case .retryScheduled:
             diagnosticReason = fallbackReason
@@ -52,9 +55,22 @@ struct IncomingPaykitPaymentRequestPresentationFeedback: Equatable {
         }
     }
 
+    init(paymentDetailsPendingWasRequested: Bool) {
+        diagnosticReason = .paymentDetailsPending
+        isTerminal = false
+        shouldLogDiagnostic = true
+        toast = paymentDetailsPendingWasRequested ? Toast(
+            titleKey: "wallet__payment_request",
+            descriptionKey: "wallet__payment_request_waiting_for_details",
+            accessibilityIdentifier: "PaymentRequestWaitingForDetailsToast",
+            isInformational: true
+        ) : nil
+    }
+
     func diagnosticMessage(for request: PaykitPaymentRequest) -> String? {
         guard shouldLogDiagnostic else { return nil }
-        return "Rejected incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
+        let outcome = diagnosticReason == .paymentDetailsPending ? "Deferred" : "Rejected"
+        return "\(outcome) incoming Paykit payment request presentation: category=\(diagnosticReason.category) " +
             "reason=\(diagnosticReason.rawValue) " +
             "counterparty=\(PaykitPaymentRequestDiagnostics.redactedCounterparty(request.counterparty))"
     }
@@ -65,17 +81,20 @@ struct IncomingPaykitPaymentRequestPresentationState: Equatable {
     let retryTrigger: Int
     let expirationTrigger: Int
     let unavailableTrigger: Int
+    let pendingRequestIds: [PaykitPaymentRequest.ID]
 
     init(
         requestedPresentationId: PaykitPaymentRequest.ID?,
         retryTrigger: Int,
         expirationTrigger: Int,
-        unavailableTrigger: Int
+        unavailableTrigger: Int,
+        pendingRequestIds: [PaykitPaymentRequest.ID] = []
     ) {
         self.requestedPresentationId = requestedPresentationId
         self.retryTrigger = retryTrigger
         self.expirationTrigger = expirationTrigger
         self.unavailableTrigger = unavailableTrigger
+        self.pendingRequestIds = pendingRequestIds
     }
 
     @MainActor
@@ -84,7 +103,8 @@ struct IncomingPaykitPaymentRequestPresentationState: Equatable {
             requestedPresentationId: manager.requestedPresentationId,
             retryTrigger: manager.presentationRetryTrigger,
             expirationTrigger: manager.requestedPresentationExpirationTrigger,
-            unavailableTrigger: manager.requestedPresentationUnavailableTrigger
+            unavailableTrigger: manager.requestedPresentationUnavailableTrigger,
+            pendingRequestIds: manager.pendingRequests.map(\.id)
         )
     }
 }
@@ -107,6 +127,15 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
             fallbackReason: reason,
             shouldLogNonTerminalDiagnostic: result.shouldLogDiagnostic
         )
+    }
+
+    static func finishPendingPrivateLink(
+        for request: PaykitPaymentRequest,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback? {
+        let wasRequested = manager.requestedPresentationId == request.id
+        guard manager.markPresentedIfPending(request) else { return nil }
+        return IncomingPaykitPaymentRequestPresentationFeedback(paymentDetailsPendingWasRequested: wasRequested)
     }
 
     static func handleStateChange(
@@ -143,7 +172,8 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         }
         if current.retryTrigger != previous.retryTrigger ||
             previous.requestedPresentationId != current.requestedPresentationId && current.requestedPresentationId != nil ||
-            current.expirationTrigger != previous.expirationTrigger
+            current.expirationTrigger != previous.expirationTrigger ||
+            current.pendingRequestIds.contains(where: { !previous.pendingRequestIds.contains($0) })
         {
             dispatches.append(.presentNext)
         }
@@ -214,7 +244,8 @@ struct AppScene: View {
     @State private var hideSplash = false
     @State private var removeSplash = false
     @State private var walletIsInitializing: Bool? = nil
-    @State private var walletInitShouldFinish = false
+    @State private var isWalletBackupRestoreRunning = false
+    @State private var didWalletBackupRestoreFail = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
@@ -315,6 +346,12 @@ struct AppScene: View {
                 config in AppUpdateSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
+            .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning, network.isConnected]) {
+                guard scenePhase == .active, wallet.walletExists == true,
+                      !isWalletBackupRestoreRunning, !BackupService.shared.hasPendingWalletRestore()
+                else { return }
+                await pubkyProfile.retrySessionRestoration()
+            }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
             .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
@@ -330,6 +367,7 @@ struct AppScene: View {
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
                     Task { await trezorManager.autoReconnect() }
+                    Task { await presentNextIncomingPaykitItem() }
                 }
             }
             .onReceive(settings.settingsPublisher) { _ in hwWalletManager.reconcileForSettingsChange() }
@@ -634,10 +672,15 @@ struct AppScene: View {
 
     @ViewBuilder
     private var initializingContent: some View {
-        if case .errorStarting = wallet.nodeLifecycleState {
-            WalletRestoreError()
+        if didWalletBackupRestoreFail {
+            WalletRestoreError {
+                didWalletBackupRestoreFail = false
+                await restoreWalletBackupAndStart()
+            }
+        } else if case .errorStarting = wallet.nodeLifecycleState {
+            WalletRestoreError(onRetry: retryWalletStart)
         } else {
-            InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
+            InitializingWalletView(nodeLifecycleState: $wallet.nodeLifecycleState) {
                 Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
 
                 if wallet.nodeLifecycleState == .running {
@@ -653,9 +696,8 @@ struct AppScene: View {
         }
         .accentColor(.white)
         .onAppear {
-            // Reset these values if the wallet is wiped
+            // Reset initialization if the wallet is wiped
             walletIsInitializing = nil
-            walletInitShouldFinish = false
 
             // Only the app-update sheet qualifies without a wallet, so onboarding
             // won't surface the other (wallet-gated) timed sheets.
@@ -697,16 +739,14 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        Task {
-            if wallet.isRestoringWallet {
-                await restoreFromMostRecentBackup()
+        let shouldRestoreWalletBackup = wallet.isRestoringWallet || BackupService.shared.hasPendingWalletRestore()
+        if shouldRestoreWalletBackup {
+            walletIsInitializing = true
+        }
 
-                await MainActor.run {
-                    widgets.loadSavedWidgets()
-                    widgets.objectWillChange.send()
-                }
-                await pubkyProfile.initialize()
-                await startWallet()
+        Task {
+            if shouldRestoreWalletBackup {
+                await restoreWalletBackupAndStart()
                 return
             }
 
@@ -719,7 +759,17 @@ struct AppScene: View {
         }
     }
 
-    private func startWallet() async {
+    private func startWallet(completingBackupRestore: Bool = false) async {
+        let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
+        guard !WalletBackupRestoreGate.blocksWalletStart(
+            isRestoreRunning: isWalletBackupRestoreRunning,
+            hasPendingRestore: hasPendingRestore,
+            isRestoreCompletionStart: completingBackupRestore
+        ) else {
+            Logger.warn("Wallet start deferred until backup restoration completes", context: "AppScene")
+            return
+        }
+
         // Check network before attempting to start - LDK hangs when VSS is unreachable
         guard network.isConnected else {
             Logger.warn("Network offline, skipping wallet start", context: "AppScene")
@@ -861,13 +911,57 @@ struct AppScene: View {
         }
     }
 
-    private func restoreFromMostRecentBackup() async {
+    private func restoreWalletBackupAndStart() async {
+        guard !isWalletBackupRestoreRunning else { return }
+        isWalletBackupRestoreRunning = true
+        walletIsInitializing = true
+        didWalletBackupRestoreFail = false
+        defer { isWalletBackupRestoreRunning = false }
+
+        let didRestore: Bool = if BackupService.shared.hasPendingWalletRestore() {
+            await restoreVssBackup()
+        } else {
+            await restoreFromMostRecentBackup()
+        }
+        guard didRestore else {
+            didWalletBackupRestoreFail = true
+            return
+        }
+
+        widgets.loadSavedWidgets()
+        widgets.objectWillChange.send()
+        await pubkyProfile.initialize()
+        await startWallet(completingBackupRestore: true)
+    }
+
+    private func retryWalletStart() async {
+        do {
+            wallet.nodeLifecycleState = .initializing
+            try await wallet.start()
+            try wallet.setWalletExistsState()
+        } catch {
+            Logger.error("Failed to start wallet on retry", context: "AppScene")
+            Haptics.notify(.error)
+        }
+    }
+
+    private func retryPendingWalletRestoreIfNeeded() -> Bool {
+        if isWalletBackupRestoreRunning {
+            return true
+        }
+        guard BackupService.shared.hasPendingWalletRestore() else { return false }
+
+        Task { await restoreWalletBackupAndStart() }
+        return true
+    }
+
+    private func restoreFromMostRecentBackup() async -> Bool {
         BackupService.shared.setRestoring(true)
         defer { BackupService.shared.setRestoring(false) }
 
         guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
               let mnemonic = String(data: mnemonicData, encoding: .utf8)
-        else { return }
+        else { return false }
 
         let passphrase: String? = {
             guard let data = try? Keychain.load(key: .bip39Passphrase(index: 0)) else { return nil }
@@ -892,13 +986,24 @@ struct AppScene: View {
         if shouldRestoreRN {
             do {
                 try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+                return true
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
-                await BackupService.shared.performFullRestoreFromLatestBackup()
+                return await restoreVssBackup()
             }
-        } else {
-            await BackupService.shared.performFullRestoreFromLatestBackup()
+        }
+
+        return await restoreVssBackup()
+    }
+
+    private func restoreVssBackup() async -> Bool {
+        do {
+            try await BackupService.shared.performFullRestoreFromLatestBackup()
+            return true
+        } catch {
+            app.toast(error)
+            return false
         }
     }
 
@@ -906,7 +1011,6 @@ struct AppScene: View {
         if state == .initializing {
             walletIsInitializing = true
         } else if state == .running {
-            walletInitShouldFinish = true
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
             QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
@@ -929,9 +1033,6 @@ struct AppScene: View {
                 await refreshIncomingPaykitPaymentRequests()
             }
         } else {
-            if case .errorStarting = state {
-                walletInitShouldFinish = true
-            }
             Task {
                 await BackupService.shared.stopObservingBackups()
             }
@@ -954,11 +1055,18 @@ struct AppScene: View {
                 Task { await trezorManager.autoReconnect() }
             }
             if wallet.walletExists == true {
+                if retryPendingWalletRestoreIfNeeded() {
+                    return
+                }
                 Task {
-                    if pubkyProfile.isInitialized { await pubkyProfile.checkAdoptedSource() }
+                    if pubkyProfile.isInitialized {
+                        await pubkyProfile.checkAdoptedSource()
+                    }
+                    async let sessionRecovery: Void = network.isConnected ? pubkyProfile.restoreSessionIfNeeded() : ()
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
+                    await sessionRecovery
                     await retryPendingPaykitEndpointRemoval()
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     if PaykitFeatureFlags.isUIEnabled {
@@ -1050,6 +1158,9 @@ struct AppScene: View {
             } catch {
                 return
             }
+            guard !isWalletBackupRestoreRunning,
+                  !BackupService.shared.hasPendingWalletRestore()
+            else { continue }
             let refreshMaintenance: Bool
             switch schedule.takeRound(isConnected: network.isConnected) {
             case .skip:
@@ -1086,7 +1197,9 @@ struct AppScene: View {
     }
 
     private func presentNextIncomingPaykitPaymentRequest() async {
-        guard sheets.activeSheetConfiguration == nil,
+        guard scenePhase == .active,
+              isPinVerified || !settings.pinEnabled,
+              sheets.activeSheetConfiguration == nil,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
@@ -1103,6 +1216,15 @@ struct AppScene: View {
                           !sheets.isReplacingSheet,
                           app.contactPaymentContext == nil
                     else { return }
+                    if case .privateLinkPending = result {
+                        if let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishPendingPrivateLink(
+                            for: request,
+                            with: paykitPaymentRequestManager
+                        ) {
+                            presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+                        }
+                        continue
+                    }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
@@ -1191,6 +1313,15 @@ struct AppScene: View {
                         continue
                     }
 
+                    guard PaykitPaymentRequestPresentationCoordinator.canPresentPreparedRequest(
+                        isSceneActive: scenePhase == .active,
+                        isUnlocked: isPinVerified || !settings.pinEnabled,
+                        context: contactPaymentContext,
+                        app: app,
+                        resetWalletSendState: {
+                            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                        }
+                    ) else { return }
                     guard let route = PaymentNavigationHelper.contactPaymentRoute(
                         app: app,
                         currency: currency,
@@ -1270,7 +1401,7 @@ struct AppScene: View {
 
         guard let toast = feedback.toast else { return }
         app.toast(
-            type: .error,
+            type: toast.isInformational ? .info : .error,
             title: t(toast.titleKey),
             description: t(toast.descriptionKey),
             accessibilityIdentifier: toast.accessibilityIdentifier
@@ -1298,7 +1429,7 @@ struct AppScene: View {
                 $0.paymentRequestId == target.paymentRequestId &&
                     PubkyPublicKeyFormat.matches($0.counterparty, target.counterparty) &&
                     $0.counterpartyReceiverPath == target.counterpartyReceiverPath &&
-                    $0.isActive(at: Date())
+                    $0.isActive(at: SubscriptionClock.subscriptionNow())
             }) {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }
@@ -1312,7 +1443,11 @@ struct AppScene: View {
     }
 
     private func presentNextIncomingPaykitItem() async {
-        guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet else { return }
+        guard scenePhase == .active,
+              isPinVerified || !settings.pinEnabled,
+              sheets.activeSheetConfiguration == nil,
+              !sheets.isReplacingSheet
+        else { return }
         if PaykitSubscriptionNotificationTargetStore.load() != nil {
             await handlePendingPaykitSubscriptionNotification()
             guard PaykitSubscriptionNotificationTargetStore.load() == nil,
@@ -1379,10 +1514,16 @@ struct AppScene: View {
         if isConnected {
             guard wallet.walletExists == true else { return }
 
+            if retryPendingWalletRestoreIfNeeded() {
+                return
+            }
+
             // Refresh currency rates when network is restored - critical for UI
             // to display balances (MoneyText returns "0" if rates are nil)
             Task {
+                async let sessionRecovery: Void = pubkyProfile.restoreSessionIfNeeded()
                 await currency.refresh()
+                await sessionRecovery
                 if scenePhase == .active {
                     await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 }

@@ -5,10 +5,95 @@ import VssRustClientFfi
 
 // MARK: - BackupService
 
+enum BackupRestoreFailurePolicy {
+    static func isFatal(_ category: BackupCategory) -> Bool {
+        category == .wallet
+    }
+}
+
+struct WalletBackupRestoreGate {
+    static let keychain = WalletBackupRestoreGate(
+        load: { try Keychain.load(key: .paykitPendingBackupRestore) },
+        store: { try Keychain.upsert(key: .paykitPendingBackupRestore, data: $0) },
+        clear: { try Keychain.delete(key: .paykitPendingBackupRestore) }
+    )
+
+    private let load: () throws -> Data?
+    private let store: (Data) throws -> Void
+    private let clear: () throws -> Void
+
+    init(
+        load: @escaping () throws -> Data?,
+        store: @escaping (Data) throws -> Void,
+        clear: @escaping () throws -> Void
+    ) {
+        self.load = load
+        self.store = store
+        self.clear = clear
+    }
+
+    static func blocksWalletStart(
+        isRestoreRunning: Bool,
+        hasPendingRestore: Bool,
+        isRestoreCompletionStart: Bool
+    ) -> Bool {
+        hasPendingRestore || isRestoreRunning && !isRestoreCompletionStart
+    }
+
+    func hasPendingRestore() throws -> Bool {
+        try load() != nil
+    }
+
+    func performRestore(_ restore: (Data?) async throws -> Bool) async throws -> Bool {
+        let retainedPayload = try beginRestore()
+        let didRestorePayload = try await restore(retainedPayload)
+        if didRestorePayload {
+            try completeRestore()
+        } else {
+            try completeRestoreWithoutPayload()
+        }
+        return didRestorePayload
+    }
+
+    private func beginRestore() throws -> Data? {
+        guard let pendingPayload = try load() else {
+            try store(Data())
+            return nil
+        }
+        return pendingPayload.isEmpty ? nil : pendingPayload
+    }
+
+    func retain(_ payload: Data) throws {
+        try store(payload)
+    }
+
+    private func completeRestore() throws {
+        try clear()
+    }
+
+    private func completeRestoreWithoutPayload() throws {
+        guard try load()?.isEmpty == true else {
+            throw incompleteRestoreError()
+        }
+        try clear()
+    }
+
+    func requireReplacementBackupAllowed() throws {
+        guard try load() == nil else {
+            throw incompleteRestoreError()
+        }
+    }
+
+    private func incompleteRestoreError() -> NSError {
+        NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Wallet backup restore is incomplete"])
+    }
+}
+
 class BackupService {
     static let shared = BackupService()
 
     private let vssBackupClient = VssBackupClient.shared
+    private let walletRestoreGate = WalletBackupRestoreGate.keychain
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<Void, Never>] = [:]
     private var cancellables = Set<AnyCancellable>()
@@ -169,8 +254,17 @@ class BackupService {
         await backupTask.value
     }
 
+    func hasPendingWalletRestore() -> Bool {
+        do {
+            return try walletRestoreGate.hasPendingRestore()
+        } catch {
+            Logger.error("Failed to read pending wallet restore state: \(error)", context: "BackupService")
+            return true
+        }
+    }
+
     /// Performs full restore from latest backup
-    func performFullRestoreFromLatestBackup() async {
+    func performFullRestoreFromLatestBackup() async throws {
         stateQueue.sync {
             isRestoring = true
         }
@@ -181,12 +275,23 @@ class BackupService {
             }
         }
 
-        // Reset VSS client
         VssStoreIdProvider.shared.clearCache()
         await VssBackupClient.shared.reset()
-
         Logger.debug("Full restore starting", context: "BackupService")
 
+        do {
+            _ = try await walletRestoreGate.performRestore { retainedWalletBackup in
+                try await performFullRestoreFromLatestBackup(retainedWalletBackup: retainedWalletBackup)
+            }
+            markRestoreComplete(category: .wallet)
+            Logger.info("Full restore success", context: "BackupService")
+        } catch {
+            Logger.warn("Full restore error: \(error)", context: "BackupService")
+            throw error
+        }
+    }
+
+    private func performFullRestoreFromLatestBackup(retainedWalletBackup: Data?) async throws -> Bool {
         do {
             try await performRestore(category: .settings) { dataBytes in
                 let payload = try SettingsBackupV1.decode(from: dataBytes)
@@ -208,8 +313,13 @@ class BackupService {
             // state.
             var categoriesNeedingRewrite: Set<BackupCategory> = []
 
-            try await performRestore(category: .wallet) { dataBytes in
+            try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
+                try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
+                if let paymentState = payload.paykitPaymentState {
+                    try PaykitSubscriptionStateStore().restoreBackup(paymentState.subscriptions)
+                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState.pendingProofs)
+                }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
                 try await WatchOnlyAccountManager.shared.restore(
@@ -279,12 +389,8 @@ class BackupService {
             }
 
             if didRestoreWalletBackup {
-                do {
-                    try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
-                    await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
-                } catch {
-                    Logger.warn("Failed to restore Paykit SDK backup state: \(error)", context: "BackupService")
-                }
+                try await PrivatePaykitService.shared.restoreBackup(pendingPaykitSdkBackupState)
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -300,8 +406,6 @@ class BackupService {
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
-            Logger.info("Full restore success", context: "BackupService")
-
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
@@ -312,8 +416,8 @@ class BackupService {
             // wraps this in its own set/defer pair), so clearing it early would reopen that
             // suppression window and let the restore's own change traffic schedule uploads.
             await rewriteMigratedBackups(categoriesNeedingRewrite)
-        } catch {
-            Logger.warn("Full restore error: \(error)", context: "BackupService")
+
+            return didRestoreWalletBackup
         }
     }
 
@@ -395,6 +499,15 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSdkService.walletBackupDataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .wallet)
+            }
+            .store(in: &cancellables)
+
+        PaykitSubscriptionStateStore.walletBackupDataChangedPublisher
+            .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -751,18 +864,23 @@ class BackupService {
             return encoded
 
         case .wallet:
+            try walletRestoreGate.requireReplacementBackupAllowed()
             let transfers = try TransferStorage.shared.getAll()
             let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
             let paykitSdkBackupState = try await PrivatePaykitService.shared.backupSnapshot()
             let watchOnlyAccountSnapshot = try WatchOnlyAccountStore.backupSnapshot()
-            let payload = WalletBackupV1(
+            let payload = try await WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
                 privatePaykitHighestReservedReceiveIndexByAddressType: privatePaykitHighestReservedReceiveIndexByAddressType,
                 paykitSdkBackupState: paykitSdkBackupState,
                 watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
-                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState
+                watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
+                paykitPaymentState: PaykitPaymentStateBackup(
+                    subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
+                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot()
+                )
             )
             return try JSONEncoder().encode(payload)
 
@@ -860,12 +978,20 @@ class BackupService {
         }
     }
 
-    private func performRestore(category: BackupCategory, restoreAction: (Data) async throws -> Void) async throws {
+    private func performRestore(
+        category: BackupCategory,
+        retainedData: Data? = nil,
+        restoreAction: (Data) async throws -> Void
+    ) async throws {
         do {
-            let item = try await vssBackupClient.getObject(key: category.rawValue)
+            let dataBytes = if let retainedData {
+                retainedData
+            } else {
+                try await vssBackupClient.getObject(key: category.rawValue)?.value
+            }
 
-            if let item {
-                try await restoreAction(item.value)
+            if let dataBytes {
+                try await restoreAction(dataBytes)
                 Logger.info("Restore success for: '\(category.rawValue)'", context: "BackupService")
             } else {
                 Logger.warn("Restore null for: '\(category.rawValue)'", context: "BackupService")
@@ -874,8 +1000,18 @@ class BackupService {
             // Only a total VSS failure surfaces otherwise, so without the error every category
             // fails silently. The benign "nothing backed up yet" case takes the branch above.
             Logger.warn("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
+            if BackupRestoreFailurePolicy.isFatal(category) {
+                throw error
+            }
         }
 
+        if category == .wallet, try walletRestoreGate.hasPendingRestore() {
+            return
+        }
+        markRestoreComplete(category: category)
+    }
+
+    private func markRestoreComplete(category: BackupCategory) {
         let currentTime = UInt64(Date().timeIntervalSince1970)
         updateBackupStatus(category: category) { _ in
             BackupItemStatus(

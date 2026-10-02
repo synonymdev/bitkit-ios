@@ -23,6 +23,15 @@ enum PrivatePaykitError: LocalizedError {
 }
 
 enum PaykitResolutionFailureDiagnostics {
+    static func isRecoveryRequired(_ error: Error) -> Bool {
+        if let error = error as? PaykitError,
+           case .RecoveryRequired = error
+        {
+            return true
+        }
+        return false
+    }
+
     static func reason(for error: Error) -> String {
         if let error = error as? PaykitError {
             return paykitReason(error)
