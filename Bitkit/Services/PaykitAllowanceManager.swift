@@ -262,13 +262,17 @@ final class PaykitAllowanceManager {
         let signature = allowancesSignature
         let covered = requests.filter(isAwaitingAutomaticPayment)
         guard !covered.isEmpty else { return false }
-        guard canPayNow() else { return false }
+        guard canPayNow() else {
+            Logger.info("Holding \(covered.count) covered request(s) until the node has a usable channel", context: "PaykitAllowance")
+            return false
+        }
 
         isProcessingRequests = true
         defer { isProcessingRequests = false }
         var handledAny = false
         for request in covered {
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
+            Logger.info("Automatic payment pass for a covered request ended as \(result)", context: "PaykitAllowance")
             switch result {
             case .started, .completed:
                 handledAny = true
