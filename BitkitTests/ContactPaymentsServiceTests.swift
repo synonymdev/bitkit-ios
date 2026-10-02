@@ -389,7 +389,8 @@ final class ContactPaymentsServiceTests: XCTestCase {
                     operations: publicationOperations
                 )
             }
-            operations.syncPublicEndpoints = { _, isSessionCurrent in
+            operations.syncPublicEndpoints = { publish, isSessionCurrent in
+                guard publish else { return }
                 if held == .publicBeforeLock {
                     reachedHeldPoint.fulfill()
                     for await _ in gate {}
