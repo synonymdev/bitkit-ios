@@ -998,6 +998,102 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey))
     }
 
+    @MainActor
+    func testDisablingSharingStopsPreparationStartedDuringWithdrawal() async throws {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
+        PublicPaykitService.setCleanupPending(false)
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        defaults.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        defaults.removeObject(forKey: PrivatePaykitService.deletedContactCleanupKeysKey)
+
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh, value: "bcrt1qendpoint", min: nil, max: nil,
+            rawPayload: #"{"value":"bcrt1qendpoint"}"#
+        )
+        var publications = 0
+        let service = PrivatePaykitService(publicationOperations: .init(
+            currentPublicKey: { "pubkylocal" },
+            ensureLink: { _ in .linked },
+            buildEndpoints: { _ in [endpoint] },
+            syncPaymentLists: { _ in
+                publications += 1
+                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            }
+        ))
+        var contactState = PrivatePaykitService.ContactState()
+        contactState.hasPublishedPrivatePaymentList = true
+        await service.setTestContactState(contactState, publicKey: publicKey)
+
+        let withdrawing = expectation(description: "Private withdrawal started")
+        let prepared = expectation(description: "Preparation completes while withdrawal is suspended")
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        var registryUpdates = 0
+        let cleanup = PrivatePaykitService.EndpointCleanupOperations(
+            linkedPeers: { [] },
+            clearPaymentList: { key in
+                XCTAssertEqual(key, publicKey)
+                withdrawing.fulfill()
+                for await _ in resume {
+                    break
+                }
+                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            },
+            drainMessages: { XCTAssertEqual($0, [publicKey]) },
+            pendingDrainKeys: { _ in [] },
+            syncApp: {
+                XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+                XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+                registryUpdates += 1
+            }
+        )
+        let disable = Task {
+            try await ContactPaymentsService.setEnabled(
+                false, contactPublicKeys: [publicKey], canUsePrivatePayments: true,
+                operations: .init(
+                    syncPaykitApp: { _ in XCTFail("OFF must withdraw private lists before downgrading") },
+                    syncPublicEndpoints: { publish in
+                        XCTAssertFalse(publish)
+                        XCTAssertEqual(registryUpdates, 1)
+                        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+                    },
+                    preparePrivateEndpoints: { _, _ in XCTFail("OFF must not publish"); return nil },
+                    removePrivateEndpoints: { try await service.removePublishedEndpoints(operations: cleanup) },
+                    setPublicCleanupPending: PublicPaykitService.setCleanupPending,
+                    setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
+                )
+            )
+        }
+        await fulfillment(of: [withdrawing], timeout: 2)
+        XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+        XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+        XCTAssertEqual(PrivatePaykitService.fullCleanupReconciliationMode(), .removePublishedState)
+
+        let preparationError = await service.prepareSavedContacts([publicKey], wallet: WalletViewModel())
+        XCTAssertNil(preparationError)
+        let waiter = Task {
+            try await service.awaitContactPreparation()
+            prepared.fulfill()
+        }
+        await fulfillment(of: [prepared], timeout: 2)
+        continuation.finish()
+        try await disable.value
+        try await waiter.value
+
+        XCTAssertEqual(publications, 0)
+        XCTAssertEqual(registryUpdates, 1)
+        XCTAssertFalse(ContactPaymentsService.isEnabled())
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+    }
+
     func testCleanupStopsAStalledPreparationBeforeLaterContactsAreVisited() async {
         let service = PrivatePaykitService()
         let publicKeys = [

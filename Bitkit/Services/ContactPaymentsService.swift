@@ -148,6 +148,12 @@ enum ContactPaymentsService {
 
     @MainActor
     private static func disable(operations: Operations, defaults: UserDefaults) async -> Error? {
+        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(true, forKey: confirmedPreferenceKey)
+        operations.setPublicCleanupPending(true)
+        operations.setPrivateCleanupPending(true)
+
         var cleanupError: Error?
         do {
             try await operations.removePrivateEndpoints()
@@ -156,10 +162,6 @@ enum ContactPaymentsService {
             operations.setPrivateCleanupPending(true)
             cleanupError = error
         }
-
-        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
-        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        defaults.set(true, forKey: confirmedPreferenceKey)
 
         do {
             try await operations.syncPublicEndpoints(false)
