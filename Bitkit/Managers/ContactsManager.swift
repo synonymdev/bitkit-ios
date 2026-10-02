@@ -138,6 +138,8 @@ class ContactsManager: ObservableObject {
     private let fetchFollows: @Sendable (String) async throws -> [String]
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
     private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String) async throws -> Void
+    private let removeContactRecord: @Sendable (_ publicKey: String) async throws -> Void
+    private let forgetRemovedContacts: @Sendable (_ publicKeys: [String]) async -> Void
     private let currentDate: @Sendable () -> Date
 
     init(
@@ -149,12 +151,20 @@ class ContactsManager: ObservableObject {
         saveContactLabel: @escaping @Sendable (_ publicKey: String, _ label: String) async throws -> Void = {
             _ = try await PubkyService.saveContact(publicKey: $0, label: $1)
         },
+        removeContactRecord: @escaping @Sendable (_ publicKey: String) async throws -> Void = {
+            _ = try await PubkyService.removeContact(publicKey: $0)
+        },
+        forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
+            await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
+        },
         currentDate: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.contactRecords = contactRecords
         self.fetchFollows = fetchFollows
         self.fetchRemoteProfile = fetchRemoteProfile
         self.saveContactLabel = saveContactLabel
+        self.removeContactRecord = removeContactRecord
+        self.forgetRemovedContacts = forgetRemovedContacts
         self.currentDate = currentDate
     }
 
@@ -368,27 +378,25 @@ class ContactsManager: ObservableObject {
 
         profileRefreshCount += 1
         let refreshID = profileRefreshCount
+        let lookups = Dictionary(uniqueKeysWithValues: labels.map { publicKey, label in
+            let lookup = Task { [weak self] in
+                let profile = try? await Self.resolveContactProfile(publicKey: publicKey, fetchRemoteProfile: fetchRemoteProfile)
+                self?.finishRefreshLookup(of: publicKey, profile: profile?.withNameFallback(label), refreshID: refreshID)
+            }
+            return (publicKey, lookup)
+        })
         let task = Task { [weak self] in
-            await withTaskGroup(of: (publicKey: String, profile: PubkyProfile?).self) { group in
-                for (publicKey, label) in labels {
-                    group.addTask {
-                        let profile = try? await Self.resolveContactProfile(publicKey: publicKey, fetchRemoteProfile: fetchRemoteProfile)
-                        return (publicKey, profile?.withNameFallback(label))
-                    }
-                }
-
-                for await result in group {
-                    self?.finishRefreshLookup(of: result.publicKey, profile: result.profile, refreshID: refreshID)
-                }
+            for lookup in lookups.values {
+                await lookup.value
             }
             self?.applyBatchedProfiles(of: refreshID)
             self?.finishProfileRefresh(refreshID)
         }
-        profileRefresh = ContactProfileRefresh(id: refreshID, labels: labels, pendingKeys: Set(labels.keys), task: task)
+        profileRefresh = ContactProfileRefresh(id: refreshID, labels: labels, pendingKeys: Set(labels.keys), lookups: lookups, task: task)
     }
 
-    /// Drops the result for a contact whose lookup a screen took over. A task group cannot cancel one of its lookups, so
-    /// that contact's read still runs. Any other profile found joins the next batch.
+    /// Drops the result for a contact whose lookup a screen took over; the refresh leaves its own read of that contact
+    /// running. Any other profile found joins the next batch.
     private func finishRefreshLookup(of publicKey: String, profile: PubkyProfile?, refreshID: Int) {
         guard profileRefresh?.id == refreshID, profileRefresh?.pendingKeys.remove(publicKey) != nil, let profile else { return }
         rememberResolvedProfile(profile, for: publicKey)
@@ -414,6 +422,17 @@ class ContactsManager: ObservableObject {
     private func stopProfileRefresh() {
         profileRefresh?.cancel()
         profileRefresh = nil
+    }
+
+    /// Cancels the running refresh's lookups of removed contacts, so a lookup still waiting for a read slot never reads,
+    /// and drops whatever they found.
+    private func stopProfileLookups(for publicKeys: [String]) {
+        for publicKey in publicKeys {
+            let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+            profileRefresh?.lookups[key]?.cancel()
+            profileRefresh?.pendingKeys.remove(key)
+            profileRefresh?.batchedProfiles[key] = nil
+        }
     }
 
     private func finishProfileRefresh(_ refreshID: Int) {
@@ -751,24 +770,32 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Delete Contact
 
+    /// Also stops the running profile refresh's lookup of the contact.
     func removeContact(publicKey: String) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
+        let removeContactRecord = removeContactRecord
 
         try await Task.detached {
-            _ = try await PubkyService.removeContact(publicKey: prefixedKey)
+            try await removeContactRecord(prefixedKey)
         }.value
         contacts.removeAll { $0.publicKey == prefixedKey }
+        stopProfileLookups(for: [prefixedKey])
         Self.removeContactProfileOverride(publicKey: prefixedKey)
-        await PrivatePaykitService.shared.removeSavedContact(publicKey: prefixedKey)
+        await forgetRemovedContacts([prefixedKey])
 
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
     }
 
+    /// Stops the running profile refresh first: every contact is going, and its reads would only compete with the ones
+    /// removing them.
     func deleteAllContacts() async throws {
+        stopProfileRefresh()
+        let contactRecords = contactRecords
+        let removeContactRecord = removeContactRecord
         let records: [ContactRecord]
         do {
             records = try await Task.detached {
-                try await PubkyService.contactRecords()
+                try await contactRecords()
             }.value
         } catch {
             guard Self.isMissingContactsDataError(error) else {
@@ -789,7 +816,7 @@ class ContactsManager: ObservableObject {
             guard let contactKey = PubkyPublicKeyFormat.normalized(record.publicKey) else { continue }
             do {
                 try await Task.detached {
-                    _ = try await PubkyService.removeContact(publicKey: contactKey)
+                    try await removeContactRecord(contactKey)
                 }.value
                 deletedKeys.insert(contactKey)
             } catch {
@@ -800,7 +827,7 @@ class ContactsManager: ObservableObject {
 
         if let firstError {
             if !deletedKeys.isEmpty {
-                await PrivatePaykitService.shared.removeSavedContacts(publicKeys: Array(deletedKeys))
+                await forgetRemovedContacts(Array(deletedKeys))
                 for publicKey in deletedKeys {
                     Self.removeContactProfileOverride(publicKey: publicKey)
                 }
@@ -810,7 +837,7 @@ class ContactsManager: ObservableObject {
         }
 
         // All remote deletes succeeded, so clear any local-only contacts too.
-        await PrivatePaykitService.shared.removeSavedContacts(publicKeys: Array(deletedKeys))
+        await forgetRemovedContacts(Array(deletedKeys))
         Self.clearContactProfileOverrides()
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
@@ -925,18 +952,22 @@ class ContactsManager: ObservableObject {
     }
 
     /// A background refresh of saved contacts' profiles. `labels` maps each contact it looks up to its saved label, and
-    /// `pendingKeys` holds those whose lookup has not finished and that no screen's lookup has taken over, whose rows
-    /// may still show only that label.
+    /// `pendingKeys` holds those whose lookup has not finished, that no screen's lookup has taken over and that were not
+    /// removed, whose rows may still show only that label.
     private struct ContactProfileRefresh {
         let id: Int
         let labels: [String: String?]
         var pendingKeys: Set<String>
+        /// One lookup per contact, so removing a contact can cancel its lookup alone.
+        let lookups: [String: Task<Void, Never>]
+        /// Finishes once every lookup has.
         let task: Task<Void, Never>
         /// Profiles found and not applied to the rows yet, applied together once `batchFlush` fires or the refresh ends.
         var batchedProfiles: [String: PubkyProfile] = [:]
         var batchFlush: Task<Void, Never>?
 
         func cancel() {
+            lookups.values.forEach { $0.cancel() }
             task.cancel()
             batchFlush?.cancel()
         }

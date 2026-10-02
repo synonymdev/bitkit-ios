@@ -1526,6 +1526,71 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(manager.completePendingImport(), "An import that finishes after the user left must not pull them away")
     }
 
+    /// Removing contacts left the running profile refresh looking them up, so it kept issuing reads for deleted contacts.
+    func testRemovingAContactStopsItsQueuedProfileLookup() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let slot = PaykitSdkReadLimiter(maxConcurrent: 1)
+        let blockingRead = try await holdTheOnlyReadSlot(slot)
+        let removedKey = "pubky" + String(repeating: "r", count: 52)
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice", removedKey: "Removed"])
+        let manager = ContactsManager(removeContactRecord: { _ in }, forgetRemovedContacts: { _ in })
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), unprofiledRecord(key: removedKey, label: "To remove")]
+        try await manager.loadContacts(
+            for: "owner",
+            fetchContactRecords: { records },
+            fetchRemoteProfile: { key in try await slot.withSlot(priority: .bulk) { try await lookups.fetch(key) } }
+        )
+        while slot.waiterCountForTesting < 2 {
+            await Task.yield()
+        }
+
+        try await manager.removeContact(publicKey: removedKey)
+        XCTAssertEqual(slot.waiterCountForTesting, 1, "The removed contact's lookup leaves the read queue at once")
+
+        await blockingRead.release()
+        await manager.waitForProfileRefreshForTesting()
+        let fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys, [contactProfileKey], "No read is issued for the removed contact")
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice"])
+    }
+
+    func testDeletingAllContactsStopsTheRunningProfileRefresh() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let slot = PaykitSdkReadLimiter(maxConcurrent: 1)
+        let blockingRead = try await holdTheOnlyReadSlot(slot)
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice", unresolvedFollowKey: "Bob"])
+        let records = [unprofiledRecord(key: contactProfileKey, label: "First"), unprofiledRecord(key: unresolvedFollowKey, label: "Second")]
+        let manager = ContactsManager(contactRecords: { records }, removeContactRecord: { _ in }, forgetRemovedContacts: { _ in })
+        try await manager.loadContacts(
+            for: "owner",
+            fetchContactRecords: { records },
+            fetchRemoteProfile: { key in try await slot.withSlot(priority: .bulk) { try await lookups.fetch(key) } }
+        )
+        while slot.waiterCountForTesting < 2 {
+            await Task.yield()
+        }
+
+        try await manager.deleteAllContacts()
+        XCTAssertEqual(slot.waiterCountForTesting, 0, "Every queued lookup leaves the read queue once all contacts are deleted")
+
+        await blockingRead.release()
+        await manager.waitForProfileRefreshForTesting()
+        let fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys, [], "No read is issued for a deleted contact")
+        XCTAssertTrue(manager.contacts.isEmpty)
+    }
+
+    /// Takes `slot`'s only read slot with another read and holds it until the returned lookups are released.
+    private func holdTheOnlyReadSlot(_ slot: PaykitSdkReadLimiter) async throws -> HeldProfileLookups {
+        let otherRead = HeldProfileLookups(profiles: [:])
+        await otherRead.hold()
+        Task { _ = try? await slot.withSlot(priority: .bulk) { try await otherRead.fetch("other") } }
+        while await otherRead.heldCount < 1 {
+            await Task.yield()
+        }
+        return otherRead
+    }
+
     func testDeleteAllContactsThrowsWithoutActiveSession() async {
         let manager = ContactsManager()
         manager.contacts = [
