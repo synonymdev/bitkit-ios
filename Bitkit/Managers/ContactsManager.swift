@@ -115,6 +115,9 @@ struct ContactSection: Identifiable {
 
 @MainActor
 class ContactsManager: ObservableObject {
+    /// How long a contact profile resolved in this session is shown without being looked up again.
+    nonisolated static let contactProfileFreshness: TimeInterval = 10 * 60
+
     private var contactsRevision = 0
     private var loadGeneration = 0
     private var isApplyingProfileRefresh = false
@@ -124,14 +127,16 @@ class ContactsManager: ObservableObject {
     /// The last tag change queued for each contact, which the next one for that contact waits for. Forgotten on a reset
     /// or owner change, so a change for the next session never waits behind one from the session before.
     private var tagChanges: [String: Task<Void, Error>] = [:]
-    /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes.
-    private var resolvedProfiles: [String: PubkyProfile] = [:]
+    /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes,
+    /// each with the time it was resolved.
+    private var resolvedProfiles: [String: ResolvedContactProfile] = [:]
     private var resolvedProfilesOwner: String?
     private var resolvedProfilesGeneration = 0
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
     private let fetchFollows: @Sendable (String) async throws -> [String]
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
     private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String) async throws -> Void
+    private let currentDate: @Sendable () -> Date
 
     init(
         contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords,
@@ -141,12 +146,14 @@ class ContactsManager: ObservableObject {
         },
         saveContactLabel: @escaping @Sendable (_ publicKey: String, _ label: String) async throws -> Void = {
             _ = try await PubkyService.saveContact(publicKey: $0, label: $1)
-        }
+        },
+        currentDate: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.contactRecords = contactRecords
         self.fetchFollows = fetchFollows
         self.fetchRemoteProfile = fetchRemoteProfile
         self.saveContactLabel = saveContactLabel
+        self.currentDate = currentDate
     }
 
     /// Profile refreshes replace rows without counting as a change to the saved contacts.
@@ -249,8 +256,10 @@ class ContactsManager: ObservableObject {
     }
 
     /// Publishes the saved records straight away, each with the best profile already known, then looks the remaining
-    /// profiles up in the background on the bulk read lane and updates rows as they resolve. A failed lookup leaves its
-    /// row as it is. A cancelled or failed load publishes nothing and leaves a running refresh to finish. A cancelled
+    /// profiles up in the background on the bulk read lane and updates rows as they resolve. A profile resolved in this
+    /// session less than `contactProfileFreshness` ago is not looked up again, so coming back to Contacts does not look
+    /// every contact up again. A failed lookup leaves its row as it is and remembers nothing, so the next load looks that
+    /// contact up again. A cancelled or failed load publishes nothing and leaves a running refresh to finish. A cancelled
     /// load returns without an error even when the record read throws once cancelled, as the SDK lock does.
     func loadContacts(
         for publicKey: String,
@@ -288,8 +297,12 @@ class ContactsManager: ObservableObject {
                 let overrides = Self.loadContactProfileOverrides()
                 contacts = records.map { savedContact(from: $0, overrides: overrides) }.sorted(by: Self.isOrderedByName)
                 hasLoaded = true
+                let now = currentDate()
                 refreshContactProfiles(
-                    for: records.filter { $0.profile == nil && overrides[Self.contactKey(for: $0)] == nil },
+                    for: records.filter { record in
+                        let key = Self.contactKey(for: record)
+                        return record.profile == nil && overrides[key] == nil && resolvedProfiles[key]?.isFresh(at: now) != true
+                    },
                     fetchRemoteProfile: fetchRemoteProfile
                 )
                 await PrivatePaykitService.shared
@@ -329,7 +342,7 @@ class ContactsManager: ObservableObject {
                 profile: PubkyProfile(publicKey: publicKey, paykitProfile: profile).withNameFallback(record.label)
             )
         }
-        if let profile = resolvedProfiles[publicKey] {
+        if let profile = resolvedProfiles[publicKey]?.profile {
             return PubkyContact(publicKey: publicKey, profile: profile.withNameFallback(record.label))
         }
         let label = record.label.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
@@ -463,9 +476,10 @@ class ContactsManager: ObservableObject {
         resolvedProfilesOwner = owner
     }
 
+    /// A placeholder is not remembered, so a contact whose lookup found nothing is still looked up on the next load.
     private func rememberResolvedProfile(_ profile: PubkyProfile, for publicKey: String) {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        resolvedProfiles[normalizedKey] = profile
+        guard !profile.isPlaceholder, let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        resolvedProfiles[normalizedKey] = ResolvedContactProfile(profile: profile, resolvedAt: currentDate())
     }
 
     #if DEBUG
@@ -585,7 +599,7 @@ class ContactsManager: ObservableObject {
             Logger.info("Stopped a contact import that a reset overtook after \(imported.count) saves", context: "ContactsManager")
             return
         }
-        for contact in imported where !contact.profile.isPlaceholder {
+        for contact in imported {
             rememberResolvedProfile(contact.profile, for: contact.publicKey)
         }
         let currentKeys = Set(contacts.map(\.publicKey))
@@ -855,6 +869,16 @@ class ContactsManager: ObservableObject {
         } catch {
             Logger.warn("Failed to discover remote contacts: \(error)", context: "ContactsManager")
             pendingImportContacts = []
+        }
+    }
+
+    private struct ResolvedContactProfile {
+        let profile: PubkyProfile
+        let resolvedAt: Date
+
+        func isFresh(at now: Date) -> Bool {
+            let age = now.timeIntervalSince(resolvedAt)
+            return age >= 0 && age < ContactsManager.contactProfileFreshness
         }
     }
 

@@ -799,6 +799,62 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(fetchedKeys, [contactProfileKey], "Reopening Contacts must not look the same contact up again")
     }
 
+    /// Contacts used to look every saved contact up again on each load, so returning from a contact's screen re-resolved
+    /// the whole list. A contact still without a resolved profile is looked up on every load.
+    func testReloadLooksUpOnlyContactsWithoutAProfileResolvedInTheLastTenMinutes() async throws {
+        let clock = TestClock()
+        let manager = ContactsManager(currentDate: { clock.now() })
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only"), unprofiledRecord(key: unresolvedFollowKey, label: "No profile")]
+        let load: @MainActor () async throws -> Void = {
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+            await manager.waitForProfileRefreshForTesting()
+        }
+        let lookupCounts: () async -> [String: Int] = {
+            await lookups.fetchedKeys.reduce(into: [:]) { counts, key in counts[key, default: 0] += 1 }
+        }
+
+        try await load()
+        var counts = await lookupCounts()
+        XCTAssertEqual(counts, [contactProfileKey: 1, unresolvedFollowKey: 1])
+
+        clock.advance(by: ContactsManager.contactProfileFreshness - 1)
+        try await load()
+        counts = await lookupCounts()
+        XCTAssertEqual(counts, [contactProfileKey: 1, unresolvedFollowKey: 2], "Only the contact without a resolved profile is looked up again")
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Alice", "No profile"])
+
+        clock.advance(by: 1)
+        try await load()
+        counts = await lookupCounts()
+        XCTAssertEqual(counts, [contactProfileKey: 2, unresolvedFollowKey: 3], "A profile resolved ten minutes ago is looked up again")
+    }
+
+    func testResetForgetsResolvedProfilesSoTheNextLoadLooksThemUpAgain() async throws {
+        let clock = TestClock()
+        let manager = ContactsManager(currentDate: { clock.now() })
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        let load: @MainActor (String) async throws -> Void = { owner in
+            try await manager.loadContacts(for: owner, fetchContactRecords: { records }, fetchRemoteProfile: { try await lookups.fetch($0) })
+            await manager.waitForProfileRefreshForTesting()
+        }
+
+        try await load("owner")
+        try await load("owner")
+        var fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys, [contactProfileKey], "A profile resolved moments ago is not looked up again")
+
+        manager.reset()
+        try await load("owner")
+        fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys.count, 2, "A reset, as on sign-out, forgets the profiles resolved before it")
+
+        try await load("another-owner")
+        fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys.count, 3, "Another owner's load does not use the profiles resolved for the first owner")
+    }
+
     func testOnlyALabelOnlyContactIsLookedUpOnTheInteractiveLaneAndOnlyOnce() async throws {
         let labelOnly = Bitkit.PubkyProfile.forDisplay(publicKey: contactProfileKey, name: "Label only", imageUrl: nil)
         let cases: [(name: String, outcome: Result<Bitkit.PubkyProfile?, Error>, row: Bitkit.PubkyProfile, names: [String])] = [
@@ -1531,6 +1587,24 @@ private actor HeldProfileLookups {
         }
         guard let profile = profiles[publicKey] else { throw profileTransportError }
         return profile
+    }
+}
+
+/// A clock the test moves by hand, for the time a contact profile was resolved.
+private final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSince1970: 1_790_000_000)
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return current
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        current += interval
+        lock.unlock()
     }
 }
 
