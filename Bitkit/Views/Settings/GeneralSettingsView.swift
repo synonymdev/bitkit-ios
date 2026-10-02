@@ -166,7 +166,7 @@ struct GeneralSettingsView: View {
 
         do {
             let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
-            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
+            if enabled, canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
                 try await contactsManager.loadContactsIfNeeded(for: publicKey)
             }
 
