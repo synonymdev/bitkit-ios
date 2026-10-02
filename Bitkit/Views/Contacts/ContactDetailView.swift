@@ -7,6 +7,7 @@ struct ContactDetailView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -235,11 +236,17 @@ struct ContactDetailView: View {
     }
 
     /// Shows the change at once, then saves it, one tag change at a time, over the contact's latest profile, after the
-    /// lookup of a profile the row is still waiting for.
+    /// lookup of a profile the row is still waiting for. The save is dropped quietly once this Pubky session ends.
     private func updateTags(_ transform: @escaping ([String]) -> [String]) {
-        guard let current = profile else { return }
+        let pubkyProfile = pubkyProfile
+        guard let current = profile, let session = pubkyProfile.currentSession else { return }
         profile = current.withTags(transform(current.tags))
-        let change = contactsManager.updateContactTags(publicKey: publicKey, shownProfile: current, transform: transform)
+        let change = contactsManager.updateContactTags(
+            publicKey: publicKey,
+            shownProfile: current,
+            isSessionCurrent: { pubkyProfile.currentSession == session },
+            transform: transform
+        )
         Task {
             do {
                 try await change.value
@@ -343,6 +350,7 @@ struct ContactDetailView: View {
             .environmentObject(CurrencyViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(PubkyProfileManager())
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())

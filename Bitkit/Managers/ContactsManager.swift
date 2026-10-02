@@ -121,7 +121,8 @@ class ContactsManager: ObservableObject {
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
     private var pendingProfileLookups: [String: Task<Void, Never>] = [:]
-    /// The last tag change queued for each contact, which the next one for that contact waits for.
+    /// The last tag change queued for each contact, which the next one for that contact waits for. Forgotten on a reset
+    /// or owner change, so a change for the next session never waits behind one from the session before.
     private var tagChanges: [String: Task<Void, Error>] = [:]
     /// Profiles resolved this session for the owner's contacts, shown in place of stored labels while a load refreshes.
     private var resolvedProfiles: [String: PubkyProfile] = [:]
@@ -437,13 +438,14 @@ class ContactsManager: ObservableObject {
     }
 
     /// Stops every profile lookup still running for the previous owner, so none of them can fill the next owner's rows
-    /// or cache.
+    /// or cache, and drops that owner's queued tag changes, which then stop without saving.
     private func forgetResolvedProfiles(owner: String?) {
         resolvedProfilesGeneration += 1
         profileRefresh?.task.cancel()
         profileRefresh = nil
         pendingProfileLookups.values.forEach { $0.cancel() }
         pendingProfileLookups = [:]
+        tagChanges = [:]
         resolvedProfiles = [:]
         resolvedProfilesOwner = owner
     }
@@ -584,7 +586,26 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Update Contact
 
+    /// A reset or owner change while the save runs stops it quietly: it writes no local override and reports no error.
     func updateContact(publicKey: String, name: String, bio: String, imageUrl: String?, links: [PubkyProfileLink], tags: [String]) async throws {
+        let generation = resolvedProfilesGeneration
+        try await updateContact(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags) {
+            self.resolvedProfilesGeneration == generation
+        }
+    }
+
+    /// `isCurrent` is checked right before the save and again once it returns, with nothing suspending between that check
+    /// and the writes after it. Sign-out clears the local overrides, so a save that lands after the session changed must
+    /// not write one back, and its error, if any, belongs to a session the user has left.
+    private func updateContact(
+        publicKey: String,
+        name: String,
+        bio: String,
+        imageUrl: String?,
+        links: [PubkyProfileLink],
+        tags: [String],
+        isCurrent: @MainActor () -> Bool
+    ) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
 
         let contactData = PubkyProfileData(
@@ -595,10 +616,20 @@ class ContactsManager: ObservableObject {
             tags: tags
         )
 
+        guard isCurrent() else { return }
         let saveContactLabel = saveContactLabel
-        try await Task.detached {
-            try await saveContactLabel(prefixedKey, name)
-        }.value
+        do {
+            try await Task.detached {
+                try await saveContactLabel(prefixedKey, name)
+            }.value
+        } catch {
+            guard isCurrent() else { return }
+            throw error
+        }
+        guard isCurrent() else {
+            Logger.info("Dropped a contact update that a session change overtook", context: "ContactsManager")
+            return
+        }
         Self.upsertContactProfileOverride(publicKey: prefixedKey, data: contactData)
 
         let updatedProfile = contactData.toProfile(publicKey: prefixedKey)
@@ -614,16 +645,27 @@ class ContactsManager: ObservableObject {
     /// for that contact are done, so each one applies over the tags the last one saved. It first waits for the lookup of a
     /// profile the row is still waiting for, so the save keeps the bio, links and avatar that lookup finds. `shownProfile`
     /// stands in when the contact is no longer listed. A failed change does not stop the ones queued after it.
+    ///
+    /// A change belongs to the session it was queued in. Once `isSessionCurrent` is false, or a reset or another owner's
+    /// load has run, it stops quietly: it saves nothing, writes no local override and reports no error. A lookup it waits
+    /// for can still finish after a sign-out, and the next identity may have saved a contact with the same key.
     func updateContactTags(
         publicKey: String,
         shownProfile: PubkyProfile,
+        isSessionCurrent: @escaping @MainActor () -> Bool,
         transform: @escaping ([String]) -> [String]
     ) -> Task<Void, Error> {
         let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        let generation = resolvedProfilesGeneration
+        let isCurrent: @MainActor () -> Bool = { [weak self] in
+            self?.resolvedProfilesGeneration == generation && isSessionCurrent()
+        }
         let previousChange = tagChanges[key]
         let change = Task {
             _ = await previousChange?.result
+            guard isCurrent() else { return }
             await resolvePendingContactProfile(publicKey: publicKey)
+            guard isCurrent() else { return }
             let latest = contacts.first(where: { $0.publicKey == publicKey })?.profile ?? shownProfile
             try await updateContact(
                 publicKey: publicKey,
@@ -631,7 +673,8 @@ class ContactsManager: ObservableObject {
                 bio: latest.bio,
                 imageUrl: latest.imageUrl,
                 links: latest.links,
-                tags: transform(latest.tags)
+                tags: transform(latest.tags),
+                isCurrent: isCurrent
             )
         }
         tagChanges[key] = change
