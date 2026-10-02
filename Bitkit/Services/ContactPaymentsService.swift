@@ -59,23 +59,6 @@ enum ContactPaymentsService {
         defaults.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
     }
 
-    @MainActor
-    static func setEnabled(
-        _ enabled: Bool,
-        wallet: WalletViewModel,
-        contactPublicKeys: [String],
-        canUsePrivatePayments: Bool,
-        defaults: UserDefaults = .standard
-    ) async throws {
-        try await setEnabled(
-            enabled,
-            contactPublicKeys: contactPublicKeys,
-            canUsePrivatePayments: canUsePrivatePayments,
-            operations: .live(wallet: wallet),
-            defaults: defaults
-        )
-    }
-
     /// Turns contact payments on or off for the signed-in Pubky session. Private endpoints are prepared for the saved
     /// contacts, so it first waits for the first contacts load. Once that session ends or changes, the change stops and
     /// returns quietly: it writes no preference, publishing flag or cleared cleanup mark, and its endpoint publications

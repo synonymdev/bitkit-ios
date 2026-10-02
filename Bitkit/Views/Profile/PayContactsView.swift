@@ -61,16 +61,11 @@ struct PayContactsView: View {
         defer { isSaving = false }
 
         do {
-            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
-            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
-                try await contactsManager.loadContactsIfNeeded(for: publicKey)
-            }
-
             try await ContactPaymentsService.setEnabled(
                 true,
-                wallet: wallet,
-                contactPublicKeys: contactsManager.contacts.map(\.publicKey),
-                canUsePrivatePayments: canUsePrivatePayments
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: .live(wallet: wallet)
             )
             navigation.path = [.profile]
         } catch {
