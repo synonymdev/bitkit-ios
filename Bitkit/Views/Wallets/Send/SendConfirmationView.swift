@@ -243,8 +243,8 @@ struct SendConfirmationView: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: accentColor,
-                isDisabled: isHardwareConfirmationUnavailable,
-                isLoading: hasStartedAutomaticPayment,
+                isDisabled: isSwipeDisabled,
+                isLoading: hasStartedAutomaticPayment || isFeeRateMissing,
                 swipeProgress: $swipeProgress
             ) {
                 try await submitPayment()
@@ -618,6 +618,10 @@ struct SendConfirmationView: View {
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
+        if isFeeRateMissing {
+            try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+        }
+
         // Validate payment and show warnings if needed
         let warnings = await validatePayment()
         if !warnings.isEmpty {
@@ -736,6 +740,37 @@ struct SendConfirmationView: View {
             }
             await onAuthorized(request)
         }
+    }
+
+    static func isFeeRateMissing(walletType: WalletType, isHardwarePayment: Bool, feeRate: UInt32?) -> Bool {
+        walletType == .onchain && !isHardwarePayment && feeRate == nil
+    }
+
+    static func isSwipeDisabled(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        isHardwareConfirmationUnavailable: Bool,
+        feeRate: UInt32?
+    ) -> Bool {
+        isHardwareConfirmationUnavailable
+            || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
+    }
+
+    private var isFeeRateMissing: Bool {
+        Self.isFeeRateMissing(
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive,
+            feeRate: wallet.selectedFeeRateSatsPerVByte
+        )
+    }
+
+    private var isSwipeDisabled: Bool {
+        Self.isSwipeDisabled(
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive,
+            isHardwareConfirmationUnavailable: isHardwareConfirmationUnavailable,
+            feeRate: wallet.selectedFeeRateSatsPerVByte
+        )
     }
 
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
