@@ -5232,6 +5232,104 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.processCallCount, 1)
     }
 
+    func testProposalsOnlyInspectSelectedSavedTarget() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let unrelatedKey = "pubky\(String(repeating: "a", count: 52))"
+        let expectedIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let expiresAt = now.addingTimeInterval(60)
+        let target = PaykitPaymentRequestTarget(publicKey: publicKey)
+        let savedPublicKeys = [unrelatedKey, String(publicKey.dropFirst(5)), publicKey]
+
+        for isSubscription in [false, true] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [
+                    linkedPeer(counterparty: unrelatedKey, state: .linked),
+                    linkedPeer(counterparty: publicKey, state: .linked),
+                ],
+                requestCapabilitiesByPublicKey: [publicKey: true, unrelatedKey: true]
+            )
+            await sdk.setCapabilityLookupFailing(true, for: unrelatedKey)
+            try await sdk.setProposalResult(paymentRequestRecord(counterparty: publicKey, role: .payee))
+            let service = PaykitPaymentRequestService(
+                sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true }, logWarning: { _ in }
+            )
+
+            if isSubscription {
+                _ = try await service.proposeSubscription(
+                    PaykitSubscriptionDraft(
+                        amountSats: 1000, name: "Support", description: "", frequency: .month,
+                        expiresAt: expiresAt, iconData: nil
+                    ),
+                    to: target, savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity,
+                    validateBeforeProposing: {}
+                )
+            } else {
+                _ = try await service.propose(
+                    PaykitPaymentRequestDraft(amountSats: 1000, note: "Support", expiresAt: expiresAt),
+                    to: target, savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity
+                )
+            }
+
+            let lookups = await sdk.capabilityLookupPublicKeys
+            XCTAssertEqual(lookups, isSubscription ? [publicKey, publicKey] : [publicKey])
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.proposedRequests.map(\.counterparty), [publicKey])
+        }
+    }
+
+    func testProposalsRejectUnsavedSelectedTarget() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let unrelatedKey = "pubky\(String(repeating: "a", count: 52))"
+        let expectedIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let expiresAt = now.addingTimeInterval(60)
+        let target = PaykitPaymentRequestTarget(publicKey: publicKey)
+
+        for isSubscription in [false, true] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [
+                    linkedPeer(counterparty: publicKey, state: .linked),
+                    linkedPeer(counterparty: unrelatedKey, state: .linked),
+                ],
+                requestCapabilitiesByPublicKey: [publicKey: true, unrelatedKey: true]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(counterparty: publicKey, role: .payee))
+            let service = PaykitPaymentRequestService(
+                sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true }, logWarning: { _ in }
+            )
+
+            do {
+                if isSubscription {
+                    _ = try await service.proposeSubscription(
+                        PaykitSubscriptionDraft(
+                            amountSats: 1000, name: "Support", description: "", frequency: .month,
+                            expiresAt: expiresAt, iconData: nil
+                        ),
+                        to: target, savedPublicKeys: [unrelatedKey], expectedIdentity: expectedIdentity,
+                        validateBeforeProposing: {}
+                    )
+                } else {
+                    _ = try await service.propose(
+                        PaykitPaymentRequestDraft(amountSats: 1000, note: "Support", expiresAt: expiresAt),
+                        to: target, savedPublicKeys: [unrelatedKey], expectedIdentity: expectedIdentity
+                    )
+                }
+                XCTFail("Expected the unsaved target to be rejected, subscription: \(isSubscription)")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+            }
+
+            let lookups = await sdk.capabilityLookupPublicKeys
+            XCTAssertTrue(lookups.isEmpty)
+            let snapshot = await sdk.snapshot()
+            XCTAssertTrue(snapshot.proposedRequests.isEmpty)
+            XCTAssertEqual(snapshot.uploadCount, 0)
+        }
+    }
+
     func testProposeRemainsCreatedWhenImmediateDeliveryFails() async throws {
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
@@ -5705,7 +5803,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var liveSessionAvailable = true
     private var linkedPeersError: PaymentRequestSdkMockError?
     private var linkedPeersCallCount = 0
-    private var capabilityLookupCount = 0
+    private(set) var capabilityLookupPublicKeys: [String] = []
     private var failingCapabilityKeys: Set<String> = []
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
@@ -5815,7 +5913,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     }
 
     func canReceivePaymentRequests(publicKey: String) throws -> Bool {
-        capabilityLookupCount += 1
+        capabilityLookupPublicKeys.append(publicKey)
         if failingCapabilityKeys.contains(publicKey) {
             throw PaymentRequestSdkMockError.receive
         }
@@ -6042,7 +6140,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     }
 
     func capabilityLookups() -> Int {
-        capabilityLookupCount
+        capabilityLookupPublicKeys.count
     }
 
     func setLinkedPeersError(_ error: PaymentRequestSdkMockError?) {

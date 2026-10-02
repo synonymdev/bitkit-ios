@@ -670,7 +670,9 @@ struct PaykitPaymentRequestService {
         guard draft.expiresAt > proposalDate else {
             throw PaykitPaymentRequestError.requestExpired
         }
-        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+        guard let selectedSavedKey = savedPublicKeys.first(where: { PubkyPublicKeyFormat.matches($0, target.publicKey) }),
+              try await eligibleTargets(savedPublicKeys: [selectedSavedKey], expectedIdentity: expectedIdentity).contains(target)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         let metadataData = try JSONSerialization.data(withJSONObject: ["note": draft.note])
@@ -727,7 +729,9 @@ struct PaykitPaymentRequestService {
         guard draft.expiresAt > validationDate else {
             throw PaykitPaymentRequestError.requestExpired
         }
-        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+        guard let selectedSavedKey = savedPublicKeys.first(where: { PubkyPublicKeyFormat.matches($0, target.publicKey) }),
+              try await eligibleTargets(savedPublicKeys: [selectedSavedKey], expectedIdentity: expectedIdentity).contains(target)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
@@ -746,7 +750,7 @@ struct PaykitPaymentRequestService {
         } else {
             nil
         }
-        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+        guard try await eligibleTargets(savedPublicKeys: [selectedSavedKey], expectedIdentity: expectedIdentity).contains(target) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         try await validateBeforeProposing()
