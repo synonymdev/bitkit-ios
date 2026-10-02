@@ -168,11 +168,17 @@ extension PrivatePaykitService {
         for publicKey in cleanupKeys {
             do {
                 guard let report = try await operations.clearPaymentList(publicKey) else { continue }
+                logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
                 if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
                     throw PrivatePaykitError.privateUnavailable
                 }
                 clearedRetryKeys.append(publicKey)
             } catch {
+                Logger.warn(
+                    "Failed to clear private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): " +
+                        PaykitResolutionFailureDiagnostics.reason(for: error),
+                    context: "PrivatePaykit"
+                )
                 failedPublicKeys.insert(publicKey)
                 firstError = firstError ?? error
             }
@@ -182,6 +188,10 @@ extension PrivatePaykitService {
             await operations.drainMessages(clearedRetryKeys)
             let pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
             if !pendingRetryKeys.isEmpty {
+                Logger.warn(
+                    "Private Paykit endpoint withdrawal remains pending for \(pendingRetryKeys.map(PubkyPublicKeyFormat.redacted))",
+                    context: "PrivatePaykit"
+                )
                 failedPublicKeys.formUnion(pendingRetryKeys)
                 firstError = firstError ?? PrivatePaykitError.privateUnavailable
             }
@@ -623,7 +633,7 @@ extension PrivatePaykitService {
     }
 
     private func applyPrivatePaymentListDeliveryReport(_ report: PrivatePaymentListDeliveryReport, reason: String) -> Error? {
-        var firstError: Error?
+        logPrivatePaymentListDeliveryFailures(report, reason: reason)
         var didChangeState = false
 
         for change in report.queued {
@@ -636,6 +646,14 @@ extension PrivatePaykitService {
             didChangeState = clearPublishedPrivatePaymentList(publicKey: publicKey) || didChangeState
         }
 
+        if didChangeState {
+            persistState(markWalletBackup: true)
+        }
+
+        return report.failedToQueue.isEmpty && report.failedToDeliver.isEmpty ? nil : PrivatePaykitError.privateUnavailable
+    }
+
+    private func logPrivatePaymentListDeliveryFailures(_ report: PrivatePaymentListDeliveryReport, reason: String) {
         for change in report.failedToQueue {
             let publicKey = PubkyPublicKeyFormat.normalized(change.counterparty) ?? change.counterparty
             Logger.warn(
@@ -643,23 +661,16 @@ extension PrivatePaykitService {
                     "\(change.error?.redactedContext() ?? "unknown error")",
                 context: "PrivatePaykit"
             )
-            firstError = firstError ?? PrivatePaykitError.privateUnavailable
         }
 
         for failure in report.failedToDeliver {
             let publicKey = PubkyPublicKeyFormat.normalized(failure.counterparty) ?? failure.counterparty
             Logger.warn(
-                "Failed to deliver private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): \(failure.error)",
+                "Failed to deliver private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)) during \(reason): " +
+                    failure.error.redactedContext(),
                 context: "PrivatePaykit"
             )
-            firstError = firstError ?? PrivatePaykitError.privateUnavailable
         }
-
-        if didChangeState {
-            persistState(markWalletBackup: true)
-        }
-
-        return firstError
     }
 
     func normalizedSavedContactKeys(_ publicKeys: [String]) -> [String] {
