@@ -17,6 +17,24 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(PrivatePaykitService.initialLinkBurstRetryDelays.allSatisfy { $0 == 2_000_000_000 })
     }
 
+    func testPrivateMessageDrainKeysRespectLinkStateAndPendingOutbound() {
+        let peers: [String: LinkedPeerState] = [
+            "idle": .linked, "pending": .linked, "new": .notLinked,
+            "linking": .linking, "recovering": .recoveryRequired,
+            "blocked": .blocked, "unknown": .unknown,
+        ]
+        let keys = Set(peers.keys).union(["missing", "missing-pending"])
+        let outbound: Set = ["pending", "missing-pending", "blocked", "unknown", "unrelated"]
+        for retryMissingPeers in [false, true] {
+            let pending = PrivatePaykitService.pendingPrivateMessageDrainKeys(
+                keys, linkedPeers: peers, pendingOutbound: outbound, retryMissingPeers: retryMissingPeers
+            )
+            var expected: Set = ["pending", "missing-pending", "new", "linking", "recovering"]
+            if retryMissingPeers { expected.insert("missing") }
+            XCTAssertEqual(pending, expected)
+        }
+    }
+
     func testPendingEndpointReconciliationRestoresSavedContactsWhenPublishingRemainsEnabled() throws {
         try withIsolatedDefaults { defaults in
             defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
@@ -714,7 +732,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         var syncedUpdates = [PrivatePaymentListReservationUpdateInput]()
         let operations = PrivatePaykitService.EndpointPublicationOperations(
             currentPublicKey: { "pubkylocal" },
-            ensureLink: { _ in },
+            ensureLink: { _ in .linked },
             buildEndpoints: { publicKey in
                 if publicKey == failedPublicKey { throw preparationError }
                 XCTAssertEqual(publicKey, successfulPublicKey)
@@ -751,7 +769,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let preparationError = NSError(domain: "PrivatePaykitServiceTests", code: 1)
         let operations = PrivatePaykitService.EndpointPublicationOperations(
             currentPublicKey: { "pubkylocal" },
-            ensureLink: { _ in },
+            ensureLink: { _ in .linked },
             buildEndpoints: { _ in throw preparationError },
             syncPaymentLists: { _ in
                 XCTFail("No payment list should be synced")

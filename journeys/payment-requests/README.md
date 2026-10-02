@@ -33,6 +33,8 @@ That run established the issuer shapes captured by the fixture: lowercase `btc`,
 
 Bitkit refreshes shared request state every 10 seconds. Private messages are synchronized on
 startup and explicit refreshes, and on maintenance rounds that back off from 30 to 60 to 120 seconds.
+Startup link retries stop when no link or outbound work remains; subsequent startup request polls
+read shared state without repeating private-message synchronization or target discovery.
 A new peer message can therefore take up to two minutes plus synchronization time to appear during steady polling.
 
 ## Accepting install

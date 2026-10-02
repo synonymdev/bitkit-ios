@@ -15,7 +15,7 @@ extension PrivatePaykitService {
 
     struct EndpointPublicationOperations {
         let currentPublicKey: () async -> String?
-        let ensureLink: (_ publicKey: String) async throws -> Void
+        let ensureLink: (_ publicKey: String) async throws -> LinkedPeerState
         let buildEndpoints: (_ publicKey: String) async throws -> [PublicPaykitService.Endpoint]
         let syncPaymentLists: (_ updates: [PrivatePaymentListReservationUpdateInput]) async throws -> PrivatePaymentListDeliveryReport
     }
@@ -116,6 +116,12 @@ extension PrivatePaykitService {
         Self.initialLinkBurstStartedSubject.send()
 
         initialLinkBurstTask = Task { [reason, generation] in
+            defer {
+                if generation == initialLinkBurstGeneration {
+                    initialLinkBurstTask = nil
+                    initialLinkBurstPublicKeys.removeAll()
+                }
+            }
             for delay in [UInt64(0)] + Self.initialLinkBurstRetryDelays {
                 if delay > 0 {
                     try? await Task.sleep(nanoseconds: delay)
@@ -132,11 +138,11 @@ extension PrivatePaykitService {
                     requireImmediatePublication: false,
                     reason: "\(reason) initial link burst"
                 )
+                guard !Task.isCancelled, generation == initialLinkBurstGeneration else { return }
+                let pendingKeys = await pendingPrivateMessageDrainKeys(publicKeys, retryMissingPeers: true)
+                guard !Task.isCancelled, generation == initialLinkBurstGeneration else { return }
+                if pendingKeys.isEmpty { break }
             }
-
-            guard generation == initialLinkBurstGeneration else { return }
-            initialLinkBurstTask = nil
-            initialLinkBurstPublicKeys.removeAll()
         }
     }
 
@@ -410,7 +416,7 @@ extension PrivatePaykitService {
                 await PubkyService.currentPublicKey()
             },
             ensureLink: { publicKey in
-                _ = try await PaykitSdkService.shared.ensureLinkWithPeer(publicKey)
+                try await PaykitSdkService.shared.ensureLinkWithPeer(publicKey).state
             },
             buildEndpoints: { publicKey in
                 try await self.buildLocalEndpoints(
@@ -447,7 +453,9 @@ extension PrivatePaykitService {
 
         for publicKey in publicKeys {
             do {
-                try await operations.ensureLink(publicKey)
+                if try await operations.ensureLink(publicKey) != .linked {
+                    linkRetryKeys.append(publicKey)
+                }
             } catch PaykitError.NotFound {
                 continue
             } catch {
@@ -458,7 +466,6 @@ extension PrivatePaykitService {
                 linkRetryKeys.append(publicKey)
                 continue
             }
-            linkRetryKeys.append(publicKey)
             do {
                 let endpoints = try await operations.buildEndpoints(publicKey)
                 updates.append(PrivatePaymentListReservationUpdateInput(
@@ -511,8 +518,11 @@ extension PrivatePaykitService {
         let retryKeys = Array(Set(retryKeys))
         guard !retryKeys.isEmpty else { return }
 
-        await drainPendingPrivateMessages(reason: reason, advancing: retryKeys)
-        let pendingRetryKeys = await pendingPrivateMessageDrainKeys(retryKeys)
+        let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys, retryMissingPeers: true)
+        guard !drainKeys.isEmpty else { return }
+
+        await drainPendingPrivateMessages(reason: reason, advancing: Array(drainKeys))
+        let pendingRetryKeys = await pendingPrivateMessageDrainKeys(Array(drainKeys))
         if !pendingRetryKeys.isEmpty {
             schedulePendingPrivateMessageDrainRetries(reason: reason, retryKeys: Array(pendingRetryKeys))
         }
@@ -580,7 +590,11 @@ extension PrivatePaykitService {
     private func drainPendingPrivateMessageRetryKeys(reason: String) async {
         let retryKeys = Array(pendingMessageDrainRetryKeys)
         guard !retryKeys.isEmpty else { return }
-        await drainPendingPrivateMessages(reason: reason, advancing: retryKeys)
+
+        let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys)
+        if !drainKeys.isEmpty {
+            await drainPendingPrivateMessages(reason: reason, advancing: Array(drainKeys))
+        }
         await updatePendingMessageDrainRetryKeys(retryKeys)
     }
 
@@ -600,7 +614,7 @@ extension PrivatePaykitService {
         pendingMessageDrainRetryKeys.formUnion(remainingKeys)
     }
 
-    private func pendingPrivateMessageDrainKeys(_ retryKeys: [String]) async -> Set<String> {
+    private func pendingPrivateMessageDrainKeys(_ retryKeys: [String], retryMissingPeers: Bool = false) async -> Set<String> {
         let retryKeys = Set(retryKeys)
         guard !retryKeys.isEmpty else { return [] }
 
@@ -626,9 +640,23 @@ extension PrivatePaykitService {
             return retryKeys
         }
 
+        return Self.pendingPrivateMessageDrainKeys(
+            retryKeys,
+            linkedPeers: linkedPeers,
+            pendingOutbound: pendingOutbound,
+            retryMissingPeers: retryMissingPeers
+        )
+    }
+
+    static func pendingPrivateMessageDrainKeys(
+        _ retryKeys: Set<String>,
+        linkedPeers: [String: LinkedPeerState],
+        pendingOutbound: Set<String>,
+        retryMissingPeers: Bool = false
+    ) -> Set<String> {
         return Set(retryKeys.filter { retryKey in
             guard let state = linkedPeers[retryKey] else {
-                return pendingOutbound.contains(retryKey)
+                return retryMissingPeers || pendingOutbound.contains(retryKey)
             }
             if state == .linked {
                 return pendingOutbound.contains(retryKey)
