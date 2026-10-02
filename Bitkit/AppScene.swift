@@ -1227,7 +1227,7 @@ struct AppScene: View {
                 return
             }
             guard scenePhase == .active else { return }
-            await refreshIncomingPaykitPaymentRequests()
+            await refreshIncomingPaykitPaymentRequests(refreshMaintenance: false)
         }
     }
 

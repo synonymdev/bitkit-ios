@@ -11,19 +11,15 @@ import XCTest
 final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testSharedStateRefreshSkipsPrivateMessages() async throws {
         let record = try paymentRequestRecord()
-        let sdk = PaymentRequestSdkMock(records: [record])
+        let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)
 
+        await manager.refresh()
+        await sdk.setRecords([record])
         await manager.refresh(syncPrivateMessages: false)
 
         XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [record.paymentRequestId])
-        var snapshot = await sdk.snapshot()
-        XCTAssertEqual(snapshot.processCallCount, 0)
-        XCTAssertEqual(snapshot.receiveCallCount, 0)
-
-        await manager.refresh()
-
-        snapshot = await sdk.snapshot()
+        let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 1)
         XCTAssertEqual(snapshot.receiveCallCount, 1)
     }
