@@ -23,6 +23,7 @@ struct PaykitOnchainPaymentResolution: Equatable {
 struct PendingPaykitPaymentProof: Codable, Equatable {
     let identity: String
     let requestId: PaykitPaymentRequest.ID
+    let paymentAppId: String
     let paymentEndpointIdentifier: String
     let kind: PaykitPaymentProofKind
     let billingPeriod: PaykitBillingPeriod?
@@ -41,6 +42,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     init(
         identity: String,
         requestId: PaykitPaymentRequest.ID,
+        paymentAppId: String,
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind,
         billingPeriod: PaykitBillingPeriod? = nil,
@@ -54,6 +56,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     ) {
         self.identity = identity
         self.requestId = requestId
+        self.paymentAppId = paymentAppId
         self.paymentEndpointIdentifier = paymentEndpointIdentifier
         self.kind = kind
         self.billingPeriod = billingPeriod
@@ -100,7 +103,6 @@ protocol PaykitPaymentProofSdkHandling: Sendable {
     func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
     func submitPaymentProof(
         counterparty: String,
-        counterpartyReceiverPath: String,
         paymentRequestId: String,
         proof: Paykit.PaymentProofSubmission
     ) async throws -> Paykit.PaymentRequestRecord
@@ -231,11 +233,13 @@ actor PaykitPaymentProofService {
 
     func prepare(
         request: PaykitPaymentRequest,
+        paymentAppId: String,
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind
     ) async throws {
         let proof = try await pendingProof(
             request: request,
+            paymentAppId: paymentAppId,
             paymentEndpointIdentifier: paymentEndpointIdentifier,
             kind: kind
         )
@@ -262,13 +266,14 @@ actor PaykitPaymentProofService {
 
     private func pendingProof(
         request: PaykitPaymentRequest,
+        paymentAppId: String,
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind
     ) async throws -> PendingPaykitPaymentProof {
         guard request.acceptedPaymentEndpointIdentifiers.contains(paymentEndpointIdentifier),
               Self.endpoint(paymentEndpointIdentifier, supports: kind),
               let identityStatus = try await sdk.identityStatus(),
-              identityStatus.liveSessionAvailable,
+              identityStatus.capability == .privateLinkCapable,
               let publicKey = identityStatus.publicKey,
               let identity = PubkyPublicKeyFormat.normalized(publicKey)
         else {
@@ -278,6 +283,7 @@ actor PaykitPaymentProofService {
         return PendingPaykitPaymentProof(
             identity: identity,
             requestId: request.id,
+            paymentAppId: paymentAppId,
             paymentEndpointIdentifier: paymentEndpointIdentifier,
             kind: kind,
             billingPeriod: request.billingPeriod,
@@ -363,11 +369,23 @@ actor PaykitPaymentProofService {
     func completeOnchainPayment(
         _ request: PaykitPaymentRequest,
         txid: String,
+        paymentAppId: String,
         paymentEndpointIdentifier: String
     ) async {
+        let prepared = try? await loadProofs().filter {
+            $0.requestId == request.id && $0.paymentAppId == paymentAppId &&
+                $0.paymentEndpointIdentifier == paymentEndpointIdentifier &&
+                $0.kind == .onchain && $0.paymentStarted && !$0.hasUnsupportedOnchainWallet &&
+                $0.paymentIdentifier == nil && $0.proofData == nil
+        }
+        if let prepared, prepared.count == 1, let proof = prepared.first {
+            await completeOnchainPayment(requestId: request.id, identity: proof.identity, txid: txid, fallbackProof: proof)
+            return
+        }
         guard let identity = try? await currentIdentity() else { return }
         let fallbackProof = try? await pendingProof(
             request: request,
+            paymentAppId: paymentAppId,
             paymentEndpointIdentifier: paymentEndpointIdentifier,
             kind: .onchain
         )
@@ -485,7 +503,7 @@ actor PaykitPaymentProofService {
             var pendingProofs = try await loadProofs()
             guard !pendingProofs.isEmpty else { return }
             guard let identityStatus = try await sdk.identityStatus(),
-                  identityStatus.liveSessionAvailable,
+                  identityStatus.capability == .privateLinkCapable,
                   let publicKey = identityStatus.publicKey,
                   let identity = PubkyPublicKeyFormat.normalized(publicKey)
             else { return }
@@ -544,7 +562,7 @@ actor PaykitPaymentProofService {
         do {
             let records = try await sdk.paymentRequests()
             guard let identityStatus = try await sdk.identityStatus(),
-                  identityStatus.liveSessionAvailable,
+                  identityStatus.capability == .privateLinkCapable,
                   PubkyPublicKeyFormat.matches(identityStatus.publicKey, identity)
             else { return pendingProofs }
 
@@ -569,7 +587,6 @@ actor PaykitPaymentProofService {
             guard record.localRole == .payer,
                   record.paymentRequestId == pendingProof.requestId.paymentRequestId,
                   PubkyPublicKeyFormat.matches(record.counterparty, pendingProof.requestId.counterparty),
-                  record.counterpartyReceiverPath == pendingProof.requestId.counterpartyReceiverPath,
                   pendingProof.billingPeriod != nil || record.state == .proofSubmitted
             else { return false }
 
@@ -627,8 +644,7 @@ actor PaykitPaymentProofService {
             PubkyPublicKeyFormat.matches($0.identity, identity) &&
                 $0.requestId.billingPeriodStartsAt != nil &&
                 $0.requestId.paymentRequestId == subscriptionId.paymentRequestId &&
-                $0.requestId.counterparty == subscriptionId.counterparty &&
-                $0.requestId.counterpartyReceiverPath == subscriptionId.counterpartyReceiverPath
+                $0.requestId.counterparty == subscriptionId.counterparty
         }
         let protectedRequestIds: Set<PaykitPaymentRequest.ID> = Set(proofs.compactMap { proof in
             guard belongsToSubscription(proof) else { return nil }
@@ -662,20 +678,20 @@ actor PaykitPaymentProofService {
         guard !pendingProof.hasUnsupportedOnchainWallet, let proofData = pendingProof.proofData else { return false }
         do {
             guard let identityStatus = try await sdk.identityStatus(),
-                  identityStatus.liveSessionAvailable,
+                  identityStatus.capability == .privateLinkCapable,
                   PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity)
             else { return false }
 
             let records = try await sdk.paymentRequests()
             guard let request = records.first(where: {
                 $0.paymentRequestId == pendingProof.requestId.paymentRequestId &&
-                    PubkyPublicKeyFormat.matches($0.counterparty, pendingProof.requestId.counterparty) &&
-                    $0.counterpartyReceiverPath == pendingProof.requestId.counterpartyReceiverPath
+                    PubkyPublicKeyFormat.matches($0.counterparty, pendingProof.requestId.counterparty)
             }) else { return false }
 
             let proofText = try Self.proofText(kind: pendingProof.kind, data: proofData)
             let isAlreadyQueued = request.paymentProofs.contains(where: {
                 Self.billingPeriod($0.billingPeriod, matches: pendingProof.billingPeriod) &&
+                    $0.paymentAppId == pendingProof.paymentAppId &&
                     $0.paymentEndpointIdentifier == pendingProof.paymentEndpointIdentifier &&
                     Self.proofValues($0.proof.exportText()) == Self.proofValues(proofText)
             })
@@ -683,10 +699,10 @@ actor PaykitPaymentProofService {
             if !isAlreadyQueued {
                 _ = try await sdk.submitPaymentProof(
                     counterparty: pendingProof.requestId.counterparty,
-                    counterpartyReceiverPath: pendingProof.requestId.counterpartyReceiverPath,
                     paymentRequestId: pendingProof.requestId.paymentRequestId,
                     proof: Paykit.PaymentProofSubmission(
                         billingPeriod: pendingProof.billingPeriod?.sdkValue,
+                        paymentAppId: pendingProof.paymentAppId,
                         paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
                         allowanceId: nil,
                         conversionQuoteId: nil,

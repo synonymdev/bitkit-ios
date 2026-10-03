@@ -24,10 +24,11 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try Keychain.delete(key: .paykitSubscriptionState)
         try Keychain.delete(key: .paykitPendingPaymentProofs)
         try Keychain.delete(key: .paykitPendingBackupRestore)
+        try Keychain.delete(key: .paykitAcceptedPaymentRequests)
     }
 
     func testPaymentStateBackupRoundTrip() async throws {
-        let id = PaykitSubscription.ID(paymentRequestId: "subscription", counterparty: identity, counterpartyReceiverPath: "bitkit/server")
+        let id = PaykitSubscription.ID(paymentRequestId: "subscription", counterparty: identity)
         let period = try XCTUnwrap(PaykitBillingPeriod(sdkPeriod: BillingPeriod(
             startsAt: "2026-09-24T10:00:00.100Z", endsAt: "2026-09-25T10:00:00.100Z"
         )))
@@ -35,7 +36,6 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         let requestId = PaykitPaymentRequest.ID(
             paymentRequestId: id.paymentRequestId,
             counterparty: id.counterparty,
-            counterpartyReceiverPath: id.counterpartyReceiverPath,
             billingPeriodStartsAt: startedAt
         )
         let subscriptions = PaykitSubscriptionState(
@@ -45,6 +45,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         let proof = PendingPaykitPaymentProof(
             identity: identity,
             requestId: requestId,
+            paymentAppId: "bitkit",
             paymentEndpointIdentifier: "bitcoin-onchain",
             kind: .onchain,
             billingPeriod: period,
@@ -56,15 +57,22 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             onchainWalletId: "trezor:android",
             onchainMatchingTransactionIdsBeforeAttempt: ["previous-transaction"]
         )
-        let backup = PaykitPaymentStateBackup(
+        let acceptedId = PaykitPaymentRequest.ID(paymentRequestId: "one-time", counterparty: identity)
+        let acceptanceStore = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+        try acceptanceStore.save([acceptedId], identity: identity)
+        let backup = try PaykitPaymentStateBackup(
             subscriptions: [identity: .init(subscriptions)],
-            pendingProofs: [.init(proof)]
+            pendingProofs: [.init(proof)],
+            acceptedOneTimeRequests: acceptanceStore.backupSnapshot()
         )
         let data = try JSONEncoder().encode(backup)
         let decoded = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: data)
         XCTAssertEqual(decoded.pendingProofs.first?.requestId.billingPeriodStartsAt, "2026-09-24T10:00:00.100Z")
         try PaykitSubscriptionStateStore().restoreBackup(decoded.subscriptions)
         try await PaykitPaymentProofService.shared.restoreBackup(decoded.pendingProofs)
+        try Keychain.delete(key: .paykitAcceptedPaymentRequests)
+        try acceptanceStore.restoreBackup(XCTUnwrap(decoded.acceptedOneTimeRequests))
+        XCTAssertEqual(try acceptanceStore.load(identity: identity), [acceptedId])
 
         XCTAssertEqual(try PaykitSubscriptionStateStore().load(identity: identity), subscriptions)
         let loaded = try await PaykitPaymentProofStore().load()
@@ -198,7 +206,28 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
 
     func testAndroidPaymentStatePreservesPreciseAcceptanceBillingBoundaries() throws {
         let data = Data("""
-        {"subscriptions":{"\(identity)":{"acceptances":[{"id":{"paymentRequestId":"millisecond","counterparty":"bob","counterpartyReceiverPath":"bitkit/server"},"acceptedAt":"2026-09-24T10:00:00.123Z"},{"id":{"paymentRequestId":"nanosecond","counterparty":"bob","counterpartyReceiverPath":"bitkit/server"},"acceptedAt":"2026-09-24T10:00:00.123456789Z"}],"presentedProposalIds":[]}},"pendingProofs":[{"identity":"\(identity)","requestId":{"paymentRequestId":"request","counterparty":"bob","counterpartyReceiverPath":"bitkit/server","billingPeriodStartsAt":"2026-09-24T10:00:00.100Z"},"paymentEndpointIdentifier":"bitcoin-onchain","kind":"bitcoin-onchain-txid","paymentStarted":true,"billingPeriod":{"startsAt":"2026-09-24T10:00:00.100Z","endsAt":"2026-09-25T10:00:00.100Z"},"onchainWalletId":"trezor:android","onchainMatchingTransactionIdsBeforeAttempt":[]}]}
+        {
+          "subscriptions": {
+            "\(identity)": {
+              "acceptances": [
+                {"id":{"paymentRequestId":"millisecond","counterparty":"bob"},"acceptedAt":"2026-09-24T10:00:00.123Z"},
+                {"id":{"paymentRequestId":"nanosecond","counterparty":"bob"},"acceptedAt":"2026-09-24T10:00:00.123456789Z"}
+              ],
+              "presentedProposalIds": []
+            }
+          },
+          "pendingProofs": [{
+            "identity": "\(identity)",
+            "requestId": {"paymentRequestId":"request","counterparty":"bob","billingPeriodStartsAt":"2026-09-24T10:00:00.100Z"},
+            "paymentAppId": "bitkit",
+            "paymentEndpointIdentifier": "bitcoin-onchain",
+            "kind": "bitcoin-onchain-txid",
+            "paymentStarted": true,
+            "billingPeriod": {"startsAt":"2026-09-24T10:00:00.100Z","endsAt":"2026-09-25T10:00:00.100Z"},
+            "onchainWalletId": "trezor:android",
+            "onchainMatchingTransactionIdsBeforeAttempt": []
+          }]
+        }
         """.utf8)
         let backup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: data)
         let store = PaykitSubscriptionStateStore()
@@ -216,13 +245,11 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         let restoredAcceptedAt = try store.load(identity: identity).acceptedAt
         let millisecondId = PaykitSubscription.ID(
             paymentRequestId: "millisecond",
-            counterparty: "bob",
-            counterpartyReceiverPath: "bitkit/server"
+            counterparty: "bob"
         )
         let nanosecondId = PaykitSubscription.ID(
             paymentRequestId: "nanosecond",
-            counterparty: "bob",
-            counterpartyReceiverPath: "bitkit/server"
+            counterparty: "bob"
         )
         XCTAssertEqual(restoredAcceptedAt[millisecondId]?.timestamp, "2026-09-24T10:00:00.123Z")
         XCTAssertEqual(restoredAcceptedAt[nanosecondId]?.timestamp, "2026-09-24T10:00:00.123456789Z")
@@ -271,8 +298,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     func testLegacyStoredAcceptanceDateDecodesAndMigratesToPreciseTimestamp() throws {
         let id = PaykitSubscription.ID(
             paymentRequestId: "subscription",
-            counterparty: identity,
-            counterpartyReceiverPath: "bitkit/server"
+            counterparty: identity
         )
         let acceptedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-24T10:00:00Z"))
         let legacyState = LegacyState(subscriptionsByIdentity: [

@@ -12,8 +12,8 @@ final class ContactsManagerTests: XCTestCase {
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
-    func testImportPersistsPreparedContactThroughDefaultSDKWithoutSession() async throws {
-        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession]
+    func testImportRequiresSessionForSharedContactStorage() async throws {
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let originals = try keys.map { try Keychain.load(key: $0) }
         addTeardownBlock {
             await PaykitSdkService.shared.clearState()
@@ -26,37 +26,17 @@ final class ContactsManagerTests: XCTestCase {
             }
         }
         await PaykitSdkService.shared.clearState()
-        try Keychain.delete(key: .paykitSession)
-        // Generated with Paykit rc56's StorageStateEnvelope v1 and postcard::to_allocvec:
-        // one public identity initialized at 2026-01-01T00:00:00Z, generation 0, no Noise key or other records.
-        let fixture = try XCTUnwrap(Data(base64Encoded:
-            "AQEBNDNyc2R1aGN4cHc3NHNud3ljdDg2bTM4YzYzajNwcTh4NHljcWlreGc2NHJvaWs4eXc1eHkAFDIwMjYtMDEtMDFUMDA6MDA6MDBaAAAAAAAAAAAAAAAAAAAAAAA="))
-        let snapshot = SdkStateBlobSnapshot(blob: SdkStateBlob(bytes: fixture), revision: "contact-import-fixture")
-        try Keychain.upsert(key: .paykitSdkState, data: encodeSdkStateBlobSnapshot(snapshot: snapshot))
-
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
         let prepared = makeContact(publicKey: "pubky5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo")
         let manager = ContactsManager()
-        try await manager.importContacts(contacts: [prepared])
-        let stored = try await PubkyService.contactRecords()
-        XCTAssertEqual(stored.count, 1)
-        XCTAssertEqual(stored.first?.publicKey, prepared.publicKey)
-        XCTAssertEqual(stored.first?.label, prepared.displayName)
-        XCTAssertEqual(stored.first?.receiverPaths, [PaykitReceiverPath.wallet])
-        XCTAssertEqual(manager.contacts, [prepared])
-
-        _ = try await PubkyService.saveContact(
-            publicKey: prepared.publicKey, label: prepared.displayName,
-            receiverPaths: [PaykitReceiverPath.wallet, PaykitReceiverPath.server]
-        )
-        try await ContactsManager().importContacts(contacts: [prepared])
-        let persisted = try XCTUnwrap(Keychain.load(key: .paykitSdkState))
-        await PaykitSdkService.shared.clearState()
-        try Keychain.upsert(key: .paykitSdkState, data: persisted)
-        let reloaded = try await PubkyService.contactRecords()
-        XCTAssertEqual(reloaded.count, 1)
-        XCTAssertEqual(reloaded.first?.publicKey, prepared.publicKey)
-        XCTAssertEqual(reloaded.first?.label, prepared.displayName)
-        XCTAssertEqual(Set(reloaded.first?.receiverPaths ?? []), [PaykitReceiverPath.wallet, PaykitReceiverPath.server])
+        do {
+            try await manager.importContacts(contacts: [prepared])
+            XCTFail("Shared contact storage requires an active session")
+        } catch {
+            XCTAssertTrue(manager.contacts.isEmpty)
+        }
         XCTAssertNil(try Keychain.load(key: .paykitSession))
     }
 
@@ -145,6 +125,20 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testCancelledContactLoadPropagatesWithoutPublishingAnError() async throws {
+        let manager = ContactsManager(contactRecords: { throw CancellationError() })
+
+        do {
+            try await manager.loadContacts(for: "owner")
+            XCTFail("Contact load should propagate cancellation")
+        } catch is CancellationError {}
+
+        XCTAssertFalse(manager.isLoading)
+        XCTAssertFalse(manager.hasLoaded)
+        XCTAssertTrue(manager.contacts.isEmpty)
+        XCTAssertNil(manager.loadErrorMessage)
+    }
+
     func testInitialLoadPreservesUnchangedContactsAfterLocalMutations() async throws {
         for deletesContact in [true, false] {
             let first = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "First")
@@ -190,10 +184,10 @@ final class ContactsManagerTests: XCTestCase {
 
     private func contactRecord(key: String, name: String) -> ContactRecord {
         ContactRecord(
-            publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: name,
+            publicKey: key, label: name,
             profile: PaykitProfile(displayName: name, imageUri: nil, extraJson: nil),
             profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
-            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
     }

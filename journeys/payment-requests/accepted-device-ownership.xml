@@ -1,0 +1,27 @@
+<journey name="one-time payment request acceptance stays on its accepting install">
+  <description>
+    Requires two separate E2E Bitkit installs A and B with Paykit UI enabled, authenticated as the
+    same Pubky identity and using App ID bitkit. Fund both regtest Lightning wallets for 21,000 sats
+    plus fees, and save and link the fixture issuer. The issuer publishes a btc-lightning-lnurl
+    endpoint backed by the local bitkit-docker lnurl-server, reachable from both installs. Keep its
+    LNURL-pay metadata endpoint healthy and allow 21,000 sats; configure the invoice callback to
+    fail before Lightning dispatch, then restore its healthy response without changing the endpoint
+    or publishing a new Paykit payment list. Acceptance completes before the invoice callback;
+    confirm the shared request state is accepted after A's callback failure before testing B.
+    This covers one-time requests only. Do not copy app-private storage between installs.
+  </description>
+  <actions>
+    <action>Configure the fixture LNURL-pay invoice callback to fail before Lightning dispatch</action>
+    <action>Have the issuer send a proposed one-time Payment Request for 21,000 sats and record its request id</action>
+    <action>Open the request payment review on both installs before either install swipes to send</action>
+    <action>On install A swipe the send control (id "GRAB") and verify the failure screen (id "SendFailure")</action>
+    <action>Using the fixture's shared-runtime request inspection, verify the recorded request is ACCEPTED with no payment proof and no wallet dispatch; stop if acceptance has not committed</action>
+    <action>Configure the same LNURL-pay invoice callback to succeed without publishing a new Paykit payment list</action>
+    <action>On install B swipe the stale review's send control and verify that no wallet payment is dispatched</action>
+    <action>Restart install B and wait for Paykit synchronization; verify the request is not automatically presented or offered as payable</action>
+    <action>Open Payment Requests on install B and verify the recorded request remains in history without a Pay action</action>
+    <action>Restart install A and wait for Paykit synchronization</action>
+    <action>Open Payment Requests on install A and pay the recorded request</action>
+    <action>Verify the payment success screen (id "SendSuccess") and exactly one wallet payment to the issuer</action>
+  </actions>
+</journey>

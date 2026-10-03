@@ -1,6 +1,7 @@
 @testable import Bitkit
 import CryptoKit
 import LDKNode
+import Paykit
 import XCTest
 
 private let testXpub =
@@ -24,6 +25,45 @@ private let offCurveKeyXpub =
     "521AAwdZafEz7mnzBBsz4wKY5e4cp9LB"
 
 final class WatchOnlyAccountServiceTests: XCTestCase {
+    func testCombinedCompanionClaimMatchesWireFixture() throws {
+        // Same wire vector as Paykit Server's bitkit-combined-claim-v1.json.
+        let account = Data([1, 1, 2, 3, 4, 0]) + Data(repeating: 9, count: 78)
+        let secret = Data(repeating: 11, count: 32)
+        let key = try PaykitIdentitySecretKey(bytes: secret, keyGeneration: 0x0102_0304_0506_0708)
+
+        let claim = try XCTUnwrap(PubkyAuthClaim(rawValue: "paykit-access-v1.watch-only-account-v1"))
+        let payload = try claim.encode(accountPayload: account, paykitKey: key)
+        let expected = (
+            "01010203040009090909090909090909090909090909090909090909090909090909090909090909" +
+                "09090909090909090909090909090909090909090909090909090909090909090909090909090909" +
+                "0909090901020304050607080b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b" +
+                "0b0b0b0b"
+        ).hexaData
+
+        XCTAssertEqual(payload, expected)
+        XCTAssertEqual(payload.count, 124)
+        XCTAssertEqual(payload.prefix(84), account)
+        XCTAssertEqual(payload.subdata(in: 84 ..< 92), Data([1, 2, 3, 4, 5, 6, 7, 8]))
+        XCTAssertEqual(payload.suffix(32), secret)
+        let reorderedClaim = try XCTUnwrap(PubkyAuthClaim(rawValue: "watch-only-account-v1.paykit-access-v1"))
+        XCTAssertEqual(try reorderedClaim.encode(accountPayload: account, paykitKey: key), payload)
+        XCTAssertThrowsError(try claim.encode(accountPayload: Data(), paykitKey: key))
+        XCTAssertThrowsError(try claim.encode(accountPayload: account, paykitKey: nil))
+        XCTAssertThrowsError(try claim.encode(accountPayload: nil, paykitKey: key))
+    }
+
+    func testIndependentClaimsExportOnlyRequestedMaterial() throws {
+        let account = try WatchOnlyAccountClaimCodec.encode(record: makeRecord(accountIndex: 42, xpub: testXpub))
+        let secret = Data(repeating: 7, count: 32)
+        let key = try PaykitIdentitySecretKey(bytes: secret, keyGeneration: 3)
+        let paykitPayload = try PubkyAuthClaim.paykitAccessV1.encode(accountPayload: nil, paykitKey: key)
+        XCTAssertEqual(paykitPayload, Data([1, 0, 0, 0, 0, 0, 0, 0, 3]) + secret)
+        XCTAssertEqual(try PubkyAuthClaim.watchOnlyAccountV1.encode(accountPayload: account, paykitKey: nil), account)
+        XCTAssertThrowsError(try PubkyAuthClaim.watchOnlyAccountV1.encode(accountPayload: account, paykitKey: key))
+        XCTAssertThrowsError(try PubkyAuthClaim.paykitAccessV1.encode(accountPayload: account, paykitKey: key))
+        XCTAssertThrowsError(try PubkyAuthClaim.paykitAccessV1.encode(accountPayload: nil, paykitKey: nil))
+    }
+
     func testUnsignedClaimContainsExactAccountMetadata() throws {
         let rawXpub = testSerializedXpubHex.hexaData
         let record = makeRecord(accountIndex: 42, xpub: testXpub)
@@ -416,15 +456,15 @@ final class WatchOnlyAccountServiceTests: XCTestCase {
         let node = FakeWatchOnlyAccountNode()
         let manager = WatchOnlyAccountManager(defaults: defaults, node: node)
         let first = try await manager.prepareUnsignedClaim(
-            authUrl: "pubkyauth://signin?caps=/pub/paykit/v0/bitkit/server/:rw&secret=same&relay=https%3A%2F%2Frelay.test&x-bitkit-claim=watch-only-account-v1",
+            authUrl: "pubkyauth://signin?caps=/pub/paykit/:rw&secret=same&relay=https%3A%2F%2Frelay.test&x-bitkit-claim=watch-only-account-v1",
             name: "First"
         )
         let reordered = try await manager.prepareUnsignedClaim(
-            authUrl: "pubkyauth://signin?relay=https://relay.test&x-bitkit-claim=watch-only-account-v1&secret=s%61me&caps=/pub/paykit/v0/bitkit/server/:rw",
+            authUrl: "pubkyauth://signin?relay=https://relay.test&x-bitkit-claim=watch-only-account-v1&secret=s%61me&caps=/pub/paykit/:rw",
             name: "Renamed"
         )
         let differentRelay = try await manager.prepareUnsignedClaim(
-            authUrl: "pubkyauth://signin?relay=https://other-relay.test&x-bitkit-claim=watch-only-account-v1&secret=same&caps=/pub/paykit/v0/bitkit/server/:rw",
+            authUrl: "pubkyauth://signin?relay=https://other-relay.test&x-bitkit-claim=watch-only-account-v1&secret=same&caps=/pub/paykit/:rw",
             name: "Other relay"
         )
 

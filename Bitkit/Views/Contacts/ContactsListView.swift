@@ -294,6 +294,8 @@ struct ContactsListView: View {
             if !contactsManager.contacts.isEmpty {
                 app.hasSeenContactsIntro = true
             }
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error("Failed to load contacts in view: \(error)", context: "ContactsListView")
 

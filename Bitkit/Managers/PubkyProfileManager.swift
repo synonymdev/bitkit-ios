@@ -849,10 +849,8 @@ class PubkyProfileManager: ObservableObject {
         await PrivatePaykitService.shared.closeAndClear()
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyImageCache.shared.clear()
-        UserDefaults.standard.removeObject(forKey: cachedNameKey)
-        UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        clearCachedIdentityMetadata()
         UserDefaults.standard.removeObject(forKey: profileSetupPendingKey)
-        ContactsManager.restoreContactProfileOverrides(nil)
         clearPublicPaykitSharingState()
         notifyAppStateBackupChanged()
     }
@@ -878,9 +876,9 @@ class PubkyProfileManager: ObservableObject {
         }
 
         do {
-            try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false, privateSharingEnabled: false)
+            try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: false)
         } catch PubkyServiceError.sessionNotActive {
-            Logger.debug("Skipping Paykit receiver marker cleanup because no session is active", context: context)
+            Logger.debug("Skipping Paykit app capability update because no session is active", context: context)
         } catch {
             firstError = firstError ?? error
         }
@@ -995,6 +993,7 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Cached Profile Metadata
 
     private static let cachedNameKey = "pubky_profile_name"
+    private static let cachedIdentityKey = "pubky_profile_identity"
     private static let cachedImageUriKey = "pubky_profile_image_uri"
     private static let profileSetupPendingKey = "pubky_profile_setup_pending"
 
@@ -1011,9 +1010,19 @@ class PubkyProfileManager: ObservableObject {
         cachedImageUri = profile.imageUrl
         UserDefaults.standard.set(profile.name, forKey: Self.cachedNameKey)
         UserDefaults.standard.set(profile.imageUrl, forKey: Self.cachedImageUriKey)
+        UserDefaults.standard.set(publicKey, forKey: Self.cachedIdentityKey)
+    }
+
+    static func activateCachedIdentity(publicKey: String, previousPublicKey: String?) {
+        let owner = UserDefaults.standard.string(forKey: cachedIdentityKey) ?? previousPublicKey
+        if let owner, !PubkyPublicKeyFormat.matches(owner, publicKey) {
+            clearCachedIdentityMetadata()
+        }
+        UserDefaults.standard.set(publicKey, forKey: cachedIdentityKey)
     }
 
     static func clearCachedIdentityMetadata() {
+        UserDefaults.standard.removeObject(forKey: cachedIdentityKey)
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
         ContactsManager.restoreContactProfileOverrides(nil)
@@ -1030,6 +1039,7 @@ class PubkyProfileManager: ObservableObject {
         cachedImageUri = nil
         UserDefaults.standard.removeObject(forKey: Self.cachedNameKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedImageUriKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedIdentityKey)
     }
 
     private func setProfileSetupPending(_ pending: Bool) {

@@ -189,24 +189,36 @@ enum PaykitPaymentRequestPollingRound: Equatable {
 
 struct PaykitPaymentRequestPollingSchedule {
     let nextDelay: Duration = .seconds(10)
-    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60), .seconds(120)]
+    private static let maintenanceIntervals: [Duration] = [.seconds(30), .seconds(60)]
     private var maintenanceIntervalIndex = 0
-    private var maintenanceDelay = Self.maintenanceIntervals[0]
+    private var nextMaintenance: ContinuousClock.Instant
 
-    mutating func takeRound(isConnected: Bool) -> PaykitPaymentRequestPollingRound {
+    init(now: ContinuousClock.Instant = .now) {
+        nextMaintenance = now.advanced(by: Self.maintenanceIntervals[0])
+    }
+
+    mutating func takeRound(isConnected: Bool, now: ContinuousClock.Instant = .now) -> PaykitPaymentRequestPollingRound {
         guard isConnected else { return .skip }
 
-        maintenanceDelay -= nextDelay
-        guard maintenanceDelay <= .zero else { return .refreshInbox }
+        guard now >= nextMaintenance else { return .refreshInbox }
         maintenanceIntervalIndex = min(maintenanceIntervalIndex + 1, Self.maintenanceIntervals.count - 1)
-        maintenanceDelay = Self.maintenanceIntervals[maintenanceIntervalIndex]
+        nextMaintenance = now.advanced(by: Self.maintenanceIntervals[maintenanceIntervalIndex])
         return .refreshInboxAndMaintenance
     }
 }
 
-struct AppScene: View {
-    private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
+struct PaykitContactKeysObserver: ViewModifier {
+    let publicKeys: [String]
+    let onChange: ([String]) -> Void
 
+    func body(content: Content) -> some View {
+        content.onChange(of: publicKeys.sorted(), initial: true) { _, publicKeys in
+            onChange(publicKeys)
+        }
+    }
+}
+
+struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
 
@@ -239,7 +251,9 @@ struct AppScene: View {
     @State private var hwWalletManager: HwWalletManager
     @State private var calculatorInputManager = CalculatorInputManager()
     @State private var paykitPaymentRequestManager = PaykitPaymentRequestManager()
-    @State private var initialPaykitSyncGeneration = 0
+    @State private var receivedPaymentBackfillCache = PaykitReceivedPaymentBackfillCache(
+        activityChanges: CoreService.shared.activity.activitiesChangedPublisher
+    )
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -313,13 +327,27 @@ struct AppScene: View {
         _trezorManager = State(initialValue: trezorManager)
         _trezorViewModel = State(initialValue: trezorViewModel)
         _hwWalletManager = State(initialValue: hwWalletManager)
+    }
 
+    private func configurePrivatePaykitContactResolvers() {
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in
                 await PrivatePaykitService.shared.contactPublicKey(forPrivateInvoicePaymentHash: paymentHash)
             },
-            onchainAddress: { address in
-                await PrivatePaykitAddressReservationStore.shared.contactPublicKey(forReservedAddress: address)
+            onchainAddresses: { @MainActor address, outputAddresses in
+                let identity = pubkyProfile.publicKey
+                let contacts = paykitPaymentRequestManager.receivedPaymentContacts
+                let reservations = PrivatePaykitAddressReservationStore.shared
+                let reservationRevision = await reservations.attributionRevision
+                guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
+                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                }) else { return nil }
+                guard pubkyProfile.authState == .authenticated,
+                      PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
+                      contacts == paykitPaymentRequestManager.receivedPaymentContacts,
+                      await reservations.attributionRevision == reservationRevision
+                else { return nil }
+                return combined.contact(receivingAddress: address, outputAddresses: outputAddresses)
             }
         )
     }
@@ -353,7 +381,6 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
-            .task(id: initialPaykitSyncGeneration) { await pollIncomingPaykitPaymentRequestsDuringInitialSync() }
             .task { await handlePendingPaykitSubscriptionNotification() }
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
             .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
@@ -423,13 +450,14 @@ struct AppScene: View {
     private var appEventContent: some View {
         configuredContent
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
+                receivedPaymentBackfillCache.invalidate()
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
-                        try? await contactsManager.loadContacts(for: pk)
-                        await refreshPrivateOnlyPaykitReceiverMarker()
-                        await refreshIncomingPaykitPaymentRequests(presentItems: false)
                         await handlePendingPaykitSubscriptionNotification()
+                        try? await contactsManager.loadContacts(for: pk)
+                        await refreshPrivateOnlyPaykitApp()
+                        await refreshIncomingPaykitPaymentRequests(presentItems: false)
                         if PaykitSubscriptionNotificationTargetStore.load() == nil {
                             await presentNextIncomingPaykitItem()
                         }
@@ -442,26 +470,17 @@ struct AppScene: View {
                     paykitPaymentRequestManager.clear()
                 }
             }
-            .onReceive(contactsManager.$contacts) { contacts in
+            .modifier(PaykitContactKeysObserver(publicKeys: contactsManager.contacts.map(\.publicKey)) { publicKeys in
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
                 else { return }
-                let publicKeys = contacts.map(\.publicKey)
+                paykitPaymentRequestManager.updateSavedPublicKeys(publicKeys)
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
-                    await PrivatePaykitService.shared.startInitialLinkBurst(
-                        for: publicKeys,
-                        savedPublicKeys: publicKeys,
-                        wallet: wallet,
-                        reason: "contact sync"
-                    )
                     await refreshIncomingPaykitPaymentRequests()
                 }
-            }
-            .onReceive(PrivatePaykitService.initialLinkBurstStartedPublisher) {
-                initialPaykitSyncGeneration += 1
-            }
+            })
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
                 Task { await refreshIncomingPaykitPaymentRequests() }
             }
@@ -847,6 +866,7 @@ struct AppScene: View {
 
     @Sendable
     private func setupTask() async {
+        configurePrivatePaykitContactResolvers()
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()
@@ -1019,16 +1039,11 @@ struct AppScene: View {
                     await retryPendingPaykitEndpointRemoval()
                 }
                 guard PaykitFeatureFlags.isUIEnabled else { return }
-                await refreshPrivateOnlyPaykitReceiverMarker()
+                await refreshPrivateOnlyPaykitApp()
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                 await PrivatePaykitService.shared.prepareSavedContacts(
                     contactsManager.contacts.map(\.publicKey),
                     wallet: wallet
-                )
-                await PrivatePaykitService.shared.startInitialLinkBurst(
-                    for: contactsManager.contacts.map(\.publicKey),
-                    wallet: wallet,
-                    reason: "wallet started"
                 )
                 await refreshIncomingPaykitPaymentRequests()
             }
@@ -1070,13 +1085,11 @@ struct AppScene: View {
                     await retryPendingPaykitEndpointRemoval()
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     if PaykitFeatureFlags.isUIEnabled {
-                        await refreshPrivateOnlyPaykitReceiverMarker()
+                        await refreshPrivateOnlyPaykitApp()
                         let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                        await PrivatePaykitService.shared.startInitialLinkBurst(
-                            for: contactPublicKeys,
-                            savedPublicKeys: contactPublicKeys,
-                            wallet: wallet,
-                            reason: "foreground"
+                        await PrivatePaykitService.shared.prepareSavedContacts(
+                            contactPublicKeys,
+                            wallet: wallet
                         )
                         await refreshIncomingPaykitPaymentRequests()
                     }
@@ -1085,16 +1098,16 @@ struct AppScene: View {
         }
     }
 
-    private func refreshPrivateOnlyPaykitReceiverMarker() async {
+    private func refreshPrivateOnlyPaykitApp() async {
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         guard privateSharingEnabled, !publicSharingEnabled else { return }
         guard await PubkyService.currentPublicKey() != nil else { return }
 
         do {
-            try await PublicPaykitService.syncLocalReceiverMarker()
+            try await PublicPaykitService.syncPaykitApp()
         } catch {
-            Logger.warn("Failed to refresh private Paykit receiver marker: \(error)", context: "AppScene")
+            Logger.warn("Failed to refresh private Paykit app registration: \(error)", context: "AppScene")
         }
     }
 
@@ -1107,10 +1120,28 @@ struct AppScene: View {
             return
         }
 
+        guard !Task.isCancelled else { return }
+        paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if refreshMaintenance {
             await PaykitPaymentProofService.shared.reconcile()
         }
-        await paykitPaymentRequestManager.refresh()
+        guard let identity = pubkyProfile.publicKey else { return }
+        await paykitPaymentRequestManager.refresh(syncPrivateMessages: refreshMaintenance)
+        guard pubkyProfile.authState == .authenticated,
+              PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
+        else { return }
+        let contacts = paykitPaymentRequestManager.receivedPaymentContacts
+        do {
+            try await CoreService.shared.activity.backfillReceivedPaykitContacts(
+                contacts, identity: identity, cache: receivedPaymentBackfillCache
+            ) { @MainActor in
+                pubkyProfile.authState == .authenticated &&
+                    PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey) &&
+                    contacts == paykitPaymentRequestManager.receivedPaymentContacts
+            }
+        } catch {
+            Logger.warn("Failed to attribute received Paykit payments: \(error)", context: "AppScene")
+        }
         if presentItems {
             await presentNextIncomingPaykitItem()
         }
@@ -1151,6 +1182,7 @@ struct AppScene: View {
         guard scenePhase == .active, network.isConnected else { return }
 
         await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+        await refreshIncomingPaykitPaymentRequests()
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
@@ -1178,21 +1210,6 @@ struct AppScene: View {
                 )
             }
             await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
-        }
-    }
-
-    private func pollIncomingPaykitPaymentRequestsDuringInitialSync() async {
-        guard scenePhase == .active else { return }
-
-        await refreshIncomingPaykitPaymentRequests()
-        for delay in Self.initialPaykitSyncRetryDelays {
-            do {
-                try await Task.sleep(for: delay)
-            } catch {
-                return
-            }
-            guard scenePhase == .active else { return }
-            await refreshIncomingPaykitPaymentRequests()
         }
     }
 
@@ -1409,6 +1426,10 @@ struct AppScene: View {
     }
 
     private func handlePendingPaykitSubscriptionNotification() async {
+        guard PaykitFeatureFlags.isUIEnabled,
+              wallet.walletExists == true,
+              pubkyProfile.authState == .authenticated
+        else { return }
         guard let target = PaykitSubscriptionNotificationTargetStore.load() else { return }
         guard let identity = pubkyProfile.publicKey else { return }
         guard target.matches(identity: identity) else {
@@ -1419,7 +1440,7 @@ struct AppScene: View {
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
-        await refreshIncomingPaykitPaymentRequests(presentItems: false)
+        await refreshIncomingPaykitPaymentRequests(presentItems: false, refreshMaintenance: false)
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
                 PaykitSubscriptionNotificationTargetStore.clear()
@@ -1428,7 +1449,6 @@ struct AppScene: View {
             } else if !paykitPaymentRequestManager.subscriptions.contains(where: {
                 $0.paymentRequestId == target.paymentRequestId &&
                     PubkyPublicKeyFormat.matches($0.counterparty, target.counterparty) &&
-                    $0.counterpartyReceiverPath == target.counterpartyReceiverPath &&
                     $0.isActive(at: SubscriptionClock.subscriptionNow())
             }) {
                 PaykitSubscriptionNotificationTargetStore.clear()
@@ -1463,25 +1483,31 @@ struct AppScene: View {
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
-        if PublicPaykitService.isCleanupPending {
-            do {
-                switch PublicPaykitService.pendingReconciliationMode() {
-                case .publishEndpoints:
-                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
-                case .removePublishedState:
-                    try await PublicPaykitService.removePublishedEndpoints()
-                    try await PublicPaykitService.syncLocalReceiverMarker()
+        await ContactPaymentsService.reconcilePendingEndpoints {
+            let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
+            await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
+                wallet: wallet,
+                savedPublicKeys: contactsManager.contacts.map(\.publicKey)
+            )
+            if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
+                PublicPaykitService.setCleanupPending(true)
+            }
+
+            if PublicPaykitService.isCleanupPending {
+                do {
+                    switch PublicPaykitService.pendingReconciliationMode() {
+                    case .publishEndpoints:
+                        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
+                    case .removePublishedState:
+                        try await PublicPaykitService.removePublishedEndpoints()
+                        try await PublicPaykitService.syncPaykitApp()
+                    }
+                    PublicPaykitService.setCleanupPending(false)
+                } catch {
+                    Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
                 }
-                PublicPaykitService.setCleanupPending(false)
-            } catch {
-                Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
             }
         }
-
-        await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
-            wallet: wallet,
-            savedPublicKeys: contactsManager.contacts.map(\.publicKey)
-        )
     }
 
     /// Removes all delivered notifications from Notification Center so the app can handle them when opened.
@@ -1529,11 +1555,9 @@ struct AppScene: View {
                 }
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
-                    await PrivatePaykitService.shared.startInitialLinkBurst(
-                        for: contactPublicKeys,
-                        savedPublicKeys: contactPublicKeys,
-                        wallet: wallet,
-                        reason: "network restored"
+                    await PrivatePaykitService.shared.prepareSavedContacts(
+                        contactPublicKeys,
+                        wallet: wallet
                     )
                 }
                 await refreshIncomingPaykitPaymentRequests()
