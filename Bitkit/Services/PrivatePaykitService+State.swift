@@ -4,10 +4,8 @@ import Foundation
 
 extension PrivatePaykitService {
     func closeAndClear() async {
-        initialLinkBurstTask?.cancel()
-        initialLinkBurstTask = nil
-        initialLinkBurstPublicKeys.removeAll()
-        initialLinkBurstGeneration += 1
+        invalidateContactPreparation()
+        unavailableLinkRetryAt.removeAll()
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
@@ -23,13 +21,14 @@ extension PrivatePaykitService {
 
     func clearContactState(publicKey: String) async {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        unavailableLinkRetryAt[normalizedKey] = nil
         privatePaymentListConsumptions = privatePaymentListConsumptions.filter { $0.key.publicKey != normalizedKey }
-        let consumedVersions = state.contacts[normalizedKey]?.consumedPrivatePaymentListVersionsByReceiverPath ?? [:]
-        if consumedVersions.isEmpty {
+        let consumedVersion = state.contacts[normalizedKey]?.consumedPrivatePaymentListVersion
+        if consumedVersion == nil {
             state.contacts[normalizedKey] = nil
         } else {
             var contactState = ContactState()
-            contactState.consumedPrivatePaymentListVersionsByReceiverPath = consumedVersions
+            contactState.consumedPrivatePaymentListVersion = consumedVersion
             state.contacts[normalizedKey] = contactState
         }
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignment(publicKey: normalizedKey)

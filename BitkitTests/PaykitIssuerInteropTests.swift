@@ -88,7 +88,6 @@ final class PaykitIssuerInteropTests: XCTestCase {
     private func paymentRequestRecord(asset: String, endpointIdentifiers: [String]) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: "pubkyissuerfixture",
-            counterpartyReceiverPath: PaykitReceiverPath.server,
             paymentRequestId: "71300000-0000-4000-8000-000000000001",
             localRole: .payer,
             state: .proposed,
@@ -96,12 +95,17 @@ final class PaykitIssuerInteropTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: asset),
                 paymentReference: PaymentReference(text: "marketplace-order-713"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: endpointIdentifiers,
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
                 conversion: nil,
                 paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: #"{"order":"713"}"#)

@@ -711,6 +711,8 @@
 "pubky_auth__watch_only_account_name_error" = "Enter an account name between 1 and 64 characters.";
 "pubky_auth__watch_only_intro_approve" = "Approve";
 "pubky_auth__watch_only_intro_description" = "To earn, you need to share a watch-only Bitcoin account with Paykit. It can view sales activity, but cannot spend funds.";
+"pubky_auth__paykit_access_title" = "PRIVATE PAYKIT ACCESS";
+"pubky_auth__paykit_access_description" = "Read and manage your private Paykit data, and send Paykit messages on your behalf. Your Pubky identity secret and wallet spending keys are not shared.";
 "pubky_auth__watch_only_intro_relay" = "Your authorization will be delivered to <accent>{relay}</accent>.";
 "pubky_auth__watch_only_intro_nav_title" = "Earn";
 "pubky_auth__watch_only_intro_title" = "<accent>EARN BITCOIN</accent>\nFROM YOUR\nCONTENT";

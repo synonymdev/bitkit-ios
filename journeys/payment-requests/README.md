@@ -10,7 +10,7 @@ The resolution-failure journey is ported alongside Android's matching `requested
 
 ### Setup
 
-Run Bitkit against regtest with Paykit UI enabled. Authenticate a Pubky identity, save the fixture issuer as a contact, link its server receiver on `bitkit/server`, and give the wallet enough on-chain balance to pay 100,000 sats. The fixture issuer must be able to publish a Paykit endpoint and send a one-time Payment Request to that linked peer. A Bitkit app acting as the issuer exposes `bitkit/wallet` instead, so a Bitkit-to-Bitkit run uses that negotiated path throughout.
+Run Bitkit against regtest with Paykit UI enabled. Authenticate a Pubky identity, save and link the fixture issuer as a contact, and give the wallet enough on-chain balance to pay 100,000 sats. The fixture issuer must be able to publish a Paykit endpoint and send a one-time Payment Request to that linked peer. Its App ID is `paykit-server`; Bitkit uses `bitkit`.
 
 The accepted journey uses:
 
@@ -28,6 +28,33 @@ The source wallet-leg run completed this path on regtest on 2026-08-22: Bitkit p
 `cc85df0e24b54be353a57700429d144b35264c1af97f3de41c503dc52f1e4792` at height `77318`.
 
 That run established the issuer shapes captured by the fixture: lowercase `btc`, `btc-regtest-p2wpkh`, and a JSON object endpoint payload with a non-empty string `value`. The exact Debug binary SHA was not recorded, so the canonical fixture tests lock the same production gates on the current code.
+
+## Foreground synchronization
+
+Bitkit checks shared request state every 10 seconds while foregrounded and online.
+Private-message intake, outbound retries, endpoint publication, and target discovery run on startup,
+explicit refreshes, and maintenance rounds after 30 seconds, then every 60 seconds.
+Maintenance uses elapsed time, including slow requests; polling remains serialized and does not
+start catch-up rounds. New peer messages may wait for maintenance plus synchronization time.
+
+## Accepting install
+
+Acceptance intent is saved before the remote operation and included in wallet backups.
+An interrupted response is reconciled against the shared request before payment. Restoring
+the wallet restores its pending acceptances; this does not support running the same wallet
+on multiple devices concurrently.
+
+`accepted-device-ownership.xml` uses two separate E2E Bitkit installs with Paykit UI enabled,
+sharing one Pubky identity and App ID `bitkit`. Fund each regtest Lightning wallet for 21,000 sats
+plus fees, and save and link the fixture issuer. Do not copy app-private storage between installs.
+
+Have the issuer publish a `btc-lightning-lnurl` endpoint backed by the local `bitkit-docker`
+`lnurl-server`, reachable from both installs. Keep its metadata endpoint healthy and allow 21,000
+sats, but make its invoice callback fail before Lightning dispatch. Restore the callback's healthy
+response for retry without changing the endpoint or republishing the Paykit payment list.
+Acceptance completes before invoice fetching: confirm the shared request is accepted after A's
+callback failure before testing B. After restart, only the accepting install A may retry; B keeps
+the request in history without a Pay action. The iOS controls use `GRAB`, `SendFailure`, and `SendSuccess`.
 
 ## Resolution-failure contract
 
@@ -76,8 +103,8 @@ correctly prevents it from entering the presentation queue.
 ### Setup
 
 Use a second Bitkit instance as the requester instead of the fixture issuer: both instances are
-authenticated Pubky identities, saved as each other's contacts and linked on receiver path
-`bitkit/wallet`, and the payer holds enough balance to pay 21,000 sats.
+authenticated Pubky identities, saved as each other's contacts and linked, and the payer holds
+enough balance to pay 21,000 sats.
 
 ## Definite pre-broadcast retry
 

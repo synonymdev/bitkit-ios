@@ -319,6 +319,8 @@ class BackupService {
                 if let paymentState = payload.paykitPaymentState {
                     try PaykitSubscriptionStateStore().restoreBackup(paymentState.subscriptions)
                     try await PaykitPaymentProofService.shared.restoreBackup(paymentState.pendingProofs)
+                    try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+                        .restoreBackup(paymentState.acceptedOneTimeRequests ?? [:])
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
@@ -507,6 +509,7 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSubscriptionStateStore.walletBackupDataChangedPublisher
+            .merge(with: PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher)
             .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -879,7 +882,8 @@ class BackupService {
                 watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
                 paykitPaymentState: PaykitPaymentStateBackup(
                     subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
-                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot()
+                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot(),
+                    acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).backupSnapshot()
                 )
             )
             return try JSONEncoder().encode(payload)

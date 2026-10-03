@@ -271,6 +271,8 @@ class ContactsManager: ObservableObject {
 
                 Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
                 return
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 guard contactsRevision == revision else { continue }
                 if Self.isMissingContactsDataError(error) {
@@ -320,11 +322,9 @@ class ContactsManager: ObservableObject {
             try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
         }
 
-        let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
         _ = try await PubkyService.saveContact(
             publicKey: prefixedKey,
             label: profile.name,
-            receiverPaths: receiverPaths,
             restorePrivateConnection: true
         )
 
@@ -335,25 +335,23 @@ class ContactsManager: ObservableObject {
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
-    func refreshContactReceiverPaths(publicKey: String, wallet: WalletViewModel) async {
+    func refreshContactLink(publicKey: String, wallet: WalletViewModel) async {
         guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey),
               let contact = contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) })
         else { return }
 
         do {
-            let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
-            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, receiverPaths: receiverPaths)
-            await PrivatePaykitService.shared.startInitialLinkBurst(
+            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name)
+            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                 for: [prefixedKey],
                 savedPublicKeys: contacts.map(\.publicKey),
-                wallet: wallet,
-                reason: "contact receiver refresh"
+                wallet: wallet
             )
         } catch is CancellationError {
             return
         } catch {
             Logger.warn(
-                "Failed to refresh contact receiver paths for \(PubkyPublicKeyFormat.redacted(prefixedKey)): \(error)",
+                "Failed to refresh contact link for \(PubkyPublicKeyFormat.redacted(prefixedKey)): \(error)",
                 context: "ContactsManager"
             )
         }
@@ -375,7 +373,7 @@ class ContactsManager: ObservableObject {
             try Task.checkCancellation()
             guard !existingKeys.contains(contact.publicKey) else { continue }
             do {
-                // The preview already resolved this profile. Receiver discovery runs during contact refresh.
+                // The preview already resolved this profile.
                 try await saveContact(contact.publicKey, contact.displayName)
                 imported.append(contact)
                 existingKeys.insert(contact.publicKey)
@@ -657,20 +655,6 @@ class ContactsManager: ObservableObject {
         }
 
         throw PubkyServiceError.profileNotFound
-    }
-
-    private nonisolated static func relevantReceiverPaths(for publicKey: String) async throws -> [String] {
-        do {
-            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            Logger.warn(
-                "Failed to discover Paykit receivers for '\(PubkyPublicKeyFormat.redacted(publicKey))': \(error)",
-                context: "ContactsManager"
-            )
-            return [PaykitReceiverPath.wallet]
-        }
     }
 
     private nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"

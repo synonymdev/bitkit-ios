@@ -799,8 +799,12 @@ struct SendSheet: View {
         }
 
         let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
+        guard let privateContext = context?.privatePaymentContext else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
         try await PaykitPaymentProofService.shared.prepare(
             request: request,
+            paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
             paymentEndpointIdentifier: endpointIdentifier,
             kind: .onchain
         )
@@ -822,13 +826,17 @@ struct SendSheet: View {
 
     private func completeHardwareContactPayment(_ context: ContactPaymentContext?, txid: String) async {
         guard let request = context?.incomingPaymentRequest,
-              let address = app.scannedOnchainInvoice?.address
+              let address = app.scannedOnchainInvoice?.address,
+              let paymentAppId = try? context?.privatePaymentContext?.paymentAppId(
+                  for: PublicPaykitService.onchainMethodId(for: address).rawValue
+              )
         else { return }
 
         await context?.resolvePrivatePaymentListConsumption(.succeeded)
         await PaykitPaymentProofService.shared.completeOnchainPayment(
             request,
             txid: txid,
+            paymentAppId: paymentAppId,
             paymentEndpointIdentifier: PublicPaykitService.onchainMethodId(for: address).rawValue
         )
     }

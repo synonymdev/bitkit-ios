@@ -27,8 +27,13 @@ enum PublicPaykitError: LocalizedError {
 }
 
 struct PrivatePaykitPaymentContext: Equatable {
-    let receiverPath: String
-    let paymentListVersion: UInt64
+    let paymentAppsByEndpoint: [String: String]
+    let paymentListVersion: UInt64?
+
+    func paymentAppId(for endpointIdentifier: String) throws -> String {
+        guard let appId = paymentAppsByEndpoint[endpointIdentifier] else { throw PaykitPaymentRequestError.requestUnavailable }
+        return appId
+    }
 }
 
 enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
@@ -238,6 +243,7 @@ enum PublicPaykitService {
         let min: String?
         let max: String?
         let rawPayload: String
+        var appId: String?
 
         var paymentRequest: String {
             value
@@ -247,20 +253,14 @@ enum PublicPaykitService {
     static func fetchPublicEndpoints(publicKey: String) async throws -> [Endpoint] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
         let resolution = try await PaykitSdkService.shared.resolvePublicContactPayment(
-            counterparty: normalizedKey,
-            receiverPath: PaykitReceiverPath.wallet
+            counterparty: normalizedKey
         )
-        var endpointsByMethodId: [MethodId: Endpoint] = [:]
-
-        for resolvedEndpoint in resolution.payableEndpoints {
-            guard let endpoint = parseEndpoint(identifier: resolvedEndpoint.identifier, payload: resolvedEndpoint.target.payload) else {
-                continue
-            }
-
-            endpointsByMethodId[endpoint.methodId] = endpoint
+        let endpoints = resolution.payableEndpoints.compactMap { resolvedEndpoint -> Endpoint? in
+            guard var endpoint = parseEndpoint(identifier: resolvedEndpoint.identifier, payload: resolvedEndpoint.target.payload) else { return nil }
+            endpoint.appId = resolvedEndpoint.appId
+            return endpoint
         }
-
-        return MethodId.payablePreferenceOrder.compactMap { endpointsByMethodId[$0] }
+        return MethodId.payablePreferenceOrder.flatMap { method in endpoints.filter { $0.methodId == method } }
     }
 
     static func parseEndpoint(
@@ -327,7 +327,7 @@ enum PublicPaykitService {
                 firstError = firstError ?? error
             }
             do {
-                try await syncLocalReceiverMarker(publicSharingEnabled: false)
+                try await syncPaykitApp()
             } catch {
                 firstError = firstError ?? error
             }
@@ -338,14 +338,14 @@ enum PublicPaykitService {
         }
 
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
-        try await syncLocalReceiverMarker(publicSharingEnabled: true)
+        try await syncPaykitApp()
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
     @MainActor
     static func syncCurrentPublishedEndpoints(wallet: WalletViewModel) async throws {
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
-        try await syncLocalReceiverMarker(publicSharingEnabled: true)
+        try await syncPaykitApp()
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
@@ -353,15 +353,9 @@ enum PublicPaykitService {
         try await applyPublishedEndpoints([])
     }
 
-    static func syncLocalReceiverMarker(
-        publicSharingEnabled: Bool? = nil,
-        privateSharingEnabled: Bool? = nil
-    ) async throws {
-        let publicSharing = publicSharingEnabled ?? UserDefaults.standard.bool(forKey: publishingEnabledKey)
+    static func syncPaykitApp(privateSharingEnabled: Bool? = nil) async throws {
         let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
-        try await PaykitSdkService.shared.syncLocalReceiverMarker(
-            isDiscoverable: publicSharing || privateSharing
-        )
+        try await PaykitSdkService.shared.syncPaykitApp(privatePaymentsEnabled: privateSharing)
     }
 
     static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {

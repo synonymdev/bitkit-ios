@@ -276,8 +276,12 @@ struct LnurlPayConfirm: View {
             try validateIncomingPaymentRequest(contactPaymentContext, amountMsats: amountMsats)
             if let incomingPaymentRequest {
                 let endpointIdentifier = PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+                guard let privateContext = contactPaymentContext?.privatePaymentContext else {
+                    throw PaykitPaymentRequestError.requestUnavailable
+                }
                 try await PaykitPaymentProofService.shared.prepare(
                     request: incomingPaymentRequest,
+                    paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
                     paymentEndpointIdentifier: endpointIdentifier,
                     kind: .lightning
                 )

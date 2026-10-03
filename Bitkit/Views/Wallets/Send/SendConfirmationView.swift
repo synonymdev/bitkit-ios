@@ -858,8 +858,12 @@ struct SendConfirmationView: View {
             try validateIncomingPaymentRequestAmounts(contactPaymentContext)
             if let incomingPaymentRequest {
                 let proof = try paymentProofPreparation()
+                guard let privateContext = contactPaymentContext?.privatePaymentContext else {
+                    throw PaykitPaymentRequestError.requestUnavailable
+                }
                 try await PaykitPaymentProofService.shared.prepare(
                     request: incomingPaymentRequest,
+                    paymentAppId: privateContext.paymentAppId(for: proof.endpointIdentifier),
                     paymentEndpointIdentifier: proof.endpointIdentifier,
                     kind: proof.kind
                 )
@@ -988,9 +992,13 @@ struct SendConfirmationView: View {
                 privatePaymentListOutcome = .succeeded
                 await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
                 if let incomingPaymentRequest, let preparedPaymentProof {
+                    guard let paymentAppId = try contactPaymentContext?.privatePaymentContext?.paymentAppId(
+                        for: preparedPaymentProof.endpointIdentifier
+                    ) else { throw PaykitPaymentRequestError.requestUnavailable }
                     await PaykitPaymentProofService.shared.completeOnchainPayment(
                         incomingPaymentRequest,
                         txid: txid,
+                        paymentAppId: paymentAppId,
                         paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
                     )
                 }

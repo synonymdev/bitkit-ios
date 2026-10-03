@@ -34,7 +34,7 @@ extension PrivatePaykitService {
         guard !paymentHash.isEmpty else { return nil }
 
         return state.contacts.first { _, contactState in
-            localInvoices(contactState).contains { $0.paymentHash == paymentHash } ||
+            contactState.localInvoice?.paymentHash == paymentHash ||
                 contactState.receivedInvoicePaymentHashes.contains(paymentHash)
         }?.key
     }
@@ -57,11 +57,11 @@ extension PrivatePaykitService {
             }
         }
 
-        var result = try await beginContactPayment(to: normalizedKey, receiverPath: PaykitReceiverPath.wallet)
+        var result = try await beginContactPayment(to: normalizedKey)
         for delay in Self.privatePaymentResolutionRetryDelays {
             guard case .waitingForUpdatedPaymentList = result else { return result }
             try await Task.sleep(nanoseconds: delay)
-            result = try await beginContactPayment(to: normalizedKey, receiverPath: PaykitReceiverPath.wallet)
+            result = try await beginContactPayment(to: normalizedKey)
         }
         return result
     }
@@ -76,7 +76,6 @@ extension PrivatePaykitService {
 
         return try await beginContactPayment(
             to: publicKey,
-            receiverPath: request.counterpartyReceiverPath,
             paymentRequest: request
         )
     }
@@ -93,26 +92,26 @@ extension PrivatePaykitService {
 
     private func beginContactPayment(
         to publicKey: String,
-        receiverPath: String,
         paymentRequest: PaykitPaymentRequest? = nil
     ) async throws -> PublicPaykitPaymentLaunchResult {
-        let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersionsByReceiverPath[receiverPath]
+        let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersion
         let previousPaymentListVersion = consumedVersion.map(String.init) ?? "none"
-        let amount = paymentRequest.map {
-            PaymentAmountContext(value: $0.amountValue, asset: PaykitIssuerInterop.bitcoinAsset)
-        }
-
         do {
-            let prepared = try await PaykitSdkService.shared.prepareAndResolvePrivateContactPayment(
-                counterparty: publicKey,
-                receiverPath: receiverPath,
-                amount: amount,
-                afterPrivatePaymentListVersion: consumedVersion
-            )
+            let prepared: PreparedPrivateContactPayment = if let paymentRequest {
+                try await PaykitSdkService.shared.prepareAndResolvePrivatePaymentRequest(
+                    counterparty: publicKey,
+                    paymentRequestId: paymentRequest.paymentRequestId,
+                    afterPrivatePaymentListVersion: consumedVersion
+                )
+            } else {
+                try await PaykitSdkService.shared.prepareAndResolvePrivateContactPayment(
+                    counterparty: publicKey,
+                    afterPrivatePaymentListVersion: consumedVersion
+                )
+            }
             let resolution = prepared.resolution
             let linkState = try await currentLinkState(
                 publicKey: publicKey,
-                receiverPath: receiverPath,
                 preparedState: prepared.linkReport?.state
             )
 
@@ -123,35 +122,26 @@ extension PrivatePaykitService {
             if paymentRequest != nil,
                Self.paymentRequestNeedsPrivateLinkRecovery(resolutionState: resolution.state, linkState: linkState)
             {
-                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                schedulePrivatePaymentRecovery(for: publicKey)
                 return .privateLinkPending
             }
 
-            let privateEndpoints = resolvedEndpoints(from: resolution)
-            cacheResolvedEndpoints(privateEndpoints, publicKey: publicKey)
-            let acceptedIdentifiers = paymentRequest.map { Set($0.acceptedPaymentEndpointIdentifiers) }
-            let acceptedEndpoints = privateEndpoints.filter { endpoint in
-                acceptedIdentifiers?.contains(endpoint.methodId.rawValue) ?? true
-            }
-
-            let payableEndpoints = await privatePayableEndpoints(from: acceptedEndpoints, publicKey: publicKey)
-
-            if !payableEndpoints.isEmpty, let paymentListVersion = resolution.privatePaymentListVersion {
-                Logger.info(
-                    "Opened private Paykit payment for \(PubkyPublicKeyFormat.redacted(publicKey)) using payment list version \(paymentListVersion) after \(previousPaymentListVersion)",
-                    context: "PrivatePaykit"
-                )
-                return .opened(
-                    paymentRequest: PublicPaykitService.paymentRequest(from: payableEndpoints),
-                    privatePaymentContext: PrivatePaykitPaymentContext(
-                        receiverPath: receiverPath,
-                        paymentListVersion: paymentListVersion
+            let result = await privatePaymentResult(
+                publicKey: publicKey,
+                paymentRequest: paymentRequest,
+                resolution: resolution,
+                validateEndpoints: { endpoints, allowUsedOnchainAddress in
+                    await self.privatePayableEndpoints(
+                        from: endpoints,
+                        publicKey: publicKey,
+                        allowUsedOnchainAddress: allowUsedOnchainAddress
                     )
-                )
-            }
+                }
+            )
+            if case .opened = result { return result }
 
             if resolution.state == .recoveryPending {
-                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                schedulePrivatePaymentRecovery(for: publicKey)
             }
 
             if resolution.status == .waitingForUpdatedPaymentList {
@@ -159,11 +149,11 @@ extension PrivatePaykitService {
                     "Waiting for a private Paykit payment list newer than \(previousPaymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey)); public resolution is disabled for this request",
                     context: "PrivatePaykit"
                 )
-                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                schedulePrivatePaymentRecovery(for: publicKey)
                 return .waitingForUpdatedPaymentList
             }
 
-            return acceptedEndpoints.isEmpty ? .noEndpoint : .notOpened
+            return result
         } catch {
             if error is CancellationError || Task.isCancelled {
                 throw error
@@ -176,22 +166,22 @@ extension PrivatePaykitService {
             )
 
             if paymentRequest != nil, PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
-                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                schedulePrivatePaymentRecovery(for: publicKey)
                 return .privateLinkPending
             }
 
             let linkState: LinkedPeerState?
             do {
-                linkState = try await currentLinkState(publicKey: publicKey, receiverPath: receiverPath)
+                linkState = try await currentLinkState(publicKey: publicKey)
             } catch {
                 if paymentRequest != nil, PaykitResolutionFailureDiagnostics.isRecoveryRequired(error) {
-                    schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                    schedulePrivatePaymentRecovery(for: publicKey)
                     return .privateLinkPending
                 }
                 throw error
             }
             if paymentRequest != nil, Self.paymentRequestNeedsPrivateLinkRecovery(linkState: linkState) {
-                schedulePrivatePaymentRecovery(for: publicKey, receiverPath: receiverPath)
+                schedulePrivatePaymentRecovery(for: publicKey)
                 return .privateLinkPending
             }
             guard paymentRequest == nil, canUsePublicPayment(linkState: linkState) else {
@@ -199,6 +189,44 @@ extension PrivatePaykitService {
             }
             return try await PublicPaykitService.beginPayment(to: publicKey)
         }
+    }
+
+    func privatePaymentResult(
+        publicKey: String,
+        paymentRequest: PaykitPaymentRequest?,
+        resolution: PrivateContactPaymentResolution,
+        validateEndpoints: ([PublicPaykitService.Endpoint], Bool) async -> [PublicPaykitService.Endpoint]
+    ) async -> PublicPaykitPaymentLaunchResult {
+        let privateEndpoints = resolvedEndpoints(from: resolution)
+        let paymentListVersion = resolution.privatePaymentListVersion
+        if paymentListVersion != nil {
+            cacheResolvedEndpoints(privateEndpoints, publicKey: publicKey)
+        }
+        let acceptedIdentifiers = paymentRequest.map { Set($0.acceptedPaymentEndpointIdentifiers) }
+        let acceptedEndpoints = privateEndpoints.filter { endpoint in
+            acceptedIdentifiers?.contains(endpoint.methodId.rawValue) ?? true
+        }
+        // Request-bound endpoints have no list version; recurring terms may reuse their fixed address.
+        let allowUsedOnchainAddress = paymentRequest?.billingPeriod != nil && paymentListVersion == nil
+        let payableEndpoints = await validateEndpoints(acceptedEndpoints, allowUsedOnchainAddress)
+        guard !payableEndpoints.isEmpty, paymentListVersion != nil || paymentRequest != nil else {
+            return acceptedEndpoints.isEmpty ? .noEndpoint : .notOpened
+        }
+        Logger.info(
+            "Opened private Paykit payment for \(PubkyPublicKeyFormat.redacted(publicKey)) " +
+                "using payment list version \(paymentListVersion.map(String.init) ?? "none")",
+            context: "PrivatePaykit"
+        )
+        return .opened(
+            paymentRequest: PublicPaykitService.paymentRequest(from: payableEndpoints),
+            privatePaymentContext: PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: Dictionary(
+                    payableEndpoints.compactMap { endpoint in endpoint.appId.map { (endpoint.methodId.rawValue, $0) } },
+                    uniquingKeysWith: { first, _ in first }
+                ),
+                paymentListVersion: paymentListVersion
+            )
+        )
     }
 
     func consumePrivatePaymentList(
@@ -209,17 +237,18 @@ extension PrivatePaykitService {
         guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
             throw PrivatePaykitError.invalidPublicKey
         }
+        guard let paymentListVersion = context.paymentListVersion else { return }
 
         var contactState = state.contacts[publicKey, default: ContactState()]
-        let consumedVersion = contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath]
+        let consumedVersion = contactState.consumedPrivatePaymentListVersion
         if let consumedVersion,
-           context.paymentListVersion <= consumedVersion
+           paymentListVersion <= consumedVersion
         {
             throw PrivatePaykitError.paymentListAlreadyConsumed
         }
 
         let previousContactState = state.contacts[publicKey]
-        contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath] = context.paymentListVersion
+        contactState.consumedPrivatePaymentListVersion = paymentListVersion
         contactState.cachedResolvedEndpoints.removeAll()
         state.contacts[publicKey] = contactState
         do {
@@ -231,15 +260,14 @@ extension PrivatePaykitService {
 
         let consumptionKey = PrivatePaymentListConsumptionKey(
             attemptId: attemptId,
-            publicKey: publicKey,
-            receiverPath: context.receiverPath
+            publicKey: publicKey
         )
         privatePaymentListConsumptions[consumptionKey] = PrivatePaymentListConsumption(
-            paymentListVersion: context.paymentListVersion,
+            paymentListVersion: paymentListVersion,
             previousPaymentListVersion: consumedVersion
         )
         Logger.info(
-            "Consumed private Paykit payment list version \(context.paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
+            "Consumed private Paykit payment list version \(paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
             context: "PrivatePaykit"
         )
     }
@@ -253,14 +281,14 @@ extension PrivatePaykitService {
         guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
             throw PrivatePaykitError.invalidPublicKey
         }
+        guard let paymentListVersion = context.paymentListVersion else { return }
 
         let consumptionKey = PrivatePaymentListConsumptionKey(
             attemptId: attemptId,
-            publicKey: publicKey,
-            receiverPath: context.receiverPath
+            publicKey: publicKey
         )
         guard let consumption = privatePaymentListConsumptions[consumptionKey],
-              consumption.paymentListVersion == context.paymentListVersion
+              consumption.paymentListVersion == paymentListVersion
         else { return }
 
         guard outcome == .definitePreBroadcastFailure else {
@@ -269,13 +297,13 @@ extension PrivatePaykitService {
         }
 
         var contactState = state.contacts[publicKey, default: ContactState()]
-        guard contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath] == context.paymentListVersion else {
+        guard contactState.consumedPrivatePaymentListVersion == paymentListVersion else {
             privatePaymentListConsumptions[consumptionKey] = nil
             return
         }
 
         let previousContactState = state.contacts[publicKey]
-        contactState.consumedPrivatePaymentListVersionsByReceiverPath[context.receiverPath] = consumption.previousPaymentListVersion
+        contactState.consumedPrivatePaymentListVersion = consumption.previousPaymentListVersion
         state.contacts[publicKey] = contactState
         do {
             try persistStateOrThrow(markWalletBackup: true)
@@ -285,14 +313,13 @@ extension PrivatePaykitService {
             throw error
         }
         Logger.info(
-            "Released private Paykit payment list version \(context.paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
+            "Released private Paykit payment list version \(paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
             context: "PrivatePaykit"
         )
     }
 
     private func currentLinkState(
         publicKey: String,
-        receiverPath: String,
         preparedState: LinkedPeerState? = nil
     ) async throws -> LinkedPeerState? {
         if let preparedState {
@@ -300,7 +327,7 @@ extension PrivatePaykitService {
         }
 
         return try await PaykitSdkService.shared.linkedPeers().first {
-            PubkyPublicKeyFormat.matches($0.counterparty, publicKey) && $0.counterpartyReceiverPath == receiverPath
+            PubkyPublicKeyFormat.matches($0.counterparty, publicKey)
         }?.state
     }
 
@@ -338,7 +365,12 @@ extension PrivatePaykitService {
         }
     }
 
-    func privatePayableEndpoints(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) async -> [PublicPaykitService.Endpoint] {
+    func privatePayableEndpoints(
+        from endpoints: [PublicPaykitService.Endpoint],
+        publicKey: String,
+        allowUsedOnchainAddress: Bool = false,
+        isAddressUsed: (String) async throws -> Bool = { try await CoreService.shared.utility.isAddressUsed(address: $0) }
+    ) async -> [PublicPaykitService.Endpoint] {
         let payableEndpoints = await PublicPaykitService.payableEndpoints(from: endpoints)
         var reusableEndpoints: [PublicPaykitService.Endpoint] = []
         var staleLightningPaymentHashes = Set<String>()
@@ -360,13 +392,13 @@ extension PrivatePaykitService {
                 continue
             }
 
-            guard PublicPaykitService.MethodId.onchainPreferenceOrder.contains(endpoint.methodId) else {
+            guard PublicPaykitService.MethodId.onchainPreferenceOrder.contains(endpoint.methodId), !allowUsedOnchainAddress else {
                 reusableEndpoints.append(endpoint)
                 continue
             }
 
             do {
-                let isUsed = try await CoreService.shared.utility.isAddressUsed(address: endpoint.value)
+                let isUsed = try await isAddressUsed(endpoint.value)
                 if !isUsed {
                     reusableEndpoints.append(endpoint)
                 }
@@ -414,7 +446,9 @@ extension PrivatePaykitService {
 
     private func resolvedEndpoints(from resolution: PrivateContactPaymentResolution) -> [PublicPaykitService.Endpoint] {
         resolution.payableEndpoints.compactMap {
-            return PublicPaykitService.parseEndpoint(identifier: $0.identifier, payload: $0.target.payload)
+            var endpoint = PublicPaykitService.parseEndpoint(identifier: $0.identifier, payload: $0.target.payload)
+            endpoint?.appId = $0.appId
+            return endpoint
         }
     }
 }

@@ -13,28 +13,24 @@ struct PaykitSubscriptionNotificationTarget: Codable, Equatable {
     let payerIdentity: String
     let paymentRequestId: String
     let counterparty: String
-    let counterpartyReceiverPath: String
     let billingPeriodStartsAt: String
 
     init?(userInfo: [AnyHashable: Any]) {
         guard let payerIdentity = userInfo["payer_identity"] as? String,
               let paymentRequestId = userInfo["payment_request_id"] as? String,
               let counterparty = userInfo["counterparty"] as? String,
-              let counterpartyReceiverPath = userInfo["counterparty_receiver_path"] as? String,
               let billingPeriodStartsAt = userInfo["billing_period_starts_at"] as? String
         else { return nil }
 
         self.payerIdentity = payerIdentity
         self.paymentRequestId = paymentRequestId
         self.counterparty = counterparty
-        self.counterpartyReceiverPath = counterpartyReceiverPath
         self.billingPeriodStartsAt = billingPeriodStartsAt
     }
 
     func matches(_ request: PaykitPaymentRequest) -> Bool {
         paymentRequestId == request.paymentRequestId &&
             PubkyPublicKeyFormat.matches(counterparty, request.counterparty) &&
-            counterpartyReceiverPath == request.counterpartyReceiverPath &&
             request.billingPeriod.map {
                 PaykitSubscriptionTimestamp.string(from: $0.startsAt) == billingPeriodStartsAt
             } == true
@@ -43,7 +39,6 @@ struct PaykitSubscriptionNotificationTarget: Codable, Equatable {
     func matches(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         paymentRequestId == requestId.paymentRequestId &&
             PubkyPublicKeyFormat.matches(counterparty, requestId.counterparty) &&
-            counterpartyReceiverPath == requestId.counterpartyReceiverPath &&
             requestId.billingPeriodStartsAt.map {
                 PaykitSubscriptionTimestamp.string(from: $0) == billingPeriodStartsAt
             } == true
