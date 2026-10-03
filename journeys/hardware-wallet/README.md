@@ -46,7 +46,8 @@ Several journeys mutate pairing state. Run them in this order, or re-pair betwee
 1. `connect-home-tile.xml` — pairs the emulator; every other journey assumes it ran.
 2. `settings-hardware-wallets.xml`, `connect-flow.xml`, `suggestion-intro-sheet.xml` — each forgets
    and re-pairs the device, ending paired.
-3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`.
+3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`,
+   `send-onchain.xml`.
 4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-transfer-to-spending.xml` →
    `passphrase-settings-remove.xml`.
 5. `detail-overview.xml` **last** — its final step forgets the device.
@@ -58,6 +59,10 @@ The device blocks until each prompt is acknowledged, once per address type for a
 ```bash
 ../bitkit-docker/scripts/trezor-emulator send-json '{"type":"emulator-press-yes","id":1}'
 ```
+
+`send-onchain.xml` spends from the emulator's account, so it needs funds beyond what the transfer
+journeys leave; fund the account's receive address again from the regtest node before it, and send
+to an address of that node.
 
 ## Checking for passphrase leaks
 
