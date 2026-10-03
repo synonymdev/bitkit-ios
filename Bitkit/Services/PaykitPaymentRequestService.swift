@@ -1619,6 +1619,17 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    /// Re-reads the locally accepted request ids after another component saved one, such as the allowance executor.
+    /// Returns whether the set changed, so the caller refreshes before presenting.
+    @discardableResult
+    func reloadAcceptedRequestIds() -> Bool {
+        guard let identity = activeIdentity, let ids = try? acceptanceStore.load(identity: identity), ids != acceptedRequestIds else {
+            return false
+        }
+        acceptedRequestIds = ids
+        return true
+    }
+
     func prepareForPayment(
         _ request: PaykitPaymentRequest,
         consumePrivatePaymentList: () async throws -> Void = {}
