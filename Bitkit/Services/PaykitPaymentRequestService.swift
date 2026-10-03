@@ -1297,9 +1297,10 @@ final class PaykitPaymentRequestManager {
     }
 
     func updateSavedPublicKeys(_ publicKeys: [String]) {
-        guard publicKeys != savedPublicKeys else { return }
-        eligibilityGeneration += 1
+        let changed = Set(publicKeys.map(Self.eligibilityKey)) != Set(savedPublicKeys.map(Self.eligibilityKey))
         savedPublicKeys = publicKeys
+        guard changed else { return }
+        eligibilityGeneration += 1
         eligibleTargets.removeAll { target in
             !publicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
         }
@@ -1323,7 +1324,7 @@ final class PaykitPaymentRequestManager {
             )
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration,
-                  savedPublicKeys == self.savedPublicKeys,
+                  Set(savedPublicKeys.map(Self.eligibilityKey)) == Set(self.savedPublicKeys.map(Self.eligibilityKey)),
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
@@ -1488,7 +1489,7 @@ final class PaykitPaymentRequestManager {
         if actionGeneration == stateGeneration,
            isAvailable(),
            PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
-           savedPublicKeysSnapshot == savedPublicKeys
+           Set(savedPublicKeysSnapshot.map(Self.eligibilityKey)) == Set(savedPublicKeys.map(Self.eligibilityKey))
         {
             invalidateRefresh()
             historyRequests.removeAll { $0.id == request.id }

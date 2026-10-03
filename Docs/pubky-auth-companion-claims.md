@@ -2,6 +2,8 @@
 
 Bitkit can authorize a Pubky session and share Paykit access, a watch-only Bitcoin account, or both. The request explicitly selects the material to share; homeserver write permissions alone never imply key export.
 
+Bitkit's own session includes the Paykit authorizer scope. On identity activation it publishes the identity-signed Noise key before advertising private Paykit capabilities. Sessions granted to other apps keep the normal Paykit scope; they cannot replace this authorization record.
+
 ## Request
 
 - The Pubky Auth URL includes exactly one `x-bitkit-claim` parameter containing a dot-separated list of independent requested items:

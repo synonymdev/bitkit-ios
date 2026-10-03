@@ -5143,8 +5143,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(lookups, [addedKey])
     }
 
-    func testUnchangedSavedKeysAllowPendingEligibilityRefreshToComplete() async throws {
+    func testReorderedSavedKeysAllowPendingEligibilityRefreshToComplete() async throws {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let otherKey = "pubky\(String(repeating: "a", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
         await sdk.configureRecipients(
             peers: [linkedPeer(counterparty: savedKey, state: .linked)],
@@ -5154,10 +5155,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let manager = paymentRequestManager(sdk: sdk)
 
         let fullRefresh = Task {
-            await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+            await manager.refreshEligibleTargets(savedPublicKeys: [savedKey, otherKey])
         }
         try await waitUntil { await sdk.linkedPeersIsPaused() }
-        manager.updateSavedPublicKeys([savedKey])
+        manager.updateSavedPublicKeys([otherKey, savedKey])
         await sdk.resumeLinkedPeers()
         await fullRefresh.value
 

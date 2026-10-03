@@ -1020,7 +1020,7 @@ actor PaykitSdkService {
     }
 
     nonisolated static func requiredCapabilities() throws -> String {
-        Paykit.requiredSessionCapabilities()
+        Paykit.paykitAuthorizerSessionCapabilities()
     }
 
     private func handle() throws -> PaykitSdk {
@@ -1204,6 +1204,9 @@ actor PaykitSdkService {
             try await refreshPaykitKey()
             sdk = try handle()
             _ = try await sdk.initialize()
+            if result.sessionAccess.exportLocalSecretKey() != nil {
+                _ = try await sdk.publishPaykitNoiseKeyAuthorization()
+            }
         } catch {
             var rollbackError: Error?
             for (key, value) in zip(keys, previousValues) {
