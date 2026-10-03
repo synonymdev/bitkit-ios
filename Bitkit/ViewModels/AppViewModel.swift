@@ -904,7 +904,8 @@ extension AppViewModel {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
-                description: t("other__lnurl_pay_error_no_capacity")
+                description: t("other__lnurl_pay_error_no_capacity"),
+                accessibilityIdentifier: "LnurlPayNoCapacityToast"
             )
             return
         }
