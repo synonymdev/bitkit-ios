@@ -121,6 +121,11 @@ struct PaykitAllowance: Identifiable, Hashable {
         lifecycleState == .proposed && !isProposedByMe
     }
 
+    /// A received proposal whose proposer took the allower role, which leaves this wallet the allowee. The money and the
+    /// decision are the allower's, so Bitkit accepts it without asking. A received proposal that makes this wallet the
+    /// allower (a payee asking for an allowance) is not an offer and waits for the user's decision.
+    var isOfferFromAllower: Bool { isAnswerable && role == .allowee }
+
     static func isMonthly(_ period: Paykit.AllowancePeriod) -> Bool {
         period.kind() == "anchored" && period.every() == 1 && period.unit() == "month"
     }

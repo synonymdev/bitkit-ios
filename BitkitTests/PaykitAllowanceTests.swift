@@ -313,6 +313,21 @@ final class PaykitAllowanceTests: XCTestCase {
 
     // MARK: Grouping
 
+    func testOnlyAReceivedProposalFromTheAllowerIsAnOffer() {
+        typealias Fixtures = PaykitAllowanceFixtures
+        let fromAllower = Fixtures.allowance(role: .allowee, state: .proposed, isProposedByMe: false)
+        XCTAssertTrue(fromAllower.isOfferFromAllower)
+        XCTAssertTrue(fromAllower.isAnswerable)
+
+        let fromAllowee = Fixtures.allowance(role: .allower, state: .proposed, isProposedByMe: false)
+        XCTAssertFalse(fromAllowee.isOfferFromAllower)
+        XCTAssertTrue(fromAllowee.isAnswerable)
+
+        XCTAssertFalse(Fixtures.allowance(role: .allower, state: .proposed, isProposedByMe: true).isOfferFromAllower)
+        XCTAssertFalse(Fixtures.allowance(role: .allowee, state: .proposed, isProposedByMe: true).isOfferFromAllower)
+        XCTAssertFalse(Fixtures.allowance(role: .allowee, state: .accepted, isProposedByMe: false).isOfferFromAllower)
+    }
+
     func testEntryPrimaryIsTheGrantsAllowance() {
         let allowance = Fixtures.allowance(allowanceId: Fixtures.walletAllowanceId)
 
@@ -437,13 +452,14 @@ enum PaykitAllowanceFixtures {
         perPaymentMaxSats: UInt64? = 5000,
         monthlyLimitSats: UInt64? = 50000,
         monthlyAnchor: Date? = septemberAnchor,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        isProposedByMe: Bool? = nil
     ) -> PaykitAllowance {
         PaykitAllowance(
             id: PaykitAllowance.ID(counterparty: counterparty, allowanceId: allowanceId),
             role: role,
             lifecycleState: state,
-            isProposedByMe: role == .allower,
+            isProposedByMe: isProposedByMe ?? (role == .allower),
             perPaymentMaxSats: perPaymentMaxSats,
             monthlyLimitSats: monthlyLimitSats,
             monthlyAnchor: monthlyAnchor,

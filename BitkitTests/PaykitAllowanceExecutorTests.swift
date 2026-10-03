@@ -692,6 +692,73 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(try manager.coversRequest(Fixtures.paymentRequest(createdAt: "2026-09-24T11:45:00Z")))
     }
 
+    // MARK: Incoming offers
+
+    @MainActor
+    func testManagerAcceptsAnOfferFromTheAllowerWithoutAReviewSheet() async throws {
+        let harness = AllowanceHarness()
+        // The proposer took the allower role, so this wallet is the allowee.
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        XCTAssertNil(manager.proposalForPresentation(), "An offer from the allower never opens the review sheet")
+
+        let accepted = await manager.acceptOffersFromAllowers()
+
+        XCTAssertEqual(accepted.map(\.counterparty), [Fixtures.counterpartyKey])
+        let acceptedIds = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIds, [Fixtures.walletAllowanceId])
+        XCTAssertEqual(manager.entries.first?.status(at: Fixtures.now), .active)
+        XCTAssertEqual(manager.entries.first?.role, .allowee)
+        XCTAssertEqual(manager.entries.first?.canEnd, true, "The allowee can still end it")
+        XCTAssertNil(manager.proposalForPresentation())
+
+        let acceptedAgain = await manager.acceptOffersFromAllowers()
+        XCTAssertTrue(acceptedAgain.isEmpty, "An accepted offer is not accepted or announced twice")
+        let acceptedIdsAfter = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIdsAfter, [Fixtures.walletAllowanceId])
+    }
+
+    @MainActor
+    func testManagerLeavesAnAskFromTheAlloweeForTheReviewSheet() async throws {
+        let harness = AllowanceHarness()
+        // The proposer took the allowee role, so this wallet is the allower and pays: the user decides.
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allower, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let accepted = await manager.acceptOffersFromAllowers()
+
+        XCTAssertTrue(accepted.isEmpty)
+        let acceptedIds = await harness.sdk.acceptedAllowanceIds
+        XCTAssertTrue(acceptedIds.isEmpty)
+        XCTAssertFalse(harness.log.entries.contains("acceptAllowance"))
+        XCTAssertEqual(manager.proposalForPresentation()?.counterparty, Fixtures.counterpartyKey)
+        XCTAssertEqual(manager.entries.first?.status(at: Fixtures.now), .awaitingMyAnswer)
+    }
+
+    @MainActor
+    func testManagerNeverAcceptsAProposalItSentOrOneAlreadyAnswered() async throws {
+        let harness = AllowanceHarness()
+        let terms = try Fixtures.standardTerms()
+        try await harness.sdk.setRecords([
+            Fixtures.record(allowanceId: "sent", localRole: .allower, state: .proposed, terms: terms, proposedByMe: true),
+            Fixtures.record(allowanceId: "declined", localRole: .allowee, state: .rejected, terms: terms, proposedByMe: false),
+            Fixtures.record(allowanceId: "ended", localRole: .allowee, state: .ended, terms: terms, proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let accepted = await manager.acceptOffersFromAllowers()
+
+        XCTAssertTrue(accepted.isEmpty)
+        XCTAssertFalse(harness.log.entries.contains("acceptAllowance"))
+    }
+
     // MARK: Helpers
 
     private static func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) async {
@@ -1094,6 +1161,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private var manualReservation: Paykit.PaymentAttemptDecision?
     private var beginDecision: Paykit.PaymentAttemptDecision?
     private var acceptError: Error?
+    private(set) var acceptedAllowanceIds: [String] = []
     private(set) var evaluatedTrustedTimes: [String] = []
     private(set) var selections: [Paykit.AllowanceSelectionInput] = []
     private(set) var acceptedEndpointIdentifiers: [String] = []
@@ -1168,7 +1236,11 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func acceptAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
-        throw AllowanceMockError.unsupported
+        guard let index = records.firstIndex(where: { $0.allowanceId == allowanceId })
+        else { throw AllowanceMockError.unsupported }
+        records[index].state = .accepted
+        acceptedAllowanceIds.append(allowanceId)
+        return records[index]
     }
 
     func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
