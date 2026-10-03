@@ -1,4 +1,5 @@
 import Foundation
+import enum Paykit.PaykitError
 import struct Paykit.PubkySessionBootstrapResult
 import SwiftUI
 
@@ -1308,6 +1309,15 @@ class PubkyProfileManager: ObservableObject {
                 let publicKey = try await importSession(savedSessionSecret)
                 return .restored(publicKey: publicKey)
             } catch {
+                if let error = error as? PaykitError {
+                    switch error {
+                    case .ConcurrentUpdate, .SharedStateBusy, .Transport:
+                        Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
+                        return .restorationFailed
+                    default:
+                        break
+                    }
+                }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
         }

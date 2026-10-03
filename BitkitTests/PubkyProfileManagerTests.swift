@@ -1,4 +1,5 @@
 @testable import Bitkit
+import enum Paykit.PaykitError
 import class Paykit.PubkySessionAccess
 import struct Paykit.PubkySessionBootstrapResult
 import XCTest
@@ -1439,6 +1440,26 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_saved"))
+    }
+
+    func testResolveSessionInitializationKeepsSessionOnTemporaryFailure() async {
+        let errors: [PaykitError] = [
+            .ConcurrentUpdate(code: "concurrent_update", context: "Locked"),
+            .SharedStateBusy(code: "shared_state_busy", context: "Pending write"),
+            .Transport(code: "transport_error", context: "Offline"),
+        ]
+        for error in errors {
+            let result = await PubkyProfileManager.resolveSessionInitialization(
+                savedSessionSecret: "saved-session",
+                storedSecretKeyHex: "local-secret",
+                importSession: { _ in throw error },
+                signInWithSecretKey: { _ in
+                    XCTFail("Temporary failures should retry the saved session")
+                    return "unused-session"
+                }
+            )
+            XCTAssertEqual(result, .restorationFailed)
+        }
     }
 
     func testResolveSessionInitializationSignsInWhenOnlySecretKeyExists() async {

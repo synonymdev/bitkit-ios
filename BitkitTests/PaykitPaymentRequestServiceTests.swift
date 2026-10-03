@@ -9,48 +9,97 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
-    func testInboxRefreshReadsSharedStateWithoutPrivateMessageSync() async throws {
-        let record = try paymentRequestRecord()
-        let sdk = PaymentRequestSdkMock(records: [])
-        let manager = paymentRequestManager(sdk: sdk)
+    func testRefreshModesLoadStoredRequestsAndControlPrivateMessageSync() async throws {
+        let stored = try paymentRequestRecord(id: "stored")
+        let incoming = try paymentRequestRecord(id: "incoming")
+        let modes: [PaykitPaymentRequestRefreshMode] = [.stored, .inbox, .full]
+        for mode in modes {
+            let sdk = PaymentRequestSdkMock(records: [stored])
+            await sdk.setIncomingRecords([incoming])
+            let manager = paymentRequestManager(sdk: sdk)
 
-        await manager.refresh()
-        await sdk.setRecords([record])
-        await manager.refresh(syncPrivateMessages: false)
+            await manager.refresh(mode: mode)
 
-        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [record.paymentRequestId])
-        let snapshot = await sdk.snapshot()
-        XCTAssertEqual(snapshot.processCallCount, 1)
-        XCTAssertEqual(snapshot.receiveCallCount, 1)
-    }
-
-    func testFullRefreshAfterOverlappingInboxRefreshDrainsOutboundWork() async throws {
-        let sdk = PaymentRequestSdkMock(records: [])
-        let manager = paymentRequestManager(sdk: sdk)
-        await sdk.pauseNextPaymentRequestList()
-        let inboxRefresh = Task { await manager.refresh(syncPrivateMessages: false) }
-        try await waitUntil { await sdk.paymentRequestListIsPaused() }
-        let fullRefreshStarted = expectation(description: "Full refresh started")
-        let fullRefresh = Task {
-            fullRefreshStarted.fulfill()
-            await manager.refresh()
+            let expectedIds = mode == .stored ? [stored.paymentRequestId] : [stored.paymentRequestId, incoming.paymentRequestId]
+            XCTAssertEqual(Set(manager.pendingRequests.map(\.paymentRequestId)), Set(expectedIds), "\(mode)")
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.processCallCount, mode == .full ? 1 : 0, "\(mode)")
+            XCTAssertEqual(snapshot.receiveCallCount, mode >= .inbox ? 1 : 0, "\(mode)")
+            XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, "\(mode)")
         }
-        await fulfillment(of: [fullRefreshStarted], timeout: 1)
-
-        await sdk.resumePaymentRequestList()
-        await inboxRefresh.value
-        await fullRefresh.value
-
-        let snapshot = await sdk.snapshot()
-        XCTAssertEqual(snapshot.processCallCount, 1)
-        XCTAssertEqual(snapshot.receiveCallCount, 1)
     }
 
-    func testClearInvalidatesFullRefreshWaitingForInbox() async throws {
+    func testOverlappingRefreshesUpgradeOnlyForStrongerModes() async throws {
+        let modes: [PaykitPaymentRequestRefreshMode] = [.stored, .inbox, .full]
+        for initialMode in modes {
+            for requestedMode in modes {
+                let context = "\(initialMode) then \(requestedMode)"
+                let sdk = PaymentRequestSdkMock(records: [])
+                let manager = paymentRequestManager(sdk: sdk)
+                await sdk.pauseNextPaymentRequestList()
+                let initialRefresh = Task { await manager.refresh(mode: initialMode) }
+                try await waitUntil { await sdk.paymentRequestListIsPaused() }
+                let overlappingRefreshStarted = expectation(description: context)
+                let overlappingRefresh = Task {
+                    overlappingRefreshStarted.fulfill()
+                    await manager.refresh(mode: requestedMode)
+                }
+                await fulfillment(of: [overlappingRefreshStarted], timeout: 1)
+
+                let pausedSnapshot = await sdk.snapshot()
+                XCTAssertEqual(pausedSnapshot.processCallCount, initialMode == .full ? 1 : 0, context)
+                XCTAssertEqual(pausedSnapshot.receiveCallCount, initialMode >= .inbox ? 1 : 0, context)
+                XCTAssertEqual(pausedSnapshot.paymentRequestListCallCount, 1, context)
+                await sdk.resumePaymentRequestList()
+                await initialRefresh.value
+                await overlappingRefresh.value
+
+                let upgrades = requestedMode > initialMode
+                let snapshot = await sdk.snapshot()
+                XCTAssertEqual(snapshot.processCallCount, max(initialMode, requestedMode) == .full ? 1 : 0, context)
+                XCTAssertEqual(snapshot.receiveCallCount, (initialMode >= .inbox ? 1 : 0) + (upgrades ? 1 : 0), context)
+                XCTAssertEqual(snapshot.paymentRequestListCallCount, upgrades ? 2 : 1, context)
+            }
+        }
+    }
+
+    func testClearInvalidatesStrongerRefreshWaitingForWeakerMode() async throws {
+        let modes: [PaykitPaymentRequestRefreshMode] = [.stored, .inbox, .full]
+        for initialMode in modes {
+            for requestedMode in modes where requestedMode > initialMode {
+                let context = "\(initialMode) then \(requestedMode)"
+                let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+                let manager = paymentRequestManager(sdk: sdk)
+                await sdk.pauseNextPaymentRequestList()
+                let initialRefresh = Task { await manager.refresh(mode: initialMode) }
+                try await waitUntil { await sdk.paymentRequestListIsPaused() }
+                let overlappingRefreshStarted = expectation(description: context)
+                let overlappingRefresh = Task {
+                    overlappingRefreshStarted.fulfill()
+                    await manager.refresh(mode: requestedMode)
+                }
+                await fulfillment(of: [overlappingRefreshStarted], timeout: 1)
+
+                manager.clear()
+                await sdk.resumePaymentRequestList()
+                await initialRefresh.value
+                await overlappingRefresh.value
+
+                XCTAssertTrue(manager.pendingRequests.isEmpty, context)
+                XCTAssertTrue(manager.historyRequests.isEmpty, context)
+                let snapshot = await sdk.snapshot()
+                XCTAssertEqual(snapshot.processCallCount, 0, context)
+                XCTAssertEqual(snapshot.receiveCallCount, initialMode == .inbox ? 1 : 0, context)
+                XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, context)
+            }
+        }
+    }
+
+    func testCanceledRefreshDoesNotUpgradeInFlightStoredRefresh() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
         await sdk.pauseNextPaymentRequestList()
-        let inboxRefresh = Task { await manager.refresh(syncPrivateMessages: false) }
+        let storedRefresh = Task { await manager.refresh(mode: .stored) }
         try await waitUntil { await sdk.paymentRequestListIsPaused() }
         let fullRefreshStarted = expectation(description: "Full refresh started")
         let fullRefresh = Task {
@@ -59,16 +108,16 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
         await fulfillment(of: [fullRefreshStarted], timeout: 1)
 
-        manager.clear()
+        fullRefresh.cancel()
         await sdk.resumePaymentRequestList()
-        await inboxRefresh.value
+        await storedRefresh.value
         await fullRefresh.value
 
-        XCTAssertTrue(manager.pendingRequests.isEmpty)
-        XCTAssertTrue(manager.historyRequests.isEmpty)
+        XCTAssertEqual(manager.pendingRequests.count, 1)
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 0)
         XCTAssertEqual(snapshot.receiveCallCount, 0)
+        XCTAssertEqual(snapshot.paymentRequestListCallCount, 1)
     }
 
     func testReceivedPaymentContactsIncludeSharedServerRequestsAndLatePayments() throws {
@@ -1268,7 +1317,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
-    func testInboxRefreshMapsActiveRecurringRequestAndCurrentUnpaidPeriod() async throws {
+    func testStoredRefreshMapsActiveRecurringRequestAndCurrentUnpaidPeriod() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
             every: 1,
@@ -1286,7 +1335,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sdk = PaymentRequestSdkMock(records: [record])
         let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
 
-        await manager.refresh(syncPrivateMessages: false)
+        await manager.refresh(mode: .stored)
 
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 0)
@@ -1388,7 +1437,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await waitUntil { await sdk.linkedPeersIsPaused() }
         record.state = .canceled
         await sdk.setRecords([record])
-        await manager.refresh(syncPrivateMessages: false)
+        await manager.refresh(mode: .stored)
         await sdk.resumeLinkedPeers()
 
         XCTAssertFalse(manager.isApprovedForPayment(request))
@@ -6009,6 +6058,8 @@ private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscripti
 private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaymentProofSdkHandling {
     private var activeIdentity = "pubky\(String(repeating: "z", count: 52))"
     private var records: [PaymentRequestRecord]
+    private var incomingRecords: [PaymentRequestRecord] = []
+    private var paymentRequestListCallCount = 0
     private var peerRecords: [LinkedPeerRecord] = []
     private var requestCapabilitiesByPublicKey: [String: Bool] = [:]
     private var liveSessionAvailable = true
@@ -6097,6 +6148,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         if let receiveError {
             throw receiveError
         }
+        records.append(contentsOf: incomingRecords)
+        incomingRecords = []
         return receiveReports
     }
 
@@ -6105,6 +6158,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     }
 
     func sharedPaymentRequests() async -> [PaymentRequestRecord] {
+        paymentRequestListCallCount += 1
         let snapshot = records
         guard shouldPauseNextPaymentRequestList else { return snapshot }
 
@@ -6358,6 +6412,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         self.records = records
     }
 
+    func setIncomingRecords(_ records: [PaymentRequestRecord]) {
+        incomingRecords = records
+    }
+
     func configureRecipients(
         peers: [LinkedPeerRecord],
         requestCapabilitiesByPublicKey: [String: Bool]
@@ -6446,6 +6504,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             processCallCount: processCallCount,
             processedCounterparties: processedCounterparties,
             receiveCallCount: receiveCallCount,
+            paymentRequestListCallCount: paymentRequestListCallCount,
             acceptedRequests: acceptedRequests,
             rejectedRequests: rejectedRequests,
             proposedRequests: proposedRequests
@@ -6471,6 +6530,7 @@ private struct PaymentRequestSdkSnapshot {
     let processCallCount: Int
     let processedCounterparties: [String]
     let receiveCallCount: Int
+    let paymentRequestListCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]
     let rejectedRequests: [PaymentRequestInvocation]
     let proposedRequests: [ProposedPaymentRequestInvocation]

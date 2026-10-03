@@ -524,6 +524,12 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
 
 extension PaykitSdkService: PaykitPaymentRequestSdkHandling {}
 
+enum PaykitPaymentRequestRefreshMode: Comparable {
+    case stored
+    case inbox
+    case full
+}
+
 struct PaykitPaymentRequestService {
     private let sdk: any PaykitPaymentRequestSdkHandling
     private let now: @Sendable () -> Date
@@ -550,9 +556,11 @@ struct PaykitPaymentRequestService {
         self.logWarning = logWarning
     }
 
-    func synchronize(syncPrivateMessages: Bool = true) async throws -> PaykitPaymentRequestSnapshot {
-        if syncPrivateMessages {
+    func synchronize(mode: PaykitPaymentRequestRefreshMode = .full) async throws -> PaykitPaymentRequestSnapshot {
+        if mode == .full {
             try await processPendingMessages()
+        }
+        if mode >= .inbox {
             let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers()
             logIntakeFailures(intakeReports)
         }
@@ -1179,7 +1187,7 @@ final class PaykitPaymentRequestManager {
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
     private var unavailableRequestedPresentations: [PaykitPaymentRequest] = []
     private var isPresentingRequests = false
-    private var refreshTask: (syncPrivateMessages: Bool, task: Task<Void, Never>)?
+    private var refreshTask: (mode: PaykitPaymentRequestRefreshMode, task: Task<Void, Never>)?
     private var expirationTask: Task<Void, Never>?
     private var presentationRetryTask: Task<Void, Never>?
     private var refreshGeneration = 0
@@ -1549,8 +1557,8 @@ final class PaykitPaymentRequestManager {
         return subscription
     }
 
-    func refresh(syncPrivateMessages: Bool = true) async {
-        await refresh(excludingProtectedRequestId: nil, syncPrivateMessages: syncPrivateMessages)
+    func refresh(mode: PaykitPaymentRequestRefreshMode = .full) async {
+        await refresh(excludingProtectedRequestId: nil, mode: mode)
     }
 
     /// Applies a changed subscription clock offset: waits for a refresh already reading the old clock, then refreshes again.
@@ -1574,12 +1582,12 @@ final class PaykitPaymentRequestManager {
         )
     }
 
-    private func refresh(excludingProtectedRequestId: PaykitPaymentRequest.ID?, syncPrivateMessages: Bool = true) async {
+    private func refresh(excludingProtectedRequestId: PaykitPaymentRequest.ID?, mode: PaykitPaymentRequestRefreshMode = .full) async {
         if let refreshTask {
             let generation = stateGeneration
             await refreshTask.task.value
-            if syncPrivateMessages, !refreshTask.syncPrivateMessages, generation == stateGeneration, !Task.isCancelled {
-                await refresh(excludingProtectedRequestId: excludingProtectedRequestId, syncPrivateMessages: true)
+            if mode > refreshTask.mode, generation == stateGeneration, !Task.isCancelled {
+                await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode)
             }
             return
         }
@@ -1591,12 +1599,12 @@ final class PaykitPaymentRequestManager {
             await performRefresh(
                 generation: generation,
                 excludingProtectedRequestId: excludingProtectedRequestId,
-                syncPrivateMessages: syncPrivateMessages
+                mode: mode
             )
             guard generation == refreshGeneration else { return }
             refreshTask = nil
         }
-        refreshTask = (syncPrivateMessages, task)
+        refreshTask = (mode, task)
         await task.value
     }
 
@@ -2121,10 +2129,10 @@ final class PaykitPaymentRequestManager {
     private func performRefresh(
         generation: Int,
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
-        syncPrivateMessages: Bool
+        mode: PaykitPaymentRequestRefreshMode
     ) async {
         do {
-            let snapshot = try await service.synchronize(syncPrivateMessages: syncPrivateMessages)
+            let snapshot = try await service.synchronize(mode: mode)
             guard generation == refreshGeneration, let activeIdentity else { return }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)

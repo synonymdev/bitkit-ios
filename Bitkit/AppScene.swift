@@ -1111,7 +1111,7 @@ struct AppScene: View {
         }
     }
 
-    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, refreshMaintenance: Bool = true) async {
+    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, mode: PaykitPaymentRequestRefreshMode = .full) async {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
@@ -1122,11 +1122,11 @@ struct AppScene: View {
 
         guard !Task.isCancelled else { return }
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
-        if refreshMaintenance {
+        if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh(syncPrivateMessages: refreshMaintenance)
+        await paykitPaymentRequestManager.refresh(mode: mode)
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return }
@@ -1145,7 +1145,7 @@ struct AppScene: View {
         if presentItems {
             await presentNextIncomingPaykitItem()
         }
-        if refreshMaintenance {
+        if mode == .full {
             await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
     }
@@ -1193,23 +1193,23 @@ struct AppScene: View {
             guard !isWalletBackupRestoreRunning,
                   !BackupService.shared.hasPendingWalletRestore()
             else { continue }
-            let refreshMaintenance: Bool
+            let mode: PaykitPaymentRequestRefreshMode
             switch schedule.takeRound(isConnected: network.isConnected) {
             case .skip:
                 continue
             case .refreshInbox:
-                refreshMaintenance = false
+                mode = .inbox
             case .refreshInboxAndMaintenance:
-                refreshMaintenance = true
+                mode = .full
             }
-            if refreshMaintenance {
+            if mode == .full {
                 await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
                     wallet: wallet,
                     reason: "payment request polling"
                 )
             }
-            await refreshIncomingPaykitPaymentRequests(refreshMaintenance: refreshMaintenance)
+            await refreshIncomingPaykitPaymentRequests(mode: mode)
         }
     }
 
@@ -1440,7 +1440,7 @@ struct AppScene: View {
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
-        await refreshIncomingPaykitPaymentRequests(presentItems: false, refreshMaintenance: false)
+        await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored)
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
                 PaykitSubscriptionNotificationTargetStore.clear()
