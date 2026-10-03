@@ -151,7 +151,7 @@ struct GeneralSettingsView: View {
             else { return }
 
             // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish
-            // unless the Pubky session ends first.
+            // unless the Pubky session ends or a newer contact payments change starts first.
             Task { await updateContactPayments(true) }
         }
     }

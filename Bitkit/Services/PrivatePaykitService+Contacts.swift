@@ -159,18 +159,23 @@ extension PrivatePaykitService {
         )
     }
 
-    func removePublishedEndpoints() async throws {
+    func removePublishedEndpoints(isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         let publicKeys = Set(knownSavedContactKeys)
             .union(state.contacts.keys)
             .union(Self.pendingDeletedContactCleanupKeys())
-        try await removePublishedEndpoints(for: Array(publicKeys))
+        try await removePublishedEndpoints(for: Array(publicKeys), isSessionCurrent: isSessionCurrent)
     }
 
-    func removePublishedEndpoints(for publicKeys: [String]) async throws {
+    /// A newer contact payments change starts before it publishes endpoints under the publication lock, so checking
+    /// `isSessionCurrent` once the lock is held stops an older change's removal from clearing what that change published.
+    func removePublishedEndpoints(for publicKeys: [String], isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
         guard !publicKeys.isEmpty else { return }
 
         try await withPublicationLock {
+            if let isSessionCurrent, await !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
+            }
             try await removePublishedEndpointsLocked(for: publicKeys)
         }
     }
@@ -369,9 +374,9 @@ extension PrivatePaykitService {
         )
     }
 
-    /// Sign-out changes the current Pubky session before it removes private endpoints under the publication lock, so
-    /// checking `isSessionCurrent` once the lock is held stops a publish that would otherwise write them back after that
-    /// removal.
+    /// Sign-out changes the current Pubky session, and a newer contact payments change starts, before either removes
+    /// private endpoints under the publication lock, so checking `isSessionCurrent` once the lock is held stops a publish
+    /// that would otherwise write them back after that removal.
     func syncLocalEndpointPublication(
         for publicKeys: [String],
         reason: String,

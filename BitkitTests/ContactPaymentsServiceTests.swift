@@ -475,7 +475,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                     canUsePrivatePayments: true,
                     operations: operations.makeOperations(),
                     defaults: defaults,
-                    isSessionCurrent: { false }
+                    isChangeCurrent: { false }
                 )
 
                 XCTAssertEqual(operations.calls, testCase.calls, testCase.name)
@@ -485,6 +485,266 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 XCTAssertEqual(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), sharing, testCase.name)
                 XCTAssertEqual(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), sharing, testCase.name)
             }
+        }
+    }
+
+    /// The latest contact payments change wins. General Settings' first automatic enable outlives the screen, so the user
+    /// can turn contact payments off in a General Settings opened again while that enable still publishes endpoints. A
+    /// publication of the enable that gets its lock after the disable started writes nothing, and one that already held
+    /// its lock finishes before the disable's removal. Either way, once the disable started the enable writes no flag or
+    /// cleanup mark and restores nothing, it returns that it stopped, and contact payments stay off.
+    func testContactPaymentsDisableWinsOverAnOlderEnableStillPublishing() async throws {
+        enum HeldPublication {
+            case privateBeforeLock, publicBeforeLock, publicHoldingLock
+        }
+        let cases: [(name: String, held: HeldPublication, writes: [String])] = [
+            ("private publication waiting for its lock", .privateBeforeLock, ["private:removed", "public:removed"]),
+            ("public publication waiting for its lock", .publicBeforeLock, ["private:published", "private:removed", "public:removed"]),
+            (
+                "public publication holding its lock", .publicHoldingLock,
+                ["private:published", "private:removed", "public:published", "public:removed"]
+            ),
+        ]
+        let ownerKey = try useLocalPubkySecretKey()
+        let record = contactRecord(publicKey: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg")
+
+        for testCase in cases {
+            try await withIsolatedDefaultsAsync { defaults in
+                let pubkyProfile = signedInProfile(ownerKey: ownerKey)
+                let contactsManager = ContactsManager(contactRecords: { [record] })
+                let endpoints = LockedEndpointWrites()
+                let reachedHeldPoint = expectation(description: "\(testCase.name): publication reached its held point")
+                let disableRemovedPrivateEndpoints = expectation(description: "\(testCase.name): private endpoints removed")
+                let (gate, release) = AsyncStream<Void>.makeStream()
+                let held = testCase.held
+                let operations = OperationsSpy()
+                operations.preparePrivateEndpoints = { _, _, isChangeCurrent in
+                    if held == .privateBeforeLock {
+                        reachedHeldPoint.fulfill()
+                        for await _ in gate {}
+                    }
+                    return await endpoints.writePrivateReturningError("private:published", isChangeCurrent: isChangeCurrent)
+                }
+                operations.removePrivateEndpoints = { isChangeCurrent in
+                    try await endpoints.writePrivate("private:removed", isChangeCurrent: isChangeCurrent)
+                    disableRemovedPrivateEndpoints.fulfill()
+                }
+                operations.syncPublicEndpoints = { publish, isChangeCurrent in
+                    if publish, held == .publicBeforeLock {
+                        reachedHeldPoint.fulfill()
+                        for await _ in gate {}
+                    }
+                    try await endpoints.writePublic(publish ? "public:published" : "public:removed", isChangeCurrent: isChangeCurrent) {
+                        if publish, held == .publicHoldingLock {
+                            reachedHeldPoint.fulfill()
+                            for await _ in gate {}
+                        }
+                    }
+                }
+                let enable = Task {
+                    try await ContactPaymentsService.setEnabled(
+                        true, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
+                        defaults: defaults
+                    )
+                }
+                await fulfillment(of: [reachedHeldPoint], timeout: 2)
+
+                let disable = Task {
+                    try await ContactPaymentsService.setEnabled(
+                        false, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
+                        defaults: defaults
+                    )
+                }
+                await fulfillment(of: [disableRemovedPrivateEndpoints], timeout: 2)
+                // Holding its lock, the enable's publication keeps the disable's public removal waiting; otherwise the
+                // disable finishes while the enable is held.
+                if held != .publicHoldingLock {
+                    let isDisableApplied = try await disable.value
+                    XCTAssertTrue(isDisableApplied, testCase.name)
+                }
+                release.finish()
+                let enableResult = await enable.result
+                let disableResult = await disable.result
+
+                XCTAssertFalse(try enableResult.get(), testCase.name)
+                XCTAssertTrue(try disableResult.get(), testCase.name)
+                XCTAssertEqual(endpoints.entries, testCase.writes, testCase.name)
+                XCTAssertEqual(operations.publicCleanupValues, [false], testCase.name)
+                XCTAssertEqual(operations.privateCleanupValues, [false], testCase.name)
+                XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), testCase.name)
+                XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), testCase.name)
+                XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey), testCase.name)
+                XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults), testCase.name)
+            }
+        }
+    }
+
+    /// The latest contact payments change wins the other way round too. An enable that starts while an older disable still
+    /// removes endpoints keeps contact payments on: a removal of the disable that gets its lock after the enable started
+    /// removes nothing, and one that already held its lock finishes before the enable's publication. The disable writes
+    /// no flag or cleanup mark once the enable started, and returns that it stopped.
+    func testContactPaymentsEnableWinsOverAnOlderDisableStillRemoving() async throws {
+        enum HeldRemoval {
+            case privateBeforeLock, publicBeforeLock, publicHoldingLock
+        }
+        let cases: [(name: String, held: HeldRemoval, writes: [String], privateCleanupValues: [Bool])] = [
+            ("private removal waiting for its lock", .privateBeforeLock, ["private:published", "public:published"], [false]),
+            (
+                "public removal waiting for its lock", .publicBeforeLock,
+                ["private:removed", "private:published", "public:published"], [false, false]
+            ),
+            (
+                "public removal holding its lock", .publicHoldingLock,
+                ["private:removed", "private:published", "public:removed", "public:published"], [false, false]
+            ),
+        ]
+        let ownerKey = try useLocalPubkySecretKey()
+        let record = contactRecord(publicKey: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg")
+
+        for testCase in cases {
+            try await withIsolatedDefaultsAsync { defaults in
+                defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+                defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+                let pubkyProfile = signedInProfile(ownerKey: ownerKey)
+                let contactsManager = ContactsManager(contactRecords: { [record] })
+                let endpoints = LockedEndpointWrites()
+                let reachedHeldPoint = expectation(description: "\(testCase.name): removal reached its held point")
+                let enablePublishedPrivateEndpoints = expectation(description: "\(testCase.name): private endpoints published")
+                let (gate, release) = AsyncStream<Void>.makeStream()
+                let held = testCase.held
+                let operations = OperationsSpy()
+                operations.removePrivateEndpoints = { isChangeCurrent in
+                    if held == .privateBeforeLock {
+                        reachedHeldPoint.fulfill()
+                        for await _ in gate {}
+                    }
+                    try await endpoints.writePrivate("private:removed", isChangeCurrent: isChangeCurrent)
+                }
+                operations.preparePrivateEndpoints = { _, _, isChangeCurrent in
+                    let error = await endpoints.writePrivateReturningError("private:published", isChangeCurrent: isChangeCurrent)
+                    enablePublishedPrivateEndpoints.fulfill()
+                    return error
+                }
+                operations.syncPublicEndpoints = { publish, isChangeCurrent in
+                    if !publish, held == .publicBeforeLock {
+                        reachedHeldPoint.fulfill()
+                        for await _ in gate {}
+                    }
+                    try await endpoints.writePublic(publish ? "public:published" : "public:removed", isChangeCurrent: isChangeCurrent) {
+                        if !publish, held == .publicHoldingLock {
+                            reachedHeldPoint.fulfill()
+                            for await _ in gate {}
+                        }
+                    }
+                }
+                let disable = Task {
+                    try await ContactPaymentsService.setEnabled(
+                        false, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
+                        defaults: defaults
+                    )
+                }
+                await fulfillment(of: [reachedHeldPoint], timeout: 2)
+
+                let enable = Task {
+                    try await ContactPaymentsService.setEnabled(
+                        true, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
+                        defaults: defaults
+                    )
+                }
+                await fulfillment(of: [enablePublishedPrivateEndpoints], timeout: 2)
+                // Holding its lock, the disable's removal keeps the enable's public publication waiting; otherwise the
+                // enable finishes while the disable is held.
+                if held != .publicHoldingLock {
+                    let isEnableApplied = try await enable.value
+                    XCTAssertTrue(isEnableApplied, testCase.name)
+                }
+                release.finish()
+                let disableResult = await disable.result
+                let enableResult = await enable.result
+
+                XCTAssertFalse(try disableResult.get(), testCase.name)
+                XCTAssertTrue(try enableResult.get(), testCase.name)
+                XCTAssertEqual(endpoints.entries, testCase.writes, testCase.name)
+                XCTAssertEqual(operations.publicCleanupValues, [false], testCase.name)
+                XCTAssertEqual(operations.privateCleanupValues, testCase.privateCleanupValues, testCase.name)
+                XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), testCase.name)
+                XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), testCase.name)
+                XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey), testCase.name)
+            }
+        }
+    }
+
+    /// Opening General Settings again before its first automatic enable applied starts a second automatic enable. The older
+    /// one then publishes nothing, writes nothing more and returns that it stopped, and the newer one turns contact
+    /// payments on.
+    func testContactPaymentsEnableSupersedesAnOlderEnableStillPublishing() async throws {
+        let ownerKey = try useLocalPubkySecretKey()
+        let record = contactRecord(publicKey: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg")
+
+        try await withIsolatedDefaultsAsync { defaults in
+            let pubkyProfile = signedInProfile(ownerKey: ownerKey)
+            let contactsManager = ContactsManager(contactRecords: { [record] })
+            let endpoints = LockedEndpointWrites()
+            let olderReachedPublication = expectation(description: "older enable reached its private publication")
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            var publicationCount = 0
+            let operations = OperationsSpy()
+            operations.preparePrivateEndpoints = { _, _, isChangeCurrent in
+                publicationCount += 1
+                if publicationCount == 1 {
+                    olderReachedPublication.fulfill()
+                    for await _ in gate {}
+                }
+                return await endpoints.writePrivateReturningError("private:published", isChangeCurrent: isChangeCurrent)
+            }
+            operations.syncPublicEndpoints = { publish, isChangeCurrent in
+                try await endpoints.writePublic(publish ? "public:published" : "public:removed", isChangeCurrent: isChangeCurrent)
+            }
+            let olderEnable = Task {
+                try await ContactPaymentsService.setEnabled(
+                    true, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
+                    defaults: defaults
+                )
+            }
+            await fulfillment(of: [olderReachedPublication], timeout: 2)
+
+            let isNewerEnableApplied = try await ContactPaymentsService.setEnabled(
+                true, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
+                defaults: defaults
+            )
+            release.finish()
+            let isOlderEnableApplied = try await olderEnable.value
+
+            XCTAssertTrue(isNewerEnableApplied)
+            XCTAssertFalse(isOlderEnableApplied)
+            XCTAssertEqual(endpoints.entries, ["private:published", "public:published"])
+            XCTAssertEqual(operations.publicCleanupValues, [false])
+            XCTAssertEqual(operations.privateCleanupValues, [false])
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+        }
+    }
+
+    /// The endpoint removals of a change that is no longer current refuse once they hold their lock, so an older disable
+    /// cannot clear what a newer change published under that lock.
+    func testEndpointRemovalsRefuseOnceTheirChangeIsNoLongerCurrent() async {
+        do {
+            try await PrivatePaykitService().removePublishedEndpoints(
+                for: ["pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"],
+                isSessionCurrent: { false }
+            )
+            XCTFail("Expected the private endpoint removal to refuse")
+        } catch PubkyServiceError.sessionNotActive {
+        } catch {
+            XCTFail("Unexpected private endpoint removal error: \(error)")
+        }
+
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(wallet: WalletViewModel(), publish: false, isSessionCurrent: { false })
+            XCTFail("Expected the public endpoint removal to refuse")
+        } catch PubkyServiceError.sessionNotActive {
+        } catch {
+            XCTFail("Unexpected public endpoint removal error: \(error)")
         }
     }
 
@@ -577,6 +837,43 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    /// Stands in for the Paykit services' endpoint writes. Each takes the lock its real counterpart takes and, like it,
+    /// refuses once that lock is held for a change that is no longer current.
+    @MainActor
+    private final class LockedEndpointWrites {
+        private let privatePaykit = PrivatePaykitService()
+        private(set) var entries: [String] = []
+
+        func writePrivate(_ entry: String, isChangeCurrent: @escaping ContactPaymentsService.ChangeCheck) async throws {
+            try await privatePaykit.withPublicationLock {
+                guard isChangeCurrent() else {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                entries.append(entry)
+            }
+        }
+
+        func writePrivateReturningError(_ entry: String, isChangeCurrent: @escaping ContactPaymentsService.ChangeCheck) async -> Error? {
+            do {
+                try await writePrivate(entry, isChangeCurrent: isChangeCurrent)
+                return nil
+            } catch {
+                return error
+            }
+        }
+
+        func writePublic(
+            _ entry: String,
+            isChangeCurrent: @escaping ContactPaymentsService.ChangeCheck,
+            whileLocked: () async -> Void = {}
+        ) async throws {
+            try await PublicPaykitService.withEndpointLock(unlessSessionEnded: isChangeCurrent) {
+                await whileLocked()
+                entries.append(entry)
+            }
+        }
+    }
+
     private final class OperationsSpy {
         struct PrivatePublication {
             let contactPublicKeys: [String]
@@ -593,20 +890,21 @@ final class ContactPaymentsServiceTests: XCTestCase {
         var privatePublicationFailures: Set<Int> = []
         var privateRemovalFailures: Set<Int> = []
         var onPreparePrivateEndpoints: (() -> Void)?
-        var preparePrivateEndpoints: (([String], Bool, @escaping ContactPaymentsService.SessionCheck) async -> Error?)?
-        var syncPublicEndpoints: ((Bool, @escaping ContactPaymentsService.SessionCheck) async throws -> Void)?
+        var preparePrivateEndpoints: (([String], Bool, @escaping ContactPaymentsService.ChangeCheck) async -> Error?)?
+        var syncPublicEndpoints: ((Bool, @escaping ContactPaymentsService.ChangeCheck) async throws -> Void)?
+        var removePrivateEndpoints: ((@escaping ContactPaymentsService.ChangeCheck) async throws -> Void)?
 
         func makeOperations() -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
-                syncPublicEndpoints: { publish, isSessionCurrent in
+                syncPublicEndpoints: { publish, isChangeCurrent in
                     self.calls.append("public:\(publish)")
                     self.publicPublicationValues.append(publish)
-                    try await self.syncPublicEndpoints?(publish, isSessionCurrent)
+                    try await self.syncPublicEndpoints?(publish, isChangeCurrent)
                     if self.publicPublicationFailures.contains(self.publicPublicationValues.count) {
                         throw TestError.operationFailed
                     }
                 },
-                preparePrivateEndpoints: { contactPublicKeys, requiresImmediatePublication, isSessionCurrent in
+                preparePrivateEndpoints: { contactPublicKeys, requiresImmediatePublication, isChangeCurrent in
                     self.onPreparePrivateEndpoints?()
                     self.calls.append("private:publish")
                     self.privatePublications.append(
@@ -616,16 +914,17 @@ final class ContactPaymentsServiceTests: XCTestCase {
                         )
                     )
                     if let preparePrivateEndpoints = self.preparePrivateEndpoints {
-                        return await preparePrivateEndpoints(contactPublicKeys, requiresImmediatePublication, isSessionCurrent)
+                        return await preparePrivateEndpoints(contactPublicKeys, requiresImmediatePublication, isChangeCurrent)
                     }
                     return self.privatePublicationFailures.contains(self.privatePublications.count) ? TestError.operationFailed : nil
                 },
-                removePrivateEndpoints: {
+                removePrivateEndpoints: { isChangeCurrent in
                     self.calls.append("private:remove")
                     self.privateRemovalCount += 1
                     if self.privateRemovalFailures.contains(self.privateRemovalCount) {
                         throw TestError.operationFailed
                     }
+                    try await self.removePrivateEndpoints?(isChangeCurrent)
                 },
                 setPublicCleanupPending: { self.publicCleanupValues.append($0) },
                 setPrivateCleanupPending: { self.privateCleanupValues.append($0) }

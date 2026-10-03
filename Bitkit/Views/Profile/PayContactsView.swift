@@ -9,9 +9,9 @@ struct PayContactsView: View {
 
     @State private var isSaving = false
 
-    /// Continue's enable runs in its own task, so it can finish after the user left Pay Contacts or after a Pubky sign-out
-    /// stopped it. Like an import that finishes after the user left it, it opens Profile only for an applied enable while
-    /// Pay Contacts is still showing.
+    /// Continue's enable runs in its own task, so it can finish after the user left Pay Contacts, or after a Pubky sign-out
+    /// or a newer contact payments change stopped it. Like an import that finishes after the user left it, it opens
+    /// Profile only for an applied enable while Pay Contacts is still showing.
     static func destinationAfterEnable(isApplied: Bool, currentRoute: Route?) -> Route? {
         isApplied && currentRoute == .payContacts ? .profile : nil
     }

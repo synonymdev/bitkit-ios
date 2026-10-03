@@ -3,36 +3,39 @@ import Foundation
 enum ContactPaymentsService {
     static let confirmedPreferenceKey = "hasConfirmedPublicPaykitEndpoints"
 
-    /// True while the Pubky session a contact payments change started for is still the current one.
-    typealias SessionCheck = @MainActor () -> Bool
+    /// True while a contact payments change is still current: no newer change has started, and the Pubky session it
+    /// started for is still the current one. Once false, it never turns true again.
+    typealias ChangeCheck = @MainActor () -> Bool
+
+    @MainActor private static var latestChange = 0
 
     struct Operations {
-        let syncPublicEndpoints: (_ publish: Bool, _ isSessionCurrent: @escaping SessionCheck) async throws -> Void
+        let syncPublicEndpoints: (_ publish: Bool, _ isChangeCurrent: @escaping ChangeCheck) async throws -> Void
         let preparePrivateEndpoints: (
             _ contactPublicKeys: [String],
             _ requireImmediatePublication: Bool,
-            _ isSessionCurrent: @escaping SessionCheck
+            _ isChangeCurrent: @escaping ChangeCheck
         ) async -> Error?
-        let removePrivateEndpoints: () async throws -> Void
+        let removePrivateEndpoints: (_ isChangeCurrent: @escaping ChangeCheck) async throws -> Void
         let setPublicCleanupPending: (_ isPending: Bool) -> Void
         let setPrivateCleanupPending: (_ isPending: Bool) -> Void
 
         @MainActor
         static func live(wallet: WalletViewModel) -> Operations {
             Operations(
-                syncPublicEndpoints: { publish, isSessionCurrent in
-                    try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish, isSessionCurrent: isSessionCurrent)
+                syncPublicEndpoints: { publish, isChangeCurrent in
+                    try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish, isSessionCurrent: isChangeCurrent)
                 },
-                preparePrivateEndpoints: { contactPublicKeys, requireImmediatePublication, isSessionCurrent in
+                preparePrivateEndpoints: { contactPublicKeys, requireImmediatePublication, isChangeCurrent in
                     await PrivatePaykitService.shared.prepareSavedContacts(
                         contactPublicKeys,
                         wallet: wallet,
                         requireImmediatePublication: requireImmediatePublication,
-                        isSessionCurrent: isSessionCurrent
+                        isSessionCurrent: isChangeCurrent
                     )
                 },
-                removePrivateEndpoints: {
-                    try await PrivatePaykitService.shared.removePublishedEndpoints()
+                removePrivateEndpoints: { isChangeCurrent in
+                    try await PrivatePaykitService.shared.removePublishedEndpoints(isSessionCurrent: isChangeCurrent)
                 },
                 setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                 setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
@@ -60,10 +63,12 @@ enum ContactPaymentsService {
     }
 
     /// Turns contact payments on or off for the signed-in Pubky session. Private endpoints are prepared for the saved
-    /// contacts, so it first waits for the first contacts load. Once that session ends or changes, the change stops and
-    /// returns quietly: it writes no preference, publishing flag or cleared cleanup mark, and its endpoint publications
-    /// check the session under the locks that sign-out's endpoint removal also takes, so they never write endpoints back
-    /// after that removal. Returns true once the change was applied, and false when it stopped for a session change.
+    /// contacts, so it first waits for the first contacts load. The latest change wins: a change from General Settings or
+    /// Pay Contacts can outlive its screen, so a newer one can start while it still runs. Once a newer change starts, or
+    /// that session ends or changes, the change stops and returns quietly: it writes no preference, publishing flag or
+    /// cleanup mark and restores nothing, and its endpoint publications and removals check that it is still current under
+    /// the locks that the newer change's endpoint writes and sign-out's endpoint removal also take, so they never land
+    /// after those. Returns true once the change was applied, and false when it stopped.
     @discardableResult
     @MainActor
     static func setEnabled(
@@ -73,18 +78,20 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults = .standard
     ) async throws -> Bool {
+        latestChange += 1
+        let change = latestChange
         guard let session = pubkyProfile.currentSession else { return false }
-        let isSessionCurrent: SessionCheck = { pubkyProfile.currentSession == session }
+        let isChangeCurrent: ChangeCheck = { Self.latestChange == change && pubkyProfile.currentSession == session }
         let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
         if canUsePrivatePayments {
             do {
                 try await contactsManager.loadContactsIfNeeded(for: session.publicKey)
             } catch {
-                guard isSessionCurrent() else { return false }
+                guard isChangeCurrent() else { return false }
                 throw error
             }
         }
-        guard isSessionCurrent() else { return false }
+        guard isChangeCurrent() else { return false }
 
         do {
             try await setEnabled(
@@ -93,20 +100,20 @@ enum ContactPaymentsService {
                 canUsePrivatePayments: canUsePrivatePayments,
                 operations: operations,
                 defaults: defaults,
-                isSessionCurrent: isSessionCurrent
+                isChangeCurrent: isChangeCurrent
             )
         } catch {
-            guard isSessionCurrent() else { return false }
+            guard isChangeCurrent() else { return false }
             throw error
         }
-        // The change above stops quietly once the session changes, and a changed session never compares current again,
-        // so this also reports that stop.
-        return isSessionCurrent()
+        // The change above stops quietly once it is no longer current, and it never becomes current again, so this also
+        // reports that stop.
+        return isChangeCurrent()
     }
 
-    /// Once `isSessionCurrent` is false, the preference, flags and cleanup marks belong to the sign-out or other session
+    /// Once `isChangeCurrent` is false, the preference, flags and cleanup marks belong to the newer change or the session
     /// change that started, so it is checked right before each write here, with nothing suspending in between, and the
-    /// endpoint publications check it again under their locks.
+    /// endpoint publications and removals check it again under their locks.
     @MainActor
     static func setEnabled(
         _ enabled: Bool,
@@ -114,7 +121,7 @@ enum ContactPaymentsService {
         canUsePrivatePayments: Bool,
         operations: Operations,
         defaults: UserDefaults = .standard,
-        isSessionCurrent: @escaping SessionCheck = { true }
+        isChangeCurrent: @escaping ChangeCheck = { true }
     ) async throws {
         enableAllPaymentOptions(defaults: defaults)
 
@@ -133,10 +140,10 @@ enum ContactPaymentsService {
                     canUsePrivatePayments: canUsePrivatePayments,
                     operations: operations,
                     defaults: defaults,
-                    isSessionCurrent: isSessionCurrent
+                    isChangeCurrent: isChangeCurrent
                 )
             } else {
-                try await disable(operations: operations, defaults: defaults, isSessionCurrent: isSessionCurrent)
+                try await disable(operations: operations, defaults: defaults, isChangeCurrent: isChangeCurrent)
             }
         } catch {
             await restore(
@@ -145,7 +152,7 @@ enum ContactPaymentsService {
                 canUsePrivatePayments: canUsePrivatePayments,
                 operations: operations,
                 defaults: defaults,
-                isSessionCurrent: isSessionCurrent
+                isChangeCurrent: isChangeCurrent
             )
             throw error
         }
@@ -157,9 +164,9 @@ enum ContactPaymentsService {
         canUsePrivatePayments: Bool,
         operations: Operations,
         defaults: UserDefaults,
-        isSessionCurrent: @escaping SessionCheck
+        isChangeCurrent: @escaping ChangeCheck
     ) async throws {
-        guard isSessionCurrent() else { return }
+        guard isChangeCurrent() else { return }
         if !canUsePrivatePayments, defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey) {
             operations.setPrivateCleanupPending(true)
         }
@@ -171,15 +178,15 @@ enum ContactPaymentsService {
            let error = await operations.preparePrivateEndpoints(
                contactPublicKeys,
                true,
-               isSessionCurrent
+               isChangeCurrent
            )
         {
             throw error
         }
 
-        try await operations.syncPublicEndpoints(true, isSessionCurrent)
+        try await operations.syncPublicEndpoints(true, isChangeCurrent)
 
-        guard isSessionCurrent() else { return }
+        guard isChangeCurrent() else { return }
         operations.setPublicCleanupPending(false)
         if canUsePrivatePayments {
             operations.setPrivateCleanupPending(false)
@@ -187,31 +194,35 @@ enum ContactPaymentsService {
     }
 
     @MainActor
-    private static func disable(operations: Operations, defaults: UserDefaults, isSessionCurrent: @escaping SessionCheck) async throws {
+    private static func disable(operations: Operations, defaults: UserDefaults, isChangeCurrent: @escaping ChangeCheck) async throws {
         do {
-            try await operations.removePrivateEndpoints()
-            if isSessionCurrent() {
+            try await operations.removePrivateEndpoints(isChangeCurrent)
+            if isChangeCurrent() {
                 operations.setPrivateCleanupPending(false)
             }
         } catch {
-            operations.setPrivateCleanupPending(true)
-            Logger.warn(
-                "Deferred private Paykit endpoint cleanup after disable failed: \(error)",
-                context: "ContactPaymentsService"
-            )
+            if isChangeCurrent() {
+                operations.setPrivateCleanupPending(true)
+                Logger.warn(
+                    "Deferred private Paykit endpoint cleanup after disable failed: \(error)",
+                    context: "ContactPaymentsService"
+                )
+            }
         }
 
         do {
-            try await operations.syncPublicEndpoints(false, isSessionCurrent)
-            if isSessionCurrent() {
+            try await operations.syncPublicEndpoints(false, isChangeCurrent)
+            if isChangeCurrent() {
                 operations.setPublicCleanupPending(false)
             }
         } catch {
-            operations.setPublicCleanupPending(true)
+            if isChangeCurrent() {
+                operations.setPublicCleanupPending(true)
+            }
             throw error
         }
 
-        guard isSessionCurrent() else { return }
+        guard isChangeCurrent() else { return }
         defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(true, forKey: confirmedPreferenceKey)
@@ -224,44 +235,50 @@ enum ContactPaymentsService {
         canUsePrivatePayments: Bool,
         operations: Operations,
         defaults: UserDefaults,
-        isSessionCurrent: @escaping SessionCheck
+        isChangeCurrent: @escaping ChangeCheck
     ) async {
-        guard isSessionCurrent() else { return }
+        guard isChangeCurrent() else { return }
         let restoresPrivateEndpoints = state.sharesPrivateEndpoints && canUsePrivatePayments
         defaults.set(state.sharesPublicEndpoints, forKey: PublicPaykitService.publishingEnabledKey)
         defaults.set(restoresPrivateEndpoints, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(state.hasConfirmedPreference, forKey: confirmedPreferenceKey)
 
         do {
-            try await operations.syncPublicEndpoints(state.sharesPublicEndpoints, isSessionCurrent)
-            if isSessionCurrent() {
+            try await operations.syncPublicEndpoints(state.sharesPublicEndpoints, isChangeCurrent)
+            if isChangeCurrent() {
                 operations.setPublicCleanupPending(state.publicCleanupPending)
             }
         } catch {
-            operations.setPublicCleanupPending(true)
-            Logger.warn("Failed to restore public contact payments: \(error)", context: "ContactPaymentsService")
+            if isChangeCurrent() {
+                operations.setPublicCleanupPending(true)
+                Logger.warn("Failed to restore public contact payments: \(error)", context: "ContactPaymentsService")
+            }
         }
 
         if restoresPrivateEndpoints {
             if let error = await operations.preparePrivateEndpoints(
                 contactPublicKeys,
                 true,
-                isSessionCurrent
+                isChangeCurrent
             ) {
-                operations.setPrivateCleanupPending(true)
-                Logger.warn("Failed to restore private contact payments: \(error)", context: "ContactPaymentsService")
-            } else if isSessionCurrent() {
+                if isChangeCurrent() {
+                    operations.setPrivateCleanupPending(true)
+                    Logger.warn("Failed to restore private contact payments: \(error)", context: "ContactPaymentsService")
+                }
+            } else if isChangeCurrent() {
                 operations.setPrivateCleanupPending(state.privateCleanupPending)
             }
         } else {
             do {
-                try await operations.removePrivateEndpoints()
-                if isSessionCurrent() {
+                try await operations.removePrivateEndpoints(isChangeCurrent)
+                if isChangeCurrent() {
                     operations.setPrivateCleanupPending(state.privateCleanupPending)
                 }
             } catch {
-                operations.setPrivateCleanupPending(true)
-                Logger.warn("Failed to clean up private contact payments: \(error)", context: "ContactPaymentsService")
+                if isChangeCurrent() {
+                    operations.setPrivateCleanupPending(true)
+                    Logger.warn("Failed to clean up private contact payments: \(error)", context: "ContactPaymentsService")
+                }
             }
         }
     }
