@@ -30,14 +30,19 @@ For the passphrase journeys, start it with passphrase protection instead:
 TREZOR_PASSPHRASE_PROTECTION=true ./scripts/trezor-emulator start
 ```
 
-Then build and run with the Bridge environment (mirrors the `xcodebuild` invocation in
-`Docs/AI_DEVICE_TESTS.md`):
+Then build and run with the Bridge settings, each passed as its own `--extra-args`:
 
 ```bash
-TEST_TREZOR_EMU=1 TREZOR_BRIDGE=true TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
 xcodebuildmcp simulator build-and-run \
-  --extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD TEST_TREZOR_EMU"
+  --extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD" \
+  --extra-args TREZOR_BRIDGE=true \
+  --extra-args TREZOR_BRIDGE_URL=http://127.0.0.1:21325
 ```
+
+Use the address the simulator reaches the emulator at in `TREZOR_BRIDGE_URL` when it is not
+`127.0.0.1`. Do not add the `TEST_TREZOR_EMU` compilation condition that `Docs/AI_DEVICE_TESTS.md`
+passes for the UI test suite: it replaces the wallet with the Trezor test dashboard, so no
+journey that starts on the wallet home screen can run.
 
 ## Order
 
@@ -59,6 +64,11 @@ The device blocks until each prompt is acknowledged, once per address type for a
 ```bash
 ../bitkit-docker/scripts/trezor-emulator send-json '{"type":"emulator-press-yes","id":1}'
 ```
+
+The isolated `trezor-emulator` profile of `bitkit-docker` takes the same command through its own
+container (`docker compose --profile trezor-emulator exec -T trezor-emulator
+/trezor-user-env/.venv/bin/python3 /opt/bitkit-trezor/trezor-controller.py send-json
+'{"type":"emulator-press-yes"}'`), which is how a stack that cannot use the host helper presses Yes.
 
 `send-onchain.xml` spends from the emulator's account, so it needs funds beyond what the transfer
 journeys leave; fund the account's receive address again from the regtest node before it, and send

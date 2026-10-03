@@ -18,7 +18,8 @@
     <action>Tap the Send button (id "Send")</action>
     <action>If a camera permission dialog appears, dismiss it by choosing "Don't Allow"</action>
     <action>Tap "Paste Invoice" (id "RecipientInvoice")</action>
-    <action>Verify a warning toast titled "Unable To Pay (LNURL)" with the text "Not enough outbound/sending capacity to complete lnurl-pay request." appears (id "LnurlPayNoCapacityToast")</action>
+    <action>If the iOS dialog about pasting from another app appears (the first paste of a build), choose "Allow Paste"</action>
+    <action>Straight after that, without waiting for another screen refresh because the toast fades after about 2.5 seconds, verify a warning toast titled "Unable To Pay (LNURL)" with the text "Not enough outbound/sending capacity to complete lnurl-pay request." appears (id "LnurlPayNoCapacityToast")</action>
     <action>Verify the Send sheet is still on the recipient options (id "RecipientManual" is visible) and neither the LNURL amount screen (id "SendNumberField") nor a review screen (id "SendConfirm") was opened</action>
     <action>Close the Send sheet and verify the wallet home screen is shown</action>
   </actions>

@@ -17,14 +17,15 @@
     <action>Type the destination regtest address into the recipient field (id "RecipientInput") and tap Continue (id "AddressContinue")</action>
     <action>Verify the Send amount screen (id "SendAmount") is visible and its available amount (id "AvailableAmount") is greater than 0</action>
     <action>Tap the keys "1", "0", "0", "0", "0" (ids "N1", "N0", "N0", "N0", "N0") to enter 10 000 sats and tap Continue (id "ContinueAmount")</action>
-    <action>Verify the review screen (id "SendConfirm") shows the destination address, an amount of 10 000 sats and a non-zero network fee, with a blue accent that marks the hardware wallet as the funding source</action>
+    <action>Verify the review screen (id "SendConfirm") shows an amount of 10 000 sats and the paired hardware wallet as the funding source (blue accent)</action>
+    <action>Tap "Show Details" (id "SendConfirmToggleDetails") and verify the destination address and a non-zero network fee are listed</action>
     <action>Swipe the send control (id "GRAB")</action>
     <action>Verify the sign screen (id "HardwareSendSign") is titled "SIGN WITH DEVICE", shows the destination address under "To address (confirm on device)" and the amount (id prefix "HardwareSendSignAmount")</action>
     <action>Tap "Open Trezor Connect" (id "HardwareSendOpenTrezorConnect")</action>
-    <action>Approve each prompt on the Bridge emulator in order (recipient, amount, fee and summary) with the controller command that presses Yes</action>
-    <action>Verify the Sent screen (id "SendSuccess") appears and shows 10 000 sats</action>
+    <action>Approve the four prompts on the Bridge emulator in order (recipient, amount, fee and summary) with the controller command that presses Yes, as the README describes</action>
+    <action>Wait up to 60 seconds for signing and broadcast, then verify the Sent screen (id "SendSuccess") appears and shows 10 000 sats</action>
     <action>Tap "Close" (id "Close"), mine one regtest block, wait for the app to sync, and verify the app is back on the hardware wallet detail screen (id "HardwareWalletScreen")</action>
-    <action>Verify the activity list of the hardware wallet detail screen contains exactly one new blue sent row of 10 000 sats above the older rows</action>
+    <action>Verify the activity list of the hardware wallet detail screen contains exactly one new blue sent row above the older rows, whose amount is 10 000 sats plus the network fee shown in the review details</action>
     <action>Navigate back to the wallet home screen and verify the hardware wallet tile shows a lower amount than the one noted at the start, by at least 10 000 sats</action>
   </actions>
 </journey>
