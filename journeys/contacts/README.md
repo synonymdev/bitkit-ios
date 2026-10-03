@@ -44,3 +44,17 @@ public endpoint or app-registry update failing.
 Hold withdrawal in progress and foreground the app. It must not start another cleanup. Request
 sharing on again before withdrawal finishes: publication must wait until the earlier cleanup ends,
 then leave sharing on. Repeat while a foreground cleanup is already running.
+
+## Foreground wait isolation
+
+Hold an unrelated contact's background preparation in progress, then open a saved, linked contact
+and request or pay it. The selected contact must be eligible for its own lookup before the full
+contact scan finishes. Hold its public capability lookup separately: this public read must not
+retain the shared-state operation queue used by payment resolution, withdrawal, and wallet backup.
+Identity, link, and request execution checks still run and may wait for shared-state access.
+
+Retry private messages for one contact while other contacts have pending outbound work. Only the
+selected retry contacts should be sent to or read from in that drain. Repeat during sharing OFF,
+with one withdrawal failing: OFF remains immediate, cleanup remains pending on failure, and no new
+publication starts. Record action-to-result time separately from SDK lock and network waits; these
+fault-injection checks do not establish staging latency or a guaranteed completion deadline.

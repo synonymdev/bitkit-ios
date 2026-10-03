@@ -4789,6 +4789,77 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testCapabilityDiscoveryBoundsConcurrentReadsWithoutWaitingForSlowPeer() async throws {
+        let keys = "ybndrfg8ejkmcpqxot".map { "pubky" + String(repeating: String($0), count: 52) }
+        let sdk = PaymentRequestSdkMock(records: [])
+        var supported = Dictionary(uniqueKeysWithValues: keys.map { ($0, true) })
+        supported[keys[5]] = false
+        await sdk.configureRecipients(
+            peers: keys.map { linkedPeer(counterparty: $0, state: .linked) },
+            requestCapabilitiesByPublicKey: supported
+        )
+        await sdk.setCapabilityLookupFailing(true, for: keys[2])
+        let (slowGate, releaseSlow) = AsyncStream<Void>.makeStream()
+        let (batchGate, releaseBatch) = AsyncStream<Void>.makeStream()
+        defer { releaseSlow.finish(); releaseBatch.finish() }
+        await sdk.setCapabilityLookupGate { key in
+            let gate = key == keys[0] ? slowGate : batchGate
+            for await _ in gate {}
+        }
+        let service = PaykitPaymentRequestService(sdk: sdk, isPrivatePaymentPublishingEnabled: { true }, logWarning: { _ in })
+        let discovery = Task {
+            try await service.discoverEligibleTargets(
+                savedPublicKeys: keys + [keys[0]],
+                expectedIdentity: "pubky\(String(repeating: "z", count: 52))",
+                previousTargets: [PaykitPaymentRequestTarget(publicKey: keys[2])]
+            )
+        }
+        try await waitUntil { await sdk.activeCapabilityLookups == 8 }
+        let initialLookups = await sdk.capabilityLookupPublicKeys
+        XCTAssertEqual(Set(initialLookups), Set(keys.prefix(8)))
+        releaseBatch.finish()
+        try await waitUntil {
+            let lookups = await sdk.capabilityLookups()
+            let active = await sdk.activeCapabilityLookups
+            return lookups == keys.count && active == 1
+        }
+        let highWaterMark = await sdk.maxConcurrentCapabilityLookups
+        XCTAssertEqual(highWaterMark, 8)
+
+        releaseSlow.finish()
+        let result = try await discovery.value
+        XCTAssertEqual(result.targets.map(\.publicKey), keys.filter { $0 != keys[5] })
+        XCTAssertFalse(result.isComplete)
+        XCTAssertEqual(result.capabilityCheckedPublicKeys, Set(keys).subtracting([keys[2]]))
+    }
+
+    func testCancelledCapabilityDiscoveryDoesNotStartAnotherBatch() async throws {
+        let keys = "ybndrfg8ejkmcpqxot".map { "pubky" + String(repeating: String($0), count: 52) }
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: keys.map { linkedPeer(counterparty: $0, state: .linked) },
+            requestCapabilitiesByPublicKey: Dictionary(uniqueKeysWithValues: keys.map { ($0, true) })
+        )
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        await sdk.setCapabilityLookupGate { _ in for await _ in gate {} }
+        let service = PaykitPaymentRequestService(sdk: sdk, isPrivatePaymentPublishingEnabled: { true })
+        let discovery = Task {
+            try await service.discoverEligibleTargets(
+                savedPublicKeys: keys, expectedIdentity: "pubky\(String(repeating: "z", count: 52))"
+            )
+        }
+        try await waitUntil { await sdk.activeCapabilityLookups == 8 }
+        discovery.cancel()
+        release.finish()
+        do {
+            _ = try await discovery.value
+            XCTFail("Cancelled discovery must not return partial eligibility")
+        } catch is CancellationError {}
+        let lookups = await sdk.capabilityLookups()
+        XCTAssertEqual(lookups, 8)
+    }
+
     func testEligibleTargetsRequireLivePaykitSession() async {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
@@ -4898,6 +4969,43 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testSelectedRecipientCanRefreshBeforeFullContactDiscovery() async {
+        let selected = "pubky\(String(repeating: "a", count: 52))"
+        let unrelated = "pubky\(String(repeating: "b", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: selected, state: .linked), linkedPeer(counterparty: unrelated, state: .linked)],
+            requestCapabilitiesByPublicKey: [selected: true, unrelated: true]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        manager.updateSavedPublicKeys([selected, unrelated])
+
+        let target = await manager.refreshEligibleTarget(publicKey: selected)
+
+        XCTAssertEqual(target, PaykitPaymentRequestTarget(publicKey: selected))
+        let lookups = await sdk.capabilityLookupPublicKeys
+        XCTAssertEqual(lookups, [selected])
+    }
+
+    func testSavedContactUpdateImmediatelyRemovesTargetWithoutNetworkDiscovery() async {
+        let key = "pubky\(String(repeating: "a", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: key, state: .linked)],
+            requestCapabilitiesByPublicKey: [key: true]
+        )
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [key])
+
+        manager.updateSavedPublicKeys([])
+        let target = await manager.refreshEligibleTarget(publicKey: key)
+
+        XCTAssertNil(target)
+        XCTAssertTrue(manager.eligibleTargets.isEmpty)
+        let lookups = await sdk.capabilityLookupPublicKeys
+        XCTAssertEqual(lookups, [key])
+    }
+
     func testSingleEligibilityRefreshRemovesContactThatIsNoLongerLinked() async {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
@@ -5003,6 +5111,57 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             manager.eligibleTargets,
             [PaykitPaymentRequestTarget(publicKey: keptKey)]
         )
+    }
+
+    func testFailedFullRefreshCannotRemoveNewlySavedEligibleTarget() async throws {
+        let firstKey = "pubky\(String(repeating: "a", count: 52))"
+        let addedKey = "pubky\(String(repeating: "b", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: addedKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [addedKey: true]
+        )
+        await sdk.setLinkedPeersError(.linkedPeers)
+        await sdk.pauseNextLinkedPeers()
+        let manager = paymentRequestManager(sdk: sdk)
+
+        let fullRefresh = Task {
+            await manager.refreshEligibleTargets(savedPublicKeys: [firstKey])
+        }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        manager.updateSavedPublicKeys([firstKey, addedKey])
+        await sdk.setLinkedPeersError(nil)
+        let target = await manager.refreshEligibleTarget(publicKey: addedKey)
+        await sdk.resumeLinkedPeers()
+        await fullRefresh.value
+
+        XCTAssertEqual(target, PaykitPaymentRequestTarget(publicKey: addedKey))
+        XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: addedKey)])
+        let immediateTarget = await manager.eligibleTarget(publicKey: addedKey, waitingAtMost: .seconds(2))
+        XCTAssertEqual(immediateTarget, target)
+        let lookups = await sdk.capabilityLookupPublicKeys
+        XCTAssertEqual(lookups, [addedKey])
+    }
+
+    func testUnchangedSavedKeysAllowPendingEligibilityRefreshToComplete() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [savedKey: true]
+        )
+        await sdk.pauseNextLinkedPeers()
+        let manager = paymentRequestManager(sdk: sdk)
+
+        let fullRefresh = Task {
+            await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        }
+        try await waitUntil { await sdk.linkedPeersIsPaused() }
+        manager.updateSavedPublicKeys([savedKey])
+        await sdk.resumeLinkedPeers()
+        await fullRefresh.value
+
+        XCTAssertEqual(manager.eligibleTargets, [PaykitPaymentRequestTarget(publicKey: savedKey)])
     }
 
     func testSingleEligibilityRefreshCannotOverwriteNewerFullRefresh() async throws {
@@ -5139,6 +5298,34 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertNil(target)
         let callsAfterWait = await sdk.linkedPeersCalls()
         XCTAssertEqual(callsAfterWait, callsAfterRefresh)
+    }
+
+    func testWaitingForEligibleTargetRechecksContactThatWasStillLinking() async {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        for fullRefresh in [false, true] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: savedKey, state: .linking)],
+                requestCapabilitiesByPublicKey: [savedKey: true]
+            )
+            let manager = paymentRequestManager(sdk: sdk)
+            manager.updateSavedPublicKeys([savedKey])
+            if fullRefresh {
+                await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+            } else {
+                _ = await manager.refreshEligibleTarget(publicKey: savedKey)
+            }
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: savedKey, state: .linked)],
+                requestCapabilitiesByPublicKey: [savedKey: true]
+            )
+
+            let target = await manager.eligibleTarget(publicKey: savedKey, waitingAtMost: .seconds(2))
+
+            XCTAssertEqual(target, PaykitPaymentRequestTarget(publicKey: savedKey))
+            let lookups = await sdk.capabilityLookupPublicKeys
+            XCTAssertEqual(lookups, [savedKey])
+        }
     }
 
     func testWaitingForEligibleTargetRechecksAfterRecentWindow() async {
@@ -5827,6 +6014,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var linkedPeersError: PaymentRequestSdkMockError?
     private var linkedPeersCallCount = 0
     private(set) var capabilityLookupPublicKeys: [String] = []
+    private(set) var activeCapabilityLookups = 0
+    private(set) var maxConcurrentCapabilityLookups = 0
+    private var capabilityLookupGate: (@Sendable (String) async -> Void)?
     private var failingCapabilityKeys: Set<String> = []
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
@@ -5939,9 +6129,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func linkedPeers() async throws -> [LinkedPeerRecord] {
         linkedPeersCallCount += 1
-        if let linkedPeersError {
-            throw linkedPeersError
-        }
+        let error = linkedPeersError
         let snapshot = peerRecords
         if shouldPauseNextLinkedPeers {
             shouldPauseNextLinkedPeers = false
@@ -5949,11 +6137,16 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             await withCheckedContinuation { linkedPeersContinuation = $0 }
             isLinkedPeersPaused = false
         }
+        if let error { throw error }
         return snapshot
     }
 
-    func canReceivePaymentRequests(publicKey: String) throws -> Bool {
+    func canReceivePaymentRequests(publicKey: String) async throws -> Bool {
         capabilityLookupPublicKeys.append(publicKey)
+        activeCapabilityLookups += 1
+        maxConcurrentCapabilityLookups = max(maxConcurrentCapabilityLookups, activeCapabilityLookups)
+        defer { activeCapabilityLookups -= 1 }
+        await capabilityLookupGate?(publicKey)
         if failingCapabilityKeys.contains(publicKey) {
             throw PaymentRequestSdkMockError.receive
         }
@@ -6182,6 +6375,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func capabilityLookups() -> Int {
         capabilityLookupPublicKeys.count
+    }
+
+    func setCapabilityLookupGate(_ gate: @escaping @Sendable (String) async -> Void) {
+        capabilityLookupGate = gate
     }
 
     func setLinkedPeersError(_ error: PaymentRequestSdkMockError?) {

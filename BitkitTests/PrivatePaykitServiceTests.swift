@@ -215,8 +215,14 @@ final class PrivatePaykitServiceTests: XCTestCase {
                             remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
                         )]
                     },
-                    processPending: { processed += 1 },
-                    receive: { received += 1 }
+                    processPending: { key in
+                        XCTAssertEqual(key, publicKey)
+                        processed += 1
+                    },
+                    receive: { key in
+                        XCTAssertEqual(key, publicKey)
+                        received += 1
+                    }
                 ))
 
                 XCTAssertTrue(advanced)
@@ -224,6 +230,110 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 XCTAssertEqual(received, isLinked ? 1 : 0)
             }
         }
+    }
+
+    func testPrivateMessageDrainDoesNotVisitUnrelatedPeers() async {
+        let service = PrivatePaykitService()
+        let selected = "selected"
+        let unrelated = (0 ..< 60).map { "unrelated-\($0)" }
+        var sent: [String] = []
+        var received: [String] = []
+        await service.drainPendingPrivateMessages(reason: "test", advancing: [selected, selected], operations: .init(
+            ensureLink: { XCTAssertEqual($0, selected) },
+            pendingOutbound: { unrelated + [selected] },
+            linkedPeers: { (unrelated + [selected]).map { self.drainPeer($0) } },
+            processPending: { sent.append($0) },
+            receive: { received.append($0) }
+        ))
+        XCTAssertEqual(sent, [selected])
+        XCTAssertEqual(received, [selected])
+    }
+
+    func testPrivateMessageDrainMatchesNormalizedRetryAndSdkKeys() async {
+        let rawKey = String(repeating: "y", count: 52)
+        let publicKey = "pubky" + rawKey
+        for reportedKey in [rawKey, publicKey.uppercased()] {
+            let service = PrivatePaykitService()
+            var advanced: [String] = []
+            var sent: [String] = []
+            var received: [String] = []
+            await service.drainPendingPrivateMessages(
+                reason: "test", advancing: [rawKey.uppercased(), publicKey], operations: .init(
+                    ensureLink: { advanced.append($0) },
+                    pendingOutbound: { [reportedKey, "unrelated"] },
+                    linkedPeers: { [self.drainPeer(reportedKey), self.drainPeer("unrelated")] },
+                    processPending: { sent.append($0) },
+                    receive: { received.append($0) }
+                )
+            )
+            XCTAssertEqual(advanced, [publicKey])
+            XCTAssertEqual(sent, [publicKey])
+            XCTAssertEqual(received, [publicKey])
+        }
+    }
+
+    func testPrivateMessageDrainStopsAfterInvalidationAtEachSuspension() async throws {
+        for stage in ["link", "outbound", "send", "peers", "receive"] {
+            let service = PrivatePaykitService()
+            var events: [String] = []
+            let record: (String) async -> Void = { event in
+                events.append(event)
+                if event == stage { await service.invalidateContactPreparation() }
+            }
+            await service.drainPendingPrivateMessages(reason: "test", advancing: ["first", "second"], operations: .init(
+                ensureLink: { _ in await record("link") },
+                pendingOutbound: { await record("outbound"); return ["first", "second"] },
+                linkedPeers: { await record("peers"); return [self.drainPeer("first"), self.drainPeer("second")] },
+                processPending: { _ in await record("send") },
+                receive: { _ in await record("receive") }
+            ))
+            let order = ["link", "link", "outbound", "send", "send", "peers", "receive", "receive"]
+            XCTAssertEqual(events, try Array(order.prefix(through: XCTUnwrap(order.firstIndex(of: stage)))), stage)
+        }
+    }
+
+    func testPrivateMessageDrainContinuesOtherSelectedPeersAfterFailure() async {
+        let service = PrivatePaykitService()
+        var sent: [String] = []
+        var received: [String] = []
+        await service.drainPendingPrivateMessages(reason: "test", advancing: ["first", "second"], operations: .init(
+            ensureLink: { _ in },
+            pendingOutbound: { ["first", "second"] },
+            linkedPeers: { [self.drainPeer("first"), self.drainPeer("second")] },
+            processPending: { key in
+                sent.append(key)
+                if key == "first" { throw PrivatePaykitError.privateUnavailable }
+            },
+            receive: { key in
+                received.append(key)
+                if key == "first" { throw PrivatePaykitError.privateUnavailable }
+            }
+        ))
+        XCTAssertEqual(sent, ["first", "second"])
+        XCTAssertEqual(received, ["first", "second"])
+    }
+
+    func testPrivateMessageDrainStopsAfterCallerCancellation() async {
+        let service = PrivatePaykitService()
+        let task = Task {
+            await service.drainPendingPrivateMessages(reason: "test", advancing: ["first", "second"], operations: .init(
+                ensureLink: { _ in withUnsafeCurrentTask { $0?.cancel() } },
+                pendingOutbound: { XCTFail("Cancelled retry must not inspect outbound work"); return [] },
+                linkedPeers: { XCTFail("Cancelled retry must not inspect peers"); return [] },
+                processPending: { _ in XCTFail("Cancelled retry must not send") },
+                receive: { _ in XCTFail("Cancelled retry must not receive") }
+            ))
+        }
+        await task.value
+    }
+
+    private func drainPeer(_ publicKey: String) -> LinkedPeerRecord {
+        LinkedPeerRecord(
+            counterparty: publicKey, state: .linked,
+            lastSyncAt: nil, lastPrivateReceiveAt: nil, failureCount: 0,
+            localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
+            remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
+        )
     }
 
     private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
@@ -1237,8 +1347,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 ensureLink: { _ in attempts += 1 },
                 pendingOutbound: { [] },
                 linkedPeers: peers,
-                processPending: { XCTFail("No outbound messages are queued") },
-                receive: { XCTFail("The handshake has not completed") }
+                processPending: { _ in XCTFail("No outbound messages are queued") },
+                receive: { _ in XCTFail("The handshake has not completed") }
             ))
 
             XCTAssertEqual(attempts, stateAfterFailure == nil || stateAfterFailure == .notLinked ? 2 : 3)

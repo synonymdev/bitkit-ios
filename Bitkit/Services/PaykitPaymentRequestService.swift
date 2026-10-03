@@ -381,6 +381,7 @@ struct PaykitPaymentRequestTarget: Identifiable, Equatable, Hashable {
 struct PaykitPaymentRequestTargetDiscovery: Equatable {
     let targets: [PaykitPaymentRequestTarget]
     let isComplete: Bool
+    let capabilityCheckedPublicKeys: Set<String>
 }
 
 struct PaykitPaymentRequestDraft: Hashable {
@@ -618,7 +619,7 @@ struct PaykitPaymentRequestService {
         expectedIdentity: String,
         previousTargets: [PaykitPaymentRequestTarget] = []
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
-        let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true)
+        let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true, capabilityCheckedPublicKeys: [])
         guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
         guard let identityStatus = try await sdk.identityStatus(),
               identityStatus.capability == .privateLinkCapable,
@@ -630,18 +631,48 @@ struct PaykitPaymentRequestService {
         }
         let linkedPeers = try await sdk.linkedPeers().filter { $0.state == .linked }
         let linkedKeys = Set(linkedPeers.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
-
-        var targets: [PaykitPaymentRequestTarget] = []
-        var isComplete = true
-        for publicKey in savedKeys {
-            guard linkedKeys.contains(publicKey) else { continue }
-            let canReceive: Bool
+        let candidates = savedKeys.filter { linkedKeys.contains($0) }
+        let lookup: @Sendable (String) async throws -> (String, Result<Bool, Error>) = { [sdk] publicKey in
             do {
                 try Task.checkCancellation()
-                canReceive = try await sdk.canReceivePaymentRequests(publicKey: publicKey)
+                let canReceive = try await sdk.canReceivePaymentRequests(publicKey: publicKey)
+                try Task.checkCancellation()
+                return (publicKey, .success(canReceive))
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                try Task.checkCancellation()
+                return (publicKey, .failure(error))
+            }
+        }
+        let capabilities = try await withThrowingTaskGroup(of: (String, Result<Bool, Error>).self) { group in
+            var remaining = candidates.makeIterator()
+            for _ in 0 ..< 8 {
+                guard let publicKey = remaining.next() else { break }
+                group.addTask { try await lookup(publicKey) }
+            }
+            var results: [String: Result<Bool, Error>] = [:]
+            while let (publicKey, result) = try await group.next() {
+                try Task.checkCancellation()
+                results[publicKey] = result
+                if let nextKey = remaining.next() {
+                    group.addTask { try await lookup(nextKey) }
+                }
+            }
+            return results
+        }
+        try Task.checkCancellation()
+
+        var targets: [PaykitPaymentRequestTarget] = []
+        var isComplete = true
+        var capabilityCheckedPublicKeys = Set<String>()
+        for publicKey in candidates {
+            guard let result = capabilities[publicKey] else { continue }
+            switch result {
+            case let .success(canReceive):
+                capabilityCheckedPublicKeys.insert(publicKey)
+                if canReceive { targets.append(PaykitPaymentRequestTarget(publicKey: publicKey)) }
+            case let .failure(error):
                 isComplete = false
                 logWarning("Failed to inspect Paykit payment request support for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)")
                 if let previousTarget = previousTargets.first(where: {
@@ -649,12 +680,11 @@ struct PaykitPaymentRequestService {
                 }) {
                     targets.append(previousTarget)
                 }
-                continue
             }
-            guard canReceive else { continue }
-            targets.append(PaykitPaymentRequestTarget(publicKey: publicKey))
         }
-        return PaykitPaymentRequestTargetDiscovery(targets: targets, isComplete: isComplete)
+        return PaykitPaymentRequestTargetDiscovery(
+            targets: targets, isComplete: isComplete, capabilityCheckedPublicKeys: capabilityCheckedPublicKeys
+        )
     }
 
     func propose(
@@ -1266,11 +1296,20 @@ final class PaykitPaymentRequestManager {
         activeIdentity = normalizedIdentity
     }
 
+    func updateSavedPublicKeys(_ publicKeys: [String]) {
+        guard publicKeys != savedPublicKeys else { return }
+        eligibilityGeneration += 1
+        savedPublicKeys = publicKeys
+        eligibleTargets.removeAll { target in
+            !publicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
+        }
+    }
+
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
+        updateSavedPublicKeys(savedPublicKeys)
         eligibilityGeneration += 1
         let generation = eligibilityGeneration
         let currentStateGeneration = stateGeneration
-        self.savedPublicKeys = savedPublicKeys
         guard isAvailable(), let activeIdentity else {
             eligibleTargets = []
             return
@@ -1297,7 +1336,8 @@ final class PaykitPaymentRequestManager {
             if discovery.isComplete {
                 let checkedAt = now()
                 for publicKey in savedPublicKeys {
-                    eligibilityCheckDates[Self.eligibilityKey(publicKey)] = checkedAt
+                    let key = Self.eligibilityKey(publicKey)
+                    eligibilityCheckDates[key] = discovery.capabilityCheckedPublicKeys.contains(key) ? checkedAt : nil
                 }
             }
         } catch is CancellationError {
@@ -1335,7 +1375,8 @@ final class PaykitPaymentRequestManager {
                   lastFullEligibilityWriteGeneration <= generation
             else { return eligibleTarget(publicKey: publicKey) }
             singleEligibilityWriteGenerations[Self.eligibilityKey(publicKey)] = generation
-            eligibilityCheckDates[Self.eligibilityKey(publicKey)] = now()
+            let key = Self.eligibilityKey(publicKey)
+            eligibilityCheckDates[key] = discovery.capabilityCheckedPublicKeys.contains(key) ? now() : nil
             var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
             if let target = discovery.targets.first {
                 targets.append(target)
@@ -1373,8 +1414,7 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Returns the known target at once, otherwise waits at most `timeout` for a refresh without blocking on a slow SDK call.
-    /// The lookup shares the SDK lock with payment resolution, so a contact checked in the last 30 seconds is not looked up again,
-    /// and a lookup that outlives the timeout is cancelled.
+    /// A contact checked in the last 30 seconds is not looked up again, and a lookup that outlives the timeout is cancelled.
     func eligibleTarget(publicKey: String, waitingAtMost timeout: Duration) async -> PaykitPaymentRequestTarget? {
         if let target = eligibleTarget(publicKey: publicKey) {
             return target

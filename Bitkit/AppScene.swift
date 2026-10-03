@@ -475,6 +475,7 @@ struct AppScene: View {
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
                 else { return }
+                paykitPaymentRequestManager.updateSavedPublicKeys(publicKeys)
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
                     await refreshIncomingPaykitPaymentRequests()
@@ -1119,12 +1120,9 @@ struct AppScene: View {
             return
         }
 
+        guard !Task.isCancelled else { return }
+        paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if refreshMaintenance {
-            do {
-                try await PrivatePaykitService.shared.awaitContactPreparation()
-            } catch {
-                return
-            }
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }

@@ -26,15 +26,15 @@ extension PrivatePaykitService {
         let ensureLink: (String) async throws -> Void
         let pendingOutbound: () async throws -> [String]
         let linkedPeers: () async throws -> [LinkedPeerRecord]
-        let processPending: () async throws -> Void
-        let receive: () async throws -> Void
+        let processPending: (String) async throws -> Void
+        let receive: (String) async throws -> Void
 
         static let live = PrivateMessageDrainOperations(
             ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0) },
             pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties() },
             linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
-            processPending: { try await PaykitSdkService.shared.processPendingPrivateMessages() },
-            receive: { try await PaykitSdkService.shared.receivePrivateMessagesFromLinkedPeers() }
+            processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0) },
+            receive: { _ = try await PaykitSdkService.shared.receivePrivateMessages(counterparty: $0) }
         )
     }
 
@@ -616,10 +616,12 @@ extension PrivatePaykitService {
         advancing retryKeys: [String],
         operations: PrivateMessageDrainOperations = .live
     ) async {
+        let retryKeys = Set(retryKeys.map { PubkyPublicKeyFormat.normalized($0) ?? $0 })
+        guard !retryKeys.isEmpty, !Task.isCancelled else { return }
+        let generation = preparationGeneration
         do {
-            let generation = preparationGeneration
-            for retryKey in Set(retryKeys) {
-                guard generation == preparationGeneration else { break }
+            for retryKey in retryKeys.sorted() {
+                guard generation == preparationGeneration, !Task.isCancelled else { return }
                 if let retryAt = unavailableLinkRetryAt[retryKey], retryAt > Date() { continue }
                 do {
                     try await operations.ensureLink(retryKey)
@@ -630,11 +632,33 @@ extension PrivatePaykitService {
                     )
                 }
             }
-            if try await !operations.pendingOutbound().isEmpty {
-                try await operations.processPending()
+            guard generation == preparationGeneration, !Task.isCancelled else { return }
+            let pendingKeys = try await retryKeys.intersection(operations.pendingOutbound().map { PubkyPublicKeyFormat.normalized($0) ?? $0 })
+            for publicKey in pendingKeys.sorted() {
+                guard generation == preparationGeneration, !Task.isCancelled else { return }
+                do {
+                    try await operations.processPending(publicKey)
+                } catch {
+                    Logger.warn(
+                        "Failed to send private Paykit messages during \(reason): \(PaykitResolutionFailureDiagnostics.reason(for: error))",
+                        context: "PrivatePaykit"
+                    )
+                }
             }
-            if try await operations.linkedPeers().contains(where: { $0.state == .linked }) {
-                try await operations.receive()
+            guard generation == preparationGeneration, !Task.isCancelled else { return }
+            let linkedKeys = try await Set(operations.linkedPeers().filter { $0.state == .linked }.map {
+                PubkyPublicKeyFormat.normalized($0.counterparty) ?? $0.counterparty
+            })
+            for publicKey in retryKeys.intersection(linkedKeys).sorted() {
+                guard generation == preparationGeneration, !Task.isCancelled else { return }
+                do {
+                    try await operations.receive(publicKey)
+                } catch {
+                    Logger.warn(
+                        "Failed to receive private Paykit messages during \(reason): \(PaykitResolutionFailureDiagnostics.reason(for: error))",
+                        context: "PrivatePaykit"
+                    )
+                }
             }
         } catch {
             Logger.warn("Failed to process pending private Paykit messages during \(reason): \(error)", context: "PrivatePaykit")
