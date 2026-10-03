@@ -260,6 +260,182 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testForegroundReconciliationSkipsBothPhasesOfActiveDisable() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let operations = OperationsSpy()
+            let privateRemovalStarted = expectation(description: "Private removal started")
+            let publicRemovalStarted = expectation(description: "Public removal started")
+            let (privateRemoval, finishPrivateRemoval) = AsyncStream<Void>.makeStream()
+            let (publicRemoval, finishPublicRemoval) = AsyncStream<Void>.makeStream()
+            defer {
+                finishPrivateRemoval.finish()
+                finishPublicRemoval.finish()
+            }
+            operations.onRemovePrivateEndpoints = {
+                privateRemovalStarted.fulfill()
+                for await _ in privateRemoval {}
+            }
+            operations.onSyncPublicEndpoints = { _ in
+                publicRemovalStarted.fulfill()
+                for await _ in publicRemoval {}
+            }
+
+            let disable = Task {
+                try await ContactPaymentsService.setEnabled(
+                    false, contactPublicKeys: [], canUsePrivatePayments: true,
+                    operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                )
+            }
+            await fulfillment(of: [privateRemovalStarted], timeout: 2)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            await ContactPaymentsService.reconcilePendingEndpoints {
+                XCTFail("Foreground cleanup must not restart private withdrawal")
+            }
+
+            finishPrivateRemoval.finish()
+            await fulfillment(of: [publicRemovalStarted], timeout: 2)
+            XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            await ContactPaymentsService.reconcilePendingEndpoints {
+                XCTFail("Foreground cleanup must not duplicate public withdrawal")
+            }
+
+            finishPublicRemoval.finish()
+            try await disable.value
+            XCTAssertEqual(operations.calls, ["private:remove", "public:false"])
+            XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            var reconciled = false
+            await ContactPaymentsService.reconcilePendingEndpoints { reconciled = true }
+            XCTAssertTrue(reconciled)
+        }
+    }
+
+    func testEnablingWaitsForSuccessfulOrFailedDisable() async throws {
+        for removalFails in [false, true] {
+            try await withIsolatedDefaultsAsync { defaults in
+                let operations = OperationsSpy()
+                operations.privateRemovalFailures = removalFails ? [1] : []
+                let removalStarted = expectation(description: "Withdrawal started")
+                let enableRequested = expectation(description: "Enable requested during withdrawal")
+                let (removal, finishRemoval) = AsyncStream<Void>.makeStream()
+                defer { finishRemoval.finish() }
+                operations.onRemovePrivateEndpoints = {
+                    removalStarted.fulfill()
+                    for await _ in removal {}
+                }
+
+                let disable = Task {
+                    try await ContactPaymentsService.setEnabled(
+                        false, contactPublicKeys: [], canUsePrivatePayments: true,
+                        operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                    )
+                }
+                await fulfillment(of: [removalStarted], timeout: 2)
+                let enable = Task {
+                    enableRequested.fulfill()
+                    try await ContactPaymentsService.setEnabled(
+                        true, contactPublicKeys: ["contact-a"], canUsePrivatePayments: true,
+                        operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                    )
+                }
+                await fulfillment(of: [enableRequested], timeout: 2)
+                XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+                XCTAssertEqual(operations.calls, ["private:remove"])
+
+                finishRemoval.finish()
+                switch await disable.result {
+                case .success:
+                    XCTAssertFalse(removalFails)
+                case let .failure(error):
+                    XCTAssertTrue(removalFails)
+                    XCTAssertEqual(error as? TestError, .operationFailed)
+                }
+                try await enable.value
+                XCTAssertEqual(operations.calls, ["private:remove", "public:false", "app:true", "public:true", "private:publish"])
+                XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+                XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+                XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            }
+        }
+    }
+
+    func testForegroundReconciliationCoalescesAndSerializesSharingChanges() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let operations = OperationsSpy()
+            let reconciliationStarted = expectation(description: "Reconciliation started")
+            let enableRequested = expectation(description: "Enable requested during reconciliation")
+            let (reconciliation, finishReconciliation) = AsyncStream<Void>.makeStream()
+            defer { finishReconciliation.finish() }
+            var reconciliations = 0
+            let retry = Task {
+                await ContactPaymentsService.reconcilePendingEndpoints {
+                    reconciliations += 1
+                    reconciliationStarted.fulfill()
+                    for await _ in reconciliation {}
+                }
+            }
+            await fulfillment(of: [reconciliationStarted], timeout: 2)
+            await ContactPaymentsService.reconcilePendingEndpoints { reconciliations += 1 }
+            let enable = Task {
+                enableRequested.fulfill()
+                try await ContactPaymentsService.setEnabled(
+                    true, contactPublicKeys: [], canUsePrivatePayments: true,
+                    operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                )
+            }
+            await fulfillment(of: [enableRequested], timeout: 2)
+            XCTAssertEqual(reconciliations, 1)
+            XCTAssertTrue(operations.calls.isEmpty)
+
+            finishReconciliation.finish()
+            await retry.value
+            try await enable.value
+            XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertEqual(operations.publicPublicationValues, [true])
+        }
+    }
+
+    func testCancelledSharingChangeDoesNotPublishAfterReconciliation() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let operations = OperationsSpy()
+            let reconciliationStarted = expectation(description: "Reconciliation started")
+            let enableRequested = expectation(description: "Enable requested during reconciliation")
+            let (reconciliation, finishReconciliation) = AsyncStream<Void>.makeStream()
+            defer { finishReconciliation.finish() }
+            let retry = Task {
+                await ContactPaymentsService.reconcilePendingEndpoints {
+                    reconciliationStarted.fulfill()
+                    for await _ in reconciliation {}
+                }
+            }
+            await fulfillment(of: [reconciliationStarted], timeout: 2)
+            let enable = Task {
+                enableRequested.fulfill()
+                try await ContactPaymentsService.setEnabled(
+                    true, contactPublicKeys: [], canUsePrivatePayments: true,
+                    operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                )
+            }
+            await fulfillment(of: [enableRequested], timeout: 2)
+            enable.cancel()
+            finishReconciliation.finish()
+            await retry.value
+            switch await enable.result {
+            case .success:
+                XCTFail("Cancelled sharing change must not publish")
+            case let .failure(error):
+                XCTAssertTrue(error is CancellationError)
+            }
+            XCTAssertTrue(operations.calls.isEmpty)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            var reconciled = false
+            await ContactPaymentsService.reconcilePendingEndpoints { reconciled = true }
+            XCTAssertTrue(reconciled)
+        }
+    }
+
     private func withIsolatedDefaults(_ body: (UserDefaults) throws -> Void) throws {
         let suiteName = "ContactPaymentsServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -299,6 +475,8 @@ final class ContactPaymentsServiceTests: XCTestCase {
         var privateRemovalFailures: Set<Int> = []
         var onPreparePrivateEndpoints: (() -> Void)?
         var preparePrivateEndpoints: (([String], Bool) async -> Error?)?
+        var onRemovePrivateEndpoints: (() async -> Void)?
+        var onSyncPublicEndpoints: ((Bool) async -> Void)?
 
         func makeOperations(defaults: UserDefaults? = nil) -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
@@ -308,6 +486,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 syncPublicEndpoints: { publish in
                     self.calls.append("public:\(publish)")
                     self.publicPublicationValues.append(publish)
+                    await self.onSyncPublicEndpoints?(publish)
                     if self.publicPublicationFailures.contains(self.publicPublicationValues.count) {
                         throw TestError.operationFailed
                     }
@@ -329,6 +508,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 removePrivateEndpoints: {
                     self.calls.append("private:remove")
                     self.privateRemovalCount += 1
+                    await self.onRemovePrivateEndpoints?()
                     if self.privateRemovalFailures.contains(self.privateRemovalCount) {
                         throw TestError.operationFailed
                     }

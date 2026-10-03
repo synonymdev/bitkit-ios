@@ -786,6 +786,13 @@ actor PaykitSdkService {
     }
 
     @discardableResult
+    func processOutboundPrivateMessages(counterparty: String) async throws -> OutboundPrivateSendReport {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+        }
+    }
+
+    @discardableResult
     func processPendingPrivateMessages() async throws -> [OutboundPrivateCounterpartySendReport] {
         try await withStateRevisionTracking { sdk in
             try await sdk.processPendingPrivateMessages()

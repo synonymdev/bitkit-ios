@@ -207,6 +207,17 @@ struct PaykitPaymentRequestPollingSchedule {
     }
 }
 
+struct PaykitContactKeysObserver: ViewModifier {
+    let publicKeys: [String]
+    let onChange: ([String]) -> Void
+
+    func body(content: Content) -> some View {
+        content.onChange(of: publicKeys.sorted(), initial: true) { _, publicKeys in
+            onChange(publicKeys)
+        }
+    }
+}
+
 struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
@@ -459,7 +470,7 @@ struct AppScene: View {
                     paykitPaymentRequestManager.clear()
                 }
             }
-            .onReceive(contactsManager.$contacts.map { $0.map(\.publicKey).sorted() }.removeDuplicates()) { publicKeys in
+            .modifier(PaykitContactKeysObserver(publicKeys: contactsManager.contacts.map(\.publicKey)) { publicKeys in
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
@@ -468,7 +479,7 @@ struct AppScene: View {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
                     await refreshIncomingPaykitPaymentRequests()
                 }
-            }
+            })
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
                 Task { await refreshIncomingPaykitPaymentRequests() }
             }
@@ -1474,27 +1485,29 @@ struct AppScene: View {
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
-        let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
-        await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
-            wallet: wallet,
-            savedPublicKeys: contactsManager.contacts.map(\.publicKey)
-        )
-        if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
-            PublicPaykitService.setCleanupPending(true)
-        }
+        await ContactPaymentsService.reconcilePendingEndpoints {
+            let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
+            await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
+                wallet: wallet,
+                savedPublicKeys: contactsManager.contacts.map(\.publicKey)
+            )
+            if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
+                PublicPaykitService.setCleanupPending(true)
+            }
 
-        if PublicPaykitService.isCleanupPending {
-            do {
-                switch PublicPaykitService.pendingReconciliationMode() {
-                case .publishEndpoints:
-                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
-                case .removePublishedState:
-                    try await PublicPaykitService.removePublishedEndpoints()
-                    try await PublicPaykitService.syncPaykitApp()
+            if PublicPaykitService.isCleanupPending {
+                do {
+                    switch PublicPaykitService.pendingReconciliationMode() {
+                    case .publishEndpoints:
+                        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
+                    case .removePublishedState:
+                        try await PublicPaykitService.removePublishedEndpoints()
+                        try await PublicPaykitService.syncPaykitApp()
+                    }
+                    PublicPaykitService.setCleanupPending(false)
+                } catch {
+                    Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
                 }
-                PublicPaykitService.setCleanupPending(false)
-            } catch {
-                Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
             }
         }
     }

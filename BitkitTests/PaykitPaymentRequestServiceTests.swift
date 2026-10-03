@@ -5229,10 +5229,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.proposedRequests.first?.endpointIdentifiers.allSatisfy {
             PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork.map { $0 == Env.network } ?? true
         } == true)
-        XCTAssertEqual(snapshot.processCallCount, 1)
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
     }
 
-    func testProposalsOnlyInspectSelectedSavedTarget() async throws {
+    func testProposalsOnlyInspectAndDrainSelectedSavedTarget() async throws {
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let unrelatedKey = "pubky\(String(repeating: "a", count: 52))"
         let expectedIdentity = "pubky\(String(repeating: "z", count: 52))"
@@ -5251,31 +5252,52 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 requestCapabilitiesByPublicKey: [publicKey: true, unrelatedKey: true]
             )
             await sdk.setCapabilityLookupFailing(true, for: unrelatedKey)
-            try await sdk.setProposalResult(paymentRequestRecord(counterparty: publicKey, role: .payee))
+            try await sdk.setProposalResult(paymentRequestRecord(
+                counterparty: publicKey, role: .payee, proposalOutboundMessageId: 7
+            ))
+            await sdk.setProcessReports([OutboundPrivateCounterpartySendReport(
+                counterparty: publicKey,
+                report: OutboundPrivateSendReport(
+                    attempted: [7], sent: [7], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
+                ),
+                error: nil
+            )])
+            await sdk.pauseNextProcess(for: unrelatedKey)
             let service = PaykitPaymentRequestService(
                 sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true }, logWarning: { _ in }
             )
 
-            if isSubscription {
-                _ = try await service.proposeSubscription(
-                    PaykitSubscriptionDraft(
-                        amountSats: 1000, name: "Support", description: "", frequency: .month,
-                        expiresAt: expiresAt, iconData: nil
-                    ),
-                    to: target, savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity,
-                    validateBeforeProposing: {}
-                )
-            } else {
-                _ = try await service.propose(
-                    PaykitPaymentRequestDraft(amountSats: 1000, note: "Support", expiresAt: expiresAt),
-                    to: target, savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity
-                )
+            let completed = expectation(description: "Selected proposal completes without unrelated delivery")
+            let proposal = Task {
+                let status: PaykitPaymentRequest.DeliveryStatus? = if isSubscription {
+                    try await service.proposeSubscription(
+                        PaykitSubscriptionDraft(
+                            amountSats: 1000, name: "Support", description: "", frequency: .month,
+                            expiresAt: expiresAt, iconData: nil
+                        ),
+                        to: target, savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity,
+                        validateBeforeProposing: {}
+                    ).deliveryStatus
+                } else {
+                    try await service.propose(
+                        PaykitPaymentRequestDraft(amountSats: 1000, note: "Support", expiresAt: expiresAt),
+                        to: target, savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity
+                    ).deliveryStatus
+                }
+                completed.fulfill()
+                return status
             }
+            await fulfillment(of: [completed], timeout: 1)
+            await sdk.resumeProcess()
+            let status = try await proposal.value
 
+            XCTAssertEqual(status, .sent)
             let lookups = await sdk.capabilityLookupPublicKeys
             XCTAssertEqual(lookups, isSubscription ? [publicKey, publicKey] : [publicKey])
             let snapshot = await sdk.snapshot()
             XCTAssertEqual(snapshot.proposedRequests.map(\.counterparty), [publicKey])
+            XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
+            XCTAssertEqual(snapshot.processCallCount, 0)
         }
     }
 
@@ -5356,7 +5378,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.proposedRequests.count, 1)
-        XCTAssertEqual(snapshot.processCallCount, 1)
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
     }
 
     func testProposeRevalidatesTargetBeforeEnqueueing() async throws {
@@ -5811,11 +5834,13 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var isUploadPaused = false
     private var uploadContinuation: CheckedContinuation<Void, Never>?
     private var processCallCount = 0
+    private var processedCounterparties: [String] = []
     private var receiveCallCount = 0
     private var processFailuresRemaining = 0
     private var processCancellationsRemaining = 0
     private var processReports: [OutboundPrivateCounterpartySendReport] = []
     private var shouldPauseNextProcess = false
+    private var pausedProcessCounterparty: String?
     private var isProcessPaused = false
     private var processContinuation: CheckedContinuation<Void, Never>?
     private var receiveError: PaymentRequestSdkMockError?
@@ -5846,7 +5871,22 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func processPendingPrivateMessages() async throws -> [OutboundPrivateCounterpartySendReport] {
         processCallCount += 1
-        if shouldPauseNextProcess {
+        try await processMessages()
+        return processReports
+    }
+
+    func processOutboundPrivateMessages(counterparty: String) async throws -> OutboundPrivateSendReport {
+        processedCounterparties.append(counterparty)
+        try await processMessages(counterparty: counterparty)
+        return processReports.first { $0.counterparty == counterparty }?.report ?? OutboundPrivateSendReport(
+            attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: []
+        )
+    }
+
+    private func processMessages(counterparty: String? = nil) async throws {
+        if shouldPauseNextProcess,
+           counterparty == nil || pausedProcessCounterparty == nil || counterparty == pausedProcessCounterparty
+        {
             shouldPauseNextProcess = false
             isProcessPaused = true
             await withCheckedContinuation { processContinuation = $0 }
@@ -5856,7 +5896,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             processCancellationsRemaining -= 1
             throw CancellationError()
         }
-        guard processFailuresRemaining > 0 else { return processReports }
+        guard processFailuresRemaining > 0 else { return }
         processFailuresRemaining -= 1
         throw PaymentRequestSdkMockError.process
     }
@@ -6068,8 +6108,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         acceptanceResponseError = error
     }
 
-    func pauseNextProcess() {
+    func pauseNextProcess(for counterparty: String? = nil) {
         shouldPauseNextProcess = true
+        pausedProcessCounterparty = counterparty
     }
 
     func processIsPaused() -> Bool {
@@ -6205,6 +6246,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         PaymentRequestSdkSnapshot(
             uploadCount: uploadCount,
             processCallCount: processCallCount,
+            processedCounterparties: processedCounterparties,
             receiveCallCount: receiveCallCount,
             acceptedRequests: acceptedRequests,
             rejectedRequests: rejectedRequests,
@@ -6229,6 +6271,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 private struct PaymentRequestSdkSnapshot {
     let uploadCount: Int
     let processCallCount: Int
+    let processedCounterparties: [String]
     let receiveCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]
     let rejectedRequests: [PaymentRequestInvocation]

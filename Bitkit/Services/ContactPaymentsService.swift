@@ -3,6 +3,9 @@ import Foundation
 enum ContactPaymentsService {
     static let confirmedPreferenceKey = "hasConfirmedPublicPaykitEndpoints"
 
+    @MainActor private static var isOperationActive = false
+    @MainActor private static var operationWaiters: [CheckedContinuation<Void, Never>] = []
+
     struct Operations {
         let syncPaykitApp: (_ privatePaymentsEnabled: Bool) async throws -> Void
         let syncPublicEndpoints: (_ publish: Bool) async throws -> Void
@@ -80,6 +83,10 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults = .standard
     ) async throws {
+        await acquireOperation()
+        defer { releaseOperation() }
+        try Task.checkCancellation()
+
         enableAllPaymentOptions(defaults: defaults)
 
         if !enabled {
@@ -114,6 +121,32 @@ enum ContactPaymentsService {
             )
             throw error
         }
+    }
+
+    @MainActor
+    static func reconcilePendingEndpoints(_ reconcile: () async -> Void) async {
+        guard !isOperationActive, !Task.isCancelled else { return }
+        isOperationActive = true
+        defer { releaseOperation() }
+        await reconcile()
+    }
+
+    @MainActor
+    private static func acquireOperation() async {
+        guard isOperationActive else {
+            isOperationActive = true
+            return
+        }
+        await withCheckedContinuation { operationWaiters.append($0) }
+    }
+
+    @MainActor
+    private static func releaseOperation() {
+        guard !operationWaiters.isEmpty else {
+            isOperationActive = false
+            return
+        }
+        operationWaiters.removeFirst().resume()
     }
 
     @MainActor

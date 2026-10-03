@@ -490,6 +490,7 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
 }
 
 protocol PaykitPaymentRequestSdkHandling: Sendable {
+    func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport
     func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
     func receivePrivateMessagesFromLinkedPeers() async throws -> [Paykit.PrivateStreamCounterpartyIntakeReport]
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
@@ -697,7 +698,7 @@ struct PaykitPaymentRequestService {
             terms: terms,
             expectedIdentity: expectedIdentity
         )
-        let reports = await (try? processPendingMessages()) ?? []
+        let reports = await (try? processPendingMessages(to: target.publicKey)) ?? []
         let deliveryStatus = proposalWasSent(record, reports: reports) ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
         return PaykitPaymentRequest(
             createdRecord: record,
@@ -773,7 +774,7 @@ struct PaykitPaymentRequestService {
             terms: terms,
             expectedIdentity: expectedIdentity
         )
-        let reports = await (try? processPendingMessages()) ?? []
+        let reports = await (try? processPendingMessages(to: target.publicKey)) ?? []
         let deliveryStatus = proposalWasSent(record, reports: reports)
             ? PaykitPaymentRequest.DeliveryStatus.sent
             : .queued
@@ -939,9 +940,19 @@ struct PaykitPaymentRequestService {
     }
 
     @discardableResult
-    private func processPendingMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport] {
+    private func processPendingMessages(to counterparty: String? = nil) async throws -> [Paykit.OutboundPrivateCounterpartySendReport] {
         do {
-            let reports = try await sdk.processPendingPrivateMessages()
+            let reports: [Paykit.OutboundPrivateCounterpartySendReport]
+            if let counterparty {
+                let report = try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+                reports = [Paykit.OutboundPrivateCounterpartySendReport(
+                    counterparty: counterparty,
+                    report: report,
+                    error: nil
+                )]
+            } else {
+                reports = try await sdk.processPendingPrivateMessages()
+            }
             for report in reports {
                 if let error = report.error {
                     logWarning(
