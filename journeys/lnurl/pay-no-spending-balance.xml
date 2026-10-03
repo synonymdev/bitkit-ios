@@ -1,0 +1,25 @@
+<journey name="lnurl pay without spending balance is refused">
+  <description>
+    Verifies that pasting an LNURL-pay link while the wallet has no Lightning spending balance is
+    refused with the capacity warning, and that the Send sheet stays on the recipient options instead
+    of opening the LNURL amount or confirmation screens. The app has to resolve the pay request from
+    the LNURL server first, because the minimum it compares the balance against comes from that
+    response, so this journey also proves the simulator reaches the server.
+
+    Precondition: an onboarded E2E build on regtest with the node running and no channels, so the
+    Spending balance is zero. The LNURL-pay link is the `lnurl` field of the `GET /generate/pay`
+    response of the `bitkit-docker` `lnurl-server` fixture, read from the server address the app
+    reaches (see README.md). Copy it to the simulator clipboard (`xcrun simctl pbcopy &lt;udid&gt;`).
+    The fixture mode does not matter here, the invoice callback is never called. Start on the
+    wallet home screen.
+  </description>
+  <actions>
+    <action>Verify the SPENDING balance on the home screen is 0</action>
+    <action>Tap the Send button (id "Send")</action>
+    <action>If a camera permission dialog appears, dismiss it by choosing "Don't Allow"</action>
+    <action>Tap "Paste Invoice" (id "RecipientInvoice")</action>
+    <action>Verify a warning toast titled "Unable To Pay (LNURL)" with the text "Not enough outbound/sending capacity to complete lnurl-pay request." appears (id "LnurlPayNoCapacityToast")</action>
+    <action>Verify the Send sheet is still on the recipient options (id "RecipientManual" is visible) and neither the LNURL amount screen (id "SendNumberField") nor a review screen (id "SendConfirm") was opened</action>
+    <action>Close the Send sheet and verify the wallet home screen is shown</action>
+  </actions>
+</journey>
