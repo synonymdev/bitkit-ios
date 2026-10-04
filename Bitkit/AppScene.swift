@@ -482,7 +482,7 @@ struct AppScene: View {
                 }
             })
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
-                Task { await refreshIncomingPaykitPaymentRequests() }
+                Task { await refreshIncomingPaykitPaymentRequests(forceFresh: true) }
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { await associateResolvedPaykitOnchainPayment(resolution) }
@@ -1111,7 +1111,11 @@ struct AppScene: View {
         }
     }
 
-    private func refreshIncomingPaykitPaymentRequests(presentItems: Bool = true, mode: PaykitPaymentRequestRefreshMode = .full) async {
+    private func refreshIncomingPaykitPaymentRequests(
+        presentItems: Bool = true,
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        forceFresh: Bool = false
+    ) async {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
@@ -1126,7 +1130,7 @@ struct AppScene: View {
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh(mode: mode)
+        await paykitPaymentRequestManager.refresh(mode: mode, forceFresh: forceFresh)
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return }

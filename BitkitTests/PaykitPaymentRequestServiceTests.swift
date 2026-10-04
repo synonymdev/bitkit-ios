@@ -63,6 +63,57 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testFreshRefreshRereadsProofStateChangedDuringNotificationSynchronization() async throws {
+        actor InFlightPayments {
+            var ids: Set<PaykitPaymentRequest.ID>
+
+            init(_ id: PaykitPaymentRequest.ID) {
+                ids = [id]
+            }
+
+            func clear() {
+                ids = []
+            }
+        }
+
+        let record = try paymentRequestRecord()
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: record.paymentRequestId, counterparty: record.counterparty)
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let inFlightPayments = InFlightPayments(requestId)
+        let center = PaykitSubscriptionNotificationCenterMock()
+        let manager = PaykitPaymentRequestManager(
+            service: PaykitPaymentRequestService(sdk: sdk, logWarning: { _ in }),
+            presentationStore: PaymentRequestPresentationMemoryStore(),
+            acceptanceStore: PaymentRequestPresentationMemoryStore(),
+            subscriptionStateStore: PaymentRequestSubscriptionStateMemoryStore(),
+            subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler(center: center),
+            completedPaymentProofKinds: { _ in [:] },
+            inFlightPaymentRequestIds: { _ in await inFlightPayments.ids },
+            isAvailable: { true },
+            logWarning: { _ in }
+        )
+        manager.activate(identity: "pubky\(String(repeating: "z", count: 52))")
+        await center.pauseNextPendingRequests()
+        let first = Task { await manager.refresh() }
+        try await waitUntil { await center.isPendingRequestsPaused }
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+
+        await inFlightPayments.clear()
+        let refreshStarted = expectation(description: "Proof state refresh started")
+        let afterFailure = Task {
+            refreshStarted.fulfill()
+            await manager.refresh(forceFresh: true)
+        }
+        await fulfillment(of: [refreshStarted], timeout: 1)
+        await center.resumePendingRequests()
+        await first.value
+        await afterFailure.value
+
+        XCTAssertEqual(manager.pendingRequests.map(\.id), [requestId])
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.paymentRequestListCallCount, 2)
+    }
+
     func testClearInvalidatesStrongerRefreshWaitingForWeakerMode() async throws {
         let modes: [PaykitPaymentRequestRefreshMode] = [.stored, .inbox, .full]
         for initialMode in modes {
@@ -118,6 +169,35 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.processCallCount, 0)
         XCTAssertEqual(snapshot.receiveCallCount, 0)
         XCTAssertEqual(snapshot.paymentRequestListCallCount, 1)
+    }
+
+    func testFreshRefreshDoesNotOutliveCancellationOrIdentityChange() async throws {
+        for invalidation in ["cancel", "clear", "identity"] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            let manager = paymentRequestManager(sdk: sdk)
+            await sdk.pauseNextPaymentRequestList()
+            let first = Task { await manager.refresh() }
+            try await waitUntil { await sdk.paymentRequestListIsPaused() }
+            let refreshStarted = expectation(description: invalidation)
+            let fresh = Task {
+                refreshStarted.fulfill()
+                await manager.refresh(forceFresh: true)
+            }
+            await fulfillment(of: [refreshStarted], timeout: 1)
+
+            switch invalidation {
+            case "cancel": fresh.cancel()
+            case "clear": manager.clear()
+            default: manager.activate(identity: "pubky\(String(repeating: "y", count: 52))")
+            }
+            await sdk.resumePaymentRequestList()
+            await first.value
+            await fresh.value
+
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, invalidation)
+            XCTAssertTrue(manager.pendingRequests.isEmpty, invalidation)
+        }
     }
 
     func testReceivedPaymentContactsIncludeSharedServerRequestsAndLatePayments() throws {

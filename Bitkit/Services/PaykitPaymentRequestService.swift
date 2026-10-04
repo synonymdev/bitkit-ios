@@ -1557,16 +1557,13 @@ final class PaykitPaymentRequestManager {
         return subscription
     }
 
-    func refresh(mode: PaykitPaymentRequestRefreshMode = .full) async {
-        await refresh(excludingProtectedRequestId: nil, mode: mode)
+    func refresh(mode: PaykitPaymentRequestRefreshMode = .full, forceFresh: Bool = false) async {
+        await refresh(excludingProtectedRequestId: nil, mode: mode, forceFresh: forceFresh)
     }
 
     /// Applies a changed subscription clock offset: waits for a refresh already reading the old clock, then refreshes again.
     func refreshAfterSubscriptionClockChange() async {
-        if let refreshTask {
-            await refreshTask.task.value
-        }
-        await refresh()
+        await refresh(forceFresh: true)
     }
 
     func synchronizeSubscriptionNotifications(enabled: Bool) async {
@@ -1582,11 +1579,15 @@ final class PaykitPaymentRequestManager {
         )
     }
 
-    private func refresh(excludingProtectedRequestId: PaykitPaymentRequest.ID?, mode: PaykitPaymentRequestRefreshMode = .full) async {
+    private func refresh(
+        excludingProtectedRequestId: PaykitPaymentRequest.ID?,
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        forceFresh: Bool = false
+    ) async {
         if let refreshTask {
             let generation = stateGeneration
             await refreshTask.task.value
-            if mode > refreshTask.mode, generation == stateGeneration, !Task.isCancelled {
+            if forceFresh || mode > refreshTask.mode, generation == stateGeneration, !Task.isCancelled {
                 await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode)
             }
             return
