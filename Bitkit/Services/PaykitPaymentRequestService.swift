@@ -504,7 +504,7 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func linkedPeers() async throws -> [Paykit.LinkedPeerRecord]
-    func paymentRequestReceiverPaths(publicKey: String) async throws -> [String]
+    func paymentRequestReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority) async throws -> [String]
     func proposePaymentRequest(
         counterparty: String,
         counterpartyReceiverPath: String,
@@ -620,10 +620,13 @@ struct PaykitPaymentRequestService {
     }
 
     /// Keeps a previously eligible target when its capability lookup fails, so a transient transport error does not hide it.
+    /// Checks run one at a time on the interactive read lane, for a user waiting on them; the background refresh of every
+    /// saved contact passes `.bulk`.
     func discoverEligibleTargets(
         savedPublicKeys: [String],
         expectedIdentity: String,
-        previousTargets: [PaykitPaymentRequestTarget] = []
+        previousTargets: [PaykitPaymentRequestTarget] = [],
+        priority: PaykitPublicReadPriority = .interactive
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
         let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true)
         guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
@@ -652,7 +655,7 @@ struct PaykitPaymentRequestService {
             let capablePaths: [String]
             do {
                 try Task.checkCancellation()
-                capablePaths = try await sdk.paymentRequestReceiverPaths(publicKey: publicKey)
+                capablePaths = try await sdk.paymentRequestReceiverPaths(publicKey: publicKey, priority: priority)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -1249,7 +1252,8 @@ final class PaykitPaymentRequestManager {
             let discovery = try await service.discoverEligibleTargets(
                 savedPublicKeys: savedPublicKeys,
                 expectedIdentity: activeIdentity,
-                previousTargets: eligibleTargets
+                previousTargets: eligibleTargets,
+                priority: .bulk
             )
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration,
@@ -1342,8 +1346,8 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Returns the known target at once, otherwise waits at most `timeout` for a refresh without blocking on a slow SDK call.
-    /// The lookup shares the SDK lock with payment resolution, so a contact checked in the last 30 seconds is not looked up again,
-    /// and a lookup that outlives the timeout is cancelled.
+    /// The lookup reads linked peers under the SDK lock and the contact's capabilities on the interactive read lane, so a contact
+    /// checked in the last 30 seconds is not looked up again, and a lookup that outlives the timeout is cancelled.
     func eligibleTarget(publicKey: String, waitingAtMost timeout: Duration) async -> PaykitPaymentRequestTarget? {
         if let target = eligibleTarget(publicKey: publicKey) {
             return target

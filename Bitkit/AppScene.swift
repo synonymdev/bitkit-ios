@@ -448,7 +448,7 @@ struct AppScene: View {
                     paykitPaymentRequestManager.clear()
                 }
             }
-            .onReceive(contactsManager.$contacts) { contacts in
+            .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
