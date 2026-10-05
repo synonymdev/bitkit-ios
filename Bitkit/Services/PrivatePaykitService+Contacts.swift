@@ -624,8 +624,12 @@ extension PrivatePaykitService {
         guard !retryKeys.isEmpty, !Task.isCancelled else { return }
         let generation = preparationGeneration
         do {
+            let alreadyLinkedKeys = try await Set(operations.linkedPeers().filter { $0.state == .linked }.map {
+                PubkyPublicKeyFormat.normalized($0.counterparty) ?? $0.counterparty
+            })
             for retryKey in retryKeys.sorted() {
                 guard generation == preparationGeneration, !Task.isCancelled else { return }
+                if alreadyLinkedKeys.contains(retryKey) { continue }
                 if let retryAt = unavailableLinkRetryAt[retryKey], retryAt > Date() { continue }
                 do {
                     try await operations.ensureLink(retryKey)
