@@ -757,22 +757,26 @@ actor PaykitSdkService {
         }
     }
 
-    func clearPrivatePaymentList(
-        to counterparty: String
+    func clearPrivatePaymentLists(
+        to counterparties: [String]
     ) async throws -> PrivatePaymentListDeliveryReport? {
-        try await withStateRevisionTracking { sdk in
-            if try await sdk.linkedPeers().contains(where: {
-                $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, counterparty)
-            }) {
-                return nil
-            }
+        guard !counterparties.isEmpty else { return nil }
+        return try await withStateRevisionTracking { sdk in
+            let blockedPeers = try await sdk.linkedPeers().filter { $0.state == .blocked }
+            let updates = counterparties.filter { counterparty in
+                !blockedPeers.contains { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
+            }.map { PrivatePaymentListReservationUpdateInput(counterparty: $0, reservations: []) }
+            guard !updates.isEmpty else { return nil }
             if let publicKey = try await sdk.identityStatus()?.publicKey,
                let app = try await sdk.paykitAppRegistry(publicKey: publicKey)?.apps.first(where: { $0.appId == "bitkit" }),
                !app.capabilities.privatePayments
             {
                 return nil
             }
-            return try await sdk.clearPrivatePaymentListAndProcessOutbound(counterparty: counterparty)
+            return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
+                updates: updates,
+                clearUnlistedLinkedPeers: false
+            )
         }
     }
 

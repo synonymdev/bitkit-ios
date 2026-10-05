@@ -40,7 +40,7 @@ extension PrivatePaykitService {
 
     struct EndpointCleanupOperations {
         let linkedPeers: () async throws -> [LinkedPeerRecord]
-        let clearPaymentList: (_ publicKey: String) async throws -> PrivatePaymentListDeliveryReport?
+        let clearPaymentLists: (_ publicKeys: [String]) async throws -> PrivatePaymentListDeliveryReport?
         let drainMessages: (_ publicKeys: [String]) async -> Void
         let pendingDrainKeys: (_ publicKeys: [String]) async -> Set<String>
         let syncApp: () async throws -> Void
@@ -205,7 +205,7 @@ extension PrivatePaykitService {
     func removePublishedEndpoints(for publicKeys: [String]? = nil) async throws {
         try await removePublishedEndpoints(for: publicKeys, operations: EndpointCleanupOperations(
             linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
-            clearPaymentList: { try await PaykitSdkService.shared.clearPrivatePaymentList(to: $0) },
+            clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0) },
             drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
             pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
             syncApp: { try await PublicPaykitService.syncPaykitApp() }
@@ -250,28 +250,32 @@ extension PrivatePaykitService {
         var firstError: Error?
         var failedPublicKeys = Set<String>()
         var clearedRetryKeys = [String]()
-        for publicKey in cleanupKeys {
+        if !cleanupKeys.isEmpty {
             do {
-                guard let report = try await operations.clearPaymentList(publicKey) else { continue }
-                logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
-                if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
-                    throw PrivatePaykitError.privateUnavailable
+                if let report = try await operations.clearPaymentLists(cleanupKeys) {
+                    logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
+                    failedPublicKeys.formUnion((report.failedToQueue.map(\.counterparty) + report.failedToDeliver.map(\.counterparty))
+                        .compactMap { PubkyPublicKeyFormat.normalized($0) })
+                    clearedRetryKeys = report.cleared.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) }
+                        .filter { !failedPublicKeys.contains($0) }
+                    if !failedPublicKeys.isEmpty { firstError = PrivatePaykitError.privateUnavailable }
                 }
-                clearedRetryKeys.append(publicKey)
             } catch {
                 Logger.warn(
-                    "Failed to clear private Paykit endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): " +
-                        PaykitResolutionFailureDiagnostics.reason(for: error),
+                    "Failed to clear private Paykit endpoints: \(PaykitResolutionFailureDiagnostics.reason(for: error))",
                     context: "PrivatePaykit"
                 )
-                failedPublicKeys.insert(publicKey)
-                firstError = firstError ?? error
+                failedPublicKeys.formUnion(cleanupKeys)
+                firstError = error
             }
         }
 
         if !clearedRetryKeys.isEmpty {
-            await operations.drainMessages(clearedRetryKeys)
-            let pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
+            var pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
+            if !pendingRetryKeys.isEmpty {
+                await operations.drainMessages(Array(pendingRetryKeys))
+                pendingRetryKeys = await operations.pendingDrainKeys(clearedRetryKeys)
+            }
             if !pendingRetryKeys.isEmpty {
                 Logger.warn(
                     "Private Paykit endpoint withdrawal remains pending for \(pendingRetryKeys.map(PubkyPublicKeyFormat.redacted))",

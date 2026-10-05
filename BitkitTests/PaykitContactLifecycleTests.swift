@@ -194,7 +194,7 @@ final class PaykitContactLifecycleTests: XCTestCase {
         let service = PaykitSdkService(sdkFactory: { sdk })
         _ = try await service.removeContact(publicKey: sdk.publicKey)
         let eventsBeforeCleanup = sdk.events
-        let report = try await service.clearPrivatePaymentList(to: sdk.publicKey)
+        let report = try await service.clearPrivatePaymentLists(to: [sdk.publicKey])
         XCTAssertNil(report)
         XCTAssertEqual(sdk.events, eventsBeforeCleanup)
     }
@@ -204,7 +204,7 @@ final class PaykitContactLifecycleTests: XCTestCase {
         sdk.capabilities.privatePayments = false
         let service = PaykitSdkService(sdkFactory: { sdk })
 
-        let report = try await service.clearPrivatePaymentList(to: sdk.publicKey)
+        let report = try await service.clearPrivatePaymentLists(to: [sdk.publicKey])
 
         XCTAssertNil(report)
         XCTAssertTrue(sdk.events.isEmpty)
@@ -222,6 +222,32 @@ final class PaykitContactLifecycleTests: XCTestCase {
 
         XCTAssertFalse(sdk.capabilities.privatePayments)
     }
+
+    func testWithdrawalBatchesPreflightAndDelegatesRepeatedEmptyLists() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        let other = "pubky5rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        var blocked = try XCTUnwrap(sdk.peers.first)
+        blocked.counterparty = "pubky6rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        blocked.state = .blocked
+        sdk.peers.append(blocked)
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let empty = try await service.clearPrivatePaymentLists(to: [])
+        XCTAssertNil(empty)
+        XCTAssertEqual(sdk.peerReads, 0)
+
+        for client in [service, service, PaykitSdkService(sdkFactory: { sdk })] {
+            let report = try await client.clearPrivatePaymentLists(to: [sdk.publicKey, other, blocked.counterparty])
+            XCTAssertEqual(report?.cleared.map(\.counterparty), [sdk.publicKey, other])
+        }
+
+        XCTAssertEqual(sdk.peerReads, 3)
+        XCTAssertEqual(sdk.identityReads, 3)
+        XCTAssertEqual(sdk.registryReads, 3)
+        XCTAssertEqual(sdk.withdrawals.count, 3)
+        XCTAssertTrue(sdk.withdrawals.allSatisfy { updates in
+            updates.map(\.counterparty) == [sdk.publicKey, other] && updates.allSatisfy(\.reservations.isEmpty)
+        })
+    }
 }
 
 private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
@@ -233,6 +259,10 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var failLinkedPeers = false
     var failUnblock = false
     var failSaveContact = false
+    var peerReads = 0
+    var identityReads = 0
+    var registryReads = 0
+    var withdrawals = [[PrivatePaymentListReservationUpdateInput]]()
     var capabilities = PaykitAppCapabilities(privatePayments: true, paymentRequests: true, receipts: false, outgoingPayments: true)
     lazy var record: ContactRecord? = ContactRecord(
         publicKey: publicKey, label: "Contact", profile: nil,
@@ -248,7 +278,8 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     ]
 
     override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
-        registry
+        registryReads += 1
+        return registry
     }
 
     private var registry: PaykitAppRegistry {
@@ -258,7 +289,8 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: publicKey, capability: .privateLinkCapable)
+        identityReads += 1
+        return IdentityStatus(publicKey: publicKey, capability: .privateLinkCapable)
     }
 
     override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
@@ -283,8 +315,21 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
+        peerReads += 1
         if failLinkedPeers { throw PubkyServiceError.profileNotFound }
         return peers
+    }
+
+    override func syncPrivatePaymentListsWithReservationsAndProcessOutbound(
+        updates: [PrivatePaymentListReservationUpdateInput],
+        clearUnlistedLinkedPeers: Bool
+    ) async throws -> PrivatePaymentListDeliveryReport {
+        XCTAssertFalse(clearUnlistedLinkedPeers)
+        withdrawals.append(updates)
+        return .init(
+            queued: [], cleared: updates.map { .init(counterparty: $0.counterparty, outboundMessageId: 1, error: nil) },
+            failedToQueue: [], failedToDeliver: []
+        )
     }
 
     override func clearPrivatePaymentListAndProcessOutbound(
