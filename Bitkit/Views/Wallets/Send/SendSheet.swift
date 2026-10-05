@@ -265,7 +265,7 @@ struct SendSheet: View {
                             isResumingAcceptedOrdinarySend = true
                             hasValidatedAfterSync = true
                             app.selectedWalletToPayFrom = .onchain
-                            replaceRootRoute(with: .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil))
+                            replaceRootRoute(with: Self.acceptedOrdinaryStartupRoute(attempt: attempt))
                             return
                         }
                     } catch {
@@ -415,6 +415,10 @@ struct SendSheet: View {
             }
         }
         return true
+    }
+
+    static func acceptedOrdinaryStartupRoute(attempt: OnchainSendAttempt) -> SendRoute {
+        .onchainPending(OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid))
     }
 
     /// Shows insufficient spending toast with amount-specific or generic description

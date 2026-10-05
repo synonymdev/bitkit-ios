@@ -123,6 +123,38 @@ final class TransferServiceActivityTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testStartupAcceptedResolutionBeforePendingInitializationRetainsOriginalContext() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ac", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let service = OnchainSendAttemptService(store: store)
+        _ = try await service.send(using: node, address: "bcrt1qoriginal", amountSats: 4321,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                   followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100))
+        let original = try XCTUnwrap(store.snapshot().first)
+        let retained = try await service.unresolvedAttempt(walletId: original.walletId)
+        let route = try SendSheet.acceptedOrdinaryStartupRoute(attempt: XCTUnwrap(retained))
+        // The activity event publishes and durably acknowledges before Pending subscribes/initializes.
+        _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId)
+        let context: OnchainSendPendingContext? = if case let .onchainPending(value) = route {
+            value
+        } else {
+            nil
+        }
+        let restarted = OnchainSendAttemptService(store: store)
+        let loaded = try await SendPendingScreen.loadOrdinaryPending(
+            using: restarted, context: context, walletId: "node:now-selected-other"
+        )
+        XCTAssertEqual(context?.attemptId, original.id)
+        XCTAssertEqual(context?.walletId, original.walletId)
+        XCTAssertEqual(context?.txid, txid)
+        XCTAssertEqual(loaded.attempt?.id, original.id)
+        XCTAssertEqual(loaded.resolution?.txid, txid)
+        XCTAssertEqual(loaded.resolution?.amountSats, 4321)
+        XCTAssertEqual(node.calls, 1, "Startup recovery dispatched another payment")
+    }
+
     func testPendingInitializationRejectsOldCompletedAndReplacementContexts() async throws {
         let store = MemoryAttemptStore()
         let txid = String(repeating: "ab", count: 32)
@@ -132,6 +164,10 @@ final class TransferServiceActivityTests: XCTestCase {
                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
                                    followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100))
         let original = try XCTUnwrap(store.snapshot().first)
+        let startupRoute = await SendSheet.acceptedOrdinaryStartupRoute(attempt: original)
+        guard case let .onchainPending(startupContext) = startupRoute else {
+            return XCTFail("Startup lost the original retained identity")
+        }
         _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId)
         let noContext = try await SendPendingScreen.loadOrdinaryPending(using: service, context: nil, walletId: original.walletId)
         XCTAssertNil(noContext.resolution, "Old completed result satisfied a new unsent Pending")
@@ -148,7 +184,7 @@ final class TransferServiceActivityTests: XCTestCase {
         }
         _ = try await service.send(using: node, address: "bcrt1qreplacement", amountSats: 9999,
                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
-        let stale = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: txid)
+        let stale = startupContext
         let replacement = try await SendPendingScreen.loadOrdinaryPending(using: service, context: stale, walletId: original.walletId)
         XCTAssertNil(replacement.resolution, "Replacement attempt used the earlier Pending identity")
         XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
