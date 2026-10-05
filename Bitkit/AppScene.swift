@@ -207,22 +207,6 @@ struct PaykitPaymentRequestPollingSchedule {
 struct AppScene: View {
     private static let initialPaykitSyncRetryDelays = Array(repeating: Duration.seconds(2), count: 14)
 
-    static func shouldRetryNodeStart(
-        state: NodeLifecycleState,
-        isConnected: Bool,
-        walletExists: Bool?,
-        isRecoveryShown: Bool,
-        returnedFromBackground: Bool
-    ) -> Bool {
-        guard returnedFromBackground, isConnected, walletExists == true, !isRecoveryShown, case .errorStarting = state else { return false }
-        return true
-    }
-
-    /// A restart can still be in flight when the Recovery quick action lands; the node it started must not keep running under Recovery.
-    static func shouldStopNodeStartedUnderRecovery(state: NodeLifecycleState, isRecoveryShown: Bool) -> Bool {
-        isRecoveryShown && state == .running
-    }
-
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
 
@@ -265,9 +249,19 @@ struct AppScene: View {
     @State private var didWalletBackupRestoreFail = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
-    /// Set when the app enters the background, so that only a return from the background retries a failed node start,
-    /// not a brief inactive phase (Control Center, notification shade, Face ID).
-    @State private var wasInBackground = false
+    /// Lets only a return from the background retry a failed node start, not a brief inactive phase.
+    @State private var foregroundReturnTracker = ForegroundReturnTracker()
+
+    private var nodeRestarter: NodeRestarter {
+        NodeRestarter(
+            nodeState: { wallet.nodeLifecycleState },
+            isConnected: { network.isConnected },
+            walletExists: { wallet.walletExists },
+            isRecoveryShown: { showRecoveryScreen },
+            start: { playsErrorHaptic in await startWallet(playsErrorHaptic: playsErrorHaptic) },
+            stop: { try await wallet.stopLightningNode() }
+        )
+    }
 
     /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
@@ -784,7 +778,7 @@ struct AppScene: View {
         }
     }
 
-    private func startWallet(completingBackupRestore: Bool = false) async {
+    private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
         let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
         guard !WalletBackupRestoreGate.blocksWalletStart(
             isRestoreRunning: isWalletBackupRestoreRunning,
@@ -825,7 +819,9 @@ struct AppScene: View {
             await BackupService.shared.scheduleFullBackup()
         } catch {
             Logger.error(error, context: "Failed to start wallet")
-            Haptics.notify(.error)
+            if playsErrorHaptic {
+                Haptics.notify(.error)
+            }
 
             if MigrationsService.shared.isShowingMigrationLoading {
                 await MainActor.run {
@@ -1069,8 +1065,9 @@ struct AppScene: View {
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
+        let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
+
         if newPhase == .background {
-            wasInBackground = true
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
                 isPinVerified = false
@@ -1082,8 +1079,6 @@ struct AppScene: View {
         if newPhase == .active {
             // Called even behind the PIN screen, so a background release still pending is called off.
             hwWalletManager.onAppBecameActive()
-            let returnedFromBackground = wasInBackground
-            wasInBackground = false
             // Reconnect a known hardware device so its connection indicator turns green again;
             if isPinVerified || !settings.pinEnabled {
                 Task { await hwWalletManager.reconnectOnForeground() }
@@ -1092,15 +1087,7 @@ struct AppScene: View {
                 if retryPendingWalletRestoreIfNeeded() {
                     return
                 }
-                if Self.shouldRetryNodeStart(
-                    state: wallet.nodeLifecycleState,
-                    isConnected: network.isConnected,
-                    walletExists: wallet.walletExists,
-                    isRecoveryShown: showRecoveryScreen,
-                    returnedFromBackground: returnedFromBackground
-                ) {
-                    restartNode(reason: "App returned to foreground")
-                }
+                nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
                 Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()
@@ -1592,31 +1579,9 @@ struct AppScene: View {
             // Restart node if necessary (e.g. create/restore was skipped due to offline)
             switch wallet.nodeLifecycleState {
             case .stopped, .initializing, .errorStarting:
-                restartNode(reason: "Network restored")
+                nodeRestarter.restart(reason: "Network restored")
             default:
                 break
-            }
-        }
-    }
-
-    private func restartNode(reason: String) {
-        Task {
-            // Checked when the task runs, because the Recovery quick action can be handled after the caller decided to restart.
-            guard !showRecoveryScreen else {
-                Logger.info("\(reason), skipping wallet start in recovery mode", context: "AppScene")
-                return
-            }
-            Logger.info("\(reason), retrying wallet start...", context: "AppScene")
-            await startWallet()
-
-            // Recovery can open while the start is in flight; stop the node this restart started instead of leaving it running under Recovery.
-            if Self.shouldStopNodeStartedUnderRecovery(state: wallet.nodeLifecycleState, isRecoveryShown: showRecoveryScreen) {
-                Logger.info("\(reason), stopping the node started while recovery mode opened", context: "AppScene")
-                do {
-                    try await wallet.stopLightningNode()
-                } catch {
-                    Logger.warn("Failed to stop the node under recovery mode: \(error)", context: "AppScene")
-                }
             }
         }
     }
