@@ -6,8 +6,13 @@ import XCTest
 @MainActor
 final class ContactsListViewTests: XCTestCase {
     func testCancellationDoesNotShowLoadErrorOrMarkIntroSeen() async throws {
-        for leaveScreen in [false, true] {
-            let manager = SuspendedContactsListManager(error: leaveScreen ? TestError.offline : CancellationError())
+        let cases: [(leaveScreen: Bool, error: Error?)] = [
+            (false, CancellationError()),
+            (true, TestError.offline),
+            (true, nil),
+        ]
+        for (leaveScreen, error) in cases {
+            let manager = SuspendedContactsListManager(error: error)
             let app = AppViewModel()
             snapshotAppDefaultsDomain()
             app.hasSeenContactsIntro = false
@@ -93,12 +98,12 @@ final class ContactsListViewTests: XCTestCase {
 private final class SuspendedContactsListManager: ContactsManager {
     let started = XCTestExpectation(description: "Contacts load started")
     let finished = XCTestExpectation(description: "Contacts load finished")
-    private let error: Error
+    private let error: Error?
     private let stream: AsyncStream<Void>
     private let continuation: AsyncStream<Void>.Continuation
     private(set) var wasCancelled = false
 
-    init(error: Error) {
+    init(error: Error?) {
         self.error = error
         (stream, continuation) = AsyncStream<Void>.makeStream()
         super.init()
@@ -118,6 +123,6 @@ private final class SuspendedContactsListManager: ContactsManager {
         defer { finished.fulfill() }
         for await _ in stream {}
         wasCancelled = Task.isCancelled
-        throw error
+        if let error { throw error }
     }
 }

@@ -118,3 +118,9 @@ rather than reporting the spinner.
   `ContactImportOverviewImportAll` and Back `NavigationBack`.
 - Contacts: the menu button `HeaderMenu` and drawer item `DrawerContacts`; contact rows
   `Contact_<pubky>`, using the full key with its `pubky` prefix.
+
+`contacts-load-cancellation.xml` checks that saving a contact and leaving Contacts does not show a
+cancelled-load error. It is iOS-only because it covers SwiftUI task cancellation. A load cancelled
+before entry and delayed read failures after leaving are covered deterministically by
+`ContactsManagerTests` and `ContactsListViewTests`; timing and SDK fault injection are outside the
+journey runner's capabilities.
