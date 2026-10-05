@@ -39,9 +39,9 @@ final class ReceiveSheetSessionTests: XCTestCase {
         let routes: [ReceiveRoute] = [
             .qr(cjitInvoice: nil, tab: nil),
             .qr(cjitInvoice: "cjit-invoice", tab: .spending),
-            .qr(cjitInvoice: nil, tab: .trezor),
+            .qr(cjitInvoice: nil, tab: .hardware),
             .edit(tab: .spending, onchainOnly: false),
-            .edit(tab: .trezor, onchainOnly: true),
+            .edit(tab: .hardware, onchainOnly: true),
             .tag,
             .cjitAmount,
             .cjitConfirm(entry: .mock(), receiveAmountSats: 1000, isAdditional: false),
