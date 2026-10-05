@@ -129,6 +129,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     @Published var rgsIsLoading: Bool = false
     @Published var rgsUrlIsValid: Bool = false
     private var rgsValidationCancellable: AnyCancellable?
+    private(set) var serverConnectionGeneration = UUID()
+    private var serverConnectionTasks: [UUID: Task<Void, Never>] = [:]
+    private var isWipingServerSettings = false
 
     // Services
     let lightningService: LightningService
@@ -210,6 +213,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Call after removePersistentDomain; singleton retains stale @AppStorage values.
     func resetToDefaults() {
+        invalidateServerConnections()
         _swipeBalanceToHide = true
         defaultTransactionSpeed = .normal
         hideBalance = false
@@ -253,6 +257,52 @@ class SettingsViewModel: NSObject, ObservableObject {
         rgsIsLoading = false
         rgsUrlIsValid = false
         setupRgsValidationDebounce()
+    }
+
+    func isCurrentServerConnection(_ generation: UUID) -> Bool {
+        generation == serverConnectionGeneration && !isWipingServerSettings && !Task.isCancelled
+    }
+
+    /// Invalidated attempts return nil so callers suppress stale toasts and navigation.
+    func withServerConnection<Result>(_ operation: @escaping @MainActor (UUID) async -> Result?) async -> Result? {
+        guard !isWipingServerSettings, !Task.isCancelled else { return nil }
+        let generation = serverConnectionGeneration
+        let id = UUID()
+        var result: Result?
+        let task = Task { result = await operation(generation) }
+        serverConnectionTasks[id] = task
+        defer { serverConnectionTasks.removeValue(forKey: id) }
+
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard isCurrentServerConnection(generation) else { return nil }
+        return result
+    }
+
+    func beginServerSettingsWipe() async {
+        isWipingServerSettings = true
+        invalidateServerConnections()
+        // Rust restarts are not cooperatively cancellable; drain them before wiping node storage.
+        let tasks = Array(serverConnectionTasks.values)
+        for task in tasks {
+            await task.value
+        }
+    }
+
+    func endServerSettingsWipe() {
+        isWipingServerSettings = false
+    }
+
+    private func invalidateServerConnections() {
+        serverConnectionGeneration = UUID()
+        electrumIsLoading = false
+        rgsIsLoading = false
+        for task in serverConnectionTasks.values {
+            task.cancel()
+        }
     }
 
     // MARK: - Computed Properties

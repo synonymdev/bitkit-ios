@@ -31,5 +31,8 @@
     <action>Open Electrum Server (id "ElectrumConfig") and verify Host (id "HostInput") is "127.0.0.1", Port (id "PortInput") is "60001", TCP is selected, and no loading indicator remains</action>
     <action>Return to Advanced settings and open Rapid-Gossip-Sync (id "RGSServer")</action>
     <action>Verify the connected URL (id "ConnectedUrl") and URL field (id "RGSUrl") match the original default recorded before the wipe, and no loading indicator remains</action>
+    <action>Change only the hostname in the URL (id "RGSUrl") to uppercase again, tap Connect (id "ConnectToHost"), and wait for the successful update toast (id "RgsUpdatedToast")</action>
+    <action>Return to Advanced settings, open Electrum Server (id "ElectrumConfig"), change Host (id "HostInput") to "localhost", keep port 60001 and TCP, and tap Connect (id "ConnectToHost")</action>
+    <action>Wait for the successful connection and verify the connected server (id "Connected") reads "localhost:60001" with no loading indicator remaining</action>
   </actions>
 </journey>
