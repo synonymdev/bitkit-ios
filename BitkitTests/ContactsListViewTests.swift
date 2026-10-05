@@ -1,6 +1,5 @@
 @testable import Bitkit
 import Combine
-import Paykit
 import SwiftUI
 import XCTest
 
@@ -70,70 +69,6 @@ final class ContactsListViewTests: XCTestCase {
         XCTAssertEqual(manager.contacts.count, 1)
     }
 
-    func testEmptyLoadErrorShowsInlineRetryAndRecovers() async throws {
-        snapshotAppDefaultsDomain()
-        let errorPresented = expectation(description: "Inline contacts load error")
-        let recovered = expectation(description: "Retry recovered contacts")
-        let source = RecoveringContactRecords()
-        let manager = ContactsManager(contactRecords: { try await source.load() })
-        let app = AppViewModel()
-        app.hasSeenContactsIntro = false
-        ToastWindowManager.shared.hideToast()
-        let errorSubscription = manager.$loadErrorMessage.compactMap { $0 }.sink { message in
-            XCTAssertEqual(message, "Contacts unavailable")
-            errorPresented.fulfill()
-        }
-        let contactsSubscription = manager.$contacts.filter { !$0.isEmpty }.sink { _ in recovered.fulfill() }
-        defer {
-            errorSubscription.cancel()
-            contactsSubscription.cancel()
-            ToastWindowManager.shared.hideToast()
-        }
-        let window = host(manager, app: app)
-        defer { close(window) }
-        await fulfillment(of: [errorPresented], timeout: 3)
-        try await Task.sleep(for: .milliseconds(150))
-        window.rootViewController?.view.layoutIfNeeded()
-        XCTAssertTrue(manager.contacts.isEmpty)
-        XCTAssertFalse(manager.isLoading)
-        XCTAssertNil(ToastWindowManager.shared.currentToast)
-        XCTAssertFalse(app.hasSeenContactsIntro)
-        let retry = try XCTUnwrap(accessibilityElement("ContactsRetry", in: XCTUnwrap(window.rootViewController?.view)))
-        XCTAssertTrue(retry.accessibilityActivate(), "Activate the same Retry action a user taps")
-        await fulfillment(of: [recovered], timeout: 3)
-        try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(manager.contacts.map(\.displayName), ["Recovered contact"])
-        XCTAssertTrue(manager.hasLoaded)
-        XCTAssertFalse(manager.isLoading)
-        XCTAssertNil(manager.loadErrorMessage)
-        XCTAssertTrue(app.hasSeenContactsIntro)
-    }
-
-    private func accessibilityElement(_ identifier: String, in root: NSObject) -> NSObject? {
-        var visited = Set<ObjectIdentifier>()
-        func find(_ element: NSObject) -> NSObject? {
-            guard visited.insert(ObjectIdentifier(element)).inserted else { return nil }
-            if (element as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier {
-                return element
-            }
-            if let view = element as? UIView {
-                for child in view.subviews {
-                    if let found = find(child) { return found }
-                }
-            }
-            let count = element.accessibilityElementCount()
-            if count > 0, count < 500 {
-                for index in 0 ..< count {
-                    if let child = element.accessibilityElement(at: index) as? NSObject, let found = find(child) {
-                        return found
-                    }
-                }
-            }
-            return nil
-        }
-        return find(root)
-    }
-
     private func host(_ manager: ContactsManager, app: AppViewModel) -> UIWindow {
         let profile = PubkyProfileManager()
         profile.publicKey = "pubky" + String(repeating: "z", count: 52)
@@ -189,23 +124,5 @@ private final class SuspendedContactsListManager: ContactsManager {
         for await _ in stream {}
         wasCancelled = Task.isCancelled
         if let error { throw error }
-    }
-}
-
-private actor RecoveringContactRecords {
-    private var attempts = 0
-
-    func load() throws -> [Paykit.ContactRecord] {
-        attempts += 1
-        if attempts == 1 {
-            throw NSError(domain: "ContactsRetryTest", code: 1, userInfo: [NSLocalizedDescriptionKey: "Contacts unavailable"])
-        }
-        return [Paykit.ContactRecord(
-            publicKey: "pubky" + String(repeating: "y", count: 52), receiverPaths: [PaykitReceiverPath.wallet],
-            label: "Recovered contact", profile: nil, profileFetchedAt: nil,
-            createdAt: "2026-10-05T00:00:00Z", updatedAt: "2026-10-05T00:00:00Z",
-            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
-            publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
-        )]
     }
 }

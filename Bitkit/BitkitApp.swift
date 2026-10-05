@@ -187,7 +187,9 @@ struct BitkitApp: App {
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-                if ProcessInfo.processInfo.arguments.contains("-contact-import-ui-test") {
+                if ProcessInfo.processInfo.arguments.contains("-contacts-retry-ui-test") {
+                    ContactsRetryUITestFixture()
+                } else if ProcessInfo.processInfo.arguments.contains("-contact-import-ui-test") {
                     ContactImportUITestFixture()
                 } else {
                     appContent
