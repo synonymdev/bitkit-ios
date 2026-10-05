@@ -687,8 +687,6 @@ struct MainNavView: View {
         guard settings.readClipboard, !showClipboardAlert else { return }
 
         Task { @MainActor in
-            await Task.yield()
-
             let pasteboard = UIPasteboard.general
             let history = ClipboardPromptHistory()
             let changeCount = pasteboard.changeCount
