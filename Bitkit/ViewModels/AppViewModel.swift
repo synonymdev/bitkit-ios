@@ -424,10 +424,10 @@ extension AppViewModel {
     }
 
     func toast(_ error: Error) {
-        if error is CancellationError || error.isTrezorUserCancellation() {
+        if error is CancellationError || error.isHwUserCancellation() {
             return
         }
-        toast(type: .error, title: "Error", description: error.localizedDescription)
+        toast(type: .error, title: "Error", description: HwErrorPresenter.jadeMessage(from: error) ?? error.localizedDescription)
     }
 
     func toast(_ error: HwTransferError) {
@@ -462,8 +462,8 @@ extension AppViewModel {
                 title: t("hardware__send_broadcast_failed_title"),
                 description: t("hardware__send_broadcast_failed_text")
             )
-        case .deviceBusy:
-            toast(type: .info, title: t("hardware__device_busy"))
+        case let .deviceBusy(vendor):
+            toast(type: .info, title: HwErrorPresenter.deviceBusyMessage(for: vendor))
         case .firmwareReconnect:
             toast(
                 type: .error,
@@ -472,6 +472,8 @@ extension AppViewModel {
             )
         case .passphraseMismatch:
             toast(type: .error, title: t("common__error"), description: t("hardware__passphrase_mismatch"))
+        case .walletMismatch:
+            toast(type: .error, title: t("common__error"), description: t("hardware__wallet_mismatch"))
         case let .funding(message):
             toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
         case let .generic(message):
@@ -904,7 +906,8 @@ extension AppViewModel {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
-                description: t("other__lnurl_pay_error_no_capacity")
+                description: t("other__lnurl_pay_error_no_capacity"),
+                accessibilityIdentifier: "LnurlPayNoCapacityToast"
             )
             return
         }

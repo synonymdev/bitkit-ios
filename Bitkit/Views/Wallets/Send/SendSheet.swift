@@ -201,7 +201,7 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .interactiveDismissDisabled(hwSend.isSigning || hwSend.isBroadcastUnresolved)
+        .interactiveDismissDisabled(!hwSend.canLeave)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
@@ -273,7 +273,7 @@ struct SendSheet: View {
                     }
                 }
                 do {
-                    try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+                    try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
                 } catch is CancellationError {
                     return
                 } catch {

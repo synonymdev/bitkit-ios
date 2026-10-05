@@ -23,7 +23,7 @@ struct HwSendSignView: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(
                 title: t("hardware__send_sign_title"),
-                showBackButton: !hwSend.isSigning && !hwSend.isBroadcastUnresolved
+                showBackButton: hwSend.canLeave
             )
 
             if let invoice = app.scannedOnchainInvoice {
@@ -45,7 +45,7 @@ struct HwSendSignView: View {
 
                 Spacer(minLength: 16)
 
-                Image("trezor-card")
+                Image(vendor.signImageName)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 256, height: 256)
@@ -56,7 +56,7 @@ struct HwSendSignView: View {
                 Spacer(minLength: 0)
 
                 CustomButton(
-                    title: t(hwSend.hasPendingBroadcast ? "common__retry" : "hardware__send_open_connect"),
+                    title: hwSend.hasPendingBroadcast ? t("common__retry") : vendor.sendSignButtonTitle,
                     isDisabled: hwSend.isSigning,
                     isLoading: hwSend.isSigning
                 ) {
@@ -86,6 +86,10 @@ struct HwSendSignView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("HardwareSendSign")
+    }
+
+    private var vendor: HwWalletVendor {
+        hwWalletManager.wallets.first { $0.id == hwSend.walletId }?.vendor ?? .trezor
     }
 
     private var passphrasePromptBinding: Binding<Bool> {
@@ -192,12 +196,14 @@ struct HwSendSignView: View {
     }
 
     private func showHardwareError(_ error: Error) {
-        if error.isTrezorUserCancellation() {
+        if error.isHwUserCancellation() {
             return
         }
-        if error.isTrezorDeviceBusy() {
-            app.toast(HwTransferError.deviceBusy)
-        } else if error.isTrezorFirmwareError() {
+        if error is HwWalletMismatchError {
+            app.toast(HwTransferError.walletMismatch)
+        } else if let vendor = error.hwBusyVendor {
+            app.toast(HwTransferError.deviceBusy(vendor))
+        } else if error.isHwFirmwareError() {
             app.toast(HwTransferError.firmwareReconnect)
         } else if hwSend.hasPendingBroadcast, error.isBroadcastConnectivityFailure() {
             app.toast(HwTransferError.broadcastConnectivity)
