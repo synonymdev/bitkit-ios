@@ -5135,6 +5135,37 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(lookups, [key])
     }
 
+    func testOnlyTheRefreshOfEverySavedContactReadsCapabilitiesInBulk() async throws {
+        let savedKey = "pubky\(String(repeating: "y", count: 52))"
+        let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: savedKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [savedKey: true]
+        )
+        try await sdk.setProposalResult(paymentRequestRecord(
+            id: "outgoing",
+            counterparty: savedKey,
+            role: .payee,
+            expiresAt: timestamp(expiresAt)
+        ))
+        let manager = paymentRequestManager(sdk: sdk)
+
+        await manager.refreshEligibleTargets(savedPublicKeys: [savedKey])
+        let target = await manager.refreshEligibleTarget(publicKey: savedKey)
+        _ = try await manager.propose(
+            PaykitPaymentRequestDraft(amountSats: 1, note: "Coffee", expiresAt: expiresAt),
+            to: XCTUnwrap(target)
+        )
+
+        let priorities = await sdk.capabilityReadPriorities()
+        XCTAssertEqual(
+            priorities,
+            [.bulk, .interactive, .interactive],
+            "Contact detail's Pay check and a proposal must not queue behind the Contacts list's bulk reads"
+        )
+    }
+
     func testSingleEligibilityRefreshRemovesContactThatIsNoLongerLinked() async {
         let savedKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
@@ -6150,6 +6181,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private(set) var maxConcurrentCapabilityLookups = 0
     private var capabilityLookupGate: (@Sendable (String) async -> Void)?
     private var failingCapabilityKeys: Set<String> = []
+    private var capabilityLookupPriorities: [PaykitPublicReadPriority] = []
     private var proposalResult: PaymentRequestRecord?
     private var uploadCount = 0
     private var shouldPauseNextUpload = false
@@ -6276,8 +6308,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         return snapshot
     }
 
-    func canReceivePaymentRequests(publicKey: String) async throws -> Bool {
+    func canReceivePaymentRequests(publicKey: String, priority: PaykitPublicReadPriority) async throws -> Bool {
         capabilityLookupPublicKeys.append(publicKey)
+        capabilityLookupPriorities.append(priority)
         activeCapabilityLookups += 1
         maxConcurrentCapabilityLookups = max(maxConcurrentCapabilityLookups, activeCapabilityLookups)
         defer { activeCapabilityLookups -= 1 }
@@ -6518,6 +6551,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func setCapabilityLookupGate(_ gate: @escaping @Sendable (String) async -> Void) {
         capabilityLookupGate = gate
+    }
+
+    func capabilityReadPriorities() -> [PaykitPublicReadPriority] {
+        capabilityLookupPriorities
     }
 
     func setLinkedPeersError(_ error: PaymentRequestSdkMockError?) {

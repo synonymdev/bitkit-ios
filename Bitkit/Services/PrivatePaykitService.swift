@@ -74,6 +74,7 @@ actor PrivatePaykitService {
     var pendingPreparationKeys: Set<String> = []
     var activePreparationKeys: Set<String> = []
     var preparationTask: Task<Void, Never>?
+    var pendingPreparationOperation: (([String], Bool) async -> Void)?
     var preparationGeneration = 0
     var pendingForceRefreshLightning = false
     var unavailableLinkRetryAt: [String: Date] = [:]

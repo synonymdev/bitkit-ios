@@ -268,7 +268,7 @@ final class PublicPaykitServiceTests: XCTestCase {
     }
 
     @MainActor
-    func testPublicationSyncsAppOnceBeforeBuildingAndApplyingEndpoints() async throws {
+    func testPublicationSyncsAppBeforeApplyingPreparedEndpoints() async throws {
         let desiredEndpoints = [endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")]
         var calls: [String] = []
 
@@ -285,7 +285,7 @@ final class PublicPaykitServiceTests: XCTestCase {
             }
         )
 
-        XCTAssertEqual(calls, ["app", "build", "apply"])
+        XCTAssertEqual(calls, ["build", "app", "apply"])
     }
 
     @MainActor
@@ -309,7 +309,7 @@ final class PublicPaykitServiceTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(calls, ["app", "build"])
+        XCTAssertEqual(calls, ["build", "app"])
     }
 
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {

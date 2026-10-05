@@ -546,6 +546,56 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         }
     }
 
+    func testActivationReturnsWhileIdentityRepublishIsStillRunning() async throws {
+        let secret = String(repeating: "01", count: 32)
+        let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+        let credentialKeys: [KeychainEntryType] = [
+            .paykitSession, .pubkySecretKey, .paykitKeyGeneration(publicKey: publicKey),
+        ]
+        let savedCredentials = try credentialKeys.map { try Keychain.load(key: $0) }
+        defer {
+            for (key, data) in zip(credentialKeys, savedCredentials) {
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
+            }
+        }
+        try Keychain.delete(key: .paykitKeyGeneration(publicKey: publicKey))
+        let republishStarted = expectation(description: "Republish started")
+        let republishFinished = expectation(description: "Republish finished")
+        let activationReturned = expectation(description: "Activation returned")
+        let gate = AsyncStream<Void>.makeStream()
+        let bootstrap = CacheActivationBootstrap(noPointer: .init())
+        bootstrap.republishOperation = {
+            republishStarted.fulfill()
+            for await _ in gate.stream {
+                break
+            }
+            republishFinished.fulfill()
+            return true
+        }
+        let sdk = CacheActivationSdk(noPointer: .init())
+        sdk.previousKey = publicKey
+        let service = PaykitSdkService(sdkFactory: { sdk }) { _, _ in bootstrap }
+        let session = CacheActivationSession(noPointer: .init())
+        session.localSecretKey = try PaykitSdkService.localSecretKey(fromHex: secret)
+        let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: publicKey, capability: .privateLinkCapable)
+
+        let activation = Task {
+            try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0))
+            activationReturned.fulfill()
+        }
+        // Shorter than the republish timeout, so an activation that awaited the publication would miss it.
+        await fulfillment(of: [activationReturned, republishStarted], timeout: 2)
+        XCTAssertEqual(bootstrap.republishedKeys, [result.publicKey])
+
+        gate.continuation.yield()
+        await fulfillment(of: [republishFinished], timeout: 1)
+        try await activation.value
+    }
+
     func testSessionRecoveryCannotReactivateCredentialsAfterForget() async throws {
         let savedReference = AdoptedPubkyReference.current
         let secret = String(repeating: "01", count: 32)
@@ -791,6 +841,9 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
 }
 
 private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
+    var republishedKeys: [String] = []
+    var republishOperation: () async -> Bool = { true }
+
     override func signUp(
         localSecretKey _: PubkyLocalSecretKey,
         homeserverPublicKey _: String,
@@ -804,8 +857,9 @@ private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked 
         )
     }
 
-    override func republishIdentity(publicKey _: String) async throws -> Bool {
-        true
+    override func republishIdentity(publicKey: String) async throws -> Bool {
+        republishedKeys.append(publicKey)
+        return await republishOperation()
     }
 }
 

@@ -57,6 +57,33 @@ final class ContactImportUITests: XCTestCase {
         finishSave(expectedKeys: "pubky-alice", expectedSaves: 1)
     }
 
+    func testOverviewImportFinishingAfterLeavingDoesNotOpenPayContacts() {
+        let importAll = app.buttons["ContactImportOverviewImportAll"]
+        XCTAssertTrue(importAll.waitForExistence(timeout: 10))
+
+        importAll.tap()
+        waitForPendingSave()
+        leaveImport()
+
+        finishSaveAfterLeaving(expectedSaves: 2)
+    }
+
+    func testSelectionImportFinishingAfterLeavingDoesNotOpenPayContacts() {
+        let select = app.buttons["ContactImportOverviewSelect"]
+        XCTAssertTrue(select.waitForExistence(timeout: 10))
+        select.tap()
+        let continueButton = app.buttons["ContactImportSelectContinue"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 5))
+
+        continueButton.tap()
+        waitForPendingSave()
+        leaveImport()
+        XCTAssertTrue(select.waitForExistence(timeout: 5))
+        XCTAssertFalse(continueButton.exists)
+
+        finishSaveAfterLeaving(expectedSaves: 2)
+    }
+
     private func waitForPendingSave() {
         let finish = app.buttons["ContactImportFixtureFinishSave"]
         let pending = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: finish)
@@ -76,5 +103,23 @@ final class ContactImportUITests: XCTestCase {
         XCTAssertEqual(completed.label, expectedKeys)
         XCTAssertEqual(app.staticTexts["ContactImportFixtureCounts"].label, "Imports: 1, saves: \(expectedSaves)")
         XCTAssertEqual(app.staticTexts["ContactImportFixturePreview"].label, "Preview cleared")
+    }
+
+    private func leaveImport() {
+        app.buttons["ContactImportFixtureLeave"].tap()
+        XCTAssertEqual(app.staticTexts["ContactImportFixturePreview"].label, "Preview cleared")
+    }
+
+    private func finishSaveAfterLeaving(expectedSaves: Int) {
+        app.buttons["ContactImportFixtureFinishSave"].tap()
+        let saved = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Imports: 1, saves: \(expectedSaves)"),
+            object: app.staticTexts["ContactImportFixtureCounts"]
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed)
+        XCTAssertFalse(
+            app.staticTexts["ContactImportFixtureCompleted"].waitForExistence(timeout: 3),
+            "An import that finishes after the user left must not open Pay Contacts"
+        )
     }
 }

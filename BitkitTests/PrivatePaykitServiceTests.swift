@@ -150,6 +150,82 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(reservation.attribution["counterparty"], publicKey)
     }
 
+    @MainActor
+    func testBackgroundPreparationStopsPublicationWhenSessionEnds() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        var isSessionCurrent = true
+        let preparing = expectation(description: "Background preparation reached the link")
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let service = PrivatePaykitService(publicationOperations: .init(
+            currentPublicKey: { "pubkylocal" },
+            ensureLink: { _ in
+                preparing.fulfill()
+                for await _ in resume {
+                    break
+                }
+                return .linked
+            },
+            buildEndpoints: { _ in XCTFail("Ended sessions must not build endpoints"); return [] },
+            syncPaymentLists: { _ in
+                XCTFail("Ended sessions must not publish")
+                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            }
+        ))
+
+        _ = await service.prepareSavedContacts(
+            [publicKey], wallet: WalletViewModel(), isSessionCurrent: { isSessionCurrent }
+        )
+        await fulfillment(of: [preparing], timeout: 2)
+        isSessionCurrent = false
+        continuation.finish()
+        try await service.awaitContactPreparation()
+    }
+
+    @MainActor
+    func testBackgroundPreparationUsesTheLatestSessionsQueuedWork() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh, value: "bcrt1qendpoint", min: nil, max: nil,
+            rawPayload: #"{"value":"bcrt1qendpoint"}"#
+        )
+        var session = 1
+        var started = false
+        var published = [String]()
+        let preparing = expectation(description: "Original preparation started")
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let service = PrivatePaykitService(publicationOperations: .init(
+            currentPublicKey: { "pubkylocal" },
+            ensureLink: { _ in
+                if !started {
+                    started = true
+                    preparing.fulfill()
+                    for await _ in resume {
+                        break
+                    }
+                }
+                return .linked
+            },
+            buildEndpoints: { _ in [endpoint] },
+            syncPaymentLists: { updates in
+                published += updates.map(\.counterparty)
+                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            }
+        ))
+
+        _ = await service.prepareSavedContacts([publicKey], wallet: WalletViewModel(), isSessionCurrent: { session == 1 })
+        await fulfillment(of: [preparing], timeout: 2)
+        session = 2
+        _ = await service.prepareSavedContacts([publicKey], wallet: WalletViewModel(), isSessionCurrent: { session == 2 })
+        continuation.finish()
+        try await service.awaitContactPreparation()
+
+        XCTAssertEqual(published, [publicKey])
+    }
+
     func testCancellingPreparationWaitLeavesSharedPreparationRunning() async throws {
         let service = PrivatePaykitService()
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
@@ -1276,13 +1352,13 @@ final class PrivatePaykitServiceTests: XCTestCase {
             try await ContactPaymentsService.setEnabled(
                 false, contactPublicKeys: [publicKey], canUsePrivatePayments: true,
                 operations: .init(
-                    syncPublicEndpoints: { publish in
+                    syncPublicEndpoints: { publish, _ in
                         XCTAssertFalse(publish)
                         XCTAssertEqual(registryUpdates, 1)
                         XCTAssertTrue(PublicPaykitService.isCleanupPending)
                     },
-                    preparePrivateEndpoints: { _, _ in XCTFail("OFF must not publish"); return nil },
-                    removePrivateEndpoints: { try await service.removePublishedEndpoints(operations: cleanup) },
+                    preparePrivateEndpoints: { _, _, _ in XCTFail("OFF must not publish"); return nil },
+                    removePrivateEndpoints: { _ in try await service.removePublishedEndpoints(operations: cleanup) },
                     setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                     setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
                 )

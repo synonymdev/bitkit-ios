@@ -498,7 +498,7 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord]
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func linkedPeers() async throws -> [Paykit.LinkedPeerRecord]
-    func canReceivePaymentRequests(publicKey: String) async throws -> Bool
+    func canReceivePaymentRequests(publicKey: String, priority: PaykitPublicReadPriority) async throws -> Bool
     func proposePaymentRequest(
         counterparty: String,
         terms: Paykit.PaymentRequestTerms,
@@ -622,10 +622,12 @@ struct PaykitPaymentRequestService {
     }
 
     /// Keeps a previously eligible target when its capability lookup fails, so a transient transport error does not hide it.
+    /// Foreground lookups use the interactive read lane; background refreshes pass `.bulk`.
     func discoverEligibleTargets(
         savedPublicKeys: [String],
         expectedIdentity: String,
-        previousTargets: [PaykitPaymentRequestTarget] = []
+        previousTargets: [PaykitPaymentRequestTarget] = [],
+        priority: PaykitPublicReadPriority = .interactive
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
         let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true, capabilityCheckedPublicKeys: [])
         guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
@@ -643,7 +645,7 @@ struct PaykitPaymentRequestService {
         let lookup: @Sendable (String) async throws -> (String, Result<Bool, Error>) = { [sdk] publicKey in
             do {
                 try Task.checkCancellation()
-                let canReceive = try await sdk.canReceivePaymentRequests(publicKey: publicKey)
+                let canReceive = try await sdk.canReceivePaymentRequests(publicKey: publicKey, priority: priority)
                 try Task.checkCancellation()
                 return (publicKey, .success(canReceive))
             } catch is CancellationError {
@@ -1328,7 +1330,8 @@ final class PaykitPaymentRequestManager {
             let discovery = try await service.discoverEligibleTargets(
                 savedPublicKeys: savedPublicKeys,
                 expectedIdentity: activeIdentity,
-                previousTargets: eligibleTargets
+                previousTargets: eligibleTargets,
+                priority: .bulk
             )
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration,

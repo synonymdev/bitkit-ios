@@ -150,7 +150,9 @@ struct GeneralSettingsView: View {
                   !hasConfirmedContactPaymentsPreference
             else { return }
 
-            await updateContactPayments(true)
+            // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish
+            // unless the Pubky session ends or a newer contact payments change starts first.
+            Task { await updateContactPayments(true) }
         }
     }
 
@@ -165,17 +167,14 @@ struct GeneralSettingsView: View {
         }
 
         do {
-            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
-            if enabled, canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
-                try await contactsManager.loadContactsIfNeeded(for: publicKey)
-            }
-
             try await ContactPaymentsService.setEnabled(
                 enabled,
-                wallet: wallet,
-                contactPublicKeys: contactsManager.contacts.map(\.publicKey),
-                canUsePrivatePayments: canUsePrivatePayments
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: .live(wallet: wallet)
             )
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error("Failed to update contact payments: \(error)", context: "GeneralSettingsView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)

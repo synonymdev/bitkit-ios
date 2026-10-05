@@ -22,7 +22,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             for await _ in gate {}
         }
         let service = PaykitSdkService(sdkFactory: { sdk })
-        let holder = Task { try await service.resolveContactProfile(publicKey: "peer", allowPubkyProfileFallback: false) }
+        let holder = Task { try await service.contactRecords() }
         await fulfillment(of: [started], timeout: 2)
 
         let lookup = Task {
@@ -36,64 +36,10 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         try await lookup.value
     }
 
-    func testSlowPublicCapabilityReadDoesNotHoldSerializedSdkQueue() async throws {
-        let (gate, release) = AsyncStream<Void>.makeStream()
-        defer { release.finish() }
-        let started = expectation(description: "Public capability read started")
-        let completed = expectation(description: "Serialized work completes while public read is suspended")
-        let sdk = PublicReadSdk(noPointer: .init())
-        sdk.publicRead = {
-            started.fulfill()
-            for await _ in gate {}
-        }
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        let lookup = Task { try await service.canReceivePaymentRequests(publicKey: "peer") }
-        await fulfillment(of: [started], timeout: 2)
-
-        let work = Task {
-            _ = try await service.resolveContactProfile(publicKey: "peer", allowPubkyProfileFallback: false)
-            completed.fulfill()
-        }
-        await fulfillment(of: [completed], timeout: 0.5)
-        release.finish()
-        try await work.value
-        _ = try await lookup.value
-    }
-
-    func testPublicReadRejectsResultAfterWalletWipe() async throws {
-        let lock = PaykitSdkOperationLock()
-        let (gate, release) = AsyncStream<Void>.makeStream()
-        defer { release.finish() }
-        let started = expectation(description: "Public read started")
-        let lookup = Task {
-            try await lock.withPublicRead {
-                started.fulfill()
-                for await _ in gate {}
-                return true
-            }
-        }
-        await fulfillment(of: [started], timeout: 2)
-        try await lock.withWalletWipe {
-            do {
-                try await lock.withPublicRead { XCTFail("Public reads must not start during a wipe") }
-                XCTFail("Expected wipe rejection")
-            } catch let PaykitError.Storage(code, _) {
-                XCTAssertEqual(code, "wallet_wipe_in_progress")
-            }
-        }
-        release.finish()
-        do {
-            _ = try await lookup.value
-            XCTFail("Expected result from the previous wallet generation to be rejected")
-        } catch let PaykitError.Storage(code, _) {
-            XCTAssertEqual(code, "wallet_wipe_in_progress")
-        }
-    }
-
     func testPublicReadDiscardsCancelledResult() async throws {
         let lock = PaykitSdkOperationLock()
         let lookup = Task {
-            try await lock.withPublicRead {
+            try await lock.withoutLock {
                 withUnsafeCurrentTask { $0?.cancel() }
                 return true
             }
@@ -109,7 +55,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         let lock = PaykitSdkOperationLock()
         let lookup = Task {
             withUnsafeCurrentTask { $0?.cancel() }
-            try await lock.withPublicRead { XCTFail("Cancelled public read must not start") }
+            try await lock.withoutLock { XCTFail("Cancelled public read must not start") }
         }
         do {
             try await lookup.value
@@ -174,6 +120,72 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         XCTAssertEqual(events, ["active", "cleanup", "fresh"])
     }
 
+    func testUnlockedWorkSkipsTheLockButNotWipeAdmission() async throws {
+        let lock = PaykitSdkOperationLock()
+        let (activeGate, releaseActive) = AsyncStream<Void>.makeStream()
+        let (activeStarted, startActive) = AsyncStream<Void>.makeStream()
+        let active = Task {
+            try await lock.withLock {
+                startActive.yield()
+                for await _ in activeGate {
+                    break
+                }
+            }
+        }
+        for await _ in activeStarted {
+            break
+        }
+        let unlocked = try await lock.withoutLock { "unlocked" }
+        XCTAssertEqual(unlocked, "unlocked", "Unlocked work must not wait for the lock")
+
+        let (overtakenGate, releaseOvertaken) = AsyncStream<Void>.makeStream()
+        let (overtakenStarted, startOvertaken) = AsyncStream<Void>.makeStream()
+        let overtaken = Task {
+            try await lock.withoutLock {
+                startOvertaken.yield()
+                for await _ in overtakenGate {
+                    break
+                }
+                return "stale"
+            }
+        }
+        for await _ in overtakenStarted {
+            break
+        }
+        let (wipeGate, releaseWipe) = AsyncStream<Void>.makeStream()
+        let wipe = Task {
+            try await lock.withWalletWipe {
+                let owner = try await lock.withoutLock { "owner" }
+                XCTAssertEqual(owner, "owner", "The wipe's own unlocked work must still run")
+                for await _ in wipeGate {
+                    break
+                }
+            }
+        }
+        try await waitUntilWiping(lock)
+
+        do {
+            try await lock.withoutLock { XCTFail("Unlocked work ran during a wipe") }
+            XCTFail("Expected unlocked work during a wipe to be rejected")
+        } catch let PaykitError.Storage(code, _) {
+            XCTAssertEqual(code, "wallet_wipe_in_progress")
+        }
+        releaseOvertaken.yield()
+        do {
+            _ = try await overtaken.value
+            XCTFail("Expected unlocked work that a wipe overtook to fail instead of returning its result")
+        } catch let PaykitError.Storage(code, _) {
+            XCTAssertEqual(code, "wallet_wipe_in_progress")
+        }
+
+        releaseActive.yield()
+        releaseWipe.yield()
+        try await active.value
+        try await wipe.value
+        let fresh = try await lock.withoutLock { "fresh" }
+        XCTAssertEqual(fresh, "fresh")
+    }
+
     func testCancelledWipeDrainsActiveWorkWithoutRunningCleanup() async throws {
         let lock = PaykitSdkOperationLock()
         let (activeGate, releaseActive) = AsyncStream<Void>.makeStream()
@@ -211,19 +223,27 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         } catch KeychainError.failedToDelete {}
         try await lock.withLock {}
     }
+
+    private func waitUntilWiping(_ lock: PaykitSdkOperationLock) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while (try? lock.walletGeneration()) != nil {
+            guard ContinuousClock.now < deadline else {
+                return XCTFail("The wipe never started")
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
 }
 
 private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
-    var publicRead: () async -> Void = {}
     var lockedRead: () async -> Void = {}
 
     override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
-        await publicRead()
         return nil
     }
 
-    override func resolveProfile(publicKey _: String, allowPubkyProfileFallback _: Bool) async throws -> ProfileResolution? {
+    override func contactRecords() async throws -> [ContactRecord] {
         await lockedRead()
-        return nil
+        return []
     }
 }

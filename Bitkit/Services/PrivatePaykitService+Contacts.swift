@@ -50,11 +50,13 @@ extension PrivatePaykitService {
     func prepareSavedContacts(
         _ publicKeys: [String],
         wallet: WalletViewModel,
-        requireImmediatePublication: Bool = false
+        requireImmediatePublication: Bool = false,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
+        if let isSessionCurrent, await !isSessionCurrent() { return nil }
         if !requireImmediatePublication {
             let keys = rememberSavedContacts(publicKeys, replacing: true)
-            scheduleContactPreparation(keys, wallet: wallet)
+            scheduleContactPreparation(keys, wallet: wallet, isSessionCurrent: isSessionCurrent)
             return nil
         }
         return await prepareSavedContacts(
@@ -67,7 +69,8 @@ extension PrivatePaykitService {
                     for: publicKeys,
                     wallet: wallet,
                     reason: "prepare",
-                    requireImmediatePublication: requireImmediatePublication
+                    requireImmediatePublication: requireImmediatePublication,
+                    isSessionCurrent: isSessionCurrent
                 )
             }
         )
@@ -127,15 +130,25 @@ extension PrivatePaykitService {
         try Task.checkCancellation()
     }
 
-    private func scheduleContactPreparation(_ publicKeys: [String], wallet: WalletViewModel, forceRefreshLightning: Bool = false) {
-        scheduleContactPreparation(publicKeys, forceRefreshLightning: forceRefreshLightning) { keys, forceRefresh in
+    private func scheduleContactPreparation(
+        _ publicKeys: [String],
+        wallet: WalletViewModel,
+        forceRefreshLightning: Bool = false,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) {
+        scheduleContactPreparation(
+            publicKeys,
+            forceRefreshLightning: forceRefreshLightning,
+            requeueActive: isSessionCurrent != nil
+        ) { keys, forceRefresh in
             guard !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey) else { return }
             _ = await self.refreshSavedContactEndpointsReturningError(
                 for: keys,
                 wallet: wallet,
                 forceRefreshLightning: forceRefresh,
                 requireImmediatePublication: false,
-                reason: "contact preparation"
+                reason: "contact preparation",
+                isSessionCurrent: isSessionCurrent
             )
         }
     }
@@ -143,20 +156,26 @@ extension PrivatePaykitService {
     func scheduleContactPreparation(
         _ publicKeys: [String],
         forceRefreshLightning: Bool = false,
+        requeueActive: Bool = false,
         operation: @escaping ([String], Bool) async -> Void
     ) {
-        pendingPreparationKeys.formUnion(publicKeys.filter { forceRefreshLightning || !activePreparationKeys.contains($0) })
+        let keys = publicKeys.filter { requeueActive || forceRefreshLightning || !activePreparationKeys.contains($0) }
+        guard !keys.isEmpty else { return }
+        pendingPreparationKeys.formUnion(keys)
+        pendingPreparationOperation = operation
         pendingForceRefreshLightning = pendingForceRefreshLightning || forceRefreshLightning
         guard preparationTask == nil, !pendingPreparationKeys.isEmpty else { return }
         preparationTask = Task {
             defer {
                 activePreparationKeys.removeAll()
+                pendingPreparationOperation = nil
                 preparationTask = nil
             }
-            while !pendingPreparationKeys.isEmpty {
+            while !pendingPreparationKeys.isEmpty, let operation = pendingPreparationOperation {
                 let keys = pendingPreparationKeys.intersection(knownSavedContactKeys)
                 let forceRefresh = pendingForceRefreshLightning
                 pendingPreparationKeys.removeAll()
+                pendingPreparationOperation = nil
                 pendingForceRefreshLightning = false
                 activePreparationKeys = keys
                 await operation(Array(keys).sorted(), forceRefresh)
@@ -168,6 +187,7 @@ extension PrivatePaykitService {
     func invalidateContactPreparation() {
         preparationGeneration += 1
         pendingPreparationKeys.removeAll()
+        pendingPreparationOperation = nil
         activePreparationKeys.removeAll()
         pendingForceRefreshLightning = false
         pendingMessageDrainRetryTask?.cancel()
@@ -182,8 +202,10 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         forceRefreshLightning: Bool,
         requireImmediatePublication: Bool,
-        reason: String = "refresh"
+        reason: String = "refresh",
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
+        if let isSessionCurrent, await !isSessionCurrent() { return nil }
         let generation = preparationGeneration
         let operations = endpointPublicationOperations(wallet: wallet, forceRefreshLightning: forceRefreshLightning)
         guard await operations.canPublish() else {
@@ -198,12 +220,13 @@ extension PrivatePaykitService {
             for: publicKeys,
             reason: reason,
             requireImmediatePublication: requireImmediatePublication,
+            isSessionCurrent: isSessionCurrent,
             operations: operations
         )
     }
 
-    func removePublishedEndpoints(for publicKeys: [String]? = nil) async throws {
-        try await removePublishedEndpoints(for: publicKeys, operations: EndpointCleanupOperations(
+    func removePublishedEndpoints(for publicKeys: [String]? = nil, isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
+        try await removePublishedEndpoints(for: publicKeys, isSessionCurrent: isSessionCurrent, operations: EndpointCleanupOperations(
             linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
             clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0) },
             drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
@@ -212,17 +235,23 @@ extension PrivatePaykitService {
         ))
     }
 
-    func removePublishedEndpoints(for publicKeys: [String]? = nil, operations: EndpointCleanupOperations) async throws {
+    func removePublishedEndpoints(
+        for publicKeys: [String]? = nil,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        operations: EndpointCleanupOperations
+    ) async throws {
+        if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
         let publicKeys = publicKeys.map { normalizedSavedContactKeys($0) }
         guard publicKeys?.isEmpty != true else { return }
         if publicKeys == nil { invalidateContactPreparation() }
 
         do {
             try await withPublicationLock {
+                if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
                 try await removePublishedEndpointsLocked(for: publicKeys, operations: operations)
             }
         } catch {
-            PublicPaykitService.setCleanupPending(true)
+            if await isSessionCurrent?() != false { PublicPaykitService.setCleanupPending(true) }
             throw error
         }
     }
@@ -437,7 +466,8 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         reason: String,
         forceRefreshLightning: Bool = false,
-        requireImmediatePublication: Bool
+        requireImmediatePublication: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
         let operations = endpointPublicationOperations(
             wallet: wallet,
@@ -447,6 +477,7 @@ extension PrivatePaykitService {
             for: publicKeys,
             reason: reason,
             requireImmediatePublication: requireImmediatePublication,
+            isSessionCurrent: isSessionCurrent,
             operations: operations
         )
     }
@@ -485,6 +516,7 @@ extension PrivatePaykitService {
         for publicKeys: [String],
         reason: String,
         requireImmediatePublication: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
         operations: EndpointPublicationOperations
     ) async -> Error? {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
@@ -541,6 +573,7 @@ extension PrivatePaykitService {
 
         do {
             try await withPublicationLock {
+                if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
                 guard generation == preparationGeneration,
                       await operations.currentPublicKey() == identity,
                       !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)

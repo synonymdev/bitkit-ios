@@ -1,0 +1,36 @@
+<journey name="contacts list loading">
+  <description>
+    Contacts shows the saved contacts as soon as it opens after a relaunch, under the names they were
+    saved with, and fills in each contact's profile name and avatar as its lookup finishes, a few rows
+    at a time at most every 300 ms rather than re-sorting the list once per contact. It no longer
+    shows a spinner over an empty list until every lookup has finished, and a lookup that fails
+    leaves the row as it is. Within the session, reopening Contacts shows the profiles already
+    found straight away, and a profile found less than ten minutes ago is not looked up again, so only
+    contacts still without a profile get a new lookup. Opening a contact whose profile has not loaded
+    yet looks it up at once, and its edit form shows the contact's published bio rather than an empty
+    one, so saving an edit keeps it.
+
+    Precondition: an onboarded E2E Bitkit build with Paykit UI enabled and a Pubky identity with at
+    least five saved contacts, at least one of them with a published profile name and bio and one
+    with no published profile. Importing such follows with journeys/contacts/import-all-contacts.xml
+    leaves exactly that. Use the test simulator UDID for &lt;UDID&gt;.
+
+    A warm network can resolve every profile before the first snapshot; report "already resolved"
+    rather than failing. If the Pubky session is still restoring when Contacts is tapped, Contacts
+    shows the Profile loading screen first (id "ProfileLoading" under the "Profile" title) and moves
+    on to the list by itself once the session is back. That is the session restore, not the contacts
+    list. See README.md.
+  </description>
+  <actions>
+    <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`</action>
+    <action>Run `xcrun simctl launch &lt;UDID&gt; to.bitkit`</action>
+    <action>If the PIN screen appears, unlock the wallet</action>
+    <action>Tap the menu button (id "HeaderMenu"), then Contacts (id "DrawerContacts")</action>
+    <action>Verify the list shows one row (id "Contact_&lt;pubky&gt;") per saved contact, each with a name, and no spinner over an empty list. A contact whose profile has not loaded yet shows the name it was saved with, or its truncated key</action>
+    <action>Tap the row of a contact with a published bio straight away and verify its contact screen shows that bio (id "ContactViewNotes") within a few seconds. Tap Edit (id "ContactEdit") and verify the notes field shows the same bio, then tap Cancel (id "ProfileEditCancel") and go back (id "NavigationBack")</action>
+    <action>Wait up to a minute and verify each contact with a published profile now shows its profile name, and its avatar if it has one. If every row already did, report "already resolved"</action>
+    <action>Verify a contact with no published profile still shows the name it had when the list opened</action>
+    <action>Tap a contact's row and verify its contact screen opens with that contact's name, then go back</action>
+    <action>Verify Contacts shows every row straight away with the profile names it showed before, with no row back on a truncated key</action>
+  </actions>
+</journey>

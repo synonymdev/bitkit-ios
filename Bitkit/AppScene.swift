@@ -207,17 +207,6 @@ struct PaykitPaymentRequestPollingSchedule {
     }
 }
 
-struct PaykitContactKeysObserver: ViewModifier {
-    let publicKeys: [String]
-    let onChange: ([String]) -> Void
-
-    func body(content: Content) -> some View {
-        content.onChange(of: publicKeys.sorted(), initial: true) { _, publicKeys in
-            onChange(publicKeys)
-        }
-    }
-}
-
 struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject private var session: SessionManager
@@ -470,7 +459,8 @@ struct AppScene: View {
                     paykitPaymentRequestManager.clear()
                 }
             }
-            .modifier(PaykitContactKeysObserver(publicKeys: contactsManager.contacts.map(\.publicKey)) { publicKeys in
+            .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
+                let publicKeys = contacts.map(\.publicKey)
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
@@ -480,7 +470,7 @@ struct AppScene: View {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
                     await refreshIncomingPaykitPaymentRequests()
                 }
-            })
+            }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
                 Task { await refreshIncomingPaykitPaymentRequests(forceFresh: true) }
             }

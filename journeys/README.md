@@ -124,6 +124,9 @@ Known naming differences:
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
+| Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row; tell rows apart by their key caption) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
+| Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` (the same tag on every row) | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
+| Contact import overview profile and friend count | — *(no tag; read the "Import" title and the "N friends" text)* | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
 but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
@@ -187,6 +190,14 @@ after staging signup. Android also supports this signup flow, but this journey h
 
 `contacts/contacts-entry-points.xml` covers onboarding without an identity and the
 authenticated Contacts list. It has not yet been ported to Android.
+
+`pubky-profile/contact-import-after-leaving.xml` and `pubky-profile/contacts-list-loading.xml` are
+new on both platforms at once. synonymdev/bitkit-android#1399 carries both journeys with the same file
+names, journey names and prose, changing only the identifiers and commands the platform forces, and
+adds `ContactImportOverviewImportAll`, the only contact import testTag the journeys use; once it
+merges, the two platforms share the journeys and that identifier. Android master has neither until
+then. The identifiers the journeys use that still differ on Android are in the Identifiers table
+above.
 
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
