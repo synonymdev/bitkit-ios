@@ -6,17 +6,22 @@ struct ClipboardPromptHistory {
     private struct Observation: Codable {
         let changeCount: Int
         let digest: String?
+        let launchID: UUID?
     }
 
     private static let storageKey = "lastInspectedClipboard"
+    private static let currentLaunchID = UUID()
     private let defaults: UserDefaults
+    private let launchID: UUID
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, launchID: UUID? = nil) {
         self.defaults = defaults
+        self.launchID = launchID ?? Self.currentLaunchID
     }
 
     func shouldInspect(changeCount: Int) -> Bool {
-        observation?.changeCount != changeCount
+        guard let observation else { return true }
+        return observation.launchID != launchID || observation.changeCount != changeCount
     }
 
     func recordInspection(changeCount: Int, supportedValue: String?) -> Bool {
@@ -24,7 +29,7 @@ struct ClipboardPromptHistory {
         let digest = supportedValue.map { Data(SHA256.hash(data: Data($0.utf8))).base64EncodedString() }
         let shouldOffer = previous.map { changeCount > $0.changeCount || digest != $0.digest } ?? true
 
-        if let encoded = try? JSONEncoder().encode(Observation(changeCount: changeCount, digest: digest)) {
+        if let encoded = try? JSONEncoder().encode(Observation(changeCount: changeCount, digest: digest, launchID: launchID)) {
             defaults.set(encoded, forKey: Self.storageKey)
         }
 
