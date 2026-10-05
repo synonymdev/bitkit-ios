@@ -57,7 +57,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.privatePublications.count, 1)
             XCTAssertEqual(operations.privatePublications[0].contactPublicKeys, ["contact-a", "contact-b"])
             XCTAssertFalse(operations.privatePublications[0].requiresImmediatePublication)
-            XCTAssertEqual(operations.calls, ["app:true", "public:true", "private:publish"])
+            XCTAssertEqual(operations.calls, ["public:true", "private:publish"])
             XCTAssertEqual(operations.privateRemovalCount, 0)
             XCTAssertEqual(operations.publicCleanupValues, [false])
             XCTAssertEqual(operations.privateCleanupValues, [false])
@@ -155,6 +155,11 @@ final class ContactPaymentsServiceTests: XCTestCase {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
             let operations = OperationsSpy()
+            operations.onSyncPublicEndpoints = { publish in
+                XCTAssertTrue(publish)
+                XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+                XCTAssertEqual(operations.privateCleanupValues, [true])
+            }
 
             try await ContactPaymentsService.setEnabled(
                 true,
@@ -353,7 +358,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                     XCTAssertEqual(error as? TestError, .operationFailed)
                 }
                 try await enable.value
-                XCTAssertEqual(operations.calls, ["private:remove", "public:false", "app:true", "public:true", "private:publish"])
+                XCTAssertEqual(operations.calls, ["private:remove", "public:false", "public:true", "private:publish"])
                 XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
                 XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
                 XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
@@ -480,9 +485,6 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
         func makeOperations(defaults: UserDefaults? = nil) -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
-                syncPaykitApp: { enabled in
-                    self.calls.append("app:\(enabled)")
-                },
                 syncPublicEndpoints: { publish in
                     self.calls.append("public:\(publish)")
                     self.publicPublicationValues.append(publish)

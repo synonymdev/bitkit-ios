@@ -1220,7 +1220,6 @@ final class PrivatePaykitServiceTests: XCTestCase {
             try await ContactPaymentsService.setEnabled(
                 false, contactPublicKeys: [publicKey], canUsePrivatePayments: true,
                 operations: .init(
-                    syncPaykitApp: { _ in XCTFail("OFF must withdraw private lists before downgrading") },
                     syncPublicEndpoints: { publish in
                         XCTAssertFalse(publish)
                         XCTAssertEqual(registryUpdates, 1)

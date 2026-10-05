@@ -319,15 +319,30 @@ enum PublicPaykitService {
         wallet: WalletViewModel,
         publish: Bool
     ) async throws {
+        try await syncPublishedEndpoints(
+            publish: publish,
+            buildEndpoints: { try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true) },
+            syncApp: { try await syncPaykitApp() },
+            applyEndpoints: applyPublishedEndpoints
+        )
+    }
+
+    @MainActor
+    static func syncPublishedEndpoints(
+        publish: Bool,
+        buildEndpoints: () async throws -> [Endpoint],
+        syncApp: () async throws -> Void,
+        applyEndpoints: ([Endpoint]) async throws -> Void
+    ) async throws {
         guard publish else {
             var firstError: Error?
             do {
-                try await removePublishedEndpoints()
+                try await applyEndpoints([])
             } catch {
                 firstError = firstError ?? error
             }
             do {
-                try await syncPaykitApp()
+                try await syncApp()
             } catch {
                 firstError = firstError ?? error
             }
@@ -337,9 +352,9 @@ enum PublicPaykitService {
             return
         }
 
-        let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
-        try await syncPaykitApp()
-        try await applyPublishedEndpoints(desiredEndpoints)
+        try await syncApp()
+        let desiredEndpoints = try await buildEndpoints()
+        try await applyEndpoints(desiredEndpoints)
     }
 
     @MainActor

@@ -7,7 +7,6 @@ enum ContactPaymentsService {
     @MainActor private static var operationWaiters: [CheckedContinuation<Void, Never>] = []
 
     struct Operations {
-        let syncPaykitApp: (_ privatePaymentsEnabled: Bool) async throws -> Void
         let syncPublicEndpoints: (_ publish: Bool) async throws -> Void
         let preparePrivateEndpoints: (_ contactPublicKeys: [String], _ requireImmediatePublication: Bool) async -> Error?
         let removePrivateEndpoints: () async throws -> Void
@@ -17,9 +16,6 @@ enum ContactPaymentsService {
         @MainActor
         static func live(wallet: WalletViewModel) -> Operations {
             Operations(
-                syncPaykitApp: { enabled in
-                    try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: enabled)
-                },
                 syncPublicEndpoints: { publish in
                     try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish)
                 },
@@ -163,7 +159,6 @@ enum ContactPaymentsService {
         defaults.set(canUsePrivatePayments, forKey: PrivatePaykitService.publishingEnabledKey)
         defaults.set(true, forKey: confirmedPreferenceKey)
 
-        try await operations.syncPaykitApp(canUsePrivatePayments)
         try await operations.syncPublicEndpoints(true)
         operations.setPublicCleanupPending(false)
         if canUsePrivatePayments {
