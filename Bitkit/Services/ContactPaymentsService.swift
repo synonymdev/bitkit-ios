@@ -160,6 +160,72 @@ enum ContactPaymentsService {
     }
 
     @MainActor
+    static func disablePaykitUI(
+        pubkyProfile: PubkyProfileManager,
+        operations: Operations,
+        defaults: UserDefaults = .standard
+    ) async throws -> Bool {
+        latestChange += 1
+        let change = latestChange
+        let session = pubkyProfile.currentSession
+        let isChangeCurrent: ChangeCheck = {
+            Self.latestChange == change && pubkyProfile.currentSession == session && !defaults.bool(forKey: PaykitFeatureFlags.uiEnabledKey)
+        }
+        let hadPublicState = PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults) ||
+            defaults.bool(forKey: PublicPaykitService.cleanupPendingKey)
+        let hadPrivateState = PaykitFeatureFlags.hasPrivatePublishedState(defaults: defaults) ||
+            defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey)
+
+        defaults.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+        defaults.set(false, forKey: confirmedPreferenceKey)
+        defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.removeObject(forKey: "publicPaykitBolt11")
+        defaults.removeObject(forKey: "publicPaykitBolt11PaymentHash")
+        defaults.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
+        if hadPublicState { operations.setPublicCleanupPending(true) }
+        if hadPrivateState { operations.setPrivateCleanupPending(true) }
+
+        await acquireOperation()
+        defer { releaseOperation() }
+        try Task.checkCancellation()
+        guard isChangeCurrent() else { return false }
+
+        var cleanupError: Error?
+        if hadPublicState || defaults.bool(forKey: PublicPaykitService.cleanupPendingKey) {
+            operations.setPublicCleanupPending(true)
+            do {
+                try await operations.syncPublicEndpoints(false, isChangeCurrent)
+                try Task.checkCancellation()
+                guard isChangeCurrent() else { return false }
+                operations.setPublicCleanupPending(false)
+            } catch {
+                try Task.checkCancellation()
+                if error is CancellationError { throw error }
+                guard isChangeCurrent() else { return false }
+                cleanupError = error
+            }
+        }
+
+        if hadPrivateState || defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
+            operations.setPrivateCleanupPending(true)
+            do {
+                try await operations.removePrivateEndpoints(isChangeCurrent)
+                try Task.checkCancellation()
+                guard isChangeCurrent() else { return false }
+                operations.setPrivateCleanupPending(false)
+            } catch {
+                try Task.checkCancellation()
+                if error is CancellationError { throw error }
+                guard isChangeCurrent() else { return false }
+                cleanupError = cleanupError ?? error
+            }
+        }
+        if let cleanupError { throw cleanupError }
+        return isChangeCurrent()
+    }
+
+    @MainActor
     static func reconcilePendingEndpoints(_ reconcile: () async -> Void) async {
         guard !isOperationActive, !Task.isCancelled else { return }
         isOperationActive = true

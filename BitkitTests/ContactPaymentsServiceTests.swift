@@ -321,8 +321,14 @@ final class ContactPaymentsServiceTests: XCTestCase {
     }
 
     func testEnablingWaitsForSuccessfulOrFailedDisable() async throws {
-        for removalFails in [false, true] {
+        let ownerKey = try useLocalPubkySecretKey()
+        for (disableUI, removalFails) in [(false, false), (false, true), (true, false), (true, true)] {
             try await withIsolatedDefaultsAsync { defaults in
+                defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+                defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+                let pubkyProfile = signedInProfile(ownerKey: ownerKey)
+                let contactsManager = ContactsManager(contactRecords: { [] })
                 let operations = OperationsSpy()
                 operations.privateRemovalFailures = removalFails ? [1] : []
                 let removalStarted = expectation(description: "Withdrawal started")
@@ -335,14 +341,33 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 }
 
                 let disable = Task {
+                    if disableUI {
+                        return try await ContactPaymentsService.disablePaykitUI(
+                            pubkyProfile: pubkyProfile, operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                        )
+                    }
                     try await ContactPaymentsService.setEnabled(
                         false, contactPublicKeys: [], canUsePrivatePayments: true,
                         operations: operations.makeOperations(defaults: defaults), defaults: defaults
                     )
+                    return true
                 }
                 await fulfillment(of: [removalStarted], timeout: 2)
+                if disableUI {
+                    XCTAssertFalse(defaults.bool(forKey: PaykitFeatureFlags.uiEnabledKey))
+                    XCTAssertFalse(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
+                }
                 let enable = Task {
                     enableRequested.fulfill()
+                    if disableUI {
+                        defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+                        let applied = try await ContactPaymentsService.setEnabled(
+                            true, pubkyProfile: pubkyProfile, contactsManager: contactsManager,
+                            operations: operations.makeOperations(defaults: defaults), defaults: defaults
+                        )
+                        XCTAssertTrue(applied)
+                        return
+                    }
                     try await ContactPaymentsService.setEnabled(
                         true, contactPublicKeys: ["contact-a"], canUsePrivatePayments: true,
                         operations: operations.makeOperations(defaults: defaults), defaults: defaults
@@ -350,18 +375,21 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 }
                 await fulfillment(of: [enableRequested], timeout: 2)
                 XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
-                XCTAssertEqual(operations.calls, ["private:remove"])
+                XCTAssertEqual(operations.calls, disableUI ? ["public:false", "private:remove"] : ["private:remove"])
 
                 finishRemoval.finish()
                 switch await disable.result {
-                case .success:
-                    XCTAssertFalse(removalFails)
+                case let .success(applied):
+                    XCTAssertEqual(applied, !disableUI)
+                    if !disableUI { XCTAssertFalse(removalFails) }
                 case let .failure(error):
                     XCTAssertTrue(removalFails)
                     XCTAssertEqual(error as? TestError, .operationFailed)
                 }
                 try await enable.value
-                XCTAssertEqual(operations.calls, ["private:remove", "public:false", "public:true", "private:publish"])
+                let cleanupCalls = disableUI ? ["public:false", "private:remove"] : ["private:remove", "public:false"]
+                XCTAssertEqual(operations.calls, cleanupCalls + ["public:true", "private:publish"])
+                XCTAssertTrue(defaults.bool(forKey: PaykitFeatureFlags.uiEnabledKey))
                 XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
                 XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
                 XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))

@@ -855,7 +855,8 @@ actor PaykitSdkService {
     ) async throws -> PrivatePaymentListDeliveryReport? {
         guard !counterparties.isEmpty else { return nil }
         return try await withStateRevisionTracking { sdk in
-            let blockedPeers = try await sdk.linkedPeers().filter { $0.state == .blocked }
+            let peers = try await sdk.linkedPeers()
+            let blockedPeers = peers.filter { $0.state == .blocked }
             let updates = counterparties.filter { counterparty in
                 !blockedPeers.contains { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
             }.map { PrivatePaymentListReservationUpdateInput(counterparty: $0, reservations: []) }
@@ -865,6 +866,20 @@ actor PaykitSdkService {
                !app.capabilities.privatePayments
             {
                 return nil
+            }
+            for update in updates where peers.contains(where: {
+                $0.state == .recoveryRequired && PubkyPublicKeyFormat.matches($0.counterparty, update.counterparty)
+            }) {
+                do {
+                    _ = try await sdk.ensureLinkWithPeer(counterparty: update.counterparty, maxAdvanceSteps: 1)
+                } catch {
+                    try Task.checkCancellation()
+                    if error is CancellationError { throw error }
+                    Logger.warn(
+                        "Failed to recover private Paykit link before withdrawal: \(PaykitResolutionFailureDiagnostics.reason(for: error))",
+                        context: "PaykitSdkService"
+                    )
+                }
             }
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,

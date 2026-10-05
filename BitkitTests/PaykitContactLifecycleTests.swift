@@ -248,6 +248,29 @@ final class PaykitContactLifecycleTests: XCTestCase {
             updates.map(\.counterparty) == [sdk.publicKey, other] && updates.allSatisfy(\.reservations.isEmpty)
         })
     }
+
+    func testWithdrawalRecoversPeerBeforeQueueingAndRetainsRecoveryFailure() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        var healthy = sdk.peers[0]
+        healthy.counterparty = "pubky5rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        sdk.peers.append(healthy)
+        sdk.peers[0].state = .recoveryRequired
+        sdk.failRecovery = true
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let keys = [sdk.publicKey, healthy.counterparty]
+
+        let failed = try await service.clearPrivatePaymentLists(to: keys)
+        XCTAssertEqual(failed?.failedToQueue.map(\.counterparty), [sdk.publicKey])
+        XCTAssertEqual(failed?.cleared.map(\.counterparty), [healthy.counterparty])
+        XCTAssertEqual(sdk.peers[0].state, .recoveryRequired)
+
+        sdk.failRecovery = false
+        let report = try await service.clearPrivatePaymentLists(to: keys)
+        XCTAssertEqual(sdk.peers[0].state, .linking)
+        XCTAssertEqual(report?.cleared.map(\.counterparty), keys)
+        XCTAssertTrue(report?.failedToQueue.isEmpty == true)
+        XCTAssertTrue(try XCTUnwrap(sdk.withdrawals.first?.first).reservations.isEmpty)
+    }
 }
 
 private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
@@ -259,6 +282,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var failLinkedPeers = false
     var failUnblock = false
     var failSaveContact = false
+    var failRecovery = false
     var peerReads = 0
     var identityReads = 0
     var registryReads = 0
@@ -320,15 +344,30 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         return peers
     }
 
+    override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps: UInt32) async throws -> LinkedPeerHandshakeReport {
+        XCTAssertEqual(maxAdvanceSteps, 1)
+        if failRecovery { throw PubkyServiceError.sessionNotActive }
+        let index = try XCTUnwrap(peers.firstIndex { $0.counterparty == counterparty })
+        XCTAssertEqual(peers[index].state, .recoveryRequired)
+        peers[index].state = .linking
+        return LinkedPeerHandshakeReport(counterparty: counterparty, state: .linking, generation: 1, handshakeRole: nil)
+    }
+
     override func syncPrivatePaymentListsWithReservationsAndProcessOutbound(
         updates: [PrivatePaymentListReservationUpdateInput],
         clearUnlistedLinkedPeers: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
         XCTAssertFalse(clearUnlistedLinkedPeers)
+        let failed = updates.filter { update in
+            peers.contains { $0.counterparty == update.counterparty && $0.state == .recoveryRequired }
+        }
         withdrawals.append(updates)
         return .init(
-            queued: [], cleared: updates.map { .init(counterparty: $0.counterparty, outboundMessageId: 1, error: nil) },
-            failedToQueue: [], failedToDeliver: []
+            queued: [],
+            cleared: updates.filter { update in !failed.contains { $0.counterparty == update.counterparty } }
+                .map { .init(counterparty: $0.counterparty, outboundMessageId: 1, error: nil) },
+            failedToQueue: failed.map { .init(counterparty: $0.counterparty, outboundMessageId: nil, error: nil) },
+            failedToDeliver: []
         )
     }
 

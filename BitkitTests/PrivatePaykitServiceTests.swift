@@ -1034,8 +1034,10 @@ final class PrivatePaykitServiceTests: XCTestCase {
         var recoveringPeer = peer
         recoveringPeer.counterparty = "pubky6rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         recoveringPeer.state = .recoveryRequired
+        let expectedKeys = [publicKey, linkingPeer.counterparty, recoveringPeer.counterparty]
         let service = PrivatePaykitService()
         var failLookup = true
+        var delivered = false
         var cleared = [String]()
         var registryUpdates = 0
         let operations = PrivatePaykitService.EndpointCleanupOperations(
@@ -1044,16 +1046,17 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 return [peer, linkingPeer, recoveringPeer]
             },
             clearPaymentLists: {
+                XCTAssertEqual(Set($0), Set(expectedKeys))
                 cleared.append(contentsOf: $0)
                 return PrivatePaymentListDeliveryReport(
                     queued: [], cleared: $0.map { .init(counterparty: $0, outboundMessageId: 1, error: nil) },
                     failedToQueue: [], failedToDeliver: []
                 )
             },
-            drainMessages: { _ in XCTFail("Delivered withdrawal needs no drain") },
-            pendingDrainKeys: { _ in [] },
+            drainMessages: { XCTAssertEqual(Set($0), Set(expectedKeys.dropFirst())) },
+            pendingDrainKeys: { _ in delivered ? [] : Set(expectedKeys.dropFirst()) },
             syncApp: {
-                XCTAssertEqual(cleared, [publicKey])
+                XCTAssertEqual(Set(cleared), Set(expectedKeys))
                 registryUpdates += 1
             }
         )
@@ -1067,8 +1070,16 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertTrue(cleared.isEmpty)
         XCTAssertEqual(registryUpdates, 0)
         failLookup = false
+        do {
+            try await service.removePublishedEndpoints(operations: operations)
+            XCTFail("Pending recovery must keep cleanup pending")
+        } catch {
+            XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        }
+        XCTAssertEqual(registryUpdates, 0)
+        delivered = true
         try await service.removePublishedEndpoints(operations: operations)
-        XCTAssertEqual(cleared, [publicKey])
+        XCTAssertEqual(cleared.count, expectedKeys.count * 2)
         XCTAssertEqual(registryUpdates, 1)
     }
 
