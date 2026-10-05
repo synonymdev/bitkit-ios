@@ -12,7 +12,7 @@ final class ContactsListViewTests: XCTestCase {
             snapshotAppDefaultsDomain()
             app.hasSeenContactsIntro = false
             ToastWindowManager.shared.hideToast()
-            var shownToasts: [Toast] = []
+            var shownToasts: [Bitkit.Toast] = []
             let subscription = ToastWindowManager.shared.$currentToast.compactMap { $0 }.sink { shownToasts.append($0) }
             defer { subscription.cancel() }
             let window = host(manager, app: app)
@@ -43,7 +43,7 @@ final class ContactsListViewTests: XCTestCase {
         app.hasSeenContactsIntro = false
         ToastWindowManager.shared.hideToast()
         let toastShown = expectation(description: "Contacts load error toast")
-        var shownToast: Toast?
+        var shownToast: Bitkit.Toast?
         let subscription = ToastWindowManager.shared.$currentToast.compactMap { $0 }.sink { toast in
             shownToast = toast
             toastShown.fulfill()
