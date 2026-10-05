@@ -1588,6 +1588,136 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    /// The QA regression: after adopting a cached Ring row whose profile was removed remotely, the user saves an edit with a
+    /// new avatar while the follow-up refresh is held. The refresh found the profile missing while the avatar still
+    /// uploaded, before the edit's write dropped older reads, so it cleared the profile and started profile setup, and
+    /// MainNav opened Create Profile during Save.
+    @MainActor
+    func testProfileEditKeepsTheProfileWhenAnOlderRefreshFindsItMissingWhileItsAvatarUploads() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub()
+                let publications = ProfilePublications()
+                let uploads = AvatarUploads()
+                await uploads.hold()
+                let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                let avatar = makeAvatarImage()
+
+                let save = Task {
+                    try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                }
+                await uploads.waitUntilHeld(1)
+                await stub.release(request: 1)
+                await waitUntil("the refresh finds the profile missing") { !manager.isLoadingProfile }
+
+                XCTAssertFalse(manager.isProfileSetupPending, "A missing profile found while the avatar uploads starts no profile setup")
+                XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+                XCTAssertEqual(manager.profile?.tags, ["friend", "work"], "Nor does it clear the profile while the avatar uploads")
+                XCTAssertEqual(manager.cachedName, "Alice")
+
+                await uploads.release()
+                let isSaved = try await save.value
+
+                XCTAssertTrue(isSaved)
+                XCTAssertEqual(manager.profile?.tags, ["friend"], "The edited profile shows")
+                XCTAssertEqual(manager.profile?.imageUrl, uploadedAvatarUri)
+                XCTAssertFalse(manager.isProfileSetupPending, "So Create Profile is not prompted")
+                XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+                let published = await publications.published
+                XCTAssertEqual(published.map(\.image), [uploadedAvatarUri])
+                let requests = await stub.requests
+                XCTAssertEqual(requests.count, 2, "A saved edit reads nothing again")
+            }
+        }
+    }
+
+    /// The edit dropped the refresh of the reused row profile when it started. When its avatar upload then fails while its
+    /// session is still signed in, the edit wrote nothing, so that refresh runs again rather than leaving the reused profile
+    /// unchecked: it finds the profile missing and starts profile setup, as it would have without the edit. The dropped
+    /// refresh itself decides nothing, whether it lands while the avatar uploads or only after the upload failed.
+    @MainActor
+    func testProfileEditWhoseAvatarUploadFailsRunsTheRefreshItDroppedAgain() async {
+        let avatar = makeAvatarImage()
+        for droppedRefreshLandsFirst in [true, false] {
+            let message = droppedRefreshLandsFirst ? "dropped refresh lands during the upload" : "dropped refresh lands after the upload failed"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(caseName: message)
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    await uploads.hold()
+                    let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+
+                    let save = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+                    if droppedRefreshLandsFirst {
+                        await stub.release(request: 1)
+                        await waitUntil("\(message): the dropped refresh finishes") { !manager.isLoadingProfile }
+                    }
+                    await uploads.release(failing: true)
+                    do {
+                        _ = try await save.value
+                        XCTFail("Expected the upload's error, \(message)")
+                    } catch {
+                        XCTAssertTrue(error is AvatarUploadError, "\(message): \(error)")
+                    }
+                    XCTAssertFalse(manager.isProfileSetupPending, "Nothing changes before the refresh that runs again answers, \(message)")
+                    XCTAssertEqual(manager.profile?.tags, ["friend", "work"], message)
+
+                    await stub.waitForRequests(3)
+                    if !droppedRefreshLandsFirst {
+                        await stub.release(request: 1)
+                    }
+                    await stub.release(request: 2)
+                    await waitUntil("\(message): the refresh that runs again starts profile setup") { manager.isProfileSetupPending }
+
+                    XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    XCTAssertNil(manager.profile, message)
+                    XCTAssertNil(manager.cachedName, message)
+                    XCTAssertEqual(manager.publicKey, ringKeyA, message)
+                    let requests = await stub.requests
+                    XCTAssertEqual(requests, [ringKeyA, ringKeyA, ringKeyA], "Only the dropped refresh runs again, \(message)")
+                    let publicationIdentities = await publications.expectedIdentities
+                    XCTAssertEqual(publicationIdentities, [], "Nothing is published, \(message)")
+                }
+            }
+        }
+    }
+
+    /// A failed edit whose session ended meanwhile reads nothing again: the refresh it dropped was for a session the user
+    /// has left, and the next session's state is not this edit's to touch.
+    @MainActor
+    func testProfileEditThatFailsAfterItsSessionEndedRunsNothingAgain() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub()
+                let publications = ProfilePublications()
+                let uploads = AvatarUploads()
+                await uploads.hold()
+                let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                let avatar = makeAvatarImage()
+
+                let save = Task {
+                    try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                }
+                await uploads.waitUntilHeld(1)
+                manager.clearAuthenticatedStateForTesting()
+                await uploads.release(failing: true)
+                let isSaved = try await save.value
+                await stub.release(request: 1)
+                await waitUntil("the dropped refresh finishes") { !manager.isLoadingProfile }
+
+                XCTAssertFalse(isSaved, "An edit whose session ended reports nothing")
+                let requests = await stub.requests
+                XCTAssertEqual(requests.count, 2, "Nothing is read again for a session that ended")
+                XCTAssertNil(manager.publicKey)
+                XCTAssertFalse(manager.isProfileSetupPending)
+            }
+        }
+    }
+
     // MARK: - Avatar uploads
 
     /// Edit Contact uploads a new avatar for the identity Save was tapped in. The upload hands that identity to the SDK,
@@ -2797,6 +2927,32 @@ final class PubkyProfileManagerTests: XCTestCase {
             UIColor.orange.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
         }
+    }
+
+    /// A manager that adopted `ringKeyA` by reusing its found Ring row, tagged "friend" and "work", whose profile was then
+    /// removed remotely. `stub` holds every remote read from then on, and this returns once the refresh of the reused
+    /// profile, request 1, is waiting.
+    @MainActor
+    private func makeManagerAdoptingARemovedRingProfile(
+        stub: RemoteProfileStub,
+        publications: ProfilePublications,
+        uploads: AvatarUploads
+    ) async throws -> PubkyProfileManager {
+        let tagged = PubkyProfile(publicKey: ringKeyA, name: "Alice", bio: "bio", imageUrl: nil, links: [], tags: ["friend", "work"], status: nil)
+        await stub.setProfile(tagged, for: ringKeyA)
+        let manager = PubkyProfileManager(
+            remoteProfileResolver: { try await stub.resolve($0) },
+            profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+            avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) }
+        )
+        await manager.loadRingIdentityProfiles([bareRingKeyA])
+        await stub.setProfile(nil, for: ringKeyA)
+        await stub.setHoldsRequests(true)
+
+        let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+        XCTAssertEqual(adopted?.tags, ["friend", "work"], "Adoption reuses the found row")
+        await stub.waitForRequests(2)
+        return manager
     }
 
     /// Profile commits and clears write these keys to the standard defaults.
