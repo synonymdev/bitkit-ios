@@ -9,6 +9,13 @@ struct PayContactsView: View {
 
     @State private var isSaving = false
 
+    /// Continue's enable runs in its own task, so it can finish after the user left Pay Contacts, or after a Pubky sign-out
+    /// or a newer contact payments change stopped it. Like an import that finishes after the user left it, it opens
+    /// Profile only for an applied enable while Pay Contacts is still showing.
+    static func destinationAfterEnable(isApplied: Bool, currentRoute: Route?) -> Route? {
+        isApplied && currentRoute == .payContacts ? .profile : nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("profile__pay_contacts_nav_title"))
@@ -61,18 +68,15 @@ struct PayContactsView: View {
         defer { isSaving = false }
 
         do {
-            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
-            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
-                try await contactsManager.loadContactsIfNeeded(for: publicKey)
-            }
-
-            try await ContactPaymentsService.setEnabled(
+            let isApplied = try await ContactPaymentsService.setEnabled(
                 true,
-                wallet: wallet,
-                contactPublicKeys: contactsManager.contacts.map(\.publicKey),
-                canUsePrivatePayments: canUsePrivatePayments
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: .live(wallet: wallet)
             )
-            navigation.path = [.profile]
+            if let destination = Self.destinationAfterEnable(isApplied: isApplied, currentRoute: navigation.currentRoute) {
+                navigation.path = [destination]
+            }
         } catch {
             Logger.error("Failed to enable contact payments: \(error)", context: "PayContactsView")
             app.toast(

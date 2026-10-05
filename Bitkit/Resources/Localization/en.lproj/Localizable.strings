@@ -1193,6 +1193,7 @@
 "profile__choice_description_ring" = "Use an existing pubky from Pubky Ring.";
 "profile__choice_create" = "Create profile";
 "profile__choice_create_caption" = "New pubky";
+"profile__choice_loading_profile" = "Loading your profile…";
 "profile__adopt_error_title" = "Could Not Use Pubky";
 "profile__deriving_keys" = "Deriving your keys…";
 "profile__create_nav_title" = "Create Profile";
