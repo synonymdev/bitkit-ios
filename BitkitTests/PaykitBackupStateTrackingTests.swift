@@ -121,7 +121,7 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
         }
     }
 
-    func testFailedWriteChecksBackupDespiteUnchangedLocalRevision() async {
+    func testFailedWriteInvalidatesBackupWithoutAnotherRemoteRead() async {
         var snapshot: PaykitSdkService.BackupStateSnapshot? = .init(stateRevision: "state", backupRevision: "before")
         var reads = 0
         var changes = 0
@@ -138,7 +138,7 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? Failure, .operation)
         }
-        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(reads, 0)
         XCTAssertEqual(changes, 1)
         XCTAssertNil(snapshot)
     }

@@ -362,8 +362,9 @@ actor PaykitSdkService {
     private func initializeLocked() async throws {
         try await refreshPaykitKey(force: true)
         var sdk = try handle()
+        let status: IdentityStatus
         do {
-            _ = try await sdk.initialize()
+            status = try await sdk.initialize()
         } catch {
             invalidatePaykitKeyIfNeeded(after: error)
             guard try sessionProvider.canDeferStaleSession(error: error) else { throw error }
@@ -373,24 +374,28 @@ actor PaykitSdkService {
             resetRuntime()
             do {
                 sdk = try handle()
-                _ = try await sdk.initialize()
+                status = try await sdk.initialize()
             } catch {
                 sessionProvider.resumeStoredSessionAccess()
                 throw error
             }
             sessionProvider.resumeStoredSessionAccess()
         }
-        await publishAppIfLiveSessionAvailable(using: sdk)
+        await publishAppIfLiveSessionAvailable(using: sdk, status: status)
     }
 
     /// Keep credential reads and fallback activation atomic with sign-out and identity changes.
     func restorePersistedSession() async throws -> PubkyProfileManager.SessionInitializationResult {
         Task { await republishIdentityIfNeeded() }
         return try await operationLock.withLock {
-            try await initializeLocked()
-            return try await PubkyProfileManager.resolveSessionInitialization(
-                savedSessionSecret: Keychain.loadString(key: .paykitSession),
-                storedSecretKeyHex: PubkyProfileManager.activeSecretKeyHex(),
+            let savedSessionSecret = try Keychain.loadString(key: .paykitSession)
+            let storedSecretKeyHex = PubkyProfileManager.activeSecretKeyHex()
+            if savedSessionSecret == nil, storedSecretKeyHex == nil {
+                try await initializeLocked()
+            }
+            return await PubkyProfileManager.resolveSessionInitialization(
+                savedSessionSecret: savedSessionSecret,
+                storedSecretKeyHex: storedSecretKeyHex,
                 importSession: { try await self.importSessionLocked(secret: $0).publicKey },
                 signInWithSecretKey: { try await self.signInLocked(secretKeyHex: $0).publicKey }
             )
@@ -724,7 +729,7 @@ actor PaykitSdkService {
 
     func syncPaykitApp(privatePaymentsEnabled: Bool) async throws {
         try await withStateRevisionTracking { sdk in
-            var capabilities = try await appCapabilities(using: sdk)
+            var capabilities = try await appCapabilities(for: sdk.identityStatus())
             capabilities.privatePayments = capabilities.privatePayments && privatePaymentsEnabled
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
         }
@@ -1095,25 +1100,26 @@ actor PaykitSdkService {
             try? await readRevision()
         }
         let previousStateRevision = try? readStateRevision()
-        let result: Result<T, Error>
+        let result: T
         do {
-            result = try await .success(operation())
+            result = try await operation()
         } catch {
-            result = .failure(error)
+            // A failed write can change remote state without advancing the local revision.
+            onSnapshot(nil)
+            await onChange()
+            throw error
         }
         let nextStateRevision = try? readStateRevision()
-        if case .success = result,
-           let previousStateRevision,
+        if let previousStateRevision,
            previousStateRevision == nextStateRevision,
            let previousRevision
         {
             onSnapshot(BackupStateSnapshot(stateRevision: previousStateRevision, backupRevision: previousRevision))
-            return try result.get()
+            return result
         }
 
-        // An unconfirmed remote write can fail without advancing the local revision.
         let nextRevision = try? await readRevision()
-        if case .success = result, let stateRevision = try? readStateRevision(), let nextRevision {
+        if let stateRevision = try? readStateRevision(), let nextRevision {
             onSnapshot(BackupStateSnapshot(stateRevision: stateRevision, backupRevision: nextRevision))
         } else {
             onSnapshot(nil)
@@ -1121,7 +1127,7 @@ actor PaykitSdkService {
         if previousRevision == nil || nextRevision == nil || previousRevision != nextRevision {
             await onChange()
         }
-        return try result.get()
+        return result
     }
 
     private func markWalletBackupDataChanged() {
@@ -1201,13 +1207,14 @@ actor PaykitSdkService {
         let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let previousValues = try keys.map { try Keychain.load(key: $0) }
         let sdk: PaykitSdk
+        let status: IdentityStatus
         do {
             try persistSessionAccess(result.sessionAccess)
             sessionProvider.setLiveSessionAccess(result.sessionAccess)
             resetRuntime()
             try await refreshPaykitKey()
             sdk = try handle()
-            _ = try await sdk.initialize()
+            status = try await sdk.initialize()
             if result.sessionAccess.exportLocalSecretKey() != nil {
                 _ = try await sdk.publishPaykitNoiseKeyAuthorization()
             }
@@ -1232,13 +1239,13 @@ actor PaykitSdkService {
         if AdoptedPubkyReference.current != nil || result.sessionAccess.exportLocalSecretKey() == nil {
             SharedPubkyKeychain.removeAllOwn()
         }
-        await publishAppIfLiveSessionAvailable(using: sdk)
+        await publishAppIfLiveSessionAvailable(using: sdk, status: status)
         await republishIdentityIfNeeded(publicKey: result.publicKey)
     }
 
-    private func publishAppIfLiveSessionAvailable(using sdk: PaykitSdk) async {
+    private func publishAppIfLiveSessionAvailable(using sdk: PaykitSdk, status: IdentityStatus) async {
         do {
-            var capabilities = try await appCapabilities(using: sdk)
+            var capabilities = appCapabilities(for: status)
             guard capabilities.privatePayments else { return }
             capabilities.privatePayments = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)
@@ -1248,9 +1255,8 @@ actor PaykitSdkService {
         }
     }
 
-    private func appCapabilities(using sdk: PaykitSdk) async throws -> Paykit.PaykitAppCapabilities {
-        let status = try await sdk.identityStatus()
-        return Paykit.PaykitAppCapabilities(
+    private func appCapabilities(for status: IdentityStatus?) -> Paykit.PaykitAppCapabilities {
+        Paykit.PaykitAppCapabilities(
             privatePayments: status?.capability == .privateLinkCapable,
             paymentRequests: status?.capability == .privateLinkCapable,
             receipts: false,

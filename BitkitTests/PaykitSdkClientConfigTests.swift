@@ -596,6 +596,7 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let result = try await recovery.value
         try await forget.value
         XCTAssertEqual(result, .restored(publicKey: bootstrap.result.publicKey))
+        XCTAssertEqual(sdk.initializationCalls, 1)
         XCTAssertNil(try Keychain.load(key: .paykitSession))
         XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
         let afterForget = try await service.restorePersistedSession()
@@ -753,7 +754,7 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
         if let initializationError {
             throw initializationError
         }
-        return IdentityStatus(publicKey: previousKey, capability: .signedOut)
+        return IdentityStatus(publicKey: previousKey, capability: capability)
     }
 
     override func contactRecords() async throws -> [ContactRecord] {
@@ -826,6 +827,7 @@ private final class CacheActivationSession: PubkySessionAccess, @unchecked Senda
 
 private final class RecoverySdk: PaykitSdk, @unchecked Sendable {
     var onForget: () -> Void = {}
+    var initializationCalls = 0
 
     override func identityStatus() async throws -> IdentityStatus? {
         IdentityStatus(publicKey: nil, capability: .signedOut)
@@ -836,7 +838,8 @@ private final class RecoverySdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func initialize() async throws -> IdentityStatus {
-        IdentityStatus(publicKey: nil, capability: .signedOut)
+        initializationCalls += 1
+        return IdentityStatus(publicKey: nil, capability: .signedOut)
     }
 
     override func publishPaykitNoiseKeyAuthorization() async throws -> PaykitNoiseKeyAuthorization {
