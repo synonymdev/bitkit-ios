@@ -174,7 +174,7 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit])
     }
 
-    func testResetToDefaultsReloadsServerStateAfterPreferencesAreCleared() {
+    func testResetToDefaultsReloadsServerStateAfterPreferencesAreCleared() async {
         let oldServer = ElectrumServer(host: "old.example.com", port: 50001, protocolType: .tcp)
         settings.electrumConfigService.saveServerConfig(oldServer)
         settings.electrumCurrentServer = oldServer
@@ -205,7 +205,19 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.rgsConfigService.getCurrentServerUrl(), settings.rgsConfigService.getDefaultServerUrl())
         XCTAssertEqual(settings.rgsServerUrl, settings.rgsConfigService.getDefaultServerUrl())
         XCTAssertFalse(settings.rgsIsLoading)
-        XCTAssertFalse(settings.rgsUrlIsValid)
+        XCTAssertFalse(settings.rgsUrlIsValid, "Discard the previous URL's validation until the default is checked")
+
+        let expectedValidity = settings.isValidRgsUrl(settings.rgsServerUrl)
+        let defaultUrlValidated = expectation(description: "Validate the default RGS URL after reset")
+        let cancellable = settings.$rgsUrlIsValid
+            .dropFirst()
+            .first()
+            .sink { _ in defaultUrlValidated.fulfill() }
+        defer { cancellable.cancel() }
+
+        await fulfillment(of: [defaultUrlValidated], timeout: 3)
+
+        XCTAssertEqual(settings.rgsUrlIsValid, expectedValidity)
     }
 
     // MARK: - Backup/Restore
