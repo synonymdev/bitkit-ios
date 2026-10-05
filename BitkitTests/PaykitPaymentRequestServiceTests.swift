@@ -5938,19 +5938,35 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         otherPeer.counterparty = expectedIdentity
         var otherRole = sent
         otherRole.localRole = .payer
-        let cases: [(PaymentRequestRecord?, PaykitPaymentRequest.DeliveryStatus)] = [
-            (sent, .sent), (record, .queued), (nil, .queued), (otherMessage, .queued),
-            (otherRequest, .queued), (otherPeer, .queued), (otherRole, .queued),
+        let cases: [(PaymentRequestRecord?, UInt64?, Bool, PaykitPaymentRequest.DeliveryStatus)] = [
+            (sent, nil, false, .sent), (record, nil, false, .queued), (nil, nil, false, .queued),
+            (otherMessage, nil, false, .queued), (otherRequest, nil, false, .queued),
+            (otherPeer, nil, false, .queued), (otherRole, nil, false, .queued),
+            (record, 7, false, .queued), (sent, 8, false, .sent), (sent, nil, true, .sent),
         ]
 
         for isSubscription in [false, true] {
-            for (freshRecord, expectedStatus) in cases {
+            for (freshRecord, failedMessageId, processFails, expectedStatus) in cases {
                 let sdk = PaymentRequestSdkMock(records: [])
                 await sdk.configureRecipients(
                     peers: [linkedPeer(counterparty: publicKey, state: .linked)],
                     requestCapabilitiesByPublicKey: [publicKey: true]
                 )
                 await sdk.setProposalResult(record)
+                if let failedMessageId {
+                    await sdk.setProcessReports([OutboundPrivateCounterpartySendReport(
+                        counterparty: publicKey,
+                        report: OutboundPrivateSendReport(
+                            attempted: [failedMessageId], sent: [],
+                            failed: [OutboundPrivateSendFailure(
+                                outboundMessageId: failedMessageId, error: PaymentRequestIntakeError(noPointer: .init())
+                            )],
+                            reservationCleanupFailures: [], recoveryMarkerFailures: []
+                        ),
+                        error: nil
+                    )])
+                }
+                if processFails { await sdk.failNextProcess() }
                 await sdk.pauseNextProcess()
                 let service = PaykitPaymentRequestService(
                     sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true }, logWarning: { _ in }
@@ -5980,7 +5996,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertEqual(status, expectedStatus)
                 let snapshot = await sdk.snapshot()
                 XCTAssertEqual(snapshot.proposedRequests.count, 1)
-                XCTAssertEqual(snapshot.paymentRequestListCallCount, 1)
+                XCTAssertEqual(snapshot.paymentRequestListCallCount, failedMessageId == 7 ? 0 : 1)
             }
         }
     }

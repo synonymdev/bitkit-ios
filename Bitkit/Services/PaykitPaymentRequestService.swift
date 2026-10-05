@@ -1041,6 +1041,12 @@ struct PaykitPaymentRequestService {
         }) {
             return true
         }
+        if reports.contains(where: { report in
+            PubkyPublicKeyFormat.matches(report.counterparty, record.counterparty) &&
+                report.report?.failed.contains(where: { $0.outboundMessageId == messageId }) == true
+        }) {
+            return false
+        }
         guard !Task.isCancelled else { return false }
         do {
             let records = try await sdk.sharedPaymentRequests(expectedIdentity: expectedIdentity)

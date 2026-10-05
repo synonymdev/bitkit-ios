@@ -928,7 +928,7 @@ actor PaykitSdkService {
     }
 
     func sharedPaymentRequests(expectedIdentity: String) async throws -> [Paykit.PaymentRequestRecord] {
-        try await withSdk { sdk in
+        try await withSdk(priority: .interactive) { sdk in
             try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             return try await sdk.paymentRequests()
         }
