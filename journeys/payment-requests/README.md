@@ -31,11 +31,11 @@ That run established the issuer shapes captured by the fixture: lowercase `btc`,
 
 ## Foreground synchronization
 
-Bitkit checks shared request state every 10 seconds while foregrounded and online.
-Private-message intake, outbound retries, endpoint publication, and target discovery run on startup,
+Bitkit checks the private inbox and shared request state every 10 seconds while foregrounded and online.
+Outbound retries, endpoint publication, and target discovery also run on startup,
 explicit refreshes, and maintenance rounds after 30 seconds, then every 60 seconds.
 Maintenance uses elapsed time, including slow requests; polling remains serialized and does not
-start catch-up rounds. New peer messages may wait for maintenance plus synchronization time.
+start catch-up rounds. Incoming messages wait for the next poll plus synchronization time.
 
 ## Accepting install
 
