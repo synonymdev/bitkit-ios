@@ -941,6 +941,24 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    /// Like `waitUntil(timeout:_:)`, for a condition that may read an actor, failing with what it waited for.
+    private func waitUntil(
+        _ description: String,
+        timeout: Duration = .seconds(2),
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @MainActor () async -> Bool
+    ) async {
+        let deadline = ContinuousClock.now + timeout
+        while await !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting until \(description)", file: file, line: line)
+                return
+            }
+            await Task.yield()
+        }
+    }
+
     func testResetForgetsResolvedProfilesSoTheNextLoadLooksThemUpAgain() async throws {
         let clock = TestClock()
         let manager = ContactsManager(currentDate: { clock.now() })
@@ -1915,17 +1933,13 @@ final class ContactsManagerTests: XCTestCase {
             fetchContactRecords: { records },
             fetchRemoteProfile: { key in try await slot.withSlot(priority: .bulk) { try await lookups.fetch(key) } }
         )
-        while slot.waiterCountForTesting < 1 {
-            await Task.yield()
-        }
+        await waitUntil("the background lookup queues for the read slot") { slot.waiterCountForTesting >= 1 }
         let screenLookup = Task {
             await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { key in
                 try await slot.withSlot(priority: .interactive) { try await lookups.fetch(key) }
             }
         }
-        while slot.waiterCountForTesting < 2 {
-            await Task.yield()
-        }
+        await waitUntil("the screen's lookup queues for the read slot too") { slot.waiterCountForTesting >= 2 }
 
         try await manager.removeContact(publicKey: contactProfileKey)
         XCTAssertEqual(slot.waiterCountForTesting, 0, "The screen's lookup leaves the read queue at once, like the refresh's")
@@ -1961,9 +1975,7 @@ final class ContactsManagerTests: XCTestCase {
             let screenLookup = Task {
                 await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
             }
-            while await interactive.heldCount < 1 {
-                await Task.yield()
-            }
+            await waitUntil("the screen's lookup is held, \(deletion.name)") { await interactive.heldCount >= 1 }
 
             try await deletion.delete(manager)
             // Add Contact saves through the SDK itself; an import adds the contact back with its fetched profile the same way.
