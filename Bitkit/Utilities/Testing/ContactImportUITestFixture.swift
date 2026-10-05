@@ -18,6 +18,12 @@
                 }
                 .disabled(!manager.isSavePending)
                 .accessibilityIdentifier("ContactImportFixtureFinishSave")
+                CustomButton(title: "Leave import", size: .small) {
+                    // In the app, AppScene discards the pending import when the user leaves the import flow.
+                    manager.clearPendingImport()
+                    navigation.path = []
+                }
+                .accessibilityIdentifier("ContactImportFixtureLeave")
 
                 NavigationStack(path: $navigation.path) {
                     ContactImportOverviewView(profile: manager.fixtureProfile, contacts: manager.fixtureContacts)

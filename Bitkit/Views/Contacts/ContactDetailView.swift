@@ -7,6 +7,7 @@ struct ContactDetailView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -47,6 +48,7 @@ struct ContactDetailView: View {
                 isLoading = false
             }
             isLoading = false
+            await contactsManager.resolvePendingContactProfile(publicKey: publicKey)
         }
         .task {
             if isPaymentRequestAvailable {
@@ -226,46 +228,29 @@ struct ContactDetailView: View {
     // MARK: - Tag Persistence
 
     private func addTag(_ newTag: String) {
-        guard var current = profile else { return }
-        current = PubkyProfile(
-            publicKey: current.publicKey,
-            name: current.name,
-            bio: current.bio,
-            imageUrl: current.imageUrl,
-            links: current.links,
-            tags: current.tags + [newTag],
-            status: current.status
-        )
-        profile = current
-        persistContact(current)
+        updateTags { $0 + [newTag] }
     }
 
     private func removeTag(_ tag: String) {
-        guard var current = profile else { return }
-        current = PubkyProfile(
-            publicKey: current.publicKey,
-            name: current.name,
-            bio: current.bio,
-            imageUrl: current.imageUrl,
-            links: current.links,
-            tags: current.tags.filter { $0 != tag },
-            status: current.status
-        )
-        profile = current
-        persistContact(current)
+        updateTags { $0.filter { $0 != tag } }
     }
 
-    private func persistContact(_ profile: PubkyProfile) {
+    /// Shows the change at once, then saves it, one tag change at a time, over the contact's latest profile, after the
+    /// lookup of a profile the row is still waiting for. The save is dropped quietly once this Pubky session ends.
+    private func updateTags(_ transform: @escaping ([String]) -> [String]) {
+        let pubkyProfile = pubkyProfile
+        guard let current = profile, let session = pubkyProfile.currentSession else { return }
+        profile = current.withTags(transform(current.tags))
+        let change = contactsManager.updateContactTags(
+            publicKey: publicKey,
+            shownProfile: current,
+            expectedIdentity: session.publicKey,
+            isSessionCurrent: { pubkyProfile.currentSession == session },
+            transform: transform
+        )
         Task {
             do {
-                try await contactsManager.updateContact(
-                    publicKey: publicKey,
-                    name: profile.name,
-                    bio: profile.bio,
-                    imageUrl: profile.imageUrl,
-                    links: profile.links,
-                    tags: profile.tags
-                )
+                try await change.value
             } catch {
                 Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
                 app.toast(type: .error, title: t("contacts__error_saving"))
@@ -314,7 +299,7 @@ struct ContactDetailView: View {
 
                 if let contact = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                     profile = contact.profile
-                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
+                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey, retryTransient: true) {
                     profile = fetched
                 }
             }
@@ -366,6 +351,7 @@ struct ContactDetailView: View {
             .environmentObject(CurrencyViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(PubkyProfileManager())
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())

@@ -442,7 +442,7 @@ struct AppScene: View {
                     paykitPaymentRequestManager.clear()
                 }
             }
-            .onReceive(contactsManager.$contacts) { contacts in
+            .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
                       pubkyProfile.authState == .authenticated
@@ -1429,7 +1429,7 @@ struct AppScene: View {
                 $0.paymentRequestId == target.paymentRequestId &&
                     PubkyPublicKeyFormat.matches($0.counterparty, target.counterparty) &&
                     $0.counterpartyReceiverPath == target.counterpartyReceiverPath &&
-                    $0.isActive(at: Date())
+                    $0.isActive(at: SubscriptionClock.subscriptionNow())
             }) {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }
