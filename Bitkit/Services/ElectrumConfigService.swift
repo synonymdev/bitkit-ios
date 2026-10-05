@@ -1,11 +1,13 @@
 import Foundation
-import SwiftUI
 
 /// Service responsible for managing Electrum server configuration
 class ElectrumConfigService {
-    @AppStorage("electrumServer") private var electrumServerData = Data()
+    private let defaults: UserDefaults
+    private let serverKey = "electrumServer"
 
-    init() {}
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     /// Gets the current Electrum server URL that should be used for connections
     func getCurrentServer() -> ElectrumServer {
@@ -15,7 +17,7 @@ class ElectrumConfigService {
 
     /// Gets the stored server configuration, if any
     func getStoredServer() -> ElectrumServer? {
-        guard !electrumServerData.isEmpty else { return nil }
+        guard let electrumServerData = defaults.data(forKey: serverKey), !electrumServerData.isEmpty else { return nil }
 
         do {
             return try JSONDecoder().decode(ElectrumServer.self, from: electrumServerData)
@@ -50,7 +52,8 @@ class ElectrumConfigService {
     /// Saves Electrum server configuration
     func saveServerConfig(_ server: ElectrumServer) {
         do {
-            electrumServerData = try JSONEncoder().encode(server)
+            let data = try JSONEncoder().encode(server)
+            defaults.set(data, forKey: serverKey)
             Logger.info("Saved Electrum server config: \(server.fullUrl)")
         } catch {
             Logger.error(error, context: "Failed to encode Electrum server config")

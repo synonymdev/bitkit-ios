@@ -1,14 +1,17 @@
 import Foundation
-import SwiftUI
 
 /// Service responsible for managing RGS server configuration
 class RgsConfigService {
-    @AppStorage("rapidGossipSyncUrl") private var rapidGossipSyncUrl: String = ""
+    private let defaults: UserDefaults
+    private let serverKey = "rapidGossipSyncUrl"
 
-    init() {}
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     /// Gets the current RGS server URL that should be used for connections
     func getCurrentServerUrl() -> String {
+        let rapidGossipSyncUrl = defaults.string(forKey: serverKey) ?? ""
         return rapidGossipSyncUrl.isEmpty ? getDefaultServerUrl() : rapidGossipSyncUrl
     }
 
@@ -19,7 +22,7 @@ class RgsConfigService {
 
     /// Saves RGS server configuration
     func saveServerUrl(_ url: String) {
-        rapidGossipSyncUrl = url
+        defaults.set(url, forKey: serverKey)
         Logger.info("Saved RGS server URL: \(url)")
     }
 

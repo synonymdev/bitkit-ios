@@ -241,7 +241,18 @@ class SettingsViewModel: NSObject, ObservableObject {
         BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
+        lastAddressTypeError = nil
         restoredMonitoredTypesFromBackup = false
+
+        loadElectrumSettings()
+        electrumIsConnected = false
+        electrumIsLoading = false
+
+        rgsValidationCancellable?.cancel()
+        loadRgsSettings()
+        rgsIsLoading = false
+        rgsUrlIsValid = false
+        setupRgsValidationDebounce()
     }
 
     // MARK: - Computed Properties
