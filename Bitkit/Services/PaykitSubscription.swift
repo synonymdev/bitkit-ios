@@ -492,9 +492,9 @@ struct PaykitSubscription: Identifiable, Hashable {
         lifecycleState == .activeRecurring && recurrence.endsAt.map { $0 > date } ?? true
     }
 
-    /// A canceled subscription the user pays for is paid up to its last paid period, whatever its fixed end date.
+    /// A canceled subscription is paid up to its last paid period, whatever its fixed end date.
     var canceledPaidThrough: Date? {
-        lifecycleState == .canceled && isPayer ? paidPeriods.map(\.endsAt).max() : nil
+        lifecycleState == .canceled ? paidPeriods.map(\.endsAt).max() : nil
     }
 
     /// The paid-through date of a canceled subscription that still runs; nil otherwise.
@@ -518,7 +518,7 @@ struct PaykitSubscription: Identifiable, Hashable {
     }
 
     func isCreatedVisible(at date: Date) -> Bool {
-        isCreatedByUser && (isProposalVisible(at: date) || isActive(at: date))
+        isCreatedByUser && (isProposalVisible(at: date) || isActive(at: date) || canceledPaidThroughDate(at: date) != nil)
     }
 
     func isExpiredVisible(at date: Date) -> Bool {

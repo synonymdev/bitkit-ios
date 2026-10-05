@@ -58,7 +58,7 @@ struct SubscriptionsView: View {
     }
 
     private var created: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isCreatedVisible(at: now) }
+        subscriptionSections(subscriptions: paymentRequests.subscriptions, now: now).created
     }
 
     private var hasVisibleSubscriptions: Bool {
@@ -264,14 +264,16 @@ func subscriptionEndDate(subscription: PaykitSubscription) -> Date? {
     subscription.canceledPaidThrough ?? subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
 }
 
-/// The ACTIVE and EXPIRED sections: a canceled subscription stays under ACTIVE until it is paid through.
+/// The ACTIVE, EXPIRED and CREATED sections: a canceled subscription stays under ACTIVE, or under CREATED
+/// when the user created it, until it is paid through.
 func subscriptionSections(
     subscriptions: [PaykitSubscription],
     now: Date
-) -> (active: [PaykitSubscription], expired: [PaykitSubscription]) {
+) -> (active: [PaykitSubscription], expired: [PaykitSubscription], created: [PaykitSubscription]) {
     (
         active: subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) },
-        expired: subscriptions.filter { $0.isExpiredVisible(at: now) && $0.isLapsed(at: now) }
+        expired: subscriptions.filter { $0.isExpiredVisible(at: now) && $0.isLapsed(at: now) },
+        created: subscriptions.filter { $0.isCreatedVisible(at: now) }
     )
 }
 
