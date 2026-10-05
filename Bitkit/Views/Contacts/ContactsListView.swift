@@ -291,10 +291,14 @@ struct ContactsListView: View {
 
         do {
             try await contactsManager.loadContacts(for: pk)
+            guard !Task.isCancelled else { return }
             if !contactsManager.contacts.isEmpty {
                 app.hasSeenContactsIntro = true
             }
+        } catch is CancellationError {
+            return
         } catch {
+            guard !Task.isCancelled else { return }
             Logger.error("Failed to load contacts in view: \(error)", context: "ContactsListView")
 
             if !contactsManager.contacts.isEmpty {

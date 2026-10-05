@@ -240,6 +240,39 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testAlreadyCancelledContactsLoadPreservesRowsAndCanReload() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
+        let manager = ContactsManager()
+        let original = makeContact(publicKey: record.publicKey)
+        manager.contacts = [original]
+
+        let cancelledLoad = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await manager.loadContacts(
+                for: "owner",
+                fetchContactRecords: {
+                    XCTFail("A load cancelled before entry must not read contact records")
+                    return [record]
+                },
+                fetchRemoteProfile: { _ in
+                    XCTFail("A cancelled load must not fetch profiles")
+                    return nil
+                }
+            )
+        }
+        let result = await cancelledLoad.result
+        XCTAssertNoThrow(try result.get())
+        XCTAssertEqual(manager.contacts, [original])
+        XCTAssertFalse(manager.hasLoaded)
+        XCTAssertFalse(manager.isLoading)
+        XCTAssertNil(manager.loadErrorMessage)
+
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [record] }, fetchRemoteProfile: { _ in nil })
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Contact"])
+        XCTAssertTrue(manager.hasLoaded)
+        XCTAssertFalse(manager.isLoading)
+    }
+
     private func contactRecord(key: String, name: String) -> ContactRecord {
         ContactRecord(
             publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: name,
