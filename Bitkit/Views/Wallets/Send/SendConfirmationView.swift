@@ -238,13 +238,26 @@ struct SendConfirmationView: View {
                 .accessibilityIdentifier("SendConfirmToggleDetails")
             }
 
+            if isFeeRateMissing, wallet.feeRateLoadFailed {
+                CustomButton(title: t("common__try_again"), size: .small) {
+                    await retryFeeRate()
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.bottom, 16)
+                .accessibilityIdentifier("SendConfirmRetryFeeRate")
+            }
+
             SwipeButton(
                 title: app.contactPaymentContext?.isInitialSubscriptionPayment == true
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: accentColor,
                 isDisabled: isSwipeDisabled,
-                isLoading: hasStartedAutomaticPayment || isFeeRateMissing,
+                isLoading: Self.isSwipeLoading(
+                    hasStartedAutomaticPayment: hasStartedAutomaticPayment,
+                    isFeeRateMissing: isFeeRateMissing,
+                    feeRateLoadFailed: wallet.feeRateLoadFailed
+                ),
                 swipeProgress: $swipeProgress
             ) {
                 try await submitPayment()
@@ -271,6 +284,11 @@ struct SendConfirmationView: View {
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             Task {
                 await calculateTransactionFee()
+            }
+        }
+        .onChange(of: wallet.feeRateLoadFailed, initial: true) { _, failed in
+            if failed, isFeeRateMissing {
+                showFeeRateUnavailableToast()
             }
         }
         .onChange(of: app.selectedWalletToPayFrom) {
@@ -744,6 +762,29 @@ struct SendConfirmationView: View {
 
     static func isFeeRateMissing(walletType: WalletType, isHardwarePayment: Bool, feeRate: UInt32?) -> Bool {
         walletType == .onchain && !isHardwarePayment && feeRate == nil
+    }
+
+    /// The swipe shows its spinner while a payment starts or the fee rate is still loading; once the load gave up it stops so the user can retry.
+    static func isSwipeLoading(hasStartedAutomaticPayment: Bool, isFeeRateMissing: Bool, feeRateLoadFailed: Bool) -> Bool {
+        hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
+    }
+
+    private func showFeeRateUnavailableToast() {
+        app.toast(
+            type: .error,
+            title: t("wallet__send_fee_rate_unavailable_title"),
+            description: t("wallet__send_fee_rate_unavailable_text")
+        )
+    }
+
+    private func retryFeeRate() async {
+        do {
+            try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error("Failed to retry fee rate: \(error)")
+        }
     }
 
     static func isSwipeDisabled(

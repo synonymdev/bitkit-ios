@@ -44,6 +44,38 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testSwipeShowsItsSpinnerWhileTheFeeRateLoads() {
+        XCTAssertTrue(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: true,
+            feeRateLoadFailed: false
+        ))
+    }
+
+    func testSwipeStopsItsSpinnerOnceTheFeeRateLoadFailed() {
+        XCTAssertFalse(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: true,
+            feeRateLoadFailed: true
+        ))
+        XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+            walletType: .onchain,
+            isHardwarePayment: false,
+            isHardwareConfirmationUnavailable: false,
+            feeRate: nil
+        ))
+    }
+
+    func testAutomaticPaymentKeepsTheSpinnerWhateverTheFeeRateState() {
+        for feeRateLoadFailed in [false, true] {
+            XCTAssertTrue(SendConfirmationView.isSwipeLoading(
+                hasStartedAutomaticPayment: true,
+                isFeeRateMissing: true,
+                feeRateLoadFailed: feeRateLoadFailed
+            ))
+        }
+    }
+
     func testFeeRateIsOnlyMissingForSoftwareOnchainPayments() {
         for walletType in [WalletType.lightning, .onchain] {
             for isHardwarePayment in [false, true] {
