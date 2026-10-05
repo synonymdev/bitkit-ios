@@ -1210,6 +1210,7 @@ struct AppScene: View {
             }
             if mode == .full {
                 await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+                await retryPendingPaykitEndpointRemoval()
                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
                     wallet: wallet,
                     reason: "payment request polling"
@@ -1566,6 +1567,7 @@ struct AppScene: View {
                 if scenePhase == .active {
                     await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 }
+                await retryPendingPaykitEndpointRemoval()
                 if PaykitFeatureFlags.isUIEnabled {
                     let contactPublicKeys = contactsManager.contacts.map(\.publicKey)
                     await PrivatePaykitService.shared.prepareSavedContacts(
