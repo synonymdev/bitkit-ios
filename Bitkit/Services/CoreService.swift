@@ -61,9 +61,11 @@ class ActivityService {
     func restoreDetachedContacts(_ scopedIds: Set<String>) {
         var entries: [String: [String]] = [:]
         for scopedId in scopedIds {
-            let parts = scopedId.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
-            entries[String(parts[0]), default: []].append(String(parts[1]))
+            guard let separator = scopedId.lastIndex(of: ":") else { continue }
+            let walletId = String(scopedId[..<separator])
+            let activityId = String(scopedId[scopedId.index(after: separator)...])
+            guard !walletId.isEmpty, !activityId.isEmpty else { continue }
+            entries[walletId, default: []].append(activityId)
         }
         UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
     }

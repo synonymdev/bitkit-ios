@@ -193,7 +193,7 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         let afterSkippedScan = try await service.getActivity(id: activity.activityId)
         XCTAssertEqual(afterSkippedScan, persisted)
 
-        let hardwareWalletId = "hardware-\(UUID().uuidString)"
+        let hardwareWalletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "xpub-\(UUID().uuidString)"])
         defer {
             service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default)
             service.setContactDetached(false, activityId: activity.activityId, walletId: hardwareWalletId)
