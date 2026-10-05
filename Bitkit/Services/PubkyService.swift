@@ -10,6 +10,8 @@ enum PubkyServiceError: LocalizedError {
     case authFailed(String)
     case profileNotFound
     case activeSubscription(endsAt: Date?)
+    /// A write was for an identity that is no longer the signed-in one, so it wrote nothing.
+    case identityChanged
 
     var errorDescription: String? {
         switch self {
@@ -23,6 +25,8 @@ enum PubkyServiceError: LocalizedError {
             return "Profile not found"
         case .activeSubscription:
             return "Contact has an active subscription"
+        case .identityChanged:
+            return "The Pubky identity changed"
         }
     }
 }
@@ -44,6 +48,15 @@ struct PrivateReceiverPathSelection {
 struct PubkyRegisteredIdentity {
     let result: PubkySessionBootstrapResult
     let walletGeneration: Int
+}
+
+/// Which public read slots a read may use. Background work that reads for many contacts at once is `bulk`, so it can
+/// never take every read slot from reads for what the user is looking at, and a freed read slot goes to those reads
+/// first. Reads the user is waiting on are `interactive` even when there are many of them, such as the follow lookups
+/// that prepare a contact import.
+enum PaykitPublicReadPriority {
+    case interactive
+    case bulk
 }
 
 /// Service layer for Pubky sessions, profiles, contacts, and Paykit SDK workflows.
@@ -87,7 +100,7 @@ enum PubkyService {
         secretKeyHex: String,
         sdkService: PaykitSdkService = .shared
     ) async throws {
-        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await sdkService.approveAuth(
             authUrl: authUrl,
@@ -98,7 +111,7 @@ enum PubkyService {
     }
 
     static func approveRingAuth(authUrl: String, secretKeyHex: String, sdkService: PaykitSdkService = .shared) async throws {
-        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await ServiceQueue.background(.core) {
             try await BitkitCore.approvePubkyAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
@@ -112,7 +125,7 @@ enum PubkyService {
         secretKeyHex: String,
         sdkService: PaykitSdkService = .shared
     ) async throws {
-        try await sdkService.republishIdentityIfNeeded(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
+        try await sdkService.republishIdentityBeforeApproval(publicKey: pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex))
         try Task.checkCancellation()
         try await sdkService.approveAuthWithCompanionClaim(
             authUrl: authUrl,
@@ -265,12 +278,12 @@ enum PubkyService {
 
     // MARK: - Profile
 
-    static func publishPaykitProfile(_ profile: Paykit.PaykitProfile) async throws {
-        _ = try await PaykitSdkService.shared.publishPaykitProfile(profile)
+    static func publishPaykitProfile(_ profile: Paykit.PaykitProfile, expectedIdentity: String? = nil) async throws {
+        _ = try await PaykitSdkService.shared.publishPaykitProfile(profile, expectedIdentity: expectedIdentity)
     }
 
-    static func uploadProfileAvatar(bytes: Data, contentType: String) async throws -> String {
-        try await PaykitSdkService.shared.uploadProfileAvatar(bytes: bytes, contentType: contentType)
+    static func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
+        try await PaykitSdkService.shared.uploadAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
     static func deletePaykitProfile() async throws {
@@ -288,13 +301,14 @@ enum PubkyService {
     }
 
     static func saveContact(publicKey: String, label: String?, receiverPaths: [String]? = nil,
-                            restorePrivateConnection: Bool = false) async throws -> Paykit.ContactRecord
+                            restorePrivateConnection: Bool = false, expectedIdentity: String? = nil) async throws -> Paykit.ContactRecord
     {
         try await PaykitSdkService.shared.saveContact(
             publicKey: publicKey,
             label: label,
             receiverPaths: receiverPaths,
-            restorePrivateConnection: restorePrivateConnection
+            restorePrivateConnection: restorePrivateConnection,
+            expectedIdentity: expectedIdentity
         )
     }
 
@@ -302,12 +316,20 @@ enum PubkyService {
         try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
     }
 
-    static func resolveContactProfile(publicKey: String, allowPubkyProfileFallback: Bool) async throws -> Paykit.ContactProfileResolution? {
-        try await PaykitSdkService.shared.resolveContactProfile(publicKey: publicKey, allowPubkyProfileFallback: allowPubkyProfileFallback)
+    static func resolveContactProfile(
+        publicKey: String,
+        allowPubkyProfileFallback: Bool,
+        priority: PaykitPublicReadPriority = .interactive
+    ) async throws -> Paykit.ContactProfileResolution? {
+        try await PaykitSdkService.shared.resolveContactProfile(
+            publicKey: publicKey,
+            allowPubkyProfileFallback: allowPubkyProfileFallback,
+            priority: priority
+        )
     }
 
-    static func discoverRelevantReceiverPaths(publicKey: String) async throws -> [String] {
-        try await PaykitSdkService.shared.discoverRelevantReceiverPaths(publicKey: publicKey)
+    static func discoverRelevantReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority = .interactive) async throws -> [String] {
+        try await PaykitSdkService.shared.discoverRelevantReceiverPaths(publicKey: publicKey, priority: priority)
     }
 
     // MARK: - Sign Out
@@ -337,11 +359,15 @@ actor PaykitSdkService {
     private let sessionProvider = PaykitSdkSessionProvider()
     private let paymentAdapter = PaykitSdkPaymentAdapter()
     private let operationLock = PaykitSdkOperationLock()
+    private let publicReadSlots = PaykitPublicReadSlots()
     private let pubkyClientConfig = PaykitSdkService.makePubkyClientConfig(localTestnetHost: Env.pubkyLocalTestnetHost)
     private let sdkFactory: (() throws -> PaykitSdk)?
     private let bootstrapFactory: BootstrapFactory
     private var cachedBootstrap: PubkySessionBootstrap?
     private var isRepublishingIdentity = false
+    /// The normalized identity the running publication is for, so an approval signing with it can wait for it.
+    private var republishingIdentity: String?
+    private var republishWaiters: [AsyncStream<Void>.Continuation] = []
     private var republishPublicKey: String?
     private var nextIdentityRepublishAt = Date.distantPast
     private var lastIdentityRepublishAt = Date.distantPast
@@ -356,7 +382,7 @@ actor PaykitSdkService {
     }
 
     func initialize() async throws {
-        Task { await republishIdentityIfNeeded() }
+        startIdentityRepublish()
         try await operationLock.withLock {
             try await initializeLocked()
         }
@@ -398,6 +424,12 @@ actor PaykitSdkService {
         }
     }
 
+    /// Republishes without making the caller wait on the DHT. Only the public key string reaches the task, so it never
+    /// keeps session access alive.
+    func startIdentityRepublish(publicKey: String? = nil) {
+        Task { await republishIdentityIfNeeded(publicKey: publicKey) }
+    }
+
     func republishIdentityIfNeeded(publicKey: String? = nil, now: Date = Date(), timeout: Duration = .seconds(5)) async {
         guard !Task.isCancelled else { return }
         // Swift FFI may ignore cancellation; keep the in-flight guard until publication actually finishes.
@@ -406,6 +438,29 @@ actor PaykitSdkService {
             await republishIdentity(publicKey: publicKey, now: now)
             continuation.finish()
         }
+        defer { publication.cancel() }
+        await waitForRepublish(stream, finishedBy: continuation, timeout: timeout)
+    }
+
+    /// For auth approvals. Background triggers skip a publication that is already running, but an approval must still
+    /// follow its signing identity's publication, such as the one sign-in starts without waiting, so it waits for that
+    /// one under the same cap instead.
+    func republishIdentityBeforeApproval(publicKey: String, timeout: Duration = .seconds(5)) async {
+        guard !Task.isCancelled else { return }
+        guard let runningIdentity = republishingIdentity, runningIdentity == PubkyPublicKeyFormat.normalized(publicKey) else {
+            await republishIdentityIfNeeded(publicKey: publicKey, timeout: timeout)
+            return
+        }
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        republishWaiters.append(continuation)
+        await waitForRepublish(stream, finishedBy: continuation, timeout: timeout)
+    }
+
+    private func waitForRepublish(
+        _ stream: AsyncStream<Void>,
+        finishedBy continuation: AsyncStream<Void>.Continuation,
+        timeout: Duration
+    ) async {
         let deadline = Task {
             do {
                 try await Task.sleep(for: timeout)
@@ -416,7 +471,6 @@ actor PaykitSdkService {
             continuation.finish()
         }
         defer {
-            publication.cancel()
             deadline.cancel()
             continuation.finish()
         }
@@ -431,7 +485,12 @@ actor PaykitSdkService {
     private func republishIdentity(publicKey: String?, now: Date) async {
         guard !Task.isCancelled, !isRepublishingIdentity else { return }
         isRepublishingIdentity = true
-        defer { isRepublishingIdentity = false }
+        defer {
+            isRepublishingIdentity = false
+            republishingIdentity = nil
+            republishWaiters.forEach { $0.finish() }
+            republishWaiters.removeAll()
+        }
 
         do {
             let identity = try publicKey ?? sessionProvider.loadLocalSecretKey().map {
@@ -444,6 +503,7 @@ actor PaykitSdkService {
             republishPublicKey = identity
             lastIdentityRepublishAt = now
             nextIdentityRepublishAt = now.addingTimeInterval(60)
+            republishingIdentity = identity
             if try await bootstrap().republishIdentity(publicKey: identity) {
                 nextIdentityRepublishAt = now.addingTimeInterval(30 * 60)
                 Logger.debug("Republished Pubky identity", context: "PaykitSdkService")
@@ -587,20 +647,26 @@ actor PaykitSdkService {
     }
 
     func fetchFile(uri: String, maxBytes: UInt64) async throws -> Data {
-        try await operationLock.withLock {
-            guard let data = try await handle().fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) else {
-                throw PubkyServiceError.profileNotFound
-            }
-            return data
+        guard let data = try await withPublicRead({ try await $0.fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) }) else {
+            throw PubkyServiceError.profileNotFound
         }
+        return data
     }
 
-    func publishPaykitProfile(_ profile: Paykit.PaykitProfile) async throws -> Paykit.PaykitProfileRecord {
+    /// With `expectedIdentity`, it publishes only while that identity is signed in, checked in the same locked operation as
+    /// the publication, so one that a sign-out or another identity's sign-in overtakes writes nothing and throws
+    /// `identityChanged`.
+    func publishPaykitProfile(_ profile: Paykit.PaykitProfile, expectedIdentity: String? = nil) async throws -> Paykit.PaykitProfileRecord {
         try await withStateRevisionTracking { sdk in
-            try await sdk.publishPaykitProfile(profile: profile)
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
+            return try await sdk.publishPaykitProfile(profile: profile)
         }
     }
 
+    /// The upload for payment requests, such as a subscription icon. With `expectedIdentity`, it throws
+    /// `requestUnavailable` unless that identity is signed in with a live session.
     func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String? = nil) async throws -> String {
         let record = try await withStateRevisionTracking { sdk in
             if let expectedIdentity {
@@ -614,6 +680,20 @@ actor PaykitSdkService {
         return record.uri
     }
 
+    /// The upload for profile and contact avatars. With `expectedIdentity`, it uploads only while that identity is signed
+    /// in, checked in the same locked operation as the upload, so one that a sign-out or another identity's sign-in
+    /// overtakes writes nothing and throws `identityChanged`. Any other failure, such as having no live session, is the
+    /// SDK's own error.
+    func uploadAvatar(bytes: Data, contentType: String, expectedIdentity: String?) async throws -> String {
+        let record = try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
+            return try await sdk.uploadProfileAvatar(bytes: bytes, contentType: contentType)
+        }
+        return record.uri
+    }
+
     func deletePaykitProfile() async throws {
         try await withStateRevisionTracking { sdk in
             try await sdk.deletePaykitProfile()
@@ -621,9 +701,7 @@ actor PaykitSdkService {
     }
 
     func fetchPubkyFollows(publicKey: String) async throws -> [String] {
-        try await operationLock.withLock {
-            try await handle().fetchPubkyFollows(publicKey: publicKey)
-        }
+        try await withPublicRead { try await $0.fetchPubkyFollows(publicKey: publicKey) }
     }
 
     func contactRecords() async throws -> [Paykit.ContactRecord] {
@@ -638,13 +716,19 @@ actor PaykitSdkService {
         }
     }
 
+    /// With `expectedIdentity`, it saves only while that identity is signed in, checked in the same locked operation as the
+    /// save, so a save that a sign-out or another identity's sign-in overtakes writes nothing and throws `identityChanged`.
     func saveContact(
         publicKey: String,
         label: String?,
         receiverPaths: [String]? = nil,
-        restorePrivateConnection: Bool = false
+        restorePrivateConnection: Bool = false,
+        expectedIdentity: String? = nil
     ) async throws -> Paykit.ContactRecord {
         try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
             let existing = try await sdk.contactRecord(publicKey: publicKey)
             guard restorePrivateConnection || existing != nil else { throw PubkyServiceError.profileNotFound }
             let existingPaths = existing?.receiverPaths ?? []
@@ -714,9 +798,13 @@ actor PaykitSdkService {
         }
     }
 
-    func resolveContactProfile(publicKey: String, allowPubkyProfileFallback: Bool) async throws -> Paykit.ContactProfileResolution? {
-        try await operationLock.withLock {
-            try await handle().resolveContactProfile(
+    func resolveContactProfile(
+        publicKey: String,
+        allowPubkyProfileFallback: Bool,
+        priority: PaykitPublicReadPriority = .interactive
+    ) async throws -> Paykit.ContactProfileResolution? {
+        try await withPublicRead(priority: priority) {
+            try await $0.resolveContactProfile(
                 publicKey: publicKey,
                 receiverPath: PaykitReceiverPath.wallet,
                 allowPubkyProfileFallback: allowPubkyProfileFallback
@@ -724,9 +812,10 @@ actor PaykitSdkService {
         }
     }
 
-    func discoverRelevantReceiverPaths(publicKey: String) async throws -> [String] {
-        try await operationLock.withLock {
-            let sdk = try handle()
+    /// Reads only the contact's public receiver paths and markers, so it runs on the public read lane and never holds
+    /// `operationLock` across the network.
+    func discoverRelevantReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority = .interactive) async throws -> [String] {
+        try await withPublicRead(priority: priority) { sdk in
             let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
             var discovered = Set<String>()
 
@@ -747,32 +836,38 @@ actor PaykitSdkService {
         }
     }
 
-    /// Takes the SDK lock per read and drops out of its queue once cancelled, so an abandoned eligibility check
-    /// holds up a payment for at most the one read already in flight.
-    func paymentRequestReceiverPaths(publicKey: String) async throws -> [String] {
+    /// Public reads on the read lane, so it never holds `operationLock`. An abandoned eligibility check leaves the read
+    /// queue at once and stops before its next read.
+    func paymentRequestReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority) async throws -> [String] {
         try Task.checkCancellation()
-        let paths = try await operationLock.withCancellableLock {
-            try await handle().paykitReceiverPaths(publicKey: publicKey)
-        }
-        var capablePaths = Set<String>()
+        return try await withPublicRead(priority: priority) { sdk in
+            let paths = try await sdk.paykitReceiverPaths(publicKey: publicKey)
+            var capablePaths = Set<String>()
 
-        for path in paths where PaykitReceiverPath.supported.contains(path) {
-            try Task.checkCancellation()
-            let marker = try await operationLock.withCancellableLock {
-                try await handle().paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+            for path in paths where PaykitReceiverPath.supported.contains(path) {
+                try Task.checkCancellation()
+                let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+                if marker?.capabilities.paymentRequests == true {
+                    capablePaths.insert(path)
+                }
             }
-            if marker?.capabilities.paymentRequests == true {
-                capablePaths.insert(path)
-            }
-        }
 
-        return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
+            return PaykitReceiverPath.supported.filter { capablePaths.contains($0) }
+        }
     }
 
+    /// Reads only the saved paths' public markers, so the reads run on the bulk lane rather than under `operationLock`.
+    /// The caller reads the saved paths from the contact record under the lock. When no SDK can be built it reports
+    /// `sessionNotActive` and protects every saved path from cleanup.
     func privateReceiverPathSelection(publicKey: String, savedReceiverPaths: [String]) async throws -> PrivateReceiverPathSelection {
-        try await operationLock.withLock {
-            let paths = Self.mergedReceiverPaths(savedReceiverPaths)
-            guard let sdk = try? handle() else {
+        let paths = Self.mergedReceiverPaths(savedReceiverPaths)
+        return try await operationLock.withoutLock {
+            let instance: PaykitSdk? = if let sdk {
+                sdk
+            } else {
+                try await operationLock.withCancellableLock { try? handle() }
+            }
+            guard let instance else {
                 return PrivateReceiverPathSelection(
                     linkableReceiverPaths: [],
                     publishableReceiverPaths: [],
@@ -780,34 +875,37 @@ actor PaykitSdkService {
                     error: PubkyServiceError.sessionNotActive
                 )
             }
-            var linkable: [String] = []
-            var publishable: [String] = []
-            var cleanupProtected: [String] = []
-            var firstError: Error?
 
-            for path in paths {
-                do {
-                    let marker = try await sdk.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
-                    if Self.requiresPrivateLink(marker: marker) {
-                        linkable.append(path)
+            return try await publicReadSlots.withSlot(.bulk) {
+                var linkable: [String] = []
+                var publishable: [String] = []
+                var cleanupProtected: [String] = []
+                var firstError: Error?
+
+                for path in paths {
+                    do {
+                        let marker = try await instance.paykitReceiverMarker(publicKey: publicKey, receiverPath: path)
+                        if Self.requiresPrivateLink(marker: marker) {
+                            linkable.append(path)
+                        }
+                        if Self.canReceivePrivatePaymentDetails(marker: marker) {
+                            publishable.append(path)
+                        }
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        cleanupProtected.append(path)
+                        firstError = firstError ?? error
                     }
-                    if Self.canReceivePrivatePaymentDetails(marker: marker) {
-                        publishable.append(path)
-                    }
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    cleanupProtected.append(path)
-                    firstError = firstError ?? error
                 }
-            }
 
-            return PrivateReceiverPathSelection(
-                linkableReceiverPaths: linkable,
-                publishableReceiverPaths: publishable,
-                cleanupProtectedReceiverPaths: cleanupProtected,
-                error: firstError
-            )
+                return PrivateReceiverPathSelection(
+                    linkableReceiverPaths: linkable,
+                    publishableReceiverPaths: publishable,
+                    cleanupProtectedReceiverPaths: cleanupProtected,
+                    error: firstError
+                )
+            }
         }
     }
 
@@ -1095,6 +1193,27 @@ actor PaykitSdkService {
         return created
     }
 
+    /// Public-only read lane: skips `operationLock` and runs up to the read slots' cap at once. It is sound only for reads
+    /// that fetch unauthenticated public Pubky data; in paykit rc56 those use the SDK's public client and never load
+    /// session access, the local secret or the state blob. Session, secret or state-blob operations must never use it.
+    /// Without an SDK it takes `operationLock` only to build one, cancellably, and releases it before the read, so a
+    /// read never builds an SDK outside the lock and never holds the lock across the network call. Like a locked call, a
+    /// read that starts during a wallet wipe is rejected, and one that a wipe overtakes fails instead of returning its
+    /// result across the wipe.
+    private func withPublicRead<T>(
+        priority: PaykitPublicReadPriority = .interactive,
+        _ read: (PaykitSdk) async throws -> T
+    ) async throws -> T {
+        try await operationLock.withoutLock {
+            let instance: PaykitSdk = if let sdk {
+                sdk
+            } else {
+                try await operationLock.withCancellableLock { try handle() }
+            }
+            return try await publicReadSlots.withSlot(priority) { try await read(instance) }
+        }
+    }
+
     private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
         try await operationLock.withLock {
             let sdk = try handle()
@@ -1193,7 +1312,7 @@ actor PaykitSdkService {
             SharedPubkyKeychain.removeAllOwn()
         }
         await publishReceiverMarkerIfLiveSessionAvailable(using: sdk)
-        await republishIdentityIfNeeded(publicKey: result.publicKey)
+        startIdentityRepublish(publicKey: result.publicKey)
     }
 
     private func publishReceiverMarkerIfLiveSessionAvailable(using sdk: PaykitSdk) async {
@@ -1221,6 +1340,16 @@ actor PaykitSdkService {
         sessionProvider.suspendStoredSessionAccess()
         defer { sessionProvider.resumeStoredSessionAccess() }
         return try await handle().identityStatus()?.publicKey
+    }
+
+    /// Throws `identityChanged` unless `expectedIdentity` is the identity `sdk` is signed in as. Run it inside the locked
+    /// operation of the write it guards: sign-in and sign-out also take `operationLock`, so neither can land between this
+    /// check and the write.
+    private nonisolated static func requireSignedInIdentity(_ expectedIdentity: String, in sdk: PaykitSdk) async throws {
+        let signedInIdentity = try await sdk.identityStatus()?.publicKey
+        guard PubkyPublicKeyFormat.matches(signedInIdentity, expectedIdentity) else {
+            throw PubkyServiceError.identityChanged
+        }
     }
 
     private nonisolated static func publicKeysMatch(_ lhs: String?, _ rhs: String) -> Bool {
@@ -1327,6 +1456,17 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
 
     func walletGeneration() throws -> Int {
         try admit()
+    }
+
+    /// Runs `operation` without the lock but under the wallet wipe admission of `withLock`: it is rejected while a wipe
+    /// is in progress. A wipe cannot drain work that does not hold the lock, so a result that a wipe overtakes is
+    /// discarded and the caller gets the wipe error instead.
+    func withoutLock<T>(_ operation: () async throws -> T) async throws -> T {
+        if ownsWipe() { return try await operation() }
+        let admittedGeneration = try admit()
+        let result = try await operation()
+        try validate(admittedGeneration)
+        return result
     }
 
     func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
@@ -1460,6 +1600,112 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             break
         }
     }
+}
+
+/// Caps concurrent operations. A freed slot goes to the oldest interactive waiter, or to the oldest bulk waiter when no
+/// interactive one is queued, so bulk work already waiting never delays an interactive read that arrives after it.
+/// Waiters leave the queue as soon as their task is cancelled, without taking a slot, so an abandoned read never runs
+/// ahead of work queued after it.
+final class PaykitSdkReadLimiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let maxConcurrent: Int
+    private var inFlight = 0
+    private var waiters: [(id: UUID, priority: PaykitPublicReadPriority, continuation: CheckedContinuation<Void, Error>)] = []
+
+    init(maxConcurrent: Int) {
+        self.maxConcurrent = maxConcurrent
+    }
+
+    func withSlot<T>(priority: PaykitPublicReadPriority = .interactive, _ operation: () async throws -> T) async throws -> T {
+        try await acquire(priority: priority)
+        defer { release() }
+        try Task.checkCancellation()
+        return try await operation()
+    }
+
+    private func acquire(priority: PaykitPublicReadPriority) async throws {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.lock()
+                if Task.isCancelled {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                } else if inFlight < maxConcurrent {
+                    inFlight += 1
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    waiters.append((id, priority, continuation))
+                    lock.unlock()
+                }
+            }
+        } onCancel: {
+            removeWaiter(id: id)?.resume(throwing: CancellationError())
+        }
+    }
+
+    private func removeWaiter(id: UUID) -> CheckedContinuation<Void, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return nil }
+        return waiters.remove(at: index).continuation
+    }
+
+    /// Hands the slot straight to the next waiter instead of freeing it, so a newcomer cannot take it first.
+    private func release() {
+        lock.lock()
+        guard !waiters.isEmpty else {
+            inFlight -= 1
+            lock.unlock()
+            return
+        }
+        let index = waiters.firstIndex { $0.priority == .interactive } ?? waiters.startIndex
+        let next = waiters.remove(at: index)
+        lock.unlock()
+        next.continuation.resume()
+    }
+
+    #if DEBUG
+        var waiterCountForTesting: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return waiters.count
+        }
+    #endif
+}
+
+/// Slots for the public read lane. Every read holds one of `readCap` read slots while it runs. A bulk read first takes
+/// one of `bulkCap` bulk slots, so bulk work holds at most `bulkCap` read slots and the rest stay free for interactive
+/// reads. A freed read slot goes to a queued interactive read before any bulk read queued for one, so bulk reads wait
+/// while interactive reads keep every read slot busy. A bulk read takes its bulk slot before its read slot and never
+/// waits for a bulk slot while holding a read slot, so the two limiters cannot deadlock. Each limiter keeps arrival
+/// order within a priority and leaves the queue on cancellation.
+final class PaykitPublicReadSlots: Sendable {
+    private let readSlots: PaykitSdkReadLimiter
+    private let bulkSlots: PaykitSdkReadLimiter
+
+    init(readCap: Int = 6, bulkCap: Int = 4) {
+        readSlots = PaykitSdkReadLimiter(maxConcurrent: readCap)
+        bulkSlots = PaykitSdkReadLimiter(maxConcurrent: bulkCap)
+    }
+
+    func withSlot<T>(_ priority: PaykitPublicReadPriority, _ operation: () async throws -> T) async throws -> T {
+        switch priority {
+        case .interactive:
+            return try await readSlots.withSlot(operation)
+        case .bulk:
+            return try await bulkSlots.withSlot {
+                try await readSlots.withSlot(priority: .bulk, operation)
+            }
+        }
+    }
+
+    #if DEBUG
+        var readWaiterCountForTesting: Int {
+            readSlots.waiterCountForTesting
+        }
+    #endif
 }
 
 extension PublicPaykitService.Endpoint {

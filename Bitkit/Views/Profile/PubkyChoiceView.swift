@@ -8,9 +8,12 @@ struct PubkyChoiceView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var ringPubkys: [String] = []
-    @State private var profiles: [String: PubkyProfile] = [:]
+    @State private var ringProfiles: [String: PubkyProfile] = [:]
     @State private var didLoad = false
-    @State private var isAdopting = false
+    @State private var adoptingPubky: String?
+    /// Bumped to look the rows up again. The `.task` keyed on it stops the previous lookup, and SwiftUI stops it when the
+    /// screen goes away.
+    @State private var ringLoadGeneration = 0
 
     private var hasRingIdentities: Bool {
         !ringPubkys.isEmpty
@@ -22,6 +25,59 @@ struct PubkyChoiceView: View {
 
     static func showsCreateCard(hasRingIdentities: Bool) -> Bool {
         !hasRingIdentities
+    }
+
+    /// Equals the manager's row profiles, so a row whose lookup now finds nothing drops its old name and avatar. While an
+    /// adoption runs it only adds: adopting clears the manager's cache while this screen is still up, and rows must not
+    /// flash back to bare keys before navigation.
+    static func mirroredRingProfiles(
+        _ shown: [String: PubkyProfile],
+        found: [String: PubkyProfile],
+        isAdopting: Bool
+    ) -> [String: PubkyProfile] {
+        guard isAdopting else { return found }
+        return shown.merging(found) { _, latest in latest }
+    }
+
+    /// The row being adopted shows only its key-icon spinner.
+    static func showsRingLookup(isLookingUp: Bool, hasProfile: Bool, isAdoptingRow: Bool) -> Bool {
+        isLookingUp && !hasProfile && !isAdoptingRow
+    }
+
+    /// Only the other rows' lookups stop, since they would compete with sign-in while the tapped row's can still land in
+    /// time to be reused. A failed adopt reloads the rows so none is left on a bare key.
+    @MainActor
+    static func adoptRingIdentity(
+        _ pubky: String,
+        pubkyProfile: PubkyProfileManager,
+        reloadRows: () -> Void
+    ) async throws -> PubkyProfile? {
+        pubkyProfile.cancelRingIdentityLookups(except: pubky)
+        do {
+            return try await pubkyProfile.adoptRingIdentity(pubky: pubky)
+        } catch {
+            reloadRows()
+            throw error
+        }
+    }
+
+    /// Contact discovery can outlast the refresh of a reused row profile. When that refresh finds the profile removed,
+    /// Create Profile opens while discovery runs, so this returns no route then and the discovered one does not replace it.
+    @MainActor
+    static func destinationAfterAdoption(
+        of adopted: PubkyProfile,
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager
+    ) async -> Route? {
+        let destination = await contactsManager.destinationAfterAuthentication(
+            profile: pubkyProfile.profile,
+            publicKey: adopted.publicKey
+        )
+        guard !pubkyProfile.isProfileSetupPending else {
+            contactsManager.clearPendingImport()
+            return nil
+        }
+        return destination
     }
 
     var body: some View {
@@ -49,10 +105,15 @@ struct PubkyChoiceView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task { await loadIdentities() }
+        .task(id: ringLoadGeneration) { await loadIdentities() }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
-            Task { await loadIdentities() }
+            pubkyProfile.forgetRingIdentityMisses()
+            guard adoptingPubky == nil else { return }
+            reloadIdentities()
+        }
+        .onReceive(pubkyProfile.$ringIdentityProfiles) { found in
+            ringProfiles = Self.mirroredRingProfiles(ringProfiles, found: found, isAdopting: pubkyProfile.isAdoptingRingIdentity)
         }
     }
 
@@ -98,9 +159,11 @@ struct PubkyChoiceView: View {
 
     private func ringRow(_ pubky: String) -> some View {
         let truncatedKey = PubkyPublicKeyFormat.displayTruncated(pubky)
-        let profile = profiles[pubky]
+        let key = PubkyPublicKeyFormat.normalized(pubky)
+        let profile = key.flatMap { ringProfiles[$0] }
         let name = profile?.name ?? ""
         let title = name.isEmpty ? truncatedKey : name
+        let isAdoptingRow = adoptingPubky == pubky
 
         return PubkyChoiceRow(
             systemIcon: "key.fill",
@@ -108,28 +171,38 @@ struct PubkyChoiceView: View {
             title: title,
             avatarName: title,
             avatarImageUrl: profile?.imageUrl,
+            isLoading: isAdoptingRow,
+            isLookingUp: Self.showsRingLookup(
+                isLookingUp: key.map { pubkyProfile.ringIdentityLookupsInFlight.contains($0) } ?? false,
+                hasProfile: profile != nil,
+                isAdoptingRow: isAdoptingRow
+            ),
+            lookupAccessibilityId: "PubkyChoiceRingLookup_\(pubky)",
             accessibilityId: "PubkyChoiceRing_\(pubky)"
         ) {
-            Task { await adopt(pubky) }
+            startAdopting(pubky)
         }
-        .disabled(isAdopting)
+        .disabled(adoptingPubky != nil)
+    }
+
+    private func startAdopting(_ pubky: String) {
+        guard adoptingPubky == nil else { return }
+        adoptingPubky = pubky
+        Task { await adopt(pubky) }
     }
 
     private func adopt(_ pubky: String) async {
-        isAdopting = true
-        defer { isAdopting = false }
+        defer { adoptingPubky = nil }
 
         do {
-            guard let adopted = try await pubkyProfile.adoptRingIdentity(pubky: pubky) else {
+            guard let adopted = try await Self.adoptRingIdentity(pubky, pubkyProfile: pubkyProfile, reloadRows: reloadIdentities) else {
                 navigation.navigate(.createProfile)
                 return
             }
 
-            let destination = await contactsManager.destinationAfterAuthentication(
-                profile: pubkyProfile.profile,
-                publicKey: adopted.publicKey
-            )
-            navigation.path = [destination]
+            if let destination = await Self.destinationAfterAdoption(of: adopted, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
+                navigation.path = [destination]
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -137,21 +210,14 @@ struct PubkyChoiceView: View {
         }
     }
 
+    private func reloadIdentities() {
+        ringLoadGeneration += 1
+    }
+
     private func loadIdentities() async {
         ringPubkys = SharedPubkyKeychain.listRingIdentities()
         didLoad = true
-        profiles = profiles.filter { ringPubkys.contains($0.key) }
-
-        let manager = pubkyProfile
-        await withTaskGroup(of: (String, PubkyProfile?).self) { group in
-            for pubky in ringPubkys where profiles[pubky] == nil {
-                group.addTask { await (pubky, manager.fetchRemoteProfile(publicKey: pubky)) }
-            }
-
-            for await (pubky, profile) in group {
-                profiles[pubky] = profile
-            }
-        }
+        await pubkyProfile.loadRingIdentityProfiles(ringPubkys)
     }
 
     // MARK: - Background Illustrations
