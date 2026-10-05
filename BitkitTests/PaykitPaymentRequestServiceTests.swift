@@ -63,6 +63,30 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testFreshRefreshRereadsRequestsChangedAfterSnapshot() async throws {
+        let record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await sdk.pauseNextPaymentRequestList()
+        let first = Task { await manager.refresh() }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+
+        await sdk.setRecords([])
+        let refreshStarted = expectation(description: "Request state refresh started")
+        let fresh = Task {
+            refreshStarted.fulfill()
+            await manager.refresh(forceFresh: true)
+        }
+        await fulfillment(of: [refreshStarted], timeout: 1)
+        await sdk.resumePaymentRequestList()
+        await first.value
+        await fresh.value
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.paymentRequestListCallCount, 2)
+    }
+
     func testFreshRefreshRereadsProofStateChangedDuringNotificationSynchronization() async throws {
         actor InFlightPayments {
             var ids: Set<PaykitPaymentRequest.ID>

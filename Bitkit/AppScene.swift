@@ -468,7 +468,7 @@ struct AppScene: View {
                 paykitPaymentRequestManager.updateSavedPublicKeys(publicKeys)
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
-                    await refreshIncomingPaykitPaymentRequests()
+                    await refreshIncomingPaykitPaymentRequests(forceFresh: true)
                 }
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
