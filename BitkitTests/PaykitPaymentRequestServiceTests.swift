@@ -5918,7 +5918,136 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertEqual(snapshot.proposedRequests.map(\.counterparty), [publicKey])
             XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
             XCTAssertEqual(snapshot.processCallCount, 0)
+            XCTAssertEqual(snapshot.paymentRequestListCallCount, 0)
         }
+    }
+
+    func testProposalsUseFreshDeliveryStatusOnlyForTheCommittedProposal() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let expectedIdentity = "pubky\(String(repeating: "z", count: 52))"
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let expiresAt = now.addingTimeInterval(60)
+        let record = try paymentRequestRecord(counterparty: publicKey, role: .payee, proposalOutboundMessageId: 7)
+        var sent = record
+        sent.proposalOutboundStatus = .sent
+        var otherMessage = sent
+        otherMessage.proposalOutboundMessageId = 8
+        var otherRequest = sent
+        otherRequest.paymentRequestId = "another-request"
+        var otherPeer = sent
+        otherPeer.counterparty = expectedIdentity
+        var otherRole = sent
+        otherRole.localRole = .payer
+        let cases: [(PaymentRequestRecord?, PaykitPaymentRequest.DeliveryStatus)] = [
+            (sent, .sent), (record, .queued), (nil, .queued), (otherMessage, .queued),
+            (otherRequest, .queued), (otherPeer, .queued), (otherRole, .queued),
+        ]
+
+        for isSubscription in [false, true] {
+            for (freshRecord, expectedStatus) in cases {
+                let sdk = PaymentRequestSdkMock(records: [])
+                await sdk.configureRecipients(
+                    peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+                    requestCapabilitiesByPublicKey: [publicKey: true]
+                )
+                await sdk.setProposalResult(record)
+                await sdk.pauseNextProcess()
+                let service = PaykitPaymentRequestService(
+                    sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true }, logWarning: { _ in }
+                )
+                let target = PaykitPaymentRequestTarget(publicKey: publicKey)
+                let proposal = Task {
+                    if isSubscription {
+                        return try await service.proposeSubscription(
+                            PaykitSubscriptionDraft(
+                                amountSats: 1000, name: "Support", description: "", frequency: .month,
+                                expiresAt: expiresAt, iconData: nil
+                            ),
+                            to: target, savedPublicKeys: [publicKey], expectedIdentity: expectedIdentity,
+                            validateBeforeProposing: {}
+                        ).deliveryStatus
+                    }
+                    return try await service.propose(
+                        PaykitPaymentRequestDraft(amountSats: 1000, note: "Support", expiresAt: expiresAt),
+                        to: target, savedPublicKeys: [publicKey], expectedIdentity: expectedIdentity
+                    ).deliveryStatus
+                }
+                try await waitUntil { await sdk.processIsPaused() }
+                await sdk.setRecords(freshRecord.map { [$0] } ?? [])
+                await sdk.resumeProcess()
+
+                let status = try await proposal.value
+                XCTAssertEqual(status, expectedStatus)
+                let snapshot = await sdk.snapshot()
+                XCTAssertEqual(snapshot.proposedRequests.count, 1)
+                XCTAssertEqual(snapshot.paymentRequestListCallCount, 1)
+            }
+        }
+    }
+
+    func testProposeRemainsCreatedWhenDeliveryStatusReadFails() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
+        for error in [PaymentRequestSdkMockError.process, CancellationError()] as [Error] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+                requestCapabilitiesByPublicKey: [publicKey: true]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(
+                id: "outgoing", counterparty: publicKey, role: .payee, proposalOutboundMessageId: 7
+            ))
+            await sdk.setPaymentRequestListError(error)
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+
+            let request = try await manager.propose(
+                PaykitPaymentRequestDraft(amountSats: 1, note: "", expiresAt: expiresAt),
+                to: XCTUnwrap(manager.eligibleTargets.first)
+            )
+
+            XCTAssertEqual(request.deliveryStatus, .queued)
+            XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.proposedRequests.count, 1)
+        }
+    }
+
+    func testProposalDoesNotUseDeliveryStatusFromAReplacementIdentity() async throws {
+        let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
+        let sdk = PaymentRequestSdkMock(records: [])
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+            requestCapabilitiesByPublicKey: [publicKey: true]
+        )
+        var record = try paymentRequestRecord(
+            id: "outgoing", counterparty: publicKey, role: .payee, proposalOutboundMessageId: 7
+        )
+        await sdk.setProposalResult(record)
+        await sdk.pauseNextProcess()
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        let target = try XCTUnwrap(manager.eligibleTargets.first)
+        let proposal = Task {
+            try await manager.propose(
+                PaykitPaymentRequestDraft(amountSats: 1, note: "", expiresAt: expiresAt), to: target
+            )
+        }
+        try await waitUntil { await sdk.processIsPaused() }
+        let replacementIdentity = "pubky\(String(repeating: "a", count: 52))"
+        manager.activate(identity: replacementIdentity)
+        await sdk.setActiveIdentity(replacementIdentity)
+        record.proposalOutboundStatus = .sent
+        await sdk.setRecords([record])
+        await sdk.resumeProcess()
+
+        let request = try await proposal.value
+        XCTAssertEqual(request.deliveryStatus, .queued)
+        XCTAssertTrue(manager.outgoingRequests.isEmpty)
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.proposedRequests.count, 1)
+        XCTAssertEqual(snapshot.paymentRequestListCallCount, 0)
     }
 
     func testProposalsRejectUnsavedSelectedTarget() async throws {
@@ -5975,31 +6104,40 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testProposeRemainsCreatedWhenImmediateDeliveryFails() async throws {
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let expiresAt = Date(timeIntervalSince1970: 1_900_000_000)
-        let sdk = PaymentRequestSdkMock(records: [])
-        await sdk.configureRecipients(
-            peers: [linkedPeer(counterparty: publicKey, state: .linked)],
-            requestCapabilitiesByPublicKey: [publicKey: true]
-        )
-        try await sdk.setProposalResult(paymentRequestRecord(
-            id: "outgoing",
-            counterparty: publicKey,
-            role: .payee,
-            expiresAt: timestamp(expiresAt)
-        ))
-        await sdk.failNextProcess()
-        let manager = paymentRequestManager(sdk: sdk)
-        await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
+        for cancelled in [false, true] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            await sdk.configureRecipients(
+                peers: [linkedPeer(counterparty: publicKey, state: .linked)],
+                requestCapabilitiesByPublicKey: [publicKey: true]
+            )
+            try await sdk.setProposalResult(paymentRequestRecord(
+                id: "outgoing",
+                counterparty: publicKey,
+                role: .payee,
+                expiresAt: timestamp(expiresAt),
+                proposalOutboundMessageId: 7
+            ))
+            if cancelled {
+                await sdk.cancelNextProcess()
+            } else {
+                await sdk.failNextProcess()
+            }
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
 
-        _ = try await manager.propose(
-            PaykitPaymentRequestDraft(amountSats: 1, note: "", expiresAt: expiresAt),
-            to: XCTUnwrap(manager.eligibleTargets.first)
-        )
+            let request = try await manager.propose(
+                PaykitPaymentRequestDraft(amountSats: 1, note: "", expiresAt: expiresAt),
+                to: XCTUnwrap(manager.eligibleTargets.first)
+            )
 
-        XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
-        let snapshot = await sdk.snapshot()
-        XCTAssertEqual(snapshot.proposedRequests.count, 1)
-        XCTAssertEqual(snapshot.processCallCount, 0)
-        XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
+            XCTAssertEqual(request.deliveryStatus, .queued)
+            XCTAssertEqual(manager.outgoingRequests.map(\.paymentRequestId), ["outgoing"])
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.proposedRequests.count, 1)
+            XCTAssertEqual(snapshot.processCallCount, 0)
+            XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
+            XCTAssertEqual(snapshot.paymentRequestListCallCount, cancelled ? 0 : 1)
+        }
     }
 
     func testProposeRevalidatesTargetBeforeEnqueueing() async throws {
@@ -6443,6 +6581,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var records: [PaymentRequestRecord]
     private var incomingRecords: [PaymentRequestRecord] = []
     private var paymentRequestListCallCount = 0
+    private var paymentRequestListError: Error?
     private var peerRecords: [LinkedPeerRecord] = []
     private var requestCapabilitiesByPublicKey: [String: Bool] = [:]
     private var liveSessionAvailable = true
@@ -6551,6 +6690,18 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         await withCheckedContinuation { paymentRequestListContinuation = $0 }
         isPaymentRequestListPaused = false
         return snapshot
+    }
+
+    func sharedPaymentRequests(expectedIdentity: String) async throws -> [PaymentRequestRecord] {
+        guard PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        if let paymentRequestListError { throw paymentRequestListError }
+        return await sharedPaymentRequests()
+    }
+
+    func setPaymentRequestListError(_ error: Error) {
+        paymentRequestListError = error
     }
 
     func identityStatus() -> IdentityStatus? {

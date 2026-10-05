@@ -496,6 +496,7 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
     func receivePrivateMessagesFromLinkedPeers() async throws -> [Paykit.PrivateStreamCounterpartyIntakeReport]
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord]
+    func sharedPaymentRequests(expectedIdentity: String) async throws -> [Paykit.PaymentRequestRecord]
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func linkedPeers() async throws -> [Paykit.LinkedPeerRecord]
     func canReceivePaymentRequests(publicKey: String, priority: PaykitPublicReadPriority) async throws -> Bool
@@ -738,8 +739,8 @@ struct PaykitPaymentRequestService {
             terms: terms,
             expectedIdentity: expectedIdentity
         )
-        let reports = await (try? processPendingMessages(to: target.publicKey)) ?? []
-        let deliveryStatus = proposalWasSent(record, reports: reports) ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
+        let wasSent = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
+        let deliveryStatus = wasSent ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
         return PaykitPaymentRequest(
             createdRecord: record,
             draft: draft,
@@ -814,8 +815,7 @@ struct PaykitPaymentRequestService {
             terms: terms,
             expectedIdentity: expectedIdentity
         )
-        let reports = await (try? processPendingMessages(to: target.publicKey)) ?? []
-        let deliveryStatus = proposalWasSent(record, reports: reports)
+        let deliveryStatus = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
             ? PaykitPaymentRequest.DeliveryStatus.sent
             : .queued
         guard let subscription = PaykitSubscription(record: record, deliveryStatusOverride: deliveryStatus) else {
@@ -1022,15 +1022,41 @@ struct PaykitPaymentRequestService {
 
     private func proposalWasSent(
         _ record: Paykit.PaymentRequestRecord,
-        reports: [Paykit.OutboundPrivateCounterpartySendReport]
-    ) -> Bool {
+        to counterparty: String,
+        expectedIdentity: String
+    ) async -> Bool {
+        let reports: [Paykit.OutboundPrivateCounterpartySendReport]
+        do {
+            reports = try await processPendingMessages(to: counterparty)
+        } catch {
+            return record.proposalOutboundStatus == .sent
+        }
         if case .sent? = record.proposalOutboundStatus {
             return true
         }
         guard let messageId = record.proposalOutboundMessageId else { return false }
-        return reports.contains { report in
+        if reports.contains(where: { report in
             PubkyPublicKeyFormat.matches(report.counterparty, record.counterparty) &&
                 report.report?.sent.contains(messageId) == true
+        }) {
+            return true
+        }
+        guard !Task.isCancelled else { return false }
+        do {
+            let records = try await sdk.sharedPaymentRequests(expectedIdentity: expectedIdentity)
+            guard !Task.isCancelled else { return false }
+            return records.contains {
+                PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty) &&
+                    $0.paymentRequestId == record.paymentRequestId &&
+                    $0.localRole == .payee &&
+                    $0.proposalOutboundMessageId == messageId &&
+                    $0.proposalOutboundStatus == .sent
+            }
+        } catch is CancellationError {
+            return false
+        } catch {
+            logWarning("Failed to read Paykit proposal delivery status: \(error)")
+            return false
         }
     }
 

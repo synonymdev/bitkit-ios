@@ -927,6 +927,13 @@ actor PaykitSdkService {
         }
     }
 
+    func sharedPaymentRequests(expectedIdentity: String) async throws -> [Paykit.PaymentRequestRecord] {
+        try await withSdk { sdk in
+            try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            return try await sdk.paymentRequests()
+        }
+    }
+
     nonisolated static func isBitkitPaymentRequest(_ record: Paykit.PaymentRequestRecord) -> Bool {
         switch record.localRole {
         case .payee:
@@ -1396,8 +1403,8 @@ actor PaykitSdkService {
     }
 
     /// Throws `identityChanged` unless `expectedIdentity` is the identity `sdk` is signed in as. Run it inside the locked
-    /// operation of the write it guards: sign-in and sign-out also take `operationLock`, so neither can land between this
-    /// check and the write.
+    /// operation it guards: sign-in and sign-out also take `operationLock`, so neither can land between this
+    /// check and the guarded read or write.
     private nonisolated static func requireSignedInIdentity(_ expectedIdentity: String, in sdk: PaykitSdk) async throws {
         let signedInIdentity = try await sdk.identityStatus()?.publicKey
         guard PubkyPublicKeyFormat.matches(signedInIdentity, expectedIdentity) else {
