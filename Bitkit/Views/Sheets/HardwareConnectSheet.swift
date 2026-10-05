@@ -9,12 +9,13 @@ struct HardwareConnectSheetItem: SheetItem {
 /// Entry point for the Connect Hardware flow.
 struct HardwareConnectSheet: View {
     @Environment(TrezorManager.self) private var trezorManager
+    @Environment(JadeManager.self) private var jadeManager
     @Environment(HwWalletManager.self) private var hwWalletManager
     let config: HardwareConnectSheetItem
 
     var body: some View {
         HardwareConnectFlow(
-            service: TrezorHwConnectService(trezorManager: trezorManager, hwWalletManager: hwWalletManager),
+            service: HwConnectService(trezorManager: trezorManager, jadeManager: jadeManager, hwWalletManager: hwWalletManager),
             config: config
         )
     }
@@ -22,6 +23,7 @@ struct HardwareConnectSheet: View {
 
 private struct HardwareConnectFlow: View {
     @Environment(TrezorManager.self) private var trezorManager
+    @Environment(JadeManager.self) private var jadeManager
     @Environment(HwWalletManager.self) private var hwWalletManager
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
@@ -50,6 +52,9 @@ private struct HardwareConnectFlow: View {
             if trezorManager.showPairingCode {
                 viewModel.onPairingCodeRequested()
             }
+        }
+        .onChange(of: jadeManager.isUnlocking) { _, isUnlocking in
+            viewModel.onUnlockingChanged(isUnlocking)
         }
         .onChange(of: viewModel.isConnecting) { _, connecting in
             sheets.hardwareConnectHandlesPairing = connecting
@@ -86,7 +91,9 @@ private struct HardwareConnectFlow: View {
         case .found:
             HwFoundView(
                 deviceModel: foundDeviceModel,
+                vendor: viewModel.vendor,
                 isConnecting: viewModel.isConnecting,
+                isUnlocking: viewModel.isUnlocking,
                 errorMessage: viewModel.errorMessage,
                 onConnect: viewModel.onConnect,
                 onCancel: {
@@ -100,7 +107,8 @@ private struct HardwareConnectFlow: View {
                 balanceSats: viewModel.balanceSats,
                 labelText: labelBinding,
                 onPassphrase: viewModel.onPassphraseClick,
-                onFinish: viewModel.onFinish
+                onFinish: viewModel.onFinish,
+                vendor: viewModel.vendor
             )
         case .passphrase:
             HwPassphraseView(
@@ -117,6 +125,7 @@ private struct HardwareConnectFlow: View {
                 labelText: labelBinding,
                 onPassphrase: viewModel.onPassphraseClick,
                 onFinish: viewModel.onFinish,
+                vendor: viewModel.vendor,
                 isPassphraseWallet: true
             )
         case .pairCode:
@@ -182,7 +191,7 @@ private struct HardwareConnectFlow: View {
     // MARK: - Helpers
 
     private var foundDeviceModel: String {
-        viewModel.foundDeviceModel.isEmpty ? t("hardware__device_model_trezor") : viewModel.foundDeviceModel
+        viewModel.foundDeviceModel.isEmpty ? viewModel.vendor.modelName : viewModel.foundDeviceModel
     }
 
     private var labelBinding: Binding<String> {
