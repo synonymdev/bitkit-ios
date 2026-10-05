@@ -3,6 +3,7 @@ import LDKNode
 import SwiftUI
 
 struct SendConfirmationView: View {
+    @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var contactsManager: ContactsManager
@@ -681,6 +682,62 @@ struct SendConfirmationView: View {
         isAutomatic && (walletType != .lightning || isHardwarePayment)
     }
 
+    static func privatePaymentListOutcomeForLightningFailure(
+        paymentSubmitted: Bool,
+        proofFailureWasDefinite: Bool
+    ) -> PrivatePaymentListSendOutcome {
+        paymentSubmitted || !proofFailureWasDefinite ? .uncertain : .definitePreBroadcastFailure
+    }
+
+    static func privatePaymentListOutcomeAfterFailure(
+        currentOutcome: PrivatePaymentListSendOutcome,
+        walletType: WalletType,
+        onchainPaymentStarted: Bool,
+        error: Error
+    ) -> PrivatePaymentListSendOutcome {
+        guard walletType == .onchain else { return currentOutcome }
+        guard onchainPaymentStarted else { return .definitePreBroadcastFailure }
+        return PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error) ? .definitePreBroadcastFailure : .uncertain
+    }
+
+    static func sendLightningPayment<Result>(
+        request: PaykitPaymentRequest?,
+        authorize: (PaykitPaymentRequest) async throws -> Void,
+        onAuthorizationFailure: (Error) async -> Void,
+        send: () async throws -> Result
+    ) async throws -> Result {
+        if let request {
+            do {
+                try await authorize(request)
+            } catch {
+                await onAuthorizationFailure(error)
+                throw error
+            }
+        }
+        return try await send()
+    }
+
+    static func sendOnchainPayment<Result>(
+        request: PaykitPaymentRequest?,
+        prepareBroadcast: @escaping (PaykitPaymentRequest) async throws -> Void,
+        authorize: @escaping (PaykitPaymentRequest) async throws -> Void,
+        onAuthorizationFailure: @escaping (Error) async -> Void,
+        onAuthorized: @escaping (PaykitPaymentRequest) async -> Void,
+        send: (@escaping () async throws -> Void) async throws -> Result
+    ) async throws -> Result {
+        try await send {
+            guard let request else { return }
+            try await prepareBroadcast(request)
+            do {
+                try await authorize(request)
+            } catch {
+                await onAuthorizationFailure(error)
+                throw error
+            }
+            await onAuthorized(request)
+        }
+    }
+
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
         Self.requiresManualConfirmation(
             isAutomatic: isAutomatic,
@@ -794,6 +851,7 @@ struct SendConfirmationView: View {
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind)?
         var onchainPaymentStarted = false
         var lightningPaymentSubmitted = false
+        var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -839,60 +897,96 @@ struct SendConfirmationView: View {
                 // For invoices with a built-in amount, pass sats: nil so LDK uses the invoice's
                 // native millisatoshi precision instead of our truncated satoshi value.
                 let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
-                do {
-                    try await wallet.sendWithTimeout(
-                        bolt11: invoice.bolt11,
-                        sats: paymentSats,
-                        afterListening: { _ in lightningPaymentSubmitted = true },
-                        onTimeout: { timedOutHash in
-                            app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
-                            navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
-                        }
-                    )
-                    shouldCancelPaymentProof = false
-                    await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
-                    Logger.info("Lightning payment successful: \(paymentHash)")
-                    navigationPath.append(.success(paymentId: paymentHash))
-                } catch is PaymentTimeoutError {
-                    // onTimeout callback already navigated to .pending; suppress throw
-                    shouldCancelPaymentProof = false
-                    return
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
-                        let failed = await PaykitPaymentProofService.shared.failLightningPayment(
-                            paymentHash: paymentHash,
-                            submissionError: error
-                        )
-                        if !failed {
-                            shouldCancelPaymentProof = false
-                            app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
-                            navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
-                            return
-                        }
-                    } else {
+                try await Self.sendLightningPayment(
+                    request: incomingPaymentRequest,
+                    authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
+                    onAuthorizationFailure: { _ in
                         await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
                     }
-                    throw error
+                ) {
+                    do {
+                        privatePaymentListOutcome = .uncertain
+                        try await wallet.sendWithTimeout(
+                            bolt11: invoice.bolt11,
+                            sats: paymentSats,
+                            afterListening: { _ in lightningPaymentSubmitted = true },
+                            onTimeout: { timedOutHash in
+                                app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
+                                navigationPath.append(.pending(paymentHash: timedOutHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
+                            }
+                        )
+                        shouldCancelPaymentProof = false
+                        privatePaymentListOutcome = .succeeded
+                        await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
+                        await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
+                        Logger.info("Lightning payment successful: \(paymentHash)")
+                        navigationPath.append(.success(paymentId: paymentHash))
+                    } catch is PaymentTimeoutError {
+                        // onTimeout callback already navigated to .pending; suppress throw
+                        shouldCancelPaymentProof = false
+                        await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
+                        return
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        if incomingPaymentRequest != nil, !lightningPaymentSubmitted {
+                            let proofFailureWasDefinite = await PaykitPaymentProofService.shared.failLightningPayment(
+                                paymentHash: paymentHash,
+                                submissionError: error
+                            )
+                            privatePaymentListOutcome = Self.privatePaymentListOutcomeForLightningFailure(
+                                paymentSubmitted: false,
+                                proofFailureWasDefinite: proofFailureWasDefinite
+                            )
+                            if privatePaymentListOutcome == .uncertain {
+                                shouldCancelPaymentProof = false
+                                await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
+                                app.addPendingPaymentHash(paymentHash, contactPaymentContext: contactPaymentContext)
+                                navigationPath.append(.pending(paymentHash: paymentHash, retryRoute: .confirm, paymentRequest: invoice.bolt11))
+                                return
+                            }
+                        } else {
+                            await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                            privatePaymentListOutcome = Self.privatePaymentListOutcomeForLightningFailure(
+                                paymentSubmitted: lightningPaymentSubmitted,
+                                proofFailureWasDefinite: false
+                            )
+                        }
+                        throw error
+                    }
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
-                let txid = try await wallet.send(
-                    address: invoice.address,
-                    sats: amount,
-                    isMaxAmount: useMaxAmount
-                ) {
-                    if let incomingPaymentRequest {
+                let txid = try await Self.sendOnchainPayment(
+                    request: incomingPaymentRequest,
+                    prepareBroadcast: {
                         try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
-                            incomingPaymentRequest,
+                            $0,
                             address: invoice.address
                         )
+                    },
+                    authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
+                    onAuthorizationFailure: { _ in
+                        guard let incomingPaymentRequest else { return }
+                        await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                    },
+                    onAuthorized: { _ in
                         onchainPaymentStarted = true
+                        privatePaymentListOutcome = .uncertain
+                    },
+                    send: { beforeBroadcastAttempt in
+                        try await wallet.send(
+                            address: invoice.address,
+                            sats: amount,
+                            isMaxAmount: useMaxAmount,
+                            beforeBroadcastAttempt: beforeBroadcastAttempt
+                        )
                     }
-                }
+                )
                 shouldCancelPaymentProof = false
+                privatePaymentListOutcome = .succeeded
+                await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
                 if let incomingPaymentRequest, let preparedPaymentProof {
                     await PaykitPaymentProofService.shared.completeOnchainPayment(
                         incomingPaymentRequest,
@@ -929,14 +1023,22 @@ struct SendConfirmationView: View {
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             return
         } catch {
-            if onchainPaymentStarted, let incomingPaymentRequest {
-                if PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error) {
+            if let incomingPaymentRequest {
+                privatePaymentListOutcome = Self.privatePaymentListOutcomeAfterFailure(
+                    currentOutcome: privatePaymentListOutcome,
+                    walletType: app.selectedWalletToPayFrom,
+                    onchainPaymentStarted: onchainPaymentStarted,
+                    error: error
+                )
+                if onchainPaymentStarted, privatePaymentListOutcome == .definitePreBroadcastFailure {
                     await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
                     onchainPaymentStarted = false
-                } else {
+                } else if onchainPaymentStarted {
                     shouldCancelPaymentProof = false
+                    await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
                     wallet.sendAmountSats = incomingPaymentRequest.amountSats
                     Logger.warn("On-chain payment outcome is uncertain after broadcast started: \(error)", context: "SendConfirmation")
                     navigationPath.append(.pending(
@@ -948,6 +1050,7 @@ struct SendConfirmationView: View {
                     return
                 }
             }
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }

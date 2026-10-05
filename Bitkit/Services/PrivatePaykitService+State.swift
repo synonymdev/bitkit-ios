@@ -12,6 +12,7 @@ extension PrivatePaykitService {
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
         pendingMessageDrainRetryGeneration += 1
+        privatePaymentListConsumptions.removeAll()
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()
         await PaykitSdkService.shared.clearState()
@@ -22,6 +23,7 @@ extension PrivatePaykitService {
 
     func clearContactState(publicKey: String) async {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        privatePaymentListConsumptions = privatePaymentListConsumptions.filter { $0.key.publicKey != normalizedKey }
         let consumedVersions = state.contacts[normalizedKey]?.consumedPrivatePaymentListVersionsByReceiverPath ?? [:]
         if consumedVersions.isEmpty {
             state.contacts[normalizedKey] = nil

@@ -596,9 +596,12 @@ struct PaykitSubscription: Identifiable, Hashable {
         }
     }
 
-    func paymentDueOnAcceptance(at date: Date) -> PaykitPaymentRequest? {
+    /// The period that accepting at `acceptedAt` makes due on the schedule clock `date`; `acceptedAt` is real time, which
+    /// differs from `date` only while the subscription clock offset is on.
+    func paymentDueOnAcceptance(at date: Date, acceptedAt: Date? = nil) -> PaykitPaymentRequest? {
         guard isPayer, !hasPaymentDeadline else { return nil }
-        guard let period = recurrence.periods(through: date, acceptedAt: PaykitPreciseInstant(date: date)).first else { return nil }
+        let acceptedAt = PaykitPreciseInstant(date: acceptedAt ?? date)
+        guard let period = recurrence.periods(through: date, acceptedAt: acceptedAt).first else { return nil }
         return PaykitPaymentRequest(subscription: self, billingPeriod: period, lifecycleState: .activeRecurring)
     }
 
@@ -703,6 +706,7 @@ actor PaykitSubscriptionNotificationScheduler {
     private let center: any PaykitSubscriptionNotificationCenter
     private var generation = 0
     private var retainedIdentifiers: Set<String> = []
+    private var lastClockOffset: TimeInterval?
 
     init(center: any PaykitSubscriptionNotificationCenter = SystemPaykitSubscriptionNotificationCenter()) {
         self.center = center
@@ -714,29 +718,52 @@ actor PaykitSubscriptionNotificationScheduler {
         pendingRequestIds: Set<PaykitPaymentRequest.ID>,
         payerIdentity: String,
         notificationsEnabled: Bool,
-        now: Date
+        now: Date,
+        clockOffset: TimeInterval = 0
     ) async {
         generation += 1
         let currentGeneration = generation
-        let notifications: [(PaykitSubscription, PaykitBillingPeriod)] = notificationsEnabled ? Array(subscriptions
-            .filter {
-                $0.isPayer &&
-                    $0.isActive(at: now) &&
-                    !$0.hasPaymentDeadline &&
-                    $0.recurrence.unit.isSupported &&
-                    acceptedAt[$0.id] != nil
+        let realNow = now.addingTimeInterval(-clockOffset)
+        let previousClockOffset = lastClockOffset
+        let eligibleSubscriptions = subscriptions.filter {
+            $0.isPayer &&
+                !$0.hasPaymentDeadline &&
+                $0.recurrence.unit.isSupported &&
+                acceptedAt[$0.id] != nil
+        }
+        // A trigger is a real date, so a period scheduled on the subscription clock fires at its start minus the offset.
+        var notifications: [(subscription: PaykitSubscription, period: PaykitBillingPeriod, fireDate: Date)] = []
+        if notificationsEnabled {
+            // Moving the clock can make a period due that no pending trigger will ever announce: notify the latest
+            // one per subscription now, including a subscription whose end the jump crossed.
+            var dueNow: [(subscription: PaykitSubscription, period: PaykitBillingPeriod, fireDate: Date)] = []
+            if let previousClockOffset, previousClockOffset != clockOffset {
+                let previousNow = realNow.addingTimeInterval(previousClockOffset)
+                for subscription in eligibleSubscriptions where subscription.isActive(at: now) || subscription.isActive(at: previousNow) {
+                    guard let acceptedAt = acceptedAt[subscription.id] else { continue }
+                    let crossed = subscription.requests(through: now, acceptedAt: acceptedAt)
+                        .filter { pendingRequestIds.contains($0.id) }
+                        .compactMap(\.billingPeriod)
+                        .filter { $0.startsAt > previousNow && $0.startsAt <= now }
+                    if let period = crossed.max(by: { $0.startsAt < $1.startsAt }) {
+                        dueNow.append((subscription, period, realNow.addingTimeInterval(2)))
+                    }
+                }
             }
-            .flatMap { subscription in
-                subscription.recurrence.upcomingPeriods(
-                    after: now,
-                    limit: Self.maximumNotifications
-                ).map { (subscription, $0) }
-            }
-            .sorted { $0.1.startsAt < $1.1.startsAt }
-            .prefix(Self.maximumNotifications)) : []
+            let upcoming = eligibleSubscriptions
+                .filter { $0.isActive(at: now) }
+                .flatMap { subscription in
+                    subscription.recurrence.upcomingPeriods(
+                        after: now,
+                        limit: Self.maximumNotifications
+                    ).map { (subscription, $0, $0.startsAt.addingTimeInterval(-clockOffset)) }
+                }
+                .sorted { $0.1.startsAt < $1.1.startsAt }
+            notifications = Array((dueNow + upcoming).prefix(Self.maximumNotifications))
+        }
 
         let desiredIdentifiers = Set(notifications.map {
-            PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, subscription: $0.0, period: $0.1)
+            PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, subscription: $0.subscription, period: $0.period)
         })
         let unpaidIdentifiers: Set<String> = notificationsEnabled ? Set(pendingRequestIds.compactMap {
             PaykitSubscriptionNotificationIdentifier.identifier(identity: payerIdentity, requestId: $0)
@@ -746,6 +773,19 @@ actor PaykitSubscriptionNotificationScheduler {
         let pending = await center.pendingNotificationRequests()
         guard generation == currentGeneration else { return }
 
+        // A trigger still ahead in real time for a period the clock already passed was set before the offset moved.
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let staleDueIdentifiers = Set(pending.filter { request in
+            guard unpaidIdentifiers.contains(request.identifier),
+                  !desiredIdentifiers.contains(request.identifier),
+                  let components = (request.trigger as? UNCalendarNotificationTrigger)?.dateComponents,
+                  let date = utcCalendar.date(from: components)
+            else { return false }
+            return date.timeIntervalSince(realNow) > 60
+        }.map(\.identifier))
+        retainedIdentifiers.subtract(staleDueIdentifiers)
+
         let existingIdentifiers = Set(pending.map(\.identifier))
         await center.removePendingNotificationRequests(
             withIdentifiers: existingIdentifiers.filter {
@@ -753,14 +793,23 @@ actor PaykitSubscriptionNotificationScheduler {
             }
         )
 
-        for (subscription, period) in notifications {
+        for (subscription, period, fireDate) in notifications {
             guard generation == currentGeneration else { return }
             let identifier = PaykitSubscriptionNotificationIdentifier.identifier(
                 identity: payerIdentity,
                 subscription: subscription,
                 period: period
             )
-            guard !existingIdentifiers.contains(identifier) else { continue }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+            let date = Date(timeIntervalSince1970: ceil(fireDate.timeIntervalSince1970))
+            let components = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute, .second], from: date)
+            guard !pending.contains(where: {
+                guard $0.identifier == identifier,
+                      let scheduled = ($0.trigger as? UNCalendarNotificationTrigger)?.dateComponents
+                else { return false }
+                return [.year, .month, .day, .hour, .minute, .second].allSatisfy { scheduled.value(for: $0) == components.value(for: $0) }
+            }) else { continue }
             let content = UNMutableNotificationContent()
             content.title = t("subscriptions__payment_due_title")
             content.body = t("subscriptions__payment_due_description")
@@ -773,8 +822,7 @@ actor PaykitSubscriptionNotificationScheduler {
                 "counterparty_receiver_path": subscription.counterpartyReceiverPath,
                 "billing_period_starts_at": PaykitSubscriptionTimestamp.string(from: period.startsAt),
             ]
-            let interval = max(1, period.startsAt.timeIntervalSince(now))
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(
                 identifier: identifier,
                 content: content,
@@ -788,6 +836,8 @@ actor PaykitSubscriptionNotificationScheduler {
                 return
             }
         }
+        // Only a completed synchronization has announced the periods the offset made due.
+        lastClockOffset = clockOffset
     }
 
     func cancel() async {

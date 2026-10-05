@@ -220,7 +220,7 @@ struct AddContactView: View {
             }
             return
         case let .valid(normalizedKey):
-            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true) {
+            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true, retryTransient: true) {
                 fetchedProfile = profile
                 hasPayableEndpoint = await (try? PublicPaykitService.hasPayablePublicEndpoint(publicKey: normalizedKey)) == true
             } else {
@@ -267,7 +267,7 @@ struct AddContactView: View {
             switch result {
             case let .opened(paymentRequest, _):
                 _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,

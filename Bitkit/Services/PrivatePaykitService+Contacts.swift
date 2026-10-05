@@ -27,7 +27,8 @@ extension PrivatePaykitService {
     func prepareSavedContacts(
         _ publicKeys: [String],
         wallet: WalletViewModel,
-        requireImmediatePublication: Bool = false
+        requireImmediatePublication: Bool = false,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
         await prepareSavedContacts(
             publicKeys,
@@ -39,7 +40,8 @@ extension PrivatePaykitService {
                     for: publicKeys,
                     wallet: wallet,
                     reason: "prepare",
-                    requireImmediatePublication: requireImmediatePublication
+                    requireImmediatePublication: requireImmediatePublication,
+                    isSessionCurrent: isSessionCurrent
                 )
             }
         )
@@ -157,18 +159,23 @@ extension PrivatePaykitService {
         )
     }
 
-    func removePublishedEndpoints() async throws {
+    func removePublishedEndpoints(isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         let publicKeys = Set(knownSavedContactKeys)
             .union(state.contacts.keys)
             .union(Self.pendingDeletedContactCleanupKeys())
-        try await removePublishedEndpoints(for: Array(publicKeys))
+        try await removePublishedEndpoints(for: Array(publicKeys), isSessionCurrent: isSessionCurrent)
     }
 
-    func removePublishedEndpoints(for publicKeys: [String]) async throws {
+    /// A newer contact payments change starts before it publishes endpoints under the publication lock, so checking
+    /// `isSessionCurrent` once the lock is held stops an older change's removal from clearing what that change published.
+    func removePublishedEndpoints(for publicKeys: [String], isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
         guard !publicKeys.isEmpty else { return }
 
         try await withPublicationLock {
+            if let isSessionCurrent, await !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
+            }
             try await removePublishedEndpointsLocked(for: publicKeys)
         }
     }
@@ -191,7 +198,8 @@ extension PrivatePaykitService {
             )
             for receiverPath in cleanupReceiverPaths {
                 do {
-                    let report = try await PaykitSdkService.shared.clearPrivatePaymentList(to: publicKey, receiverPath: receiverPath)
+                    guard let report = try await PaykitSdkService.shared.clearPrivatePaymentList(to: publicKey, receiverPath: receiverPath)
+                    else { continue }
                     if !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
                         throw PrivatePaykitError.privateUnavailable
                     }
@@ -350,7 +358,8 @@ extension PrivatePaykitService {
         wallet: WalletViewModel,
         reason: String,
         forceRefreshLightning: Bool = false,
-        requireImmediatePublication: Bool
+        requireImmediatePublication: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
         let operations = endpointPublicationOperations(
             wallet: wallet,
@@ -360,19 +369,27 @@ extension PrivatePaykitService {
             for: publicKeys,
             reason: reason,
             requireImmediatePublication: requireImmediatePublication,
+            isSessionCurrent: isSessionCurrent,
             operations: operations
         )
     }
 
+    /// Sign-out changes the current Pubky session, and a newer contact payments change starts, before either removes
+    /// private endpoints under the publication lock, so checking `isSessionCurrent` once the lock is held stops a publish
+    /// that would otherwise write them back after that removal.
     func syncLocalEndpointPublication(
         for publicKeys: [String],
         reason: String,
         requireImmediatePublication: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
         operations: EndpointPublicationOperations
     ) async -> Error? {
         do {
             return try await withPublicationLock {
-                await syncLocalEndpointPublicationLocked(
+                if let isSessionCurrent, await !isSessionCurrent() {
+                    throw PubkyServiceError.sessionNotActive
+                }
+                return await syncLocalEndpointPublicationLocked(
                     for: publicKeys,
                     reason: reason,
                     requireImmediatePublication: requireImmediatePublication,
@@ -807,7 +824,7 @@ extension PrivatePaykitService {
         let savedPaths = supportedReceiverPaths(record?.receiverPaths ?? [])
 
         do {
-            let discoveredPaths = try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
+            let discoveredPaths = try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey, priority: .bulk)
             let mergedPaths = supportedReceiverPaths(savedPaths + discoveredPaths)
             guard mergedPaths != savedPaths else { return savedPaths }
 
