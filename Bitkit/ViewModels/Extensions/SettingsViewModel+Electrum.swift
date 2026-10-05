@@ -14,25 +14,60 @@ extension SettingsViewModel {
         updateForm(with: currentServer)
     }
 
-    func resetElectrumToDefault() async -> (success: Bool, host: String, port: String, errorMessage: String?) {
+    func resetElectrumToDefault() async -> (success: Bool, host: String, port: String, errorMessage: String?)? {
+        guard isCurrentServerConnection(serverConnectionGeneration) else { return nil }
         let defaultServer = electrumConfigService.getDefaultServer()
         updateForm(with: defaultServer)
 
         return await connectToElectrumServer()
     }
 
-    func connectToElectrumServer() async -> (success: Bool, host: String, port: String, errorMessage: String?) {
+    func connectToElectrumServer() async -> (success: Bool, host: String, port: String, errorMessage: String?)? {
+        await connectToElectrumServer(restartNode: { electrumUrl, rgsUrl in
+            try await self.lightningService.restart(electrumServerUrl: electrumUrl, rgsServerUrl: rgsUrl)
+        }, waitForConnection: {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        }, isNodeRunning: {
+            self.lightningService.status?.isRunning == true
+        })
+    }
+
+    func connectToElectrumServer(
+        restartNode: @escaping (String, String?) async throws -> Void,
+        waitForConnection: @escaping () async throws -> Void,
+        isNodeRunning: @escaping () -> Bool
+    ) async -> (success: Bool, host: String, port: String, errorMessage: String?)? {
+        await withServerConnection { generation in
+            await self.performElectrumConnection(
+                generation: generation, restartNode: restartNode, waitForConnection: waitForConnection, isNodeRunning: isNodeRunning
+            )
+        }
+    }
+
+    private func performElectrumConnection(
+        generation: UUID,
+        restartNode: (String, String?) async throws -> Void,
+        waitForConnection: () async throws -> Void,
+        isNodeRunning: () -> Bool
+    ) async -> (success: Bool, host: String, port: String, errorMessage: String?)? {
+        guard isCurrentServerConnection(generation) else { return nil }
         electrumIsLoading = true
+        defer {
+            if generation == serverConnectionGeneration {
+                electrumIsLoading = false
+            }
+        }
 
         let host = electrumHost.trimmingCharacters(in: .whitespaces)
         let port = electrumPort.trimmingCharacters(in: .whitespaces)
+        let protocolType = electrumSelectedProtocol
 
         // Validate input off the main thread (regex could block on pathological input)
         let validationError = await Task.detached { [self] in
             validateElectrumInput(host: host, port: port)
         }.value
+        guard isCurrentServerConnection(generation) else { return nil }
         if let validationError {
-            electrumIsLoading = false
             return (success: false, host: host, port: port, errorMessage: validationError)
         }
 
@@ -40,23 +75,21 @@ extension SettingsViewModel {
         let serverConfig = ElectrumServer(
             host: host,
             portString: port,
-            protocolType: electrumSelectedProtocol
+            protocolType: protocolType
         )
 
         do {
             // Restart the Lightning node with the new Electrum server
             let currentRgsUrl = rgsConfigService.getCurrentServerUrl()
-            try await lightningService.restart(
-                electrumServerUrl: serverConfig.fullUrl,
-                rgsServerUrl: currentRgsUrl.isEmpty ? nil : currentRgsUrl
-            )
+            try await restartNode(serverConfig.fullUrl, currentRgsUrl.isEmpty ? nil : currentRgsUrl)
+            guard isCurrentServerConnection(generation) else { return nil }
 
             // Wait a bit for the connection to establish and verify it's actually working
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            try await waitForConnection()
+            guard isCurrentServerConnection(generation) else { return nil }
 
             // Verify the node is actually running and connected
-            guard let status = lightningService.status, status.isRunning else {
-                electrumIsLoading = false
+            guard isNodeRunning() else {
                 Logger.error("Electrum connection failed: Node is not running after restart")
 
                 // Reload form and connection status from actual current server (node may have fallen back to previous server)
@@ -73,13 +106,12 @@ extension SettingsViewModel {
             electrumConfigService.saveServerConfig(serverConfig)
             electrumCurrentServer = serverConfig
             electrumIsConnected = true
-            electrumIsLoading = false
 
             Logger.info("Successfully connected to Electrum server: \(serverConfig.fullUrl)")
 
             return (success: true, host: host, port: port, errorMessage: nil)
         } catch {
-            electrumIsLoading = false
+            guard isCurrentServerConnection(generation) else { return nil }
 
             Logger.error(error, context: "Failed to connect to Electrum server")
 
@@ -95,6 +127,7 @@ extension SettingsViewModel {
     }
 
     func onElectrumScan(_ data: String) async -> (success: Bool, host: String, port: String, errorMessage: String?)? {
+        guard isCurrentServerConnection(serverConnectionGeneration) else { return nil }
         let parseResult = parseElectrumScanData(data)
 
         guard let serverPeer = parseResult else {
