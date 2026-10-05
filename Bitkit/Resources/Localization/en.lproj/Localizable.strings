@@ -1332,6 +1332,8 @@
 "wallet__send_fee_and_speed" = "Speed and fee";
 "wallet__send_fee_speed" = "Speed";
 "wallet__send_fee_error" = "Fee Invalid";
+"wallet__send_fee_rate_unavailable_title" = "Fee Rate Unavailable";
+"wallet__send_fee_rate_unavailable_text" = "Bitkit could not load the network fee rate. Check your connection and try again.";
 "wallet__max_possible_fee_rate" = "Fee Exceeds Maximum Limit";
 "wallet__max_possible_fee_rate_msg" = "Lower the custom fee and try again.";
 "wallet__min_possible_fee_rate" = "Fee Below Minimum Limit";

@@ -250,7 +250,7 @@ struct SendSheet: View {
             setupTask?.cancel()
             setupTask = Task {
                 do {
-                    try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+                    try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
                 } catch is CancellationError {
                     return
                 } catch {
