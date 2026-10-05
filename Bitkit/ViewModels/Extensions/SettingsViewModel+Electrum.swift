@@ -10,6 +10,7 @@ extension SettingsViewModel {
 
         // Update form with current server (stored or default)
         let currentServer = electrumConfigService.getCurrentServer()
+        electrumCurrentServer = currentServer
         updateForm(with: currentServer)
     }
 
