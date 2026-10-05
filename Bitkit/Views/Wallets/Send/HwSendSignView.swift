@@ -15,8 +15,7 @@ struct HwSendSignView: View {
     let prepareContactPayment: () async throws -> Void
     let authorizeContactPayment: () async throws -> Void
     let completeContactPayment: (String) async -> Bool
-    let cancelContactPayment: () async -> Void
-    var releaseContactPaymentBeforeDispatch: () async -> Void = {}
+    let cancelContactPayment: (PrivatePaymentListSendOutcome) async -> Void
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
 
@@ -125,7 +124,6 @@ struct HwSendSignView: View {
                     satsPerVByte: UInt64(feeRate),
                     beforeFirstBroadcast: prepareContactPayment,
                     beforeBroadcastAttempt: authorizeContactPayment,
-                    onFirstBroadcastAuthorizationFailure: releaseContactPaymentBeforeDispatch,
                     afterBroadcast: { result in
                         if requestId != nil {
                             // Save original tags before proof reconciliation can complete.
@@ -137,7 +135,8 @@ struct HwSendSignView: View {
                             )
                         }
                         proofVerified = await completeContactPayment(result.txId)
-                    }
+                    },
+                    afterFailure: cancelContactPayment
                 )
                 await Self.recordPaymentResult(
                     result,
@@ -158,24 +157,15 @@ struct HwSendSignView: View {
                 )
                 navigationPath.append(completionRoute)
             } catch is CancellationError {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 return
             } catch is HwPassphraseError {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 hwSend.requestPassphrase()
             } catch let error as HwTransferError {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 app.toast(error)
             } catch {
-                await cancelContactPaymentIfBroadcastIsRetryable()
                 showHardwareError(error)
             }
         }
-    }
-
-    private func cancelContactPaymentIfBroadcastIsRetryable() async {
-        guard !hwSend.hasPendingBroadcast else { return }
-        await cancelContactPayment()
     }
 
     private func reconnectWithPassphrase(_ passphrase: String) {

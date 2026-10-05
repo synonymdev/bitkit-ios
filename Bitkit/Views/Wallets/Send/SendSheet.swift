@@ -737,13 +737,12 @@ struct SendSheet: View {
                 completeContactPayment: { txid in
                     await completeHardwareContactPayment(context: contactContext, walletId: walletId, paymentIdentity: paymentIdentity, txid: txid)
                 },
-                cancelContactPayment: {
-                    await cancelHardwareContactPayment(context: contactContext)
-                },
-                releaseContactPaymentBeforeDispatch: {
-                    guard let request = contactContext?.incomingPaymentRequest, let walletId, let paymentIdentity else { return }
-                    await PaykitPaymentProofService.shared.cancelHardwarePaymentBeforeDispatch(
-                        request, paymentIdentity: paymentIdentity, walletId: walletId
+                cancelContactPayment: { outcome in
+                    await cancelHardwareContactPayment(
+                        context: contactContext,
+                        walletId: walletId,
+                        paymentIdentity: paymentIdentity,
+                        outcome: outcome
                     )
                 }
             )
@@ -840,7 +839,8 @@ struct SendSheet: View {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
             try await PrivatePaykitService.shared.consumePrivatePaymentList(
                 publicKey: context.publicKey,
-                context: privatePaymentContext
+                context: privatePaymentContext,
+                attemptId: context.id
             )
         }
     }
@@ -872,6 +872,8 @@ struct SendSheet: View {
                 request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity
             )
         } catch {
+            _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)
+            await context?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure)
             await PaykitPaymentProofService.shared.cancelPreparation(request)
             throw error
         }
@@ -890,17 +892,69 @@ struct SendSheet: View {
         guard let request = context?.incomingPaymentRequest else { return true }
         guard let walletId, let paymentIdentity else { return false }
 
-        return await PaykitPaymentProofService.shared.completeHardwareOnchainPayment(
+        let verified = await PaykitPaymentProofService.shared.completeHardwareOnchainPayment(
             request,
             paymentIdentity: paymentIdentity,
             walletId: walletId,
             txid: txid
         )
+        await context?.resolvePrivatePaymentListConsumption(verified ? .succeeded : .uncertain)
+        return verified
     }
 
-    private func cancelHardwareContactPayment(context: ContactPaymentContext?) async {
+    private func cancelHardwareContactPayment(context: ContactPaymentContext?, walletId: String?, paymentIdentity: String?,
+                                              outcome: PrivatePaymentListSendOutcome) async
+    {
+        await Self.cancelHardwareContactPayment(
+            context, outcome: outcome, app: app, manager: paykitPaymentRequestManager,
+            hardwareWalletId: walletId, paymentIdentity: paymentIdentity
+        )
+    }
+
+    @MainActor
+    static func cancelHardwareContactPayment(
+        _ context: ContactPaymentContext?,
+        outcome: PrivatePaymentListSendOutcome,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager,
+        privatePaykitService: PrivatePaykitService = .shared,
+        paymentProofService: PaykitPaymentProofService = .shared,
+        hardwareWalletId: String? = nil,
+        paymentIdentity: String? = nil
+    ) async {
         guard let request = context?.incomingPaymentRequest else { return }
-        await PaykitPaymentProofService.shared.cancelPreparation(request)
+        await context?.resolvePrivatePaymentListConsumption(outcome, service: privatePaykitService)
+        guard outcome == .definitePreBroadcastFailure else { return }
+        if let hardwareWalletId {
+            guard let paymentIdentity else { return }
+            await paymentProofService.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: paymentIdentity, walletId: hardwareWalletId)
+        } else {
+            await paymentProofService.failOnchainPayment(request)
+        }
+        await paymentProofService.cancelPreparation(request)
+        if let context {
+            await restoreHardwareContactPaymentForRetry(context, app: app, manager: manager)
+        }
+    }
+
+    @MainActor
+    static func restoreHardwareContactPaymentForRetry(
+        _ context: ContactPaymentContext,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager
+    ) async {
+        guard let request = context.incomingPaymentRequest,
+              let retriedRequest = await manager.paymentRequestForRetry(request.id),
+              app.ownsContactPaymentContext(context)
+        else { return }
+
+        app.contactPaymentContext = ContactPaymentContext(
+            id: context.id,
+            publicKey: context.publicKey,
+            privatePaymentContext: context.privatePaymentContext,
+            incomingPaymentRequest: retriedRequest,
+            isInitialSubscriptionPayment: context.isInitialSubscriptionPayment
+        )
     }
 
     private func replaceQuickPay(with route: SendRoute) {

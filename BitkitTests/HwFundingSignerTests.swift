@@ -308,6 +308,7 @@ final class HwFundingSignerTests: XCTestCase {
             let store = PaymentProofMemoryStore()
             let sdk = PaymentProofSdkMock(identity: identity, records: [])
             let proofService = PaykitPaymentProofService(sdk: sdk, store: store, logInfo: { _ in }, logWarning: { _ in })
+            var failureOutcomes: [PrivatePaymentListSendOutcome] = []
             var releases = 0
             let releaseBeforeDispatch: () async -> Void = {
                 releases += 1
@@ -340,7 +341,12 @@ final class HwFundingSignerTests: XCTestCase {
                     satsPerVByte: 2,
                     beforeFirstBroadcast: preparePayment,
                     beforeBroadcastAttempt: authorizePayment,
-                    onFirstBroadcastAuthorizationFailure: releaseBeforeDispatch
+                    afterFailure: { outcome in
+                        failureOutcomes.append(outcome)
+                        if outcome == .definitePreBroadcastFailure {
+                            await releaseBeforeDispatch()
+                        }
+                    }
                 )
             }
 
@@ -354,7 +360,12 @@ final class HwFundingSignerTests: XCTestCase {
                     satsPerVByte: 2,
                     beforeFirstBroadcast: preparePayment,
                     beforeBroadcastAttempt: authorizePayment,
-                    onFirstBroadcastAuthorizationFailure: releaseBeforeDispatch
+                    afterFailure: { outcome in
+                        failureOutcomes.append(outcome)
+                        if outcome == .definitePreBroadcastFailure {
+                            await releaseBeforeDispatch()
+                        }
+                    }
                 )
             }
 
@@ -364,6 +375,7 @@ final class HwFundingSignerTests: XCTestCase {
             let durableProofs = await store.snapshot()
             XCTAssertEqual(durableProofs.count, 1)
             XCTAssertEqual(durableProofs.first?.paymentStarted, true, "Denied attempted retry must retain its durable original proof")
+            XCTAssertEqual(failureOutcomes, [.uncertain, .uncertain])
             XCTAssertEqual(releases, 0, "Attempted retry incorrectly invoked pre-dispatch proof release")
             isPaymentAllowed = true
             _ = try await coordinator.signAndBroadcast(
@@ -373,7 +385,12 @@ final class HwFundingSignerTests: XCTestCase {
                 satsPerVByte: 2,
                 beforeFirstBroadcast: preparePayment,
                 beforeBroadcastAttempt: authorizePayment,
-                onFirstBroadcastAuthorizationFailure: releaseBeforeDispatch
+                afterFailure: { outcome in
+                    failureOutcomes.append(outcome)
+                    if outcome == .definitePreBroadcastFailure {
+                        await releaseBeforeDispatch()
+                    }
+                }
             )
 
             XCTAssertEqual(preparationCalls, 1)
@@ -434,8 +451,14 @@ final class HwFundingSignerTests: XCTestCase {
                     )
                 },
                 beforeBroadcastAttempt: { throw MockHwFunding.TestError() },
-                onFirstBroadcastAuthorizationFailure: {
-                    await proofService.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: "trezor:original-ios-wallet")
+                afterFailure: { outcome in
+                    if outcome == .definitePreBroadcastFailure {
+                        await proofService.cancelHardwarePaymentBeforeDispatch(
+                            request,
+                            paymentIdentity: identity,
+                            walletId: "trezor:original-ios-wallet"
+                        )
+                    }
                 }
             )
         }
@@ -489,6 +512,146 @@ final class HwFundingSignerTests: XCTestCase {
 
         XCTAssertEqual(funding.signCalls, 2)
         XCTAssertEqual(funding.broadcastCalls, 2)
+    }
+
+    func testCoordinatorDeniedFirstAttemptReleasesPreparedPaymentForRetry() async throws {
+        for authorizationError in [MockHwFunding.TestError() as Error, CancellationError()] {
+            let funding = MockHwFunding()
+            let manager = HwWalletManager()
+            let coordinator = HwSendCoordinator(
+                walletId: "trezor:wallet",
+                signerFactory: { [self] _, address, satsPerVByte in
+                    makeSigner(
+                        funding: funding,
+                        connecting: MockHwConnecting(),
+                        feeRate: satsPerVByte,
+                        address: address
+                    )
+                }
+            )
+            var preparationCalls = 0
+            var failureOutcomes: [PrivatePaymentListSendOutcome] = []
+
+            await assertThrowsAsync {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager,
+                    address: "bc1qtest",
+                    sats: 42000,
+                    satsPerVByte: 2,
+                    beforeFirstBroadcast: { preparationCalls += 1 },
+                    beforeBroadcastAttempt: { throw authorizationError },
+                    afterFailure: { failureOutcomes.append($0) }
+                )
+            }
+
+            XCTAssertEqual(funding.signCalls, 1)
+            XCTAssertEqual(funding.broadcastCalls, 0)
+            XCTAssertFalse(coordinator.hasPendingBroadcast)
+            XCTAssertEqual(failureOutcomes, [.definitePreBroadcastFailure])
+
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                beforeFirstBroadcast: { preparationCalls += 1 }
+            )
+
+            XCTAssertEqual(preparationCalls, 2)
+            XCTAssertEqual(funding.broadcastCalls, 1)
+        }
+    }
+
+    func testCoordinatorBroadcastFailureRemainsUncertainAfterPendingPaymentIsCleared() async {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            walletId: "trezor:wallet",
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        var failureOutcomes: [PrivatePaymentListSendOutcome] = []
+        funding.broadcastError = MockHwFunding.TestError()
+
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                afterFailure: { failureOutcomes.append($0) }
+            )
+        }
+
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(failureOutcomes, [.uncertain])
+
+        funding.broadcastError = nil
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                beforeFirstBroadcast: { throw PaykitPaymentRequestError.operationInProgress },
+                afterFailure: { failureOutcomes.append($0) }
+            )
+        }
+
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(failureOutcomes, [.uncertain])
+    }
+
+    func testCoordinatorRetriesPreparationFailureBeforeBroadcast() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = HwSendCoordinator(
+            walletId: "trezor:wallet",
+            signerFactory: { [self] _, address, satsPerVByte in
+                makeSigner(
+                    funding: funding,
+                    connecting: MockHwConnecting(),
+                    feeRate: satsPerVByte,
+                    address: address
+                )
+            }
+        )
+        var beforeFirstBroadcastCalls = 0
+
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager,
+                address: "bc1qtest",
+                sats: 42000,
+                satsPerVByte: 2,
+                beforeFirstBroadcast: {
+                    beforeFirstBroadcastCalls += 1
+                    throw MockHwFunding.TestError()
+                }
+            )
+        }
+
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager,
+            address: "bc1qtest",
+            sats: 42000,
+            satsPerVByte: 2,
+            beforeFirstBroadcast: { beforeFirstBroadcastCalls += 1 }
+        )
+
+        XCTAssertEqual(beforeFirstBroadcastCalls, 2)
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
     }
 
     private func assertCoordinatorRetryReusesSignedPayment(error: Error) async throws {
