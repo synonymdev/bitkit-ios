@@ -65,7 +65,7 @@ struct TabBar: View {
             sheets.showSheet(
                 .receive,
                 data: ReceiveConfig(
-                    view: .qr(cjitInvoice: nil, tab: .trezor),
+                    view: .qr(cjitInvoice: nil, tab: .hardware),
                     hardwareWalletId: walletId
                 )
             )
