@@ -1120,7 +1120,19 @@ struct AppScene: View {
     }
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
-        if let identity = pubkyProfile.publicKey,
+        await Self.associateResolvedPaykitOnchainPayment(resolution, activeIdentity: pubkyProfile.publicKey, activity: activity)
+        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
+    }
+
+    static func associateResolvedPaykitOnchainPayment(
+        _ resolution: PaykitOnchainPaymentResolution,
+        activeIdentity: String?,
+        activity: ActivityListViewModel
+    ) async {
+        // Hardware proof reconciliation already saved contact/tags in the original wallet before publishing.
+        // Replaying the default-wallet association would overwrite unrelated Savings rows and later edits.
+        guard resolution.walletId == WalletScope.default else { return }
+        if let identity = activeIdentity,
            PubkyPublicKeyFormat.matches(resolution.identity, identity)
         {
             do {
@@ -1144,7 +1156,6 @@ struct AppScene: View {
                 )
             }
         }
-        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
     }
 
     private func pollIncomingPaykitPaymentRequests() async {

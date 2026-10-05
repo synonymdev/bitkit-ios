@@ -98,6 +98,63 @@ final class TransferServiceActivityTests: XCTestCase {
         )
     }
 
+    func testOrdinaryResolutionBeforePendingInitializationRestoresExactDurableResult() async throws {
+        for rejected in [false, true] {
+            let store = MemoryAttemptStore()
+            let txid = String(repeating: rejected ? "cd" : "ab", count: 32)
+            let node = AttemptNodeMock(result: rejected ? .rejected(txid: txid, reason: "fixture") : .unknown(txid: txid))
+            let service = OnchainSendAttemptService(store: store)
+            _ = try await service.send(using: node, address: "bcrt1qoriginal", amountSats: 4321,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                       followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100))
+            let original = try XCTUnwrap(store.snapshot().first)
+            let route = await SendConfirmationView.onchainPendingRoute(txid: txid, requestId: nil, using: service)
+            guard case let .onchainPending(context) = route else { return XCTFail("Original send did not retain its Pending identity") }
+            XCTAssertEqual(context.attemptId, original.id)
+            // Exact native observation and its Passthrough publication precede Pending initialization.
+            _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId, observedTxid: txid)
+            XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+            let restarted = OnchainSendAttemptService(store: store)
+            let loaded = try await SendPendingScreen.loadOrdinaryPending(using: restarted, context: context, walletId: "node:now-selected-other")
+            XCTAssertEqual(loaded.attempt?.id, original.id)
+            XCTAssertEqual(loaded.resolution?.txid, txid)
+            XCTAssertEqual(loaded.resolution?.amountSats, 4321)
+            XCTAssertEqual(node.calls, 1, "Pending recovery dispatched another payment")
+        }
+    }
+
+    func testPendingInitializationRejectsOldCompletedAndReplacementContexts() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let service = OnchainSendAttemptService(store: store)
+        _ = try await service.send(using: node, address: "bcrt1qoriginal", amountSats: 4321,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                   followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100))
+        let original = try XCTUnwrap(store.snapshot().first)
+        _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId)
+        let noContext = try await SendPendingScreen.loadOrdinaryPending(using: service, context: nil, walletId: original.walletId)
+        XCTAssertNil(noContext.resolution, "Old completed result satisfied a new unsent Pending")
+        let unsentRoute = await SendConfirmationView.onchainPendingRoute(requestId: nil, using: service)
+        guard case .pending = unsentRoute else { return XCTFail("New unsent route acquired an earlier completed attempt") }
+        let contexts = [
+            OnchainSendPendingContext(attemptId: UUID(), walletId: original.walletId, txid: txid),
+            OnchainSendPendingContext(attemptId: original.id, walletId: "node:other", txid: txid),
+            OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: String(repeating: "ef", count: 32)),
+        ]
+        for context in contexts {
+            let loaded = try await SendPendingScreen.loadOrdinaryPending(using: service, context: context, walletId: original.walletId)
+            XCTAssertNil(loaded.resolution)
+        }
+        _ = try await service.send(using: node, address: "bcrt1qreplacement", amountSats: 9999,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+        let stale = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: txid)
+        let replacement = try await SendPendingScreen.loadOrdinaryPending(using: service, context: stale, walletId: original.walletId)
+        XCTAssertNil(replacement.resolution, "Replacement attempt used the earlier Pending identity")
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+        XCTAssertEqual(node.calls, 2)
+    }
+
     @MainActor
     func testPendingResumeShowsEarlierActivityWithoutSuccessForNewUnsentAmount() async throws {
         let store = MemoryAttemptStore()
@@ -717,6 +774,74 @@ final class TransferServiceActivityTests: XCTestCase {
         } catch {}
         XCTAssertEqual(store.snapshot().first?.status, .accepted)
         XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+        let context = OnchainSendPendingContext(attemptId: id, walletId: walletId, txid: String(repeating: "ab", count: 32))
+        let loaded = try await SendPendingScreen.loadOrdinaryPending(
+            using: OnchainSendAttemptService(store: store), context: context, walletId: walletId
+        )
+        XCTAssertEqual(loaded.attempt?.id, id)
+        XCTAssertEqual(loaded.attempt?.amountSats, 1000)
+        XCTAssertEqual(loaded.attempt?.txid, context.txid)
+        XCTAssertEqual(loaded.attempt?.status, .accepted)
+        XCTAssertTrue(loaded.followupUnavailable)
+        XCTAssertNil(loaded.resolution)
+    }
+
+    func testConcurrentPaidOrderFollowupCreatesOneOriginalRecord() async throws {
+        let storage = ConcurrentPaidOrderStorage(defaults: transferDefaults)
+        let service = Bitkit.TransferService(
+            storage: storage, lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank,
+            isGeoBlocked: { false }
+        )
+        let txid = String(repeating: "ab", count: 32)
+        let first = Task.detached {
+            try await service.createTransfer(type: .toSpending, amountSats: 1000, fundingTxId: txid,
+                                             lspOrderId: "concurrent-paid-order", txTotalSats: 1100, preTransferOnchainSats: 9000)
+        }
+        await fulfillment(of: [storage.firstLookup], timeout: 5)
+        let second = Task.detached {
+            try await service.createTransfer(type: .toSpending, amountSats: 9999, fundingTxId: txid,
+                                             lspOrderId: "concurrent-paid-order", txTotalSats: 9999, preTransferOnchainSats: 9999)
+        }
+        let firstId = try await first.value
+        let secondId = try await second.value
+        XCTAssertEqual(firstId, secondId, "Concurrent original-operation follow-up created two record identities")
+        let records = try storage.getAll()
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.fundingTxId, txid)
+        XCTAssertEqual(records.first?.amountSats, 1000)
+        XCTAssertEqual(records.first?.txTotalSats, 1100)
+        XCTAssertEqual(records.first?.preTransferOnchainSats, 9000)
+    }
+
+    @MainActor
+    func testHardwareResolutionDoesNotReplayContactIntoSavingsOrOverwriteHardwareEdit() async throws {
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let contact = "pubky" + String(repeating: "y", count: 52)
+        let edited = "pubky" + String(repeating: "x", count: 52)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(), now: Date()))
+        for (index, hardwareEdit) in [nil, edited].enumerated() {
+            let txid = String(repeating: index == 0 ? "ab" : "cd", count: 32)
+            let walletId = "trezor:original-resolution-wallet"
+            let created = await activity.createSentOnchainActivityFromSendResult(
+                txid: txid, address: "bcrt1qoriginal", amount: 1000, fee: 100, feeRate: 1,
+                contact: hardwareEdit, walletId: walletId
+            )
+            XCTAssertTrue(created)
+            let createdSavings = await activity.createSentOnchainActivityFromSendResult(
+                txid: txid, address: "bcrt1qsavings", amount: 1000, fee: 100, feeRate: 1,
+                contact: edited, walletId: WalletScope.default
+            )
+            XCTAssertTrue(createdSavings)
+            await AppScene.associateResolvedPaykitOnchainPayment(
+                PaykitOnchainPaymentResolution(identity: identity, requestId: request.id, transactionId: txid, walletId: walletId),
+                activeIdentity: identity, activity: Bitkit.ActivityListViewModel(transferService: makeService())
+            )
+            let hardware = try await activity.getOnchainActivityByTxId(txid: txid, walletId: walletId)
+            let savings = try await activity.getOnchainActivityByTxId(txid: txid)
+            XCTAssertEqual(hardware?.contact, hardwareEdit.flatMap(PubkyPublicKeyFormat.normalized))
+            XCTAssertEqual(savings?.contact, PubkyPublicKeyFormat.normalized(edited), "Hardware resolution rewrote unrelated Savings contact")
+            XCTAssertNotEqual(savings?.contact, PubkyPublicKeyFormat.normalized(contact))
+        }
     }
 
     func testPaidOrderFollowupIsIdempotentAndRejectsDifferentFundingTxid() async throws {
@@ -803,4 +928,26 @@ private final class HardwarePendingSavingsSpy: OnchainSendAttemptStoring, @unche
     }
 
     func save(_: [OnchainSendAttempt]) {}
+}
+
+private final class ConcurrentPaidOrderStorage: Bitkit.TransferStorage {
+    let firstLookup = XCTestExpectation(description: "Original paid-order lookup captured")
+    private let lock = NSLock()
+    private let secondLookup = DispatchSemaphore(value: 0)
+    private var lookupCount = 0
+
+    override func getAll() throws -> [Bitkit.Transfer] {
+        let snapshot = try super.getAll()
+        lock.lock()
+        lookupCount += 1
+        let index = lookupCount
+        lock.unlock()
+        if index == 1 {
+            firstLookup.fulfill()
+            _ = secondLookup.wait(timeout: .now() + 2)
+        } else if index == 2 {
+            secondLookup.signal()
+        }
+        return snapshot
+    }
 }

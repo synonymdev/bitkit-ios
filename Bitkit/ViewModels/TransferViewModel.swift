@@ -474,12 +474,12 @@ class TransferViewModel: ObservableObject {
             txid = acceptedTxid
         case let .rejected(rejectedTxid, reason):
             throw AppError(
-                message: "The funding transaction was rejected. Do not try to fund this order again.",
+                message: t("wallet__onchain_funding_rejected"),
                 debugMessage: "Broadcast rejected for \(rejectedTxid): \(reason)"
             )
         case let .unknown(unknownTxid):
             throw AppError(
-                message: "The funding transaction may have been sent. Do not try to fund this order again.",
+                message: t("wallet__onchain_funding_unknown"),
                 debugMessage: "Broadcast outcome unknown for \(unknownTxid)"
             )
         }
@@ -491,7 +491,7 @@ class TransferViewModel: ObservableObject {
         } catch {
             Logger.warn("Accepted funding local follow-up remains guarded: \(error)", context: "TransferViewModel")
             throw AppError(
-                message: "Funding was sent, but local order tracking could not be saved. Do not fund this order again.",
+                message: t("wallet__onchain_funding_followup_failed"),
                 debugMessage: "Accepted funding transaction \(txid) for order \(order.id)"
             )
         }

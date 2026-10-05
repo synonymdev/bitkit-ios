@@ -4,6 +4,7 @@ import LDKNode
 
 /// Service for managing transfer operations
 class TransferService {
+    private static let creationLock = NSLock()
     private let storage: TransferStorage
     private let lightningService: LightningService
     private let blocktankService: BlocktankService
@@ -41,6 +42,18 @@ class TransferService {
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil
     ) async throws -> String {
+        try createTransferRecord(type: type, amountSats: amountSats, channelId: channelId,
+                                 fundingTxId: fundingTxId, lspOrderId: lspOrderId, claimableAtHeight: claimableAtHeight,
+                                 txTotalSats: txTotalSats, preTransferOnchainSats: preTransferOnchainSats)
+    }
+
+    private func createTransferRecord(
+        type: TransferType, amountSats: UInt64, channelId: String?, fundingTxId: String?,
+        lspOrderId: String?, claimableAtHeight: UInt32?, txTotalSats: UInt64?, preTransferOnchainSats: UInt64?
+    ) throws -> String {
+        // Lookup and insert belong to one original paid-order operation, including across service instances.
+        Self.creationLock.lock()
+        defer { Self.creationLock.unlock() }
         if let lspOrderId, let existing = try storage.getAll().first(where: { $0.lspOrderId == lspOrderId }) {
             guard existing.fundingTxId == fundingTxId else { throw OnchainSendAttemptError.duplicate }
             return existing.id

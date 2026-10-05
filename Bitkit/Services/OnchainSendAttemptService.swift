@@ -23,13 +23,13 @@ enum OnchainSendAttemptError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unresolved:
-            "An earlier on-chain send is unresolved. Check its transaction before trying another send."
+            t("wallet__onchain_send_unresolved")
         case .duplicate:
-            "This request or order already has an on-chain payment. Do not pay it again."
+            t("wallet__onchain_send_duplicate")
         case .outcomeNotSaved:
-            "The on-chain send result could not be saved. The payment may have been sent; do not retry it."
+            t("wallet__onchain_outcome_save_failed")
         case .localFollowupNotSaved:
-            "This payment was sent, but its local details could not be restored. Do not send it again."
+            t("wallet__onchain_followup_failed")
         case let .preDispatch(error):
             error.localizedDescription
         }
@@ -135,6 +135,12 @@ struct OnchainSendAttemptStore: OnchainSendAttemptStoring {
     func save(_ attempts: [OnchainSendAttempt]) throws {
         try Keychain.upsert(key: .onchainSendAttempts, data: JSONEncoder().encode(attempts))
     }
+}
+
+struct OnchainSendPendingContext: Hashable {
+    let attemptId: UUID
+    let walletId: String
+    let txid: String?
 }
 
 actor OnchainSendAttemptService {
@@ -318,10 +324,16 @@ actor OnchainSendAttemptService {
         knownAttempt = attempt
     }
 
-    func resumeAcceptedOrdinarySend(walletId: String, observedTxid: String? = nil) async throws -> OnchainSendLocalResolution? {
+    func resumeAcceptedOrdinarySend(walletId: String, observedTxid: String? = nil,
+                                    pendingContext: OnchainSendPendingContext? = nil) async throws -> OnchainSendLocalResolution?
+    {
         guard var attempt = try currentAttempt(), attempt.walletId == walletId,
               attempt.requestId == nil, attempt.orderId == nil, let txid = attempt.txid
         else { return nil }
+        if let pendingContext {
+            guard attempt.id == pendingContext.attemptId, attempt.walletId == pendingContext.walletId,
+                  attempt.txid == pendingContext.txid else { return nil }
+        }
         if let observedTxid {
             guard txid.caseInsensitiveCompare(observedTxid) == .orderedSame else { return nil }
             if attempt.status != .accepted {
@@ -420,6 +432,24 @@ actor OnchainSendAttemptService {
 
     func hasAttempt(for requestId: PaykitPaymentRequest.ID) throws -> Bool {
         try currentAttempt()?.requestId == requestId
+    }
+
+    func ordinaryPendingContext(txid: String? = nil) throws -> OnchainSendPendingContext? {
+        guard let attempt = try currentAttempt(), attempt.requestId == nil, attempt.orderId == nil else { return nil }
+        if let txid {
+            guard attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame else { return nil }
+        } else {
+            // A new unsent operation cannot acquire a previous completed result.
+            guard attempt.blocksNewSend else { return nil }
+        }
+        return OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
+    }
+
+    func ordinaryPendingAttempt(context: OnchainSendPendingContext) throws -> OnchainSendAttempt? {
+        try currentAttempt().flatMap {
+            $0.id == context.attemptId && $0.walletId == context.walletId && $0.txid == context.txid &&
+                $0.requestId == nil && $0.orderId == nil ? $0 : nil
+        }
     }
 
     func unresolvedAttempt(walletId: String) throws -> OnchainSendAttempt? {

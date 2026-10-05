@@ -160,6 +160,16 @@ struct SendConfirmationView: View {
             !hwSend.isActive && !requiresPaymentConfirmation
     }
 
+    static func onchainPendingRoute(
+        txid: String? = nil, requestId: PaykitPaymentRequest.ID?,
+        using attempts: OnchainSendAttemptService = .shared
+    ) async -> SendRoute {
+        if requestId == nil, let context = try? await attempts.ordinaryPendingContext(txid: txid) {
+            return .onchainPending(context)
+        }
+        return .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId)
+    }
+
     var body: some View {
         ZStack {
             confirmationContent
@@ -1003,26 +1013,20 @@ struct SendConfirmationView: View {
                     Logger.warn("On-chain broadcast rejected for \(rejectedTxid): \(reason)", context: "SendConfirmation")
                     app.toast(
                         type: .warning,
-                        title: "Broadcast rejected",
-                        description: "This payment may still have reached the network. Do not send it again. \(reason)"
+                        title: t("wallet__onchain_broadcast_rejected"),
+                        description: t("wallet__onchain_broadcast_rejected_note", variables: ["reason": reason])
                     )
-                    navigationPath.append(.pending(
-                        paymentHash: nil,
-                        retryRoute: .confirm,
-                        paymentRequest: nil,
-                        paykitPaymentRequestId: incomingPaymentRequest?.id
-                    ))
+                    await navigationPath.append(Self.onchainPendingRoute(txid: rejectedTxid, requestId: incomingPaymentRequest?.id))
                     return
                 case let .unknown(unknownTxid):
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
                     Logger.warn("On-chain broadcast outcome unknown for \(unknownTxid)", context: "SendConfirmation")
-                    app.toast(type: .warning, title: "Broadcast unconfirmed", description: "The payment may have been sent. Do not send it again.")
-                    navigationPath.append(.pending(
-                        paymentHash: nil,
-                        retryRoute: .confirm,
-                        paymentRequest: nil,
-                        paykitPaymentRequestId: incomingPaymentRequest?.id
-                    ))
+                    app.toast(
+                        type: .warning,
+                        title: t("wallet__onchain_broadcast_unconfirmed"),
+                        description: t("wallet__onchain_broadcast_unconfirmed_note")
+                    )
+                    await navigationPath.append(Self.onchainPendingRoute(txid: unknownTxid, requestId: incomingPaymentRequest?.id))
                     return
                 }
                 privatePaymentListOutcome = .succeeded
@@ -1101,12 +1105,7 @@ struct SendConfirmationView: View {
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
                     shouldCancelPaymentProof = false
                     app.toast(attemptError)
-                    navigationPath.append(.pending(
-                        paymentHash: nil,
-                        retryRoute: .confirm,
-                        paymentRequest: nil,
-                        paykitPaymentRequestId: incomingPaymentRequest?.id
-                    ))
+                    await navigationPath.append(Self.onchainPendingRoute(requestId: incomingPaymentRequest?.id))
                     return
                 case .preDispatch:
                     break
