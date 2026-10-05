@@ -824,7 +824,7 @@ actor PaykitSdkService {
     }
 
     func syncPublicEndpoints(_ endpoints: [PublicPaykitService.Endpoint]) async throws -> EndpointSyncReport {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: endpoints.isEmpty ? .ordered : .background) { sdk in
             try await sdk.syncPublicEndpointsWithReceivingDetails(receivingDetails: endpoints.map(\.paykitPublicReceivingDetail))
         }
     }
@@ -833,7 +833,8 @@ actor PaykitSdkService {
         _ updates: [PrivatePaymentListReservationUpdateInput],
         clearUnlistedLinkedPeers: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
-        return try await withStateRevisionTracking { sdk in
+        let withdraws = clearUnlistedLinkedPeers || updates.contains { $0.reservations.isEmpty }
+        return try await withStateRevisionTracking(priority: withdraws ? .ordered : .background) { sdk in
             try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: clearUnlistedLinkedPeers
@@ -963,7 +964,7 @@ actor PaykitSdkService {
         terms: Paykit.PaymentRequestTerms,
         expectedIdentity: String
     ) async throws -> Paykit.PaymentRequestRecord {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: .interactive) { sdk in
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.capability == .privateLinkCapable,
                   PubkyPublicKeyFormat.matches(identityStatus.publicKey, expectedIdentity)
@@ -1041,7 +1042,7 @@ actor PaykitSdkService {
         amount: PaymentAmountContext? = nil,
         afterPrivatePaymentListVersion: UInt64?
     ) async throws -> PreparedPrivateContactPayment {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: .interactive) { sdk in
             try await sdk.prepareAndResolvePrivateContactPayment(
                 counterparty: counterparty,
                 amount: amount,
@@ -1056,7 +1057,7 @@ actor PaykitSdkService {
         paymentRequestId: String,
         afterPrivatePaymentListVersion: UInt64?
     ) async throws -> PreparedPrivateContactPayment {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: .interactive) { sdk in
             try await sdk.prepareAndResolvePrivatePaymentRequest(
                 counterparty: counterparty,
                 paymentRequestId: paymentRequestId,
@@ -1067,7 +1068,7 @@ actor PaykitSdkService {
     }
 
     func resolvePublicContactPayment(counterparty: String) async throws -> PublicContactPaymentResolution {
-        try await operationLock.withLock {
+        try await operationLock.withLock(priority: .interactive) {
             try await handle().resolvePublicContactPayment(counterparty: counterparty, amount: nil)
         }
     }
@@ -1164,8 +1165,11 @@ actor PaykitSdkService {
         }
     }
 
-    private func withSdk<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
-        try await operationLock.withLock {
+    private func withSdk<T>(
+        priority: PaykitSdkOperationLock.Priority = .ordered,
+        _ operation: (PaykitSdk) async throws -> T
+    ) async throws -> T {
+        try await operationLock.withLock(priority: priority) {
             try await withSdkErrorHandling {
                 try await refreshPaykitKey()
                 return try await operation(handle())
@@ -1189,8 +1193,11 @@ actor PaykitSdkService {
         cachedBackupState = nil
     }
 
-    private func withStateRevisionTracking<T>(_ operation: (PaykitSdk) async throws -> T) async throws -> T {
-        try await withSdk { sdk in
+    private func withStateRevisionTracking<T>(
+        priority: PaykitSdkOperationLock.Priority = .ordered,
+        _ operation: (PaykitSdk) async throws -> T
+    ) async throws -> T {
+        try await withSdk(priority: priority) { sdk in
             return try await Self.withBackupStateRevisionTracking(
                 readRevision: { try await self.withSdkErrorHandling { try await sdk.backupStateRevision() } },
                 readStateRevision: { try sdk.stateRevision() },
@@ -1449,23 +1456,41 @@ actor PaykitSdkService {
 }
 
 final class PaykitSdkOperationLock: @unchecked Sendable {
-    private enum Waiter {
-        case uncancellable(CheckedContinuation<Void, Never>)
-        case cancellable(UUID, CheckedContinuation<Void, Error>)
+    enum Priority {
+        case ordered
+        case interactive
+        case background
     }
 
+    private enum Waiter {
+        case uncancellable(Priority, CheckedContinuation<Void, Never>)
+        case cancellable(UUID, Priority, CheckedContinuation<Void, Error>)
+
+        var priority: Priority {
+            switch self {
+            case let .uncancellable(priority, _), let .cancellable(_, priority, _): priority
+            }
+        }
+    }
+
+    private let maxInteractiveBypasses = 3
     private let lock = NSLock()
     private var isLocked = false
     private var waiters: [Waiter] = []
+    private var interactiveBypasses = 0
     private var generation = 0
     private var isWiping = false
     private var activeWipeID: UUID?
     @TaskLocal private static var walletWipeOwner: UUID?
 
-    func withLock<T>(generation expectedGeneration: Int? = nil, _ operation: () async throws -> T) async throws -> T {
+    func withLock<T>(
+        priority: Priority = .ordered,
+        generation expectedGeneration: Int? = nil,
+        _ operation: () async throws -> T
+    ) async throws -> T {
         if ownsWipe() { return try await operation() }
         let admittedGeneration = try admit()
-        await acquire()
+        await acquire(priority: priority)
         defer { release() }
         try validate(expectedGeneration ?? admittedGeneration)
         try Task.checkCancellation()
@@ -1492,7 +1517,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
         let wipeID = try beginWipe()
         defer { endWipe() }
-        await acquire()
+        await acquire(priority: .ordered)
         defer { release() }
         try Task.checkCancellation()
         return try await Self.$walletWipeOwner.withValue(wipeID) {
@@ -1553,11 +1578,11 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         return try await operation()
     }
 
-    private func acquire() async {
+    private func acquire(priority: Priority) async {
         await withCheckedContinuation { continuation in
             lock.lock()
             if isLocked {
-                waiters.append(.uncancellable(continuation))
+                waiters.append(.uncancellable(priority, continuation))
                 lock.unlock()
             } else {
                 isLocked = true
@@ -1576,7 +1601,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
                     lock.unlock()
                     continuation.resume(throwing: CancellationError())
                 } else if isLocked {
-                    waiters.append(.cancellable(id, continuation))
+                    waiters.append(.cancellable(id, .ordered, continuation))
                     lock.unlock()
                 } else {
                     isLocked = true
@@ -1593,10 +1618,10 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let index = waiters.firstIndex(where: {
-            if case let .cancellable(waiterID, _) = $0 { return waiterID == id }
+            if case let .cancellable(waiterID, _, _) = $0 { return waiterID == id }
             return false
         }),
-            case let .cancellable(_, continuation) = waiters.remove(at: index)
+            case let .cancellable(_, _, continuation) = waiters.remove(at: index)
         else { return nil }
         return continuation
     }
@@ -1606,20 +1631,33 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         lock.lock()
         if waiters.isEmpty {
             isLocked = false
+            interactiveBypasses = 0
             nextWaiter = nil
         } else {
-            nextWaiter = waiters.removeFirst()
+            // Ordered work is a barrier: priority must not cross identity changes, cleanup, or other mutations.
+            let interactiveIndex = waiters.prefix { $0.priority != .ordered }.firstIndex { $0.priority == .interactive }
+            let index = interactiveBypasses < maxInteractiveBypasses ? (interactiveIndex ?? waiters.startIndex) : waiters.startIndex
+            interactiveBypasses = index == waiters.startIndex ? 0 : interactiveBypasses + 1
+            nextWaiter = waiters.remove(at: index)
         }
         lock.unlock()
         switch nextWaiter {
-        case let .uncancellable(continuation):
+        case let .uncancellable(_, continuation):
             continuation.resume()
-        case let .cancellable(_, continuation):
+        case let .cancellable(_, _, continuation):
             continuation.resume()
         case nil:
             break
         }
     }
+
+    #if DEBUG
+        var waiterCountForTesting: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return waiters.count
+        }
+    #endif
 }
 
 /// Caps concurrent operations. A freed slot goes to the oldest interactive waiter, or to the oldest bulk waiter when no

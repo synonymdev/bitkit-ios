@@ -352,7 +352,9 @@ struct MainNavView: View {
                 .ignoresSafeArea(.keyboard)
             DrawerView()
 
-            if paykitPaymentRequestManager.requestedPresentationId != nil,
+            if isPaykitUIActive,
+               pubkyProfile.authState == .authenticated,
+               paykitPaymentRequestManager.requestedPresentationId != nil,
                sheets.activeSheetConfiguration == nil,
                !sheets.isReplacingSheet
             {

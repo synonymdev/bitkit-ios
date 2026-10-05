@@ -11,6 +11,82 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         }
     }
 
+    func testInteractiveWorkOvertakesOnlyQueuedPublicationWithBoundedFairness() async throws {
+        try await assertQueuedOrder(
+            priorities: [.background, .background, .interactive, .interactive, .interactive, .interactive],
+            expected: [2, 3, 4, 0, 5, 1]
+        )
+    }
+
+    func testInteractiveWorkCannotCrossAnOrderedOperation() async throws {
+        try await assertQueuedOrder(
+            priorities: [.background, .interactive, .ordered, .background, .interactive],
+            expected: [1, 0, 2, 4, 3]
+        )
+    }
+
+    func testCancelledInteractiveWorkDoesNotExecuteOrBlockPublication() async throws {
+        try await assertQueuedOrder(
+            priorities: [.background, .interactive],
+            expected: [0],
+            cancelIndex: 1
+        )
+    }
+
+    private func assertQueuedOrder(
+        priorities: [PaykitSdkOperationLock.Priority],
+        expected: [Int],
+        cancelIndex: Int? = nil
+    ) async throws {
+        let lock = PaykitSdkOperationLock()
+        let recorder = Recorder()
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        let started = expectation(description: "Active publication started")
+        let active = Task {
+            try await lock.withLock(priority: .background) {
+                await recorder.record("active")
+                started.fulfill()
+                for await _ in gate {}
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+
+        var queued: [Task<Void, Error>] = []
+        for (index, priority) in priorities.enumerated() {
+            queued.append(Task {
+                try await lock.withLock(priority: priority) { await recorder.record(String(index)) }
+            })
+            await waitForWaiters(lock, count: index + 1)
+        }
+        let heldEvents = await recorder.events
+        XCTAssertEqual(heldEvents, ["active"], "Active publication must not be preempted")
+        if let cancelIndex { queued[cancelIndex].cancel() }
+        release.finish()
+        try await active.value
+        for (index, task) in queued.enumerated() {
+            if index == cancelIndex {
+                do {
+                    try await task.value
+                    XCTFail("Expected cancellation")
+                } catch is CancellationError {}
+            } else {
+                try await task.value
+            }
+        }
+        let events = await recorder.events
+        XCTAssertEqual(events, ["active"] + expected.map(String.init))
+        try await lock.withLock {}
+    }
+
+    private func waitForWaiters(_ lock: PaykitSdkOperationLock, count: Int) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while lock.waiterCountForTesting < count, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        XCTAssertEqual(lock.waiterCountForTesting, count)
+    }
+
     func testPublicCapabilityReadDoesNotWaitForSerializedSdkWork() async throws {
         let (gate, release) = AsyncStream<Void>.makeStream()
         defer { release.finish() }
@@ -82,10 +158,13 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         for await _ in activeStarted {
             break
         }
-        let queued = Task {
-            try await lock.withLock { await recorder.record("stale") }
+        var queued: [Task<Void, Error>] = []
+        for priority in [PaykitSdkOperationLock.Priority.background, .interactive] {
+            queued.append(Task {
+                try await lock.withLock(priority: priority) { await recorder.record("stale") }
+            })
+            await waitForWaiters(lock, count: queued.count)
         }
-        try await Task.sleep(for: .milliseconds(50))
         let wipe = Task {
             try await lock.withWalletWipe {
                 try await lock.withLock { await recorder.record("cleanup") }
@@ -106,11 +185,13 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         for await _ in wipeStarted {
             break
         }
-        do {
-            try await queued.value
-            XCTFail("Expected queued work from the old wallet to be rejected")
-        } catch let PaykitError.Storage(code, _) {
-            XCTAssertEqual(code, "wallet_wipe_in_progress")
+        for task in queued {
+            do {
+                try await task.value
+                XCTFail("Expected queued work from the old wallet to be rejected")
+            } catch let PaykitError.Storage(code, _) {
+                XCTAssertEqual(code, "wallet_wipe_in_progress")
+            }
         }
         releaseWipe.yield()
         try await active.value

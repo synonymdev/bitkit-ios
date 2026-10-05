@@ -126,7 +126,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let refreshStarted = expectation(description: "Proof state refresh started")
         let afterFailure = Task {
             refreshStarted.fulfill()
-            await manager.refresh(forceFresh: true)
+            await manager.refresh(mode: .stored, forceFresh: true)
         }
         await fulfillment(of: [refreshStarted], timeout: 1)
         await center.resumePendingRequests()
@@ -136,6 +136,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.pendingRequests.map(\.id), [requestId])
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.paymentRequestListCallCount, 2)
+        XCTAssertEqual(snapshot.processCallCount, 1)
+        XCTAssertEqual(snapshot.receiveCallCount, 1)
     }
 
     func testClearInvalidatesStrongerRefreshWaitingForWeakerMode() async throws {
@@ -1462,6 +1464,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             func insert(_ id: PaykitPaymentRequest.ID) {
                 ids.insert(id)
             }
+
+            func clear() {
+                ids = []
+            }
         }
 
         let clock = try PaymentRequestTestClock(XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-15T08:00:00Z")))
@@ -1496,10 +1502,24 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         try await manager.ensurePaymentAllowed(firstPeriod)
+        await manager.finishPayment(firstPeriod)
+        await inFlightPayments.clear()
+        await manager.refresh(mode: .stored)
+        XCTAssertEqual(manager.pendingRequests.map(\.id), [firstPeriod.id])
         record.paymentProofs = try [paymentProofRecord(
             endpoint: method.rawValue, kind: .onchain, billingPeriod: XCTUnwrap(firstPeriod.billingPeriod).sdkValue
         )]
+        record.paymentProofs[0].outboundStatus = .pending
         await sdk.setRecords([record])
+        XCTAssertTrue(try XCTUnwrap(manager.subscriptions.first).paidPeriods.isEmpty)
+        do {
+            try await manager.prepareForPayment(firstPeriod) {
+                XCTFail("A paid billing period must not consume another payment destination")
+            }
+            XCTFail("A queued proof must prevent another payment before refreshing")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
         clock.advance(by: 31 * 24 * 60 * 60)
         await manager.refresh()
 
@@ -2346,22 +2366,27 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             endsAt: nil
         )
         let record = try paymentRequestRecord(
-            state: .activeRecurring, paymentDeadline: .periodStart(seconds: 3600), recurrence: recurrence
+            state: .activeRecurring, recurrence: recurrence
         )
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let request = try XCTUnwrap(subscription.requests(through: now, acceptedAt: PaykitPreciseInstant(date: now)).first)
+        let sdk = PaymentRequestSdkMock(records: [record])
         let manager = paymentRequestManager(
-            sdk: PaymentRequestSdkMock(records: [record]),
+            sdk: sdk,
             clock: PaymentRequestTestClock(now),
             completedPaymentProofKinds: [request.id: .lightning]
         )
 
-        await manager.refresh()
+        await manager.refresh(mode: .stored, forceFresh: true)
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
         XCTAssertEqual(manager.historyRequests.first?.id, request.id)
         XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .proofSubmitted)
         XCTAssertEqual(manager.historyRequests.first?.paymentProofKind, .lightning)
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.receiveCallCount, 0)
     }
 
     func testCompletedOneTimePaymentAwaitingProofSubmissionKeepsPaymentProofKind() async throws {
@@ -3326,6 +3351,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
         XCTAssertTrue(app.claimContactPaymentContext(context))
 
+        await sdk.pauseNextPaymentRequestList()
+        let refresh = Task { await manager.refresh() }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+
         try await app.handleScannedData(
             "bitcoin:bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x",
             claimedContactPaymentContext: context
@@ -3348,6 +3377,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertNil(app.contactPaymentContext)
         XCTAssertEqual(manager.pendingRequests, [request])
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+
+        await sdk.resumePaymentRequestList()
+        await refresh.value
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
     }
 
     func testAmountMismatchIsVisibleAndStopsAutomaticPresentationUntilExplicitRetry() async throws {

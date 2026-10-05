@@ -46,8 +46,25 @@ class ActivityService {
     func setContactDetached(_ detached: Bool, activityId: String, walletId: String) {
         var entries = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
         var ids = Set(entries[walletId] ?? [])
+        guard ids.contains(activityId) != detached else { return }
         if detached { ids.insert(activityId) } else { ids.remove(activityId) }
         entries[walletId] = ids.isEmpty ? nil : Array(ids)
+        UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
+        metadataChangedSubject.send()
+    }
+
+    func detachedContactsBackupSnapshot() -> Set<String> {
+        let entries = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
+        return Set(entries.flatMap { walletId, ids in ids.map { "\(walletId):\($0)" } })
+    }
+
+    func restoreDetachedContacts(_ scopedIds: Set<String>) {
+        var entries: [String: [String]] = [:]
+        for scopedId in scopedIds {
+            let parts = scopedId.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { continue }
+            entries[String(parts[0]), default: []].append(String(parts[1]))
+        }
         UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
     }
 

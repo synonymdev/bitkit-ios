@@ -472,7 +472,7 @@ struct AppScene: View {
                 }
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
-                Task { await refreshIncomingPaykitPaymentRequests(forceFresh: true) }
+                Task { await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true) }
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { await associateResolvedPaykitOnchainPayment(resolution) }

@@ -887,7 +887,12 @@ struct PaykitPaymentRequestService {
     }
 
     func claimForPayment(_ request: PaykitPaymentRequest) async throws {
-        _ = try await sdk.claimPaymentRequestForExecution(counterparty: request.counterparty, paymentRequestId: request.paymentRequestId)
+        let record = try await sdk.claimPaymentRequestForExecution(counterparty: request.counterparty, paymentRequestId: request.paymentRequestId)
+        if let period = request.billingPeriod {
+            guard let subscription = PaykitSubscription(record: record), !subscription.paidPeriods.contains(period) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+        }
     }
 
     func reject(_ request: PaykitPaymentRequest) async throws {

@@ -193,14 +193,38 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         let afterSkippedScan = try await service.getActivity(id: activity.activityId)
         XCTAssertEqual(afterSkippedScan, persisted)
 
-        defer { service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default) }
+        let hardwareWalletId = "hardware-\(UUID().uuidString)"
+        defer {
+            service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default)
+            service.setContactDetached(false, activityId: activity.activityId, walletId: hardwareWalletId)
+        }
+        let backupRequired = expectation(description: "Detachment marks metadata backup required")
+        let metadataChanges = service.metadataChangedPublisher.sink { backupRequired.fulfill() }
         try await service.setContact(nil, forActivity: activity.activityId)
-        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) { true }
+        await fulfillment(of: [backupRequired], timeout: 1)
+        metadataChanges.cancel()
+        service.setContactDetached(true, activityId: activity.activityId, walletId: hardwareWalletId)
+        let backup = try await MainActor.run { try JSONEncoder().encode(SettingsViewModel.shared.getAppCacheData()) }
+        let restored = try JSONDecoder().decode(AppCacheData.self, from: backup)
+        let defaultMarker = "\(WalletScope.default):\(activity.activityId)"
+        let hardwareMarker = "\(hardwareWalletId):\(activity.activityId)"
+        XCTAssertTrue(restored.detachedActivityContacts.isSuperset(of: [defaultMarker, hardwareMarker]))
+        XCTAssertTrue(try JSONDecoder().decode(AppCacheData.self, from: Data("{}".utf8)).detachedActivityContacts.isEmpty)
+
+        service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default)
+        service.setContactDetached(false, activityId: activity.activityId, walletId: hardwareWalletId)
+        XCTAssertFalse(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
+        try await MainActor.run { try SettingsViewModel.shared.restoreAppCacheData(restored) }
+        XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
+        XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: hardwareWalletId))
+        let restoredCache = PaykitReceivedPaymentBackfillCache(activityChanges: service.activitiesChangedPublisher)
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: restoredCache, reservations: reservations) { true }
         let detached = try await service.getActivity(id: activity.activityId)
         guard case let .onchain(detachedPayment) = detached else { return XCTFail("Expected the detached payment") }
         XCTAssertNil(detachedPayment.contact)
         try await service.setContact(bob, forActivity: activity.activityId)
         XCTAssertFalse(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
+        XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: hardwareWalletId))
     }
 
     func testUnavailableReservationsCannotCacheNegativeMatch() async {

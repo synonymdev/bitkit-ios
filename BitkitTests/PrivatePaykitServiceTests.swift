@@ -1054,7 +1054,15 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 )
             },
             drainMessages: { XCTAssertEqual(Set($0), Set(expectedKeys.dropFirst())) },
-            pendingDrainKeys: { _ in delivered ? [] : Set(expectedKeys.dropFirst()) },
+            pendingDrainKeys: {
+                PrivatePaykitService.pendingPrivateMessageDrainKeys(
+                    Set($0),
+                    linkedPeers: Dictionary(uniqueKeysWithValues: [peer, linkingPeer, recoveringPeer].map {
+                        ($0.counterparty, delivered ? .linked : $0.state)
+                    }),
+                    pendingOutbound: []
+                )
+            },
             syncApp: {
                 XCTAssertEqual(Set(cleared), Set(expectedKeys))
                 registryUpdates += 1
