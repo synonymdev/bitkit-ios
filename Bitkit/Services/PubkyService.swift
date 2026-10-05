@@ -1075,8 +1075,10 @@ actor PaykitSdkService {
     }
 
     func resolvePublicContactPayment(counterparty: String) async throws -> PublicContactPaymentResolution {
-        try await operationLock.withLock(priority: .interactive) {
-            try await handle().resolvePublicContactPayment(counterparty: counterparty, amount: nil)
+        try await withPublicRead { sdk in
+            let result = try await sdk.resolvePublicContactPayment(counterparty: counterparty, amount: nil)
+            guard self.sdk === sdk else { throw PubkyServiceError.identityChanged }
+            return result
         }
     }
 

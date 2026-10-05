@@ -104,12 +104,43 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         let lookup = Task {
             let result = try await service.canReceivePaymentRequests(publicKey: "peer")
             XCTAssertFalse(result)
+            let resolution = try await service.resolvePublicContactPayment(counterparty: "peer")
+            XCTAssertEqual(resolution.status, .noEndpoint)
             read.fulfill()
         }
         await fulfillment(of: [read], timeout: 0.5)
         release.finish()
         _ = try await holder.value
         try await lookup.value
+    }
+
+    func testPublicPaymentResolutionDiscardsReplacedRuntimeAndAllowsFreshRead() async throws {
+        for wipe in [false, true] {
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let started = expectation(description: "Public payment resolution started")
+            let sdk = PublicReadSdk(noPointer: .init())
+            sdk.publicRead = {
+                started.fulfill()
+                for await _ in gate {}
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let lookup = Task { try await service.resolvePublicContactPayment(counterparty: "peer") }
+            await fulfillment(of: [started], timeout: 2)
+            if wipe {
+                try await service.withWalletWipe {}
+            } else {
+                await service.clearState()
+            }
+            release.finish()
+            do {
+                _ = try await lookup.value
+                XCTFail("Expected replaced runtime result to be rejected")
+            } catch PubkyServiceError.identityChanged {}
+            sdk.publicRead = {}
+            let fresh = try await service.resolvePublicContactPayment(counterparty: "peer")
+            XCTAssertEqual(fresh.status, .noEndpoint)
+        }
     }
 
     func testPublicReadDiscardsCancelledResult() async throws {
@@ -318,6 +349,14 @@ final class PaykitSdkOperationLockTests: XCTestCase {
 
 private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     var lockedRead: () async -> Void = {}
+    var publicRead: () async -> Void = {}
+
+    override func resolvePublicContactPayment(counterparty _: String,
+                                              amount _: PaymentAmountContext?) async throws -> PublicContactPaymentResolution
+    {
+        await publicRead()
+        return PublicContactPaymentResolution(status: .noEndpoint, payableEndpoints: [], failures: [])
+    }
 
     override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
         return nil
