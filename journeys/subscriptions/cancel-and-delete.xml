@@ -6,8 +6,8 @@
 
     Deletion needs its own subscription rather than the one just cancelled: the creator's Delete button
     is gated on the subscription still being proposed or active, so a cancellation reaching the creator
-    removes it. A proposal with no paid periods also leaves CREATED once deleted, whereas one that has
-    taken a payment stays there to retain its history.
+    removes it from CREATED. A canceled subscription that has taken a payment is then listed under EXPIRED
+    to retain its history, whereas a proposal with no paid periods leaves the list once deleted.
   </description>
   <actions>
     <action>Launch the E2E Bitkit app with an active subscription the payer accepted, per review-and-subscribe.xml</action>
@@ -22,7 +22,7 @@
     <action>Verify STATUS reads "Active", the timing cell reads "EXPIRES" with the end date of the paid period, and the footer shows no Cancel button, with More Info when the subscription has a description</action>
     <action>Navigate back and verify the Subscriptions list is shown again</action>
     <action>Switch to the creator instance and open Subscriptions</action>
-    <action>Verify "Journey Sub" is still listed under CREATED, because its paid periods are retained as history</action>
+    <action>Verify "Journey Sub" leaves CREATED and is listed under EXPIRED, because its paid periods are retained as history</action>
     <action>Tap the pending "Journey Sub Two" row in the CREATED section</action>
     <action>Verify the detail shows SUBSCRIBERS and PAYMENTS cells, that PAYMENTS uses the coins icon, and that the footer Delete button carries the trash icon</action>
     <action>Tap Delete</action>
