@@ -127,30 +127,19 @@ class WalletViewModel: ObservableObject {
                 Logger.warn("Accepted order local follow-up remains guarded: \(error)", context: "WalletViewModel")
             }
         }
-        lightningService.onchainTransactionReceived = { txid in
+        let onchainObservation: @Sendable (String) async -> Void = { txid in
+            let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
             do {
-                _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(
-                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), observedTxid: txid
-                )
+                guard try await onchainAttemptService.observeTransaction(txid: txid, walletId: walletId) else { return }
+                _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId, using: transferService)
+                await PaykitPaymentProofService.shared.reconcile()
             } catch {
-                Logger.warn("Observed ordinary payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
+                Logger.warn("Observed payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
             }
         }
-        lightningService.onchainTransactionConfirmed = { txid in
-            do {
-                if try await onchainAttemptService.observeConfirmedTransaction(txid: txid) {
-                    _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(
-                        walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
-                    )
-                    _ = try await onchainAttemptService.resumeAcceptedTransfer(
-                        walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), using: transferService
-                    )
-                    await PaykitPaymentProofService.shared.reconcile()
-                }
-            } catch {
-                Logger.error("Failed to retain confirmed transaction evidence for \(txid): \(error)", context: "WalletViewModel")
-            }
-        }
+        lightningService.onchainTransactionReceived = onchainObservation
+        lightningService.onchainTransactionConfirmed = onchainObservation
     }
 
     /// Convenience initializer for previews and testing
@@ -640,6 +629,7 @@ class WalletViewModel: ObservableObject {
         sats: UInt64,
         isMaxAmount: Bool = false,
         requestId: PaykitPaymentRequest.ID? = nil,
+        paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> OnchainSendResult {
@@ -661,6 +651,7 @@ class WalletViewModel: ObservableObject {
             utxosToSpend: selectedUtxos,
             isMaxAmount: isMaxAmount,
             requestId: requestId,
+            paymentIdentity: paymentIdentity,
             followupContext: followupContext,
             beforeBroadcastAttempt: beforeBroadcastAttempt
         )
@@ -672,6 +663,10 @@ class WalletViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    func resumeAcceptedOnchainTransfer(walletId: String, attempts: OnchainSendAttemptService) async throws -> Bool {
+        try await attempts.resumeAcceptedTransfer(walletId: walletId, using: transferService)
     }
 
     /// Sets the fee rate for the send flow

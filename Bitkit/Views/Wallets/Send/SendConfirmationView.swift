@@ -164,8 +164,8 @@ struct SendConfirmationView: View {
         txid: String? = nil, requestId: PaykitPaymentRequest.ID?,
         using attempts: OnchainSendAttemptService = .shared
     ) async -> SendRoute {
-        if requestId == nil, let context = try? await attempts.ordinaryPendingContext(txid: txid) {
-            return .onchainPending(context)
+        if let context = try? await attempts.pendingContext(requestId: requestId, txid: txid) {
+            return requestId == nil ? .onchainPending(context) : .onchainOperationPending(context, requestId: requestId)
         }
         return .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId)
     }
@@ -940,6 +940,7 @@ struct SendConfirmationView: View {
         var preparedPaymentProof: (endpointIdentifier: String, kind: PaykitPaymentProofKind)?
         var onchainPaymentStarted = false
         var lightningPaymentSubmitted = false
+        var originalPaymentIdentity: String?
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
 
         do {
@@ -953,6 +954,9 @@ struct SendConfirmationView: View {
                     kind: proof.kind
                 )
                 preparedPaymentProof = proof
+                if proof.kind == .onchain {
+                    originalPaymentIdentity = try await PaykitPaymentProofService.shared.onchainPaymentIdentity(requestId: incomingPaymentRequest.id)
+                }
                 shouldCancelPaymentProof = true
             }
             try await prepareIncomingPaymentRequest()
@@ -1052,13 +1056,13 @@ struct SendConfirmationView: View {
                     prepareBroadcast: {
                         try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                             $0,
-                            address: invoice.address
+                            address: invoice.address, paymentIdentity: originalPaymentIdentity
                         )
                     },
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
                         guard let incomingPaymentRequest else { return }
-                        await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                        await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest, paymentIdentity: originalPaymentIdentity)
                     },
                     onAuthorized: { _ in
                         onchainPaymentStarted = true
@@ -1069,7 +1073,7 @@ struct SendConfirmationView: View {
                             address: invoice.address,
                             sats: amount,
                             isMaxAmount: useMaxAmount,
-                            requestId: incomingPaymentRequest?.id,
+                            requestId: incomingPaymentRequest?.id, paymentIdentity: originalPaymentIdentity,
                             followupContext: OnchainSendFollowupContext(
                                 feeSats: UInt64(transactionFee), feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,
@@ -1159,7 +1163,7 @@ struct SendConfirmationView: View {
                     onchainPaymentStarted: onchainPaymentStarted, error: error
                 )
                 if onchainPaymentStarted, privatePaymentListOutcome == .definitePreBroadcastFailure {
-                    await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest)
+                    await PaykitPaymentProofService.shared.failOnchainPayment(incomingPaymentRequest, paymentIdentity: originalPaymentIdentity)
                     onchainPaymentStarted = false
                 } else if onchainPaymentStarted {
                     shouldCancelPaymentProof = false
@@ -1177,7 +1181,7 @@ struct SendConfirmationView: View {
             }
             if let attemptError = error as? OnchainSendAttemptError {
                 switch attemptError {
-                case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved:
+                case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable:
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
                     shouldCancelPaymentProof = false
                     app.toast(attemptError)

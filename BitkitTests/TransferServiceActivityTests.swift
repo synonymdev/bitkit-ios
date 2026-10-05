@@ -231,6 +231,7 @@ final class TransferServiceActivityTests: XCTestCase {
             routingCacheResetAttempted: false, attemptService: restarted,
             navigationPath: Binding(get: { path }, set: { path = $0 })
         )
+        .environment(PaykitPaymentRequestManager())
         .environmentObject(CurrencyViewModel())
         .environmentObject(SettingsViewModel.shared)
         .environmentObject(ActivityListViewModel())
@@ -352,6 +353,7 @@ final class TransferServiceActivityTests: XCTestCase {
             hardwarePaymentIdentity: identity, proofService: service,
             navigationPath: Binding(get: { path }, set: { path = $0 })
         )
+        .environment(PaykitPaymentRequestManager())
         .environmentObject(CurrencyViewModel()).environmentObject(SettingsViewModel.shared)
         .environmentObject(ActivityListViewModel()).environmentObject(AppViewModel())
         .environmentObject(NavigationViewModel()).environmentObject(profile)
@@ -507,6 +509,7 @@ final class TransferServiceActivityTests: XCTestCase {
             hardwareWalletId: walletId, hardwareTransactionId: txid, hardwarePaymentIdentity: identity, proofService: service,
             navigationPath: Binding(get: { path }, set: { path = $0 })
         )
+        .environment(PaykitPaymentRequestManager())
         .environmentObject(CurrencyViewModel())
         .environmentObject(SettingsViewModel.shared)
         .environmentObject(ActivityListViewModel())
@@ -565,6 +568,57 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(path, [.success(paymentId: txid, walletId: walletId)])
         XCTAssertEqual(wallet.sendAmountSats, 9999)
         XCTAssertEqual(savingsStore.loadCount, 0)
+    }
+
+    @MainActor
+    func testReceivedExactRequestAndOrderObservationPromotesBeforeConfirmation() async throws {
+        let confirmed = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let received = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmed
+            Bitkit.LightningService.shared.onchainTransactionReceived = received
+        }
+        for isOrder in [false, true] {
+            for refused in [false, true] {
+                transferDefaults.removeObject(forKey: "transfers")
+                let store = MemoryAttemptStore()
+                let txid = String(repeating: isOrder ? "cd" : "ab", count: 32)
+                let sender = AttemptNodeMock(result: refused ? .rejected(txid: txid, reason: "fixture refusal") : .unknown(txid: txid))
+                let request = PaykitPaymentRequest.ID(paymentRequestId: UUID().uuidString,
+                                                      counterparty: "pubky" + String(repeating: "y", count: 52),
+                                                      counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil)
+                let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
+                _ = try await service.send(using: sender, address: "original", amountSats: 4321,
+                                           satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                           requestId: isOrder ? nil : request, orderId: isOrder ? "original-order" : nil,
+                                           followupContext: .init(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100),
+                                           transferContext: isOrder ? .init(
+                                               clientBalanceSats: 3333,
+                                               txTotalSats: 4444,
+                                               preTransferOnchainSats: 10000
+                                           ) : nil)
+                let wallet = makeWallet(attempts: service)
+                await Bitkit.LightningService.shared.onchainTransactionReceived?(String(repeating: "ef", count: 32))
+                XCTAssertNotEqual(store.snapshot().first?.status, .accepted)
+                await Bitkit.LightningService.shared.onchainTransactionReceived?(txid)
+                XCTAssertEqual(
+                    store.snapshot().first?.status,
+                    .accepted,
+                    "Exact outgoing observation did not promote request/order before confirmation"
+                )
+                XCTAssertEqual(store.snapshot().first?.txid, txid)
+                XCTAssertEqual(store.snapshot().first?.walletId, OnchainSendAttemptService.walletId(index: sender.currentWalletIndex))
+                if isOrder {
+                    let tracking = try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first
+                    XCTAssertEqual(tracking?.fundingTxId, txid)
+                    XCTAssertEqual(tracking?.txTotalSats, 4444)
+                    XCTAssertEqual(tracking?.preTransferOnchainSats, 10000)
+                    XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+                }
+                XCTAssertEqual(sender.calls, 1)
+                withExtendedLifetime(wallet) {}
+            }
+        }
     }
 
     @MainActor

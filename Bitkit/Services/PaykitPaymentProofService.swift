@@ -260,7 +260,9 @@ actor PaykitPaymentProofService {
         kind: PaykitPaymentProofKind
     ) async throws {
         if try await attemptService.hasAttempt(for: request.id) {
-            if kind == .onchain, try await attemptService.acceptedTransactionId(for: request.id) != nil {
+            if kind == .onchain,
+               try await attemptService.acceptedTransactionId(for: request.id, paymentIdentity: currentIdentity()) != nil
+            {
                 return
             }
             throw PaykitPaymentRequestError.operationInProgress
@@ -271,7 +273,7 @@ actor PaykitPaymentProofService {
 
     private func prepareLocked(request: PaykitPaymentRequest, proof: PendingPaykitPaymentProof) async throws {
         if try await attemptService.hasAttempt(for: request.id) {
-            if proof.kind == .onchain, try await attemptService.acceptedTransactionId(for: request.id) != nil {
+            if proof.kind == .onchain, try await attemptService.acceptedTransactionId(for: request.id, paymentIdentity: proof.identity) != nil {
                 return
             }
             throw PaykitPaymentRequestError.operationInProgress
@@ -367,6 +369,89 @@ actor PaykitPaymentProofService {
         try await persist(pendingProofs)
     }
 
+    func onchainPaymentIdentity(requestId: PaykitPaymentRequest.ID) async throws -> String {
+        let identity = try await currentIdentity()
+        guard try await loadProofs().contains(where: {
+            PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet
+        }) else { throw PaykitPaymentRequestError.requestUnavailable }
+        return identity
+    }
+
+    func authorizeOnchainRecovery(_ attempt: OnchainSendAttempt) async throws -> PaykitPaymentRequest {
+        guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        try await requireRecoveryPayer(payer)
+        guard let proof = try await loadProofs().last(where: {
+            PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
+        }),
+            !proof.hasUnsupportedOnchainWallet, proof.onchainAcceptanceVerified != true, proof.proofData == nil,
+            proof.onchainAddress == nil || proof.onchainAddress == attempt.address,
+            proof.onchainAmountSats == nil || proof.onchainAmountSats == attempt.amountSats,
+            proof.paymentIdentifier == nil || attempt.containsCandidate(proof.paymentIdentifier)
+        else { throw PaykitPaymentRequestError.operationInProgress }
+        let records = try await sdk.paymentRequests()
+        guard let record = records.first(where: {
+            $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty) &&
+                $0.counterpartyReceiverPath == requestId.counterpartyReceiverPath
+        }), let request = PaykitPaymentRequest(record: record, now: Date()),
+        request.id == requestId, request.amountSats == attempt.amountSats, !request.requiresAcceptance,
+        request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier),
+        !request.isExpired(at: Date()), record.state != .proofSubmitted,
+        !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        try await requireRecoveryPayer(payer)
+        if !proof.paymentStarted {
+            // Receipt persistence can precede a crash before the first proof-start write.
+            // Restore only this original approved request; never accept/consume a new one.
+            try await mutationLock.withLock {
+                var proofs = try await loadProofs()
+                guard let index = proofs.lastIndex(of: proof) else { throw PaykitPaymentRequestError.operationInProgress }
+                proofs[index].paymentStarted = true
+                proofs[index].onchainAddress = attempt.address
+                proofs[index].onchainAmountSats = attempt.amountSats
+                try await persist(proofs)
+            }
+        }
+        return request
+    }
+
+    func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
+                                context: OnchainSendPendingContext?) async -> PaykitOnchainPaymentResolution?
+    {
+        do {
+            try await requireRecoveryPayer(identity)
+            let proof = try await pendingOnchainPayment(requestId: requestId, identity: identity)
+            let attempt: OnchainSendAttempt? = if let context {
+                try await attemptService.pendingAttempt(context: context)
+            } else {
+                nil
+            }
+            let txid: String?
+            if let attempt, attempt.requestId == requestId, attempt.status == .accepted,
+               PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity ?? identity, identity)
+            {
+                txid = attempt.txid
+            } else if let proof, !proof.hasUnsupportedOnchainWallet, proof.onchainAcceptanceVerified == true,
+                      proof.paymentIdentifier == proof.proofData
+            {
+                txid = proof.paymentIdentifier
+            } else {
+                return nil
+            }
+            guard let txid, await completeOnchainPayment(requestId: requestId, identity: identity, txid: txid) else { return nil }
+            return PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid)
+        } catch { return nil }
+    }
+
+    func requireRecoveryPayer(_ payer: String) async throws {
+        guard try await PubkyPublicKeyFormat.matches(currentIdentity(), payer) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+    }
+
     func markOnchainPaymentStarted(
         _ request: PaykitPaymentRequest,
         address: String,
@@ -396,7 +481,7 @@ actor PaykitPaymentProofService {
             guard hardwareWalletId != WalletScope.default, hardwareTransactionLookup.hasWallet(walletId: hardwareWalletId)
             else { throw PaykitPaymentRequestError.requestUnavailable }
         }
-        if hardwareWalletId != nil {
+        if hardwareWalletId != nil || paymentIdentity != nil {
             guard PubkyPublicKeyFormat.matches(identity, paymentIdentity) else { throw PaykitPaymentRequestError.requestUnavailable }
         }
         var pendingProofs = try await loadProofs()
@@ -643,16 +728,27 @@ actor PaykitPaymentProofService {
                 }) {
                     return (true, completed)
                 }
-                guard try await attemptService.acceptedTransactionId(for: requestId)?.caseInsensitiveCompare(txid) == .orderedSame else { return (
-                    false,
-                    nil
-                ) }
+                guard let accepted = try await attemptService.acceptedRequestContext(requestId: requestId, paymentIdentity: identity),
+                      accepted.txid?.caseInsensitiveCompare(txid) == .orderedSame
+                else { return (false, nil) }
                 guard let index = proofs.lastIndex(where: {
-                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
-                        $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.paymentStarted &&
-                        (($0.paymentIdentifier == nil && $0.proofData == nil) ||
+                    guard PubkyPublicKeyFormat.matches($0.identity, identity), $0.requestId == requestId,
+                          $0.kind == .onchain, !$0.hasUnsupportedOnchainWallet, $0.paymentStarted
+                    else { return false }
+                    if accepted.recoveryContext != nil {
+                        // Only this original operation can associate its pending candidate with the winner.
+                        // Never overwrite a proof already verified/submitted for another candidate.
+                        guard $0.onchainAddress == accepted.address, $0.onchainAmountSats == accepted.amountSats,
+                              $0.onchainAcceptanceVerified != true
+                        else { return false }
+                        return ($0.paymentIdentifier == nil && $0.proofData == nil) ||
+                            ($0.proofData == nil && accepted.containsCandidate($0.paymentIdentifier)) ||
                             ($0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame &&
-                                $0.proofData?.caseInsensitiveCompare(txid) == .orderedSame))
+                                $0.proofData?.caseInsensitiveCompare(txid) == .orderedSame)
+                    }
+                    return ($0.paymentIdentifier == nil && $0.proofData == nil) ||
+                        ($0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame &&
+                            $0.proofData?.caseInsensitiveCompare(txid) == .orderedSame)
                 }) else { return (hasRemoteProof, nil) }
                 proofs[index].paymentIdentifier = txid.lowercased()
                 proofs[index].proofData = txid.lowercased()
@@ -699,7 +795,15 @@ actor PaykitPaymentProofService {
         return true
     }
 
-    func failOnchainPayment(_ request: PaykitPaymentRequest) async {
+    func failOnchainPayment(_ request: PaykitPaymentRequest, paymentIdentity: String? = nil) async {
+        if let paymentIdentity {
+            await removeProofs {
+                PubkyPublicKeyFormat.matches($0.identity, paymentIdentity) && $0.requestId == request.id &&
+                    $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.paymentStarted &&
+                    $0.paymentIdentifier == nil && $0.proofData == nil
+            }
+            return
+        }
         await removeRequestProofs(request) {
             $0.kind == .onchain &&
                 !$0.hasUnsupportedOnchainWallet &&
@@ -741,7 +845,10 @@ actor PaykitPaymentProofService {
                   let identity = PubkyPublicKeyFormat.normalized(publicKey)
             else { return }
 
-            if let acceptedRequest, let requestId = acceptedRequest.requestId, let txid = acceptedRequest.txid {
+            if let acceptedRequest, let requestId = acceptedRequest.requestId, let txid = acceptedRequest.txid,
+               acceptedRequest.recoveryContext?.paymentIdentity == nil ||
+               PubkyPublicKeyFormat.matches(acceptedRequest.recoveryContext?.paymentIdentity, identity)
+            {
                 let hasSavedProof = pendingProofs.contains {
                     PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
                         $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.onchainAcceptanceVerified == true &&
@@ -779,7 +886,7 @@ actor PaykitPaymentProofService {
                     if proof.proofData != nil {
                         if proof.kind == .onchain, proof.onchainAcceptanceVerified != true {
                             if proof.paymentStarted,
-                               let txid = try await attemptService.acceptedTransactionId(for: proof.requestId),
+                               let txid = try await attemptService.acceptedTransactionId(for: proof.requestId, paymentIdentity: identity),
                                proof.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame,
                                proof.proofData?.caseInsensitiveCompare(txid) == .orderedSame
                             {
@@ -792,7 +899,7 @@ actor PaykitPaymentProofService {
                     }
                     if proof.kind == .onchain,
                        proof.paymentStarted,
-                       let txid = try await attemptService.acceptedTransactionId(for: proof.requestId)
+                       let txid = try await attemptService.acceptedTransactionId(for: proof.requestId, paymentIdentity: identity)
                     {
                         _ = await completeOnchainPayment(requestId: proof.requestId, identity: proof.identity, txid: txid)
                         continue

@@ -1780,8 +1780,8 @@
 "wallet__onchain_transaction_id" = "Transaction ID: {txid}";
 "wallet__onchain_state_unavailable" = "The on-chain payment state could not be read. Do not send another payment until it is checked.";
 "wallet__onchain_hardware_pending" = "This hardware-wallet transaction is awaiting verified payment follow-up. Do not send this payment again.";
-"wallet__onchain_rejected_pending" = "The backend rejected this transaction. It may still have reached the network. Do not send it again. {reason}";
-"wallet__onchain_unknown_pending" = "This transaction may have been sent. Its outcome is unknown. Do not send it again.";
+"wallet__onchain_rejected_pending" = "The backend rejected this transaction. It may still have reached the network. Do not start a separate payment. {reason}";
+"wallet__onchain_unknown_pending" = "This transaction may have been sent. Its outcome is unknown. Do not start a separate payment.";
 "wallet__onchain_earlier_restored" = "The earlier payment's local details were restored. No new payment was sent.";
 "wallet__onchain_pending_followup_failed" = "This payment was sent, but its local details could not be restored. Do not send this payment again.";
 "wallet__onchain_pending_followup" = "This payment was sent. Local follow-up is still pending. Do not send this payment again.";
@@ -1792,3 +1792,11 @@
 "wallet__onchain_funding_rejected" = "The funding transaction was rejected. Do not try to fund this order again.";
 "wallet__onchain_funding_unknown" = "The funding transaction may have been sent. Do not try to fund this order again.";
 "wallet__onchain_funding_followup_failed" = "Funding was sent, but local order tracking could not be saved. Do not fund this order again.";
+
+"wallet__onchain_retry_original" = "Retry original payment";
+"wallet__onchain_retry_fee" = "Fee rate (sat/vB)";
+"wallet__onchain_retry_note" = "Retry {amount} sats to {address} using the same original coins. The recipient amount stays unchanged. Enter the network fee rate in sat/vB. This cannot create a separate payment.";
+"wallet__onchain_retry_construction" = "This fee cannot be paid from the original coins while keeping the recipient amount unchanged, or those coins are no longer available. Choose a lower fee rate or wait for the original payment to be recognized. No separate payment was sent.";
+"wallet__onchain_retry_unavailable" = "The retry could not be prepared right now. The original payment may already have reached the network. Check your connection and retry only this original payment.";
+
+"wallet__onchain_retry_invalid_fee" = "Enter a whole-number fee rate from 1 to 4,294,967,295 sat/vB.";

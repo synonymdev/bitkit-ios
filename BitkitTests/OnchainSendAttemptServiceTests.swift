@@ -6,6 +6,264 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     private let walletId = "node-0"
     private let txid = String(repeating: "ab", count: 32)
 
+    func testPublishedPreparedSendNativeEntryPointsRequireRunningNode() async throws {
+        try await ServiceQueue.background(.ldk, wrapErrors: false) {
+            let storage = FileManager.default.temporaryDirectory.appendingPathComponent("bi717-rc69-native-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: storage) }
+            let builder = Builder()
+            builder.setStorageDirPath(storageDirPath: storage.path)
+            let node = try builder.build()
+            let payment = node.onchainPayment()
+            let address = try payment.newAddress()
+            XCTAssertThrowsError(try payment.prepareSendToAddress(address: address, amountSats: 1, feeRate: nil, utxosToSpend: nil)) {
+                guard case .NotRunning = $0 as? NodeError else {
+                    return XCTFail("Expected native NotRunning, got \($0)")
+                }
+            }
+            XCTAssertThrowsError(try payment.prepareSendAllToAddress(address: address, retainReserves: true, feeRate: nil)) {
+                guard case .NotRunning = $0 as? NodeError else {
+                    return XCTFail("Expected native NotRunning, got \($0)")
+                }
+            }
+        }
+    }
+
+    func testPreparedReceiptIsDurableBeforeNativeDispatch() async throws {
+        for max in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = max ? 1500 : 1234
+            sender.onBroadcast = {
+                let attempt = try XCTUnwrap(store.snapshot().first)
+                XCTAssertEqual(attempt.recoveryContext?.inputs, sender.inputs)
+                XCTAssertEqual(attempt.recoveryContext?.candidateTxids, [sender.txid])
+                XCTAssertEqual(attempt.amountSats, sender.amount)
+            }
+            _ = try await service.send(using: sender, address: "original", amountSats: 1234,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: max)
+            XCTAssertEqual(sender.preparations, 1)
+            XCTAssertEqual(sender.legacyCalls, 0)
+            XCTAssertEqual(sender.broadcasts, 1)
+        }
+    }
+
+    func testExplicitRetryUsesOriginalMaxReceiptAndRetainsEveryCandidate() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: 1234,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: true)
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        var authorizationCount = 0
+        let result = try await service.retrySamePayment(
+            using: sender, context: OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+            satsPerVbyte: 3,
+            authorize: { admitted, feeRate in
+                authorizationCount += 1
+                XCTAssertEqual(admitted.id, original.id)
+                XCTAssertEqual(feeRate, 3)
+            }
+        )
+        XCTAssertEqual(result, .unknown(txid: sender.txid))
+        XCTAssertEqual(sender.lastAddress, "original")
+        XCTAssertEqual(sender.lastAmount, original.amountSats)
+        XCTAssertEqual(authorizationCount, 1)
+        XCTAssertEqual(sender.lastFeeRate, 3)
+        XCTAssertEqual(sender.lastMax, false)
+        XCTAssertEqual(sender.lastInputs, sender.inputs)
+        XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateTxids, try [XCTUnwrap(original.txid), sender.txid])
+        XCTAssertEqual(sender.broadcasts, 2)
+    }
+
+    func testOriginalObservationWhileRetryPreparesStopsAnotherBroadcast() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+        let original = try XCTUnwrap(store.snapshot().first)
+        let originalTxid = try XCTUnwrap(original.txid)
+        sender.txid = String(repeating: "cd", count: 32)
+        sender.onPrepare = { _ = try await service.observeConfirmedTransaction(txid: originalTxid) }
+        let result = try await service.retrySamePayment(
+            using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid), authorize: { _, _ in }
+        )
+        XCTAssertEqual(result, .accepted(txid: originalTxid))
+        XCTAssertEqual(sender.broadcasts, 1)
+        XCTAssertEqual(store.snapshot().first?.txid, originalTxid)
+    }
+
+    func testLateOriginalAcceptanceWinsOverUnknownOrRefusedSuccessor() async throws {
+        for refused in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+            let original = try XCTUnwrap(store.snapshot().first)
+            let originalTxid = try XCTUnwrap(original.txid)
+            sender.txid = String(repeating: "cd", count: 32)
+            sender.result = refused ? .rejected(txid: sender.txid, reason: "fixture refusal") : .unknown(txid: sender.txid)
+            sender.onBroadcast = {
+                XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateTxids, [originalTxid, sender.txid])
+                _ = try await service.observeConfirmedTransaction(txid: originalTxid)
+                do {
+                    _ = try await service.admit(walletId: original.walletId, requestId: nil, orderId: nil,
+                                                address: "disjoint", amountSats: 1, isMaxAmount: false)
+                    XCTFail("An in-flight sibling allowed another operation")
+                } catch {}
+            }
+            let result = try await service.retrySamePayment(
+                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid), authorize: { _, _ in }
+            )
+            XCTAssertEqual(result, .accepted(txid: originalTxid))
+            XCTAssertEqual(store.snapshot().first?.status, .accepted)
+            XCTAssertEqual(store.snapshot().first?.txid, originalTxid)
+            let restarted = OnchainSendAttemptService(store: store)
+            let loaded = try await restarted.ordinaryPendingAttempt(context: .init(
+                attemptId: original.id, walletId: original.walletId, txid: sender.txid
+            ))
+            XCTAssertEqual(loaded?.txid, originalTxid)
+        }
+    }
+
+    func testRetryRejectsChangedAmountInputsWalletAndContextWithoutBroadcast() async throws {
+        for invalid in 0 ..< 5 {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+            let original = try XCTUnwrap(store.snapshot().first)
+            sender.txid = String(repeating: "cd", count: 32)
+            if invalid == 0 {
+                sender.amount -= 1
+            }
+            if invalid == 1 {
+                sender.inputs = [OnchainSendInput(txid: String(repeating: "aa", count: 32), vout: 1)]
+            }
+            if invalid == 2 {
+                sender.currentWalletIndex = 1
+            }
+            if invalid == 4 {
+                sender.onPrepare = { sender.currentWalletIndex = 1 }
+            }
+            let context = OnchainSendPendingContext(attemptId: invalid == 3 ? UUID() : original.id,
+                                                    walletId: original.walletId, txid: original.txid)
+            do { _ = try await service.retrySamePayment(using: sender, context: context, authorize: { _, _ in
+            }); XCTFail("Invalid recovery dispatched") } catch {}
+            XCTAssertEqual(sender.broadcasts, 1)
+            XCTAssertEqual(store.snapshot().first, original)
+        }
+    }
+
+    func testRetryReceiptSaveOrAuthorizationFailureRetainsOriginalGuard() async throws {
+        for saveFails in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+            let original = try XCTUnwrap(store.snapshot().first)
+            sender.txid = String(repeating: "cd", count: 32)
+            if saveFails {
+                sender.onPrepare = { store.failSave = true }
+            }
+            do {
+                _ = try await service.retrySamePayment(
+                    using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                    authorize: {
+                        _, _ in if !saveFails {
+                            throw MemoryAttemptStoreError.failed
+                        }
+                    }
+                )
+                XCTFail("Failed authorization/receipt save dispatched")
+            } catch {}
+            store.failSave = false
+            let retained = try XCTUnwrap(store.snapshot().first)
+            XCTAssertEqual(retained.id, original.id)
+            XCTAssertEqual(retained.txid, original.txid)
+            XCTAssertEqual(retained.status, original.status)
+            XCTAssertEqual(retained.amountSats, original.amountSats)
+            XCTAssertEqual(retained.recoveryContext?.inputs, original.recoveryContext?.inputs)
+            XCTAssertEqual(sender.broadcasts, 1)
+            do { _ = try await service.send(using: sender, address: "disjoint", amountSats: 1,
+                                            satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false); XCTFail("Original guard was released") } catch {}
+        }
+    }
+
+    func testAmbiguousGuardWithoutReceiptCannotRetryAndWrongWalletCannotPromote() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = AttemptNodeMock(result: .unknown(txid: txid))
+        let id = try await service.admit(walletId: walletId, requestId: nil, orderId: nil,
+                                        address: "original", amountSats: 1234, isMaxAmount: false)
+        try await service.record(.unknown(txid: txid), attemptId: id)
+        let original = try XCTUnwrap(store.snapshot().first)
+        let wrongWallet = try await service.observeTransaction(txid: txid, walletId: "another-wallet")
+        XCTAssertFalse(wrongWallet)
+        XCTAssertEqual(store.snapshot().first, original)
+        do {
+            _ = try await service.retrySamePayment(
+                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: txid), authorize: { _, _ in }
+            )
+            XCTFail("Missing receipt permitted an unconstrained recovery")
+        } catch {}
+        XCTAssertEqual(sender.calls, 0)
+    }
+
+    func testFirstReceiptWriteFailureNeverBroadcastsAndRetainsDurableGuard() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.onPrepare = { store.failSave = true }
+        do {
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+            XCTFail("Receipt persistence failure broadcast")
+        } catch {}
+        store.failSave = false
+        XCTAssertEqual(sender.broadcasts, 0)
+        XCTAssertEqual(store.snapshot().first?.status, .pending)
+        XCTAssertNil(store.snapshot().first?.recoveryContext)
+    }
+
+    func testConstrainedConstructionAndTransportErrorsAreActionableWithoutReleasingOriginal() async throws {
+        for construction in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+            let original = try XCTUnwrap(store.snapshot().first)
+            sender.onPrepare = {
+                if construction {
+                    throw NodeError.InsufficientFunds(message: "raw native fee detail")
+                }
+                throw NodeError.ConnectionFailed(message: "raw native transport detail")
+            }
+            do {
+                _ = try await service.retrySamePayment(
+                    using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                    satsPerVbyte: 3, authorize: { _, _ in XCTFail("Preparation failure prompted authorization") }
+                )
+                XCTFail("Failed preparation dispatched")
+            } catch let error as OnchainSendAttemptError {
+                if construction {
+                    guard case .retryConstruction = error else { return XCTFail("Missing fee/headroom explanation") }
+                } else {
+                    guard case .retryUnavailable = error else { return XCTFail("Missing uncertainty/connection explanation") }
+                }
+                XCTAssertFalse(error.localizedDescription.contains("raw native"))
+            }
+            XCTAssertEqual(store.snapshot().first, original)
+            XCTAssertEqual(sender.broadcasts, 1)
+        }
+    }
+
     func testConcurrentAdmissionPersistsOnlyOnePendingAttempt() async {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
@@ -179,7 +437,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
         XCTAssertEqual(node.calls, 1)
         XCTAssertEqual(store.snapshot().first?.status, .pending)
-        XCTAssertNil(store.snapshot().first?.txid)
+        XCTAssertEqual(store.snapshot().first?.txid, txid, "Prepared receipt must survive outcome-storage failure")
+        XCTAssertFalse(store.snapshot().first?.recoveryContext?.inputs.isEmpty ?? true)
         store.failSave = false
         let restarted = OnchainSendAttemptService(store: store)
         do {
@@ -383,8 +642,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
             let node = AttemptNodeMock(result: .accepted(txid: txid))
-            node.error = NodeError.NotRunning(message: "not running")
-            node.onSend = { store.failSave = failRelease }
+            node.preparationError = NodeError.NotRunning(message: "not running")
+            node.onPrepare = { store.failSave = failRelease }
             do { _ = try await send(service, node: node); XCTFail("Node error succeeded") } catch let error as OnchainSendAttemptError {
                 if failRelease {
                     guard case .unresolved = error else { return XCTFail("Release write failure lost guard") }
@@ -402,8 +661,9 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             let service = OnchainSendAttemptService(store: store)
             let node = AttemptNodeMock(result: .accepted(txid: txid))
             node.error = error
-            do { _ = try await send(service, node: node); XCTFail("Node workflow error succeeded") } catch {}
-            XCTAssertEqual(store.snapshot().first?.status, .pending)
+            let result = try await send(service, node: node)
+            XCTAssertEqual(result, .unknown(txid: txid))
+            XCTAssertEqual(store.snapshot().first?.status, .unknown)
         }
     }
 
@@ -496,6 +756,25 @@ final class AttemptNodeMock: OnchainSending {
         self.result = result
     }
 
+    var preparationError: Error?
+    var onPrepare: (() async throws -> Void)?
+
+    func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
+                            utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
+                            expectedWalletIndex: Int, expectedNode: AnyObject?) async throws -> PreparedOnchainSendDispatch {
+        try await onPrepare?()
+        if let preparationError { throw preparationError }
+        let candidate: String
+        switch result {
+        case let .accepted(txid), let .rejected(txid, _), let .unknown(txid): candidate = txid
+        }
+        return PreparedOnchainSendDispatch(txid: candidate,
+            inputs: [OnchainSendInput(txid: String(repeating: "ef", count: 32), vout: 0)], recipientAmountSats: sats) {
+            try await self.send(address: address, sats: sats, satsPerVbyte: satsPerVbyte, utxosToSpend: utxosToSpend,
+                                isMaxAmount: isMaxAmount, expectedWalletIndex: expectedWalletIndex, expectedNode: expectedNode)
+        }
+    }
+
     func send(address: String, sats: UInt64, satsPerVbyte: UInt32, utxosToSpend: [SpendableUtxo]?,
               isMaxAmount: Bool, expectedWalletIndex: Int?, expectedNode: AnyObject?) async throws -> OnchainSendResult
     {
@@ -505,5 +784,54 @@ final class AttemptNodeMock: OnchainSending {
             throw error
         }
         return result
+    }
+}
+
+final class PreparedAttemptNodeMock: OnchainSending {
+    var currentWalletIndex = 0
+    let dispatchNode = NSObject()
+    var onchainDispatchNode: AnyObject? {
+        dispatchNode
+    }
+
+    var txid = String(repeating: "ab", count: 32)
+    var amount: UInt64 = 1234
+    var inputs = [OnchainSendInput(txid: String(repeating: "ef", count: 32), vout: 0)]
+    var preparations = 0
+    var broadcasts = 0
+    var legacyCalls = 0
+    var lastAddress: String?
+    var lastAmount: UInt64?
+    var lastFeeRate: UInt32?
+    var lastMax: Bool?
+    var lastInputs: [OnchainSendInput]?
+    var onBroadcast: (() async throws -> Void)?
+    var onPrepare: (() async throws -> Void)?
+    var result: OnchainSendResult?
+
+    func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
+                            utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
+                            expectedWalletIndex: Int, expectedNode: AnyObject?) async throws -> PreparedOnchainSendDispatch
+    {
+        preparations += 1
+        lastAddress = address
+        lastAmount = sats
+        lastFeeRate = satsPerVbyte
+        lastMax = isMaxAmount
+        lastInputs = utxosToSpend?.map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) }
+        try await onPrepare?()
+        let candidateId = txid
+        return PreparedOnchainSendDispatch(txid: candidateId, inputs: inputs, recipientAmountSats: amount) {
+            self.broadcasts += 1
+            try await self.onBroadcast?()
+            return self.result ?? .unknown(txid: candidateId)
+        }
+    }
+
+    func send(address: String, sats: UInt64, satsPerVbyte: UInt32, utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
+              expectedWalletIndex: Int?, expectedNode: AnyObject?) async throws -> OnchainSendResult
+    {
+        legacyCalls += 1
+        return .unknown(txid: txid)
     }
 }

@@ -287,6 +287,7 @@ class ContactsManager: ObservableObject {
         fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
         fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
     ) async throws {
+        guard !Task.isCancelled else { return }
         guard !isLoading else {
             Logger.debug("loadContacts skipped — already loading", context: "ContactsManager")
             return
@@ -306,7 +307,7 @@ class ContactsManager: ObservableObject {
         Logger.info("Loading contacts for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
 
         while generation == loadGeneration {
-            try Task.checkCancellation()
+            guard !Task.isCancelled else { return }
             let revision = contactsRevision
             do {
                 let records = try await fetchContactRecords()

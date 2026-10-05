@@ -67,6 +67,7 @@ enum SendRoute: Hashable {
         paykitPaymentRequestId: PaykitPaymentRequest.ID? = nil
     )
     case onchainPending(OnchainSendPendingContext)
+    case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
     case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
     case failure(SendFailureContext)
@@ -261,7 +262,13 @@ struct SendSheet: View {
                     do {
                         if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
                             walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
-                        ), attempt.status == .accepted, attempt.requestId == nil, attempt.orderId == nil {
+                        ) {
+                            let context = OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
+                            if attempt.requestId != nil || attempt.orderId != nil || attempt.status != .accepted {
+                                hasValidatedAfterSync = true
+                                replaceRootRoute(with: .onchainOperationPending(context, requestId: attempt.requestId))
+                                return
+                            }
                             isResumingAcceptedOrdinarySend = true
                             hasValidatedAfterSync = true
                             app.selectedWalletToPayFrom = .onchain
@@ -779,7 +786,13 @@ struct SendSheet: View {
             SendPendingScreen(
                 paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: nil,
                 routingCacheResetAttempted: routingCacheResetAttempted, ordinaryPendingContext: context,
-                navigationPath: $navigationPath
+                requestPinCheck: requestPinCheck, navigationPath: $navigationPath
+            )
+        case let .onchainOperationPending(context, requestId):
+            SendPendingScreen(
+                paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
+                routingCacheResetAttempted: routingCacheResetAttempted, ordinaryPendingContext: context,
+                requestPinCheck: requestPinCheck, navigationPath: $navigationPath
             )
         case let .hardwarePending(requestId, walletId, transactionId, paymentIdentity):
             SendPendingScreen(

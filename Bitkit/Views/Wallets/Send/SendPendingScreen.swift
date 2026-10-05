@@ -1,4 +1,5 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
 struct HourglassLoadingView: View {
@@ -35,12 +36,15 @@ struct SendPendingScreen: View {
     var hardwareTransactionId: String?
     var hardwarePaymentIdentity: String?
     var proofService: PaykitPaymentProofService = .shared
+    var requestPinCheck: () async -> Bool = { false }
     @Binding var navigationPath: [SendRoute]
 
     @EnvironmentObject private var activityList: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
@@ -49,6 +53,9 @@ struct SendPendingScreen: View {
     @State private var onchainStateUnavailable = false
     @State private var ordinarySendResolved = false
     @State private var localFollowupUnavailable = false
+    @State private var showingRetryConfirmation = false
+    @State private var retryFeeRate = ""
+    @State private var retryingOnchain = false
     @State private var pendingOnchainProof: PendingPaykitPaymentProof?
 
     private var pendingHardwareWalletId: String? {
@@ -56,11 +63,13 @@ struct SendPendingScreen: View {
     }
 
     private var pendingAmountSats: UInt64? {
-        pendingHardwareWalletId == nil ? onchainAttempt?.amountSats ?? wallet.sendAmountSats : pendingOnchainProof?.onchainAmountSats
+        pendingHardwareWalletId == nil ? onchainAttempt?.amountSats ?? pendingOnchainProof?.onchainAmountSats ?? wallet
+            .sendAmountSats : pendingOnchainProof?.onchainAmountSats
     }
 
     private var pendingTransactionId: String? {
-        pendingHardwareWalletId == nil ? onchainAttempt?.txid : pendingOnchainProof?.paymentIdentifier ?? hardwareTransactionId
+        pendingHardwareWalletId == nil ? onchainAttempt?.txid ?? pendingOnchainProof?.paymentIdentifier : pendingOnchainProof?
+            .paymentIdentifier ?? hardwareTransactionId
     }
 
     var body: some View {
@@ -92,6 +101,15 @@ struct SendPendingScreen: View {
 
             Spacer()
 
+            if pendingHardwareWalletId == nil, onchainAttempt?.canRetrySamePayment == true, !onchainStateUnavailable {
+                CustomButton(title: t("wallet__onchain_retry_original"), isDisabled: retryingOnchain) {
+                    retryFeeRate = String(onchainAttempt?.recoveryContext?.satsPerVbyte ?? 1)
+                    showingRetryConfirmation = true
+                }
+                .accessibilityIdentifier("RetryOriginalOnchainPayment")
+                .padding(.bottom, 16)
+            }
+
             HStack(spacing: 16) {
                 CustomButton(
                     title: t("wallet__send_details"),
@@ -108,6 +126,23 @@ struct SendPendingScreen: View {
                     sheets.hideSheet()
                 }
             }
+        }
+        .alert(t("wallet__onchain_retry_original"), isPresented: $showingRetryConfirmation) {
+            TextField(t("wallet__onchain_retry_fee"), text: $retryFeeRate).keyboardType(.numberPad)
+            Button(t("common__cancel"), role: .cancel) {}
+            Button(t("common__retry")) {
+                guard let rate = UInt32(retryFeeRate), rate > 0 else {
+                    app.toast(type: .warning, title: t("wallet__onchain_retry_invalid_fee"))
+                    return
+                }
+                Task { await retryOriginalPayment(feeRate: rate) }
+            }
+            .disabled(UInt32(retryFeeRate).map { $0 > 0 } != true)
+        } message: {
+            Text(t("wallet__onchain_retry_note", variables: [
+                "amount": CurrencyFormatter.formatSats(onchainAttempt?.amountSats ?? 0),
+                "address": onchainAttempt?.address ?? "",
+            ]))
         }
         .navigationBarHidden(true)
         .allowSwipeBack(false)
@@ -159,9 +194,20 @@ struct SendPendingScreen: View {
                             isOrdinary: paykitPaymentRequestId == nil
                         )
                         onchainAttempt = loaded.attempt
+                        if onchainAttempt?.requestId != paykitPaymentRequestId {
+                            onchainAttempt = nil
+                            onchainStateUnavailable = true
+                        }
                         localFollowupUnavailable = loaded.followupUnavailable
                         if let resolution = loaded.resolution {
                             applyOrdinarySendResolution(resolution)
+                        }
+                        if let requestId = paykitPaymentRequestId, let identity = pendingOnchainProof?.identity ?? pubkyProfile.publicKey,
+                           let resolution = await proofService.resolvedOnchainPayment(
+                               requestId: requestId, identity: identity, context: ordinaryPendingContext
+                           )
+                        {
+                            applyOnchainPaymentResolution(resolution)
                         }
                     } catch { onchainStateUnavailable = true }
                 }
@@ -180,12 +226,85 @@ struct SendPendingScreen: View {
         }
     }
 
+    @MainActor
+    private func retryOriginalPayment(feeRate: UInt32) async {
+        guard !retryingOnchain, let original = onchainAttempt, original.canRetrySamePayment else { return }
+        retryingOnchain = true
+        defer { retryingOnchain = false }
+        let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
+        do {
+            let result = try await attemptService.retrySamePayment(
+                using: LightningService.shared, context: context, satsPerVbyte: feeRate,
+                authorize: { attempt, _ in
+                    if settings.requirePinForPayments && settings.pinEnabled {
+                        if settings.useBiometrics && BiometricAuth.isAvailable {
+                            guard case .success = await BiometricAuth.authenticate() else { throw CancellationError() }
+                        } else {
+                            guard await requestPinCheck() else { throw CancellationError() }
+                        }
+                    }
+                    if attempt.requestId != nil {
+                        let request = try await proofService.authorizeOnchainRecovery(attempt)
+                        try await paymentRequests.ensurePaymentAllowed(request)
+                        guard let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                        try await proofService.requireRecoveryPayer(payer)
+                    } else if let orderId = attempt.orderId {
+                        let orders = try await CoreService.shared.blocktank.orders(orderIds: [orderId], refresh: true)
+                        guard let order = orders.first(where: { $0.id == orderId }), order.state2 == .created,
+                              order.payment?.onchain?.address == attempt.address,
+                              order.clientBalanceSat == attempt.transferContext?.clientBalanceSats,
+                              order.feeSat <= attempt.amountSats
+                        else { throw OnchainSendAttemptError.unresolved }
+                        let formatter = ISO8601DateFormatter()
+                        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                        guard let expiry = formatter.date(from: order.orderExpiresAt) ?? ISO8601DateFormatter().date(from: order.orderExpiresAt),
+                              expiry > Date()
+                        else { throw OnchainSendAttemptError.unresolved }
+                    }
+                }
+            )
+            _ = result
+            try await refreshOriginalOutcome(context: context)
+        } catch is CancellationError {
+            // A positive original observation may have won while authentication awaited.
+            try? await refreshOriginalOutcome(context: context)
+        } catch {
+            try? await refreshOriginalOutcome(context: context)
+            app.toast(error is NodeError ? OnchainSendAttemptError.retryUnavailable : error)
+        }
+    }
+
+    @MainActor
+    private func refreshOriginalOutcome(context: OnchainSendPendingContext) async throws {
+        onchainAttempt = try await attemptService.pendingAttempt(context: context)
+        guard let original = onchainAttempt, original.status == .accepted, let txid = original.txid else { return }
+        if let requestId = original.requestId {
+            await proofService.reconcile()
+            if let payer = original.recoveryContext?.paymentIdentity,
+               let resolution = await proofService.resolvedOnchainPayment(requestId: requestId, identity: payer, context: context)
+            {
+                applyOnchainPaymentResolution(resolution)
+            }
+        } else if original.orderId != nil {
+            guard try await wallet.resumeAcceptedOnchainTransfer(walletId: original.walletId, attempts: attemptService) else { return }
+            navigationPath.append(.success(paymentId: txid))
+        } else if let resolution = try await attemptService.resumeAcceptedOrdinarySend(walletId: original.walletId, pendingContext: context) {
+            applyOrdinarySendResolution(resolution)
+        }
+    }
+
     private func applyOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
         guard !ordinarySendResolved else { return }
         guard resolution.requestId == paykitPaymentRequestId,
               let identity = pubkyProfile.publicKey,
               PubkyPublicKeyFormat.matches(resolution.identity, identity)
         else { return }
+        if pendingHardwareWalletId == nil, let attempt = onchainAttempt {
+            guard attempt.requestId == resolution.requestId, attempt.containsCandidate(resolution.transactionId),
+                  attempt.recoveryContext?.paymentIdentity == nil ||
+                  PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity, resolution.identity)
+            else { return }
+        }
         if let walletId = pendingHardwareWalletId {
             guard resolution.walletId == walletId,
                   let txid = pendingTransactionId,
@@ -234,8 +353,8 @@ struct SendPendingScreen: View {
         using service: OnchainSendAttemptService, context: OnchainSendPendingContext?,
         walletId: String, isOrdinary: Bool = true
     ) async throws -> (attempt: OnchainSendAttempt?, resolution: OnchainSendLocalResolution?, followupUnavailable: Bool) {
-        let attempt: OnchainSendAttempt? = if isOrdinary, let context {
-            try await service.ordinaryPendingAttempt(context: context)
+        let attempt: OnchainSendAttempt? = if let context {
+            try await service.pendingAttempt(context: context)
         } else {
             try await service.unresolvedAttempt(walletId: walletId)
         }

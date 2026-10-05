@@ -771,7 +771,7 @@ class LightningService {
 
     private static func convertVByteToKwu(satsPerVByte: UInt32) -> FeeRate {
         // 1 vbyte = 4 weight units, so 1 sats/vbyte = 250 sats/kwu
-        let satPerKwu = UInt64(satsPerVByte * 250)
+        let satPerKwu = UInt64(satsPerVByte) * 250
         // Ensure we're above the minimum relay fee
         return .fromSatPerKwu(satKwu: max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
     }

@@ -6,18 +6,82 @@ import LDKNode
 protocol OnchainSending {
     var currentWalletIndex: Int { get }
     var onchainDispatchNode: AnyObject? { get }
-    func send(address: String, sats: UInt64, satsPerVbyte: UInt32, utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-              expectedWalletIndex: Int?, expectedNode: AnyObject?) async throws
-        -> OnchainSendResult
+    func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
+                            utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
+                            expectedWalletIndex: Int, expectedNode: AnyObject?) async throws -> PreparedOnchainSendDispatch
 }
 
-extension LightningService: OnchainSending {}
+extension LightningService: OnchainSending {
+    func prepareOnchainSend(
+        address: String, sats: UInt64, satsPerVbyte: UInt32,
+        utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
+        expectedWalletIndex: Int, expectedNode: AnyObject?
+    ) async throws -> PreparedOnchainSendDispatch {
+        guard let node = onchainDispatchNode as? Node else { throw NodeError.NotRunning(message: "Node not set up") }
+        let (prepared, txid, inputs, recipientAmountSats) = try await ServiceQueue.background(.ldk, wrapErrors: false) {
+            guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
+                throw NodeError.NotRunning(message: "Wallet or node changed before on-chain preparation")
+            }
+            let prepared: PreparedOnchainSend
+            if isMaxAmount {
+                prepared = try node.onchainPayment().prepareSendAllToAddress(
+                    address: address, retainReserves: true,
+                    feeRate: .fromSatPerKwu(satKwu: max(UInt64(satsPerVbyte) * 250, 253))
+                )
+            } else {
+                prepared = try node.onchainPayment().prepareSendToAddress(
+                    address: address, amountSats: sats,
+                    feeRate: .fromSatPerKwu(satKwu: max(UInt64(satsPerVbyte) * 250, 253)), utxosToSpend: utxosToSpend
+                )
+            }
+            return (prepared, prepared.txid(), prepared.inputs().map { OnchainSendInput(txid: $0.txid, vout: $0.vout) },
+                    prepared.recipientAmountSats())
+        }
+        return PreparedOnchainSendDispatch(
+            txid: txid, inputs: inputs, recipientAmountSats: recipientAmountSats,
+            broadcast: {
+                try await ServiceQueue.background(.ldk, wrapErrors: false) {
+                    guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
+                        throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
+                    }
+                    return try prepared.broadcast()
+                }
+            }
+        )
+    }
+
+}
+
+struct OnchainSendInput: Codable, Equatable, Hashable {
+    let txid: String
+    let vout: UInt32
+
+    var utxo: SpendableUtxo {
+        SpendableUtxo(outpoint: OutPoint(txid: Txid(txid), vout: vout), valueSats: 0)
+    }
+}
+
+struct PreparedOnchainSendDispatch {
+    let txid: String
+    let inputs: [OnchainSendInput]
+    let recipientAmountSats: UInt64
+    let broadcast: () async throws -> OnchainSendResult
+}
+
+struct OnchainSendRecoveryContext: Codable, Equatable {
+    let inputs: [OnchainSendInput]
+    let satsPerVbyte: UInt32
+    let paymentIdentity: String?
+    var candidateTxids: [String]
+}
 
 enum OnchainSendAttemptError: LocalizedError {
     case unresolved
     case duplicate
     case outcomeNotSaved
     case localFollowupNotSaved
+    case retryConstruction
+    case retryUnavailable
     case preDispatch(Error)
 
     var errorDescription: String? {
@@ -30,6 +94,10 @@ enum OnchainSendAttemptError: LocalizedError {
             t("wallet__onchain_outcome_save_failed")
         case .localFollowupNotSaved:
             t("wallet__onchain_followup_failed")
+        case .retryConstruction:
+            t("wallet__onchain_retry_construction")
+        case .retryUnavailable:
+            t("wallet__onchain_retry_unavailable")
         case let .preDispatch(error):
             error.localizedDescription
         }
@@ -53,7 +121,7 @@ struct OnchainSendAttempt: Codable, Equatable {
     let requestId: PaykitPaymentRequest.ID?
     let orderId: String?
     let address: String
-    let amountSats: UInt64
+    var amountSats: UInt64
     let isMaxAmount: Bool
     var status: Status
     var txid: String? = nil
@@ -61,9 +129,30 @@ struct OnchainSendAttempt: Codable, Equatable {
     var localFollowupComplete = false
     var followupContext: OnchainSendFollowupContext? = nil
     var transferContext: OnchainSendTransferContext? = nil
+    var recoveryContext: OnchainSendRecoveryContext? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
+    }
+
+    func containsCandidate(_ txid: String?) -> Bool {
+        guard let txid else { return self.txid == nil }
+        return self.txid?.caseInsensitiveCompare(txid) == .orderedSame ||
+            recoveryContext?.candidateTxids.contains(where: { $0.caseInsensitiveCompare(txid) == .orderedSame }) == true
+    }
+
+    func storedCandidate(_ txid: String) -> String? {
+        if self.txid?.caseInsensitiveCompare(txid) == .orderedSame {
+            return self.txid
+        }
+        return recoveryContext?.candidateTxids.first { $0.caseInsensitiveCompare(txid) == .orderedSame }
+    }
+
+    var canRetrySamePayment: Bool {
+        guard status == .pending || status == .unknown || status == .rejected, let recovery = recoveryContext,
+              !recovery.inputs.isEmpty, let txid, recovery.candidateTxids.contains(txid)
+        else { return false }
+        return requestId == nil || recovery.paymentIdentity != nil
     }
 }
 
@@ -160,6 +249,7 @@ actor OnchainSendAttemptService {
     private let store: any OnchainSendAttemptStoring
     private let hasPaidOrder: (String) throws -> Bool
     private var knownAttempt: OnchainSendAttempt?
+    private var nativeDispatchInProgress: UUID?
 
     init(
         store: any OnchainSendAttemptStoring = OnchainSendAttemptStore(),
@@ -182,14 +272,17 @@ actor OnchainSendAttemptService {
         isMaxAmount: Bool,
         requestId: PaykitPaymentRequest.ID? = nil,
         orderId: String? = nil,
+        paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> OnchainSendResult {
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
         let walletIndex = lightningService.currentWalletIndex
         let dispatchNode = lightningService.onchainDispatchNode
         if let prior = try currentAttempt(), prior.status == .accepted, let txid = prior.txid,
            prior.walletId == Self.walletId(index: walletIndex),
+           prior.recoveryContext?.paymentIdentity == nil || prior.recoveryContext?.paymentIdentity == paymentIdentity,
            (requestId != nil && prior.requestId == requestId) || (orderId != nil && prior.orderId == orderId)
         {
             return .accepted(txid: txid)
@@ -207,46 +300,150 @@ actor OnchainSendAttemptService {
             followupContext: followupContext,
             transferContext: transferContext
         )
+        nativeDispatchInProgress = attemptId
+        defer { nativeDispatchInProgress = nil }
+        let prepared: PreparedOnchainSendDispatch
         do {
+            prepared = try await lightningService.prepareOnchainSend(
+                address: address, sats: amountSats, satsPerVbyte: satsPerVbyte,
+                utxosToSpend: utxosToSpend, isMaxAmount: isMaxAmount,
+                expectedWalletIndex: walletIndex, expectedNode: dispatchNode
+            )
+            do {
+                try validateReceipt(prepared, amount: isMaxAmount && requestId == nil ? nil : amountSats,
+                                    inputs: isMaxAmount ? nil : utxosToSpend?
+                                        .map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
+                guard var attempt = try currentAttempt(), attempt.id == attemptId else { throw OnchainSendAttemptError.unresolved }
+                attempt.amountSats = prepared.recipientAmountSats
+                attempt.txid = prepared.txid
+                attempt.recoveryContext = OnchainSendRecoveryContext(
+                    inputs: prepared.inputs, satsPerVbyte: satsPerVbyte, paymentIdentity: paymentIdentity,
+                    candidateTxids: [prepared.txid]
+                )
+                try store.save([attempt])
+                knownAttempt = attempt
+            }
             try await beforeBroadcastAttempt()
+            try checkWallet(lightningService, index: walletIndex, node: dispatchNode)
         } catch {
-            let callbackError = error
+            let preDispatchError = error
             do { try clearBeforeDispatch(attemptId: attemptId) }
             catch { throw OnchainSendAttemptError.unresolved }
-            throw OnchainSendAttemptError.preDispatch(callbackError)
+            throw OnchainSendAttemptError.preDispatch(preDispatchError)
         }
 
-        let result: OnchainSendResult
-        do {
-            guard lightningService.currentWalletIndex == walletIndex, lightningService.onchainDispatchNode === dispatchNode else {
-                throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
-            }
-            result = try await lightningService.send(
-                address: address,
-                sats: amountSats,
-                satsPerVbyte: satsPerVbyte,
-                utxosToSpend: utxosToSpend,
-                isMaxAmount: isMaxAmount,
-                expectedWalletIndex: walletIndex,
-                expectedNode: dispatchNode
-            )
-        } catch let error as NodeError {
-            do {
-                try clearBeforeDispatch(attemptId: attemptId)
-            } catch {
-                throw OnchainSendAttemptError.unresolved
-            }
-            throw OnchainSendAttemptError.preDispatch(error)
-        } catch {
-            throw OnchainSendAttemptError.unresolved
+        if let winner = try winningResult(attemptId: attemptId) {
+            return winner
         }
+        let result: OnchainSendResult
+        // Once broadcast starts, any thrown error is ambiguous. Never release its receipt.
+        do { result = try await normalized(prepared.broadcast(), candidate: prepared.txid) }
+        catch { result = .unknown(txid: prepared.txid) }
 
         do {
             try record(result, attemptId: attemptId)
         } catch {
             Logger.warn("Could not persist the known on-chain outcome; the durable attempt still blocks another send", context: "OnchainSendAttempt")
         }
-        return result
+        return try winningResult(attemptId: attemptId) ?? result
+    }
+
+    func retrySamePayment(
+        using sender: any OnchainSending, context: OnchainSendPendingContext, satsPerVbyte: UInt32? = nil,
+        authorize: (OnchainSendAttempt, UInt32) async throws -> Void
+    ) async throws -> OnchainSendResult {
+        guard nativeDispatchInProgress == nil, let original = try currentAttempt(),
+              original.id == context.attemptId, original.walletId == context.walletId,
+              original.containsCandidate(context.txid), original.canRetrySamePayment,
+              let recovery = original.recoveryContext
+        else { throw OnchainSendAttemptError.unresolved }
+        let index = sender.currentWalletIndex
+        let node = sender.onchainDispatchNode
+        guard original.walletId == Self.walletId(index: index) else { throw OnchainSendAttemptError.unresolved }
+        nativeDispatchInProgress = original.id
+        defer { nativeDispatchInProgress = nil }
+        let authorizedFeeRate = satsPerVbyte ?? recovery.satsPerVbyte
+        guard authorizedFeeRate > 0 else { throw OnchainSendAttemptError.unresolved }
+        try checkWallet(sender, index: index, node: node)
+        if let winner = try winningResult(attemptId: original.id) {
+            return winner
+        }
+        let prepared: PreparedOnchainSendDispatch
+        do {
+            let receipt = try await sender.prepareOnchainSend(
+                address: original.address, sats: original.amountSats, satsPerVbyte: authorizedFeeRate,
+                utxosToSpend: recovery.inputs.map(\.utxo), isMaxAmount: false,
+                expectedWalletIndex: index, expectedNode: node
+            )
+            prepared = receipt
+            do { try validateReceipt(prepared, amount: original.amountSats, inputs: recovery.inputs) }
+            catch { throw OnchainSendAttemptError.retryConstruction }
+        } catch let error as NodeError {
+            switch error {
+            case .InsufficientFunds, .OnchainTxCreationFailed, .InvalidAmount, .WalletOperationFailed:
+                throw OnchainSendAttemptError.retryConstruction
+            default: throw OnchainSendAttemptError.retryUnavailable
+            }
+        } catch let error as OnchainSendAttemptError { throw error }
+        catch { throw OnchainSendAttemptError.retryUnavailable }
+        try checkWallet(sender, index: index, node: node)
+        if let winner = try winningResult(attemptId: original.id) {
+            return winner
+        }
+        guard var attempt = try currentAttempt(), attempt.id == original.id,
+              attempt.recoveryContext == recovery
+        else { throw OnchainSendAttemptError.unresolved }
+        if !attempt.containsCandidate(prepared.txid) {
+            attempt.recoveryContext?.candidateTxids.append(prepared.txid)
+        }
+        // Keep the original rejected/unknown state until a real new outcome arrives.
+        // A crash here still recognizes both possible payments and cannot unlock the wallet.
+        try store.save([attempt])
+        knownAttempt = attempt
+        // One authorization, after preparation and immediately before native dispatch.
+        // It validates the original payer/request/order and the chosen fee policy without
+        // repeating initial proof-start/consume side effects.
+        try await authorize(attempt, authorizedFeeRate)
+        try checkWallet(sender, index: index, node: node)
+        if let winner = try winningResult(attemptId: original.id) {
+            return winner
+        }
+        let result: OnchainSendResult
+        do { result = try await normalized(prepared.broadcast(), candidate: prepared.txid) }
+        catch { result = .unknown(txid: prepared.txid) }
+        do { try record(result, attemptId: original.id) }
+        catch { Logger.warn("Could not persist the known recovery outcome; original inputs remain guarded", context: "OnchainSendAttempt") }
+        return try winningResult(attemptId: original.id) ?? result
+    }
+
+    private func checkWallet(_ sender: any OnchainSending, index: Int, node: AnyObject?) throws {
+        guard sender.currentWalletIndex == index, sender.onchainDispatchNode === node else {
+            throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
+        }
+    }
+
+    private func validateReceipt(_ prepared: PreparedOnchainSendDispatch, amount: UInt64?, inputs: [OnchainSendInput]?) throws {
+        guard prepared.txid.count == 64, prepared.txid.allSatisfy(\.isHexDigit),
+              prepared.recipientAmountSats > 0, amount == nil || amount == prepared.recipientAmountSats,
+              !prepared.inputs.isEmpty, Set(prepared.inputs).count == prepared.inputs.count,
+              prepared.inputs.allSatisfy({ $0.txid.count == 64 && $0.txid.allSatisfy(\.isHexDigit) }),
+              inputs == nil || (Set(inputs ?? []) == Set(prepared.inputs) && inputs?.count == prepared.inputs.count)
+        else { throw OnchainSendAttemptError.unresolved }
+    }
+
+    private func normalized(_ result: OnchainSendResult, candidate: String) -> OnchainSendResult {
+        switch result {
+        case let .accepted(txid) where txid == candidate: return result
+        case let .rejected(txid, _) where txid == candidate: return result
+        case let .unknown(txid) where txid == candidate: return result
+        default: return .unknown(txid: candidate)
+        }
+    }
+
+    private func winningResult(attemptId: UUID) throws -> OnchainSendResult? {
+        guard let attempt = try currentAttempt(), attempt.id == attemptId, attempt.status == .accepted, let txid = attempt.txid
+        else { return nil }
+        return .accepted(txid: txid)
     }
 
     func admit(
@@ -259,6 +456,7 @@ actor OnchainSendAttemptService {
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil
     ) throws -> UUID {
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
         if let previous = try currentAttempt() {
             guard !previous.blocksNewSend else {
                 throw OnchainSendAttemptError.unresolved
@@ -288,8 +486,19 @@ actor OnchainSendAttemptService {
     }
 
     func record(_ result: OnchainSendResult, attemptId: UUID) throws {
-        guard var attempt = try knownAttempt ?? currentAttempt(), attempt.id == attemptId, attempt.status == .pending else {
+        guard var attempt = try knownAttempt ?? currentAttempt(), attempt.id == attemptId else {
             throw OnchainSendAttemptError.outcomeNotSaved
+        }
+        if attempt.status == .accepted {
+            return
+        }
+        if attempt.recoveryContext == nil {
+            guard attempt.status == .pending else { throw OnchainSendAttemptError.outcomeNotSaved }
+        } else {
+            let txid: String = switch result {
+            case let .accepted(id), let .unknown(id), let .rejected(id, _): id
+            }
+            guard attempt.containsCandidate(txid) else { throw OnchainSendAttemptError.outcomeNotSaved }
         }
         switch result {
         case let .accepted(txid):
@@ -316,6 +525,7 @@ actor OnchainSendAttemptService {
     }
 
     func acknowledgeLocalFollowup(txid: String) throws {
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
         guard var attempt = try currentAttempt(), attempt.status == .accepted,
               attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
         else { return }
@@ -332,17 +542,22 @@ actor OnchainSendAttemptService {
         else { return nil }
         if let pendingContext {
             guard attempt.id == pendingContext.attemptId, attempt.walletId == pendingContext.walletId,
-                  attempt.txid == pendingContext.txid else { return nil }
+                  attempt.containsCandidate(pendingContext.txid) else { return nil }
         }
         if let observedTxid {
-            guard txid.caseInsensitiveCompare(observedTxid) == .orderedSame else { return nil }
+            guard attempt.containsCandidate(observedTxid) else { return nil }
+            if attempt.status == .accepted, txid.caseInsensitiveCompare(observedTxid) != .orderedSame {
+                return nil
+            }
             if attempt.status != .accepted {
                 attempt.status = .accepted
+                attempt.txid = attempt.storedCandidate(observedTxid)
                 knownAttempt = attempt
                 try store.save([attempt])
             }
         }
-        guard attempt.status == .accepted else { return nil }
+        guard attempt.status == .accepted, nativeDispatchInProgress == nil else { return nil }
+        guard let txid = attempt.txid else { return nil }
         if attempt.localFollowupComplete {
             // A delayed native event must not replay metadata/contact writes or publish a new resolution.
             guard observedTxid == nil else { return nil }
@@ -363,12 +578,13 @@ actor OnchainSendAttemptService {
     }
 
     func acceptedRequestAttempt() throws -> OnchainSendAttempt? {
-        try currentAttempt().flatMap { $0.requestId != nil && $0.status == .accepted && !$0.localFollowupComplete ? $0 : nil }
+        guard nativeDispatchInProgress == nil else { return nil }
+        return try currentAttempt().flatMap { $0.requestId != nil && $0.status == .accepted && !$0.localFollowupComplete ? $0 : nil }
     }
 
     @discardableResult
     func resumeAcceptedRequestSend(requestId: PaykitPaymentRequest.ID, txid: String) async throws -> Bool {
-        guard let attempt = try currentAttempt(), attempt.requestId == requestId, attempt.orderId == nil,
+        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt.requestId == requestId, attempt.orderId == nil,
               attempt.status == .accepted, attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
         else { return false }
         if !attempt.localFollowupComplete {
@@ -380,7 +596,7 @@ actor OnchainSendAttemptService {
 
     @discardableResult
     func resumeAcceptedTransfer(walletId: String, using transferService: TransferService) async throws -> Bool {
-        guard let attempt = try currentAttempt(), attempt.walletId == walletId,
+        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt.walletId == walletId,
               attempt.status == .accepted, attempt.requestId == nil, attempt.orderId != nil, attempt.txid != nil
         else { return false }
         return try await restoreAcceptedTransfer(attempt, using: transferService)
@@ -388,7 +604,7 @@ actor OnchainSendAttemptService {
 
     @discardableResult
     func resumeAcceptedTransfer(orderId: String, txid: String, using transferService: TransferService) async throws -> Bool {
-        guard let attempt = try currentAttempt(), attempt.orderId == orderId,
+        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt.orderId == orderId,
               attempt.status == .accepted, attempt.requestId == nil,
               attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
         else { return false }
@@ -423,21 +639,40 @@ actor OnchainSendAttemptService {
         knownAttempt = nil
     }
 
-    func acceptedTransactionId(for requestId: PaykitPaymentRequest.ID) throws -> String? {
-        if let knownAttempt, knownAttempt.requestId == requestId, knownAttempt.status == .accepted {
-            return knownAttempt.txid
-        }
-        return try currentAttempt().flatMap { $0.requestId == requestId && $0.status == .accepted ? $0.txid : nil }
+    func acceptedRequestContext(requestId: PaykitPaymentRequest.ID, paymentIdentity: String? = nil) throws -> OnchainSendAttempt? {
+        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(),
+              attempt.requestId == requestId, attempt.status == .accepted,
+              attempt.recoveryContext?.paymentIdentity == nil ||
+              PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity, paymentIdentity)
+        else { return nil }
+        return attempt
+    }
+
+    func acceptedTransactionId(for requestId: PaykitPaymentRequest.ID, paymentIdentity: String? = nil) throws -> String? {
+        try acceptedRequestContext(requestId: requestId, paymentIdentity: paymentIdentity)?.txid
     }
 
     func hasAttempt(for requestId: PaykitPaymentRequest.ID) throws -> Bool {
         try currentAttempt()?.requestId == requestId
     }
 
+    func pendingContext(requestId: PaykitPaymentRequest.ID? = nil, txid: String? = nil) throws -> OnchainSendPendingContext? {
+        guard let attempt = try currentAttempt(), attempt.requestId == requestId,
+              txid == nil ? attempt.blocksNewSend : attempt.containsCandidate(txid)
+        else { return nil }
+        return .init(attemptId: attempt.id, walletId: attempt.walletId, txid: txid ?? attempt.txid)
+    }
+
+    func pendingAttempt(context: OnchainSendPendingContext) throws -> OnchainSendAttempt? {
+        try currentAttempt().flatMap {
+            $0.id == context.attemptId && $0.walletId == context.walletId && $0.containsCandidate(context.txid) ? $0 : nil
+        }
+    }
+
     func ordinaryPendingContext(txid: String? = nil) throws -> OnchainSendPendingContext? {
         guard let attempt = try currentAttempt(), attempt.requestId == nil, attempt.orderId == nil else { return nil }
         if let txid {
-            guard attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame else { return nil }
+            guard attempt.containsCandidate(txid) else { return nil }
         } else {
             // A new unsent operation cannot acquire a previous completed result.
             guard attempt.blocksNewSend else { return nil }
@@ -447,7 +682,7 @@ actor OnchainSendAttemptService {
 
     func ordinaryPendingAttempt(context: OnchainSendPendingContext) throws -> OnchainSendAttempt? {
         try currentAttempt().flatMap {
-            $0.id == context.attemptId && $0.walletId == context.walletId && $0.txid == context.txid &&
+            $0.id == context.attemptId && $0.walletId == context.walletId && $0.containsCandidate(context.txid) &&
                 $0.requestId == nil && $0.orderId == nil ? $0 : nil
         }
     }
@@ -457,12 +692,22 @@ actor OnchainSendAttemptService {
     }
 
     @discardableResult
+    func observeTransaction(txid: String, walletId: String) throws -> Bool {
+        guard try currentAttempt()?.walletId == walletId else { return false }
+        return try observeConfirmedTransaction(txid: txid)
+    }
+
+    @discardableResult
     func observeConfirmedTransaction(txid: String) throws -> Bool {
         guard var attempt = try currentAttempt(),
-              attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame,
+              attempt.containsCandidate(txid),
               attempt.blocksNewSend
         else { return false }
+        if attempt.status == .accepted {
+            return attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
+        }
         attempt.status = .accepted
+        attempt.txid = attempt.storedCandidate(txid)
         knownAttempt = attempt
         try store.save([attempt])
         return true
