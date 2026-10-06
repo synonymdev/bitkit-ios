@@ -494,8 +494,9 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
     func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport
     func processOutboundPrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> Paykit
         .OutboundPrivateSendReport
-    func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
-    func receivePrivateMessagesFromLinkedPeers() async throws -> [Paykit.PrivateStreamCounterpartyIntakeReport]
+    func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
+    func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) async throws
+        -> [Paykit.PrivateStreamCounterpartyIntakeReport]
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord]
     func sharedPaymentRequests(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.PaymentRequestRecord]
@@ -564,13 +565,14 @@ struct PaykitPaymentRequestService {
 
     func synchronize(
         mode: PaykitPaymentRequestRefreshMode = .full,
-        priority: PaykitSdkOperationLock.Priority = .ordered
+        priority: PaykitSdkOperationLock.Priority = .ordered,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws -> PaykitPaymentRequestSnapshot {
         if mode == .full {
-            try await processPendingMessages()
+            try await processPendingMessages(priority: messagePriority)
         }
         if mode >= .inbox {
-            let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers()
+            let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers(priority: messagePriority)
             logIntakeFailures(intakeReports)
         }
         let synchronizationDate = now()
@@ -994,7 +996,10 @@ struct PaykitPaymentRequestService {
     }
 
     @discardableResult
-    private func processPendingMessages(to counterparty: String? = nil) async throws -> [Paykit.OutboundPrivateCounterpartySendReport] {
+    private func processPendingMessages(
+        to counterparty: String? = nil,
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws -> [Paykit.OutboundPrivateCounterpartySendReport] {
         do {
             let reports: [Paykit.OutboundPrivateCounterpartySendReport]
             if let counterparty {
@@ -1005,7 +1010,7 @@ struct PaykitPaymentRequestService {
                     error: nil
                 )]
             } else {
-                reports = try await sdk.processPendingPrivateMessages()
+                reports = try await sdk.processPendingPrivateMessages(priority: priority)
             }
             for report in reports {
                 if let error = report.error {
@@ -1607,8 +1612,17 @@ final class PaykitPaymentRequestManager {
         return subscription
     }
 
-    func refresh(mode: PaykitPaymentRequestRefreshMode = .full, forceFresh: Bool = false) async {
-        await refresh(excludingProtectedRequestId: nil, mode: mode, forceFresh: forceFresh)
+    func refresh(
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        forceFresh: Bool = false,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+    ) async {
+        await refresh(
+            excludingProtectedRequestId: nil,
+            mode: mode,
+            forceFresh: forceFresh,
+            messagePriority: forceFresh ? .ordered : messagePriority
+        )
     }
 
     /// Applies a changed subscription clock offset: waits for a refresh already reading the old clock, then refreshes again.
@@ -1632,13 +1646,14 @@ final class PaykitPaymentRequestManager {
     private func refresh(
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
         mode: PaykitPaymentRequestRefreshMode = .full,
-        forceFresh: Bool = false
+        forceFresh: Bool = false,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
     ) async {
         if let refreshTask {
             let generation = stateGeneration
             await refreshTask.task.value
             if forceFresh || mode > refreshTask.mode, generation == stateGeneration, !Task.isCancelled {
-                await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode)
+                await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode, messagePriority: messagePriority)
             }
             return
         }
@@ -1650,7 +1665,8 @@ final class PaykitPaymentRequestManager {
             await performRefresh(
                 generation: generation,
                 excludingProtectedRequestId: excludingProtectedRequestId,
-                mode: mode
+                mode: mode,
+                messagePriority: messagePriority
             )
             guard generation == refreshGeneration else { return }
             refreshTask = nil
@@ -2202,10 +2218,11 @@ final class PaykitPaymentRequestManager {
     private func performRefresh(
         generation: Int,
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
-        mode: PaykitPaymentRequestRefreshMode
+        mode: PaykitPaymentRequestRefreshMode,
+        messagePriority: PaykitSdkOperationLock.Priority
     ) async {
         do {
-            let snapshot = try await service.synchronize(mode: mode, priority: .background)
+            let snapshot = try await service.synchronize(mode: mode, priority: .background, messagePriority: messagePriority)
             guard generation == refreshGeneration, let activeIdentity else { return }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)

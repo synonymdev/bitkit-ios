@@ -895,7 +895,11 @@ actor PaykitSdkService {
 
     @discardableResult
     func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
-        try await withStateRevisionTracking { sdk in
+        try await receivePrivateMessagesFromLinkedPeers(priority: .ordered)
+    }
+
+    func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [PrivateStreamCounterpartyIntakeReport] {
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.receivePrivateMessagesFromLinkedPeers()
         }
     }
@@ -923,7 +927,11 @@ actor PaykitSdkService {
 
     @discardableResult
     func processPendingPrivateMessages() async throws -> [OutboundPrivateCounterpartySendReport] {
-        try await withStateRevisionTracking { sdk in
+        try await processPendingPrivateMessages(priority: .ordered)
+    }
+
+    func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.processPendingPrivateMessages()
         }
     }

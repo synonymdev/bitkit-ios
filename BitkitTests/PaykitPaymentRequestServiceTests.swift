@@ -15,21 +15,30 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let incoming = try paymentRequestRecord(id: "incoming")
         let modes: [PaykitPaymentRequestRefreshMode] = [.stored, .inbox, .full]
         for mode in modes {
-            let sdk = PaymentRequestSdkMock(records: [stored])
-            await sdk.setIncomingRecords([incoming])
-            let manager = paymentRequestManager(sdk: sdk)
+            for priority in [PaykitSdkOperationLock.Priority.ordered, .background] {
+                let context = "\(mode), \(priority)"
+                let sdk = PaymentRequestSdkMock(records: [stored])
+                await sdk.setIncomingRecords([incoming])
+                let manager = paymentRequestManager(sdk: sdk)
 
-            await manager.refresh(mode: mode)
+                if priority == .ordered {
+                    await manager.refresh(mode: mode)
+                } else {
+                    await manager.refresh(mode: mode, messagePriority: priority)
+                }
 
-            let expectedIds = mode == .stored ? [stored.paymentRequestId] : [stored.paymentRequestId, incoming.paymentRequestId]
-            XCTAssertEqual(Set(manager.pendingRequests.map(\.paymentRequestId)), Set(expectedIds), "\(mode)")
-            let snapshot = await sdk.snapshot()
-            XCTAssertEqual(snapshot.processCallCount, mode == .full ? 1 : 0, "\(mode)")
-            XCTAssertEqual(snapshot.receiveCallCount, mode >= .inbox ? 1 : 0, "\(mode)")
-            XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, "\(mode)")
-            let priorities = await sdk.operationPriorities
-            XCTAssertEqual(priorities["requests"], [.background], "\(mode)")
-            XCTAssertEqual(priorities["peers"], [.background], "\(mode)")
+                let expectedIds = mode == .stored ? [stored.paymentRequestId] : [stored.paymentRequestId, incoming.paymentRequestId]
+                XCTAssertEqual(Set(manager.pendingRequests.map(\.paymentRequestId)), Set(expectedIds), context)
+                let snapshot = await sdk.snapshot()
+                XCTAssertEqual(snapshot.processCallCount, mode == .full ? 1 : 0, context)
+                XCTAssertEqual(snapshot.receiveCallCount, mode >= .inbox ? 1 : 0, context)
+                XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, context)
+                let priorities = await sdk.operationPriorities
+                XCTAssertEqual(priorities["pending"] ?? [], mode == .full ? [priority] : [], context)
+                XCTAssertEqual(priorities["receive"] ?? [], mode >= .inbox ? [priority] : [], context)
+                XCTAssertEqual(priorities["requests"], [.background], context)
+                XCTAssertEqual(priorities["peers"], [.background], context)
+            }
         }
     }
 
@@ -41,7 +50,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 let sdk = PaymentRequestSdkMock(records: [])
                 let manager = paymentRequestManager(sdk: sdk)
                 await sdk.pauseNextPaymentRequestList()
-                let initialRefresh = Task { await manager.refresh(mode: initialMode) }
+                let initialRefresh = Task { await manager.refresh(mode: initialMode, messagePriority: .background) }
                 try await waitUntil { await sdk.paymentRequestListIsPaused() }
                 let overlappingRefreshStarted = expectation(description: context)
                 let overlappingRefresh = Task {
@@ -63,6 +72,17 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertEqual(snapshot.processCallCount, max(initialMode, requestedMode) == .full ? 1 : 0, context)
                 XCTAssertEqual(snapshot.receiveCallCount, (initialMode >= .inbox ? 1 : 0) + (upgrades ? 1 : 0), context)
                 XCTAssertEqual(snapshot.paymentRequestListCallCount, upgrades ? 2 : 1, context)
+                let priorities = await sdk.operationPriorities
+                XCTAssertEqual(
+                    priorities["pending"] ?? [],
+                    initialMode == .full ? [.background] : requestedMode == .full ? [.ordered] : [],
+                    context
+                )
+                XCTAssertEqual(
+                    priorities["receive"] ?? [],
+                    (initialMode >= .inbox ? [.background] : []) + (upgrades ? [.ordered] : []),
+                    context
+                )
             }
         }
     }
@@ -72,14 +92,14 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sdk = PaymentRequestSdkMock(records: [record])
         let manager = paymentRequestManager(sdk: sdk)
         await sdk.pauseNextPaymentRequestList()
-        let first = Task { await manager.refresh() }
+        let first = Task { await manager.refresh(messagePriority: .background) }
         try await waitUntil { await sdk.paymentRequestListIsPaused() }
 
         await sdk.setRecords([])
         let refreshStarted = expectation(description: "Request state refresh started")
         let fresh = Task {
             refreshStarted.fulfill()
-            await manager.refresh(forceFresh: true)
+            await manager.refresh(forceFresh: true, messagePriority: .background)
         }
         await fulfillment(of: [refreshStarted], timeout: 1)
         await sdk.resumePaymentRequestList()
@@ -89,6 +109,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.paymentRequestListCallCount, 2)
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["pending"], [.background, .ordered])
+        XCTAssertEqual(priorities["receive"], [.background, .ordered])
     }
 
     func testFreshRefreshRereadsProofStateChangedDuringNotificationSynchronization() async throws {
@@ -3345,12 +3368,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await sdk.failNextProcess()
         let manager = paymentRequestManager(sdk: sdk)
 
-        await manager.refresh()
+        await manager.refresh(messagePriority: .background)
 
         XCTAssertEqual(manager.pendingRequests.count, 1)
         let snapshot = await sdk.snapshot()
         XCTAssertEqual(snapshot.processCallCount, 1)
         XCTAssertEqual(snapshot.receiveCallCount, 1)
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["pending"], [.background])
+        XCTAssertEqual(priorities["receive"], [.background])
     }
 
     func testFailedRefreshKeepsPreviouslyLoadedRequests() async throws {
@@ -5284,7 +5310,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
         let sdk = PaymentRequestSdkMock(records: [firstRecord, thirdRecord, fourthRecord])
         let manager = paymentRequestManager(sdk: sdk)
-        await manager.refresh()
+        await manager.refresh(messagePriority: .background)
         let request = try XCTUnwrap(manager.pendingRequests.first(where: {
             $0.paymentRequestId == firstRecord.paymentRequestId &&
                 $0.counterparty == firstRecord.counterparty
@@ -5305,6 +5331,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 paymentRequestId: request.paymentRequestId
             )]
         )
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["pending"], [.background, .ordered])
     }
 
     func testAcceptRechecksExpirationImmediatelyBeforeAction() async throws {
@@ -6979,6 +7007,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     }
 
     func processPendingPrivateMessages() async throws -> [OutboundPrivateCounterpartySendReport] {
+        try await processPendingPrivateMessages(priority: .ordered)
+    }
+
+    func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
+        operationPriorities["pending", default: []].append(priority)
         processCallCount += 1
         try await processMessages()
         return processReports
@@ -7015,7 +7048,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         throw PaymentRequestSdkMockError.process
     }
 
-    func receivePrivateMessagesFromLinkedPeers() throws -> [PrivateStreamCounterpartyIntakeReport] {
+    func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) throws -> [PrivateStreamCounterpartyIntakeReport] {
+        operationPriorities["receive", default: []].append(priority)
         receiveCallCount += 1
         if let receiveError {
             throw receiveError

@@ -1176,7 +1176,8 @@ struct AppScene: View {
     private func refreshIncomingPaykitPaymentRequests(
         presentItems: Bool = true,
         mode: PaykitPaymentRequestRefreshMode = .full,
-        forceFresh: Bool = false
+        forceFresh: Bool = false,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
     ) async {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
@@ -1192,7 +1193,7 @@ struct AppScene: View {
             await PaykitPaymentProofService.shared.reconcile()
         }
         guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh(mode: mode, forceFresh: forceFresh)
+        await paykitPaymentRequestManager.refresh(mode: mode, forceFresh: forceFresh, messagePriority: messagePriority)
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return }
@@ -1248,7 +1249,7 @@ struct AppScene: View {
         guard scenePhase == .active, network.isConnected else { return }
 
         await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
-        await refreshIncomingPaykitPaymentRequests()
+        await refreshIncomingPaykitPaymentRequests(messagePriority: .background)
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
             do {
@@ -1268,15 +1269,27 @@ struct AppScene: View {
             case .refreshInboxAndMaintenance:
                 mode = .full
             }
+            let session = pubkyProfile.currentSession
             if mode == .full {
                 await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
                 await retryPendingPaykitEndpointRemoval()
-                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
-                    wallet: wallet,
-                    reason: "payment request polling"
-                )
             }
-            await refreshIncomingPaykitPaymentRequests(mode: mode)
+            await refreshIncomingPaykitPaymentRequests(mode: mode, messagePriority: .background)
+            guard mode == .full,
+                  !Task.isCancelled,
+                  scenePhase == .active,
+                  network.isConnected,
+                  PaykitFeatureFlags.isUIEnabled,
+                  let session, session == pubkyProfile.currentSession,
+                  !app.showDrawer,
+                  sheets.activeSheetConfiguration == nil,
+                  !sheets.isReplacingSheet,
+                  app.contactPaymentContext == nil
+            else { continue }
+            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(
+                wallet: wallet,
+                reason: "payment request polling"
+            )
         }
     }
 
