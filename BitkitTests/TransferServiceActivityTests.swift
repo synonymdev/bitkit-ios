@@ -48,7 +48,6 @@ final class TransferServiceActivityTests: XCTestCase {
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: "pubky" + String(repeating: "y", count: 52),
-            counterpartyReceiverPath: "bitkit/server",
             paymentRequestId: paymentRequestId,
             localRole: .payer,
             state: state,
@@ -56,12 +55,17 @@ final class TransferServiceActivityTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: recurrence,
                 acceptedPaymentEndpointIdentifiers: endpoints,
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
                 conversion: nil,
                 paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
@@ -263,7 +267,7 @@ final class TransferServiceActivityTests: XCTestCase {
     func testHardwareShopCandidateDoesNotCreateSentActivityUntilVerified() async throws {
         let requestId = PaykitPaymentRequest.ID(
             paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),
-            counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+            billingPeriodStartsAt: nil
         )
         let walletId = "trezor:original-ios-wallet"
         for (index, request, verified) in [(0, Optional(requestId), false), (1, Optional(requestId), true), (2, nil, false)] {
@@ -302,7 +306,7 @@ final class TransferServiceActivityTests: XCTestCase {
         let identity = "pubky" + String(repeating: "z", count: 52)
         let requestId = PaykitPaymentRequest.ID(
             paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),
-            counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+            billingPeriodStartsAt: nil
         )
         let walletId = "trezor:original-ios-wallet"
         let txid = String(repeating: "ab", count: 32)
@@ -312,7 +316,7 @@ final class TransferServiceActivityTests: XCTestCase {
             contactPublicKey: requestId.counterparty, tags: ["original tag"], requestId: requestId, proofVerified: false
         )
         let proof = PendingPaykitPaymentProof(
-            identity: identity, requestId: requestId, paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            identity: identity, requestId: requestId, paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
             kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
             onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId
         )
@@ -377,12 +381,13 @@ final class TransferServiceActivityTests: XCTestCase {
         let reassigned = "pubky" + String(repeating: "x", count: 52)
         for (index, editedContact) in [String?.none, Optional(reassigned)].enumerated() {
             let requestId = PaykitPaymentRequest.ID(paymentRequestId: UUID().uuidString, counterparty: original,
-                                                    counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil)
+                                                    billingPeriodStartsAt: nil)
             let walletId = "trezor:original-ios-wallet"
             let txid = String(repeating: index == 0 ? "ab" : "cd", count: 32)
             let store = PaymentProofMemoryStore()
             await store.seed([PendingPaykitPaymentProof(identity: identity, requestId: requestId,
-                                                        paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+                                                        paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
                                                         kind: .onchain,
                                                         paymentStarted: true, paymentIdentifier: txid, proofData: nil,
                                                         onchainAddress: "bcrt1qoriginal",
@@ -467,12 +472,12 @@ final class TransferServiceActivityTests: XCTestCase {
         let identity = "pubky" + String(repeating: "z", count: 52)
         let requestId = PaykitPaymentRequest.ID(
             paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),
-            counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+            billingPeriodStartsAt: nil
         )
         let walletId = "trezor:original-ios-wallet"
         let txid = String(repeating: "ab", count: 32)
         let proof = PendingPaykitPaymentProof(
-            identity: identity, requestId: requestId, paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            identity: identity, requestId: requestId, paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
             kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
             onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId
         )
@@ -548,7 +553,7 @@ final class TransferServiceActivityTests: XCTestCase {
 
         let otherIdentity = "pubky" + String(repeating: "x", count: 52)
         let otherProof = PendingPaykitPaymentProof(
-            identity: otherIdentity, requestId: requestId, paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
+            identity: otherIdentity, requestId: requestId, paymentAppId: "bitkit", paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
             kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
             onchainAddress: proof.onchainAddress, onchainAmountSats: 7777, onchainWalletId: walletId
         )
@@ -587,7 +592,7 @@ final class TransferServiceActivityTests: XCTestCase {
                 let sender = AttemptNodeMock(result: refused ? .rejected(txid: txid, reason: "fixture refusal") : .unknown(txid: txid))
                 let request = PaykitPaymentRequest.ID(paymentRequestId: UUID().uuidString,
                                                       counterparty: "pubky" + String(repeating: "y", count: 52),
-                                                      counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil)
+                                                      billingPeriodStartsAt: nil)
                 let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
                 _ = try await service.send(using: sender, address: "original", amountSats: 4321,
                                            satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,

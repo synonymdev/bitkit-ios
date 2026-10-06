@@ -12,8 +12,8 @@ final class ContactsManagerTests: XCTestCase {
         UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
-    func testImportPersistsPreparedContactThroughDefaultSDKWithoutSession() async throws {
-        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession]
+    func testImportRequiresSessionForSharedContactStorage() async throws {
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let originals = try keys.map { try Keychain.load(key: $0) }
         addTeardownBlock {
             await PaykitSdkService.shared.clearState()
@@ -26,50 +26,31 @@ final class ContactsManagerTests: XCTestCase {
             }
         }
         await PaykitSdkService.shared.clearState()
-        try Keychain.delete(key: .paykitSession)
-        // Generated with Paykit rc56's StorageStateEnvelope v1 and postcard::to_allocvec:
-        // one public identity initialized at 2026-01-01T00:00:00Z, generation 0, no Noise key or other records.
-        let fixture = try XCTUnwrap(Data(base64Encoded:
-            "AQEBNDNyc2R1aGN4cHc3NHNud3ljdDg2bTM4YzYzajNwcTh4NHljcWlreGc2NHJvaWs4eXc1eHkAFDIwMjYtMDEtMDFUMDA6MDA6MDBaAAAAAAAAAAAAAAAAAAAAAAA="))
-        let snapshot = SdkStateBlobSnapshot(blob: SdkStateBlob(bytes: fixture), revision: "contact-import-fixture")
-        try Keychain.upsert(key: .paykitSdkState, data: encodeSdkStateBlobSnapshot(snapshot: snapshot))
-
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
         let prepared = makeContact(publicKey: "pubky5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo")
         let manager = ContactsManager()
-        try await manager.importContacts(contacts: [prepared])
-        let stored = try await PubkyService.contactRecords()
-        XCTAssertEqual(stored.count, 1)
-        XCTAssertEqual(stored.first?.publicKey, prepared.publicKey)
-        XCTAssertEqual(stored.first?.label, prepared.displayName)
-        XCTAssertEqual(stored.first?.receiverPaths, [PaykitReceiverPath.wallet])
-        XCTAssertEqual(manager.contacts, [prepared])
-
-        _ = try await PubkyService.saveContact(
-            publicKey: prepared.publicKey, label: prepared.displayName,
-            receiverPaths: [PaykitReceiverPath.wallet, PaykitReceiverPath.server]
-        )
-        try await ContactsManager().importContacts(contacts: [prepared])
-        let persisted = try XCTUnwrap(Keychain.load(key: .paykitSdkState))
-        await PaykitSdkService.shared.clearState()
-        try Keychain.upsert(key: .paykitSdkState, data: persisted)
-        let reloaded = try await PubkyService.contactRecords()
-        XCTAssertEqual(reloaded.count, 1)
-        XCTAssertEqual(reloaded.first?.publicKey, prepared.publicKey)
-        XCTAssertEqual(reloaded.first?.label, prepared.displayName)
-        XCTAssertEqual(Set(reloaded.first?.receiverPaths ?? []), [PaykitReceiverPath.wallet, PaykitReceiverPath.server])
+        do {
+            try await manager.importContacts(contacts: [prepared])
+            XCTFail("Shared contact storage requires an active session")
+        } catch {
+            XCTAssertTrue(manager.contacts.isEmpty)
+        }
         XCTAssertNil(try Keychain.load(key: .paykitSession))
     }
 
     func testImportSavesPreparedContactsWithoutNetworkAndSkipsDuplicates() async throws {
         let manager = ContactsManager()
         let prepared = (0 ..< 62).map { makeContact(publicKey: "pubky-contact-\($0)") }
-        var saved: [String] = []
-        try await manager.importContacts(contacts: prepared + prepared) { key, label in
-            XCTAssertEqual(label, "Alice")
-            saved.append(key)
+        var batches: [[ContactUpdate]] = []
+        try await manager.importContacts(contacts: prepared + prepared) { updates, _ in
+            XCTAssertTrue(updates.allSatisfy { $0.label == "Alice" })
+            batches.append(updates)
         }
 
-        XCTAssertEqual(saved, prepared.map(\.publicKey))
+        XCTAssertEqual(batches.count, 1)
+        XCTAssertEqual(batches.first?.map(\.publicKey), prepared.map(\.publicKey))
         XCTAssertEqual(Set(manager.contacts), Set(prepared))
         XCTAssertEqual(manager.contacts.count, 62)
     }
@@ -96,52 +77,62 @@ final class ContactsManagerTests: XCTestCase {
 
             XCTAssertEqual(manager.pendingImportContacts, expected)
             var saved: [String] = []
-            try await manager.importContacts(contacts: manager.pendingImportContacts) { publicKey, _ in
-                XCTAssertFalse(PubkyPublicKeyFormat.matches(publicKey, ownPublicKey))
-                saved.append(publicKey)
+            try await manager.importContacts(contacts: manager.pendingImportContacts) { updates, _ in
+                XCTAssertFalse(updates.contains { PubkyPublicKeyFormat.matches($0.publicKey, ownPublicKey) })
+                saved.append(contentsOf: updates.map(\.publicKey))
             }
             XCTAssertEqual(saved, expected.map(\.publicKey))
             XCTAssertEqual(manager.contacts, expected)
         }
     }
 
-    func testImportPreservesSavedContactsOnFailureAndRetriesMissingContacts() async throws {
+    func testImportPreservesExistingContactsOnBatchFailureAndRetriesSelectedContacts() async throws {
         let manager = ContactsManager()
+        let existing = makeContact(publicKey: "pubky-existing")
+        manager.contacts = [existing]
         let alice = makeContact(publicKey: "pubky-alice")
         let bob = makeContact(publicKey: "pubky-bob")
-        var saved: [String] = []
+        var attempted: [[String]] = []
         do {
-            try await manager.importContacts(contacts: [alice, bob]) { key, _ in
-                if key == bob.publicKey {
-                    throw CocoaError(.fileWriteUnknown)
-                }
-                saved.append(key)
+            try await manager.importContacts(contacts: [existing, alice, bob]) { updates, _ in
+                attempted.append(updates.map(\.publicKey))
+                throw CocoaError(.fileWriteUnknown)
             }
             XCTFail("Import should report the failed save")
         } catch {
-            XCTAssertEqual(manager.contacts, [alice])
+            XCTAssertEqual(manager.contacts, [existing])
         }
 
-        try await manager.importContacts(contacts: [alice, bob]) { key, _ in saved.append(key) }
-        XCTAssertEqual(saved, [alice.publicKey, bob.publicKey])
-        XCTAssertEqual(Set(manager.contacts), Set([alice, bob]))
+        try await manager.importContacts(contacts: [existing, alice, bob]) { updates, _ in
+            attempted.append(updates.map(\.publicKey))
+        }
+        XCTAssertEqual(attempted, Array(repeating: [alice.publicKey, bob.publicKey], count: 2))
+        XCTAssertEqual(Set(manager.contacts), Set([existing, alice, bob]))
     }
 
     func testCancelledImportStopsSavingAndDoesNotPublishStaleResults() async throws {
-        let manager = ContactsManager()
         let prepared = (0 ..< 3).map { makeContact(publicKey: "pubky-contact-\($0)") }
-        var attempted: [String] = []
-        do {
-            try await manager.importContacts(contacts: prepared) { key, _ in
-                attempted.append(key)
-                if key == prepared[1].publicKey {
-                    throw CancellationError()
+        for heldSaveSucceeds in [true, false] {
+            let manager = ContactsManager()
+            let saves = HeldProfileLookups(profiles: heldSaveSucceeds ? [prepared[0].publicKey: "Alice"] : [:])
+            await saves.hold()
+            let importTask = Task {
+                try await manager.importContacts(contacts: prepared) { updates, _ in
+                    XCTAssertEqual(updates.map(\.publicKey), prepared.map(\.publicKey))
+                    _ = try await saves.fetch(XCTUnwrap(updates.first).publicKey)
                 }
             }
-            XCTFail("Import should propagate cancellation")
-        } catch is CancellationError {
-            XCTAssertEqual(attempted, Array(prepared.prefix(2)).map(\.publicKey))
-            XCTAssertTrue(manager.contacts.isEmpty)
+            while await saves.heldCount < 1 {
+                await Task.yield()
+            }
+            importTask.cancel()
+            await saves.release()
+            do {
+                try await importTask.value
+                XCTFail("Import should propagate cancellation")
+            } catch is CancellationError {
+                XCTAssertTrue(manager.contacts.isEmpty)
+            }
         }
     }
 
@@ -275,19 +266,19 @@ final class ContactsManagerTests: XCTestCase {
 
     private func contactRecord(key: String, name: String) -> ContactRecord {
         ContactRecord(
-            publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: name,
+            publicKey: key, label: name,
             profile: PaykitProfile(displayName: name, imageUri: nil, extraJson: nil),
             profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
-            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
     }
 
     private func unprofiledRecord(key: String, label: String?) -> ContactRecord {
         ContactRecord(
-            publicKey: key, receiverPaths: [PaykitReceiverPath.wallet], label: label, profile: nil,
+            publicKey: key, label: label, profile: nil,
             profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
-            publicContactMarkerStatus: .notPublished, publicContactMarkerReceiverPath: nil,
+            publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
     }
@@ -770,7 +761,7 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(changes.count, 2, "An import announces its new contacts once")
         XCTAssertEqual(changes.last, Set([contactProfileKey] + imported.map(\.publicKey)))
 
-        try await manager.importContacts(contacts: imported) { _, _ in }
+        try await manager.importContacts(contacts: imported) { _, _ in XCTFail("Already saved contacts must not be saved again") }
         XCTAssertEqual(changes.count, 2, "An import that adds nothing announces nothing")
     }
 
@@ -1803,8 +1794,9 @@ final class ContactsManagerTests: XCTestCase {
         let saves = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
         await saves.hold()
         let importTask = Task {
-            try await manager.importContacts(contacts: [Bitkit.PubkyContact(publicKey: contactProfileKey, profile: published)]) { key, _ in
-                _ = try await saves.fetch(key)
+            try await manager.importContacts(contacts: [Bitkit.PubkyContact(publicKey: contactProfileKey, profile: published)]) { updates, identity in
+                XCTAssertEqual(identity, "owner")
+                _ = try await saves.fetch(XCTUnwrap(updates.first).publicKey)
             }
         }
         while await saves.heldCount < 1 {
@@ -1825,17 +1817,18 @@ final class ContactsManagerTests: XCTestCase {
         await manager.waitForProfileRefreshForTesting()
     }
 
-    func testImportThatAResetOvertakesStopsSavingAndReportsNothing() async throws {
+    func testImportThatAResetOvertakesDoesNotPublishOrReportFailure() async throws {
         let prepared = (0 ..< 3).map { makeContact(publicKey: "pubky-contact-\($0)") }
-        // The save running when the user signs out may land first or fail after the sign-out; later saves would fail.
         for heldSaveSucceeds in [true, false] {
             let manager = ContactsManager()
             try await manager.loadContacts(for: "owner", fetchContactRecords: { [] }, fetchRemoteProfile: { _ in nil })
             let saves = HeldProfileLookups(profiles: heldSaveSucceeds ? [prepared[0].publicKey: "Alice"] : [:])
             await saves.hold()
             let importTask = Task {
-                try await manager.importContacts(contacts: prepared) { key, _ in
-                    _ = try await saves.fetch(key)
+                try await manager.importContacts(contacts: prepared) { updates, identity in
+                    XCTAssertEqual(identity, "owner")
+                    XCTAssertEqual(updates.map(\.publicKey), prepared.map(\.publicKey))
+                    _ = try await saves.fetch(XCTUnwrap(updates.first).publicKey)
                 }
             }
             while await saves.heldCount < 1 {
@@ -1851,7 +1844,7 @@ final class ContactsManagerTests: XCTestCase {
             }
 
             let attempted = await saves.fetchedKeys
-            XCTAssertEqual(attempted, [prepared[0].publicKey], "A reset stops the import before its next save")
+            XCTAssertEqual(attempted, [prepared[0].publicKey], "The import makes one batch save")
             XCTAssertTrue(manager.contacts.isEmpty, "An import a reset overtook adds nothing to the cleared list")
         }
     }
@@ -1914,7 +1907,10 @@ final class ContactsManagerTests: XCTestCase {
         let blockingRead = try await holdTheOnlyReadSlot(slot)
         let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice", unresolvedFollowKey: "Bob"])
         let records = [unprofiledRecord(key: contactProfileKey, label: "First"), unprofiledRecord(key: unresolvedFollowKey, label: "Second")]
-        let manager = ContactsManager(contactRecords: { records }, removeContactRecord: { _ in }, forgetRemovedContacts: { _ in })
+        let manager = ContactsManager(contactRecords: { records }, removeContactRecords: { keys in
+            XCTAssertEqual(Set(keys), Set(records.map(\.publicKey)))
+            return records
+        }, forgetRemovedContacts: { _ in })
         try await manager.loadContacts(
             for: "owner",
             fetchContactRecords: { records },

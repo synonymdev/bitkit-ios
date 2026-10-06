@@ -1,4 +1,5 @@
 import Foundation
+import enum Paykit.PaykitError
 import struct Paykit.PubkySessionBootstrapResult
 import SwiftUI
 
@@ -89,6 +90,7 @@ class PubkyProfileManager: ObservableObject {
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
+    private var completedRecoveryVersion = 0
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
@@ -182,8 +184,12 @@ class PubkyProfileManager: ObservableObject {
         }
         guard Self.sessionMutationCount == 0 else { return }
         isRestoringSession = true
+        let revision = Self.sessionRevision
         let task = Task {
             defer {
+                if case .automaticRecovery = mode, revision == Self.sessionRevision {
+                    completedRecoveryVersion += 1
+                }
                 initializationTask = nil
                 isRestoringSession = false
             }
@@ -201,9 +207,12 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyProfileManager.initializePersistedSession()
         }
     ) async {
+        let recoveryVersion = completedRecoveryVersion
+        let revision = Self.sessionRevision
         if let initializationTask {
             await initializationTask.value
         }
+        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision { return }
         guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
@@ -878,8 +887,10 @@ class PubkyProfileManager: ObservableObject {
         return true
     }
 
-    func deleteProfile() async throws {
-        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+    func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true) async throws {
+        if cleanPrivatePaykitEndpoints {
+            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+        }
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
@@ -1163,11 +1174,8 @@ class PubkyProfileManager: ObservableObject {
         await PrivatePaykitService.shared.closeAndClear()
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyImageCache.shared.clear()
-        UserDefaults.standard.removeObject(forKey: cachedNameKey)
-        UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
-        UserDefaults.standard.removeObject(forKey: cachedProfileOwnerKey)
+        clearCachedIdentityMetadata()
         UserDefaults.standard.removeObject(forKey: profileSetupPendingKey)
-        ContactsManager.restoreContactProfileOverrides(nil)
         clearPublicPaykitSharingState()
         notifyAppStateBackupChanged()
     }
@@ -1193,9 +1201,9 @@ class PubkyProfileManager: ObservableObject {
         }
 
         do {
-            try await PublicPaykitService.syncLocalReceiverMarker(publicSharingEnabled: false, privateSharingEnabled: false)
+            try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: false)
         } catch PubkyServiceError.sessionNotActive {
-            Logger.debug("Skipping Paykit receiver marker cleanup because no session is active", context: context)
+            Logger.debug("Skipping Paykit app capability update because no session is active", context: context)
         } catch {
             firstError = firstError ?? error
         }
@@ -1310,6 +1318,7 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Cached Profile Metadata
 
     private static let cachedNameKey = "pubky_profile_name"
+    private static let cachedIdentityKey = "pubky_profile_identity"
     private static let cachedImageUriKey = "pubky_profile_image_uri"
     private static let cachedProfileOwnerKey = "pubky_profile_owner"
     private static let profileSetupPendingKey = "pubky_profile_setup_pending"
@@ -1341,10 +1350,20 @@ class PubkyProfileManager: ObservableObject {
         cachedProfileOwner = profile.publicKey
         UserDefaults.standard.set(profile.name, forKey: Self.cachedNameKey)
         UserDefaults.standard.set(profile.imageUrl, forKey: Self.cachedImageUriKey)
+        UserDefaults.standard.set(profile.publicKey, forKey: Self.cachedIdentityKey)
         UserDefaults.standard.set(profile.publicKey, forKey: Self.cachedProfileOwnerKey)
     }
 
+    static func activateCachedIdentity(publicKey: String, previousPublicKey: String?) {
+        let owner = UserDefaults.standard.string(forKey: cachedIdentityKey) ?? previousPublicKey
+        if let owner, !PubkyPublicKeyFormat.matches(owner, publicKey) {
+            clearCachedIdentityMetadata()
+        }
+        UserDefaults.standard.set(publicKey, forKey: cachedIdentityKey)
+    }
+
     static func clearCachedIdentityMetadata() {
+        UserDefaults.standard.removeObject(forKey: cachedIdentityKey)
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
         UserDefaults.standard.removeObject(forKey: cachedProfileOwnerKey)
@@ -1364,6 +1383,7 @@ class PubkyProfileManager: ObservableObject {
         cachedProfileOwner = nil
         UserDefaults.standard.removeObject(forKey: Self.cachedNameKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedImageUriKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedIdentityKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedProfileOwnerKey)
     }
 
@@ -1653,6 +1673,15 @@ class PubkyProfileManager: ObservableObject {
                 let publicKey = try await importSession(savedSessionSecret)
                 return .restored(publicKey: publicKey)
             } catch {
+                if let error = error as? PaykitError {
+                    switch error {
+                    case .ConcurrentUpdate, .SharedStateBusy, .Transport:
+                        Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
+                        return .restorationFailed
+                    default:
+                        break
+                    }
+                }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
         }

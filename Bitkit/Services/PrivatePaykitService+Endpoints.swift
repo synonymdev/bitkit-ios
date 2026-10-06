@@ -51,7 +51,6 @@ extension PrivatePaykitService {
     @MainActor
     func buildLocalEndpoints(
         for publicKey: String,
-        receiverPath: String,
         wallet: WalletViewModel,
         forceRefreshLightning: Bool = false
     ) async throws -> [PublicPaykitService.Endpoint] {
@@ -59,8 +58,7 @@ extension PrivatePaykitService {
 
         if PublicPaykitService.isOnchainPaymentOptionEnabled() {
             let reservedAddress = try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedAddress(
-                for: publicKey,
-                receiverPath: receiverPath
+                for: publicKey
             )
             let onchainPayload = try PublicPaykitService.serializePayload(value: reservedAddress)
             endpoints.append(
@@ -78,7 +76,6 @@ extension PrivatePaykitService {
             do {
                 let invoice = try await currentOrRotatedInvoice(
                     for: publicKey,
-                    receiverPath: receiverPath,
                     wallet: wallet,
                     forceRefresh: forceRefreshLightning
                 )
@@ -106,34 +103,32 @@ extension PrivatePaykitService {
 
     func reservations(
         from endpoints: [PublicPaykitService.Endpoint],
-        publicKey: String,
-        receiverPath: String
+        publicKey: String
     ) -> [PrivatePaymentEndpointReservationInput] {
         endpoints.map { endpoint in
-            let paymentHash = localInvoice(for: publicKey, receiverPath: receiverPath)?.takeIfBolt11(endpoint)?.paymentHash
+            let paymentHash = localInvoice(for: publicKey)?.takeIfBolt11(endpoint)?.paymentHash
             let attribution = [
                 "type": "private_paykit",
                 "counterparty": publicKey,
-                "receiver_path": receiverPath,
             ].merging(paymentHash.map { ["payment_hash": $0] } ?? [:]) { current, _ in current }
 
             return PrivatePaymentEndpointReservationInput(
-                reservationId: reservationId(for: endpoint, publicKey: publicKey, receiverPath: receiverPath),
+                reservationId: reservationId(for: endpoint, publicKey: publicKey),
                 identifier: endpoint.methodId.rawValue,
                 payload: endpoint.rawPayload,
-                expiresAt: endpoint.methodId == .bitcoinLightningBolt11 ? localInvoice(for: publicKey, receiverPath: receiverPath)?.expiresAt
+                expiresAt: endpoint.methodId == .bitcoinLightningBolt11 ? localInvoice(for: publicKey)?.expiresAt
                     .rfc3339Text : nil,
                 attribution: attribution
             )
         }
     }
 
-    private func reservationId(for endpoint: PublicPaykitService.Endpoint, publicKey: String, receiverPath: String) -> String {
+    private func reservationId(for endpoint: PublicPaykitService.Endpoint, publicKey: String) -> String {
         let payloadHashPrefix = SHA256.hash(data: Data(endpoint.rawPayload.utf8))
             .prefix(8)
             .map { String(format: "%02x", $0) }
             .joined()
-        return "\(publicKey):\(receiverPath):\(endpoint.methodId.rawValue):\(payloadHashPrefix)"
+        return "\(publicKey):\(endpoint.methodId.rawValue):\(payloadHashPrefix)"
     }
 
     func cacheResolvedEndpoints(_ endpoints: [PublicPaykitService.Endpoint], publicKey: String) {

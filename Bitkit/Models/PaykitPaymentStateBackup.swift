@@ -6,17 +6,16 @@ struct PaykitPaymentStateBackup: Codable {
     let subscriptions: [String: Subscription]
     let pendingProofs: [Proof]
     var activeOnchainAttempt: ActiveOnchainAttempt? = nil
+    var acceptedOneTimeRequests: [String: [RequestID]]? = nil
 
     struct RequestID: Codable {
         let paymentRequestId: String
         let counterparty: String
-        let counterpartyReceiverPath: String
         let billingPeriodStartsAt: String?
 
         init(_ id: PaykitPaymentRequest.ID, billingPeriod: PaykitBillingPeriod?) {
             paymentRequestId = id.paymentRequestId
             counterparty = id.counterparty
-            counterpartyReceiverPath = id.counterpartyReceiverPath
             billingPeriodStartsAt = billingPeriod?.sdkValue.startsAt ?? id.billingPeriodStartsAt.map { PaykitPreciseInstant(date: $0).timestamp }
         }
 
@@ -24,7 +23,6 @@ struct PaykitPaymentStateBackup: Codable {
             PaykitPaymentRequest.ID(
                 paymentRequestId: paymentRequestId,
                 counterparty: counterparty,
-                counterpartyReceiverPath: counterpartyReceiverPath,
                 billingPeriodStartsAt: billingPeriod?.startsAt
             )
         }
@@ -64,6 +62,7 @@ struct PaykitPaymentStateBackup: Codable {
 
         let identity: String
         let requestId: RequestID
+        let paymentAppId: String
         let paymentEndpointIdentifier: String
         let kind: PaykitPaymentProofKind
         let paymentStarted: Bool
@@ -79,6 +78,7 @@ struct PaykitPaymentStateBackup: Codable {
         init(_ proof: PendingPaykitPaymentProof) {
             identity = proof.identity
             requestId = RequestID(proof.requestId, billingPeriod: proof.billingPeriod)
+            paymentAppId = proof.paymentAppId
             paymentEndpointIdentifier = proof.paymentEndpointIdentifier
             kind = proof.kind
             paymentStarted = proof.paymentStarted
@@ -102,6 +102,7 @@ struct PaykitPaymentStateBackup: Codable {
             return PendingPaykitPaymentProof(
                 identity: identity,
                 requestId: requestId.restored(billingPeriod: period),
+                paymentAppId: paymentAppId,
                 paymentEndpointIdentifier: paymentEndpointIdentifier,
                 kind: kind,
                 billingPeriod: period,
@@ -261,7 +262,7 @@ struct PaykitPaymentStateBackup: Codable {
             let restoredRequest = try requestId.map { value in
                 let date = try value.billingPeriodStartsAt.map { try parseTimestamp($0).date }
                 return PaykitPaymentRequest.ID(paymentRequestId: value.paymentRequestId, counterparty: value.counterparty,
-                                               counterpartyReceiverPath: value.counterpartyReceiverPath, billingPeriodStartsAt: date)
+                                               billingPeriodStartsAt: date)
             }
             let restoredProofs = proofs
             if let restoredRequest {

@@ -16,7 +16,6 @@ final class HwFundingSignerTests: XCTestCase {
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: "pubky" + String(repeating: "y", count: 52),
-            counterpartyReceiverPath: PaykitReceiverPath.wallet,
             paymentRequestId: paymentRequestId,
             localRole: .payer,
             state: state,
@@ -24,12 +23,17 @@ final class HwFundingSignerTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: recurrence,
                 acceptedPaymentEndpointIdentifiers: endpoints,
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
                 conversion: nil,
                 paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
@@ -233,7 +237,7 @@ final class HwFundingSignerTests: XCTestCase {
 
     func testCoordinatorRoutesOnlyUnverifiedShopBroadcastToPending() async throws {
         let requestId = PaykitPaymentRequest.ID(
-            paymentRequestId: UUID().uuidString, counterparty: "merchant", counterpartyReceiverPath: "bitkit/server", billingPeriodStartsAt: nil
+            paymentRequestId: UUID().uuidString, counterparty: "merchant", billingPeriodStartsAt: nil
         )
         for (request, verified) in [(Optional(requestId), false), (Optional(requestId), true), (nil, false)] {
             let funding = MockHwFunding()
@@ -320,7 +324,7 @@ final class HwFundingSignerTests: XCTestCase {
             let preparePayment: () async throws -> Void = {
                 preparationCalls += 1
                 await store.seed([PendingPaykitPaymentProof(
-                    identity: identity, requestId: request.id,
+                    identity: identity, requestId: request.id, paymentAppId: "bitkit",
                     paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
                     kind: .onchain, paymentStarted: true, paymentIdentifier: nil, proofData: nil, onchainWalletId: "trezor:original-ios-wallet"
                 )])
@@ -426,7 +430,7 @@ final class HwFundingSignerTests: XCTestCase {
                                                      hardwareTransactionLookup: PaymentProofHardwareLookup(result: .failure(MockHwFunding
                                                              .TestError())), logInfo: { _ in }, logWarning: { _ in })
         let originalProof = PendingPaykitPaymentProof(
-            identity: identity, requestId: request.id,
+            identity: identity, requestId: request.id, paymentAppId: "bitkit",
             paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
             kind: .onchain, paymentStarted: true, paymentIdentifier: nil, proofData: nil,
             onchainAddress: "bc1qtest", onchainAmountSats: 42000, onchainWalletId: "trezor:original-ios-wallet"
@@ -439,7 +443,7 @@ final class HwFundingSignerTests: XCTestCase {
                 satsPerVByte: 2,
                 beforeFirstBroadcast: {
                     try await proofService.prepare(
-                        request: request,
+                        request: request, paymentAppId: "bitkit",
                         paymentEndpointIdentifier: originalProof.paymentEndpointIdentifier,
                         kind: .onchain
                     )

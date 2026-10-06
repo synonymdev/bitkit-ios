@@ -267,6 +267,51 @@ final class PublicPaykitServiceTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testPublicationSyncsAppBeforeApplyingPreparedEndpoints() async throws {
+        let desiredEndpoints = [endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")]
+        var calls: [String] = []
+
+        try await PublicPaykitService.syncPublishedEndpoints(
+            publish: true,
+            buildEndpoints: {
+                calls.append("build")
+                return desiredEndpoints
+            },
+            syncApp: { calls.append("app") },
+            applyEndpoints: {
+                calls.append("apply")
+                XCTAssertEqual($0, desiredEndpoints)
+            }
+        )
+
+        XCTAssertEqual(calls, ["build", "app", "apply"])
+    }
+
+    @MainActor
+    func testPublicationSyncsAppWhenEndpointBuildFails() async {
+        var calls: [String] = []
+
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(
+                publish: true,
+                buildEndpoints: {
+                    calls.append("build")
+                    throw PublicPaykitError.walletNotReady
+                },
+                syncApp: { calls.append("app") },
+                applyEndpoints: { _ in XCTFail("Failed endpoint construction must not publish endpoints") }
+            )
+            XCTFail("Expected endpoint construction to fail")
+        } catch {
+            guard case PublicPaykitError.walletNotReady = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        XCTAssertEqual(calls, ["build", "app"])
+    }
+
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(
             methodId: methodId,

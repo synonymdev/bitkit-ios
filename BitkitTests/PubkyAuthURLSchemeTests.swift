@@ -41,7 +41,7 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
 
         let sheets = SheetViewModel()
         let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
-        let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
                 "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
         var routeCount = 0
@@ -81,13 +81,13 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
 
         XCTAssertNil(sheets.activeSheetConfiguration)
 
-        let duplicateRelayURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let duplicateRelayURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2Fa&relay=https%3A%2F%2Fb" +
             "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"
         try await app.handleScannedData(duplicateRelayURL)
         XCTAssertNil(sheets.activeSheetConfiguration)
 
-        let duplicateSecretURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let duplicateSecretURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
             "&secret=first&secret=second\(grantRequester)&x-bitkit-claim=watch-only-account-v1"
         try await app.handleScannedData(duplicateSecretURL)
@@ -97,7 +97,7 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
     @MainActor
     func testNonNodeDeepLinksReleaseAfterStartupGatesWithoutWaitingForLDK() async throws {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
-        let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
                 "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
         let lightningPubkyAuthURL = try XCTUnwrap(URL(string: "lightning:pubkyauth://signin"))

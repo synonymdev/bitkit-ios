@@ -528,6 +528,7 @@ struct PaymentRequestDetailView: View {
                         counterparty(request)
                         if isActionable(request) {
                             tags
+                                .disabled(paymentRequests.requestedPresentationId == request.id)
                         }
 
                         if let note = request.note, !note.isEmpty {
@@ -670,7 +671,8 @@ struct PaymentRequestDetailView: View {
             CustomButton(
                 title: t("wallet__payment_request_dismiss"),
                 variant: .secondary,
-                icon: Image("x-mark").resizable().frame(width: 16, height: 16)
+                icon: Image("x-mark").resizable().frame(width: 16, height: 16),
+                isDisabled: paymentRequests.requestedPresentationId == request.id
             ) {
                 do {
                     try await paymentRequests.dismiss(request)
@@ -682,12 +684,13 @@ struct PaymentRequestDetailView: View {
 
             CustomButton(
                 title: t("common__pay"),
-                icon: Image("coins").resizable().frame(width: 16, height: 16)
+                icon: Image("coins").resizable().frame(width: 16, height: 16),
+                isLoading: paymentRequests.requestedPresentationId == request.id
             ) {
                 guard paymentRequests.requestPresentation(request) else { return }
                 tagManager.preserveSelectedTags(for: request.id)
-                navigation.navigateBack()
             }
+            .accessibilityIdentifier("PaymentRequestDetailsPay")
         }
         .padding(.bottom, 16)
     }

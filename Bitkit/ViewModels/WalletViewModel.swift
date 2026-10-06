@@ -1406,7 +1406,7 @@ class WalletViewModel: ObservableObject {
 
     private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         await refreshAndSyncState()
-        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false)
 
         guard isPaykitUIActive else { return }
 
@@ -1470,7 +1470,7 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
         var tagsToMigrate: [String] = []
@@ -1524,7 +1524,7 @@ class WalletViewModel: ObservableObject {
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
 
-        if isPaykitUIActive, sharesPublicPaykitEndpoints {
+        if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
             do {
                 try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
             } catch {

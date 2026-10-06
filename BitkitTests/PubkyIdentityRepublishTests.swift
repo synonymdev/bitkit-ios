@@ -277,7 +277,8 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             )
         case .companion:
             try await PubkyService.approveAuthWithCompanionClaim(
-                authUrl: authUrl, approvedClientID: "paykit.test", unsignedPayload: Data(),
+                authUrl: authUrl, approvedClientID: "paykit.test", claim: .watchOnlyAccountV1,
+                accountPayload: Data([1]) + Data(repeating: 0, count: 83),
                 secretKeyHex: secretKeyHex, sdkService: service
             )
         case .ring:

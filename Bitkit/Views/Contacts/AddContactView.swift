@@ -216,7 +216,7 @@ struct AddContactView: View {
             canRetryError = false
             isLoading = false
             if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
-                await contactsManager.refreshContactReceiverPaths(publicKey: normalizedKey, wallet: wallet)
+                await contactsManager.refreshContactLink(publicKey: normalizedKey, wallet: wallet)
             }
             return
         case let .valid(normalizedKey):

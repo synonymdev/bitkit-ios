@@ -139,7 +139,7 @@ class ScannerManager: ObservableObject {
            let wallet
         {
             Task {
-                await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+                await contactsManager.refreshContactLink(publicKey: publicKey, wallet: wallet)
             }
         }
         return true

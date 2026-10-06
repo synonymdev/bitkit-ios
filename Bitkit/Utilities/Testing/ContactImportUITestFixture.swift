@@ -1,4 +1,5 @@
 #if DEBUG
+    import Paykit
     import SwiftUI
 
     struct ContactImportUITestFixture: View {
@@ -70,17 +71,17 @@
 
         override func importContacts(
             contacts selected: [PubkyContact],
-            saveContact: (String, String) async throws -> Void
+            saveContacts: ([ContactUpdate], String?) async throws -> Void
         ) async throws {
             importCount += 1
-            try await super.importContacts(contacts: selected) { key, _ in
+            try await super.importContacts(contacts: selected) { updates, _ in
                 if self.savedKeys.isEmpty {
                     await withCheckedContinuation { continuation in
                         self.pendingSave = continuation
                         self.isSavePending = true
                     }
                 }
-                self.savedKeys.append(key)
+                self.savedKeys.append(contentsOf: updates.map(\.publicKey))
             }
         }
 

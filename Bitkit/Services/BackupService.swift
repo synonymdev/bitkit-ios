@@ -508,6 +508,7 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSubscriptionStateStore.walletBackupDataChangedPublisher
+            .merge(with: PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher)
             .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
             .merge(with: OnchainSendAttemptStore.walletBackupDataChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)

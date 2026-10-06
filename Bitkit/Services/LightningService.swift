@@ -684,11 +684,22 @@ class LightningService {
         }
     }
 
+    func listOnchainWalletAccounts() async throws -> [LDKNode.OnchainWalletAccount] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            node.listOnchainWalletAccounts()
+        }
+    }
+
     func addressInfosForType(
         _ addressType: LDKNode.AddressType,
         keychain: LDKNode.KeychainKind,
         startIndex: UInt32,
-        count: UInt32
+        count: UInt32,
+        accountIndex: UInt32 = 0
     ) async throws -> [AddressDerivationInfo] {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -696,7 +707,9 @@ class LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             try node.onchainPayment()
-                .addressInfosForType(addressType: addressType, keychain: keychain, startIndex: startIndex, count: count)
+                .addressInfosForAccount(
+                    addressType: addressType, accountIndex: accountIndex, keychain: keychain, startIndex: startIndex, count: count
+                )
                 .map { AddressDerivationInfo(address: $0.address, index: $0.index) }
         }
     }

@@ -11,6 +11,220 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         }
     }
 
+    func testInteractiveWorkOvertakesOnlyQueuedPublicationWithBoundedFairness() async throws {
+        try await assertQueuedOrder(
+            priorities: [.background, .background, .interactive, .interactive, .interactive, .interactive],
+            expected: [2, 3, 4, 0, 5, 1]
+        )
+    }
+
+    func testInteractiveWorkCannotCrossAnOrderedOperation() async throws {
+        try await assertQueuedOrder(
+            priorities: [.background, .interactive, .ordered, .background, .interactive],
+            expected: [1, 0, 2, 4, 3]
+        )
+    }
+
+    func testCancelledInteractiveWorkDoesNotExecuteOrBlockPublication() async throws {
+        try await assertQueuedOrder(
+            priorities: [.background, .interactive],
+            expected: [0],
+            cancelIndex: 1
+        )
+    }
+
+    func testCapabilitySyncPriorityPreservesOrderedWorkAndOnlyOvertakesQueuedIntake() async throws {
+        let cases: [(priority: PaykitSdkOperationLock.Priority?, orderedBarrier: Bool, expected: [String])] = [
+            (nil, false, ["active", "intake", "publish"]),
+            (.interactive, false, ["active", "publish", "intake"]),
+            (.interactive, true, ["active", "intake", "ordered", "publish"]),
+        ]
+        for testCase in cases {
+            let recorder = Recorder()
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let started = expectation(description: "Active SDK operation started")
+            let sdk = PublicReadSdk(noPointer: .init())
+            sdk.lockedRead = {
+                if await recorder.events.isEmpty {
+                    await recorder.record("active")
+                    started.fulfill()
+                    for await _ in gate {}
+                } else {
+                    await recorder.record("ordered")
+                }
+            }
+            sdk.intake = { await recorder.record("intake") }
+            sdk.publication = { capabilities in
+                XCTAssertFalse(capabilities.privatePayments)
+                await recorder.record("publish")
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let active = Task { _ = try await service.contactRecords() }
+            await fulfillment(of: [started], timeout: 2)
+
+            let intake = Task { _ = try await service.receivePrivateMessagesFromLinkedPeers(priority: .background) }
+            try await Task.sleep(for: .milliseconds(50))
+            let barrier = testCase.orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
+            if barrier != nil { try await Task.sleep(for: .milliseconds(50)) }
+            let publication = Task {
+                if let priority = testCase.priority {
+                    try await service.syncPaykitApp(privatePaymentsEnabled: false, priority: priority)
+                } else {
+                    try await service.syncPaykitApp(privatePaymentsEnabled: false)
+                }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+            let heldEvents = await recorder.events
+            XCTAssertEqual(heldEvents, ["active"])
+
+            release.finish()
+            try await active.value
+            try await intake.value
+            try await barrier?.value
+            try await publication.value
+            let events = await recorder.events
+            XCTAssertEqual(events, testCase.expected)
+        }
+    }
+
+    private func assertQueuedOrder(
+        priorities: [PaykitSdkOperationLock.Priority],
+        expected: [Int],
+        cancelIndex: Int? = nil
+    ) async throws {
+        let lock = PaykitSdkOperationLock()
+        let recorder = Recorder()
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        let started = expectation(description: "Active publication started")
+        let active = Task {
+            try await lock.withLock(priority: .background) {
+                await recorder.record("active")
+                started.fulfill()
+                for await _ in gate {}
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+
+        var queued: [Task<Void, Error>] = []
+        for (index, priority) in priorities.enumerated() {
+            queued.append(Task {
+                try await lock.withLock(priority: priority) { await recorder.record(String(index)) }
+            })
+            await waitForWaiters(lock, count: index + 1)
+        }
+        let heldEvents = await recorder.events
+        XCTAssertEqual(heldEvents, ["active"], "Active publication must not be preempted")
+        if let cancelIndex { queued[cancelIndex].cancel() }
+        release.finish()
+        try await active.value
+        for (index, task) in queued.enumerated() {
+            if index == cancelIndex {
+                do {
+                    try await task.value
+                    XCTFail("Expected cancellation")
+                } catch is CancellationError {}
+            } else {
+                try await task.value
+            }
+        }
+        let events = await recorder.events
+        XCTAssertEqual(events, ["active"] + expected.map(String.init))
+        try await lock.withLock {}
+    }
+
+    private func waitForWaiters(_ lock: PaykitSdkOperationLock, count: Int) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while lock.waiterCountForTesting < count, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        XCTAssertEqual(lock.waiterCountForTesting, count)
+    }
+
+    func testPublicCapabilityReadDoesNotWaitForSerializedSdkWork() async throws {
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        let started = expectation(description: "Serialized work started")
+        let read = expectation(description: "Public capability read completes while serialized work is suspended")
+        let sdk = PublicReadSdk(noPointer: .init())
+        sdk.lockedRead = {
+            started.fulfill()
+            for await _ in gate {}
+        }
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let holder = Task { try await service.contactRecords() }
+        await fulfillment(of: [started], timeout: 2)
+
+        let lookup = Task {
+            let result = try await service.canReceivePaymentRequests(publicKey: "peer")
+            XCTAssertFalse(result)
+            let resolution = try await service.resolvePublicContactPayment(counterparty: "peer")
+            XCTAssertEqual(resolution.status, .noEndpoint)
+            read.fulfill()
+        }
+        await fulfillment(of: [read], timeout: 0.5)
+        release.finish()
+        _ = try await holder.value
+        try await lookup.value
+    }
+
+    func testPublicPaymentResolutionDiscardsReplacedRuntimeAndAllowsFreshRead() async throws {
+        for wipe in [false, true] {
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let started = expectation(description: "Public payment resolution started")
+            let sdk = PublicReadSdk(noPointer: .init())
+            sdk.publicRead = {
+                started.fulfill()
+                for await _ in gate {}
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let lookup = Task { try await service.resolvePublicContactPayment(counterparty: "peer") }
+            await fulfillment(of: [started], timeout: 2)
+            if wipe {
+                try await service.withWalletWipe {}
+            } else {
+                await service.clearState()
+            }
+            release.finish()
+            do {
+                _ = try await lookup.value
+                XCTFail("Expected replaced runtime result to be rejected")
+            } catch PubkyServiceError.identityChanged {}
+            sdk.publicRead = {}
+            let fresh = try await service.resolvePublicContactPayment(counterparty: "peer")
+            XCTAssertEqual(fresh.status, .noEndpoint)
+        }
+    }
+
+    func testPublicReadDiscardsCancelledResult() async throws {
+        let lock = PaykitSdkOperationLock()
+        let lookup = Task {
+            try await lock.withoutLock {
+                withUnsafeCurrentTask { $0?.cancel() }
+                return true
+            }
+        }
+        do {
+            _ = try await lookup.value
+            XCTFail("Expected cancelled result to be rejected")
+        } catch is CancellationError {}
+        try await lock.withLock {}
+    }
+
+    func testAlreadyCancelledPublicReadDoesNotStart() async throws {
+        let lock = PaykitSdkOperationLock()
+        let lookup = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await lock.withoutLock { XCTFail("Cancelled public read must not start") }
+        }
+        do {
+            try await lookup.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {}
+    }
+
     func testWipeDrainsActiveWorkRejectsQueuedWorkAndAllowsCleanupAndFreshWork() async throws {
         let lock = PaykitSdkOperationLock()
         let recorder = Recorder()
@@ -30,10 +244,13 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         for await _ in activeStarted {
             break
         }
-        let queued = Task {
-            try await lock.withLock { await recorder.record("stale") }
+        var queued: [Task<Void, Error>] = []
+        for priority in [PaykitSdkOperationLock.Priority.background, .interactive] {
+            queued.append(Task {
+                try await lock.withLock(priority: priority) { await recorder.record("stale") }
+            })
+            await waitForWaiters(lock, count: queued.count)
         }
-        try await Task.sleep(for: .milliseconds(50))
         let wipe = Task {
             try await lock.withWalletWipe {
                 try await lock.withLock { await recorder.record("cleanup") }
@@ -54,11 +271,13 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         for await _ in wipeStarted {
             break
         }
-        do {
-            try await queued.value
-            XCTFail("Expected queued work from the old wallet to be rejected")
-        } catch let PaykitError.Storage(code, _) {
-            XCTAssertEqual(code, "wallet_wipe_in_progress")
+        for task in queued {
+            do {
+                try await task.value
+                XCTFail("Expected queued work from the old wallet to be rejected")
+            } catch let PaykitError.Storage(code, _) {
+                XCTAssertEqual(code, "wallet_wipe_in_progress")
+            }
         }
         releaseWipe.yield()
         try await active.value
@@ -172,72 +391,6 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         try await lock.withLock {}
     }
 
-    func testCancelledQueuedReadDoesNotRunAheadOfLaterWork() async throws {
-        let lock = PaykitSdkOperationLock()
-        let recorder = Recorder()
-        let (holderGate, releaseHolder) = AsyncStream<Void>.makeStream()
-        let (holderStarted, holderStartedContinuation) = AsyncStream<Void>.makeStream()
-
-        let holder = Task {
-            try await lock.withLock {
-                holderStartedContinuation.yield()
-                for await _ in holderGate {
-                    break
-                }
-            }
-        }
-        for await _ in holderStarted {
-            break
-        }
-
-        let lookup = Task {
-            try await lock.withCancellableLock {
-                await recorder.record("lookup")
-            }
-        }
-        try await Task.sleep(for: .milliseconds(50))
-        let payment = Task {
-            try await lock.withLock {
-                await recorder.record("payment")
-            }
-        }
-        try await Task.sleep(for: .milliseconds(50))
-
-        lookup.cancel()
-        releaseHolder.yield()
-        try await holder.value
-        try await payment.value
-
-        do {
-            try await lookup.value
-            XCTFail("Expected the cancelled lookup to throw")
-        } catch is CancellationError {}
-        let events = await recorder.events
-        XCTAssertEqual(events, ["payment"])
-    }
-
-    func testAlreadyCancelledReadDoesNotRunOrHoldTheLock() async throws {
-        let lock = PaykitSdkOperationLock()
-        let recorder = Recorder()
-
-        let lookup = Task {
-            withUnsafeCurrentTask { $0?.cancel() }
-            return try await lock.withCancellableLock {
-                await recorder.record("lookup")
-            }
-        }
-
-        do {
-            try await lookup.value
-            XCTFail("Expected the cancelled lookup to throw")
-        } catch is CancellationError {}
-        try await lock.withLock {
-            await recorder.record("payment")
-        }
-        let events = await recorder.events
-        XCTAssertEqual(events, ["payment"])
-    }
-
     private func waitUntilWiping(_ lock: PaykitSdkOperationLock) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
         while (try? lock.walletGeneration()) != nil {
@@ -246,5 +399,54 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             }
             try await Task.sleep(for: .milliseconds(5))
         }
+    }
+}
+
+private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
+    var lockedRead: () async -> Void = {}
+    var publicRead: () async -> Void = {}
+    var intake: () async -> Void = {}
+    var publication: (PaykitAppCapabilities) async -> Void = { _ in }
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: nil, capability: .privateLinkCapable)
+    }
+
+    override func stateRevision() throws -> String? {
+        "state"
+    }
+
+    override func backupStateRevision() async throws -> String {
+        "revision"
+    }
+
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
+    }
+
+    override func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
+        await intake()
+        return []
+    }
+
+    override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        await publication(capabilities)
+        return PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
+
+    override func resolvePublicContactPayment(counterparty _: String,
+                                              amount _: PaymentAmountContext?) async throws -> PublicContactPaymentResolution
+    {
+        await publicRead()
+        return PublicContactPaymentResolution(status: .noEndpoint, payableEndpoints: [], failures: [])
+    }
+
+    override func paykitAppRegistry(publicKey _: String) async throws -> PaykitAppRegistry? {
+        return nil
+    }
+
+    override func contactRecords() async throws -> [ContactRecord] {
+        await lockedRead()
+        return []
     }
 }

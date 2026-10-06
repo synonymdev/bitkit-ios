@@ -907,7 +907,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            blocktankRefundAddress: refundAddress
+            blocktankRefundAddress: refundAddress,
+            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
         )
     }
 
@@ -936,5 +937,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         } else {
             refundAddressStore.clear()
         }
+        CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
     }
 }
