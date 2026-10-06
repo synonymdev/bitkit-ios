@@ -2,14 +2,16 @@
   <description>
     Payer side of create-and-propose.xml. The proposed subscription arrives, surfaces under PROPOSALS,
     and opens the Review and Subscribe sheet where the payer swipes to accept. Accepting does not
-    return to the list on its own: when the first period is due on acceptance the send flow starts and
-    must be completed, otherwise the Subscribed confirmation opens directly. Both paths end on Close.
+    return to the list on its own: when the first period is due on acceptance the first payment starts
+    by itself, from Lightning or on-chain savings, with no second swipe; otherwise the Subscribed
+    confirmation opens directly. Both paths end on Close. A hardware wallet still shows the send
+    confirmation for the first payment.
     Run this on the payer instance immediately after the creator sends the proposal.
 
     iOS shows more on the review sheet than Android does: the provider card carries the counterparty's
-    contact name and truncated pubky (id "SubscriptionCounterparty") under the cadence, and a line
-    naming when the first billing period ends sits below the card. Neither appears on Android. The
-    handoff's "Automatically pay this subscription" toggle is unbuilt on both platforms.
+    contact name and truncated pubky (id "SubscriptionCounterparty") under the cadence, which does not
+    appear on Android. The handoff's "Automatically pay this subscription" toggle is unbuilt on both
+    platforms.
 
     The swipe knob is brand orange on both platforms, as the handoff draws it on all four subscription
     sheets.
@@ -21,10 +23,10 @@
     <action>Verify a row for "Journey Sub" appears under the PROPOSALS section</action>
     <action>Tap the "Journey Sub" row (id "SubscriptionRow-&lt;paymentRequestId&gt;")</action>
     <action>Verify the Review and Subscribe sheet appears with 5,000 sats and the creator contact card</action>
-    <action>Verify the swipe control reads "Swipe To Subscribe &amp; Pay" when the first period is due on acceptance, otherwise "Swipe To Subscribe"</action>
+    <action>Verify the swipe control reads "Swipe To Subscribe", whether or not the first period is due on acceptance</action>
     <action>Verify the swipe knob is brand orange, as on the cancel and delete sheets</action>
     <action>Swipe the confirm control to the end</action>
-    <action>If the first period was due on acceptance: complete the send flow that opens, then verify the Subscribed confirmation appears</action>
+    <action>If the first period was due on acceptance: verify the Review and Subscribe layout stays on screen with the swipe control in its loading state and no second swipe is asked for, wait for the payment to send, then verify the Subscribed confirmation appears</action>
     <action>If no payment was due: verify the Subscribed confirmation appears directly, with no send flow</action>
     <action>Tap Close on the Subscribed confirmation</action>
     <action>If a payment was made: verify its billing period is no longer offered with Pay or Dismiss, no Payment Requests sheet opens for it, and the home payment-request bell is absent when no other requests are pending</action>
