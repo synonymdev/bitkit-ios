@@ -318,13 +318,14 @@ enum PublicPaykitService {
     static func syncPublishedEndpoints(
         wallet: WalletViewModel,
         publish: Bool,
-        isSessionCurrent: (@MainActor () -> Bool)? = nil
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        appSyncPriority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws {
         try await syncPublishedEndpoints(
             publish: publish,
             isSessionCurrent: isSessionCurrent,
             buildEndpoints: { try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true) },
-            syncApp: { try await syncPaykitApp() },
+            syncApp: { try await syncPaykitApp(priority: appSyncPriority) },
             applyEndpoints: applyPublishedEndpointsLocked
         )
     }
@@ -378,9 +379,12 @@ enum PublicPaykitService {
         try await applyPublishedEndpoints([])
     }
 
-    static func syncPaykitApp(privateSharingEnabled: Bool? = nil) async throws {
+    static func syncPaykitApp(
+        privateSharingEnabled: Bool? = nil,
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws {
         let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
-        try await PaykitSdkService.shared.syncPaykitApp(privatePaymentsEnabled: privateSharing)
+        try await PaykitSdkService.shared.syncPaykitApp(privatePaymentsEnabled: privateSharing, priority: priority)
     }
 
     static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {

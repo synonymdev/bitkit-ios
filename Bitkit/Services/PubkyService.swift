@@ -819,8 +819,8 @@ actor PaykitSdkService {
         }
     }
 
-    func syncPaykitApp(privatePaymentsEnabled: Bool) async throws {
-        try await withStateRevisionTracking { sdk in
+    func syncPaykitApp(privatePaymentsEnabled: Bool, priority: PaykitSdkOperationLock.Priority = .ordered) async throws {
+        try await withStateRevisionTracking(priority: priority) { sdk in
             var capabilities = try await appCapabilities(for: sdk.identityStatus())
             capabilities.privatePayments = capabilities.privatePayments && privatePaymentsEnabled
             _ = try await sdk.publishPaykitApp(displayName: "Bitkit", capabilities: capabilities)

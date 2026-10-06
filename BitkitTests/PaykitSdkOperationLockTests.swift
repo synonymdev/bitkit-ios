@@ -33,6 +33,61 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         )
     }
 
+    func testCapabilitySyncPriorityPreservesOrderedWorkAndOnlyOvertakesQueuedIntake() async throws {
+        let cases: [(priority: PaykitSdkOperationLock.Priority?, orderedBarrier: Bool, expected: [String])] = [
+            (nil, false, ["active", "intake", "publish"]),
+            (.interactive, false, ["active", "publish", "intake"]),
+            (.interactive, true, ["active", "intake", "ordered", "publish"]),
+        ]
+        for testCase in cases {
+            let recorder = Recorder()
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let started = expectation(description: "Active SDK operation started")
+            let sdk = PublicReadSdk(noPointer: .init())
+            sdk.lockedRead = {
+                if await recorder.events.isEmpty {
+                    await recorder.record("active")
+                    started.fulfill()
+                    for await _ in gate {}
+                } else {
+                    await recorder.record("ordered")
+                }
+            }
+            sdk.intake = { await recorder.record("intake") }
+            sdk.publication = { capabilities in
+                XCTAssertFalse(capabilities.privatePayments)
+                await recorder.record("publish")
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let active = Task { _ = try await service.contactRecords() }
+            await fulfillment(of: [started], timeout: 2)
+
+            let intake = Task { _ = try await service.receivePrivateMessagesFromLinkedPeers(priority: .background) }
+            try await Task.sleep(for: .milliseconds(50))
+            let barrier = testCase.orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
+            if barrier != nil { try await Task.sleep(for: .milliseconds(50)) }
+            let publication = Task {
+                if let priority = testCase.priority {
+                    try await service.syncPaykitApp(privatePaymentsEnabled: false, priority: priority)
+                } else {
+                    try await service.syncPaykitApp(privatePaymentsEnabled: false)
+                }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+            let heldEvents = await recorder.events
+            XCTAssertEqual(heldEvents, ["active"])
+
+            release.finish()
+            try await active.value
+            try await intake.value
+            try await barrier?.value
+            try await publication.value
+            let events = await recorder.events
+            XCTAssertEqual(events, testCase.expected)
+        }
+    }
+
     private func assertQueuedOrder(
         priorities: [PaykitSdkOperationLock.Priority],
         expected: [Int],
@@ -350,6 +405,30 @@ final class PaykitSdkOperationLockTests: XCTestCase {
 private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     var lockedRead: () async -> Void = {}
     var publicRead: () async -> Void = {}
+    var intake: () async -> Void = {}
+    var publication: (PaykitAppCapabilities) async -> Void = { _ in }
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: nil, capability: .privateLinkCapable)
+    }
+
+    override func stateRevision() throws -> String? {
+        "state"
+    }
+
+    override func backupStateRevision() async throws -> String {
+        "revision"
+    }
+
+    override func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
+        await intake()
+        return []
+    }
+
+    override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        await publication(capabilities)
+        return PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
+    }
 
     override func resolvePublicContactPayment(counterparty _: String,
                                               amount _: PaymentAmountContext?) async throws -> PublicContactPaymentResolution

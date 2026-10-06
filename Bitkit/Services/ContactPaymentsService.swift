@@ -26,7 +26,12 @@ enum ContactPaymentsService {
         static func live(wallet: WalletViewModel) -> Operations {
             Operations(
                 syncPublicEndpoints: { publish, isChangeCurrent in
-                    try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish, isSessionCurrent: isChangeCurrent)
+                    try await PublicPaykitService.syncPublishedEndpoints(
+                        wallet: wallet,
+                        publish: publish,
+                        isSessionCurrent: isChangeCurrent,
+                        appSyncPriority: publish ? .ordered : .interactive
+                    )
                 },
                 preparePrivateEndpoints: { contactPublicKeys, requireImmediatePublication, isChangeCurrent in
                     await PrivatePaykitService.shared.prepareSavedContacts(

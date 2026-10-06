@@ -792,7 +792,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
     func testContactPaymentsEnableWinsOverAnOlderDisableStillRemoving() async throws {
         enum HeldRemoval {
-            case privateBeforeLock, publicBeforeLock, publicHoldingLock
+            case privateBeforeLock, publicBeforeLock, publicHoldingLock, publicCapabilitySync
         }
         let cases: [(name: String, held: HeldRemoval, writes: [String])] = [
             ("private removal waiting for its lock", .privateBeforeLock, ["public:published", "private:published"]),
@@ -802,6 +802,10 @@ final class ContactPaymentsServiceTests: XCTestCase {
             ),
             (
                 "public removal holding its lock", .publicHoldingLock,
+                ["private:removed", "public:removed", "public:published", "private:published"]
+            ),
+            (
+                "public capability sync holding its lock", .publicCapabilitySync,
                 ["private:removed", "public:removed", "public:published", "private:published"]
             ),
         ]
@@ -832,6 +836,13 @@ final class ContactPaymentsServiceTests: XCTestCase {
                     return await endpoints.writePrivateReturningError("private:published", isChangeCurrent: isChangeCurrent)
                 }
                 operations.syncPublicEndpoints = { publish, isChangeCurrent in
+                    if !publish, held == .publicCapabilitySync {
+                        try await endpoints.removePublic(isChangeCurrent: isChangeCurrent) {
+                            reachedHeldPoint.fulfill()
+                            for await _ in gate {}
+                        }
+                        return
+                    }
                     if !publish, held == .publicBeforeLock {
                         reachedHeldPoint.fulfill()
                         for await _ in gate {}
@@ -866,7 +877,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 XCTAssertFalse(try disableResult.get(), testCase.name)
                 XCTAssertTrue(try enableResult.get(), testCase.name)
                 XCTAssertEqual(endpoints.entries, testCase.writes, testCase.name)
-                XCTAssertEqual(operations.publicCleanupValues.last, false, testCase.name)
+                XCTAssertEqual(operations.publicCleanupValues, [true, false], testCase.name)
                 XCTAssertEqual(operations.privateCleanupValues.last, false, testCase.name)
                 XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), testCase.name)
                 XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), testCase.name)
@@ -1072,6 +1083,16 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 await whileLocked()
                 entries.append(entry)
             }
+        }
+
+        func removePublic(isChangeCurrent: @escaping ContactPaymentsService.ChangeCheck, syncApp: () async throws -> Void) async throws {
+            try await PublicPaykitService.syncPublishedEndpoints(
+                publish: false,
+                isSessionCurrent: isChangeCurrent,
+                buildEndpoints: { [] },
+                syncApp: syncApp,
+                applyEndpoints: { _ in self.entries.append("public:removed") }
+            )
         }
     }
 
