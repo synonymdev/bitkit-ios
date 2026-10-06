@@ -36,6 +36,7 @@ struct AccountAddresses {
 
 class ActivityService {
     private let coreService: CoreService
+    private let bumpFeeByRbf: (String, UInt32) async throws -> String
 
     private let activitiesChangedSubject = PassthroughSubject<Void, Never>()
 
@@ -360,8 +361,14 @@ class ActivityService {
         return activity.doesExist && !activity.isBoosted
     }
 
-    init(coreService: CoreService) {
+    init(
+        coreService: CoreService,
+        bumpFeeByRbf: @escaping (String, UInt32) async throws -> String = { txid, feeRate in
+            try await LightningService.shared.bumpFeeByRbf(txid: txid, satsPerVbyte: feeRate)
+        }
+    ) {
         self.coreService = coreService
+        self.bumpFeeByRbf = bumpFeeByRbf
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
@@ -679,11 +686,7 @@ class ActivityService {
             seenAt: seenAt
         )
 
-        if let existingActivity, case let .onchain(existing) = existingActivity {
-            try await update(id: existing.id, activity: .onchain(onchain))
-        } else {
-            try await upsert(.onchain(onchain))
-        }
+        try await upsertOnchainActivityPreservingFeeRate(onchain)
     }
 
     // MARK: - Onchain Event Handlers
@@ -743,7 +746,7 @@ class ActivityService {
                 existing.doesExist = false
                 existing.isBoosted = false
                 existing.updatedAt = UInt64(Date().timeIntervalSince1970)
-                try await self.update(id: existing.id, activity: .onchain(existing))
+                try await self.upsertOnchainActivityPreservingFeeRate(existing)
                 Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
             } else {
                 Logger.info(
@@ -790,7 +793,7 @@ class ActivityService {
                     activity.isBoosted = true
                     activity.contact = activity.contact ?? replacedActivity?.contact
                     activity.updatedAt = UInt64(Date().timeIntervalSince1970)
-                    try await self.update(id: activity.id, activity: .onchain(activity))
+                    try await self.upsertOnchainActivityPreservingFeeRate(activity)
 
                     // Move tags from the replaced transaction
                     if let replacedActivity {
@@ -829,7 +832,7 @@ class ActivityService {
             onchain.confirmTimestamp = nil
             onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-            try await self.update(id: onchain.id, activity: .onchain(onchain))
+            try await self.upsertOnchainActivityPreservingFeeRate(onchain)
         }
     }
 
@@ -843,7 +846,7 @@ class ActivityService {
             onchain.doesExist = false
             onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-            try await self.update(id: onchain.id, activity: .onchain(onchain))
+            try await self.upsertOnchainActivityPreservingFeeRate(onchain)
         }
     }
 
@@ -1260,6 +1263,25 @@ class ActivityService {
         }
     }
 
+    func upsertOnchainActivityPreservingFeeRate(_ onchain: OnchainActivity) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertOnchainActivityPreservingFeeRate(activity: onchain)
+            self.updateBoostTxIdsCache(for: .onchain(onchain))
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    private func recordRbfBoost(originalActivityId: String, replacementTxid: String, feeRate: UInt32) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.recordRbfBoost(
+                walletId: WalletScope.default, originalActivityId: originalActivityId,
+                replacementTxId: replacementTxid, feeRate: UInt64(feeRate)
+            )
+            self.metadataChangedSubject.send()
+            self.activitiesChangedSubject.send()
+        }
+    }
+
     /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
     ///
     /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
@@ -1667,18 +1689,11 @@ class ActivityService {
                 Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
 
                 // Use RBF for outgoing transactions
-                txid = try await LightningService.shared.bumpFeeByRbf(
-                    txid: onchainActivity.txId,
-                    satsPerVbyte: feeRate
-                )
+                txid = try await self.bumpFeeByRbf(onchainActivity.txId, feeRate)
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // For RBF, mark the original activity as boosted and update the fee rate
-                // so the UI shows the correct confirmation time estimate until the replacement arrives
-                onchainActivity.isBoosted = true
-                onchainActivity.feeRate = UInt64(feeRate)
-                try await self.update(id: activityId, activity: .onchain(onchainActivity))
+                try await self.recordRbfBoost(originalActivityId: activityId, replacementTxid: txid, feeRate: feeRate)
                 Logger.info(
                     "Successfully marked activity \(activityId) as replaced by fee",
                     context: "CoreService.boostOnchainTransaction"
