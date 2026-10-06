@@ -6,21 +6,23 @@ drawer and Contacts intro, pending lookup, and leaving while lookup waits requir
 or network fault injection, which the journey runner does not provide. Check those cases
 using the PR manual checks.
 
-Import journeys require a disposable identity with a known following list. They save local Bitkit contacts; payment sharing remains a separate step.
+Import journeys require a disposable identity with a known following list. They save Bitkit contacts; payment sharing remains a separate step.
 
 Continue waits for public payment setup, not private linking with every imported contact.
 Private preparation runs in the background. Repeat Import All with a large following list containing
 unavailable profiles, then delete a contact while preparation is running. It must not be republished
 after deletion. Unavailable private-link lookups are retried after five minutes rather than on each refresh.
 
-Network and storage fault injection are outside journey-runner capabilities. Manually disable
-connectivity after the preview has loaded: importing the prepared contacts must still finish.
-Simulate a failed local save: stay on import, preserve successful saves, and retry only missing
-contacts without claiming complete success. On Android, a failed Continue on the payment-sharing
-screen should offer recovery guidance and leave saved contacts intact.
+Network and storage fault injection are outside journey-runner capabilities. After the preview has
+loaded, verify that importing its prepared contacts does not repeat profile lookups; saving shared
+contact state still requires Pubky storage access. Simulate a failed contact batch: stay on import,
+preserve previously saved contacts, and retry the entire unsaved selection without claiming partial
+success. Duplicate selections and contacts already saved are skipped. Payment sharing remains a
+separate step. On Android, a failed Continue on the payment-sharing screen should offer recovery
+guidance and leave saved contacts intact.
 
 `ContactImportUITests.swift` checks pending imports using the DEBUG-only `-contact-import-ui-test`
-fixture. It holds the first local save until the test taps Finish save, without network or SDK
+fixture. It holds the contact batch until the test taps Finish save, without network or SDK
 storage. The tests drive the real overview and selection views, attempt repeated import taps, and
 verify that Select stays disabled, the preview stays intact, and completion saves the chosen contacts.
 This controlled fixture is separate from the identity-backed journeys above.

@@ -4835,6 +4835,131 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(try store.load(identity: "pubky\(String(repeating: "z", count: 52))"), [request.id])
     }
 
+    func testManualPaymentRetainsUnrelatedReminderThroughConfirmationAndRetry() async throws {
+        defer { PaykitSubscriptionNotificationTargetStore.clear() }
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let manualRecord = try paymentRequestRecord(id: "manual")
+        let reminderRecord = try paymentRequestRecord(
+            id: "reminder", counterparty: "pubky\(String(repeating: "y", count: 52))", state: .activeRecurring,
+            recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: timestamp(now), anchor: timestamp(now), endsAt: nil)
+        )
+        let target = try XCTUnwrap(PaykitSubscriptionNotificationTarget(userInfo: [
+            "payer_identity": "pubky\(String(repeating: "z", count: 52))",
+            "payment_request_id": reminderRecord.paymentRequestId,
+            "counterparty": reminderRecord.counterparty,
+            "billing_period_starts_at": PaykitSubscriptionTimestamp.string(from: now),
+        ]))
+        let sdk = PaymentRequestSdkMock(records: [manualRecord])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh(mode: .stored)
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let sheets = SheetViewModel()
+        let app = AppViewModel()
+        PaykitSubscriptionNotificationTargetStore.save(target)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
+            manager: manager, sheets: sheets, canRetryPreparation: false,
+            handleSubscriptionNotification: { XCTFail("A reminder must not block explicit Pay") },
+            presentPaymentRequest: {
+                XCTAssertEqual(manager.requestsForPresentation(), [request])
+                sheets.showSheet(.send, data: SendConfig(view: .confirm))
+            }
+        )
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        XCTAssertEqual(PaykitSubscriptionNotificationTargetStore.load(), target)
+
+        var retriedPreparation = false
+        await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
+            manager: manager, sheets: sheets, canRetryPreparation: true,
+            handleSubscriptionNotification: { XCTFail("The preparing payment still owns the sheet") },
+            presentPaymentRequest: { retriedPreparation = true }
+        )
+        XCTAssertTrue(retriedPreparation)
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)))
+        XCTAssertTrue(manager.markPresentedIfPending(request))
+
+        await sdk.setRecords([manualRecord, reminderRecord])
+        await manager.refresh(mode: .stored)
+        let reminder = try XCTUnwrap(manager.pendingRequests.first(where: target.matches))
+        XCTAssertFalse(IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+            manager: manager,
+            app: app,
+            sheets: sheets
+        ))
+        await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
+            manager: manager, sheets: sheets, canRetryPreparation: false,
+            handleSubscriptionNotification: { XCTFail("A ready reminder must not replace confirmation") },
+            presentPaymentRequest: { XCTFail("Confirmation must retain its payment") }
+        )
+        XCTAssertEqual(PaykitSubscriptionNotificationTargetStore.load(), target)
+
+        app.resetSendState()
+        XCTAssertTrue(manager.requestPresentation(request))
+        sheets.hideSheet(reason: "Retrying incoming payment request with fresh private payment details")
+        await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
+            manager: manager, sheets: sheets, canRetryPreparation: false,
+            handleSubscriptionNotification: { XCTFail("Explicit retry must keep priority over the ready reminder") },
+            presentPaymentRequest: {
+                XCTAssertEqual(manager.requestsForPresentation(), [request])
+                sheets.showSheet(.send, data: SendConfig(view: .confirm, onDismiss: { manager.dismissPreparingRequest(request) }))
+            }
+        )
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        XCTAssertEqual(PaykitSubscriptionNotificationTargetStore.load(), target)
+
+        sheets.hideSheet()
+        XCTAssertTrue(IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+            manager: manager,
+            app: app,
+            sheets: sheets
+        ))
+        await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
+            manager: manager, sheets: sheets, canRetryPreparation: false,
+            handleSubscriptionNotification: {
+                XCTAssertEqual(PaykitSubscriptionNotificationTargetStore.load(), target)
+                XCTAssertTrue(manager.requestPresentation(reminder))
+                sheets.showSheet(.send, data: SendConfig(view: .confirm))
+            },
+            presentPaymentRequest: { XCTFail("The reminder handler owns its presentation") }
+        )
+        XCTAssertEqual(manager.requestedPresentationId, reminder.id)
+        XCTAssertNil(PaykitSubscriptionNotificationTargetStore.load())
+    }
+
+    func testSubscriptionNotificationWaitsForExplicitSelectionAndActivePaymentOwnership() async throws {
+        let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord()]))
+        await manager.refresh(mode: .stored)
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let sheets = SheetViewModel()
+        let app = AppViewModel()
+        func canHandleNotification() -> Bool {
+            IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(manager: manager, app: app, sheets: sheets)
+        }
+        XCTAssertTrue(canHandleNotification())
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertFalse(canHandleNotification())
+        manager.dismissPreparingRequest(request)
+        XCTAssertTrue(canHandleNotification())
+
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)))
+        XCTAssertFalse(canHandleNotification())
+        app.resetSendState()
+        XCTAssertTrue(canHandleNotification())
+        for sheet in [SheetID.send, .scanner] {
+            sheets.showSheet(sheet)
+            XCTAssertFalse(canHandleNotification())
+            await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
+                manager: manager, sheets: sheets, canRetryPreparation: false,
+                handleSubscriptionNotification: { XCTFail("The active sheet must retain ownership") },
+                presentPaymentRequest: { XCTFail("The active sheet must retain ownership") }
+            )
+            XCTAssertEqual(sheets.activeSheetConfiguration?.id, sheet)
+            sheets.hideSheet()
+            XCTAssertTrue(canHandleNotification())
+        }
+    }
+
     func testManualPresentationSupersedesInFlightAutomaticPresentation() async throws {
         let first = try paymentRequestRecord(id: "first")
         let second = try paymentRequestRecord(id: "second")
