@@ -16,6 +16,7 @@ struct SendConfirmationView: View {
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
+    @Binding var isSubmittingPayment: Bool
     let hwSend: HwSendCoordinator
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
@@ -940,6 +941,8 @@ struct SendConfirmationView: View {
     }
 
     private func performPayment(isAutomatic: Bool) async throws {
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
         var createdMetadataPaymentId: String? = nil
         let contactPaymentContext = app.contactPaymentContext
         let contactPublicKey = contactPaymentContext?.publicKey

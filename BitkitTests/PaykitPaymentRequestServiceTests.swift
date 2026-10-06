@@ -2,6 +2,7 @@
 import BitkitCore
 import Foundation
 import LDKNode
+import Observation
 import Paykit
 import UIKit
 import UserNotifications
@@ -2446,6 +2447,16 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertEqual(manager.historyRequests.first?.id, request.id)
             XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .proofSubmitted)
             XCTAssertEqual(manager.historyRequests.first?.paymentProofKind, proofKind)
+            let isAvailable = manager.pendingRequests.contains { $0.id == request.id } || manager.isApprovedForPayment(request)
+            XCTAssertFalse(isAvailable)
+            XCTAssertFalse(SendSheet.shouldDismissUnavailableRequest(
+                root: .confirm, path: [], isSubmittingPayment: true, isAvailable: isAvailable
+            ))
+            for result in [SendRoute.pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil), .success(paymentId: "payment")] {
+                XCTAssertFalse(SendSheet.shouldDismissUnavailableRequest(
+                    root: .confirm, path: [result], isSubmittingPayment: false, isAvailable: isAvailable
+                ))
+            }
         }
     }
 
@@ -4928,6 +4939,90 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         store.shouldFailSave = false
         await manager.refresh()
         XCTAssertTrue(try store.load(identity: identity).isEmpty)
+    }
+
+    func testPreparedOneTimePaymentRequiresAcceptedHistory() async throws {
+        let states: [PaymentRequestLifecycleState?] = [.accepted, .canceled, .proofSubmitted, .rejected, nil]
+        for state in states {
+            let isAccepted = state == .accepted
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            try await manager.prepareForPayment(request)
+            XCTAssertTrue(manager.isApprovedForPayment(request))
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            await sdk.pauseNextLinkedPeers()
+
+            let authorization = Task { try await manager.ensurePaymentAllowed(request) }
+            try await waitUntil { await sdk.linkedPeersIsPaused() }
+            let approvalChanged = isAccepted ? nil : expectation(description: "Prepared request history changed")
+            XCTAssertTrue(withObservationTracking {
+                manager.isApprovedForPayment(request)
+            } onChange: {
+                approvalChanged?.fulfill()
+            })
+            let records = try state.map { try [paymentRequestRecord(state: $0)] } ?? []
+            await sdk.setRecords(records)
+            await manager.refresh(mode: .stored)
+            if let approvalChanged {
+                await fulfillment(of: [approvalChanged], timeout: 1)
+            }
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            XCTAssertEqual(manager.isApprovedForPayment(request), isAccepted, "\(String(describing: state))")
+            for root in [SendRoute.confirm, .lnurlPayConfirm] {
+                let isAvailable = manager.isApprovedForPayment(request)
+                XCTAssertEqual(SendSheet.shouldDismissUnavailableRequest(
+                    root: root, path: [], isSubmittingPayment: false, isAvailable: isAvailable
+                ), !isAccepted)
+                XCTAssertFalse(SendSheet.shouldDismissUnavailableRequest(
+                    root: root, path: [], isSubmittingPayment: true, isAvailable: isAvailable
+                ))
+                let retainedRoutes: [SendRoute] = [
+                    .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil),
+                    .success(paymentId: "payment"),
+                    .failure(SendFailureContext(error: PaykitPaymentRequestError.requestUnavailable, retryRoute: .confirm)),
+                    .hardwareSign,
+                    .quickpay,
+                ]
+                for result in retainedRoutes {
+                    XCTAssertFalse(SendSheet.shouldDismissUnavailableRequest(
+                        root: root, path: [result], isSubmittingPayment: false, isAvailable: isAvailable
+                    ))
+                    XCTAssertFalse(SendSheet.shouldDismissUnavailableRequest(
+                        root: result, path: [], isSubmittingPayment: false, isAvailable: isAvailable
+                    ))
+                }
+            }
+            await sdk.resumeLinkedPeers()
+
+            do {
+                try await authorization.value
+                XCTAssertTrue(isAccepted, "Refreshed one-time history must still be accepted")
+            } catch {
+                XCTAssertFalse(isAccepted)
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+            }
+            guard !isAccepted else { continue }
+
+            let peerReads = await sdk.linkedPeersCalls()
+            do {
+                try await manager.ensurePaymentAllowed(request)
+                XCTFail("Unavailable history must not authorize payment")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+            }
+            let peerReadsAfterRejection = await sdk.linkedPeersCalls()
+            XCTAssertEqual(peerReadsAfterRejection, peerReads)
+            do {
+                try await manager.prepareForPayment(request) {
+                    XCTFail("Unavailable history must not consume another payment destination")
+                }
+                XCTFail("Unavailable history must not be prepared again")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+            }
+        }
     }
 
     func testIdentitySwitchPreventsExecutionOfPreparedProposal() async throws {

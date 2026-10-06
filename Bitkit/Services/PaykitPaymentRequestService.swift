@@ -2024,7 +2024,11 @@ final class PaykitPaymentRequestManager {
 
     func isApprovedForPayment(_ request: PaykitPaymentRequest) -> Bool {
         guard approvedPaymentRequestIds.contains(request.id) else { return false }
-        guard let billingPeriod = request.billingPeriod else { return true }
+        guard let billingPeriod = request.billingPeriod else {
+            return historyRequests.contains {
+                $0.id == request.id && $0.direction == .incoming && $0.lifecycleState == .accepted
+            }
+        }
         return subscriptions.contains {
             request.belongs(to: $0) && $0.lifecycleState == .activeRecurring && !$0.paidPeriods.contains(billingPeriod)
         }

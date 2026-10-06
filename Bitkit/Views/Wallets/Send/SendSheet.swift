@@ -129,6 +129,7 @@ struct SendSheet: View {
     @State private var quickPaySession = 0
     @State private var hasValidatedAfterSync = false
     @State private var incomingPaymentRequest: PaykitPaymentRequest?
+    @State private var isSubmittingPayment = false
     @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
@@ -149,6 +150,27 @@ struct SendSheet: View {
 
     private var isPreparingRequest: Bool {
         config.preparation != nil && incomingPaymentRequest == nil
+    }
+
+    private var shouldDismissUnavailableRequest: Bool {
+        guard let request = incomingPaymentRequest else { return false }
+        return Self.shouldDismissUnavailableRequest(
+            root: currentRoot,
+            path: navigationPath,
+            isSubmittingPayment: isSubmittingPayment,
+            isAvailable: paykitPaymentRequestManager.pendingRequests.contains(where: { $0.id == request.id }) ||
+                paykitPaymentRequestManager.isApprovedForPayment(request)
+        )
+    }
+
+    static func shouldDismissUnavailableRequest(root: SendRoute, path: [SendRoute], isSubmittingPayment: Bool, isAvailable: Bool) -> Bool {
+        guard !isAvailable, !isSubmittingPayment else { return false }
+        switch path.last ?? root {
+        case .confirm, .lnurlPayConfirm, .amount, .utxoSelection, .feeRate, .feeCustom, .tag, .pin:
+            return true
+        default:
+            return false
+        }
     }
 
     /// How long the sync overlay may wait for channels to become usable before falling back
@@ -217,6 +239,10 @@ struct SendSheet: View {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
         .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut, isEnabled: !isPreparingRequest)
+        .onChange(of: shouldDismissUnavailableRequest) { _, shouldDismiss in
+            guard shouldDismiss else { return }
+            sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
+        }
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
@@ -705,6 +731,7 @@ struct SendSheet: View {
         case .confirm:
             SendConfirmationView(
                 navigationPath: $navigationPath,
+                isSubmittingPayment: $isSubmittingPayment,
                 hwSend: hwSend,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
@@ -775,6 +802,7 @@ struct SendSheet: View {
         case .lnurlPayConfirm:
             LnurlPayConfirm(
                 navigationPath: $navigationPath,
+                isSubmittingPayment: $isSubmittingPayment,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted

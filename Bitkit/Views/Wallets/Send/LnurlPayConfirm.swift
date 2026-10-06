@@ -11,6 +11,7 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var settings: SettingsViewModel
 
     @Binding var navigationPath: [SendRoute]
+    @Binding var isSubmittingPayment: Bool
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
@@ -259,6 +260,8 @@ struct LnurlPayConfirm: View {
     }
 
     private func performPayment() async throws {
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }

@@ -573,19 +573,6 @@ struct AppScene: View {
             .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
                 handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
-            .onChange(of: paykitPaymentRequestManager.pendingRequests) { _, requests in
-                guard let request = app.contactPaymentContext?.incomingPaymentRequest,
-                      !requests.contains(where: { $0.id == request.id }),
-                      !paykitPaymentRequestManager.isApprovedForPayment(request)
-                else { return }
-
-                let activeSheetId = sheets.activeSheetConfiguration?.id
-                guard activeSheetId == .send ||
-                    (activeSheetId == .subscription && app.contactPaymentContext?.isInitialSubscriptionPayment == true)
-                else { return }
-
-                sheets.hideSheet(reason: "Incoming payment request is no longer available")
-            }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
