@@ -116,6 +116,11 @@ class PubkyProfileManager: ObservableObject {
     /// The last profile read started, until it ends. Only a read whose result can still apply holds back another, so a
     /// read that a write dropped never stops the read that replaces it.
     private var profileReadInFlight: ProfileRead?
+    /// Profile saves started and not returned yet.
+    private var profileSavesInFlight = 0
+    /// A profile read a save dropped, with the session it was for, which runs again once the last save in flight fails.
+    /// A published profile makes it moot.
+    private var profileReadAwaitingSaves: (read: ProfileRead, session: SignedInSession)?
     /// Ring rows whose lookup found nothing. The SDK reports a missing record and an offline failure alike, so a miss
     /// only stops repeat lookups and must never drive sign-up or profile-setup decisions.
     private var ringIdentityMisses: Set<String> = []
@@ -820,9 +825,11 @@ class PubkyProfileManager: ObservableObject {
     }
 
     /// Starting the edit drops every profile read that started before it, ahead of the avatar upload, so a refresh that finds
-    /// the profile missing while the edit uploads or publishes can no longer clear the profile or start profile setup. An
-    /// edit that then fails with an error while its session is still signed in has changed nothing here, so the read it
-    /// dropped runs again rather than leaving the profile unchecked. An edit dropped because its session ended or another
+    /// the profile missing while the edit uploads or publishes can no longer clear the profile or start profile setup. The
+    /// dropped read waits for every save in flight, as edits from Profile and Edit Profile can overlap: a published profile
+    /// makes it moot, and once the last save in flight fails with an error while its session is still signed in, nothing
+    /// was saved, so the read runs again rather than leaving the profile unchecked. It never runs while another save is in
+    /// flight, which would publish over a profile that read cleared. A save dropped because its session ended or another
     /// identity is signed in runs nothing again, as that read belonged to a session the user has left.
     private func saveProfileEdit(
         name: String,
@@ -832,10 +839,13 @@ class PubkyProfileManager: ObservableObject {
         avatarImage: UIImage?,
         session: SignedInSession
     ) async throws -> Bool {
-        let droppedRead = applicableProfileRead
+        if profileReadAwaitingSaves?.session != session {
+            profileReadAwaitingSaves = applicableProfileRead.map { (read: $0, session: session) }
+        }
         invalidateProfileLoads()
+        profileSavesInFlight += 1
         do {
-            return try await uploadAndPublishProfileEdit(
+            let isSaved = try await uploadAndPublishProfileEdit(
                 name: name,
                 bio: bio,
                 links: links,
@@ -843,8 +853,11 @@ class PubkyProfileManager: ObservableObject {
                 avatarImage: avatarImage,
                 session: session
             )
+            profileSavesInFlight -= 1
+            return isSaved
         } catch {
-            rerunProfileRead(droppedRead, afterFailedEditIn: session)
+            profileSavesInFlight -= 1
+            rerunProfileReadAwaitingSaves(afterFailedSaveIn: session)
             throw error
         }
     }
@@ -1084,9 +1097,11 @@ class PubkyProfileManager: ObservableObject {
         throw PubkyServiceError.profileNotFound
     }
 
-    /// Sets a profile this device just wrote or chose, dropping any remote read that started before it.
+    /// Sets a profile this device just wrote or chose, dropping any remote read that started before it, including one
+    /// that waits for saves in flight.
     private func commitProfile(_ newProfile: PubkyProfile) {
         invalidateProfileLoads()
+        profileReadAwaitingSaves = nil
         profile = newProfile
         cacheProfileMetadata(newProfile)
     }
@@ -1116,19 +1131,25 @@ class PubkyProfileManager: ObservableObject {
         isLoadingProfile = false
     }
 
-    /// Runs `droppedRead` again for an edit that failed, as long as the session the edit belongs to is still signed in and
-    /// nothing was written since the edit ended.
-    private func rerunProfileRead(_ droppedRead: ProfileRead?, afterFailedEditIn session: SignedInSession) {
-        guard let droppedRead else { return }
-        let generation = profileWriteGeneration
+    /// Runs the read that saves dropped again once no save is in flight, as long as the failed save's session is still signed
+    /// in. A save that starts before it runs takes the read over instead.
+    private func rerunProfileReadAwaitingSaves(afterFailedSaveIn session: SignedInSession) {
         Task {
-            guard currentSession == session else { return }
-            switch droppedRead.kind {
+            guard profileSavesInFlight == 0,
+                  currentSession == session,
+                  let awaiting = profileReadAwaitingSaves,
+                  awaiting.session == session
+            else { return }
+            profileReadAwaitingSaves = nil
+            switch awaiting.read.kind {
             case .load:
-                guard generation == profileWriteGeneration else { return }
                 await loadProfile()
             case let .reusedRingProfileRefresh(adoptionRevision):
-                await refreshReusedRingProfile(publicKey: droppedRead.publicKey, generation: generation, adoptionRevision: adoptionRevision)
+                await refreshReusedRingProfile(
+                    publicKey: awaiting.read.publicKey,
+                    generation: profileWriteGeneration,
+                    adoptionRevision: adoptionRevision
+                )
             }
         }
     }

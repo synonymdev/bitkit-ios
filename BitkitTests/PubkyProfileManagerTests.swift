@@ -1718,6 +1718,139 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    /// The QA regression: a tag change on Profile, saved while an avatar edit still uploads, fails. It used to run the
+    /// refresh it dropped again under the avatar edit's generation, so a refresh that found the profile missing cleared
+    /// the profile and started profile setup while the avatar edit was still saving, and that edit then published over
+    /// the cleared profile. Nothing runs again while a save is in flight, and a save that publishes makes the dropped
+    /// refresh moot, whichever of the two saves fails.
+    @MainActor
+    func testOverlappingProfileSavesRerunNoDroppedRefreshWhenOneOfThemSaves() async {
+        let avatar = makeAvatarImage()
+        for avatarEditSaves in [true, false] {
+            let message = avatarEditSaves ? "the tag save fails, then the avatar edit saves" : "the avatar edit fails, then the tag save saves"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(caseName: message)
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                    // The dropped refresh stays held; anything read later finds the profile missing at once.
+                    await stub.setHoldsRequests(false)
+
+                    await publications.hold()
+                    let tagSave = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+                    }
+                    await publications.waitUntilHeld(1)
+                    await uploads.hold()
+                    let avatarEdit = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend", "work"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+
+                    let failedSave = avatarEditSaves ? tagSave : avatarEdit
+                    if avatarEditSaves {
+                        await publications.release(failing: true)
+                    } else {
+                        await uploads.release(failing: true)
+                    }
+                    do {
+                        _ = try await failedSave.value
+                        XCTFail("Expected the first save to fail, \(message)")
+                    } catch {}
+                    await stub.release(request: 1)
+                    await waitUntil("\(message): the dropped refresh finishes") { !manager.isLoadingProfile }
+
+                    XCTAssertFalse(manager.isProfileSetupPending, "No profile setup starts while the other save runs, \(message)")
+                    XCTAssertEqual(manager.profile?.tags, ["friend", "work"], "Nor is the profile cleared under it, \(message)")
+                    XCTAssertEqual(manager.cachedName, "Alice", message)
+                    var requests = await stub.requests
+                    XCTAssertEqual(requests.count, 2, "Nothing is read again while a save is in flight, \(message)")
+
+                    if avatarEditSaves {
+                        await uploads.release()
+                        let isSaved = try await avatarEdit.value
+                        XCTAssertTrue(isSaved, message)
+                        XCTAssertEqual(manager.profile?.tags, ["friend", "work"], message)
+                        XCTAssertEqual(manager.profile?.imageUrl, uploadedAvatarUri, message)
+                    } else {
+                        await publications.release()
+                        let isSaved = try await tagSave.value
+                        XCTAssertTrue(isSaved, message)
+                        XCTAssertEqual(manager.profile?.tags, ["friend"], message)
+                    }
+                    XCTAssertFalse(manager.isProfileSetupPending, message)
+                    XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    await waitUntil("\(message): no read runs") { !manager.isLoadingProfile }
+                    requests = await stub.requests
+                    XCTAssertEqual(requests.count, 2, "A published profile makes the dropped refresh moot, \(message)")
+                }
+            }
+        }
+    }
+
+    /// Two overlapping saves that both fail leave the reused profile unchecked unless the refresh the first one dropped
+    /// runs again. It runs once, after the last save in flight has failed, whichever save fails first.
+    @MainActor
+    func testOverlappingProfileSavesThatBothFailRerunTheDroppedRefreshOnceAfterTheLast() async {
+        let avatar = makeAvatarImage()
+        for tagSaveFailsFirst in [true, false] {
+            let message = tagSaveFailsFirst ? "the tag save fails first" : "the avatar edit fails first"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(caseName: message)
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                    await stub.setHoldsRequests(false)
+
+                    await publications.hold()
+                    let tagSave = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+                    }
+                    await publications.waitUntilHeld(1)
+                    await uploads.hold()
+                    let avatarEdit = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend", "work"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+
+                    let saves = tagSaveFailsFirst ? [tagSave, avatarEdit] : [avatarEdit, tagSave]
+                    let failFirst: () async -> Void = tagSaveFailsFirst
+                        ? { await publications.release(failing: true) }
+                        : { await uploads.release(failing: true) }
+                    let failLast: () async -> Void = tagSaveFailsFirst
+                        ? { await uploads.release(failing: true) }
+                        : { await publications.release(failing: true) }
+
+                    await failFirst()
+                    do {
+                        _ = try await saves[0].value
+                        XCTFail("Expected the first save to fail, \(message)")
+                    } catch {}
+                    await stub.release(request: 1)
+                    await waitUntil("\(message): the dropped refresh finishes") { !manager.isLoadingProfile }
+                    var requests = await stub.requests
+                    XCTAssertEqual(requests.count, 2, "Nothing is read again while the other save runs, \(message)")
+                    XCTAssertFalse(manager.isProfileSetupPending, message)
+
+                    await failLast()
+                    do {
+                        _ = try await saves[1].value
+                        XCTFail("Expected the last save to fail, \(message)")
+                    } catch {}
+                    await waitUntil("\(message): the refresh that runs again starts profile setup") { manager.isProfileSetupPending }
+                    await waitUntil("\(message): the refresh that runs again finishes") { !manager.isLoadingProfile }
+
+                    XCTAssertNil(manager.profile, message)
+                    XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    requests = await stub.requests
+                    XCTAssertEqual(requests, [ringKeyA, ringKeyA, ringKeyA], "The dropped refresh runs again exactly once, \(message)")
+                }
+            }
+        }
+    }
+
     // MARK: - Avatar uploads
 
     /// Edit Contact uploads a new avatar for the identity Save was tapped in. The upload hands that identity to the SDK,
@@ -3161,6 +3294,8 @@ private let uploadedAvatarUri = "pubky://uploaded/avatar.jpg"
 
 private struct AvatarUploadError: Error {}
 
+private struct ProfilePublicationError: Error {}
+
 private struct NoLiveSessionUploadError: LocalizedError {
     var errorDescription: String? {
         "cannot publish Paykit blob without an active Pubky session"
@@ -3210,14 +3345,15 @@ private actor AvatarUploads {
 }
 
 /// Stands in for publishing the signed-in profile: records the identity each publication is for and each one published,
-/// and can hold them until released. Once told which identity is signed in, it refuses, like the SDK, a publication for
-/// another identity, checked together with the write. A wait for held publications that outlasts the deadline fails the
-/// test instead of hanging the suite.
+/// and can hold them until released, then let them succeed or fail. Once told which identity is signed in, it refuses,
+/// like the SDK, a publication for another identity, checked together with the write. A wait for held publications that
+/// outlasts the deadline fails the test instead of hanging the suite.
 private actor ProfilePublications {
     private(set) var published: [PubkyProfileData] = []
     private(set) var expectedIdentities: [String?] = []
     private var signedInIdentity: String?
     private var isHolding = false
+    private var failsReleasedPublications = false
     private var held: [CheckedContinuation<Void, Never>] = []
 
     func signIn(_ identity: String) {
@@ -3228,8 +3364,9 @@ private actor ProfilePublications {
         isHolding = true
     }
 
-    func release() {
+    func release(failing: Bool = false) {
         isHolding = false
+        failsReleasedPublications = failing
         held.forEach { $0.resume() }
         held.removeAll()
     }
@@ -3238,6 +3375,9 @@ private actor ProfilePublications {
         expectedIdentities.append(expectedIdentity)
         if isHolding {
             await withCheckedContinuation { held.append($0) }
+            if failsReleasedPublications {
+                throw ProfilePublicationError()
+            }
         }
         if let signedInIdentity, let expectedIdentity, expectedIdentity != signedInIdentity {
             throw PubkyServiceError.identityChanged
