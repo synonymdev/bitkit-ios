@@ -129,6 +129,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
                 return .failure(.nonActionableState)
             }
             lifecycleState = actionableState
+        } else if expectedRole == .payer, let actionableState = actionableLifecycleState(for: record) {
+            lifecycleState = actionableState
         } else {
             lifecycleState = record.state
         }
@@ -1792,7 +1794,9 @@ final class PaykitPaymentRequestManager {
     }
 
     private func clearNotificationTarget(matching request: PaykitPaymentRequest) {
-        if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
+        if let identity = activeIdentity, let target = PaykitSubscriptionNotificationTargetStore.load(),
+           target.matches(identity: identity), target.matches(request)
+        {
             PaykitSubscriptionNotificationTargetStore.clear()
         }
     }
@@ -1932,6 +1936,7 @@ final class PaykitPaymentRequestManager {
         presentationRetryAttempts.removeValue(forKey: request.id)
         presentationRetryDeadlines.removeValue(forKey: request.id)
         requestedPresentationId = request.id
+        clearNotificationTarget(matching: request)
         schedulePresentationRetry()
         return true
     }
@@ -1942,6 +1947,7 @@ final class PaykitPaymentRequestManager {
               !presentedRequestIds.contains(request.id) || requestedPresentationId == request.id
         else { return }
         dismissedPreparingRequestIds.insert(request.id)
+        clearNotificationTarget(matching: request)
         presentationGeneration += 1
         if requestedPresentationId == request.id {
             requestedPresentationId = nil
@@ -2041,6 +2047,14 @@ final class PaykitPaymentRequestManager {
         else { return false }
 
         return requestedPresentationId.map { $0 == request.id } ?? true
+    }
+
+    func isWaitingForPresentationRetry(_ request: PaykitPaymentRequest) -> Bool {
+        pendingRequests.contains(where: { $0.id == request.id }) &&
+            !processingRequestIds.contains(request.id) &&
+            !dismissedPreparingRequestIds.contains(request.id) &&
+            presentationRetryDeadlines[request.id] != nil &&
+            (requestedPresentationId.map { $0 == request.id } ?? !presentedRequestIds.contains(request.id))
     }
 
     func isApprovedForPayment(_ request: PaykitPaymentRequest) -> Bool {

@@ -134,7 +134,7 @@ final class IncomingPaykitPaymentRequestPreparation {
     ) -> PaykitPaymentRequest? {
         guard let request, matchesSession(session),
               paymentContext == self.paymentContext,
-              manager.isCurrentPresentation(request),
+              manager.isCurrentPresentation(request) || manager.isWaitingForPresentationRetry(request),
               !request.isExpired(at: now)
         else { return nil }
         return request
@@ -162,7 +162,8 @@ final class IncomingPaykitPaymentRequestPreparation {
         sheets: SheetViewModel
     ) -> Bool {
         guard !Task.isCancelled, ownsSheet(sheets), paymentContext != nil,
-              visibleRequest(manager: manager, session: session, paymentContext: app.contactPaymentContext) != nil
+              let request = visibleRequest(manager: manager, session: session, paymentContext: app.contactPaymentContext),
+              manager.isCurrentPresentation(request)
         else { return false }
         resolvedRoute = route
         return true
@@ -1301,29 +1302,48 @@ struct AppScene: View {
               PaykitFeatureFlags.isUIEnabled,
               pubkyProfile.currentSession != nil,
               !app.showDrawer,
-              sheets.activeSheetConfiguration == nil,
+              sheets.activeSheetConfiguration == nil || canRetryIncomingPaymentRequestPreparation,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
 
         var shouldPresentNextRequest = true
         let attemptedPresentation = await paykitPaymentRequestManager.presentRequests { requests in
-            guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
+            guard sheets.activeSheetConfiguration == nil || canRetryIncomingPaymentRequestPreparation,
+                  !sheets.isReplacingSheet, app.contactPaymentContext == nil
+            else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
-                let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: pubkyProfile.currentSession)
-                incomingPaymentRequestPreparation = preparation
-                sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
-                    if preparation.resolvedRoute == nil, scenePhase == .active,
-                       preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
-                    {
-                        paykitPaymentRequestManager.dismissPreparingRequest(request)
-                    }
-                    preparation.clear()
-                }))
+                let preparation: IncomingPaykitPaymentRequestPreparation
+                if let current = incomingPaymentRequestPreparation, current.ownsSheet(sheets) {
+                    guard current.request?.id == request.id else { continue }
+                    preparation = current
+                } else {
+                    preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: pubkyProfile.currentSession)
+                    incomingPaymentRequestPreparation = preparation
+                    sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
+                        if preparation.resolvedRoute == nil, scenePhase == .active,
+                           preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
+                        {
+                            paykitPaymentRequestManager.dismissPreparingRequest(request)
+                        }
+                        preparation.clear()
+                    }))
+                }
                 defer {
                     if preparation.resolvedRoute == nil {
-                        endIncomingPaymentRequestPreparation(preparation)
+                        if !Task.isCancelled, preparation.ownsSheet(sheets),
+                           preparation.matchesSession(pubkyProfile.currentSession),
+                           paykitPaymentRequestManager.isWaitingForPresentationRetry(request)
+                        {
+                            if let context = preparation.paymentContext, app.ownsContactPaymentContext(context) {
+                                app.resetSendState()
+                                wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+                            }
+                            preparation.paymentContext = nil
+                        } else {
+                            endIncomingPaymentRequestPreparation(preparation)
+                        }
                     }
                 }
                 do {
@@ -1488,6 +1508,11 @@ struct AppScene: View {
             ) != nil
     }
 
+    private var canRetryIncomingPaymentRequestPreparation: Bool {
+        guard let preparation = incomingPaymentRequestPreparation, preparation.resolvedRoute == nil else { return false }
+        return isCurrentIncomingPaymentRequestPreparation(preparation)
+    }
+
     private var isIncomingPaymentRequestPreparationInvalid: Bool {
         guard let preparation = incomingPaymentRequestPreparation else { return false }
         if preparation.resolvedRoute != nil { return !preparation.ownsSheet(sheets) }
@@ -1608,15 +1633,20 @@ struct AppScene: View {
         if paykitPaymentRequestManager.requestedPresentationId != request.id {
             guard paykitPaymentRequestManager.requestPresentation(request) else { return }
         }
+        PaykitSubscriptionNotificationTargetStore.clear()
         await presentNextIncomingPaykitPaymentRequest()
     }
 
     private func presentNextIncomingPaykitItem() async {
         guard scenePhase == .active,
               isPinVerified || !settings.pinEnabled,
-              sheets.activeSheetConfiguration == nil,
+              sheets.activeSheetConfiguration == nil || canRetryIncomingPaymentRequestPreparation,
               !sheets.isReplacingSheet
         else { return }
+        if canRetryIncomingPaymentRequestPreparation {
+            await presentNextIncomingPaykitPaymentRequest()
+            return
+        }
         if PaykitSubscriptionNotificationTargetStore.load() != nil {
             await handlePendingPaykitSubscriptionNotification()
             guard PaykitSubscriptionNotificationTargetStore.load() == nil,
