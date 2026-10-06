@@ -1274,13 +1274,18 @@ class ActivityService {
         feeRate: UInt32,
         isTransfer: Bool = false,
         contact: String? = nil,
-        walletId: String = WalletScope.default
+        walletId: String = WalletScope.default,
+        feeIsExact: Bool = false
     ) async -> Bool {
         let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
             return try await ServiceQueue.background(.core) {
                 if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
                     var updated = existing
+                    if feeIsExact {
+                        updated.fee = fee
+                        updated.feeRate = UInt64(feeRate)
+                    }
                     if isTransfer {
                         updated.isTransfer = true
                     }

@@ -190,6 +190,36 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         }
     }
 
+    func testCandidateFeeRatesRoundtripAndRejectForeignOrMalformedRates() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let wire = try XCTUnwrap(state.activeOnchainAttempt)
+        let proofs = try state.pendingProofs.map { try $0.restored() }
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        let original = String(repeating: "ab", count: 32)
+        let successor = String(repeating: "cd", count: 32)
+        var patched = object
+        patched["candidateFeeRates"] = [original: "2", successor: "4"]
+        let current = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                               from: JSONSerialization.data(withJSONObject: patched))
+        let restored = try current.restored(wallet: Self.goldenWallet(), proofs: proofs).0
+        XCTAssertEqual(restored.recoveryContext?.feeRate(for: original), 2)
+        XCTAssertEqual(restored.recoveryContext?.feeRate(for: successor), 4)
+        let again = try PaykitPaymentStateBackup.ActiveOnchainAttempt(restored, wallet: Self.goldenWallet())
+        XCTAssertEqual(again.candidateFeeRates, [original: "2", successor: "4"])
+        let old = try wire.restored(wallet: Self.goldenWallet(), proofs: proofs).0
+        XCTAssertEqual(old.recoveryContext?.feeRate(for: original), 2)
+        XCTAssertNil(old.recoveryContext?.feeRate(for: successor), "Original fee must not be guessed for an unmapped successor")
+        for values in [[successor: "0"], [successor: "4294967296"], [successor: "01"], [String(repeating: "ef", count: 32): "4"],
+                       [successor.uppercased(): "4"]]
+        {
+            patched["candidateFeeRates"] = values
+            let bad = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                               from: JSONSerialization.data(withJSONObject: patched))
+            XCTAssertThrowsError(try bad.restored(wallet: Self.goldenWallet(), proofs: proofs))
+        }
+    }
+
     func testAcceptedBackupRequiresMatchingVerifiedProofData() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
         let state = try XCTUnwrap(envelope.paykitPaymentState)

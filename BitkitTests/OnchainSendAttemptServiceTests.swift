@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import LDKNode
 import XCTest
 
@@ -46,6 +47,111 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             XCTAssertEqual(sender.legacyCalls, 0)
             XCTAssertEqual(sender.broadcasts, 1)
         }
+    }
+
+    func testSuccessorFollowupRetainsWinningFeeInsteadOfOriginalFee() async throws {
+        let store = MemoryAttemptStore()
+        let followup = CapturingWinningFeeFollowup()
+        let service = OnchainSendAttemptService(store: store, localFollowup: followup, winningFee: { _ in 281 })
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
+                                   followupContext: .init(feeSats: 143, feeRate: 1, tags: [], contact: nil, createdAt: 123))
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        sender.result = .accepted(txid: sender.txid)
+        _ = try await service.retrySamePayment(using: sender,
+                                               context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                                               satsPerVbyte: 2, authorize: { _, _ in })
+        do { _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId) } catch {}
+        XCTAssertEqual(followup.attempt?.followupContext?.feeRate, 2)
+        XCTAssertEqual(followup.attempt?.followupContext?.feeSats, 281)
+        XCTAssertEqual(followup.attempt?.txid, sender.txid)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+    }
+
+    func testWinningFeeCalculationUsesExactPreviousOutputAndRejectsMissingOrInvalidDetails() throws {
+        let parentId = String(repeating: "ef", count: 32)
+        let details = LDKNode.TransactionDetails(amountSats: -1000,
+                                                 inputs: [.init(txid: parentId, vout: 1, scriptsig: "", witness: [], sequence: UInt32.max - 2)],
+                                                 outputs: [
+                                                     .init(
+                                                         scriptpubkey: "recipient",
+                                                         scriptpubkeyType: nil,
+                                                         scriptpubkeyAddress: nil,
+                                                         value: 1000,
+                                                         n: 0
+                                                     ),
+                                                     .init(
+                                                         scriptpubkey: "change",
+                                                         scriptpubkeyType: nil,
+                                                         scriptpubkeyAddress: nil,
+                                                         value: 18719,
+                                                         n: 1
+                                                     ),
+                                                 ])
+        let parent = LDKNode.TransactionDetails(amountSats: 20000, inputs: [],
+                                                outputs: [.init(
+                                                    scriptpubkey: "wallet",
+                                                    scriptpubkeyType: nil,
+                                                    scriptpubkeyAddress: nil,
+                                                    value: 20000,
+                                                    n: 1
+                                                )])
+        XCTAssertEqual(try OnchainSendLocalFollowup.exactFee(details: details) { id in
+            XCTAssertEqual(id, parentId)
+            return parent
+        }, 281)
+        XCTAssertNil(try OnchainSendLocalFollowup.exactFee(details: details, previous: { _ in nil }))
+        var wrong = parent
+        wrong.outputs[0].n = 0
+        XCTAssertThrowsError(try OnchainSendLocalFollowup.exactFee(details: details, previous: { _ in wrong }))
+        wrong = parent
+        wrong.outputs[0].value = 100
+        XCTAssertThrowsError(try OnchainSendLocalFollowup.exactFee(details: details, previous: { _ in wrong }))
+    }
+
+    func testOriginalWinnerRetainsItsRateAfterHigherFeeSuccessorIsPrepared() async throws {
+        let store = MemoryAttemptStore()
+        let followup = CapturingWinningFeeFollowup()
+        let service = OnchainSendAttemptService(store: store, localFollowup: followup, winningFee: { _ in 143 })
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
+                                   followupContext: .init(feeSats: 143, feeRate: 1, tags: [], contact: nil, createdAt: 123))
+        let original = try XCTUnwrap(store.snapshot().first)
+        let originalTxid = try XCTUnwrap(original.txid)
+        sender.txid = String(repeating: "cd", count: 32)
+        _ = try await service.retrySamePayment(using: sender,
+                                               context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
+                                               satsPerVbyte: 2, authorize: { _, _ in })
+        _ = try await service.observeTransaction(txid: originalTxid, walletId: original.walletId)
+        do { _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId) } catch {}
+        XCTAssertEqual(followup.attempt?.followupContext?.feeRate, 1)
+        XCTAssertEqual(followup.attempt?.followupContext?.feeSats, 143)
+        XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateFeeRates,
+                       [originalTxid: 1, sender.txid: 2])
+    }
+
+    func testMissingSuccessorFeeKeepsLocalFollowupGuardedWithoutStaleActivity() async throws {
+        let store = MemoryAttemptStore()
+        let followup = CapturingWinningFeeFollowup()
+        let service = OnchainSendAttemptService(store: store, localFollowup: followup, winningFee: { _ in nil })
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
+                                   followupContext: .init(feeSats: 143, feeRate: 1, tags: [], contact: nil, createdAt: 123))
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        sender.result = .accepted(txid: sender.txid)
+        _ = try await service.retrySamePayment(using: sender,
+                                               context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                                               satsPerVbyte: 2, authorize: { _, _ in })
+        do { _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId); XCTFail("Missing successor fee must stay pending")
+        } catch {}
+        XCTAssertNil(followup.attempt)
+        XCTAssertEqual(store.snapshot().first?.status, .accepted)
+        XCTAssertEqual(store.snapshot().first?.blocksNewSend, true)
     }
 
     func testMaxRetryRejectsFeeIncreaseBeforePreparationOrAuthorization() async throws {
@@ -858,5 +964,13 @@ final class PreparedAttemptNodeMock: OnchainSending {
     {
         legacyCalls += 1
         return .unknown(txid: txid)
+    }
+}
+
+private final class CapturingWinningFeeFollowup: OnchainSendLocalFollowupHandling {
+    var attempt: OnchainSendAttempt?
+    func save(_ attempt: OnchainSendAttempt) async throws -> OnchainActivity {
+        self.attempt = attempt
+        throw OnchainSendAttemptError.localFollowupNotSaved
     }
 }

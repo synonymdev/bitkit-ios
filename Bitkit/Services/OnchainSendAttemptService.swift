@@ -71,6 +71,14 @@ struct OnchainSendRecoveryContext: Codable, Equatable {
     let satsPerVbyte: UInt32
     let paymentIdentity: String?
     var candidateTxids: [String]
+    var candidateFeeRates: [String: UInt32]? = nil
+
+    func feeRate(for txid: String) -> UInt32? {
+        if let rate = candidateFeeRates?[txid.lowercased()] {
+            return rate > 0 ? rate : nil
+        }
+        return candidateTxids.first?.caseInsensitiveCompare(txid) == .orderedSame ? satsPerVbyte : nil
+    }
 }
 
 enum OnchainSendAttemptError: LocalizedError {
@@ -155,8 +163,8 @@ struct OnchainSendAttempt: Codable, Equatable {
 }
 
 struct OnchainSendFollowupContext: Codable, Equatable {
-    let feeSats: UInt64
-    let feeRate: UInt32
+    var feeSats: UInt64
+    var feeRate: UInt32
     let tags: [String]
     let contact: String?
     let createdAt: UInt64
@@ -185,6 +193,52 @@ protocol OnchainSendLocalFollowupHandling {
 }
 
 struct OnchainSendLocalFollowup: OnchainSendLocalFollowupHandling {
+    static func observedFee(_ attempt: OnchainSendAttempt) async throws -> UInt64? {
+        let service = LightningService.shared
+        guard attempt.walletId == OnchainSendAttemptService.walletId(index: service.currentWalletIndex),
+              let node = service.onchainDispatchNode as? Node, let txid = attempt.txid
+        else {
+            throw OnchainSendAttemptError.localFollowupNotSaved
+        }
+        return try await ServiceQueue.background(.ldk, wrapErrors: false) {
+            guard attempt.walletId == OnchainSendAttemptService.walletId(index: service.currentWalletIndex),
+                  service.onchainDispatchNode === node,
+                  let details = node.getTransactionDetails(txid: txid) else { return nil }
+            guard Set(details.inputs.map { OnchainSendInput(txid: $0.txid, vout: $0.vout) }) == Set(attempt.recoveryContext?.inputs ?? []) else {
+                throw OnchainSendAttemptError.localFollowupNotSaved
+            }
+            return try exactFee(details: details, previous: { node.getTransactionDetails(txid: $0) })
+        }
+    }
+
+    static func exactFee(details: LDKNode.TransactionDetails,
+                         previous: (String) -> LDKNode.TransactionDetails?) throws -> UInt64?
+    {
+        var inputTotal: UInt64 = 0
+        var outputTotal: UInt64 = 0
+        guard !details.inputs.isEmpty,
+              Set(details.inputs.map { OnchainSendInput(txid: $0.txid, vout: $0.vout) }).count == details.inputs.count
+        else { throw OnchainSendAttemptError.localFollowupNotSaved }
+        for input in details.inputs {
+            guard let parent = previous(input.txid) else { return nil }
+            let outputs = parent.outputs.filter { $0.n == input.vout }
+            guard outputs.count == 1, let value = outputs.first?.value, value >= 0,
+                  !inputTotal.addingReportingOverflow(UInt64(value)).overflow
+            else {
+                throw OnchainSendAttemptError.localFollowupNotSaved
+            }
+            inputTotal += UInt64(value)
+        }
+        for output in details.outputs {
+            guard output.value >= 0, !outputTotal.addingReportingOverflow(UInt64(output.value)).overflow else {
+                throw OnchainSendAttemptError.localFollowupNotSaved
+            }
+            outputTotal += UInt64(output.value)
+        }
+        guard inputTotal >= outputTotal else { throw OnchainSendAttemptError.localFollowupNotSaved }
+        return inputTotal - outputTotal
+    }
+
     func save(_ attempt: OnchainSendAttempt) async throws -> OnchainActivity {
         guard let txid = attempt.txid, attempt.status == .accepted else { throw OnchainSendAttemptError.localFollowupNotSaved }
         let activity = CoreService.shared.activity
@@ -196,7 +250,8 @@ struct OnchainSendLocalFollowup: OnchainSendLocalFollowupHandling {
             )])
             guard await activity.createSentOnchainActivityFromSendResult(
                 txid: txid, address: attempt.address, amount: attempt.amountSats,
-                fee: context.feeSats, feeRate: context.feeRate, contact: context.contact
+                fee: context.feeSats, feeRate: context.feeRate, contact: context.contact,
+                feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
             ) else { throw OnchainSendAttemptError.localFollowupNotSaved }
         } else {
             guard let metadata = try await activity.getPreActivityMetadata(searchKey: txid),
@@ -253,6 +308,7 @@ actor OnchainSendAttemptService {
     }
 
     private let localFollowup: any OnchainSendLocalFollowupHandling
+    private let winningFee: (OnchainSendAttempt) async throws -> UInt64?
     private let store: any OnchainSendAttemptStoring
     private let hasPaidOrder: (String) throws -> Bool
     private var knownAttempt: OnchainSendAttempt?
@@ -261,11 +317,13 @@ actor OnchainSendAttemptService {
     init(
         store: any OnchainSendAttemptStoring = OnchainSendAttemptStore(),
         localFollowup: any OnchainSendLocalFollowupHandling = OnchainSendLocalFollowup(),
+        winningFee: @escaping (OnchainSendAttempt) async throws -> UInt64? = OnchainSendLocalFollowup.observedFee,
         hasPaidOrder: @escaping (String) throws -> Bool = { orderId in
             try TransferStorage.shared.getAll().contains(where: { $0.lspOrderId == orderId })
         }
     ) {
         self.localFollowup = localFollowup
+        self.winningFee = winningFee
         self.store = store
         self.hasPaidOrder = hasPaidOrder
     }
@@ -345,7 +403,7 @@ actor OnchainSendAttemptService {
                 attempt.txid = prepared.txid
                 attempt.recoveryContext = OnchainSendRecoveryContext(
                     inputs: prepared.inputs, satsPerVbyte: satsPerVbyte, paymentIdentity: paymentIdentity,
-                    candidateTxids: [prepared.txid]
+                    candidateTxids: [prepared.txid], candidateFeeRates: [prepared.txid.lowercased(): satsPerVbyte]
                 )
                 try store.save([attempt])
                 knownAttempt = attempt
@@ -428,6 +486,18 @@ actor OnchainSendAttemptService {
         if !attempt.containsCandidate(prepared.txid) {
             attempt.recoveryContext?.candidateTxids.append(prepared.txid)
         }
+        if let previousRate = attempt.recoveryContext?.candidateFeeRates?[prepared.txid.lowercased()],
+           previousRate != authorizedFeeRate
+        {
+            throw OnchainSendAttemptError.unresolved
+        }
+        if attempt.recoveryContext?.candidateFeeRates == nil {
+            attempt.recoveryContext?.candidateFeeRates = [:]
+            if let originalTxid = recovery.candidateTxids.first {
+                attempt.recoveryContext?.candidateFeeRates?[originalTxid.lowercased()] = recovery.satsPerVbyte
+            }
+        }
+        attempt.recoveryContext?.candidateFeeRates?[prepared.txid.lowercased()] = authorizedFeeRate
         // Keep the original rejected/unknown state until a real new outcome arrives.
         // A crash here still recognizes both possible payments and cannot unlock the wallet.
         try store.save([attempt])
@@ -600,6 +670,7 @@ actor OnchainSendAttemptService {
                 attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: saved.value, contact: saved.contact, activity: saved
             )
         }
+        attempt = try await winningFollowupAttempt(attempt)
         let activity = try await localFollowup.save(attempt)
         try acknowledgeLocalFollowup(txid: txid)
         let resolution = OnchainSendLocalResolution(
@@ -607,6 +678,29 @@ actor OnchainSendAttemptService {
         )
         Self.localResolutionSubject.send(resolution)
         return resolution
+    }
+
+    private func winningFollowupAttempt(_ original: OnchainSendAttempt) async throws -> OnchainSendAttempt {
+        guard let recovery = original.recoveryContext, var context = original.followupContext,
+              let txid = original.txid else { return original }
+        guard let rate = recovery.feeRate(for: txid), rate > 0 else {
+            throw OnchainSendAttemptError.localFollowupNotSaved
+        }
+        let isOriginal = recovery.candidateTxids.first?.caseInsensitiveCompare(txid) == .orderedSame
+        let observed = isOriginal ? context.feeSats : try await winningFee(original)
+        guard let fee = observed,
+              !original.amountSats.addingReportingOverflow(fee).overflow,
+              var attempt = try currentAttempt(), attempt.id == original.id,
+              attempt.walletId == original.walletId, attempt.status == .accepted, attempt.txid == txid,
+              !attempt.localFollowupComplete
+        else { throw OnchainSendAttemptError.localFollowupNotSaved }
+        context.feeRate = rate
+        context.feeSats = fee
+        guard context != attempt.followupContext else { return attempt }
+        attempt.followupContext = context
+        try store.save([attempt])
+        knownAttempt = attempt
+        return attempt
     }
 
     func acceptedRequestAttempt() throws -> OnchainSendAttempt? {
@@ -620,7 +714,8 @@ actor OnchainSendAttemptService {
               attempt.status == .accepted, attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
         else { return false }
         if !attempt.localFollowupComplete {
-            _ = try await localFollowup.save(attempt)
+            let winner = try await winningFollowupAttempt(attempt)
+            _ = try await localFollowup.save(winner)
             try acknowledgeLocalFollowup(txid: txid)
         }
         return true
@@ -646,6 +741,7 @@ actor OnchainSendAttemptService {
     private func restoreAcceptedTransfer(_ attempt: OnchainSendAttempt, using transferService: TransferService) async throws -> Bool {
         guard let savedOrderId = attempt.orderId, let txid = attempt.txid else { return false }
         guard !attempt.localFollowupComplete else { return true }
+        let attempt = try await winningFollowupAttempt(attempt)
         guard let context = attempt.followupContext, let transfer = attempt.transferContext else {
             throw OnchainSendAttemptError.localFollowupNotSaved
         }
@@ -654,13 +750,16 @@ actor OnchainSendAttemptService {
             txId: txid, address: attempt.address, isReceive: false, feeRate: UInt64(context.feeRate),
             isTransfer: true, channelId: nil, createdAt: context.createdAt
         )])
+        let isSuccessor = attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
         _ = try await transferService.createTransfer(
             type: .toSpending, amountSats: transfer.clientBalanceSats, fundingTxId: txid,
-            lspOrderId: savedOrderId, txTotalSats: transfer.txTotalSats, preTransferOnchainSats: transfer.preTransferOnchainSats
+            lspOrderId: savedOrderId, txTotalSats: isSuccessor ? attempt.amountSats + context.feeSats : transfer.txTotalSats,
+            preTransferOnchainSats: transfer.preTransferOnchainSats
         )
         guard await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
             txid: txid, address: attempt.address, amount: attempt.amountSats, fee: context.feeSats,
-            feeRate: context.feeRate, isTransfer: true
+            feeRate: context.feeRate, isTransfer: true,
+            feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
         ), let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
         activity.txType == .sent, activity.isTransfer
         else { throw OnchainSendAttemptError.localFollowupNotSaved }

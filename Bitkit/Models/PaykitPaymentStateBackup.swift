@@ -171,6 +171,7 @@ struct PaykitPaymentStateBackup: Codable {
         let originalInputs: [Input]?
         let candidateTxids: [String]
         let feeRateSatsPerVByte: String
+        let candidateFeeRates: [String: String]?
         let followup: Followup?
         let transfer: Transfer?
 
@@ -192,6 +193,17 @@ struct PaykitPaymentStateBackup: Codable {
                 recovery.inputs.isEmpty ? nil : recovery.inputs.map { Input(txid: $0.txid.lowercased(), vout: String($0.vout)) }
             }
             candidateTxids = attempt.recoveryContext?.candidateTxids.map { $0.lowercased() } ?? []
+            let receiptCandidates = Set(candidateTxids)
+            if let rates = attempt.recoveryContext?.candidateFeeRates {
+                guard rates.allSatisfy({ $0.key.count == 64 && $0.key.allSatisfy { "0123456789abcdef".contains($0) } &&
+                        receiptCandidates.contains($0.key) && $0.value > 0
+                }) else {
+                    throw invalidBackup("Invalid candidate fee rate association")
+                }
+                candidateFeeRates = rates.mapValues { String($0) }
+            } else {
+                candidateFeeRates = nil
+            }
             feeRateSatsPerVByte = String(attempt.recoveryContext?.satsPerVbyte ?? attempt.followupContext?.feeRate ?? 0)
             guard attempt.followupContext?.createdAt.multipliedReportingOverflow(by: 1000).overflow != true else {
                 throw invalidBackup("Invalid local follow-up timestamp")
@@ -217,7 +229,8 @@ struct PaykitPaymentStateBackup: Codable {
                   ["bitcoin", "testnet", "signet", "regtest"].contains(wallet.network),
                   wallet.network == destination.network, wallet.binding == destination.binding, validTxid(wallet.binding),
                   wallet.originalWalletId != nil, let destinationWalletId = destination.originalWalletId,
-                  let id = UUID(uuidString: attemptId), id.uuidString.lowercased() == attemptId, let state = OnchainSendAttempt.Status(rawValue: status), !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let id = UUID(uuidString: attemptId), id.uuidString.lowercased() == attemptId,
+                  let state = OnchainSendAttempt.Status(rawValue: status), !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   requestId == nil || orderId == nil
             else { throw invalidBackup("On-chain backup wallet or operation mismatch") }
             let amount: UInt64 = try number(amountSats)
@@ -235,6 +248,16 @@ struct PaykitPaymentStateBackup: Codable {
                   txid.map(candidateTxids.contains) == true && rate > 0,
                   state != .accepted || txid != nil
             else { throw invalidBackup("Invalid on-chain prepared receipt") }
+            let rates = try candidateFeeRates.map { values in
+                try values.mapValues { value -> UInt32 in
+                    let rate: UInt32 = try number(value)
+                    guard rate > 0 else { throw invalidBackup("Invalid candidate fee rate") }
+                    return rate
+                }
+            }
+            guard rates?.keys.allSatisfy({ validTxid($0) && candidateTxids.contains($0) }) != false else {
+                throw invalidBackup("Candidate fee does not belong to this operation")
+            }
             let restoredRequest = try requestId.map { value in
                 let date = try value.billingPeriodStartsAt.map { try parseTimestamp($0).date }
                 return PaykitPaymentRequest.ID(paymentRequestId: value.paymentRequestId, counterparty: value.counterparty,
@@ -274,7 +297,7 @@ struct PaykitPaymentStateBackup: Codable {
                                              followupContext: context, transferContext: orderContext,
                                              recoveryContext: OnchainSendRecoveryContext(inputs: inputs ?? [], satsPerVbyte: rate,
                                                                                          paymentIdentity: payerIdentity,
-                                                                                         candidateTxids: candidateTxids))
+                                                                                         candidateTxids: candidateTxids, candidateFeeRates: rates))
             return (attempt, restoredProofs)
         }
 

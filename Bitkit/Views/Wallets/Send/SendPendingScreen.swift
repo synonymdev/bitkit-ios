@@ -128,8 +128,9 @@ struct SendPendingScreen: View {
             }
         }
         .alert(t("wallet__onchain_retry_original"), isPresented: $showingRetryConfirmation) {
-            TextField(t("wallet__onchain_retry_fee"), text: $retryFeeRate).keyboardType(.numberPad)
-                .disabled(onchainAttempt?.isMaxAmount == true)
+            if onchainAttempt?.isMaxAmount != true {
+                TextField(t("wallet__onchain_retry_fee"), text: $retryFeeRate).keyboardType(.numberPad)
+            }
             Button(t("common__cancel"), role: .cancel) {}
             Button(t("common__retry")) {
                 guard let rate = UInt32(retryFeeRate), rate > 0 else {

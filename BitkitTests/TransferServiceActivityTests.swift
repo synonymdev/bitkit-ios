@@ -623,6 +623,34 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     @MainActor
+    func testSuccessorWinnerWritesExactFeeAndRateIntoDetailsAndDurableMetadata() async throws {
+        let store = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: store, winningFee: { _ in 281 })
+        let sender = PreparedAttemptNodeMock()
+        _ = try await attempts.send(using: sender, address: "bcrt1qoriginal", amountSats: sender.amount,
+                                    satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
+                                    followupContext: .init(feeSats: 143, feeRate: 1, tags: ["original"], contact: nil, createdAt: 100))
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "da", count: 32)
+        sender.result = .accepted(txid: sender.txid)
+        _ = try await attempts.retrySamePayment(using: sender,
+                                                context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                                                satsPerVbyte: 2, authorize: { _, _ in })
+        _ = await activity.createSentOnchainActivityFromSendResult(
+            txid: sender.txid, address: "bcrt1qoriginal", amount: sender.amount, fee: 143, feeRate: 1
+        )
+        let resolved = try await attempts.resumeAcceptedOrdinarySend(walletId: original.walletId)
+        XCTAssertEqual(resolved?.activity.fee, 281)
+        XCTAssertEqual(resolved?.activity.feeRate, 2)
+        XCTAssertEqual(resolved?.activity.txId, sender.txid)
+        XCTAssertEqual(resolved?.activity.value, sender.amount)
+        let savedTags = try await activity.tags(forActivity: sender.txid)
+        XCTAssertEqual(savedTags, ["original"])
+        XCTAssertEqual(store.snapshot().first?.followupContext?.feeSats, 281)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+    }
+
+    @MainActor
     func testNativeExactObservationFinishesUnknownAndRejectedOrdinaryActivityAndAck() async throws {
         let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
         let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
@@ -903,10 +931,11 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(firstResolution?.amountSats, 4321)
         XCTAssertEqual(repeatedResolution?.txid, txid)
         XCTAssertEqual(node.calls, 1, "Local resume invoked node dispatch")
-        let metadata = try await activity.getPreActivityMetadata(searchKey: txid)
-        XCTAssertEqual(metadata?.address, "bcrt1qoriginal")
-        XCTAssertEqual(metadata?.tags, ["saved-tag"])
-        XCTAssertEqual(metadata?.feeRate, 2)
+        let durableActivity = try await activity.getOnchainActivityByTxId(txid: txid)
+        let durableTags = try await activity.tags(forActivity: txid)
+        XCTAssertEqual(durableActivity?.address, "bcrt1qoriginal")
+        XCTAssertEqual(durableTags, ["saved-tag"])
+        XCTAssertEqual(durableActivity?.feeRate, 2)
         let activities = try await activity.get(filter: .onchain, limit: 50, sortDirection: .desc)
         XCTAssertEqual(activities.count, 2, "Repeated follow-up duplicated a durable activity")
         XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
