@@ -143,7 +143,7 @@ struct PubkyAuthApprovalSheet: View {
             navTitle: t("pubky_auth__watch_only_intro_nav_title"),
             title: t("pubky_auth__watch_only_intro_title"),
             description: watchOnlyConsentDescription,
-            image: "coin-stack",
+            image: "coin-stack-4",
             continueText: t("pubky_auth__watch_only_intro_approve"),
             cancelText: t("common__cancel"),
             accentColor: .blueAccent,
@@ -203,7 +203,7 @@ struct PubkyAuthApprovalSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             approvalDetails
 
-            BodyMSBText(t("pubky_auth__authorizing"), textColor: .white32)
+            BodySSBText(t("pubky_auth__authorizing"), textColor: .white32)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
         }
@@ -214,6 +214,7 @@ struct PubkyAuthApprovalSheet: View {
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             successDescriptionText
+                .padding(.horizontal, 16)
                 .padding(.bottom, 16)
 
             Spacer()
@@ -222,6 +223,7 @@ struct PubkyAuthApprovalSheet: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 256, height: 256)
+                .scaleEffect(Self.checkIllustrationScale)
                 .frame(maxWidth: .infinity)
 
             Spacer()
@@ -246,21 +248,12 @@ struct PubkyAuthApprovalSheet: View {
 
                     if !config.request.permissions.isEmpty {
                         descriptionText
-                            .padding(.bottom, 8)
-                    }
-
-                    if !config.request.clientID.isEmpty {
-                        BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
                             .padding(.bottom, 32)
-                    } else {
-                        Spacer().frame(height: 24)
                     }
 
                     if let relayOrigin = config.request.relayOrigin {
                         relayOriginSection(relayOrigin)
-                            .padding(.bottom, 24)
+                            .padding(.bottom, 32)
                     }
 
                     if !config.request.permissions.isEmpty {
@@ -269,11 +262,11 @@ struct PubkyAuthApprovalSheet: View {
 
                     if config.request.bitkitClaim?.includesPaykitAccess == true {
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionMText(t("pubky_auth__paykit_access_title"), textColor: .white64)
-                            BodySText(t("pubky_auth__paykit_access_description"))
+                            CaptionMText(t("pubky_auth__details"), textColor: .white64)
+                            BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 32)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
@@ -298,7 +291,7 @@ struct PubkyAuthApprovalSheet: View {
                         .accessibilityIdentifier("PubkySignupHomeserver")
                     } else {
                         profileCard
-                            .padding(.bottom, 16)
+                            .padding(.bottom, 24)
                     }
                 }
                 .frame(minHeight: geometry.size.height, alignment: .top)
@@ -313,7 +306,9 @@ struct PubkyAuthApprovalSheet: View {
 
     private var descriptionText: some View {
         BodyMText(
-            t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix"),
+            config.request.clientID.isEmpty
+                ? t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix")
+                : t("pubky_auth__description_named", variables: ["clientId": config.request.clientID, "service": serviceText]),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
         )
@@ -341,9 +336,14 @@ struct PubkyAuthApprovalSheet: View {
 
     private var successDescriptionText: some View {
         BodyMText(
-            t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
+            config.request.clientID.isEmpty
+                ? t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
                 + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
-                + t("pubky_auth__success_suffix"),
+                + t("pubky_auth__success_suffix")
+                : t(
+                    "pubky_auth__success_named",
+                    variables: ["pubky": truncatedPublicKey, "clientId": config.request.clientID, "service": serviceText]
+                ),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
         )
@@ -357,15 +357,13 @@ struct PubkyAuthApprovalSheet: View {
             ForEach(Array(config.request.permissions.enumerated()), id: \.offset) { _, permission in
                 permissionRow(permission)
             }
-
-            CustomDivider(color: .white10)
         }
     }
 
     private func permissionRow(_ permission: PubkyAuthPermission) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "folder")
-                .font(.system(size: 14))
+                .font(.system(size: 16))
                 .foregroundColor(.white)
 
             BodySSBText(permission.displayPath)
@@ -378,41 +376,52 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var trustWarning: some View {
-        BodySText(t("pubky_auth__trust_warning"))
-            .lineSpacing(4)
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("pubky_auth__before_you_continue"), textColor: .white64)
+            BodySText(t("pubky_auth__trust_warning"))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var profileCard: some View {
-        VStack(spacing: 16) {
-            CaptionMText(
-                truncatedPublicKey.localizedUppercase,
-                textColor: .white64
-            )
-
+        HStack(spacing: 16) {
             if let imageUri = pubkyProfile.displayImageUri {
-                PubkyImage(uri: imageUri, size: 96)
+                PubkyImage(uri: imageUri, size: 48)
             } else {
                 Circle()
                     .fill(Color.pubkyGreen)
-                    .frame(width: 96, height: 96)
+                    .frame(width: 48, height: 48)
                     .overlay {
                         Image("user-square")
                             .resizable()
                             .scaledToFit()
                             .foregroundColor(.white32)
-                            .frame(width: 48, height: 48)
+                            .frame(width: 24, height: 24)
                     }
             }
 
-            HeadlineText(pubkyProfile.displayName ?? "")
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionMText(
+                    truncatedPublicKey.localizedUppercase,
+                    textColor: .white64
+                )
+                .lineLimit(1)
+
+                BodyMSBText(pubkyProfile.displayName ?? "")
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
         .background(Color.gray6)
         .cornerRadius(16)
     }
+
+    /// Figma draws the check illustration at 274pt inside its 256pt slot.
+    private static let checkIllustrationScale: CGFloat = 274.0 / 256.0
 
     // MARK: - Actions
 
