@@ -391,6 +391,11 @@ actor OnchainSendAttemptService {
         defer { nativeDispatchInProgress = nil }
         let authorizedFeeRate = satsPerVbyte ?? recovery.satsPerVbyte
         guard authorizedFeeRate > 0 else { throw OnchainSendAttemptError.unresolved }
+        // Send-all already spends the original inputs minus its fee. A bump cannot
+        // preserve both the exact input set and the original recipient amount.
+        guard !original.isMaxAmount || authorizedFeeRate == recovery.satsPerVbyte else {
+            throw OnchainSendAttemptError.retryConstruction
+        }
         try checkWallet(sender, index: index, node: node)
         if let winner = try winningResult(attemptId: original.id) {
             return winner
