@@ -218,6 +218,22 @@ actor PaykitPaymentProofService {
         try await store.load().map(PaykitPaymentStateBackup.Proof.init)
     }
 
+    func backupSnapshot(wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet) async throws -> PaykitPaymentStateBackup {
+        let proofs = try await store.load()
+        let active = try await attemptService.backupSnapshot(wallet: wallet, proofs: proofs)
+        return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
+                                            pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active)
+    }
+
+    func restoreBackup(_ state: PaykitPaymentStateBackup, wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet) async throws {
+        let proofs = try state.pendingProofs.map { try $0.restored() }
+        let restored = try state.activeOnchainAttempt.map { try $0.restored(wallet: wallet, proofs: proofs) }
+        // Persist the block first. A later proof/SDK restore failure leaves the original guard intact.
+        try await attemptService.restoreBackup(restored?.0)
+        try await mutationLock.withLock { try await persist(restored?.1 ?? proofs) }
+        try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)
+    }
+
     func restoreBackup(_ proofs: [PaykitPaymentStateBackup.Proof]) async throws {
         let restoredProofs = try proofs.map { try $0.restored() }
         let unsupportedWalletProofCount = restoredProofs.filter {

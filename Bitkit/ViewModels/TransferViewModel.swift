@@ -478,7 +478,8 @@ class TransferViewModel: ObservableObject {
             transferContext: OnchainSendTransferContext(
                 clientBalanceSats: order.clientBalanceSat,
                 txTotalSats: txTotalSats,
-                preTransferOnchainSats: preTransferOnchainSats
+                preTransferOnchainSats: preTransferOnchainSats,
+                originalOrderFeeSats: order.feeSat
             )
         )
         let txid: String

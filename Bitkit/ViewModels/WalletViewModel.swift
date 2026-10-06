@@ -669,6 +669,12 @@ class WalletViewModel: ObservableObject {
         try await attempts.resumeAcceptedTransfer(walletId: walletId, using: transferService)
     }
 
+    func resolvedAcceptedOnchainTransfer(context: OnchainSendPendingContext, attempts: OnchainSendAttemptService) async throws
+        -> OnchainSendLocalResolution?
+    {
+        try await attempts.resolvedAcceptedTransfer(context: context, using: transferService)
+    }
+
     /// Sets the fee rate for the send flow
     /// - Parameter speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
     func setFeeRate(speed: TransactionSpeed) async throws {

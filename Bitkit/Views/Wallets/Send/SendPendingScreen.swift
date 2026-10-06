@@ -201,6 +201,13 @@ struct SendPendingScreen: View {
                         localFollowupUnavailable = loaded.followupUnavailable
                         if let resolution = loaded.resolution {
                             applyOrdinarySendResolution(resolution)
+                        } else if let attempt = onchainAttempt, attempt.orderId != nil {
+                            let context = ordinaryPendingContext ?? OnchainSendPendingContext(
+                                attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid
+                            )
+                            if let resolution = try await wallet.resolvedAcceptedOnchainTransfer(context: context, attempts: attemptService) {
+                                applyOrdinarySendResolution(resolution)
+                            }
                         }
                         if let requestId = paykitPaymentRequestId, let identity = pendingOnchainProof?.identity ?? pubkyProfile.publicKey,
                            let resolution = await proofService.resolvedOnchainPayment(
@@ -286,8 +293,9 @@ struct SendPendingScreen: View {
                 applyOnchainPaymentResolution(resolution)
             }
         } else if original.orderId != nil {
-            guard try await wallet.resumeAcceptedOnchainTransfer(walletId: original.walletId, attempts: attemptService) else { return }
-            navigationPath.append(.success(paymentId: txid))
+            if let resolution = try await wallet.resolvedAcceptedOnchainTransfer(context: context, attempts: attemptService) {
+                applyOrdinarySendResolution(resolution)
+            }
         } else if let resolution = try await attemptService.resumeAcceptedOrdinarySend(walletId: original.walletId, pendingContext: context) {
             applyOrdinarySendResolution(resolution)
         }
@@ -372,15 +380,25 @@ struct SendPendingScreen: View {
 
     private func applyOrdinarySendResolution(_ resolution: OnchainSendLocalResolution) {
         guard paymentHash == nil, paykitPaymentRequestId == nil, !ordinarySendResolved,
-              resolution
-              .walletId ==
-              (ordinaryPendingContext?.walletId ?? OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)),
-              onchainAttempt?.id == resolution.attemptId
+              Self.matchesLocalResolution(resolution, attempt: onchainAttempt, context: ordinaryPendingContext,
+                                          walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex))
         else { return }
         ordinarySendResolved = true
         foundActivity = .onchain(resolution.activity)
         onchainAttempt?.status = .accepted
         onchainAttempt?.localFollowupComplete = true
+    }
+
+    static func matchesLocalResolution(_ resolution: OnchainSendLocalResolution, attempt: OnchainSendAttempt?,
+                                       context: OnchainSendPendingContext?, walletId: String) -> Bool
+    {
+        guard let attempt, attempt.requestId == nil, attempt.id == resolution.attemptId,
+              attempt.walletId == resolution.walletId, resolution.walletId == (context?.walletId ?? walletId),
+              context == nil || context?.attemptId == attempt.id,
+              attempt.containsCandidate(resolution.txid),
+              context?.txid == nil || attempt.containsCandidate(context?.txid)
+        else { return false }
+        return true
     }
 
     private func applyPendingResolutionIfNeeded(_ resolution: SendSheetPendingResolution?) {

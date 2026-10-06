@@ -22,14 +22,13 @@ extension LightningService: OnchainSending {
             guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
                 throw NodeError.NotRunning(message: "Wallet or node changed before on-chain preparation")
             }
-            let prepared: PreparedOnchainSend
-            if isMaxAmount {
-                prepared = try node.onchainPayment().prepareSendAllToAddress(
+            let prepared: PreparedOnchainSend = if isMaxAmount {
+                try node.onchainPayment().prepareSendAllToAddress(
                     address: address, retainReserves: true,
                     feeRate: .fromSatPerKwu(satKwu: max(UInt64(satsPerVbyte) * 250, 253))
                 )
             } else {
-                prepared = try node.onchainPayment().prepareSendToAddress(
+                try node.onchainPayment().prepareSendToAddress(
                     address: address, amountSats: sats,
                     feeRate: .fromSatPerKwu(satKwu: max(UInt64(satsPerVbyte) * 250, 253)), utxosToSpend: utxosToSpend
                 )
@@ -49,7 +48,6 @@ extension LightningService: OnchainSending {
             }
         )
     }
-
 }
 
 struct OnchainSendInput: Codable, Equatable, Hashable {
@@ -162,12 +160,15 @@ struct OnchainSendFollowupContext: Codable, Equatable {
     let tags: [String]
     let contact: String?
     let createdAt: UInt64
+    var backupCreatedAtMillis: UInt64? = nil
+    var channelId: String? = nil
 }
 
 struct OnchainSendTransferContext: Codable, Equatable {
     let clientBalanceSats: UInt64
     let txTotalSats: UInt64
     let preTransferOnchainSats: UInt64
+    var originalOrderFeeSats: UInt64? = nil
 }
 
 struct OnchainSendLocalResolution {
@@ -216,6 +217,11 @@ protocol OnchainSendAttemptStoring: Sendable {
 }
 
 struct OnchainSendAttemptStore: OnchainSendAttemptStoring {
+    private static let backupDataChanged = PassthroughSubject<Void, Never>()
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupDataChanged.eraseToAnyPublisher()
+    }
+
     func load() throws -> [OnchainSendAttempt] {
         guard let data = try Keychain.load(key: .onchainSendAttempts) else { return [] }
         return try JSONDecoder().decode([OnchainSendAttempt].self, from: data)
@@ -223,6 +229,7 @@ struct OnchainSendAttemptStore: OnchainSendAttemptStoring {
 
     func save(_ attempts: [OnchainSendAttempt]) throws {
         try Keychain.upsert(key: .onchainSendAttempts, data: JSONEncoder().encode(attempts))
+        Self.backupDataChanged.send()
     }
 }
 
@@ -261,6 +268,26 @@ actor OnchainSendAttemptService {
         self.localFollowup = localFollowup
         self.store = store
         self.hasPaidOrder = hasPaidOrder
+    }
+
+    func backupSnapshot(wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet,
+                        proofs: [PendingPaykitPaymentProof]) throws -> PaykitPaymentStateBackup.ActiveOnchainAttempt?
+    {
+        guard let attempt = try currentAttempt(), attempt.blocksNewSend else { return nil }
+        let wire = try PaykitPaymentStateBackup.ActiveOnchainAttempt(attempt, wallet: wallet)
+        _ = try wire.restored(wallet: wallet, proofs: proofs)
+        return wire
+    }
+
+    func restoreBackup(_ attempt: OnchainSendAttempt?) throws {
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
+        if let previous = try currentAttempt(), previous.blocksNewSend {
+            // A restore must not erase a newer unresolved candidate or another original operation.
+            guard let attempt, previous == attempt else { throw OnchainSendAttemptError.unresolved }
+            return
+        }
+        try store.save(attempt.map { [$0] } ?? [])
+        knownAttempt = attempt
     }
 
     func send(
@@ -626,8 +653,31 @@ actor OnchainSendAttemptService {
             type: .toSpending, amountSats: transfer.clientBalanceSats, fundingTxId: txid,
             lspOrderId: savedOrderId, txTotalSats: transfer.txTotalSats, preTransferOnchainSats: transfer.preTransferOnchainSats
         )
+        guard await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+            txid: txid, address: attempt.address, amount: attempt.amountSats, fee: context.feeSats,
+            feeRate: context.feeRate, isTransfer: true
+        ), let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
+        activity.txType == .sent, activity.isTransfer
+        else { throw OnchainSendAttemptError.localFollowupNotSaved }
         try acknowledgeLocalFollowup(txid: txid)
+        Self.localResolutionSubject.send(OnchainSendLocalResolution(
+            attemptId: attempt.id, walletId: attempt.walletId, txid: txid, amountSats: activity.value,
+            contact: activity.contact, activity: activity
+        ))
         return true
+    }
+
+    func resolvedAcceptedTransfer(context: OnchainSendPendingContext, using transferService: TransferService) async throws
+        -> OnchainSendLocalResolution?
+    {
+        guard let attempt = try pendingAttempt(context: context), attempt.orderId != nil, attempt.requestId == nil,
+              attempt.status == .accepted, let txid = attempt.txid,
+              try await restoreAcceptedTransfer(attempt, using: transferService),
+              let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: txid),
+              activity.txType == .sent, activity.isTransfer
+        else { return nil }
+        return OnchainSendLocalResolution(attemptId: attempt.id, walletId: attempt.walletId, txid: txid,
+                                          amountSats: activity.value, contact: activity.contact, activity: activity)
     }
 
     func clearBeforeDispatch(attemptId: UUID) throws {

@@ -1,6 +1,8 @@
 @testable import Bitkit
 import Combine
+import CryptoKit
 import Paykit
+import VssRustClientFfi
 import XCTest
 
 private enum PaykitPaymentStateBackupTestError: Error {
@@ -9,6 +11,84 @@ private enum PaykitPaymentStateBackupTestError: Error {
 
 final class PaykitPaymentStateBackupTests: XCTestCase {
     private let identity = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+    static let activeAttemptGolden = Data(#"""
+    {
+      "version": 1,
+      "createdAt": 1791234000000,
+      "transfers": [],
+      "paykitPaymentState": {
+        "subscriptions": {},
+        "pendingProofs": [
+          {
+            "identity": "pubkyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "requestId": {
+              "paymentRequestId": "550e8400-e29b-41d4-a716-446655440000",
+              "counterparty": "pubkyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "counterpartyReceiverPath": "bitkit/server",
+              "billingPeriodStartsAt": null
+            },
+            "paymentEndpointIdentifier": "btc-regtest-p2wpkh",
+            "kind": "bitcoin-onchain-txid",
+            "paymentStarted": true,
+            "paymentIdentifier": "abababababababababababababababababababababababababababababababab",
+            "proofData": null,
+            "billingPeriod": null,
+            "onchainAddress": "bcrt1qoriginal",
+            "onchainAmountSats": 1234,
+            "onchainWalletId": null,
+            "onchainMatchingTransactionIdsBeforeAttempt": [],
+            "onchainAcceptanceVerified": false
+          }
+        ],
+        "activeOnchainAttempt": {
+          "version": 1,
+          "wallet": {
+            "kind": "software",
+            "network": "regtest",
+            "binding": "fe843546f607f38ba7b1e8fe479c3103139ebea5b83628cbaa465e41cf6cb6c0",
+            "sourceIndex": "0"
+          },
+          "attemptId": "550e8400-e29b-41d4-a716-446655440001",
+          "requestId": {
+            "paymentRequestId": "550e8400-e29b-41d4-a716-446655440000",
+            "counterparty": "pubkyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "counterpartyReceiverPath": "bitkit/server",
+            "billingPeriodStartsAt": null
+          },
+          "orderId": null,
+          "payerIdentity": "pubkyzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+          "address": "bcrt1qoriginal",
+          "amountSats": "1234",
+          "isMaxAmount": false,
+          "status": "unknown",
+          "txid": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "rejectionReason": null,
+          "originalInputs": [
+            {
+              "txid": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+              "vout": "4294967295"
+            }
+          ],
+          "candidateTxids": [
+            "abababababababababababababababababababababababababababababababab",
+            "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+          ],
+          "feeRateSatsPerVByte": "2",
+          "followup": {
+            "feeSats": "123",
+            "tags": [
+              "original tag"
+            ],
+            "contact": "pubkyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+            "createdAtMillis": "1791234000000",
+            "channelId": null
+          },
+          "transfer": null
+        }
+      }
+    }
+    """#.utf8) + Data([10])
 
     private struct LegacyState: Codable {
         let subscriptionsByIdentity: [String: LegacySubscriptionState]
@@ -24,6 +104,161 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try Keychain.delete(key: .paykitSubscriptionState)
         try Keychain.delete(key: .paykitPendingPaymentProofs)
         try Keychain.delete(key: .paykitPendingBackupRestore)
+        try Keychain.delete(key: .onchainSendAttempts)
+    }
+
+    func testSharedBackupBindingUsesActualVssDerivationAndNetworkNames() throws {
+        let mnemonic = Array(repeating: "abandon", count: 11).joined(separator: " ") + " about"
+        var bindings: [String: String] = [:]
+        for network in ["bitcoin", "testnet", "signet", "regtest"] {
+            let storeId = try vssDeriveStoreId(prefix: "bitkit_v1_" + network, mnemonic: mnemonic, passphrase: nil)
+            let binding = SHA256.hash(data: Data(storeId.utf8)).map { String(format: "%02x", $0) }.joined()
+            bindings[network] = binding
+        }
+        XCTAssertEqual(bindings, [
+            "bitcoin": "28f258542d91310274942356e7777d8978bac6dbd3fadbfbfe5d663b19f1f6c5",
+            "testnet": "0ce1e7952991cf5ce84bfa135dbc194b3d55a7f2fc69807091c4ca1d6eaac809",
+            "signet": "966319adba79fb70afbf6eb1c7bde0cf93433e08d6f2f832c30467b812005fbe",
+            "regtest": "fe843546f607f38ba7b1e8fe479c3103139ebea5b83628cbaa465e41cf6cb6c0",
+        ])
+        try print("BI717_SHARED_BINDING_VECTOR " + String(decoding: JSONEncoder().encode(bindings), as: UTF8.self))
+        XCTAssertEqual(Env.vssStoreIdPrefix, "bitkit_v1_" + Env.networkName)
+    }
+
+    static let goldenBinding = "fe843546f607f38ba7b1e8fe479c3103139ebea5b83628cbaa465e41cf6cb6c0"
+
+    static func goldenWallet(index: Int = 2) -> PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet {
+        .init(kind: "software", network: "regtest", binding: goldenBinding, sourceIndex: String(index))
+    }
+
+    func testSharedGoldenRestoreRemapsOnlyOriginalWalletAndResetsLocalFollowup() throws {
+        let digest = SHA256.hash(data: Self.activeAttemptGolden).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(digest, "1e392cdfaa82f48bed7be194ddaa3efe62efbf41a54fd14b70590d9a11f6f7b2")
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let wire = try XCTUnwrap(state.activeOnchainAttempt)
+        let proofs = try state.pendingProofs.map { try $0.restored() }
+        let restored = try wire.restored(wallet: Self.goldenWallet(), proofs: proofs)
+        XCTAssertEqual(restored.0.walletId, "node:regtest:" + WalletScope.default + ":2")
+        XCTAssertEqual(restored.0.recoveryContext?.candidateTxids, [String(repeating: "ab", count: 32), String(repeating: "cd", count: 32)])
+        XCTAssertEqual(restored.0.recoveryContext?.inputs.first?.vout, UInt32.max)
+        XCTAssertEqual(restored.0.amountSats, 1234)
+        XCTAssertFalse(restored.0.localFollowupComplete)
+        XCTAssertTrue(restored.0.canRetrySamePayment)
+        XCTAssertNil(restored.1.first?.onchainWalletId, "Software proof must not be remapped to a hardware scope")
+        XCTAssertEqual(restored.1.first?.onchainLocalFollowupComplete, false)
+        let remappedWire = try PaykitPaymentStateBackup.ActiveOnchainAttempt(restored.0, wallet: Self.goldenWallet())
+        let again = try remappedWire.restored(wallet: Self.goldenWallet(), proofs: proofs)
+        XCTAssertEqual(again.0, restored.0)
+    }
+
+    func testSharedGoldenRejectsWrongWalletNetworkPayerAndMalformedReceipt() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let wire = try XCTUnwrap(state.activeOnchainAttempt)
+        let proofs = try state.pendingProofs.map { try $0.restored() }
+        for destination in [
+            PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+                kind: "software",
+                network: "regtest",
+                binding: String(repeating: "a", count: 64),
+                sourceIndex: "2"
+            ),
+            .init(kind: "software", network: "bitcoin", binding: Self.goldenBinding, sourceIndex: "2"),
+            .init(kind: "software", network: "regtest", binding: Self.goldenBinding, sourceIndex: "-1"),
+        ] {
+            XCTAssertThrowsError(try wire.restored(wallet: destination, proofs: proofs))
+        }
+        var foreignProof = try XCTUnwrap(proofs.first)
+        foreignProof = PendingPaykitPaymentProof(identity: "pubky" + String(repeating: "y", count: 52), requestId: foreignProof.requestId,
+                                                 paymentEndpointIdentifier: foreignProof.paymentEndpointIdentifier, kind: .onchain,
+                                                 paymentStarted: true, paymentIdentifier: foreignProof.paymentIdentifier, proofData: nil,
+                                                 onchainAddress: foreignProof.onchainAddress, onchainAmountSats: foreignProof.onchainAmountSats)
+        XCTAssertThrowsError(try wire.restored(wallet: Self.goldenWallet(), proofs: [foreignProof]))
+        foreignProof = try XCTUnwrap(proofs.first)
+        foreignProof.onchainWalletId = "trezor:foreign"
+        XCTAssertThrowsError(try wire.restored(wallet: Self.goldenWallet(), proofs: [foreignProof]))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        for patch: [String: Any] in [
+            ["amountSats": "18446744073709551616"], ["amountSats": "01"], ["feeRateSatsPerVByte": "4294967296"],
+            ["candidateTxids": [String(repeating: "ab", count: 32), String(repeating: "ab", count: 32)]],
+            ["txid": String(repeating: "ef", count: 32)], ["version": 2],
+        ] {
+            let bad = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                               from: JSONSerialization.data(withJSONObject: object.merging(patch) { _, new in new }))
+            XCTAssertThrowsError(try bad.restored(wallet: Self.goldenWallet(), proofs: proofs))
+        }
+    }
+
+    func testAcceptedBackupRequiresMatchingVerifiedProofData() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let wire = try XCTUnwrap(state.activeOnchainAttempt)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        object["status"] = "accepted"
+        let accepted = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                                from: JSONSerialization.data(withJSONObject: object))
+        var proof = try XCTUnwrap(state.pendingProofs.first).restored()
+        proof.paymentIdentifier = accepted.txid
+        proof.proofData = accepted.txid
+        proof.onchainAcceptanceVerified = true
+        _ = try accepted.restored(wallet: Self.goldenWallet(), proofs: [proof])
+        proof.proofData = String(repeating: "ab", count: 32)
+        XCTAssertThrowsError(try accepted.restored(wallet: Self.goldenWallet(), proofs: [proof]))
+    }
+
+    func testAndroidMillisecondFollowupRestoresAndPreservesWireProvenance() throws {
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.activeAttemptGolden) as? [String: Any])
+        var state = try XCTUnwrap(object["paykitPaymentState"] as? [String: Any])
+        var active = try XCTUnwrap(state["activeOnchainAttempt"] as? [String: Any])
+        var followup = try XCTUnwrap(active["followup"] as? [String: Any])
+        followup["createdAtMillis"] = "1791234000123"
+        active["followup"] = followup
+        state["activeOnchainAttempt"] = active
+        object["paykitPaymentState"] = state
+        let decoded = try JSONDecoder().decode(WalletBackupV1.self, from: JSONSerialization.data(withJSONObject: object))
+        let paymentState = try XCTUnwrap(decoded.paykitPaymentState)
+        let proofs = try paymentState.pendingProofs.map { try $0.restored() }
+        let restored = try XCTUnwrap(paymentState.activeOnchainAttempt).restored(wallet: Self.goldenWallet(), proofs: proofs).0
+        XCTAssertEqual(restored.followupContext?.createdAt, 1_791_234_000)
+        XCTAssertEqual(restored.followupContext?.backupCreatedAtMillis, 1_791_234_000_123)
+        let again = try PaykitPaymentStateBackup.ActiveOnchainAttempt(restored, wallet: Self.goldenWallet())
+        XCTAssertEqual(again.followup?.createdAtMillis, "1791234000123")
+    }
+
+    func testRestoreCannotClobberDifferentUnresolvedOriginalOperation() async throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let restored = try XCTUnwrap(state.activeOnchainAttempt).restored(
+            wallet: Self.goldenWallet(), proofs: state.pendingProofs.map { try $0.restored() }
+        ).0
+        let store = MemoryAttemptStore()
+        let existing = OnchainSendAttempt(id: UUID(), walletId: restored.walletId, requestId: nil, orderId: nil,
+                                          address: "another original", amountSats: 9999, isMaxAmount: false, status: .unknown)
+        try store.save([existing])
+        let service = OnchainSendAttemptService(store: store)
+        do { try await service.restoreBackup(restored); XCTFail("Restore overwrote unresolved local operation") } catch {}
+        XCTAssertEqual(store.snapshot(), [existing])
+        do { try await service.restoreBackup(nil); XCTFail("Absent backup guard erased unresolved local operation") } catch {}
+        XCTAssertEqual(store.snapshot(), [existing])
+    }
+
+    func testWalletEnvelopeRetainsActiveAttemptWireAcrossDecodeAndEncode() throws {
+        let receipt: [String: Any] = [
+            "version": 1,
+            "wallet": ["kind": "software", "network": "regtest", "binding": String(repeating: "a", count: 64), "sourceIndex": "0"],
+            "attemptId": UUID().uuidString.lowercased(), "address": "bcrt1qoriginal", "amountSats": "20000",
+            "isMaxAmount": true, "status": "unknown", "txid": String(repeating: "ab", count: 32),
+            "originalInputs": [["txid": String(repeating: "cd", count: 32), "vout": "0"]],
+            "candidateTxids": [String(repeating: "ab", count: 32)], "feeRateSatsPerVByte": "2",
+            "followup": ["feeSats": "100", "tags": ["original"], "createdAtMillis": "1000"],
+        ]
+        let envelope: [String: Any] = ["version": 1, "createdAt": 1000, "transfers": [],
+                                       "paykitPaymentState": ["subscriptions": [:], "pendingProofs": [], "activeOnchainAttempt": receipt]]
+        let decoded = try JSONDecoder().decode(WalletBackupV1.self, from: JSONSerialization.data(withJSONObject: envelope))
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
+        let state = try XCTUnwrap(encoded["paykitPaymentState"] as? [String: Any])
+        XCTAssertNotNil(state["activeOnchainAttempt"], "Wallet backup dropped original prepared inputs/candidate identity")
     }
 
     func testPaymentStateBackupRoundTrip() async throws {
@@ -91,6 +326,14 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         } catch is DecodingError {}
         XCTAssertEqual(try Keychain.load(key: .paykitSubscriptionState), data)
         XCTAssertEqual(try Keychain.load(key: .paykitPendingPaymentProofs), data)
+    }
+
+    func testAttemptChangesNotifyWalletBackup() throws {
+        var changes = 0
+        let observation = OnchainSendAttemptStore.walletBackupDataChangedPublisher.sink { changes += 1 }
+        defer { observation.cancel() }
+        try OnchainSendAttemptStore().save([])
+        XCTAssertEqual(changes, 1)
     }
 
     func testSubscriptionChangesNotifyBackup() throws {

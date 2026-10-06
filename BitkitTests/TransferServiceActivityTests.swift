@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Combine
 import LDKNode
 import Paykit
 import SwiftUI
@@ -658,6 +659,94 @@ final class TransferServiceActivityTests: XCTestCase {
             XCTAssertEqual(node.calls, 2, "Exact durable follow-up did not release the guard")
             withExtendedLifetime(wallet) {}
         }
+    }
+
+    @MainActor
+    func testRestoredGoldenShopAttemptCompletesObservedOriginalCandidateWithoutNewPayment() async throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: PaykitPaymentStateBackupTests.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let store = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: store)
+        let proofs = PaymentProofMemoryStore()
+        let payer = "pubky" + String(repeating: "z", count: 52)
+        let sdk = PaymentProofSdkMock(identity: payer, records: [])
+        await sdk.setSubmissionFailure(true)
+        let service = PaykitPaymentProofService(sdk: sdk, store: proofs, attemptService: attempts, logInfo: { _ in }, logWarning: { _ in })
+        try await service.restoreBackup(state, wallet: PaykitPaymentStateBackupTests.goldenWallet(index: 0))
+        let restored = try XCTUnwrap(store.snapshot().first)
+        let requestId = try XCTUnwrap(restored.requestId)
+        let winner = String(repeating: "ab", count: 32)
+        XCTAssertEqual(restored.txid, String(repeating: "cd", count: 32))
+        XCTAssertEqual(restored.status, .unknown)
+        XCTAssertFalse(restored.localFollowupComplete)
+        // This is the exact original-wallet received observation, not queued local activity.
+        let observed = try await attempts.observeTransaction(txid: winner, walletId: restored.walletId)
+        XCTAssertTrue(observed)
+        let context = OnchainSendPendingContext(attemptId: restored.id, walletId: restored.walletId, txid: restored.txid)
+        await sdk.setIdentity("pubky" + String(repeating: "y", count: 52))
+        let foreignResolution = await service.resolvedOnchainPayment(requestId: requestId, identity: payer, context: context)
+        XCTAssertNil(foreignResolution, "Selected profile must not complete another original payer's proof")
+        await sdk.setIdentity(payer)
+        let resolution = await service.resolvedOnchainPayment(requestId: requestId, identity: payer, context: context)
+        XCTAssertEqual(resolution?.transactionId, winner)
+        let completed = try await proofs.load().first
+        XCTAssertEqual(completed?.paymentIdentifier, winner)
+        XCTAssertEqual(completed?.proofData, winner)
+        XCTAssertEqual(completed?.onchainAcceptanceVerified, true)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+        let saved = try await activity.getOnchainActivityByTxId(txid: winner)
+        XCTAssertEqual(saved?.value, 1234)
+        XCTAssertEqual(saved?.contact, requestId.counterparty)
+        XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateTxids.count, 2)
+        // There is no OnchainSending/native broadcast dependency in restore or local completion.
+    }
+
+    @MainActor
+    func testReceivedTransferPublishesExactResolutionForVisiblePending() async throws {
+        let confirmed = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let received = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmed
+            Bitkit.LightningService.shared.onchainTransactionReceived = received
+        }
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .unknown(txid: txid))
+        let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
+        _ = try await service.send(using: node, address: "original", amountSats: 4321,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false, orderId: "original-order",
+                                   followupContext: .init(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100),
+                                   transferContext: .init(clientBalanceSats: 3333, txTotalSats: 4444, preTransferOnchainSats: 10000))
+        let original = try XCTUnwrap(store.snapshot().first)
+        let wallet = makeWallet(attempts: service)
+        let resolutionReady = expectation(description: "Visible Pending receives exact durable transfer resolution")
+        var resolved: OnchainSendLocalResolution?
+        let observation = OnchainSendAttemptService.localResolutionPublisher.sink { resolution in
+            if resolution.attemptId == original.id, resolution.walletId == original.walletId, resolution.txid == txid, resolved == nil {
+                resolved = resolution
+                resolutionReady.fulfill()
+            }
+        }
+        defer { observation.cancel() }
+        await Bitkit.LightningService.shared.onchainTransactionReceived?(txid)
+        await fulfillment(of: [resolutionReady], timeout: 2)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+        XCTAssertEqual(resolved?.activity.txId, txid, "Pending Details must refer to the actual winning funding transaction")
+        XCTAssertEqual(resolved?.activity.isTransfer, true)
+        if let resolved {
+            let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
+            XCTAssertTrue(SendPendingScreen.matchesLocalResolution(resolved, attempt: original, context: context, walletId: "new-selected-wallet"))
+            XCTAssertFalse(SendPendingScreen.matchesLocalResolution(resolved, attempt: original,
+                                                                    context: .init(attemptId: UUID(), walletId: original.walletId, txid: txid),
+                                                                    walletId: original.walletId))
+            XCTAssertFalse(SendPendingScreen.matchesLocalResolution(resolved, attempt: original,
+                                                                    context: .init(attemptId: original.id, walletId: "other-wallet", txid: txid),
+                                                                    walletId: original.walletId))
+            let reopened = try await service.resolvedAcceptedTransfer(context: context, using: makeService())
+            XCTAssertEqual(reopened?.txid, txid, "Resolution preceding Pending initialization must still enable exact Details")
+        }
+        XCTAssertEqual(node.calls, 1)
+        withExtendedLifetime(wallet) {}
     }
 
     @MainActor
