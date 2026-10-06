@@ -796,7 +796,8 @@ class LightningService {
         utxosToSpend: [SpendableUtxo]? = nil,
         isMaxAmount: Bool = false,
         expectedWalletIndex: Int? = nil,
-        expectedNode: AnyObject? = nil
+        expectedNode: AnyObject? = nil,
+        beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> OnchainSendResult {
         guard let node else {
             throw NodeError.NotRunning(message: "Node not set up")
@@ -811,6 +812,7 @@ class LightningService {
                         throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
                     }
                 }
+                try beforeSubmission()
                 if isMaxAmount {
                     return try node.onchainPayment().sendAllToAddressWithBroadcastResult(
                         address: address,
@@ -832,7 +834,12 @@ class LightningService {
         }
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {
+    func send(
+        bolt11: String,
+        sats: UInt64? = nil,
+        params: RouteParametersConfig? = nil,
+        beforeSubmission: @escaping () throws -> Void = {}
+    ) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -840,7 +847,7 @@ class LightningService {
         Logger.info("Paying bolt11: \(bolt11)")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
                         invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, routeParameters: params
@@ -853,6 +860,17 @@ class LightningService {
             dumpLdkLogs()
             dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
+        }
+    }
+
+    static func submitPayment<Result>(
+        beforeSubmission: @escaping () throws -> Void,
+        send: @escaping () throws -> Result
+    ) async throws -> Result {
+        try await ServiceQueue.background(.ldk) {
+            // Authorization can precede a queue wait; only the actual submission time is relevant here.
+            try beforeSubmission()
+            return try send()
         }
     }
 

@@ -8,20 +8,21 @@ protocol OnchainSending {
     var onchainDispatchNode: AnyObject? { get }
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-                            expectedWalletIndex: Int, expectedNode: AnyObject?) async throws -> PreparedOnchainSendDispatch
+                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
 }
 
 extension LightningService: OnchainSending {
     func prepareOnchainSend(
         address: String, sats: UInt64, satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-        expectedWalletIndex: Int, expectedNode: AnyObject?
+        expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?
     ) async throws -> PreparedOnchainSendDispatch {
         guard let node = onchainDispatchNode as? Node else { throw NodeError.NotRunning(message: "Node not set up") }
         let (prepared, txid, inputs, recipientAmountSats) = try await ServiceQueue.background(.ldk, wrapErrors: false) {
             guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
                 throw NodeError.NotRunning(message: "Wallet or node changed before on-chain preparation")
             }
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
             let prepared: PreparedOnchainSend = if isMaxAmount {
                 try node.onchainPayment().prepareSendAllToAddress(
                     address: address, retainReserves: true,
@@ -43,6 +44,7 @@ extension LightningService: OnchainSending {
                     guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
                         throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
                     }
+                    try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
                     return try prepared.broadcast()
                 }
             }
@@ -360,6 +362,7 @@ actor OnchainSendAttemptService {
         paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> OnchainSendResult {
         guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
@@ -392,7 +395,7 @@ actor OnchainSendAttemptService {
             prepared = try await lightningService.prepareOnchainSend(
                 address: address, sats: amountSats, satsPerVbyte: satsPerVbyte,
                 utxosToSpend: utxosToSpend, isMaxAmount: isMaxAmount,
-                expectedWalletIndex: walletIndex, expectedNode: dispatchNode
+                expectedWalletIndex: walletIndex, expectedNode: dispatchNode, paymentDeadline: paymentDeadline
             )
             do {
                 try validateReceipt(prepared, amount: isMaxAmount && requestId == nil ? nil : amountSats,
@@ -463,7 +466,7 @@ actor OnchainSendAttemptService {
             let receipt = try await sender.prepareOnchainSend(
                 address: original.address, sats: original.amountSats, satsPerVbyte: authorizedFeeRate,
                 utxosToSpend: recovery.inputs.map(\.utxo), isMaxAmount: false,
-                expectedWalletIndex: index, expectedNode: node
+                expectedWalletIndex: index, expectedNode: node, paymentDeadline: nil
             )
             prepared = receipt
             do { try validateReceipt(prepared, amount: original.amountSats, inputs: recovery.inputs) }

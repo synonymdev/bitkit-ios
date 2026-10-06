@@ -801,7 +801,9 @@ actor PaykitPaymentProofService {
 
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         let underlyingError = (submissionError as? AppError)?.underlyingError ?? submissionError
-        if let serviceError = underlyingError as? CustomServiceError {
+        if underlyingError as? PaykitPaymentRequestError == .requestExpired {
+            // The local deadline gate runs before submitting to the node.
+        } else if let serviceError = underlyingError as? CustomServiceError {
             guard serviceError == .nodeNotSetup || serviceError == .nodeNotStarted else { return false }
         } else if let nodeError = underlyingError as? NodeError {
             switch nodeError {
@@ -1224,6 +1226,29 @@ actor PaykitPaymentProofService {
             try await persist(remainingProofs)
         } catch {
             logWarning("Failed to clear a pending Paykit payment proof: \(error)")
+        }
+    }
+
+    static func isDefiniteOnchainPreBroadcastFailure(_ error: Error) -> Bool {
+        let underlyingError = (error as? AppError)?.underlyingError ?? error
+        if underlyingError as? PaykitPaymentRequestError == .requestExpired { return true }
+        if let serviceError = underlyingError as? CustomServiceError {
+            switch serviceError {
+            case .nodeNotSetup, .nodeNotStarted:
+                return true
+            default:
+                return false
+            }
+        }
+        guard let nodeError = underlyingError as? NodeError else { return false }
+
+        switch nodeError {
+        case .NotRunning, .OnchainTxCreationFailed, .OnchainWalletAccountNotRegistered,
+             .OnchainTxSigningFailed, .WalletOperationFailed, .PersistenceFailed, .InvalidAddress, .InvalidAmount, .InvalidNetwork,
+             .InvalidFeeRate, .InsufficientFunds, .CoinSelectionFailed, .NoSpendableOutputs:
+            return true
+        default:
+            return false
         }
     }
 

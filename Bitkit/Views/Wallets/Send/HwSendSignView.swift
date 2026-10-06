@@ -12,6 +12,7 @@ struct HwSendSignView: View {
     let hwSend: HwSendCoordinator
     let contactPaymentRequestId: PaykitPaymentRequest.ID?
     let contactPaymentIdentity: String?
+    let contactPaymentDeadline: PaykitPreciseInstant?
     let prepareContactPayment: () async throws -> Void
     let authorizeContactPayment: () async throws -> Void
     let completeContactPayment: (String) async -> Bool
@@ -126,6 +127,7 @@ struct HwSendSignView: View {
                     address: invoice.address,
                     sats: amount,
                     satsPerVByte: UInt64(feeRate),
+                    paymentDeadline: contactPaymentDeadline,
                     beforeFirstBroadcast: prepareContactPayment,
                     beforeBroadcastAttempt: authorizeContactPayment,
                     afterBroadcast: { result in

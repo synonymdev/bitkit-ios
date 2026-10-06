@@ -566,6 +566,56 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
+    func testPaymentDeadlineRejectionPreservesOnlyPriorBroadcastUncertainty() async throws {
+        for hadPriorAttempt in [false, true] {
+            for expiresInQueue in [false, true] {
+                let funding = MockHwFunding()
+                let manager = HwWalletManager()
+                let coordinator = HwSendCoordinator(
+                    walletId: "trezor:wallet",
+                    signerFactory: { [self] _, address, satsPerVByte in
+                        makeSigner(funding: funding, connecting: MockHwConnecting(), feeRate: satsPerVByte, address: address)
+                    }
+                )
+                if hadPriorAttempt {
+                    funding.broadcastError = HwTransferError.broadcastUncertain
+                    await assertThrowsAsync {
+                        _ = try await coordinator.signAndBroadcast(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2)
+                    }
+                    funding.broadcastError = nil
+                }
+                let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(expiresInQueue ? 60 : -60))
+                funding.broadcastNow = { deadline.date.addingTimeInterval(1) }
+                var outcomes: [PrivatePaymentListSendOutcome] = []
+                do {
+                    _ = try await coordinator.signAndBroadcast(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                        paymentDeadline: deadline, afterFailure: { outcomes.append($0) }
+                    )
+                    XCTFail("Expired payment must not broadcast")
+                } catch {
+                    XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired)
+                }
+                XCTAssertEqual(funding.broadcastCalls, hadPriorAttempt ? 1 : 0)
+                XCTAssertEqual(outcomes, [hadPriorAttempt ? .uncertain : .definitePreBroadcastFailure])
+                XCTAssertEqual(coordinator.hasPendingBroadcast, hadPriorAttempt)
+                XCTAssertEqual(coordinator.isBroadcastUnresolved, hadPriorAttempt)
+            }
+        }
+    }
+
+    func testHardwareSubmissionRejectsExpiredDeadlineBeforeCallingElectrum() async throws {
+        do {
+            _ = try await OnChainHwService.shared.broadcastRawTx(
+                serializedTx: "invalid", electrumUrl: "invalid",
+                paymentDeadline: PaykitPreciseInstant(date: Date().addingTimeInterval(-1))
+            )
+            XCTFail("Expired payment must not reach Electrum")
+        } catch {
+            XCTAssertEqual((error as? Bitkit.AppError)?.underlyingError as? PaykitPaymentRequestError, .requestExpired)
+        }
+    }
+
     func testCoordinatorBroadcastFailureRemainsUncertainAfterPendingPaymentIsCleared() async {
         let funding = MockHwFunding()
         let manager = HwWalletManager()

@@ -108,8 +108,8 @@ struct HwFundingSigner {
     }
 
     /// Broadcasts a signed funding transaction without requiring the hardware device.
-    func broadcastSignedFunding(_ signed: HwFundingSignedTx) async throws -> HwFundingBroadcastResult {
-        let txId = try await broadcastStep(serializedTx: signed.serializedTx)
+    func broadcastSignedFunding(_ signed: HwFundingSignedTx, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> HwFundingBroadcastResult {
+        let txId = try await broadcastStep(serializedTx: signed.serializedTx, paymentDeadline: paymentDeadline)
         return HwFundingBroadcastResult(
             txId: txId,
             miningFeeSats: signed.miningFeeSats,
@@ -255,10 +255,10 @@ struct HwFundingSigner {
     /// already been handed to the network must never be reported as a signing timeout, so a timeout
     /// here surfaces `.broadcastUncertain` (the funding tx may still confirm) without tearing down the
     /// device session.
-    private func broadcastStep(serializedTx: String) async throws -> String {
+    private func broadcastStep(serializedTx: String, paymentDeadline: PaykitPreciseInstant?) async throws -> String {
         do {
             return try await withTimeout(timeouts.broadcast) {
-                try await funding.broadcastFunding(serializedTx: serializedTx)
+                try await funding.broadcastFunding(serializedTx: serializedTx, paymentDeadline: paymentDeadline)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -505,6 +505,7 @@ final class HwSendCoordinator {
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeFirstBroadcast: @escaping () async throws -> Void = {},
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
@@ -560,13 +561,17 @@ final class HwSendCoordinator {
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
-            var broadcastWasAttempted = pendingPayment?.hasBroadcastAttempted == true
+            let hadPriorBroadcastAttempt = pendingPayment?.hasBroadcastAttempted == true
+            var broadcastWasAttempted = hadPriorBroadcastAttempt
             do {
                 do {
                     try await beforeBroadcastAttempt()
+                    try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
                 } catch {
                     if !broadcastWasAttempted {
                         pendingPayment = nil
+                    } else if ((error as? AppError)?.underlyingError ?? error) as? PaykitPaymentRequestError == .requestExpired {
+                        isBroadcastUnresolved = true
                     }
                     throw error
                 }
@@ -575,11 +580,20 @@ final class HwSendCoordinator {
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
                 do {
-                    let result = try await signer.broadcastSignedFunding(signed)
+                    let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline)
                     await afterBroadcast(result)
                     return result
                 } catch {
                     isBroadcastUnresolved = false
+                    let underlyingError = (error as? AppError)?.underlyingError ?? error
+                    if underlyingError as? PaykitPaymentRequestError == .requestExpired {
+                        // A queued retry can expire without changing the uncertainty of an earlier attempt.
+                        isBroadcastUnresolved = hadPriorBroadcastAttempt
+                        broadcastWasAttempted = hadPriorBroadcastAttempt
+                        pendingPayment?.hasBroadcastAttempted = hadPriorBroadcastAttempt
+                        if !hadPriorBroadcastAttempt { pendingPayment = nil }
+                        throw error
+                    }
                     let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
                     if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
                         pendingPayment = nil

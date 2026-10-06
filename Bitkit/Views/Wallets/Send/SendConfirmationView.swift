@@ -1031,6 +1031,7 @@ struct SendConfirmationView: View {
                         try await wallet.sendWithTimeout(
                             bolt11: invoice.bolt11,
                             sats: paymentSats,
+                            paymentDeadline: incomingPaymentRequest?.paymentDeadline,
                             afterListening: { _ in lightningPaymentSubmitted = true },
                             onTimeout: { timedOutHash in
                                 app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -1108,6 +1109,7 @@ struct SendConfirmationView: View {
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,
                                 createdAt: UInt64(Date().timeIntervalSince1970)
                             ),
+                            paymentDeadline: incomingPaymentRequest?.paymentDeadline,
                             beforeBroadcastAttempt: beforeBroadcastAttempt
                         )
                     }
@@ -1257,7 +1259,9 @@ struct SendConfirmationView: View {
 
     private func validateIncomingPaymentRequestContext(_ context: ContactPaymentContext?) throws {
         guard let context, let request = context.incomingPaymentRequest else { return }
-        guard !request.isExpired(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+        guard !request.isExpired(at: Date()) || paykitPaymentRequestManager.isApprovedForPayment(request) else {
+            throw PaykitPaymentRequestError.requestExpired
+        }
         guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
     }
 

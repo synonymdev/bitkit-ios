@@ -631,6 +631,7 @@ class WalletViewModel: ObservableObject {
         requestId: PaykitPaymentRequest.ID? = nil,
         paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> OnchainSendResult {
         guard let selectedFeeRateSatsPerVByte else {
@@ -653,6 +654,7 @@ class WalletViewModel: ObservableObject {
             requestId: requestId,
             paymentIdentity: paymentIdentity,
             followupContext: followupContext,
+            paymentDeadline: paymentDeadline,
             beforeBroadcastAttempt: beforeBroadcastAttempt
         )
 
@@ -974,10 +976,14 @@ class WalletViewModel: ObservableObject {
         bolt11: String,
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         afterListening: (@MainActor (String) -> Void)? = nil,
         onTimeout: (@MainActor (String) -> Void)? = nil
     ) async throws -> SettledLightningPayment {
-        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let hash = try await lightningService.send(
+            bolt11: bolt11, sats: sats,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
+        )
         let paymentHash = String(hash)
         afterListening?(paymentHash)
         return try await waitForLightningPayment(

@@ -933,7 +933,7 @@ final class AttemptNodeMock: OnchainSending {
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-                            expectedWalletIndex: Int, expectedNode: AnyObject?) async throws -> PreparedOnchainSendDispatch
+                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
     {
         try await onPrepare?()
         if let preparationError {
@@ -986,7 +986,7 @@ final class PreparedAttemptNodeMock: OnchainSending {
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-                            expectedWalletIndex: Int, expectedNode: AnyObject?) async throws -> PreparedOnchainSendDispatch
+                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
     {
         preparations += 1
         lastAddress = address

@@ -23,6 +23,7 @@ final class MockHwFunding: HwTransferFunding {
     var signGate: AsyncGate?
     var broadcastError: Error?
     var broadcastDelay: Double = 0
+    var broadcastNow: () -> Date = Date.init
     /// Holds every broadcast until opened, so a test can act while its outcome is unknown.
     var broadcastGate: AsyncGate?
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
@@ -114,7 +115,8 @@ final class MockHwFunding: HwTransferFunding {
         return signedTx
     }
 
-    func broadcastFunding(serializedTx: String) async throws -> String {
+    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
+        try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: broadcastNow())
         broadcastCalls += 1
         broadcastTransactions.append(serializedTx)
         if let broadcastGate {

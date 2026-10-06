@@ -781,6 +781,7 @@ struct SendSheet: View {
                 hwSend: hwSend,
                 contactPaymentRequestId: contactContext?.incomingPaymentRequest?.id,
                 contactPaymentIdentity: paymentIdentity,
+                contactPaymentDeadline: contactContext?.incomingPaymentRequest?.paymentDeadline,
                 prepareContactPayment: {
                     try await prepareHardwareContactPayment(
                         context: contactContext,
