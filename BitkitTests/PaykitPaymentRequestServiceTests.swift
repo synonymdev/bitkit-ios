@@ -1577,7 +1577,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertTrue(PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error))
                 XCTAssertEqual(SendConfirmationView.privatePaymentListOutcomeAfterFailure(
                     currentOutcome: .uncertain, walletType: .onchain, onchainPaymentStarted: true, error: error
-                ), .definitePreBroadcastFailure)
+                ), .uncertain, "A raw queue error cannot release a started payment; only the typed pre-dispatch result proves no broadcast")
             }
         }
     }

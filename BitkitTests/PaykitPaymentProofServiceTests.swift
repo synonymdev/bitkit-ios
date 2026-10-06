@@ -821,7 +821,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await completionTask.value
     }
 
-    func testOnchainCompletionRetainsTransactionIdWithoutLiveIdentity() async throws {
+    func testAcceptedOnchainCompletionWaitsForOriginalIdentityBeforeProofDelivery() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
@@ -831,13 +831,25 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let txid = String(repeating: "ab", count: 32)
         try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         try await service.markOnchainPaymentStarted(request, address: onchainAddress)
+        try await recordAcceptedAttempt(service: service, request: request, txid: txid)
         await sdk.setIdentityAvailable(false)
 
-        await service.completeOnchainPayment(request, txid: txid, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint)
+        let completed = await service.completeOnchainPayment(request, txid: txid, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint)
+        XCTAssertFalse(completed)
+        let waitingProof = await store.snapshot().first
+        XCTAssertEqual(waitingProof?.paymentStarted, true)
+        XCTAssertNil(waitingProof?.proofData)
+        let attempts = try XCTUnwrap(serviceAttempts[ObjectIdentifier(service)])
+        let acceptedTxid = try await attempts.acceptedTransactionId(for: request.id)
+        XCTAssertEqual(acceptedTxid, txid)
+        await sdk.suspendSubmission()
+        await sdk.setIdentityAvailable(true)
+        await service.reconcile()
 
         let proof = await store.snapshot().first
         XCTAssertEqual(proof?.paymentIdentifier, txid)
         XCTAssertEqual(proof?.proofData, txid)
+        await sdk.resumeSubmission()
     }
 
     func testStartedOnchainPaymentSurvivesPreparationCancellation() async throws {
@@ -1110,7 +1122,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(try proofValues(XCTUnwrap(submitted).proof.exportText()), ["data": txid, "type": PaykitPaymentProofKind.onchain.rawValue])
         XCTAssertEqual(node.calls, 1)
         XCTAssertEqual(attemptStore.snapshot().first?.status, .pending)
-        XCTAssertNil(attemptStore.snapshot().first?.txid)
+        XCTAssertEqual(attemptStore.snapshot().first?.txid, txid, "Pre-dispatch receipt remains durable even when the acceptance update fails")
         attemptStore.failSave = false
         let restarted = OnchainSendAttemptService(store: attemptStore)
         let knownAfterRestart = try await restarted.acceptedTransactionId(for: request.id)
