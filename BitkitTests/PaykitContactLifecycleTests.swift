@@ -156,16 +156,23 @@ final class PaykitContactLifecycleTests: XCTestCase {
         } catch {}
         XCTAssertNil(sdk.record)
         XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .blocked })
-        _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Readded", restorePrivateConnection: true)
-        XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .notLinked })
+        var unselectedPeer = try XCTUnwrap(sdk.peers.first)
+        unselectedPeer.counterparty = "pubky" + String(repeating: "z", count: 52)
+        sdk.peers.append(unselectedPeer)
+        _ = try await service.saveContacts(updates: [ContactUpdate(publicKey: sdk.publicKey, label: "Readded")])
+        XCTAssertEqual(sdk.peers.first?.state, .notLinked)
+        XCTAssertEqual(sdk.peers.last?.state, .blocked)
         XCTAssertEqual(sdk.record?.label, "Readded")
     }
 
     func testFailedPrivateConnectionRestoreCanBeRetriedWithoutASavedContact() async throws {
-        let failures: [(peerLookup: Bool, unblock: Bool, saveContact: Bool)] = [
-            (true, false, false),
-            (false, true, false),
-            (false, false, true),
+        let failures: [(peerLookup: Bool, unblock: Bool, saveContact: Bool, bulk: Bool)] = [
+            (true, false, false, false),
+            (false, true, false, false),
+            (false, false, true, false),
+            (true, false, false, true),
+            (false, true, false, true),
+            (false, false, true, true),
         ]
         for failure in failures {
             let sdk = ContactLifecycleSdk(noPointer: .init())
@@ -174,8 +181,15 @@ final class PaykitContactLifecycleTests: XCTestCase {
             sdk.failLinkedPeers = failure.peerLookup
             sdk.failUnblock = failure.unblock
             sdk.failSaveContact = failure.saveContact
+            let save = {
+                if failure.bulk {
+                    _ = try await service.saveContacts(updates: [ContactUpdate(publicKey: sdk.publicKey, label: "Contact")])
+                } else {
+                    _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
+                }
+            }
             do {
-                _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
+                try await save()
                 XCTFail("Expected restoration to fail")
             } catch {}
             XCTAssertNil(sdk.record)
@@ -183,7 +197,7 @@ final class PaykitContactLifecycleTests: XCTestCase {
             sdk.failLinkedPeers = false
             sdk.failUnblock = false
             sdk.failSaveContact = false
-            _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
+            try await save()
             XCTAssertNotNil(sdk.record)
             XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .notLinked })
         }
@@ -326,6 +340,10 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         "revision"
     }
 
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
+    }
+
     override func stateRevision() throws -> String? {
         nil
     }
@@ -412,6 +430,14 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
         record = saved
+        return saved
+    }
+
+    override func saveContacts(updates: [ContactUpdate]) async throws -> [ContactRecord] {
+        var saved: [ContactRecord] = []
+        for update in updates {
+            try await saved.append(saveContact(update: update))
+        }
         return saved
     }
 }

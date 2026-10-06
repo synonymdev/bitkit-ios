@@ -420,6 +420,10 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
         "revision"
     }
 
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
+    }
+
     override func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
         await intake()
         return []

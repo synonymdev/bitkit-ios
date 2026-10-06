@@ -173,21 +173,30 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         _ = try await service.contactRecords()
         _ = try await service.contactRecords()
         XCTAssertEqual(sdk.registryPublicKeys, [publicKeys[0]])
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        XCTAssertEqual(sdk.backupReads, 1)
 
         sdk.registry = PaykitAppRegistry(keyGeneration: 2, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
         let authorizationKey = try await service.paykitKeyForAuthorization(secretKeyHex: secrets[0])
         XCTAssertEqual(authorizationKey.keyGeneration(), 2)
         _ = try await service.contactRecords()
         XCTAssertEqual(sdk.registryPublicKeys.count, 3)
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        XCTAssertEqual(sdk.backupReads, 2)
 
         try Keychain.upsert(key: .pubkySecretKey, data: Data(secrets[1].utf8))
         _ = try await service.contactRecords()
         XCTAssertEqual(sdk.registryPublicKeys.last, publicKeys[1])
         XCTAssertEqual(sdk.registryPublicKeys.count, 4)
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        XCTAssertEqual(sdk.backupReads, 3)
 
         await service.clearState()
         _ = try await service.contactRecords()
         XCTAssertEqual(sdk.registryPublicKeys.count, 5)
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        XCTAssertEqual(sdk.backupReads, 4)
 
         sdk.registryError = PubkyServiceError.authFailed("Registry unavailable")
         do {
@@ -199,6 +208,14 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             XCTFail("Failed forced validation must not reuse the previous key cache")
         } catch {}
         XCTAssertEqual(sdk.registryPublicKeys.count, 7)
+        sdk.registryError = nil
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        XCTAssertEqual(sdk.backupReads, 5)
+
+        try Keychain.delete(key: .pubkySecretKey)
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+        XCTAssertEqual(sdk.backupReads, 6)
     }
 
     @MainActor
@@ -596,6 +613,37 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         try await activation.value
     }
 
+    func testSessionImportDoesNotCreateRuntimeBeforeBootstrapSucceeds() async throws {
+        let savedSecret = try Keychain.load(key: .pubkySecretKey)
+        defer {
+            if let savedSecret {
+                try? Keychain.upsert(key: .pubkySecretKey, data: savedSecret)
+            } else {
+                try? Keychain.delete(key: .pubkySecretKey)
+            }
+        }
+        try Keychain.delete(key: .pubkySecretKey)
+        let failure = PubkyServiceError.authFailed("Session unavailable")
+        var didImport = false
+        let bootstrap = RecoveryBootstrap(noPointer: .init())
+        bootstrap.importSessionOperation = {
+            didImport = true
+            throw failure
+        }
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
+
+        do {
+            _ = try await service.importSession(secret: "saved-session")
+            XCTFail("Expected session import to fail")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, failure.localizedDescription)
+        }
+
+        XCTAssertTrue(didImport)
+        let runtime = try XCTUnwrap(Mirror(reflecting: service).children.first { $0.label == "sdk" })
+        XCTAssertNil(runtime.value as? PaykitSdk)
+    }
+
     func testSessionRecoveryCannotReactivateCredentialsAfterForget() async throws {
         let savedReference = AdoptedPubkyReference.current
         let secret = String(repeating: "01", count: 32)
@@ -766,6 +814,7 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     var publicationCalls = 0
     var authorizationError: Error?
     var backupError: Error?
+    var backupReads = 0
 
     override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps: UInt32) async throws -> LinkedPeerHandshakeReport {
         handshakeAdvanceSteps.append(maxAdvanceSteps)
@@ -831,8 +880,13 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func backupStateRevision() async throws -> String {
+        backupReads += 1
         if let backupError { throw backupError }
         return "unchanged"
+    }
+
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        ObservedBackupStateRevision(stateRevision: "state", backupRevision: "unchanged")
     }
 
     override func stateRevision() throws -> String? {
@@ -902,6 +956,10 @@ private final class RecoverySdk: PaykitSdk, @unchecked Sendable {
 
     override func backupStateRevision() async throws -> String {
         "unchanged"
+    }
+
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
     }
 
     override func stateRevision() throws -> String? {

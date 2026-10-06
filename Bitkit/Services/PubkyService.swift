@@ -307,6 +307,10 @@ enum PubkyService {
         )
     }
 
+    static func saveContacts(updates: [Paykit.ContactUpdate], expectedIdentity: String? = nil) async throws -> [Paykit.ContactRecord] {
+        try await PaykitSdkService.shared.saveContacts(updates: updates, expectedIdentity: expectedIdentity)
+    }
+
     static func removeContact(publicKey: String) async throws -> Paykit.ContactRecord? {
         try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
     }
@@ -758,6 +762,35 @@ actor PaykitSdkService {
                 }
             }
             return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, label: label))
+        }
+    }
+
+    func saveContacts(updates: [Paykit.ContactUpdate], expectedIdentity: String? = nil) async throws -> [Paykit.ContactRecord] {
+        guard !updates.isEmpty else { return [] }
+        return try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
+            let blockedPeers = try await sdk.linkedPeers().filter { peer in
+                peer.state == .blocked && updates.contains { PubkyPublicKeyFormat.matches($0.publicKey, peer.counterparty) }
+            }
+            do {
+                for peer in blockedPeers {
+                    _ = try await sdk.unblockPeer(counterparty: peer.counterparty)
+                }
+                return try await sdk.saveContacts(updates: updates)
+            } catch {
+                let restorationError = error
+                for peer in blockedPeers {
+                    do {
+                        _ = try await sdk.blockPeer(counterparty: peer.counterparty)
+                    } catch {
+                        invalidatePaykitKeyIfNeeded(after: error)
+                        Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
+                    }
+                }
+                throw restorationError
+            }
         }
     }
 
@@ -1237,6 +1270,11 @@ actor PaykitSdkService {
             return try await Self.withBackupStateRevisionTracking(
                 readRevision: { try await self.withSdkErrorHandling { try await sdk.backupStateRevision() } },
                 readStateRevision: { try sdk.stateRevision() },
+                readObservedSnapshot: {
+                    try sdk.observedBackupStateRevision().map {
+                        BackupStateSnapshot(stateRevision: $0.stateRevision, backupRevision: $0.backupRevision)
+                    }
+                },
                 cachedSnapshot: self.cachedBackupState,
                 onSnapshot: { self.cachedBackupState = $0 },
                 onChange: { self.markWalletBackupDataChanged() },
@@ -1248,18 +1286,18 @@ actor PaykitSdkService {
     static func withBackupStateRevisionTracking<T>(
         readRevision: () async throws -> String,
         readStateRevision: () throws -> String? = { nil },
+        readObservedSnapshot: () throws -> BackupStateSnapshot? = { nil },
         cachedSnapshot: BackupStateSnapshot? = nil,
         onSnapshot: (BackupStateSnapshot?) -> Void = { _ in },
         onChange: () async -> Void,
         operation: () async throws -> T
     ) async throws -> T {
-        let observedStateRevision = try? readStateRevision()
-        let previousRevision: String? = if let cachedSnapshot, observedStateRevision == cachedSnapshot.stateRevision {
+        // An intervening SDK read must not replace the last backup comparison baseline.
+        let previousRevision: String? = if let cachedSnapshot {
             cachedSnapshot.backupRevision
         } else {
             try? await readRevision()
         }
-        let previousStateRevision = try? readStateRevision()
         let result: T
         do {
             result = try await operation()
@@ -1269,22 +1307,26 @@ actor PaykitSdkService {
             await onChange()
             throw error
         }
-        let nextStateRevision = try? readStateRevision()
-        if let previousStateRevision,
-           previousStateRevision == nextStateRevision,
-           let previousRevision
+        let nextRevision: String?
+        let nextSnapshot: BackupStateSnapshot?
+        if Task.isCancelled {
+            nextRevision = nil
+            nextSnapshot = nil
+        } else if let observed = try? readObservedSnapshot(),
+                  observed.stateRevision == (try? readStateRevision())
         {
-            onSnapshot(BackupStateSnapshot(stateRevision: previousStateRevision, backupRevision: previousRevision))
-            return result
-        }
-
-        let nextRevision = try? await readRevision()
-        if let stateRevision = try? readStateRevision(), let nextRevision {
-            onSnapshot(BackupStateSnapshot(stateRevision: stateRevision, backupRevision: nextRevision))
+            nextRevision = observed.backupRevision
+            nextSnapshot = observed
         } else {
-            onSnapshot(nil)
+            nextRevision = try? await readRevision()
+            if let stateRevision = try? readStateRevision(), let nextRevision {
+                nextSnapshot = BackupStateSnapshot(stateRevision: stateRevision, backupRevision: nextRevision)
+            } else {
+                nextSnapshot = nil
+            }
         }
-        if previousRevision == nil || nextRevision == nil || previousRevision != nextRevision {
+        onSnapshot(Task.isCancelled ? nil : nextSnapshot)
+        if Task.isCancelled || previousRevision == nil || nextRevision == nil || previousRevision != nextRevision {
             await onChange()
         }
         return result
@@ -1303,8 +1345,10 @@ actor PaykitSdkService {
     private func refreshPaykitKey(force: Bool = false) async throws {
         if force {
             cachedPaykitKey = nil
+            cachedBackupState = nil
         }
         guard let root = try sessionProvider.loadLocalSecretKey() else {
+            if cachedPaykitKey != nil { cachedBackupState = nil }
             cachedPaykitKey = nil
             return
         }
@@ -1315,6 +1359,7 @@ actor PaykitSdkService {
             return
         }
         cachedPaykitKey = nil
+        cachedBackupState = nil
         let key = try await paykitKey(for: root)
         sessionProvider.setPaykitIdentitySecretKey(key)
         cachedPaykitKey = (publicKey, key.keyGeneration())
@@ -1428,7 +1473,10 @@ actor PaykitSdkService {
         // Read cached identity metadata without restoring the grant we are about to replace.
         sessionProvider.suspendStoredSessionAccess()
         defer { sessionProvider.resumeStoredSessionAccess() }
-        return try await handle().identityStatus()?.publicKey
+        if sdk == nil {
+            sdk = try sdkFactory?()
+        }
+        return try await sdk?.identityStatus()?.publicKey
     }
 
     /// Throws `identityChanged` unless `expectedIdentity` is the identity `sdk` is signed in as. Run it inside the locked

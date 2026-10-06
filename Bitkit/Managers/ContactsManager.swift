@@ -628,41 +628,33 @@ class ContactsManager: ObservableObject {
     /// Remembers the profiles it saves for this session, so the Contacts list shows them at once rather than only their
     /// saved labels. A placeholder for a follow whose lookup failed is not remembered, so that profile is still looked up.
     /// An import outlives its screens, so a reset or another identity's load while it runs, such as after a sign-out,
-    /// stops it quietly: it saves nothing more, adds nothing to the next session's list and reports no error.
+    /// drops its result quietly: it adds nothing to the next session's list and reports no error.
     func importContacts(
         contacts selected: [PubkyContact],
-        saveContact: (String, String) async throws -> Void = { publicKey, label in
-            _ = try await PubkyService.saveContact(publicKey: publicKey, label: label, restorePrivateConnection: true)
+        saveContacts: ([ContactUpdate], String?) async throws -> Void = { updates, expectedIdentity in
+            _ = try await PubkyService.saveContacts(updates: updates, expectedIdentity: expectedIdentity)
         }
     ) async throws {
         let profilesGeneration = resolvedProfilesGeneration
-        var imported: [PubkyContact] = []
+        let expectedIdentity = resolvedProfilesOwner
         var existingKeys = Set(contacts.map(\.publicKey))
-        var firstError: Error?
+        let imported = selected.filter { existingKeys.insert($0.publicKey).inserted }
+        try Task.checkCancellation()
+        guard !imported.isEmpty else { return }
 
-        for contact in selected {
+        do {
+            try await saveContacts(imported.map { ContactUpdate(publicKey: $0.publicKey, label: $0.displayName) }, expectedIdentity)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             try Task.checkCancellation()
-            guard profilesGeneration == resolvedProfilesGeneration else { break }
-            guard !existingKeys.contains(contact.publicKey) else { continue }
-            do {
-                // The preview already resolved this profile.
-                try await saveContact(contact.publicKey, contact.displayName)
-                imported.append(contact)
-                existingKeys.insert(contact.publicKey)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                firstError = firstError ?? error
-                Logger.warn(
-                    "Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(contact.publicKey))': \(error)",
-                    context: "ContactsManager"
-                )
-            }
+            guard profilesGeneration == resolvedProfilesGeneration else { return }
+            throw error
         }
 
         try Task.checkCancellation()
         guard profilesGeneration == resolvedProfilesGeneration else {
-            Logger.info("Stopped a contact import that a reset overtook after \(imported.count) saves", context: "ContactsManager")
+            Logger.info("Discarded a contact import that a reset overtook", context: "ContactsManager")
             return
         }
         for contact in imported {
@@ -671,9 +663,6 @@ class ContactsManager: ObservableObject {
         let currentKeys = Set(contacts.map(\.publicKey))
         contacts = (contacts + imported.filter { !currentKeys.contains($0.publicKey) }).sorted(by: Self.isOrderedByName)
         Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
-        if let firstError {
-            throw firstError
-        }
     }
 
     // MARK: - Update Contact

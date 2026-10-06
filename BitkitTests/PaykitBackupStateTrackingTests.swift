@@ -50,73 +50,89 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
     }
 
     func testCancellationAfterMutationStillRequestsBackup() async {
-        var revision = "before"
-        var changes = 0
-        let task = Task {
-            try await PaykitSdkService.withBackupStateRevisionTracking(
-                readRevision: {
-                    try Task.checkCancellation()
-                    return revision
-                },
-                onChange: { changes += 1 },
-                operation: {
-                    revision = "after"
-                    withUnsafeCurrentTask { $0?.cancel() }
-                    try Task.checkCancellation()
-                }
-            )
+        for throwsCancellation in [false, true] {
+            var revision = "before"
+            var snapshot: PaykitSdkService.BackupStateSnapshot? = .init(stateRevision: "state", backupRevision: revision)
+            var reads = 0
+            var changes = 0
+            let task = Task {
+                try await PaykitSdkService.withBackupStateRevisionTracking(
+                    readRevision: { reads += 1; return revision },
+                    readStateRevision: { "state" },
+                    readObservedSnapshot: { .init(stateRevision: "state", backupRevision: revision) },
+                    cachedSnapshot: snapshot,
+                    onSnapshot: { snapshot = $0 },
+                    onChange: { changes += 1 },
+                    operation: {
+                        revision = "after"
+                        withUnsafeCurrentTask { $0?.cancel() }
+                        if throwsCancellation { try Task.checkCancellation() }
+                    }
+                )
+            }
+            do {
+                try await task.value
+                XCTAssertFalse(throwsCancellation)
+            } catch {
+                XCTAssertTrue(throwsCancellation)
+                XCTAssertTrue(error is CancellationError)
+            }
+            XCTAssertEqual(revision, "after")
+            XCTAssertEqual(changes, 1)
+            XCTAssertEqual(reads, 0)
+            XCTAssertNil(snapshot)
         }
-        do {
-            try await task.value
-            XCTFail("Expected cancellation")
-        } catch {
-            XCTAssertTrue(error is CancellationError)
-        }
-        XCTAssertEqual(revision, "after")
-        XCTAssertEqual(changes, 1)
     }
 
     func testUnchangedOperationsReuseBackupFingerprintWithoutRemoteReads() async throws {
         var snapshot: PaykitSdkService.BackupStateSnapshot?
+        var state = "initial"
         var reads = 0
         var changes = 0
-        for _ in 0 ..< 3 {
+        for index in 0 ..< 3 {
             try await PaykitSdkService.withBackupStateRevisionTracking(
                 readRevision: { reads += 1; return "content" },
-                readStateRevision: { "state" },
+                readStateRevision: { state },
+                readObservedSnapshot: { .init(stateRevision: state, backupRevision: "content") },
                 cachedSnapshot: snapshot,
                 onSnapshot: { snapshot = $0 },
                 onChange: { changes += 1 },
-                operation: {}
+                operation: { state = "lease-\(index)" }
             )
         }
         XCTAssertEqual(reads, 1)
         XCTAssertEqual(changes, 0)
+        XCTAssertEqual(snapshot?.stateRevision, "lease-2")
         XCTAssertEqual(snapshot?.backupRevision, "content")
     }
 
-    func testStorageRevisionChangesStillCompareBackupContent() async throws {
-        for (cachedState, finalContent, expectedReads, expectedChanges) in [
-            ("before", "content", 1, 0),
-            ("before", "changed", 1, 1),
-            ("stale", "changed", 2, 1),
+    func testObservedRevisionsCompareWithCachedBackupContent() async throws {
+        for (observedState, finalContent, expectedReads, expectedChanges) in [
+            ("current", "content", 0, 0),
+            ("current", "changed", 0, 1),
+            ("unavailable", "changed", 1, 1),
+            ("stale", "changed", 1, 1),
+            ("unreadable", "changed", 1, 1),
         ] {
-            var state = "before"
-            var content = "content"
             var reads = 0
             var changes = 0
             var snapshot: PaykitSdkService.BackupStateSnapshot?
             try await PaykitSdkService.withBackupStateRevisionTracking(
-                readRevision: { reads += 1; return content },
-                readStateRevision: { state },
-                cachedSnapshot: .init(stateRevision: cachedState, backupRevision: "content"),
+                readRevision: { reads += 1; return finalContent },
+                readStateRevision: { "current" },
+                readObservedSnapshot: {
+                    if observedState == "unavailable" { return nil }
+                    if observedState == "unreadable" { throw Failure.revision }
+                    return .init(stateRevision: observedState, backupRevision: finalContent)
+                },
+                cachedSnapshot: .init(stateRevision: observedState == "current" ? "previous" : "current", backupRevision: "content"),
                 onSnapshot: { snapshot = $0 },
                 onChange: { changes += 1 },
-                operation: { state = "after"; content = finalContent }
+                operation: {}
             )
             XCTAssertEqual(reads, expectedReads)
             XCTAssertEqual(changes, expectedChanges)
-            XCTAssertEqual(snapshot?.stateRevision, "after")
+            XCTAssertEqual(snapshot?.stateRevision, "current")
             XCTAssertEqual(snapshot?.backupRevision, finalContent)
         }
     }
