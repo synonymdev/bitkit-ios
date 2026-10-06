@@ -187,14 +187,14 @@ class PubkyProfileManager: ObservableObject {
         let revision = Self.sessionRevision
         let task = Task {
             defer {
-                if case .automaticRecovery = mode, revision == Self.sessionRevision {
-                    completedRecoveryVersion += 1
-                }
                 initializationTask = nil
                 isRestoringSession = false
             }
             guard Self.sessionMutationCount == 0 else { return }
             await initializeSessionState(mode: mode, initializeSession: initializeSession)
+            if case .automaticRecovery = mode, revision == Self.sessionRevision {
+                completedRecoveryVersion += 1
+            }
         }
         initializationTask = task
         await task.value

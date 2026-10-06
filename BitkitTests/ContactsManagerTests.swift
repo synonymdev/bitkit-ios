@@ -1897,6 +1897,42 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertTrue(manager.contacts.isEmpty)
     }
 
+    func testDeleteAllContactsPreservesContactsNotRemovedByTheBulkOperation() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let removed = contactRecord(key: contactProfileKey, name: "Removed")
+        let retained = ["Subscribed", "Busy", "Public marker"].enumerated().map { index, name in
+            contactRecord(key: "pubky" + String(repeating: ["y", "z", "r"][index], count: 52), name: name)
+        }
+        let records = [removed] + retained
+        let contacts = records.map { makeContact(publicKey: $0.publicKey) }
+        ContactsManager.restoreContactProfileOverrides(Dictionary(uniqueKeysWithValues: contacts.map {
+            ($0.publicKey, PubkyProfileData.from(profile: $0.profile))
+        }))
+        let forgotten = expectation(description: "Only removed contacts are forgotten")
+        forgotten.assertForOverFulfill = true
+        let manager = ContactsManager(contactRecords: { records }, removeContactRecords: { keys in
+            XCTAssertEqual(Set(keys), Set(records.map(\.publicKey)))
+            return [removed]
+        }, forgetRemovedContacts: { keys in
+            XCTAssertEqual(keys, [removed.publicKey])
+            forgotten.fulfill()
+        })
+        manager.contacts = contacts
+
+        do {
+            try await manager.deleteAllContacts()
+            XCTFail("Partial removal must report that contacts remain")
+        } catch PrivatePaykitError.privateUnavailable {
+        } catch {
+            XCTFail("Unexpected removal error: \(error)")
+        }
+
+        await fulfillment(of: [forgotten], timeout: 2)
+        XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), Set(retained.map(\.publicKey)))
+        let overrides = try XCTUnwrap(ContactsManager.backupContactProfileOverrides())
+        XCTAssertEqual(Set(overrides.keys), Set(retained.map(\.publicKey)))
+    }
+
     /// Takes `slot`'s only read slot with another read and holds it until the returned lookups are released.
     private func holdTheOnlyReadSlot(_ slot: PaykitSdkReadLimiter) async throws -> HeldProfileLookups {
         let otherRead = HeldProfileLookups(profiles: [:])
