@@ -547,6 +547,50 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(store.snapshot().first?.status, .accepted)
     }
 
+    func testPostBroadcastReadFailurePreservesResultAndExactPendingContext() async throws {
+        for retry in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            var original: OnchainSendAttempt?
+            if retry {
+                _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                           satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+                original = try XCTUnwrap(store.snapshot().first)
+                sender.txid = String(repeating: "cd", count: 32)
+            }
+            sender.result = .accepted(txid: sender.txid)
+            sender.onBroadcast = { store.failLoad = true }
+            do {
+                let result: OnchainSendResult = if let original {
+                    try await service.retrySamePayment(using: sender,
+                                                       context: .init(
+                                                           attemptId: original.id,
+                                                           walletId: original.walletId,
+                                                           txid: original.txid
+                                                       ),
+                                                       satsPerVbyte: 2, authorize: { _, _ in })
+                } else {
+                    try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                           satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+                }
+                XCTAssertEqual(result, .accepted(txid: sender.txid))
+                let context = try await service.pendingContext(txid: sender.txid)
+                XCTAssertEqual(context?.attemptId, store.snapshot().first?.id)
+                XCTAssertEqual(context?.walletId, store.snapshot().first?.walletId)
+                XCTAssertEqual(context?.txid, sender.txid)
+            } catch { XCTFail("Post-dispatch read failure escaped: \(error)") }
+            store.failLoad = false
+            let restarted = OnchainSendAttemptService(store: store)
+            do {
+                _ = try await restarted.send(using: sender, address: "other", amountSats: sender.amount,
+                                             satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+                XCTFail("Restart released the original guard")
+            } catch {}
+            XCTAssertEqual(sender.broadcasts, retry ? 2 : 1)
+        }
+    }
+
     func testSendPreservesAcceptedWhenOutcomeStorageFailsAndRestartBlocksDispatch() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)

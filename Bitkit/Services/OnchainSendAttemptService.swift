@@ -430,7 +430,7 @@ actor OnchainSendAttemptService {
         } catch {
             Logger.warn("Could not persist the known on-chain outcome; the durable attempt still blocks another send", context: "OnchainSendAttempt")
         }
-        return try winningResult(attemptId: attemptId) ?? result
+        return (try? winningResult(attemptId: attemptId)) ?? result
     }
 
     func retrySamePayment(
@@ -515,7 +515,7 @@ actor OnchainSendAttemptService {
         catch { result = .unknown(txid: prepared.txid) }
         do { try record(result, attemptId: original.id) }
         catch { Logger.warn("Could not persist the known recovery outcome; original inputs remain guarded", context: "OnchainSendAttempt") }
-        return try winningResult(attemptId: original.id) ?? result
+        return (try? winningResult(attemptId: original.id)) ?? result
     }
 
     private func checkWallet(_ sender: any OnchainSending, index: Int, node: AnyObject?) throws {
@@ -810,8 +810,16 @@ actor OnchainSendAttemptService {
         try currentAttempt()?.requestId == requestId
     }
 
+    private func currentAttemptForPending() throws -> OnchainSendAttempt? {
+        do { return try currentAttempt() }
+        catch {
+            guard let knownAttempt else { throw error }
+            return knownAttempt
+        }
+    }
+
     func pendingContext(requestId: PaykitPaymentRequest.ID? = nil, txid: String? = nil) throws -> OnchainSendPendingContext? {
-        guard let attempt = try currentAttempt(), attempt.requestId == requestId,
+        guard let attempt = try currentAttemptForPending(), attempt.requestId == requestId,
               txid == nil ? attempt.blocksNewSend : attempt.containsCandidate(txid)
         else { return nil }
         return .init(attemptId: attempt.id, walletId: attempt.walletId, txid: txid ?? attempt.txid)
@@ -824,7 +832,7 @@ actor OnchainSendAttemptService {
     }
 
     func ordinaryPendingContext(txid: String? = nil) throws -> OnchainSendPendingContext? {
-        guard let attempt = try currentAttempt(), attempt.requestId == nil, attempt.orderId == nil else { return nil }
+        guard let attempt = try currentAttemptForPending(), attempt.requestId == nil, attempt.orderId == nil else { return nil }
         if let txid {
             guard attempt.containsCandidate(txid) else { return nil }
         } else {
