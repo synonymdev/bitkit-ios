@@ -21,6 +21,14 @@ success. Duplicate selections and contacts already saved are skipped. Payment sh
 separate step. On Android, a failed Continue on the payment-sharing screen should offer recovery
 guidance and leave saved contacts intact.
 
+Repeat both import journeys after deleting the disposable profile and adopting the same identity
+again, including the 62-contact case. Record Import All to the payment-sharing screen separately
+from Continue; there is no guaranteed network completion deadline. Explicit re-import saves the
+selected contacts and removes their blocks atomically, without restoring old private links.
+Deselected contacts remain blocked. Ordinary label updates must not remove a block. SDK failure
+and cancellation coverage verifies that the app does not issue compensating block writes after
+an atomic save, including when cancellation hides a completed commit.
+
 `ContactImportUITests.swift` checks pending imports using the DEBUG-only `-contact-import-ui-test`
 fixture. It holds the contact batch until the test taps Finish save, without network or SDK
 storage. The tests drive the real overview and selection views, attempt repeated import taps, and

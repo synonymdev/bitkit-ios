@@ -172,23 +172,14 @@ final class PaykitContactLifecycleTests: XCTestCase {
     }
 
     func testFailedPrivateConnectionRestoreCanBeRetriedWithoutASavedContact() async throws {
-        let failures: [(peerLookup: Bool, unblock: Bool, saveContact: Bool, bulk: Bool)] = [
-            (true, false, false, false),
-            (false, true, false, false),
-            (false, false, true, false),
-            (true, false, false, true),
-            (false, true, false, true),
-            (false, false, true, true),
-        ]
-        for failure in failures {
+        for bulk in [false, true] {
             let sdk = ContactLifecycleSdk(noPointer: .init())
             let service = PaykitSdkService(sdkFactory: { sdk })
             _ = try await service.removeContact(publicKey: sdk.publicKey)
-            sdk.failLinkedPeers = failure.peerLookup
-            sdk.failUnblock = failure.unblock
-            sdk.failSaveContact = failure.saveContact
+            sdk.restoreError = PubkyServiceError.profileNotFound
+            sdk.events.removeAll()
             let save = {
-                if failure.bulk {
+                if bulk {
                     _ = try await service.saveContacts(updates: [ContactUpdate(publicKey: sdk.publicKey, label: "Contact")])
                 } else {
                     _ = try await service.saveContact(publicKey: sdk.publicKey, label: "Contact", restorePrivateConnection: true)
@@ -200,13 +191,102 @@ final class PaykitContactLifecycleTests: XCTestCase {
             } catch {}
             XCTAssertNil(sdk.record)
             XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .blocked })
-            sdk.failLinkedPeers = false
-            sdk.failUnblock = false
-            sdk.failSaveContact = false
+            XCTAssertEqual(sdk.events, ["save-and-unblock"])
+            sdk.restoreError = nil
             try await save()
             XCTAssertNotNil(sdk.record)
             XCTAssertTrue(sdk.peers.allSatisfy { $0.state == .notLinked })
+            XCTAssertEqual(sdk.events, ["save-and-unblock", "save-and-unblock"])
         }
+    }
+
+    func testLabelUpdateDoesNotUnblockAnExistingContact() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        sdk.peers[0].state = .blocked
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        let saved = try await service.saveContact(publicKey: sdk.publicKey, label: "Updated")
+
+        XCTAssertEqual(saved.label, "Updated")
+        XCTAssertEqual(sdk.peers[0].state, .blocked)
+        XCTAssertEqual(sdk.events, ["save"])
+        XCTAssertEqual(sdk.contactReads, 1)
+        XCTAssertEqual(sdk.peerReads, 0)
+        XCTAssertTrue(sdk.restoredBatches.isEmpty)
+    }
+
+    func testExplicitReaddUsesAtomicSaveWithoutContactOrPeerPreflight() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        sdk.record = nil
+        sdk.peers[0].state = .blocked
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        let saved = try await service.saveContact(publicKey: sdk.publicKey, label: "Readded", restorePrivateConnection: true)
+
+        XCTAssertEqual(saved.publicKey, sdk.publicKey)
+        XCTAssertEqual(saved.label, "Readded")
+        XCTAssertEqual(sdk.peers[0].state, .notLinked)
+        XCTAssertEqual(sdk.events, ["save-and-unblock"])
+        XCTAssertEqual(sdk.restoredBatches.map { $0.map(\.publicKey) }, [[sdk.publicKey]])
+        XCTAssertEqual(sdk.contactReads, 0)
+        XCTAssertEqual(sdk.peerReads, 0)
+    }
+
+    func testBulkReaddForwardsOneAtomicSaveWithoutPreflight() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        let updates = [
+            ContactUpdate(publicKey: sdk.publicKey, label: "Alice"),
+            ContactUpdate(publicKey: "pubky5rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg", label: "Bob"),
+        ]
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        let saved = try await service.saveContacts(updates: updates)
+
+        XCTAssertEqual(saved.map(\.publicKey), updates.map(\.publicKey))
+        XCTAssertEqual(saved.map(\.label), updates.map(\.label))
+        XCTAssertEqual(sdk.restoredBatches.map { $0.map(\.publicKey) }, [updates.map(\.publicKey)])
+        XCTAssertEqual(sdk.events, ["save-and-unblock"])
+        XCTAssertEqual(sdk.contactReads, 0)
+        XCTAssertEqual(sdk.peerReads, 0)
+    }
+
+    func testEmptyImportDoesNotAccessSdk() async throws {
+        let service = PaykitSdkService(sdkFactory: {
+            XCTFail("An empty import must not access the SDK")
+            return ContactLifecycleSdk(noPointer: .init())
+        })
+
+        let saved = try await service.saveContacts(updates: [])
+
+        XCTAssertTrue(saved.isEmpty)
+    }
+
+    func testImportCancelledAfterAtomicCommitDoesNotPublishOrReblockContacts() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        sdk.record = nil
+        sdk.peers[0].state = .blocked
+        sdk.cancelAfterRestore = true
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let manager = ContactsManager()
+        let contact = Bitkit.PubkyContact(
+            publicKey: sdk.publicKey,
+            profile: Bitkit.PubkyProfile(publicKey: sdk.publicKey, name: "Readded", bio: "", imageUrl: nil, links: [], status: nil)
+        )
+
+        let importTask = Task {
+            try await manager.importContacts(contacts: [contact]) { updates, identity in
+                _ = try await service.saveContacts(updates: updates, expectedIdentity: identity)
+            }
+        }
+        do {
+            try await importTask.value
+            XCTFail("Expected cancellation to discard the import result")
+        } catch is CancellationError {}
+
+        XCTAssertTrue(manager.contacts.isEmpty)
+        XCTAssertEqual(sdk.record?.label, "Readded")
+        XCTAssertEqual(sdk.peers[0].state, .notLinked)
+        XCTAssertEqual(sdk.events, ["save-and-unblock"])
     }
 
     func testBlockedPeerCleanupDoesNotAttemptNetworkDelivery() async throws {
@@ -299,10 +379,11 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var requests: [PaymentRequestRecord] = []
     var failWithdrawal = false
     var failBlock = false
-    var failLinkedPeers = false
-    var failUnblock = false
-    var failSaveContact = false
     var failRecovery = false
+    var restoreError: Error?
+    var cancelAfterRestore = false
+    var restoredBatches: [[ContactUpdate]] = []
+    var contactReads = 0
     var peerReads = 0
     var identityReads = 0
     var registryReads = 0
@@ -359,12 +440,12 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func contactRecord(publicKey: String) async throws -> ContactRecord? {
-        record
+        contactReads += 1
+        return record
     }
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
         peerReads += 1
-        if failLinkedPeers { throw PubkyServiceError.profileNotFound }
         return peers
     }
 
@@ -413,7 +494,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func unblockPeer(counterparty: String) async throws -> LinkedPeerRecord {
-        if failUnblock { throw PubkyServiceError.profileNotFound }
+        XCTFail("Explicit re-add must save and unblock atomically")
         let index = try XCTUnwrap(peers.firstIndex { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) })
         peers[index].state = .notLinked
         return peers[index]
@@ -434,24 +515,38 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func saveContact(update: ContactUpdate) async throws -> ContactRecord {
-        if failSaveContact {
-            throw PubkyServiceError.profileNotFound
+        events.append("save")
+        let saved = Self.contactRecord(update: update)
+        record = saved
+        return saved
+    }
+
+    override func saveContactsAndUnblockPeers(updates: [ContactUpdate]) async throws -> [ContactRecord] {
+        events.append("save-and-unblock")
+        restoredBatches.append(updates)
+        if let restoreError { throw restoreError }
+        let saved = updates.map(Self.contactRecord)
+        for index in peers.indices where peers[index].state == .blocked {
+            if updates.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, peers[index].counterparty) }) {
+                peers[index].state = .notLinked
+            }
         }
-        let saved = ContactRecord(
+        record = saved.last ?? record
+        if cancelAfterRestore { withUnsafeCurrentTask { $0?.cancel() } }
+        return saved
+    }
+
+    private static func contactRecord(update: ContactUpdate) -> ContactRecord {
+        ContactRecord(
             publicKey: update.publicKey, label: update.label, profile: nil,
             profileFetchedAt: nil, createdAt: "2026-09-29T00:00:00Z", updatedAt: "2026-09-29T00:00:00Z",
             publicContactMarkerStatus: .notPublished,
             publicContactPublishedAt: nil, publicContactRemovedAt: nil, publicContactLastError: nil
         )
-        record = saved
-        return saved
     }
 
     override func saveContacts(updates: [ContactUpdate]) async throws -> [ContactRecord] {
-        var saved: [ContactRecord] = []
-        for update in updates {
-            try await saved.append(saveContact(update: update))
-        }
-        return saved
+        XCTFail("Explicit re-add must save and unblock atomically")
+        return updates.map(Self.contactRecord)
     }
 }

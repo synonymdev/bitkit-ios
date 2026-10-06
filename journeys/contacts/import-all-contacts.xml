@@ -3,6 +3,9 @@
     Precondition: the import preview is open for a disposable Ring identity with known follows
     that are not yet saved in this Bitkit wallet. Include Pubky-only profiles without Paykit receivers.
     Repeat with a large list (for example 62 contacts).
+    Repeat after deleting this profile and selecting the same Ring identity again.
+    Measure Import All to Let Your Contacts Pay You and check logs for a terminal error
+    or an uncertain-write safety wait.
     Also repeat with an identity that follows itself. The preview count must exclude your own
     profile, and your own profile must be absent from the saved contacts.
   </description>

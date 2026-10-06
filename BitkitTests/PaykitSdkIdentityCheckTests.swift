@@ -42,10 +42,15 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             updates: [ContactUpdate(publicKey: contactKey, label: "Imported")],
             expectedIdentity: bareIdentityA
         )
+        let readded = try await service.saveContact(
+            publicKey: contactKey, label: "Readded", restorePrivateConnection: true, expectedIdentity: bareIdentityA
+        )
 
         XCTAssertEqual(saved.label, "Alice", "The identity matches in either key form")
         XCTAssertEqual(imported.first?.label, "Imported")
-        XCTAssertEqual(sdk.writes, ["save:Alice", "save:Unbound", "batch:1"], "A save for no identity saves for whichever one is signed in")
+        XCTAssertEqual(readded.label, "Readded")
+        XCTAssertEqual(sdk.writes, ["save:Alice", "save:Unbound", "restore:1", "restore:1"])
+        XCTAssertEqual(sdk.contactReads, 2, "Only ordinary updates look up the existing contact")
     }
 
     func testProfilePublicationForAnIdentityThatIsNoLongerSignedInWritesNothing() async throws {
@@ -143,6 +148,14 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 if case .identityChanged? = error as? PubkyServiceError { return true }
                 return false
             }),
+            ("explicit contact re-add", { service in
+                _ = try await service.saveContact(
+                    publicKey: contactKey, label: "Alice", restorePrivateConnection: true, expectedIdentity: identityA
+                )
+            }, { error in
+                if case .identityChanged? = error as? PubkyServiceError { return true }
+                return false
+            }),
             ("profile avatar upload", { service in
                 _ = try await service.uploadAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
             }, { error in
@@ -186,27 +199,66 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
-    func testContactBatchCancelledWhileWaitingForTheSdkLockWritesNothing() async throws {
-        let sdk = IdentitySwitchingSdk(noPointer: .init())
-        sdk.identity = identityA
-        let service = PaykitSdkService(sdkFactory: { sdk })
-        await sdk.contactRecordsGate.close()
-        let lockHolder = Task { try await service.contactRecords() }
-        try await sdk.contactRecordsStarted.waitForEntries(count: 1)
+    func testContactRestoreCancelledWhileWaitingForTheSdkLockWritesNothing() async throws {
+        for bulk in [false, true] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            await sdk.contactRecordsGate.close()
+            let lockHolder = Task { try await service.contactRecords() }
+            try await sdk.contactRecordsStarted.waitForEntries(count: 1)
 
-        let save = Task {
-            try await service.saveContacts(updates: [ContactUpdate(publicKey: contactKey, label: "Alice")], expectedIdentity: identityA)
+            let save = Task {
+                if bulk {
+                    _ = try await service.saveContacts(updates: [ContactUpdate(publicKey: contactKey, label: "Alice")], expectedIdentity: identityA)
+                } else {
+                    _ = try await service.saveContact(
+                        publicKey: contactKey, label: "Alice", restorePrivateConnection: true, expectedIdentity: identityA
+                    )
+                }
+            }
+            try await Task.sleep(for: .milliseconds(50))
+            save.cancel()
+            await sdk.contactRecordsGate.open()
+            _ = try await lockHolder.value
+
+            do {
+                try await save.value
+                XCTFail("Expected queued contact restore to be cancelled")
+            } catch is CancellationError {}
+            XCTAssertTrue(sdk.writes.isEmpty)
         }
-        try await Task.sleep(for: .milliseconds(50))
-        save.cancel()
-        await sdk.contactRecordsGate.open()
-        _ = try await lockHolder.value
+    }
 
-        do {
-            _ = try await save.value
-            XCTFail("Expected queued contact import to be cancelled")
-        } catch is CancellationError {}
-        XCTAssertTrue(sdk.writes.isEmpty)
+    func testSignOutWaitsForAtomicContactRestoration() async throws {
+        for bulk in [false, true] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            await sdk.restoreGate.close()
+            let restore = Task {
+                if bulk {
+                    _ = try await service.saveContacts(updates: [ContactUpdate(publicKey: contactKey, label: "Alice")], expectedIdentity: identityA)
+                } else {
+                    _ = try await service.saveContact(
+                        publicKey: contactKey, label: "Alice", restorePrivateConnection: true, expectedIdentity: identityA
+                    )
+                }
+            }
+            try await sdk.restoreStarted.waitForEntries(count: 1)
+
+            let signOut = Task { try await service.signOut() }
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(sdk.identity, identityA)
+            XCTAssertTrue(sdk.writes.isEmpty)
+            await sdk.restoreGate.open()
+            try await restore.value
+            try await signOut.value
+
+            XCTAssertNil(sdk.identity)
+            XCTAssertEqual(sdk.writes, ["restore:1"])
+            XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
+        }
     }
 
     /// A sign-out queues for the SDK lock right behind a contact save. The lock is handed over in order, so the save runs
@@ -303,6 +355,8 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var recordedContactReads = 0
     let contactRecordsGate = IdentityCheckGate()
     let contactRecordsStarted = IdentityCheckCallLog()
+    let restoreGate = IdentityCheckGate()
+    let restoreStarted = IdentityCheckCallLog()
 
     var identity: String? {
         get { lock.withLock { signedInIdentity } }
@@ -366,17 +420,15 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         return Self.record(publicKey: publicKey, label: "Contact")
     }
 
-    override func linkedPeers() async throws -> [LinkedPeerRecord] {
-        []
-    }
-
     override func saveContact(update: ContactUpdate) async throws -> ContactRecord {
         recordWrite("save:\(update.label ?? "")")
         return Self.record(publicKey: update.publicKey, label: update.label)
     }
 
-    override func saveContacts(updates: [ContactUpdate]) async throws -> [ContactRecord] {
-        recordWrite("batch:\(updates.count)")
+    override func saveContactsAndUnblockPeers(updates: [ContactUpdate]) async throws -> [ContactRecord] {
+        await restoreStarted.record()
+        await restoreGate.wait()
+        recordWrite("restore:\(updates.count)")
         return updates.map { Self.record(publicKey: $0.publicKey, label: $0.label) }
     }
 

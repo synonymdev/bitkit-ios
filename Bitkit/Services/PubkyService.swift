@@ -741,31 +741,13 @@ actor PaykitSdkService {
             if let expectedIdentity {
                 try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             }
-            let existing = try await sdk.contactRecord(publicKey: publicKey)
-            guard restorePrivateConnection || existing != nil else { throw PubkyServiceError.profileNotFound }
+            let update = Paykit.ContactUpdate(publicKey: publicKey, label: label)
             if restorePrivateConnection {
-                let blockedPeers = try await sdk.linkedPeers().filter {
-                    $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, publicKey)
-                }
-                do {
-                    for peer in blockedPeers {
-                        _ = try await sdk.unblockPeer(counterparty: peer.counterparty)
-                    }
-                    return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, label: label))
-                } catch {
-                    let restorationError = error
-                    for peer in blockedPeers {
-                        do {
-                            _ = try await sdk.blockPeer(counterparty: peer.counterparty)
-                        } catch {
-                            invalidatePaykitKeyIfNeeded(after: error)
-                            Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
-                        }
-                    }
-                    throw restorationError
-                }
+                let saved = try await sdk.saveContactsAndUnblockPeers(updates: [update])
+                return saved[0]
             }
-            return try await sdk.saveContact(update: Paykit.ContactUpdate(publicKey: publicKey, label: label))
+            guard try await sdk.contactRecord(publicKey: publicKey) != nil else { throw PubkyServiceError.profileNotFound }
+            return try await sdk.saveContact(update: update)
         }
     }
 
@@ -775,26 +757,7 @@ actor PaykitSdkService {
             if let expectedIdentity {
                 try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             }
-            let blockedPeers = try await sdk.linkedPeers().filter { peer in
-                peer.state == .blocked && updates.contains { PubkyPublicKeyFormat.matches($0.publicKey, peer.counterparty) }
-            }
-            do {
-                for peer in blockedPeers {
-                    _ = try await sdk.unblockPeer(counterparty: peer.counterparty)
-                }
-                return try await sdk.saveContacts(updates: updates)
-            } catch {
-                let restorationError = error
-                for peer in blockedPeers {
-                    do {
-                        _ = try await sdk.blockPeer(counterparty: peer.counterparty)
-                    } catch {
-                        invalidatePaykitKeyIfNeeded(after: error)
-                        Logger.error("Failed to restore peer block after contact save failed: \(error)", context: "PaykitSdkService")
-                    }
-                }
-                throw restorationError
-            }
+            return try await sdk.saveContactsAndUnblockPeers(updates: updates)
         }
     }
 
