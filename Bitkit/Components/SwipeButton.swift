@@ -7,6 +7,8 @@ struct SwipeButton: View {
     var isDisabled = false
     /// Blocks interaction and shows the knob spinner while an operation is running.
     var isLoading = false
+    /// Shows the knob at the end of the track, as after a completed swipe.
+    var isConfirmed = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
     let onComplete: () async throws -> Void
@@ -28,9 +30,10 @@ struct SwipeButton: View {
     var body: some View {
         GeometryReader { geometry in
             let maxOffset = max(1, geometry.size.width - buttonHeight)
-            let clampedOffset = max(0, min(offset, geometry.size.width - buttonHeight))
+            let knobOffset = isConfirmed ? maxOffset : offset
+            let clampedOffset = max(0, min(knobOffset, geometry.size.width - buttonHeight))
             let trailWidth = max(0, min(clampedOffset + (buttonHeight - innerPadding), geometry.size.width - innerPadding))
-            let textProgress = offset / maxOffset
+            let textProgress = knobOffset / maxOffset
             let halfWidth = geometry.size.width / 2
 
             ZStack(alignment: .leading) {
@@ -69,13 +72,13 @@ struct SwipeButton: View {
                                     .resizable()
                                     .frame(width: 24, height: 24)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(1.0 - (offset / halfWidth)))
+                                    .opacity(Double(1.0 - (knobOffset / halfWidth)))
 
                                 Image("check-mark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(max(0, (offset - halfWidth) / halfWidth)))
+                                    .opacity(Double(max(0, (knobOffset - halfWidth) / halfWidth)))
                             }
                         }
                     )
