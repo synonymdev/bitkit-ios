@@ -651,6 +651,44 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testOverlappingRecoverySharesFailureAndAllowsLaterRetry() async {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "recovery started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let recovery = Task {
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                started.fulfill()
+                for await _ in stream {}
+                throw PubkyServiceError.authFailed("offline")
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let waiting = expectation(description: "recovery callers waiting")
+        waiting.expectedFulfillmentCount = 2
+        let retries = (0 ..< 2).map { _ in
+            Task {
+                waiting.fulfill()
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    XCTFail("Waiting callers must share the completed recovery attempt")
+                    return .noSession
+                }
+            }
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        continuation.finish()
+        await recovery.value
+        for retry in retries {
+            await retry.value
+        }
+        XCTAssertNil(manager.publicKey)
+        XCTAssertFalse(manager.isRestoringSession)
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: "existing-identity") }
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertEqual(manager.authState, .authenticated)
+    }
+
+    @MainActor
     func testAutomaticRecoveryKeepsUsableStateWhileRetryFails() async {
         let manager = RecoveryProfileManager()
         manager.isInitialized = true

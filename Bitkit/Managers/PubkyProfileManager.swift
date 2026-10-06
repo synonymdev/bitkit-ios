@@ -90,6 +90,7 @@ class PubkyProfileManager: ObservableObject {
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
+    private var completedRecoveryVersion = 0
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
@@ -183,8 +184,12 @@ class PubkyProfileManager: ObservableObject {
         }
         guard Self.sessionMutationCount == 0 else { return }
         isRestoringSession = true
+        let revision = Self.sessionRevision
         let task = Task {
             defer {
+                if case .automaticRecovery = mode, revision == Self.sessionRevision {
+                    completedRecoveryVersion += 1
+                }
                 initializationTask = nil
                 isRestoringSession = false
             }
@@ -202,9 +207,12 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyProfileManager.initializePersistedSession()
         }
     ) async {
+        let recoveryVersion = completedRecoveryVersion
+        let revision = Self.sessionRevision
         if let initializationTask {
             await initializationTask.value
         }
+        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision { return }
         guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
