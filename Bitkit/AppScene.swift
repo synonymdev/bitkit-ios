@@ -359,6 +359,19 @@ struct AppScene: View {
     @State private var didWalletBackupRestoreFail = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
+    /// Lets only a return from the background retry a failed node start, not a brief inactive phase.
+    @State private var foregroundReturnTracker = ForegroundReturnTracker()
+
+    private var nodeRestarter: NodeRestarter {
+        NodeRestarter(
+            nodeState: { wallet.nodeLifecycleState },
+            isConnected: { network.isConnected },
+            walletExists: { wallet.walletExists },
+            isRecoveryShown: { showRecoveryScreen },
+            start: { playsErrorHaptic in await startWallet(playsErrorHaptic: playsErrorHaptic) },
+            stop: { try await wallet.stopLightningNode() }
+        )
+    }
 
     /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
@@ -874,7 +887,7 @@ struct AppScene: View {
         }
     }
 
-    private func startWallet(completingBackupRestore: Bool = false) async {
+    private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
         let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
         guard !WalletBackupRestoreGate.blocksWalletStart(
             isRestoreRunning: isWalletBackupRestoreRunning,
@@ -915,7 +928,9 @@ struct AppScene: View {
             await BackupService.shared.scheduleFullBackup()
         } catch {
             Logger.error(error, context: "Failed to start wallet")
-            Haptics.notify(.error)
+            if playsErrorHaptic {
+                Haptics.notify(.error)
+            }
 
             if MigrationsService.shared.isShowingMigrationLoading {
                 await MainActor.run {
@@ -1155,6 +1170,8 @@ struct AppScene: View {
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
+        let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
+
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
@@ -1175,6 +1192,7 @@ struct AppScene: View {
                 if retryPendingWalletRestoreIfNeeded() {
                     return
                 }
+                nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
                 Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()
@@ -1781,10 +1799,7 @@ struct AppScene: View {
             // Restart node if necessary (e.g. create/restore was skipped due to offline)
             switch wallet.nodeLifecycleState {
             case .stopped, .initializing, .errorStarting:
-                Logger.info("Network restored, retrying wallet start...", context: "AppScene")
-                Task {
-                    await startWallet()
-                }
+                nodeRestarter.restart(reason: "Network restored")
             default:
                 break
             }

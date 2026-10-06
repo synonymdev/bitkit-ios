@@ -231,6 +231,39 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testAlreadyCancelledContactsLoadPreservesRowsAndCanReload() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
+        let manager = ContactsManager()
+        let original = makeContact(publicKey: record.publicKey)
+        manager.contacts = [original]
+
+        let cancelledLoad = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await manager.loadContacts(
+                for: "owner",
+                fetchContactRecords: {
+                    XCTFail("A load cancelled before entry must not read contact records")
+                    return [record]
+                },
+                fetchRemoteProfile: { _ in
+                    XCTFail("A cancelled load must not fetch profiles")
+                    return nil
+                }
+            )
+        }
+        let result = await cancelledLoad.result
+        XCTAssertNoThrow(try result.get())
+        XCTAssertEqual(manager.contacts, [original])
+        XCTAssertFalse(manager.hasLoaded)
+        XCTAssertFalse(manager.isLoading)
+        XCTAssertNil(manager.loadErrorMessage)
+
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [record] }, fetchRemoteProfile: { _ in nil })
+        XCTAssertEqual(manager.contacts.map(\.displayName), ["Contact"])
+        XCTAssertTrue(manager.hasLoaded)
+        XCTAssertFalse(manager.isLoading)
+    }
+
     private func contactRecord(key: String, name: String) -> ContactRecord {
         ContactRecord(
             publicKey: key, label: name,
@@ -926,6 +959,24 @@ final class ContactsManagerTests: XCTestCase {
         while !condition() {
             guard ContinuousClock.now < deadline else {
                 XCTFail("Timed out waiting for the condition")
+                return
+            }
+            await Task.yield()
+        }
+    }
+
+    /// Like `waitUntil(timeout:_:)`, for a condition that may read an actor, failing with what it waited for.
+    private func waitUntil(
+        _ description: String,
+        timeout: Duration = .seconds(2),
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @MainActor () async -> Bool
+    ) async {
+        let deadline = ContinuousClock.now + timeout
+        while await !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("Timed out waiting until \(description)", file: file, line: line)
                 return
             }
             await Task.yield()
@@ -1931,6 +1982,94 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), Set(retained.map(\.publicKey)))
         let overrides = try XCTUnwrap(ContactsManager.backupContactProfileOverrides())
         XCTAssertEqual(Set(overrides.keys), Set(retained.map(\.publicKey)))
+    }
+
+    /// Removing a contact stopped only the background refresh's lookup of it, so its screen's lookup stayed queued for a read
+    /// slot and still read the profile of a contact that no longer existed.
+    func testRemovingAContactStopsItsScreensQueuedProfileLookup() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let slot = PaykitSdkReadLimiter(maxConcurrent: 1)
+        let blockingRead = try await holdTheOnlyReadSlot(slot)
+        let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice"])
+        let manager = ContactsManager(removeContactRecord: { _ in }, forgetRemovedContacts: { _ in })
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        try await manager.loadContacts(
+            for: "owner",
+            fetchContactRecords: { records },
+            fetchRemoteProfile: { key in try await slot.withSlot(priority: .bulk) { try await lookups.fetch(key) } }
+        )
+        await waitUntil("the background lookup queues for the read slot") { slot.waiterCountForTesting >= 1 }
+        let screenLookup = Task {
+            await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { key in
+                try await slot.withSlot(priority: .interactive) { try await lookups.fetch(key) }
+            }
+        }
+        await waitUntil("the screen's lookup queues for the read slot too") { slot.waiterCountForTesting >= 2 }
+
+        try await manager.removeContact(publicKey: contactProfileKey)
+        XCTAssertEqual(slot.waiterCountForTesting, 0, "The screen's lookup leaves the read queue at once, like the refresh's")
+
+        await blockingRead.release()
+        await screenLookup.value
+        await manager.waitForProfileRefreshForTesting()
+        let fetchedKeys = await lookups.fetchedKeys
+        XCTAssertEqual(fetchedKeys, [], "No read is issued for the removed contact")
+        XCTAssertTrue(manager.contacts.isEmpty)
+    }
+
+    /// The QA regression: a label-only contact is deleted while its screen's lookup is pending, then added again with a
+    /// newer profile before that lookup returns. The lookup survived the deletion, so its old result replaced the re-added
+    /// row and was remembered as resolved, keeping the obsolete profile on reloads for ten minutes.
+    func testScreensLookupOfADeletedContactCannotReplaceTheProfileItWasAddedBackWith() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let newer = Bitkit.PubkyProfile(
+            publicKey: contactProfileKey, name: "Alice Newer", bio: "Newer bio", imageUrl: "pubky://alice/newer", links: [], status: nil
+        )
+        let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
+        let deletions: [(name: String, delete: @MainActor (ContactsManager) async throws -> Void)] = [
+            ("removing the contact", { try await $0.removeContact(publicKey: contactProfileKey) }),
+            ("deleting all contacts", { try await $0.deleteAllContacts() }),
+        ]
+        for deletion in deletions {
+            let manager = ContactsManager(
+                contactRecords: { records },
+                removeContactRecord: { _ in },
+                removeContactRecords: { _ in records },
+                forgetRemovedContacts: { _ in }
+            )
+            let bulk = HeldProfileLookups(profiles: [:])
+            await bulk.hold()
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await bulk.fetch($0) })
+            let interactive = HeldProfileLookups(profiles: [contactProfileKey: "Alice Older"])
+            await interactive.hold()
+            let screenLookup = Task {
+                await manager.resolvePendingContactProfile(publicKey: contactProfileKey) { try await interactive.fetch($0) }
+            }
+            await waitUntil("the screen's lookup is held, \(deletion.name)") { await interactive.heldCount >= 1 }
+
+            try await deletion.delete(manager)
+            // Add Contact saves through the SDK itself; an import adds the contact back with its fetched profile the same way.
+            try await manager.importContacts(contacts: [PubkyContact(publicKey: contactProfileKey, profile: newer)]) { _, _ in }
+            await interactive.release()
+            await screenLookup.value
+
+            let row = manager.contacts.first?.profile
+            XCTAssertEqual(row?.name, "Alice Newer", "The deleted contact's lookup must not replace the re-added row, \(deletion.name)")
+            XCTAssertEqual(row?.bio, "Newer bio", deletion.name)
+            XCTAssertEqual(row?.imageUrl, newer.imageUrl, deletion.name)
+
+            let reload = HeldProfileLookups(profiles: [:])
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { records }, fetchRemoteProfile: { try await reload.fetch($0) })
+            XCTAssertEqual(
+                manager.contacts.first?.profile.name,
+                "Alice Newer",
+                "Nor may it be remembered over the re-added profile, which a reload shows, \(deletion.name)"
+            )
+            let reloadedKeys = await reload.fetchedKeys
+            XCTAssertEqual(reloadedKeys, [], "The re-added profile is still fresh, \(deletion.name)")
+            await bulk.release()
+            await manager.waitForProfileRefreshForTesting()
+        }
     }
 
     /// Takes `slot`'s only read slot with another read and holds it until the returned lookups are released.

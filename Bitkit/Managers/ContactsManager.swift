@@ -134,7 +134,9 @@ class ContactsManager: ObservableObject {
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
-    private var pendingProfileLookups: [String: Task<Void, Never>] = [:]
+    /// Each contact's lookup started by a screen, under an id its result is checked against, so the result of a lookup that
+    /// was ended never lands.
+    private var pendingProfileLookups: [String: (id: UUID, task: Task<Void, Never>)] = [:]
     /// The last tag change queued for each contact, which the next one for that contact waits for. Forgotten on a reset
     /// or owner change, so a change for the next session never waits behind one from the session before.
     private var tagChanges: [String: Task<Void, Error>] = [:]
@@ -292,6 +294,7 @@ class ContactsManager: ObservableObject {
         fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
         fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
     ) async throws {
+        guard !Task.isCancelled else { return }
         guard !isLoading else {
             Logger.debug("loadContacts skipped — already loading", context: "ContactsManager")
             return
@@ -311,7 +314,7 @@ class ContactsManager: ObservableObject {
         Logger.info("Loading contacts for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
 
         while generation == loadGeneration {
-            try Task.checkCancellation()
+            guard !Task.isCancelled else { return }
             let revision = contactsRevision
             do {
                 let records = try await fetchContactRecords()
@@ -438,15 +441,22 @@ class ContactsManager: ObservableObject {
         profileRefresh = nil
     }
 
-    /// Cancels the running refresh's lookups of removed contacts, so a lookup still waiting for a read slot never reads,
-    /// and drops whatever they found.
+    /// Cancels the lookups of removed contacts, the running refresh's and any a screen started, so a lookup still waiting
+    /// for a read slot never reads, and drops whatever they found. A removed contact can be added back with a newer profile
+    /// before such a lookup returns.
     private func stopProfileLookups(for publicKeys: [String]) {
         for publicKey in publicKeys {
             let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
             profileRefresh?.lookups[key]?.cancel()
             profileRefresh?.pendingKeys.remove(key)
             profileRefresh?.batchedProfiles[key] = nil
+            pendingProfileLookups.removeValue(forKey: key)?.task.cancel()
         }
+    }
+
+    private func stopPendingProfileLookups() {
+        pendingProfileLookups.values.forEach { $0.task.cancel() }
+        pendingProfileLookups = [:]
     }
 
     private func finishProfileRefresh(_ refreshID: Int) {
@@ -475,7 +485,7 @@ class ContactsManager: ObservableObject {
             applyBatchedProfiles(of: refresh.id)
         }
         if let lookup = pendingProfileLookups[key] {
-            return await lookup.value
+            return await lookup.task.value
         }
         guard let refresh = profileRefresh,
               refresh.pendingKeys.contains(key),
@@ -484,18 +494,20 @@ class ContactsManager: ObservableObject {
               Self.loadContactProfileOverrides()[key] == nil
         else { return }
 
-        let generation = resolvedProfilesGeneration
         profileRefresh?.pendingKeys.remove(key)
+        let lookupID = UUID()
         let lookup = Task { [weak self] in
             let profile = try? await Self.resolveContactProfile(publicKey: key, fetchRemoteProfile: fetchRemoteProfile)
-            self?.finishPendingProfileLookup(of: key, profile: profile?.withNameFallback(label), generation: generation)
+            self?.finishPendingProfileLookup(lookupID, of: key, profile: profile?.withNameFallback(label))
         }
-        pendingProfileLookups[key] = lookup
+        pendingProfileLookups[key] = (lookupID, lookup)
         await lookup.value
     }
 
-    private func finishPendingProfileLookup(of publicKey: String, profile: PubkyProfile?, generation: Int) {
-        guard generation == resolvedProfilesGeneration else { return }
+    /// Drops the result of a lookup that was ended, by removing the contact, a reset or another owner's load, before it
+    /// reaches the cache or the rows.
+    private func finishPendingProfileLookup(_ lookupID: UUID, of publicKey: String, profile: PubkyProfile?) {
+        guard pendingProfileLookups[publicKey]?.id == lookupID else { return }
         pendingProfileLookups[publicKey] = nil
         if let profile {
             rememberResolvedProfile(profile, for: publicKey)
@@ -540,8 +552,7 @@ class ContactsManager: ObservableObject {
         announcedSavedContactKeys = nil
         resolvedProfilesGeneration += 1
         stopProfileRefresh()
-        pendingProfileLookups.values.forEach { $0.cancel() }
-        pendingProfileLookups = [:]
+        stopPendingProfileLookups()
         tagChanges = [:]
         resolvedProfiles = [:]
         resolvedProfilesOwner = owner
@@ -824,7 +835,7 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Delete Contact
 
-    /// Also stops the running profile refresh's lookup of the contact.
+    /// Also stops the profile lookups of the contact, the running refresh's and any a screen started.
     func removeContact(publicKey: String) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
         let removeContactRecord = removeContactRecord
@@ -840,10 +851,11 @@ class ContactsManager: ObservableObject {
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
     }
 
-    /// Stops the running profile refresh first: every contact is going, and its reads would only compete with the ones
-    /// removing them.
+    /// Stops the running profile refresh and every lookup a screen started first: every contact is going, their reads would
+    /// only compete with the ones removing them, and a contact can be added back with a newer profile before one returns.
     func deleteAllContacts() async throws {
         stopProfileRefresh()
+        stopPendingProfileLookups()
         let contactRecords = contactRecords
         let removeContactRecords = removeContactRecords
         let records: [ContactRecord]
