@@ -5,7 +5,9 @@
     regtest backend in journeys/README.md and do not mine until the confirmation step below.
     This is an outgoing RBF boost, not incoming CPFP or a watch-only hardware payment. The
     recommended Boost rate is at least the Fast tier, so its replacement should show that tier's
-    confirmation estimate, not the 1 sat/vB fallback. This journey is currently iOS-only.
+    confirmation estimate, not the 1 sat/vB fallback. Shared with the matching Android journey;
+    Android dev uses staging regtest, while iOS E2E_BUILD uses its configured regtest backend.
+    Both platforms use plus/minus controls for custom Boost edits; this journey only inspects the rate.
   </description>
   <actions>
     <action>On Home, tap Send (id "Send"), dismiss any camera permission dialog with Don't Allow, and tap Enter Manually (id "RecipientManual")</action>
