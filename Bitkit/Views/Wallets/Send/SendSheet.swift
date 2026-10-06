@@ -78,10 +78,19 @@ enum SendRoute: Hashable {
 struct SendConfig {
     let initialRoute: SendRoute
     let hardwareWalletId: String?
+    let preparation: IncomingPaykitPaymentRequestPreparation?
+    let onDismiss: (() -> Void)?
 
-    init(view: SendRoute = .options, hardwareWalletId: String? = nil) {
+    init(
+        view: SendRoute = .options,
+        hardwareWalletId: String? = nil,
+        preparation: IncomingPaykitPaymentRequestPreparation? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         initialRoute = view
         self.hardwareWalletId = hardwareWalletId
+        self.preparation = preparation
+        self.onDismiss = onDismiss
     }
 }
 
@@ -90,10 +99,12 @@ struct SendSheetItem: SheetItem {
     let size: SheetSize = .large
     let initialRoute: SendRoute
     let hardwareWalletId: String?
+    let preparation: IncomingPaykitPaymentRequestPreparation?
 
-    init(initialRoute: SendRoute = .options, hardwareWalletId: String? = nil) {
+    init(initialRoute: SendRoute = .options, hardwareWalletId: String? = nil, preparation: IncomingPaykitPaymentRequestPreparation? = nil) {
         self.initialRoute = initialRoute
         self.hardwareWalletId = hardwareWalletId
+        self.preparation = preparation
     }
 }
 
@@ -136,6 +147,10 @@ struct SendSheet: View {
         rootOverride ?? rootRoute
     }
 
+    private var isPreparingRequest: Bool {
+        config.preparation != nil && incomingPaymentRequest == nil
+    }
+
     /// How long the sync overlay may wait for channels to become usable before falling back
     private static let syncTimeoutSeconds: TimeInterval = 20
 
@@ -144,7 +159,7 @@ struct SendSheet: View {
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
-        if hwSend.isActive {
+        if isPreparingRequest || hwSend.isActive {
             return false
         }
 
@@ -201,76 +216,23 @@ struct SendSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut)
+        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut, isEnabled: !isPreparingRequest)
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
-        .onAppear {
-            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-            if let walletId = config.hardwareWalletId {
-                let balance = hwWalletManager.fundingBalance(walletId: walletId)
-                let reserve = HwFundingSigner.feeReserve(
-                    balanceSats: balance,
-                    satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
-                )
-                hwSend.seedAvailable(
-                    walletId: walletId,
-                    availableSats: balance > reserve ? balance - reserve : 0
-                )
+        .task(id: config.preparation?.resolvedRoute) {
+            if let preparation = config.preparation {
+                guard let route = preparation.resolvedRoute, preparation.ownsSheet(sheets),
+                      let request = preparation.request,
+                      app.contactPaymentContext == preparation.paymentContext,
+                      app.contactPaymentContext?.incomingPaymentRequest?.id == request.id
+                else { return }
+                rootRoute = route
             }
-            if let request = app.contactPaymentContext?.incomingPaymentRequest {
-                incomingPaymentRequest = request
-                if !tagManager.consumePreservedTags(for: request.id) {
-                    tagManager.clearSelectedTags()
-                }
-                guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
-                    app.resetSendState()
-                    sheets.hideSheetIfActive(
-                        isEmbedded ? .subscription : .send,
-                        reason: "Incoming payment request is no longer available"
-                    )
-                    return
-                }
-                if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
-                    PaykitSubscriptionNotificationTargetStore.clear()
-                }
-                wallet.sendAmountSats = request.amountSats
-            } else {
-                tagManager.clearSelectedTags()
-            }
-            hasValidatedAfterSync = false
-            syncTimedOut = false
-
-            // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
-            // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
-            if currentRoot == .options {
-                app.resetSendState()
-            }
-
-            setupTask?.cancel()
-            setupTask = Task {
-                do {
-                    try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    Logger.error("Failed to set default fee rate: \(error)")
-                }
-
-                if let request = incomingPaymentRequest {
-                    guard isCurrentIncomingRequest(request.id) else { return }
-                    guard await selectHardwareFundingSourceIfNeeded(
-                        amountSats: request.amountSats,
-                        requestId: request.id
-                    ) else { return }
-                    guard isCurrentIncomingRequest(request.id) else { return }
-                    if !shouldShowSyncOverlay {
-                        validatePaymentAfterSync()
-                    }
-                }
-            }
+            setUpSend()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in
+            guard !isPreparingRequest else { return }
             // When the node becomes running and we have a scanned invoice, run deferred validation.
             // This covers:
             // - Pure onchain invoices (node was not running at scan time)
@@ -286,6 +248,7 @@ struct SendSheet: View {
             }
         }
         .onChange(of: wallet.hasUsableChannels) { _, hasUsable in
+            guard !isPreparingRequest else { return }
             // Only validate if channels just became usable and we have a scanned invoice
             // (Validation already happened in AppViewModel if channels were already usable)
             guard app.hasSendPaymentTarget else { return }
@@ -320,7 +283,9 @@ struct SendSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        if shouldShowSyncOverlay {
+        if isPreparingRequest, config.preparation?.request == nil {
+            Color.clear
+        } else if shouldShowSyncOverlay {
             SendSyncScreen()
                 .transition(.opacity)
         } else {
@@ -339,6 +304,9 @@ struct SendSheet: View {
         setupTask?.cancel()
         setupTask = nil
         hwSend.cancel()
+        if isPreparingRequest {
+            return
+        }
         if let request = incomingPaymentRequest ?? app.contactPaymentContext?.incomingPaymentRequest {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
         }
@@ -347,6 +315,58 @@ struct SendSheet: View {
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         app.resetQuickPay()
         QuickPayPaymentCoordinator.shared.detach()
+    }
+
+    private func setUpSend() {
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        if let walletId = config.hardwareWalletId {
+            let balance = hwWalletManager.fundingBalance(walletId: walletId)
+            let reserve = HwFundingSigner.feeReserve(
+                balanceSats: balance,
+                satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
+            )
+            hwSend.seedAvailable(walletId: walletId, availableSats: balance > reserve ? balance - reserve : 0)
+        }
+        if let request = app.contactPaymentContext?.incomingPaymentRequest {
+            if !tagManager.consumePreservedTags(for: request.id) {
+                tagManager.clearSelectedTags()
+            }
+            guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
+                app.resetSendState()
+                sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
+                return
+            }
+            if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
+                PaykitSubscriptionNotificationTargetStore.clear()
+            }
+            wallet.sendAmountSats = request.amountSats
+            incomingPaymentRequest = request
+        } else {
+            tagManager.clearSelectedTags()
+        }
+        hasValidatedAfterSync = false
+        syncTimedOut = false
+        if currentRoot == .options {
+            app.resetSendState()
+        }
+        setupTask?.cancel()
+        setupTask = Task {
+            do {
+                try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
+            } catch is CancellationError {
+                return
+            } catch {
+                Logger.error("Failed to set default fee rate: \(error)")
+            }
+            if let request = incomingPaymentRequest {
+                guard isCurrentIncomingRequest(request.id) else { return }
+                guard await selectHardwareFundingSourceIfNeeded(amountSats: request.amountSats, requestId: request.id) else { return }
+                guard isCurrentIncomingRequest(request.id) else { return }
+                if !shouldShowSyncOverlay {
+                    validatePaymentAfterSync()
+                }
+            }
+        }
     }
 
     /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
@@ -688,7 +708,8 @@ struct SendSheet: View {
                 hwSend: hwSend,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
-                routingCacheResetAttempted: routingCacheResetAttempted
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                preparingRequest: isPreparingRequest ? config.preparation?.request : nil
             )
         case .hardwareSign:
             HwSendSignView(

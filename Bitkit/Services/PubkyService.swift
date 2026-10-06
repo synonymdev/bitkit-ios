@@ -535,7 +535,11 @@ actor PaykitSdkService {
     }
 
     func identityStatus() async throws -> IdentityStatus? {
-        try await withSdk { sdk in
+        try await identityStatus(priority: .ordered)
+    }
+
+    func identityStatus(priority: PaykitSdkOperationLock.Priority) async throws -> IdentityStatus? {
+        try await withSdk(priority: priority) { sdk in
             try await sdk.identityStatus()
         }
     }
@@ -905,7 +909,14 @@ actor PaykitSdkService {
 
     @discardableResult
     func processOutboundPrivateMessages(counterparty: String) async throws -> OutboundPrivateSendReport {
-        try await withStateRevisionTracking { sdk in
+        try await processOutboundPrivateMessages(counterparty: counterparty, priority: .ordered)
+    }
+
+    func processOutboundPrivateMessages(
+        counterparty: String,
+        priority: PaykitSdkOperationLock.Priority
+    ) async throws -> OutboundPrivateSendReport {
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
@@ -922,7 +933,11 @@ actor PaykitSdkService {
     }
 
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
-        try await withSdk { sdk in
+        try await sharedPaymentRequests(priority: .ordered)
+    }
+
+    func sharedPaymentRequests(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.PaymentRequestRecord] {
+        try await withSdk(priority: priority) { sdk in
             try await sdk.paymentRequests()
         }
     }
@@ -1033,13 +1048,17 @@ actor PaykitSdkService {
     }
 
     func linkedPeers() async throws -> [LinkedPeerRecord] {
-        try await withSdk { sdk in
+        try await linkedPeers(priority: .ordered)
+    }
+
+    func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [LinkedPeerRecord] {
+        try await withSdk(priority: priority) { sdk in
             try await sdk.linkedPeers()
         }
     }
 
-    func pendingOutboundPrivateCounterparties() async throws -> [String] {
-        try await withSdk { sdk in
+    func pendingOutboundPrivateCounterparties(priority: PaykitSdkOperationLock.Priority = .ordered) async throws -> [String] {
+        try await withSdk(priority: priority) { sdk in
             try await sdk.pendingOutboundPrivateCounterparties()
         }
     }

@@ -29,13 +29,15 @@ extension PrivatePaykitService {
         let processPending: (String) async throws -> Void
         let receive: (String) async throws -> Void
 
-        static let live = PrivateMessageDrainOperations(
-            ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0) },
-            pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties() },
-            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
-            processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0) },
-            receive: { _ = try await PaykitSdkService.shared.receivePrivateMessages(counterparty: $0) }
-        )
+        static func live(readPriority: PaykitSdkOperationLock.Priority = .ordered) -> PrivateMessageDrainOperations {
+            PrivateMessageDrainOperations(
+                ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0) },
+                pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties(priority: readPriority) },
+                linkedPeers: { try await PaykitSdkService.shared.linkedPeers(priority: readPriority) },
+                processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0) },
+                receive: { _ = try await PaykitSdkService.shared.receivePrivateMessages(counterparty: $0) }
+            )
+        }
     }
 
     struct EndpointCleanupOperations {
@@ -207,7 +209,11 @@ extension PrivatePaykitService {
     ) async -> Error? {
         if let isSessionCurrent, await !isSessionCurrent() { return nil }
         let generation = preparationGeneration
-        let operations = endpointPublicationOperations(wallet: wallet, forceRefreshLightning: forceRefreshLightning)
+        let operations = endpointPublicationOperations(
+            wallet: wallet,
+            forceRefreshLightning: forceRefreshLightning,
+            readPriority: requireImmediatePublication ? .ordered : .background
+        )
         guard await operations.canPublish() else {
             await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: reason)
             return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
@@ -468,7 +474,8 @@ extension PrivatePaykitService {
     ) async -> Error? {
         let operations = endpointPublicationOperations(
             wallet: wallet,
-            forceRefreshLightning: forceRefreshLightning
+            forceRefreshLightning: forceRefreshLightning,
+            readPriority: requireImmediatePublication ? .ordered : .background
         )
         return await syncLocalEndpointPublication(
             for: publicKeys,
@@ -481,7 +488,8 @@ extension PrivatePaykitService {
 
     private func endpointPublicationOperations(
         wallet: WalletViewModel,
-        forceRefreshLightning: Bool
+        forceRefreshLightning: Bool,
+        readPriority: PaykitSdkOperationLock.Priority
     ) -> EndpointPublicationOperations {
         if let publicationOperations { return publicationOperations }
         return EndpointPublicationOperations(
@@ -504,7 +512,7 @@ extension PrivatePaykitService {
                     clearUnlistedLinkedPeers: false
                 )
             },
-            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
+            linkedPeers: { try await PaykitSdkService.shared.linkedPeers(priority: readPriority) },
             canPublish: { await self.canPublishPrivateEndpoints(wallet: wallet) }
         )
     }
@@ -648,7 +656,7 @@ extension PrivatePaykitService {
     func drainPendingPrivateMessages(
         reason: String,
         advancing retryKeys: [String],
-        operations: PrivateMessageDrainOperations = .live
+        operations: PrivateMessageDrainOperations = .live()
     ) async {
         let retryKeys = Set(retryKeys.map { PubkyPublicKeyFormat.normalized($0) ?? $0 })
         guard !retryKeys.isEmpty, !Task.isCancelled else { return }
@@ -743,9 +751,9 @@ extension PrivatePaykitService {
         let retryKeys = Array(pendingMessageDrainRetryKeys)
         guard !retryKeys.isEmpty else { return }
 
-        let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys)
+        let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys, priority: .background)
         if !drainKeys.isEmpty {
-            await drainPendingPrivateMessages(reason: reason, advancing: Array(drainKeys))
+            await drainPendingPrivateMessages(reason: reason, advancing: Array(drainKeys), operations: .live(readPriority: .background))
         }
         await updatePendingMessageDrainRetryKeys(retryKeys)
     }
@@ -761,19 +769,23 @@ extension PrivatePaykitService {
     }
 
     private func updatePendingMessageDrainRetryKeys(_ retryKeys: [String]) async {
-        let remainingKeys = await pendingPrivateMessageDrainKeys(retryKeys)
+        let remainingKeys = await pendingPrivateMessageDrainKeys(retryKeys, priority: .background)
         pendingMessageDrainRetryKeys.subtract(retryKeys)
         pendingMessageDrainRetryKeys.formUnion(remainingKeys)
     }
 
-    private func pendingPrivateMessageDrainKeys(_ retryKeys: [String], retryMissingPeers: Bool = false) async -> Set<String> {
+    private func pendingPrivateMessageDrainKeys(
+        _ retryKeys: [String],
+        retryMissingPeers: Bool = false,
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async -> Set<String> {
         let retryKeys = Set(retryKeys)
         guard !retryKeys.isEmpty else { return [] }
 
         let linkedPeers: [String: LinkedPeerState]
         do {
             var peersByKey: [String: LinkedPeerState] = [:]
-            for peer in try await PaykitSdkService.shared.linkedPeers() {
+            for peer in try await PaykitSdkService.shared.linkedPeers(priority: priority) {
                 guard let publicKey = PubkyPublicKeyFormat.normalized(peer.counterparty) else { continue }
                 peersByKey[publicKey] = peer.state
             }
@@ -785,7 +797,7 @@ extension PrivatePaykitService {
 
         let pendingOutbound: Set<String>
         do {
-            let pending = try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties()
+            let pending = try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties(priority: priority)
             pendingOutbound = Set(pending.compactMap(PubkyPublicKeyFormat.normalized))
         } catch {
             Logger.warn("Failed to inspect pending private Paykit messages: \(error)", context: "PrivatePaykit")

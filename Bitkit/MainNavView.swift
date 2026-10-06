@@ -351,20 +351,6 @@ struct MainNavView: View {
             TabBar()
                 .ignoresSafeArea(.keyboard)
             DrawerView()
-
-            if isPaykitUIActive,
-               pubkyProfile.authState == .authenticated,
-               paykitPaymentRequestManager.requestedPresentationId != nil,
-               sheets.activeSheetConfiguration == nil,
-               !sheets.isReplacingSheet
-            {
-                ActivityIndicator()
-                    .padding(24)
-                    .background(Color.gray6, in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityLabel(t("wallet__payment_request"))
-                    .accessibilityIdentifier("PaymentRequestPreparing")
-                    .allowsHitTesting(false)
-            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {

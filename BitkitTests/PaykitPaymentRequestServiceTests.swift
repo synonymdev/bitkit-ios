@@ -26,6 +26,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertEqual(snapshot.processCallCount, mode == .full ? 1 : 0, "\(mode)")
             XCTAssertEqual(snapshot.receiveCallCount, mode >= .inbox ? 1 : 0, "\(mode)")
             XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, "\(mode)")
+            let priorities = await sdk.operationPriorities
+            XCTAssertEqual(priorities["requests"], [.background], "\(mode)")
+            XCTAssertEqual(priorities["peers"], [.background], "\(mode)")
         }
     }
 
@@ -4476,25 +4479,239 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(presentationCount, 2)
     }
 
-    func testClearInvalidatesInFlightPresentation() async throws {
-        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+    func testPreparingSheetRequiresCurrentPresentationSessionAndContext() async throws {
+        let expiresAt = Date().addingTimeInterval(60)
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
+            expiresAt: PaykitSubscriptionTimestamp.string(from: expiresAt)
+        )])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
-        var wasCurrentBeforeClear = false
-        var wasCurrentAfterClear = true
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
+        let session = try XCTUnwrap(profile.currentSession)
 
         await manager.presentRequests { requests in
             guard let request = requests.first else {
                 XCTFail("Expected an incoming payment request")
                 return
             }
-            wasCurrentBeforeClear = manager.isCurrentPresentation(request)
-            manager.clear()
-            wasCurrentAfterClear = manager.isCurrentPresentation(request)
-        }
+            let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: session)
+            XCTAssertEqual(preparation.visibleRequest(manager: manager, session: session, paymentContext: nil), request)
+            XCTAssertNil(preparation.visibleRequest(manager: manager, session: nil, paymentContext: nil))
+            profile.publicKey = "pubky\(String(repeating: "y", count: 52))"
+            XCTAssertNil(preparation.visibleRequest(manager: manager, session: profile.currentSession, paymentContext: nil))
+            XCTAssertNil(preparation.visibleRequest(manager: manager, session: session, paymentContext: nil, now: expiresAt))
 
-        XCTAssertTrue(wasCurrentBeforeClear)
-        XCTAssertFalse(wasCurrentAfterClear)
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            preparation.paymentContext = context
+            XCTAssertEqual(preparation.visibleRequest(manager: manager, session: session, paymentContext: context), request)
+            XCTAssertNil(preparation.visibleRequest(manager: manager, session: session, paymentContext: nil))
+            XCTAssertNil(preparation.visibleRequest(
+                manager: manager,
+                session: session,
+                paymentContext: ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            ))
+
+            XCTAssertTrue(manager.isCurrentPresentation(request))
+            manager.clear()
+            XCTAssertFalse(manager.isCurrentPresentation(request))
+            XCTAssertNil(preparation.visibleRequest(manager: manager, session: session, paymentContext: context))
+        }
+    }
+
+    func testPreparingSheetClearsWhileCanceledPreparationIsStillSuspended() async throws {
+        for manuallyRequested in [false, true] {
+            let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord(
+                metadata: #"{"note":"Dinner"}"#
+            )]))
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            if manuallyRequested {
+                XCTAssertTrue(manager.requestPresentation(request))
+            }
+            let profile = PubkyProfileManager()
+            profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
+            let session = try XCTUnwrap(profile.currentSession)
+            let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: session)
+            var continuation: CheckedContinuation<Void, Never>?
+            var preparationFinished = false
+            let task = Task {
+                await manager.presentRequests { requests in
+                    XCTAssertEqual(requests, [request])
+                    defer { preparation.clear() }
+                    do {
+                        try await preparation.whilePreparing {
+                            await withCheckedContinuation { continuation = $0 }
+                        }
+                        XCTFail("Canceled preparation must not advance to confirmation")
+                    } catch is CancellationError {
+                    } catch {
+                        XCTFail("Unexpected preparation error: \(error)")
+                    }
+                    preparationFinished = true
+                }
+            }
+            defer { continuation?.resume() }
+            try await waitUntil { continuation != nil }
+
+            let visible = preparation.visibleRequest(manager: manager, session: session, paymentContext: nil)
+            XCTAssertEqual(visible, request)
+            XCTAssertEqual(visible?.note, "Dinner")
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+            XCTAssertFalse(manager.isApprovedForPayment(request))
+
+            task.cancel()
+            try await waitUntil { preparation.request == nil }
+            XCTAssertFalse(preparationFinished)
+            continuation?.resume()
+            continuation = nil
+            _ = await task.value
+            XCTAssertNil(preparation.request)
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+        }
+    }
+
+    func testCanceledPreparationThrowsBeforeScheduledCleanup() async throws {
+        let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord()]))
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: nil)
+        let task = Task {
+            do {
+                try await preparation.whilePreparing {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+                XCTFail("Canceled work returned before its scheduled UI cleanup")
+            } catch is CancellationError {
+            } catch {
+                XCTFail("Unexpected preparation error: \(error)")
+            }
+        }
+        await task.value
+    }
+
+    func testClosingPreparingSheetIgnoresLateCompletionAndLeavesNextRequestAvailable() async throws {
+        for manuallyRequested in [false, true] {
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(id: "first"), paymentRequestRecord(id: "second")])
+            let store = PaymentRequestPresentationMemoryStore()
+            let manager = paymentRequestManager(sdk: sdk, presentationStore: store)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "first" })
+            let next = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "second" })
+            if manuallyRequested { XCTAssertTrue(manager.requestPresentation(request)) }
+            let profile = PubkyProfileManager()
+            profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
+            let session = try XCTUnwrap(profile.currentSession)
+            let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: session)
+            let sheets = SheetViewModel()
+            let app = AppViewModel()
+            let identity = try XCTUnwrap(profile.publicKey)
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            XCTAssertTrue(app.claimContactPaymentContext(context))
+            preparation.paymentContext = context
+            sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
+                manager.dismissPreparingRequest(request)
+                preparation.clear()
+            }))
+            var continuation: CheckedContinuation<Void, Never>?
+            let task = Task {
+                await manager.presentRequests { _ in
+                    await withCheckedContinuation { continuation = $0 }
+                    XCTAssertFalse(preparation.complete(route: .confirm, manager: manager, session: session, app: app, sheets: sheets))
+                }
+            }
+            try await waitUntil { continuation != nil }
+
+            if manuallyRequested {
+                sheets.hideSheet()
+            } else {
+                sheets.sendSheetItem = nil
+            }
+            app.resetSendState()
+            XCTAssertEqual(Set(manager.pendingRequests.map(\.id)), [request.id, next.id])
+            XCTAssertEqual(manager.requestsForPresentation(), [next])
+            XCTAssertNil(manager.requestedPresentationId)
+            XCTAssertTrue(try store.load(identity: identity).isEmpty)
+            XCTAssertFalse(manager.isApprovedForPayment(request))
+
+            continuation?.resume()
+            _ = await task.value
+            await manager.presentRequests { XCTAssertEqual($0, [next]) }
+            await manager.refresh()
+            XCTAssertEqual(manager.requestsForPresentation(), [next])
+            XCTAssertTrue(try store.load(identity: identity).isEmpty)
+
+            let restored = paymentRequestManager(sdk: sdk, presentationStore: store)
+            await restored.refresh()
+            XCTAssertEqual(Set(restored.requestsForPresentation().map(\.id)), [request.id, next.id])
+            XCTAssertTrue(manager.requestPresentation(request))
+            XCTAssertEqual(manager.requestsForPresentation(), [request])
+            await manager.presentRequests { _ in manager.dismissPreparingRequest(request) }
+            manager.activate(identity: "pubky\(String(repeating: "y", count: 52))")
+            manager.activate(identity: identity)
+            await manager.refresh()
+            XCTAssertEqual(Set(manager.requestsForPresentation().map(\.id)), [request.id, next.id])
+        }
+    }
+
+    func testPreparingRequestBecomesReadyInTheSameSendSheetAndPreservesExplicitRetry() async throws {
+        let store = PaymentRequestPresentationMemoryStore()
+        let manager = try paymentRequestManager(sdk: PaymentRequestSdkMock(records: [paymentRequestRecord()]), presentationStore: store)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
+        let session = try XCTUnwrap(profile.currentSession)
+        let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: session)
+        let sheets = SheetViewModel()
+        let app = AppViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
+            if preparation.resolvedRoute == nil, preparation.matchesSession(profile.currentSession), let request = preparation.request {
+                manager.dismissPreparingRequest(request)
+            }
+            preparation.clear()
+        }))
+        let presentationID = sheets.activeSheetConfiguration?.presentationID
+        XCTAssertTrue(sheets.sendSheetItem?.preparation === preparation)
+        XCTAssertNil(app.contactPaymentContext)
+        XCTAssertFalse(app.hasSendPaymentTarget)
+
+        await manager.presentRequests { _ in
+            XCTAssertFalse(preparation.complete(route: .confirm, manager: manager, session: session, app: app, sheets: sheets))
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            XCTAssertTrue(app.claimContactPaymentContext(context))
+            preparation.paymentContext = context
+            let otherProfile = PubkyProfileManager()
+            otherProfile.publicKey = "pubky\(String(repeating: "y", count: 52))"
+            XCTAssertFalse(preparation.complete(route: .confirm, manager: manager, session: otherProfile.currentSession, app: app, sheets: sheets))
+            app.scannedOnchainInvoice = OnChainInvoice(
+                address: "bcrt1qrequest",
+                amountSatoshis: request.amountSats,
+                label: nil,
+                message: nil,
+                params: nil
+            )
+            XCTAssertTrue(preparation.complete(route: .confirm, manager: manager, session: session, app: app, sheets: sheets))
+        }
+        XCTAssertEqual(preparation.resolvedRoute, .confirm)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentationID)
+        XCTAssertTrue(sheets.sendSheetItem?.preparation === preparation)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        XCTAssertTrue(try store.load(identity: "pubky\(String(repeating: "z", count: 52))").isEmpty)
+        XCTAssertTrue(manager.markPresentedIfPending(request))
+        XCTAssertEqual(try store.load(identity: "pubky\(String(repeating: "z", count: 52))"), [request.id])
+
+        app.resetSendState()
+        XCTAssertTrue(manager.requestPresentation(request))
+        sheets.hideSheet(reason: "Retrying incoming payment request with fresh private payment details")
+
+        XCTAssertNil(preparation.request)
+        XCTAssertNil(sheets.activeSheetConfiguration)
+        XCTAssertEqual(manager.requestedPresentationId, request.id)
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        XCTAssertEqual(try store.load(identity: "pubky\(String(repeating: "z", count: 52))"), [request.id])
     }
 
     func testManualPresentationSupersedesInFlightAutomaticPresentation() async throws {
@@ -4503,8 +4720,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [first, second]))
         await manager.refresh()
         let secondRequest = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "second" })
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
+        let session = try XCTUnwrap(profile.currentSession)
         var continuation: CheckedContinuation<Void, Never>?
         var automaticPresentationRemainedCurrent = true
+        var preparation: IncomingPaykitPaymentRequestPreparation?
 
         let task = Task {
             await manager.presentRequests { requests in
@@ -4512,13 +4733,16 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                     XCTFail("Expected an incoming payment request")
                     return
                 }
+                preparation = IncomingPaykitPaymentRequestPreparation(request: automaticRequest, session: session)
                 await withCheckedContinuation { continuation = $0 }
                 automaticPresentationRemainedCurrent = manager.isCurrentPresentation(automaticRequest)
             }
         }
         try await waitUntil { continuation != nil }
 
+        XCTAssertNotNil(preparation?.visibleRequest(manager: manager, session: session, paymentContext: nil))
         XCTAssertTrue(manager.requestPresentation(secondRequest))
+        XCTAssertNil(preparation?.visibleRequest(manager: manager, session: session, paymentContext: nil))
         continuation?.resume()
         _ = await task.value
 
@@ -5188,6 +5412,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             manager.eligibleTargets,
             [PaykitPaymentRequestTarget(publicKey: savedKey)]
         )
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["identity"], [.background])
+        XCTAssertEqual(priorities["peers"], [.background])
     }
 
     func testCapabilityDiscoveryBoundsConcurrentReadsWithoutWaitingForSlowPeer() async throws {
@@ -5851,6 +6078,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         } == true)
         XCTAssertEqual(snapshot.processCallCount, 0)
         XCTAssertEqual(snapshot.processedCounterparties, [publicKey])
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["identity"], [.background, .interactive])
+        XCTAssertEqual(priorities["peers"], [.background, .interactive])
+        XCTAssertEqual(priorities["delivery"], [.interactive])
     }
 
     func testProposalsOnlyInspectAndDrainSelectedSavedTarget() async throws {
@@ -6381,6 +6612,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         completedPaymentProofKinds: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:],
         inFlightPaymentRequestIds: Set<PaykitPaymentRequest.ID> = [],
         protectedRequestIdsForSubscriptionCancellation: Set<PaykitPaymentRequest.ID> = [],
+        presentationStore: PaymentRequestPresentationMemoryStore = PaymentRequestPresentationMemoryStore(),
         acceptanceStore: PaymentRequestPresentationMemoryStore? = nil,
         acceptedRecords: [PaymentRequestRecord] = []
     ) -> PaykitPaymentRequestManager {
@@ -6397,7 +6629,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 isPrivatePaymentPublishingEnabled: { isPrivatePaymentPublishingEnabled },
                 logWarning: { _ in }
             ),
-            presentationStore: PaymentRequestPresentationMemoryStore(),
+            presentationStore: presentationStore,
             acceptanceStore: acceptanceStore,
             subscriptionStateStore: subscriptionStateStore,
             subscriptionNotificationScheduler: subscriptionNotificationScheduler,
@@ -6593,6 +6825,7 @@ private final class PaymentRequestSubscriptionStateMemoryStore: PaykitSubscripti
 }
 
 private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaymentProofSdkHandling {
+    private(set) var operationPriorities: [String: [PaykitSdkOperationLock.Priority]] = [:]
     private var activeIdentity = "pubky\(String(repeating: "z", count: 52))"
     private var records: [PaymentRequestRecord]
     private var incomingRecords: [PaymentRequestRecord] = []
@@ -6664,6 +6897,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         )
     }
 
+    func processOutboundPrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> OutboundPrivateSendReport {
+        operationPriorities["delivery", default: []].append(priority)
+        return try await processOutboundPrivateMessages(counterparty: counterparty)
+    }
+
     private func processMessages(counterparty: String? = nil) async throws {
         if shouldPauseNextProcess,
            counterparty == nil || pausedProcessCounterparty == nil || counterparty == pausedProcessCounterparty
@@ -6708,6 +6946,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         return snapshot
     }
 
+    func sharedPaymentRequests(priority: PaykitSdkOperationLock.Priority) async -> [PaymentRequestRecord] {
+        operationPriorities["requests", default: []].append(priority)
+        return await sharedPaymentRequests()
+    }
+
     func sharedPaymentRequests(expectedIdentity: String) async throws -> [PaymentRequestRecord] {
         guard PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity) else {
             throw PaykitPaymentRequestError.requestUnavailable
@@ -6722,6 +6965,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func identityStatus() -> IdentityStatus? {
         IdentityStatus(publicKey: activeIdentity, capability: liveSessionAvailable ? .privateLinkCapable : .signedOut)
+    }
+
+    func identityStatus(priority: PaykitSdkOperationLock.Priority) -> IdentityStatus? {
+        operationPriorities["identity", default: []].append(priority)
+        return identityStatus()
     }
 
     func submitPaymentProof(
@@ -6745,6 +6993,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         }
         if let error { throw error }
         return snapshot
+    }
+
+    func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [LinkedPeerRecord] {
+        operationPriorities["peers", default: []].append(priority)
+        return try await linkedPeers()
     }
 
     func canReceivePaymentRequests(publicKey: String, priority: PaykitPublicReadPriority) async throws -> Bool {

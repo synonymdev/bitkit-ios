@@ -37,6 +37,15 @@ explicit refreshes, and maintenance rounds after 30 seconds, then every 60 secon
 Maintenance uses elapsed time, including slow requests; polling remains serialized and does not
 start catch-up rounds. Incoming messages wait for the next poll plus synchronization time.
 
+During preparation, `automatic-presentation.xml` checks the existing Send confirmation sheet with
+the selected request's sender, amount and note. Its payment swipe control stays disabled and shows
+progress until fresh validation and wallet preparation finish. The same sheet then becomes usable.
+Closing during preparation leaves the request pending
+and manually reopenable, but suppresses automatic reopening for the current identity's app session.
+That suppression is not persisted. The request is marked presented only once ready.
+`requested-resolution-failure.xml` also checks the return to the underlying request list or details.
+An unfunded wallet can verify loading followed by wallet rejection, not an enabled payment control.
+
 ## Accepting install
 
 Acceptance intent is saved before the remote operation and included in wallet backups.
@@ -141,6 +150,8 @@ the SDK and can push the Pay step well past the budget.
 - Screen: `PaymentRequestsScreen`.
 - Detail screen: `PaymentRequestDetailScreen`.
 - Detail amount and status: `PaymentRequestDetailsAmount`, `PaymentRequestDetailsStatus`.
+- Detail Pay action: `PaymentRequestDetailsPay`.
+- Payment swipe control, including its loading spinner: `GRAB`.
 - Request row: `PaymentRequestRow-<payment-request-id>-one-time`; use the complete identifier because `wait-for-ui` does not support prefix matching.
 - Pay action: `PaymentRequestPay-<payment-request-id>`.
 - Dismiss action: `PaymentRequestDismiss-<payment-request-id>`.

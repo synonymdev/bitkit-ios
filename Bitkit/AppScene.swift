@@ -114,6 +114,72 @@ enum IncomingPaykitPaymentRequestPresentationDispatch: Equatable {
     case presentNext
 }
 
+@Observable @MainActor
+final class IncomingPaykitPaymentRequestPreparation {
+    private(set) var request: PaykitPaymentRequest?
+    private(set) var resolvedRoute: SendRoute?
+    private let session: PubkyProfileManager.SignedInSession?
+    var paymentContext: ContactPaymentContext?
+
+    init(request: PaykitPaymentRequest, session: PubkyProfileManager.SignedInSession?) {
+        self.request = request
+        self.session = session
+    }
+
+    func visibleRequest(
+        manager: PaykitPaymentRequestManager,
+        session: PubkyProfileManager.SignedInSession?,
+        paymentContext: ContactPaymentContext?,
+        now: Date = Date()
+    ) -> PaykitPaymentRequest? {
+        guard let request, matchesSession(session),
+              paymentContext == self.paymentContext,
+              manager.isCurrentPresentation(request),
+              !request.isExpired(at: now)
+        else { return nil }
+        return request
+    }
+
+    func matchesSession(_ session: PubkyProfileManager.SignedInSession?) -> Bool {
+        session != nil && session == self.session
+    }
+
+    func clear() {
+        request = nil
+        resolvedRoute = nil
+    }
+
+    func ownsSheet(_ sheets: SheetViewModel) -> Bool {
+        sheets.activeSheetConfiguration?.id == .send &&
+            (sheets.activeSheetConfiguration?.data as? SendConfig)?.preparation === self && !sheets.isReplacingSheet
+    }
+
+    func complete(
+        route: SendRoute,
+        manager: PaykitPaymentRequestManager,
+        session: PubkyProfileManager.SignedInSession?,
+        app: AppViewModel,
+        sheets: SheetViewModel
+    ) -> Bool {
+        guard !Task.isCancelled, ownsSheet(sheets), paymentContext != nil,
+              visibleRequest(manager: manager, session: session, paymentContext: app.contactPaymentContext) != nil
+        else { return false }
+        resolvedRoute = route
+        return true
+    }
+
+    func whilePreparing<T>(_ operation: () async throws -> T) async throws -> T {
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            let result = try await operation()
+            try Task.checkCancellation()
+            return result
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.clear() }
+        }
+    }
+}
+
 @MainActor
 enum IncomingPaykitPaymentRequestPresentationDispatcher {
     static func feedback(
@@ -241,6 +307,7 @@ struct AppScene: View {
     @State private var hwWalletManager: HwWalletManager
     @State private var calculatorInputManager = CalculatorInputManager()
     @State private var paykitPaymentRequestManager = PaykitPaymentRequestManager()
+    @State private var incomingPaymentRequestPreparation: IncomingPaykitPaymentRequestPreparation?
     @State private var receivedPaymentBackfillCache = PaykitReceivedPaymentBackfillCache(
         activityChanges: CoreService.shared.activity.activitiesChangedPublisher
     )
@@ -442,7 +509,7 @@ struct AppScene: View {
             .environment(paykitPaymentRequestManager)
     }
 
-    private var appEventContent: some View {
+    private var paykitEventContent: some View {
         configuredContent
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 receivedPaymentBackfillCache.invalidate()
@@ -486,15 +553,21 @@ struct AppScene: View {
             .onReceive(NotificationCenter.default.publisher(for: .paykitSubscriptionPaymentDue)) { _ in
                 Task { await handlePendingPaykitSubscriptionNotification() }
             }
+    }
+
+    private var appEventContent: some View {
+        paykitEventContent
             .onChange(of: sheets.activeSheetConfiguration?.id) { _, activeSheetId in
                 guard activeSheetId == nil, !sheets.isReplacingSheet else { return }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(700))
-                    guard !Task.isCancelled,
-                          sheets.activeSheetConfiguration == nil,
-                          !sheets.isReplacingSheet
-                    else { return }
-                    await presentNextIncomingPaykitItem()
+                scheduleNextIncomingPaykitItemPresentation()
+            }
+            .onChange(of: isIncomingPaymentRequestPreparationInvalid) { _, invalid in
+                guard invalid, let preparation = incomingPaymentRequestPreparation else { return }
+                endIncomingPaymentRequestPreparation(preparation)
+            }
+            .onChange(of: app.showDrawer) { _, isShowing in
+                if !isShowing {
+                    Task { await presentNextIncomingPaykitItem() }
                 }
             }
             .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
@@ -1223,6 +1296,9 @@ struct AppScene: View {
     private func presentNextIncomingPaykitPaymentRequest() async {
         guard scenePhase == .active,
               isPinVerified || !settings.pinEnabled,
+              PaykitFeatureFlags.isUIEnabled,
+              pubkyProfile.currentSession != nil,
+              !app.showDrawer,
               sheets.activeSheetConfiguration == nil,
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
@@ -1233,12 +1309,26 @@ struct AppScene: View {
             guard sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet, app.contactPaymentContext == nil else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: pubkyProfile.currentSession)
+                incomingPaymentRequestPreparation = preparation
+                sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
+                    if preparation.resolvedRoute == nil, scenePhase == .active,
+                       preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
+                    {
+                        paykitPaymentRequestManager.dismissPreparingRequest(request)
+                    }
+                    preparation.clear()
+                }))
+                defer {
+                    if preparation.resolvedRoute == nil {
+                        endIncomingPaymentRequestPreparation(preparation)
+                    }
+                }
                 do {
-                    let result = try await PrivatePaykitService.shared.beginPaymentRequest(request)
-                    guard paykitPaymentRequestManager.isCurrentPresentation(request),
-                          sheets.activeSheetConfiguration == nil,
-                          !sheets.isReplacingSheet,
-                          app.contactPaymentContext == nil
+                    let result = try await preparation.whilePreparing {
+                        try await PrivatePaykitService.shared.beginPaymentRequest(request)
+                    }
+                    guard isCurrentIncomingPaymentRequestPreparation(preparation), app.contactPaymentContext == nil
                     else { return }
                     if case .privateLinkPending = result {
                         if let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishPendingPrivateLink(
@@ -1247,14 +1337,14 @@ struct AppScene: View {
                         ) {
                             presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
                         }
-                        continue
+                        return
                     }
                     guard case let .opened(paymentTarget, privatePaymentContext) = result else {
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
                             reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
                         )
-                        continue
+                        return
                     }
 
                     let contactPaymentContext = ContactPaymentContext(
@@ -1263,17 +1353,18 @@ struct AppScene: View {
                         incomingPaymentRequest: request
                     )
                     guard app.claimContactPaymentContext(contactPaymentContext) else { return }
+                    preparation.paymentContext = contactPaymentContext
 
                     do {
-                        try await app.handleScannedData(
-                            paymentTarget,
-                            claimedContactPaymentContext: contactPaymentContext,
-                            alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
-                        )
-                        guard paykitPaymentRequestManager.isCurrentPresentation(request),
-                              app.ownsContactPaymentContext(contactPaymentContext),
-                              sheets.activeSheetConfiguration == nil,
-                              !sheets.isReplacingSheet
+                        try await preparation.whilePreparing {
+                            try await app.handleScannedData(
+                                paymentTarget,
+                                claimedContactPaymentContext: contactPaymentContext,
+                                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                            )
+                        }
+                        guard isCurrentIncomingPaymentRequestPreparation(preparation),
+                              app.ownsContactPaymentContext(contactPaymentContext)
                         else {
                             if app.ownsContactPaymentContext(contactPaymentContext) {
                                 app.resetSendState()
@@ -1300,15 +1391,15 @@ struct AppScene: View {
                             return
                         }
 
-                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                        guard isCurrentIncomingPaymentRequestPreparation(preparation) else {
                             app.resetSendState()
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
                         }
                     } catch ScanHandlingError.pubkyAuthRequest {
-                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                        guard isCurrentIncomingPaymentRequestPreparation(preparation) else { return }
                         _ = paykitPaymentRequestManager.markPresentedIfPending(request)
-                        continue
+                        return
                     } catch is CancellationError {
                         if app.ownsContactPaymentContext(contactPaymentContext) {
                             app.resetSendState()
@@ -1317,7 +1408,7 @@ struct AppScene: View {
                         return
                     } catch {
                         guard app.ownsContactPaymentContext(contactPaymentContext) else { return }
-                        guard paykitPaymentRequestManager.isCurrentPresentation(request) else {
+                        guard isCurrentIncomingPaymentRequestPreparation(preparation) else {
                             app.resetSendState()
                             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
                             return
@@ -1334,7 +1425,7 @@ struct AppScene: View {
                             return
                         }
                         deferIncomingPaykitPaymentRequestPresentation(request, reason: .invalidPaymentTarget)
-                        continue
+                        return
                     }
 
                     guard PaykitPaymentRequestPresentationCoordinator.canPresentPreparedRequest(
@@ -1357,13 +1448,20 @@ struct AppScene: View {
                         deferIncomingPaykitPaymentRequestPresentation(request, reason: .paymentTargetNotRoutable)
                         return
                     }
-                    sheets.showSheet(.send, data: SendConfig(view: route))
+                    _ = preparation.complete(
+                        route: route,
+                        manager: paykitPaymentRequestManager,
+                        session: pubkyProfile.currentSession,
+                        app: app,
+                        sheets: sheets
+                    )
                     return
                 } catch is CancellationError {
                     return
                 } catch {
-                    guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                    guard isCurrentIncomingPaymentRequestPreparation(preparation) else { return }
                     deferIncomingPaykitPaymentRequestPresentation(request, reason: .resolutionFailed)
+                    return
                 }
             }
         }
@@ -1376,7 +1474,45 @@ struct AppScene: View {
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
-        await presentNextIncomingPaykitPaymentRequest()
+        scheduleNextIncomingPaykitItemPresentation()
+    }
+
+    private func isCurrentIncomingPaymentRequestPreparation(_ preparation: IncomingPaykitPaymentRequestPreparation) -> Bool {
+        scenePhase == .active && (isPinVerified || !settings.pinEnabled) && PaykitFeatureFlags.isUIEnabled &&
+            !app.showDrawer && preparation.ownsSheet(sheets) && preparation.visibleRequest(
+                manager: paykitPaymentRequestManager,
+                session: pubkyProfile.currentSession,
+                paymentContext: app.contactPaymentContext
+            ) != nil
+    }
+
+    private var isIncomingPaymentRequestPreparationInvalid: Bool {
+        guard let preparation = incomingPaymentRequestPreparation else { return false }
+        if preparation.resolvedRoute != nil { return !preparation.ownsSheet(sheets) }
+        return !isCurrentIncomingPaymentRequestPreparation(preparation)
+    }
+
+    private func endIncomingPaymentRequestPreparation(_ preparation: IncomingPaykitPaymentRequestPreparation) {
+        let context = preparation.paymentContext
+        preparation.clear()
+        if let context, app.ownsContactPaymentContext(context) {
+            app.resetSendState()
+            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        }
+        if preparation.ownsSheet(sheets) {
+            sheets.hideSheet(reason: "Incoming payment request preparation ended")
+        }
+        if incomingPaymentRequestPreparation === preparation {
+            incomingPaymentRequestPreparation = nil
+        }
+    }
+
+    private func scheduleNextIncomingPaykitItemPresentation() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled, sheets.activeSheetConfiguration == nil, !sheets.isReplacingSheet else { return }
+            await presentNextIncomingPaykitItem()
+        }
     }
 
     private func deferIncomingPaykitPaymentRequestPresentation(

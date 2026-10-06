@@ -492,13 +492,18 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
 
 protocol PaykitPaymentRequestSdkHandling: Sendable {
     func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport
+    func processOutboundPrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> Paykit
+        .OutboundPrivateSendReport
     func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
     func receivePrivateMessagesFromLinkedPeers() async throws -> [Paykit.PrivateStreamCounterpartyIntakeReport]
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord]
+    func sharedPaymentRequests(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.PaymentRequestRecord]
     func sharedPaymentRequests(expectedIdentity: String) async throws -> [Paykit.PaymentRequestRecord]
     func identityStatus() async throws -> Paykit.IdentityStatus?
+    func identityStatus(priority: PaykitSdkOperationLock.Priority) async throws -> Paykit.IdentityStatus?
     func linkedPeers() async throws -> [Paykit.LinkedPeerRecord]
+    func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.LinkedPeerRecord]
     func canReceivePaymentRequests(publicKey: String, priority: PaykitPublicReadPriority) async throws -> Bool
     func proposePaymentRequest(
         counterparty: String,
@@ -557,7 +562,10 @@ struct PaykitPaymentRequestService {
         self.logWarning = logWarning
     }
 
-    func synchronize(mode: PaykitPaymentRequestRefreshMode = .full) async throws -> PaykitPaymentRequestSnapshot {
+    func synchronize(
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws -> PaykitPaymentRequestSnapshot {
         if mode == .full {
             try await processPendingMessages()
         }
@@ -566,9 +574,9 @@ struct PaykitPaymentRequestService {
             logIntakeFailures(intakeReports)
         }
         let synchronizationDate = now()
-        let sharedRecords = try await sdk.sharedPaymentRequests()
+        let sharedRecords = try await sdk.sharedPaymentRequests(priority: priority)
         let records = sharedRecords.filter(PaykitSdkService.isBitkitPaymentRequest)
-        let blockedPeers = try await sdk.linkedPeers().filter { $0.state == .blocked }
+        let blockedPeers = try await sdk.linkedPeers(priority: priority).filter { $0.state == .blocked }
         let availableRecords = records.filter { record in
             !blockedPeers.contains {
                 PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty)
@@ -632,7 +640,8 @@ struct PaykitPaymentRequestService {
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
         let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true, capabilityCheckedPublicKeys: [])
         guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
-        guard let identityStatus = try await sdk.identityStatus(),
+        let sdkPriority: PaykitSdkOperationLock.Priority = priority == .bulk ? .background : .interactive
+        guard let identityStatus = try await sdk.identityStatus(priority: sdkPriority),
               identityStatus.capability == .privateLinkCapable,
               PubkyPublicKeyFormat.matches(identityStatus.publicKey, expectedIdentity)
         else { return unavailable }
@@ -640,7 +649,7 @@ struct PaykitPaymentRequestService {
         let savedKeys = savedPublicKeys.compactMap(PubkyPublicKeyFormat.normalized).filter {
             seenSavedKeys.insert($0).inserted
         }
-        let linkedPeers = try await sdk.linkedPeers().filter { $0.state == .linked }
+        let linkedPeers = try await sdk.linkedPeers(priority: sdkPriority).filter { $0.state == .linked }
         let linkedKeys = Set(linkedPeers.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
         let candidates = savedKeys.filter { linkedKeys.contains($0) }
         let lookup: @Sendable (String) async throws -> (String, Result<Bool, Error>) = { [sdk] publicKey in
@@ -989,7 +998,7 @@ struct PaykitPaymentRequestService {
         do {
             let reports: [Paykit.OutboundPrivateCounterpartySendReport]
             if let counterparty {
-                let report = try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+                let report = try await sdk.processOutboundPrivateMessages(counterparty: counterparty, priority: .interactive)
                 reports = [Paykit.OutboundPrivateCounterpartySendReport(
                     counterparty: counterparty,
                     report: report,
@@ -1219,6 +1228,7 @@ final class PaykitPaymentRequestManager {
     private var approvedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var acceptedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
+    private var dismissedPreparingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDeadlines: [PaykitPaymentRequest.ID: ContinuousClock.Instant] = [:]
     private var automaticPresentationDiagnosticReasons:
@@ -1897,11 +1907,27 @@ final class PaykitPaymentRequestManager {
               requestedPresentationId == nil
         else { return false }
         presentationGeneration += 1
+        dismissedPreparingRequestIds.remove(request.id)
         presentationRetryAttempts.removeValue(forKey: request.id)
         presentationRetryDeadlines.removeValue(forKey: request.id)
         requestedPresentationId = request.id
         schedulePresentationRetry()
         return true
+    }
+
+    func dismissPreparingRequest(_ request: PaykitPaymentRequest) {
+        guard pendingRequests.contains(where: { $0.id == request.id }),
+              requestedPresentationId == nil || requestedPresentationId == request.id,
+              !presentedRequestIds.contains(request.id) || requestedPresentationId == request.id
+        else { return }
+        dismissedPreparingRequestIds.insert(request.id)
+        presentationGeneration += 1
+        if requestedPresentationId == request.id {
+            requestedPresentationId = nil
+        }
+        presentationRetryAttempts.removeValue(forKey: request.id)
+        presentationRetryDeadlines.removeValue(forKey: request.id)
+        schedulePresentationRetry()
     }
 
     func clear() {
@@ -1928,6 +1954,7 @@ final class PaykitPaymentRequestManager {
         savedPublicKeys = []
         presentedRequestIds = []
         persistedPresentedRequestIds = []
+        dismissedPreparingRequestIds = []
         presentationRetryAttempts = [:]
         presentationRetryDeadlines = [:]
         automaticPresentationDiagnosticReasons = [:]
@@ -1963,6 +1990,7 @@ final class PaykitPaymentRequestManager {
 
         return pendingRequests.filter {
             !presentedRequestIds.contains($0.id) &&
+                !dismissedPreparingRequestIds.contains($0.id) &&
                 !processingRequestIds.contains($0.id) &&
                 (presentationRetryDeadlines[$0.id].map { $0 <= date } ?? true)
         }
@@ -2173,7 +2201,7 @@ final class PaykitPaymentRequestManager {
         mode: PaykitPaymentRequestRefreshMode
     ) async {
         do {
-            let snapshot = try await service.synchronize(mode: mode)
+            let snapshot = try await service.synchronize(mode: mode, priority: .background)
             guard generation == refreshGeneration, let activeIdentity else { return }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
