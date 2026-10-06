@@ -219,8 +219,7 @@ struct SendConfirmationView: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app
-            .selectedWalletToPayFrom == .lightning &&
+        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
             !hwSend.isActive && !requiresPaymentConfirmation
     }
 
@@ -844,8 +843,8 @@ struct SendConfirmationView: View {
         }
     }
 
-    static func requiresManualConfirmation(isAutomatic: Bool, walletType: WalletType, isHardwarePayment: Bool) -> Bool {
-        isAutomatic && (walletType != .lightning || isHardwarePayment)
+    static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
+        isAutomatic && isHardwarePayment
     }
 
     static func privatePaymentListOutcomeForLightningFailure(
@@ -989,7 +988,6 @@ struct SendConfirmationView: View {
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
         Self.requiresManualConfirmation(
             isAutomatic: isAutomatic,
-            walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive
         )
     }

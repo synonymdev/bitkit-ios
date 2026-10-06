@@ -14,23 +14,19 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: nil, isLoading: true))
     }
 
-    func testAutomaticPaymentRequiresManualConfirmationForNonLightningFunding() {
-        for walletType in [WalletType.lightning, .onchain] {
-            for isHardwarePayment in [false, true] {
-                XCTAssertEqual(
-                    SendConfirmationView.requiresManualConfirmation(
-                        isAutomatic: true,
-                        walletType: walletType,
-                        isHardwarePayment: isHardwarePayment
-                    ),
-                    walletType == .onchain || isHardwarePayment
-                )
-                XCTAssertFalse(SendConfirmationView.requiresManualConfirmation(
-                    isAutomatic: false,
-                    walletType: walletType,
+    func testAutomaticPaymentRequiresManualConfirmationOnlyForHardwareFunding() {
+        for isHardwarePayment in [false, true] {
+            XCTAssertEqual(
+                SendConfirmationView.requiresManualConfirmation(
+                    isAutomatic: true,
                     isHardwarePayment: isHardwarePayment
-                ))
-            }
+                ),
+                isHardwarePayment
+            )
+            XCTAssertFalse(SendConfirmationView.requiresManualConfirmation(
+                isAutomatic: false,
+                isHardwarePayment: isHardwarePayment
+            ))
         }
     }
 
