@@ -1173,30 +1173,31 @@ struct AppScene: View {
         }
     }
 
+    @discardableResult
     private func refreshIncomingPaykitPaymentRequests(
         presentItems: Bool = true,
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .ordered
-    ) async {
+    ) async -> Bool {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
               pubkyProfile.authState == .authenticated
         else {
             paykitPaymentRequestManager.clearEligibleTargets()
-            return
+            return false
         }
 
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return false }
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
         }
-        guard let identity = pubkyProfile.publicKey else { return }
-        await paykitPaymentRequestManager.refresh(mode: mode, forceFresh: forceFresh, messagePriority: messagePriority)
+        guard let identity = pubkyProfile.publicKey else { return false }
+        let refreshed = await paykitPaymentRequestManager.refresh(mode: mode, forceFresh: forceFresh, messagePriority: messagePriority)
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
-        else { return }
+        else { return false }
         let contacts = paykitPaymentRequestManager.receivedPaymentContacts
         do {
             try await CoreService.shared.activity.backfillReceivedPaykitContacts(
@@ -1215,6 +1216,7 @@ struct AppScene: View {
         if mode == .full {
             await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
+        return refreshed
     }
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
@@ -1583,7 +1585,11 @@ struct AppScene: View {
               !sheets.isReplacingSheet,
               app.contactPaymentContext == nil
         else { return }
-        await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored)
+        guard await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
+              !Task.isCancelled,
+              PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
+              PaykitSubscriptionNotificationTargetStore.load() == target
+        else { return }
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
                 PaykitSubscriptionNotificationTargetStore.clear()

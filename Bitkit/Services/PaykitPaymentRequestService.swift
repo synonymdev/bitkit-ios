@@ -1241,7 +1241,7 @@ final class PaykitPaymentRequestManager {
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
     private var unavailableRequestedPresentations: [PaykitPaymentRequest] = []
     private var isPresentingRequests = false
-    private var refreshTask: (mode: PaykitPaymentRequestRefreshMode, task: Task<Void, Never>)?
+    private var refreshTask: (mode: PaykitPaymentRequestRefreshMode, task: Task<Bool, Never>)?
     private var expirationTask: Task<Void, Never>?
     private var presentationRetryTask: Task<Void, Never>?
     private var refreshGeneration = 0
@@ -1612,11 +1612,12 @@ final class PaykitPaymentRequestManager {
         return subscription
     }
 
+    @discardableResult
     func refresh(
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .ordered
-    ) async {
+    ) async -> Bool {
         await refresh(
             excludingProtectedRequestId: nil,
             mode: mode,
@@ -1643,36 +1644,40 @@ final class PaykitPaymentRequestManager {
         )
     }
 
+    @discardableResult
     private func refresh(
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .ordered
-    ) async {
+    ) async -> Bool {
         if let refreshTask {
             let generation = stateGeneration
-            await refreshTask.task.value
-            if forceFresh || mode > refreshTask.mode, generation == stateGeneration, !Task.isCancelled {
-                await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode, messagePriority: messagePriority)
+            let refreshed = await refreshTask.task.value
+            guard generation == stateGeneration, !Task.isCancelled else { return false }
+            if forceFresh || mode > refreshTask.mode {
+                return await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode, messagePriority: messagePriority)
             }
-            return
+            return refreshed
         }
 
         refreshGeneration += 1
         let generation = refreshGeneration
         let task = Task { [weak self] in
-            guard let self else { return }
-            await performRefresh(
+            guard let self else { return false }
+            let refreshed = await performRefresh(
                 generation: generation,
                 excludingProtectedRequestId: excludingProtectedRequestId,
                 mode: mode,
                 messagePriority: messagePriority
             )
-            guard generation == refreshGeneration else { return }
+            guard generation == refreshGeneration else { return false }
             refreshTask = nil
+            return refreshed
         }
         refreshTask = (mode, task)
-        await task.value
+        let refreshed = await task.value
+        return refreshed && !Task.isCancelled
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
@@ -2220,17 +2225,17 @@ final class PaykitPaymentRequestManager {
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
         mode: PaykitPaymentRequestRefreshMode,
         messagePriority: PaykitSdkOperationLock.Priority
-    ) async {
+    ) async -> Bool {
         do {
             let snapshot = try await service.synchronize(mode: mode, priority: .background, messagePriority: messagePriority)
-            guard generation == refreshGeneration, let activeIdentity else { return }
+            guard generation == refreshGeneration, let activeIdentity else { return false }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
             let (locallyCompletedProofKinds, locallyInFlightRequestIds) = await (completedProofKinds, inFlightRequestIds)
             let locallyCompletedRequestIds = Set(locallyCompletedProofKinds.keys)
             guard generation == refreshGeneration,
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
-            else { return }
+            else { return false }
             pruneAcceptedRequestIds(snapshot.history, identity: activeIdentity)
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
@@ -2332,12 +2337,15 @@ final class PaykitPaymentRequestManager {
             persistPresentedRequestIds()
             discardExpiredRequests(handledRequestedExpirationId: handledRequestedExpirationId)
             schedulePresentationRetry()
+            return generation == refreshGeneration &&
+                PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity) && !Task.isCancelled
         } catch is CancellationError {
-            return
+            return false
         } catch {
-            guard generation == refreshGeneration else { return }
+            guard generation == refreshGeneration else { return false }
             discardExpiredRequests()
             logWarning("Failed to refresh incoming Paykit payment requests: \(error)")
+            return false
         }
     }
 

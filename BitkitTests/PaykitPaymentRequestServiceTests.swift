@@ -55,7 +55,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 let overlappingRefreshStarted = expectation(description: context)
                 let overlappingRefresh = Task {
                     overlappingRefreshStarted.fulfill()
-                    await manager.refresh(mode: requestedMode)
+                    return await manager.refresh(mode: requestedMode)
                 }
                 await fulfillment(of: [overlappingRefreshStarted], timeout: 1)
 
@@ -64,8 +64,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertEqual(pausedSnapshot.receiveCallCount, initialMode >= .inbox ? 1 : 0, context)
                 XCTAssertEqual(pausedSnapshot.paymentRequestListCallCount, 1, context)
                 await sdk.resumePaymentRequestList()
-                await initialRefresh.value
-                await overlappingRefresh.value
+                let initialSucceeded = await initialRefresh.value
+                let overlappingSucceeded = await overlappingRefresh.value
+                XCTAssertTrue(initialSucceeded, context)
+                XCTAssertTrue(overlappingSucceeded, context)
 
                 let upgrades = requestedMode > initialMode
                 let snapshot = await sdk.snapshot()
@@ -87,6 +89,46 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testStoredRefreshReportsCoalescedFailureBeforeLoadingSubscriptions() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: timestamp(now), anchor: timestamp(now), endsAt: nil
+        )
+        let record = try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence)
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await sdk.setReceiveError(.receive)
+        await sdk.pauseNextProcess()
+        let fullRefresh = Task { await manager.refresh() }
+        try await waitUntil { await sdk.processIsPaused() }
+
+        let storedRefreshStarted = expectation(description: "Stored subscription refresh started")
+        let storedRefresh = Task {
+            storedRefreshStarted.fulfill()
+            return await manager.refresh(mode: .stored)
+        }
+        await fulfillment(of: [storedRefreshStarted], timeout: 1)
+        await sdk.resumeProcess()
+        let fullSucceeded = await fullRefresh.value
+        let storedSucceeded = await storedRefresh.value
+
+        XCTAssertFalse(fullSucceeded)
+        XCTAssertFalse(storedSucceeded)
+        XCTAssertTrue(manager.subscriptions.isEmpty)
+        let failedSnapshot = await sdk.snapshot()
+        XCTAssertEqual(failedSnapshot.paymentRequestListCallCount, 0)
+
+        let retrySucceeded = await manager.refresh(mode: .stored)
+        XCTAssertTrue(retrySucceeded)
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertEqual(request.paymentRequestId, record.paymentRequestId)
+        XCTAssertNotNil(request.billingPeriod)
+        XCTAssertTrue(manager.markPresentedIfPending(request))
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertTrue(manager.requestPresentation(request))
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+    }
+
     func testFreshRefreshRereadsRequestsChangedAfterSnapshot() async throws {
         let record = try paymentRequestRecord()
         let sdk = PaymentRequestSdkMock(records: [record])
@@ -103,7 +145,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
         await fulfillment(of: [refreshStarted], timeout: 1)
         await sdk.resumePaymentRequestList()
-        await first.value
+        _ = await first.value
         await fresh.value
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
@@ -157,7 +199,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
         await fulfillment(of: [refreshStarted], timeout: 1)
         await center.resumePendingRequests()
-        await first.value
+        _ = await first.value
         await afterFailure.value
 
         XCTAssertEqual(manager.pendingRequests.map(\.id), [requestId])
@@ -186,7 +228,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
                 manager.clear()
                 await sdk.resumePaymentRequestList()
-                await initialRefresh.value
+                _ = await initialRefresh.value
                 await overlappingRefresh.value
 
                 XCTAssertTrue(manager.pendingRequests.isEmpty, context)
@@ -214,7 +256,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         fullRefresh.cancel()
         await sdk.resumePaymentRequestList()
-        await storedRefresh.value
+        _ = await storedRefresh.value
         await fullRefresh.value
 
         XCTAssertEqual(manager.pendingRequests.count, 1)
@@ -244,7 +286,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             default: manager.activate(identity: "pubky\(String(repeating: "y", count: 52))")
             }
             await sdk.resumePaymentRequestList()
-            await first.value
+            _ = await first.value
             await fresh.value
 
             let snapshot = await sdk.snapshot()
@@ -3632,7 +3674,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
 
         await sdk.resumePaymentRequestList()
-        await refresh.value
+        _ = await refresh.value
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
         XCTAssertTrue(manager.requestPresentation(request))
         XCTAssertEqual(manager.requestsForPresentation(), [request])
@@ -4047,7 +4089,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         ).isEmpty)
 
         await notificationCenter.resumePendingRequests()
-        await refreshTask.value
+        _ = await refreshTask.value
     }
 
     func testRefreshPreservesUnavailableOutcomeForRequestedPresentation() async throws {
@@ -4131,7 +4173,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 0)
         await notificationCenter.resumePendingRequests()
-        await refreshTask.value
+        _ = await refreshTask.value
 
         let dispatches = IncomingPaykitPaymentRequestPresentationDispatcher.handleStateChange(
             from: previous,
@@ -4177,7 +4219,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
 
         await notificationCenter.resumePendingRequests()
-        await refreshTask.value
+        _ = await refreshTask.value
 
         XCTAssertEqual(manager.pendingRequests, [retriedRequest])
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
@@ -5397,8 +5439,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await waitUntil { await sdk.paymentRequestListIsPaused() }
         try await manager.prepareForPayment(request)
         await sdk.resumePaymentRequestList()
-        await refreshTask.value
+        let refreshed = await refreshTask.value
 
+        XCTAssertFalse(refreshed)
         XCTAssertTrue(manager.pendingRequests.isEmpty)
     }
 
