@@ -315,6 +315,10 @@ enum PubkyService {
         try await PaykitSdkService.shared.removeContact(publicKey: publicKey)
     }
 
+    static func removeContacts(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
+        try await PaykitSdkService.shared.removeContacts(publicKeys: publicKeys)
+    }
+
     static func resolveContactProfile(
         publicKey: String,
         allowPubkyProfileFallback: Bool,
@@ -827,6 +831,22 @@ actor PaykitSdkService {
             }
             _ = try await sdk.blockPeer(counterparty: publicKey)
             return try await sdk.removeContact(publicKey: publicKey)
+        }
+    }
+
+    func removeContacts(publicKeys: [String]) async throws -> [Paykit.ContactRecord] {
+        guard !publicKeys.isEmpty else { return [] }
+        return try await withStateRevisionTracking { sdk in
+            let now = Date()
+            let subscribedKeys = try await Set(sdk.paymentRequests().filter {
+                $0.state == .activeRecurring &&
+                    ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
+            }.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
+            let removableKeys = publicKeys.filter {
+                PubkyPublicKeyFormat.normalized($0).map { !subscribedKeys.contains($0) } == true
+            }
+            guard !removableKeys.isEmpty else { return [] }
+            return try await sdk.removeContactsAndBlockPeers(publicKeys: removableKeys)
         }
     }
 

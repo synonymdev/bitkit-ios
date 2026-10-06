@@ -1284,6 +1284,23 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(preparedKeys, [[publicKey]])
     }
 
+    func testProfileDeletionDefersPreparationUntilDeletionEnds() async {
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        _ = await service.rememberSavedContacts([publicKey], replacing: true)
+        await service.beginProfileDeletion()
+        await service.scheduleContactPreparation([publicKey]) { _, _ in
+            XCTFail("Profile deletion must not enqueue preparation")
+        }
+        let pausedTask = await service.preparationTask
+        XCTAssertNil(pausedTask)
+
+        await service.endProfileDeletion()
+        let prepared = expectation(description: "Preparation resumes")
+        await service.scheduleContactPreparation([publicKey]) { _, _ in prepared.fulfill() }
+        await fulfillment(of: [prepared], timeout: 2)
+    }
+
     func testResumingPublicationRetainsCleanupOnlyWhenRestorationFails() async {
         let service = PrivatePaykitService()
         for fails in [false, true] {

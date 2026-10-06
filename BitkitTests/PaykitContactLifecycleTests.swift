@@ -71,6 +71,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
             } catch let PubkyServiceError.activeSubscription(endsAt) {
                 XCTAssertEqual(endsAt, testCase.endsAt.flatMap(PaykitPaymentRequest.parseDate))
             }
+            let skipped = try await service.removeContacts(publicKeys: [sdk.publicKey])
+            XCTAssertTrue(skipped.isEmpty)
             XCTAssertNotNil(sdk.record)
             XCTAssertTrue(sdk.events.isEmpty)
             if testCase.endsAt != nil {
@@ -79,6 +81,10 @@ final class PaykitContactLifecycleTests: XCTestCase {
                 sdk.requests[0].state = .canceled
             }
             _ = try await service.removeContact(publicKey: sdk.publicKey)
+            XCTAssertNil(sdk.record)
+            _ = try await sdk.saveContact(update: ContactUpdate(publicKey: sdk.publicKey, label: "Contact"))
+            let removed = try await service.removeContacts(publicKeys: [sdk.publicKey])
+            XCTAssertEqual(removed.map(\.publicKey), [sdk.publicKey])
             XCTAssertNil(sdk.record)
         }
     }
@@ -417,6 +423,14 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
         events.append("remove")
         defer { record = nil }
         return record
+    }
+
+    override func removeContactsAndBlockPeers(publicKeys: [String]) async throws -> [ContactRecord] {
+        guard publicKeys.contains(publicKey), let record else { return [] }
+        events.append("block-and-remove")
+        self.record = nil
+        peers[0].state = .blocked
+        return [record]
     }
 
     override func saveContact(update: ContactUpdate) async throws -> ContactRecord {

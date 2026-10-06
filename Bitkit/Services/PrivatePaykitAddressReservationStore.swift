@@ -295,12 +295,16 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func clearContactAssignment(publicKey: String) {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        clearContactAssignments(publicKeys: [publicKey])
+    }
+
+    func clearContactAssignments(publicKeys: [String]) {
+        let normalizedKeys = Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized))
 
         let previousCount = ledger.contactAssignments.count
         let previousHistoryCount = ledger.contactAssignmentHistory.count
-        ledger.contactAssignments.removeValue(forKey: normalizedKey)
-        ledger.contactAssignmentHistory.removeValue(forKey: normalizedKey)
+        ledger.contactAssignments = ledger.contactAssignments.filter { !normalizedKeys.contains($0.key) }
+        ledger.contactAssignmentHistory = ledger.contactAssignmentHistory.filter { !normalizedKeys.contains($0.key) }
         let removedCurrent = ledger.contactAssignments.count != previousCount
         let removedHistory = ledger.contactAssignmentHistory.count != previousHistoryCount
         guard removedCurrent || removedHistory else { return }

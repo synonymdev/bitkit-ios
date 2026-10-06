@@ -1874,7 +1874,10 @@ final class ContactsManagerTests: XCTestCase {
         let blockingRead = try await holdTheOnlyReadSlot(slot)
         let lookups = HeldProfileLookups(profiles: [contactProfileKey: "Alice", unresolvedFollowKey: "Bob"])
         let records = [unprofiledRecord(key: contactProfileKey, label: "First"), unprofiledRecord(key: unresolvedFollowKey, label: "Second")]
-        let manager = ContactsManager(contactRecords: { records }, removeContactRecord: { _ in }, forgetRemovedContacts: { _ in })
+        let manager = ContactsManager(contactRecords: { records }, removeContactRecords: { keys in
+            XCTAssertEqual(Set(keys), Set(records.map(\.publicKey)))
+            return records
+        }, forgetRemovedContacts: { _ in })
         try await manager.loadContacts(
             for: "owner",
             fetchContactRecords: { records },

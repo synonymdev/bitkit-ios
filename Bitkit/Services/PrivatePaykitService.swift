@@ -76,6 +76,7 @@ actor PrivatePaykitService {
     var preparationTask: Task<Void, Never>?
     var pendingPreparationOperation: (([String], Bool) async -> Void)?
     var preparationGeneration = 0
+    var isDeletingProfile = false
     var pendingForceRefreshLightning = false
     var unavailableLinkRetryAt: [String: Date] = [:]
     var pendingMessageDrainRetryTask: Task<Void, Never>?

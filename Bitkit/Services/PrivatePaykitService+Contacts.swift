@@ -161,6 +161,7 @@ extension PrivatePaykitService {
         requeueActive: Bool = false,
         operation: @escaping ([String], Bool) async -> Void
     ) {
+        guard !isDeletingProfile else { return }
         let keys = publicKeys.filter { requeueActive || forceRefreshLightning || !activePreparationKeys.contains($0) }
         guard !keys.isEmpty else { return }
         pendingPreparationKeys.formUnion(keys)
@@ -196,6 +197,15 @@ extension PrivatePaykitService {
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
         pendingMessageDrainRetryGeneration += 1
+    }
+
+    func beginProfileDeletion() {
+        isDeletingProfile = true
+        invalidateContactPreparation()
+    }
+
+    func endProfileDeletion() {
+        isDeletingProfile = false
     }
 
     @discardableResult
@@ -372,12 +382,14 @@ extension PrivatePaykitService {
             knownSavedContactKeys.remove(publicKey)
             unavailableLinkRetryAt[publicKey] = nil
         }
+        if isDeletingProfile {
+            await clearContactStates(publicKeys: normalizedKeys)
+            return
+        }
         Self.markDeletedContactCleanupPending(normalizedKeys)
         do {
             try await removePublishedEndpoints(for: normalizedKeys)
-            for publicKey in normalizedKeys {
-                await clearContactState(publicKey: publicKey)
-            }
+            await clearContactStates(publicKeys: normalizedKeys)
         } catch {
             Logger.warn("Failed to remove private Paykit endpoints for deleted contacts: \(error)", context: "PrivatePaykit")
         }
@@ -393,17 +405,21 @@ extension PrivatePaykitService {
         let cleanupKeys = staleKeys.union(Self.pendingDeletedContactCleanupKeys().subtracting(savedKeys))
         guard !cleanupKeys.isEmpty else { return }
 
+        if isDeletingProfile {
+            await clearContactStates(publicKeys: Array(staleKeys))
+            return
+        }
+
         do {
             try await removePublishedEndpoints(for: Array(cleanupKeys))
-            for publicKey in staleKeys {
-                await clearContactState(publicKey: publicKey)
-            }
+            await clearContactStates(publicKeys: Array(staleKeys))
         } catch {
             Logger.warn("Failed to prune private Paykit endpoints for unsaved contacts: \(error)", context: "PrivatePaykit")
         }
     }
 
     func retryPendingEndpointReconciliation(wallet: WalletViewModel, savedPublicKeys publicKeys: [String]) async {
+        guard !isDeletingProfile else { return }
         let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
         let isFullCleanupPending = UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
         if isFullCleanupPending,
@@ -438,9 +454,7 @@ extension PrivatePaykitService {
 
         do {
             try await removePublishedEndpoints(for: isFullCleanupPending ? nil : Array(cleanupKeys))
-            for publicKey in cleanupKeys where !savedKeys.contains(publicKey) {
-                await clearContactState(publicKey: publicKey)
-            }
+            await clearContactStates(publicKeys: Array(cleanupKeys.subtracting(savedKeys)))
             if isFullCleanupPending {
                 Self.setContactSharingCleanupPending(false)
             }

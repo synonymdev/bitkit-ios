@@ -148,6 +148,7 @@ class ContactsManager: ObservableObject {
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
     private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String, _ expectedIdentity: String) async throws -> Void
     private let removeContactRecord: @Sendable (_ publicKey: String) async throws -> Void
+    private let removeContactRecords: @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord]
     private let forgetRemovedContacts: @Sendable (_ publicKeys: [String]) async -> Void
     private let currentDate: @Sendable () -> Date
 
@@ -163,6 +164,9 @@ class ContactsManager: ObservableObject {
         removeContactRecord: @escaping @Sendable (_ publicKey: String) async throws -> Void = {
             _ = try await PubkyService.removeContact(publicKey: $0)
         },
+        removeContactRecords: @escaping @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord] = {
+            try await PubkyService.removeContacts(publicKeys: $0)
+        },
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
         },
@@ -173,6 +177,7 @@ class ContactsManager: ObservableObject {
         self.fetchRemoteProfile = fetchRemoteProfile
         self.saveContactLabel = saveContactLabel
         self.removeContactRecord = removeContactRecord
+        self.removeContactRecords = removeContactRecords
         self.forgetRemovedContacts = forgetRemovedContacts
         self.currentDate = currentDate
     }
@@ -840,7 +845,7 @@ class ContactsManager: ObservableObject {
     func deleteAllContacts() async throws {
         stopProfileRefresh()
         let contactRecords = contactRecords
-        let removeContactRecord = removeContactRecord
+        let removeContactRecords = removeContactRecords
         let records: [ContactRecord]
         do {
             records = try await Task.detached {
@@ -858,35 +863,17 @@ class ContactsManager: ObservableObject {
             return
         }
 
-        var deletedKeys = Set<String>()
-        var firstError: Error?
-
-        for record in records {
-            guard let contactKey = PubkyPublicKeyFormat.normalized(record.publicKey) else { continue }
-            do {
-                try await Task.detached {
-                    try await removeContactRecord(contactKey)
-                }.value
-                deletedKeys.insert(contactKey)
-            } catch {
-                firstError = firstError ?? error
-                Logger.warn("Failed to delete contact '\(PubkyPublicKeyFormat.redacted(contactKey))': \(error)", context: "ContactsManager")
-            }
-        }
-
-        if let firstError {
-            if !deletedKeys.isEmpty {
-                await forgetRemovedContacts(Array(deletedKeys))
-                for publicKey in deletedKeys {
-                    Self.removeContactProfileOverride(publicKey: publicKey)
-                }
-                contacts.removeAll { deletedKeys.contains($0.publicKey) }
-            }
-            throw firstError
+        let keys = records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
+        let removed = try await Task.detached { try await removeContactRecords(keys) }.value
+        let deletedKeys = Set(removed.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
+        await forgetRemovedContacts(Array(deletedKeys))
+        Self.removeContactProfileOverrides(publicKeys: deletedKeys)
+        contacts.removeAll { deletedKeys.contains($0.publicKey) }
+        guard deletedKeys.isSuperset(of: keys) else {
+            throw PrivatePaykitError.privateUnavailable
         }
 
         // All remote deletes succeeded, so clear any local-only contacts too.
-        await forgetRemovedContacts(Array(deletedKeys))
         Self.clearContactProfileOverrides()
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
@@ -1170,9 +1157,12 @@ class ContactsManager: ObservableObject {
 
     private nonisolated static func removeContactProfileOverride(publicKey: String) {
         guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        var overrides = loadContactProfileOverrides()
-        overrides.removeValue(forKey: prefixedKey)
-        saveContactProfileOverrides(overrides)
+        removeContactProfileOverrides(publicKeys: [prefixedKey])
+    }
+
+    private nonisolated static func removeContactProfileOverrides(publicKeys: Set<String>) {
+        guard !publicKeys.isEmpty else { return }
+        saveContactProfileOverrides(loadContactProfileOverrides().filter { !publicKeys.contains($0.key) })
     }
 
     private nonisolated static func clearContactProfileOverrides() {

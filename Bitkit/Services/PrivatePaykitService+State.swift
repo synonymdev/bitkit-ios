@@ -20,18 +20,25 @@ extension PrivatePaykitService {
     }
 
     func clearContactState(publicKey: String) async {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        unavailableLinkRetryAt[normalizedKey] = nil
-        privatePaymentListConsumptions = privatePaymentListConsumptions.filter { $0.key.publicKey != normalizedKey }
-        let consumedVersion = state.contacts[normalizedKey]?.consumedPrivatePaymentListVersion
-        if consumedVersion == nil {
-            state.contacts[normalizedKey] = nil
-        } else {
-            var contactState = ContactState()
-            contactState.consumedPrivatePaymentListVersion = consumedVersion
-            state.contacts[normalizedKey] = contactState
+        await clearContactStates(publicKeys: [publicKey])
+    }
+
+    func clearContactStates(publicKeys: [String]) async {
+        let keys = Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized))
+        guard !keys.isEmpty else { return }
+        privatePaymentListConsumptions = privatePaymentListConsumptions.filter { !keys.contains($0.key.publicKey) }
+        for key in keys {
+            unavailableLinkRetryAt[key] = nil
+            let consumedVersion = state.contacts[key]?.consumedPrivatePaymentListVersion
+            if consumedVersion == nil {
+                state.contacts[key] = nil
+            } else {
+                var contactState = ContactState()
+                contactState.consumedPrivatePaymentListVersion = consumedVersion
+                state.contacts[key] = contactState
+            }
         }
-        await PrivatePaykitAddressReservationStore.shared.clearContactAssignment(publicKey: normalizedKey)
+        await PrivatePaykitAddressReservationStore.shared.clearContactAssignments(publicKeys: Array(keys))
         persistState(markWalletBackup: true)
     }
 
