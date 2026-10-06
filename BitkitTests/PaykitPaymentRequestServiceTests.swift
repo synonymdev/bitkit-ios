@@ -1388,9 +1388,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             (paymentRequestRecord(id: "missing-terms"), .missingTerms),
             (paymentRequestRecord(id: "wrong-asset", asset: "BTC"), .unsupportedAsset),
             (
-                paymentRequestRecord(id: "payment-deadline", paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(3600)))),
+                paymentRequestRecord(id: "payment-deadline", paymentDeadline: .periodStart(seconds: 3600)),
                 .unsupportedPaymentDeadline
             ),
+            (paymentRequestRecord(id: "invalid-deadline", paymentDeadline: .at(timestamp: "invalid")), .invalidPaymentDeadline),
             (paymentRequestRecord(id: "invalid-amount", amount: "not-bitcoin"), .invalidAmount),
             (paymentRequestRecord(id: "amount-out-of-range", amount: "184467440737.09551615"), .amountOutOfRange),
             (paymentRequestRecord(id: "unsupported-endpoint", endpoints: ["btc-unsupported-method"]), .noSupportedEndpoint),
@@ -1411,6 +1412,204 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 continue
             }
             XCTAssertEqual(failure, expectedFailure)
+        }
+    }
+
+    func testAbsolutePaymentDeadlineIsInclusiveAndIndependentOfProposalExpiry() throws {
+        let now = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-15T08:00:00.500Z"))
+        let cases: [(String, Bool)] = [
+            ("2027-01-15T08:00:01Z", true),
+            ("2027-01-15T08:00:00.500000001Z", true),
+            ("2027-01-15T08:00:00.500Z", true),
+            ("2027-01-15T08:00:00.499999999Z", false),
+            ("2027-01-15T08:00:00Z", false),
+            ("2027-01-15T08:00:01+00:00", false),
+            ("not-a-timestamp", false),
+        ]
+        for (deadline, isTimely) in cases {
+            for state in [PaymentRequestLifecycleState.proposed, .accepted] {
+                let record = try paymentRequestRecord(
+                    state: state,
+                    expiresAt: timestamp(now.addingTimeInterval(state == .accepted ? -60 : 60)),
+                    paymentDeadline: .at(timestamp: deadline)
+                )
+                let request = PaykitPaymentRequest(record: record, now: now)
+                XCTAssertEqual(request != nil, isTimely, "\(state), \(deadline)")
+                if let request {
+                    XCTAssertFalse(request.isExpired(at: now))
+                    XCTAssertEqual(request.paymentDeadline, PaykitPreciseInstant(timestamp: deadline))
+                    XCTAssertEqual(request.updatingLifecycleState(.accepted).paymentDeadline, request.paymentDeadline)
+                }
+            }
+        }
+    }
+
+    func testPaymentDeadlineCrossingDuringPreparationDoesNotApprovePayment() async throws {
+        for stage in ["before", "consume", "accept"] {
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            let clock = PaymentRequestTestClock(now)
+            let record = try paymentRequestRecord(paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(1))))
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let manager = paymentRequestManager(sdk: sdk, clock: clock)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            if stage == "before" { clock.advance(by: 2) }
+            if stage == "accept" { await sdk.pauseNextAccept() }
+
+            let preparation = Task {
+                try await manager.prepareForPayment(request) {
+                    if stage == "consume" { clock.advance(by: 2) }
+                }
+            }
+            if stage == "accept" {
+                try await waitUntil { await sdk.acceptIsPaused() }
+                clock.advance(by: 2)
+                await sdk.resumeAccept()
+            }
+            do {
+                try await preparation.value
+                XCTFail("Expired preparation must not approve payment: \(stage)")
+            } catch {
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired, stage)
+            }
+            XCTAssertFalse(manager.isApprovedForPayment(request), stage)
+            let accepted = await sdk.snapshot().acceptedRequests
+            XCTAssertEqual(accepted.count, stage == "accept" ? 1 : 0, stage)
+        }
+    }
+
+    func testPaymentDeadlineIsRecheckedAfterAuthorizationInEverySoftwareSendRoute() async throws {
+        for route in ["lightning", "lnurl", "onchain"] {
+            for expiryStage in ["timely", "preparation", "authorization"] {
+                let crossesDeadline = expiryStage != "timely"
+                let now = Date(timeIntervalSince1970: 1_800_000_000)
+                let clock = PaymentRequestTestClock(now)
+                let record = try paymentRequestRecord(
+                    expiresAt: timestamp(now.addingTimeInterval(1)),
+                    paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(10)))
+                )
+                let sdk = PaymentRequestSdkMock(records: [record])
+                let manager = paymentRequestManager(sdk: sdk, clock: clock)
+                await manager.refresh()
+                let request = try XCTUnwrap(manager.pendingRequests.first)
+                try await manager.prepareForPayment(request)
+                clock.advance(by: 10)
+                XCTAssertTrue(manager.isApprovedForPayment(request), "Acceptance survives proposal expiry")
+                // Fee calculation, PIN confirmation and LNURL retrieval all finish before this authorization.
+                if expiryStage == "preparation" { clock.advance(by: 0.001) }
+                else { await sdk.pauseNextLinkedPeers() }
+
+                var sent = false
+                var authorizationFailed = false
+                let authorize: (PaykitPaymentRequest) async throws -> Void = { try await manager.ensurePaymentAllowed($0) }
+                let onFailure: (Error) async -> Void = { _ in authorizationFailed = true }
+                let execution = Task {
+                    switch route {
+                    case "lightning":
+                        try await SendConfirmationView.sendLightningPayment(
+                            request: request, authorize: authorize, onAuthorizationFailure: onFailure
+                        ) { sent = true }
+                    case "lnurl":
+                        try await LnurlPayConfirm.sendLightningPayment(
+                            request: request, authorize: authorize, onAuthorizationFailure: onFailure
+                        ) { sent = true }
+                    default:
+                        try await SendConfirmationView.sendOnchainPayment(
+                            request: request, prepareBroadcast: { _ in }, authorize: authorize,
+                            onAuthorizationFailure: onFailure, onAuthorized: { _ in },
+                            send: { beforeBroadcastAttempt in
+                                try await beforeBroadcastAttempt()
+                                sent = true
+                            }
+                        )
+                    }
+                }
+                if expiryStage != "preparation" {
+                    try await waitUntil { await sdk.linkedPeersIsPaused() }
+                    if expiryStage == "authorization" { clock.advance(by: 0.001) }
+                    await sdk.resumeLinkedPeers()
+                }
+                do {
+                    try await execution.value
+                    XCTAssertFalse(crossesDeadline, route)
+                } catch {
+                    XCTAssertTrue(crossesDeadline, route)
+                    XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired, route)
+                }
+                XCTAssertEqual(sent, !crossesDeadline, route)
+                XCTAssertEqual(authorizationFailed, crossesDeadline, route)
+            }
+        }
+    }
+
+    func testPaymentDeadlineIsCheckedInsideTheLdkSubmissionQueue() async throws {
+        for crossesDeadline in [false, true] {
+            let clock = PaymentRequestTestClock(Date(timeIntervalSince1970: 1_800_000_000))
+            let deadline = PaykitPreciseInstant(date: clock.now().addingTimeInterval(1))
+            let blocked = expectation(description: "LDK queue blocked")
+            let submissionStarted = expectation(description: "submission queued")
+            let release = DispatchSemaphore(value: 0)
+            defer { release.signal() }
+            let blocker = Task {
+                try await Bitkit.ServiceQueue.background(.ldk) {
+                    blocked.fulfill()
+                    XCTAssertEqual(release.wait(timeout: .now() + 5), .success)
+                }
+            }
+            await fulfillment(of: [blocked], timeout: 2)
+            let submission = Task {
+                submissionStarted.fulfill()
+                return try await Bitkit.LightningService.submitPayment(beforeSubmission: {
+                    try PaykitPaymentRequest.checkPaymentDeadline(deadline, at: clock.now())
+                }) { "submitted" }
+            }
+            await fulfillment(of: [submissionStarted], timeout: 2)
+            clock.advance(by: crossesDeadline ? 1.001 : 1)
+            release.signal()
+            try await blocker.value
+            do {
+                let result = try await submission.value
+                XCTAssertFalse(crossesDeadline)
+                XCTAssertEqual(result, "submitted")
+            } catch {
+                XCTAssertTrue(crossesDeadline)
+                XCTAssertEqual((error as? Bitkit.AppError)?.underlyingError as? PaykitPaymentRequestError, .requestExpired)
+                XCTAssertTrue(PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error))
+                XCTAssertEqual(SendConfirmationView.privatePaymentListOutcomeAfterFailure(
+                    currentOutcome: .uncertain, walletType: .onchain, onchainPaymentStarted: true, error: error
+                ), .definitePreBroadcastFailure)
+            }
+        }
+    }
+
+    func testExpiredAcceptedRequestIsNotReinsertedAfterSdkLookup() async throws {
+        for isRetry in [false, true] {
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            let clock = PaymentRequestTestClock(now)
+            var record = try paymentRequestRecord(paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(1))))
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let manager = paymentRequestManager(sdk: sdk, clock: clock)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            try await manager.prepareForPayment(request)
+            record.state = .accepted
+            await sdk.setRecords([record])
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            await sdk.pauseNextPaymentRequestList()
+            let lookup = Task {
+                if isRetry {
+                    let retried = await manager.paymentRequestForRetry(request.id)
+                    XCTAssertNil(retried)
+                } else {
+                    await manager.finishPayment(request)
+                }
+            }
+            try await waitUntil { await sdk.paymentRequestListIsPaused() }
+            clock.advance(by: 2)
+            await sdk.resumePaymentRequestList()
+            await lookup.value
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            XCTAssertFalse(manager.isApprovedForPayment(request))
         }
     }
 
@@ -1517,11 +1716,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             paymentRequestRecord(id: "outgoing", state: .proposed, role: .payee),
             paymentRequestRecord(id: "recurring", state: .activeRecurring),
             paymentRequestRecord(id: "unsupported", state: .canceled, endpoints: ["btc-unsupported-method"]),
-            paymentRequestRecord(id: "deadline-proposed", paymentDeadline: .at(timestamp: timestamp(now))),
-            paymentRequestRecord(id: "deadline-accepted", state: .accepted, paymentDeadline: .at(timestamp: timestamp(now))),
-            paymentRequestRecord(id: "deadline-paid", state: .proofSubmitted, paymentDeadline: .at(timestamp: timestamp(now))),
-            paymentRequestRecord(id: "deadline-canceled", state: .canceled, paymentDeadline: .at(timestamp: timestamp(now))),
-            paymentRequestRecord(id: "deadline-rejected", state: .rejected, paymentDeadline: .at(timestamp: timestamp(now))),
+            paymentRequestRecord(id: "deadline-proposed", paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(-1)))),
+            paymentRequestRecord(id: "deadline-accepted", state: .accepted, paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(-1)))),
+            paymentRequestRecord(id: "deadline-paid", state: .proofSubmitted, paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(-1)))),
+            paymentRequestRecord(id: "deadline-canceled", state: .canceled, paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(-1)))),
+            paymentRequestRecord(id: "deadline-rejected", state: .rejected, paymentDeadline: .at(timestamp: timestamp(now.addingTimeInterval(-1)))),
         ]
         let manager = paymentRequestManager(
             sdk: PaymentRequestSdkMock(records: records),

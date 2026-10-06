@@ -175,10 +175,17 @@ the SDK and can push the Pay step well past the budget.
 
 ## Payment deadline history
 
-`payment-deadline-history.xml` covers rc56 requests with actual-payment deadlines.
-Bitkit keeps their lifecycle and paid-period history, and subscription cancellation,
-but does not accept them, offer payments, or schedule payment reminders. The journey
-requires a controlled rc56 peer to prepare the accepted and paid records; repository
+`absolute-payment-deadline.xml` verifies valid absolute deadlines, acceptance before proposal expiry,
+retry after proposal expiry, expiry during invoice retrieval, and proof reconciliation after the deadline.
+It matches Android's journey, using the iOS `Retry` accessibility identifier.
+
+`payment-deadline-history.xml` covers expired one-time actual-payment deadlines and
+unsupported recurring deadlines. Bitkit keeps their lifecycle and paid-period history,
+and subscription cancellation, but does not offer expired or unsupported payments.
+Future one-time absolute deadlines are supported, including fractional UTC timestamps;
+the deadline is inclusive and is checked again at payment submission. Proposal expiry
+does not expire an already-accepted payment, and proof delivery may finish after the payment deadline.
+The journey requires a controlled shared-runtime peer to prepare the accepted and paid records; repository
 tests cover these states without sending funds. On iOS, payment-history rows show notes
 or dates rather than lifecycle labels. On Android, unpaid history rows show lifecycle
 labels, while paid rows show subscription names, notes, or dates. Active subscriptions

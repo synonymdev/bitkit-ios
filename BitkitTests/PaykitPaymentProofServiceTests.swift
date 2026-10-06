@@ -53,9 +53,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
-    func testCompletedLightningPaymentRetriesAfterRestart() async throws {
-        let record = try paymentRequestRecord()
-        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+    func testCompletedLightningPaymentRetriesAfterRestartPastPaymentDeadline() async throws {
+        var record = try paymentRequestRecord()
+        let deadline = Date().addingTimeInterval(-60)
+        record.terms?.paymentDeadline = .at(timestamp: ISO8601DateFormatter().string(from: deadline))
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: deadline.addingTimeInterval(-1)))
+        XCTAssertTrue(request.isPaymentDeadlineExpired(at: Date()))
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         await sdk.setSubmissionFailure(true)
@@ -239,6 +242,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     func testDefiniteLightningSubmissionFailureClearsProof() async throws {
         let errors: [Error] = [
+            PaykitPaymentRequestError.requestExpired,
+            Bitkit.AppError(error: PaykitPaymentRequestError.requestExpired),
             Bitkit.CustomServiceError.nodeNotSetup,
             Bitkit.AppError(serviceError: .nodeNotStarted),
             NodeError.NotRunning(message: "stopped"),

@@ -325,6 +325,7 @@ struct LnurlPayConfirm: View {
                 try await wallet.sendWithTimeout(
                     bolt11: bolt11,
                     sats: nil,
+                    paymentDeadline: incomingPaymentRequest?.paymentDeadline,
                     afterListening: { _ in lightningPaymentSubmitted = true },
                     onTimeout: { timedOutHash in
                         app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -390,7 +391,9 @@ struct LnurlPayConfirm: View {
 
     private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {
         guard let context, let request = context.incomingPaymentRequest else { return }
-        guard !request.isExpired(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+        guard !request.isExpired(at: Date()) || paykitPaymentRequestManager.isApprovedForPayment(request) else {
+            throw PaykitPaymentRequestError.requestExpired
+        }
         guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
         guard let amountSats = wallet.sendAmountSats,
               request.acceptsPaymentAmount(amountSats),

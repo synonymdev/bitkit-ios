@@ -10,7 +10,7 @@ final class PaykitIssuerInteropTests: XCTestCase {
         XCTAssertEqual(fixtures.schemaVersion, 1)
 
         for fixture in fixtures.requestFixtures {
-            let record = try paymentRequestRecord(
+            var record = try paymentRequestRecord(
                 asset: fixture.asset,
                 endpointIdentifiers: fixture.acceptedPaymentEndpointIdentifiers
             )
@@ -18,6 +18,10 @@ final class PaykitIssuerInteropTests: XCTestCase {
 
             XCTAssertEqual(request != nil, fixture.accepted, fixture.name)
             XCTAssertEqual(request?.acceptedPaymentEndpointIdentifiers ?? [], fixture.expectedIdentifiers, fixture.name)
+            record.terms?.paymentDeadline = .at(timestamp: "2099-01-01T00:00:00.123456789Z")
+            let deadlineRequest = PaykitPaymentRequest(record: record, now: Date(), network: fixture.network.ldkNetwork)
+            XCTAssertEqual(deadlineRequest != nil, fixture.accepted, fixture.name)
+            XCTAssertEqual(deadlineRequest?.acceptedPaymentEndpointIdentifiers ?? [], fixture.expectedIdentifiers, fixture.name)
         }
     }
 

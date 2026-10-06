@@ -121,6 +121,7 @@ struct HwSendSignView: View {
                     address: invoice.address,
                     sats: amount,
                     satsPerVByte: UInt64(feeRate),
+                    paymentDeadline: contactPaymentContext?.incomingPaymentRequest?.paymentDeadline,
                     beforeFirstBroadcast: { try await prepareContactPayment(contactPaymentContext) },
                     beforeBroadcastAttempt: { try await authorizeContactPayment(contactPaymentContext) },
                     afterBroadcast: { result in
