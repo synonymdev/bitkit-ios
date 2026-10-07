@@ -123,7 +123,11 @@ final class PaykitUsdtPaymentService {
                     try Task.checkCancellation()
                     if let request = context.incomingPaymentRequest {
                         guard !request.isExpired(at: Date()),
-                              request.acceptsPayment(PaykitAmount(asset: .usdt, atomic: quote.amount), paymentTerms: paymentTerms)
+                              request.acceptsPayment(
+                                  PaykitAmount(asset: .usdt, atomic: quote.amount),
+                                  method: .usdtArbitrum,
+                                  paymentTerms: paymentTerms
+                              )
                         else { throw PaykitPaymentRequestError.amountMismatch }
                     }
                 } catch {
@@ -262,7 +266,7 @@ final class PaykitUsdtPaymentService {
         if let request {
             guard request.acceptedPaymentEndpointIdentifiers.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue),
                   !request.isExpired(at: Date()),
-                  request.acceptsPayment(payment, paymentTerms: paymentTerms)
+                  request.acceptsPayment(payment, method: .usdtArbitrum, paymentTerms: paymentTerms)
             else { throw PaykitPaymentRequestError.amountMismatch }
         }
         let owner = wallet.address.lowercased()
@@ -385,7 +389,7 @@ final class PaykitUsdtPaymentService {
                             $0.wallet == owner && $0.paymentId == payment.paymentId && ($0.identity != identity || $0.requestId != request.id)
                         }) else { continue }
                         let receivedAt = Date(timeIntervalSince1970: TimeInterval(payment.timestamp))
-                        let terms = try request.payment(to: .usdt, at: receivedAt, quoteId: submission.conversionQuoteId)
+                        let terms = try request.payment(using: .usdtArbitrum, at: receivedAt, quoteId: submission.conversionQuoteId)
                         let received = PaykitAmount(asset: .usdt, atomic: payment.amount)
                         current.receipts.removeAll { $0.wallet == owner && $0.identity == identity && $0.paymentId == payment.paymentId }
                         current.receipts.append(Receipt(wallet: owner, identity: identity, requestId: request.id,

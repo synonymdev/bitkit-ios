@@ -372,7 +372,7 @@ struct SendSheet: View {
             if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }
-            wallet.sendAmountSats = request.amount.asset == .btc ? request.amount.atomic : nil
+            wallet.sendAmountSats = try? request.payment(using: app.paykitPaymentMethod).amount.atomic
             incomingPaymentRequest = request
         } else {
             tagManager.clearSelectedTags()
@@ -416,7 +416,7 @@ struct SendSheet: View {
             }
             if let request = incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true {
                 guard isCurrentIncomingRequest(request.id) else { return }
-                guard let amount = try? request.payment(to: .btc).amount.atomic,
+                guard let amount = try? request.payment(using: app.paykitPaymentMethod).amount.atomic,
                       await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id) else { return }
                 guard isCurrentIncomingRequest(request.id) else { return }
                 if !shouldShowSyncOverlay {
@@ -560,7 +560,13 @@ struct SendSheet: View {
             // Original signed bytes only; new-payment balance admission does not apply.
             return .ready
         }
-        let requestedAmount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats
+        if app.contactPaymentContext?.endpoints.isEmpty == false { hasValidatedAfterSync = true; return .ready }
+        let request = app.contactPaymentContext?.incomingPaymentRequest
+        let requestedAmount = try? request?.payment(using: app.paykitPaymentMethod, at: Date()).amount.atomic
+        if request != nil && requestedAmount == nil {
+            app.toast(PaykitAmountError.rateUnavailable)
+            return .failed
+        }
 
         if let lnurlPayData = app.lnurlPayData, let requestedAmount {
             let minimumAmount = max(1, lnurlPayData.minSendableSat)
@@ -620,13 +626,17 @@ struct SendSheet: View {
                     app.scannedOnchainInvoice = onchainInvoice
                     app.scannedLightningInvoice = nil
 
+                    let onchainAmount = try? request?.payment(using: app.paykitPaymentMethod).amount.atomic
+                    if request != nil && onchainAmount == nil { return .failed }
+                    if let onchainAmount { wallet.sendAmountSats = onchainAmount }
+
                     // Validate onchain balance BEFORE navigating
                     let onchainBalance = max(
                         LightningService.shared.balances?.spendableOnchainBalanceSats ?? 0,
                         hwWalletManager.maximumFundingBalanceSats
                     )
                     guard validateOnchainBalanceAndDismissIfInsufficient(
-                        invoiceAmount: requestedAmount ?? onchainInvoice.amountSatoshis,
+                        invoiceAmount: onchainAmount ?? onchainInvoice.amountSatoshis,
                         onchainBalance: onchainBalance
                     ) else {
                         hasValidatedAfterSync = true
@@ -1006,6 +1016,10 @@ struct SendSheet: View {
         let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(publicKey: request.counterparty, attemptId: context?.id)
         do {
             try await prepareIncomingPaymentRequest(context: context)
+            guard context.map(app.ownsContactPaymentContext) == true, !request.isExpired(at: Date()),
+                  paymentTerms != nil || request.amount.asset == .btc,
+                  request.acceptsPaymentAmount(signedTx.totalSpentSats - signedTx.miningFeeSats, method: PublicPaykitService.onchainMethodId(for: address), paymentTerms: paymentTerms)
+            else { throw PaykitPaymentRequestError.amountMismatch }
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                 request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity,
                 signedTx: signedTx, privatePaymentListVersion: privateContext.paymentListVersion,

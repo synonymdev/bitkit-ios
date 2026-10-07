@@ -304,8 +304,7 @@ struct SendAmountView: View {
 
         do {
             if let request = app.contactPaymentContext?.incomingPaymentRequest {
-                let asset: PaykitAsset = app.paykitUsesUsdt ? .usdt : .btc
-                let terms = try request.payment(to: asset)
+                let terms = try request.payment(using: app.paykitPaymentMethod)
                 guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
                 let expected = terms.amount
                 let entered = app.paykitUsesUsdt ? try PaykitAmount(asset: .usdt, value: usdtAmount) : PaykitAmount(asset: .btc, atomic: amountSats)
@@ -414,16 +413,18 @@ struct SendAmountView: View {
 
     private func selectFundingSource(_ source: SendFundingSource) {
         let target: PaykitAsset = source == .usdt ? .usdt : .btc
-        if app.paykitUsesUsdt != (source == .usdt) {
+        if app.contactPaymentContext?.incomingPaymentRequest != nil || app.paykitUsesUsdt != (source == .usdt) {
             do {
                 let value = app.contactPaymentContext?.incomingPaymentRequest?.amount ??
                     (app.paykitUsesUsdt ? (try? PaykitAmount(asset: .usdt, value: usdtAmount)) : PaykitAmount(asset: .btc, atomic: amountSats))
                 if let value, value.atomic > 0 {
-                    let converted = try app.contactPaymentContext?.incomingPaymentRequest?.payment(to: target).amount ?? value.converted(
-                        to: target,
-                        rate: currency.paykitRate,
-                        at: Date()
-                    )
+                    let converted = try app.contactPaymentContext?.incomingPaymentRequest?
+                        .payment(using: source == .usdt ? .usdtArbitrum : app.paykitBitcoinMethod(for: source == .spending ? .lightning : .onchain))
+                        .amount ?? value.converted(
+                            to: target,
+                            rate: currency.paykitRate,
+                            at: Date()
+                        )
                     if target == .usdt { usdtAmount = converted.value }
                     else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
                 }
@@ -460,7 +461,7 @@ struct SendAmountView: View {
         let request = paymentRequests.pendingRequests.first { $0.id == original.id } ?? original
         if request != original { app.contactPaymentContext?.incomingPaymentRequest = request }
         do {
-            let terms = try request.payment(to: app.paykitUsesUsdt ? .usdt : .btc)
+            let terms = try request.payment(using: app.paykitPaymentMethod)
             guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
             let converted = terms.amount
             if app.paykitUsesUsdt { usdtAmount = converted.value }

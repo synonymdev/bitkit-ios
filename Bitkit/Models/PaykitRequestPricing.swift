@@ -20,42 +20,45 @@ struct PaykitRequestPricing: Hashable {
 
     func payment(
         requested: PaykitAmount,
-        asset: PaykitAsset,
+        endpoint: String,
         period: PaykitBillingPeriod?,
         at date: Date,
         quoteId: String? = nil
     ) throws -> Payment {
+        let parts = endpoint.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3, parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && ($0.isLowercase || $0.isNumber) } }),
+              let asset = PaykitAsset(rawValue: String(parts[0]))
+        else { throw PaykitAmountError.invalidAmount }
         let deadline = try paymentDeadline(period: period)
-        if requested.asset == asset {
-            guard quoteId == nil else { throw PaykitAmountError.invalidAmount }
-            return Payment(amount: requested, quoteId: nil, validFrom: nil, expiresAt: deadline)
-        }
-        let rates: [Paykit.ConversionRate]
+        var rates: [Paykit.ConversionRate] = []
         var selected: Paykit.PaymentConversionQuoteRecord?
         switch conversion {
         case let .fixed(values):
             guard quoteId == nil else { throw PaykitAmountError.invalidAmount }
             rates = values
         case .perPeriod:
-            guard let period else { throw PaykitAmountError.invalidAmount }
-            selected = quotes.last { quote in
-                guard let quotedPeriod = PaykitBillingPeriod(sdkPeriod: quote.billingPeriod), quotedPeriod == period else { return false }
-                if let quoteId { return quote.eventId == quoteId }
-                guard let start = PaykitPaymentRequest.parseDate(quote.validFrom),
-                      let end = PaykitPaymentRequest.parseDate(quote.expiresAt)
-                else { return false }
-                return date >= start && date <= end
+            if requested.asset != asset || quoteId != nil {
+                guard let period else { throw PaykitAmountError.invalidAmount }
+                selected = quotes.last { quote in
+                    guard let quotedPeriod = PaykitBillingPeriod(sdkPeriod: quote.billingPeriod), quotedPeriod == period else { return false }
+                    if let quoteId { return quote.eventId == quoteId }
+                    guard let start = PaykitPaymentRequest.parseDate(quote.validFrom),
+                          let end = PaykitPaymentRequest.parseDate(quote.expiresAt)
+                    else { return false }
+                    return date >= start && date <= end
+                }
+                guard let selected else { throw PaykitAmountError.rateUnavailable }
+                if requested.asset != asset { rates = selected.rates }
             }
-            guard let selected else { throw PaykitAmountError.rateUnavailable }
-            rates = selected.rates
         case nil:
-            // External requests without rates can only be paid in their denominating asset.
-            throw PaykitAmountError.rateUnavailable
+            guard quoteId == nil else { throw PaykitAmountError.invalidAmount }
         }
-        guard let rate = rates.first(where: { $0.asset == asset.rawValue }) else { throw PaykitAmountError.rateUnavailable }
+        let selector = parts.prefix(2).joined(separator: "-")
+        let rate = rates.first(where: { $0.asset == selector }) ?? rates.first(where: { $0.asset == asset.rawValue })
+        guard rate != nil || requested.asset == asset else { throw PaykitAmountError.rateUnavailable }
         let quoteExpiry = selected.flatMap { PaykitPaymentRequest.parseDate($0.expiresAt) }
         return try Payment(
-            amount: requested.quoted(to: asset, multiplier: rate.value),
+            amount: requested.quoted(to: asset, multiplier: rate?.value ?? "1"),
             quoteId: selected?.eventId,
             validFrom: selected.flatMap { PaykitPaymentRequest.parseDate($0.validFrom) },
             expiresAt: [deadline, quoteExpiry].compactMap { $0 }.min()

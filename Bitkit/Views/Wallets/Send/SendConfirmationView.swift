@@ -221,7 +221,7 @@ struct SendConfirmationView: View {
     private var shouldAutomaticallyPay: Bool {
         retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app
             .selectedWalletToPayFrom == .lightning &&
-            !hwSend.isActive && !requiresPaymentConfirmation
+            !hwSend.isActive && !requiresPaymentConfirmation && app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
     }
 
     static func acceptedOnchainRoute(
@@ -267,6 +267,8 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if let preparingRequest {
+                    CaptionMText(t("wallet__payment_request_requested_amount"), textColor: .white64)
+                        .padding(.bottom, 8)
                     if preparingRequest.amount.asset == .btc {
                         MoneyStack(sats: Int(clamping: preparingRequest.amount.atomic), showSymbol: true, testIdPrefix: "ReviewAmount")
                     } else {
@@ -366,7 +368,7 @@ struct SendConfirmationView: View {
             if presentationID == nil {
                 presentationID = sheets.activeSheetConfiguration?.presentationID
             }
-            guard preparingRequest == nil else { return }
+            guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
             ensureSendAmountFromScannedInvoicesIfNeeded()
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                 requiresPaymentConfirmation = true
@@ -390,6 +392,7 @@ struct SendConfirmationView: View {
             }
         }
         .onChange(of: app.selectedWalletToPayFrom) {
+            guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
             walletSwitchContext = sendContext
         }
         .onChange(of: sendContext) { _, context in
@@ -1436,7 +1439,9 @@ struct SendConfirmationView: View {
             wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis
         }
 
-        guard let paymentAmount, request.acceptsPaymentAmount(paymentAmount, paymentTerms: app.paykitPaymentTerms) else {
+        guard let paymentAmount,
+              request.acceptsPaymentAmount(paymentAmount, method: app.paykitPaymentMethod, paymentTerms: app.paykitPaymentTerms)
+        else {
             throw PaykitPaymentRequestError.amountMismatch
         }
         guard app.selectedWalletToPayFrom == .lightning else { return }
@@ -1617,6 +1622,18 @@ struct SendConfirmationView: View {
         } else {
             navigationPath = [.manual]
         }
+    }
+
+    private func returnToAmountReviewIfNeeded() -> Bool {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.pricing.conversion != nil else { return false }
+        let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
+        guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()) else {
+            app.paykitPaymentTerms = nil
+            app.paykitReviewedAmount = nil
+            navigationPath = [.amount]
+            return true
+        }
+        return false
     }
 
     private func navigateToAmount() {
