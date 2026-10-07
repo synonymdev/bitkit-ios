@@ -3,7 +3,7 @@ import Foundation
 import Paykit
 import UserNotifications
 
-struct PaykitPreciseInstant: Codable, Comparable, Hashable, Sendable {
+struct PaykitPreciseInstant: Codable, Comparable, Hashable {
     let seconds: Int64
     let nanoseconds: Int
     let timestamp: String
@@ -424,7 +424,6 @@ struct PaykitSubscription: Identifiable, Hashable {
     struct ID: Codable, Hashable {
         let paymentRequestId: String
         let counterparty: String
-        let counterpartyReceiverPath: String
     }
 
     struct Payment: Hashable {
@@ -434,7 +433,6 @@ struct PaykitSubscription: Identifiable, Hashable {
 
     let paymentRequestId: String
     let counterparty: String
-    let counterpartyReceiverPath: String
     let amountValue: String
     let amountSats: UInt64
     let note: String?
@@ -457,8 +455,7 @@ struct PaykitSubscription: Identifiable, Hashable {
     var id: ID {
         ID(
             paymentRequestId: paymentRequestId,
-            counterparty: counterparty,
-            counterpartyReceiverPath: counterpartyReceiverPath
+            counterparty: counterparty
         )
     }
 
@@ -576,7 +573,6 @@ struct PaykitSubscription: Identifiable, Hashable {
 
         paymentRequestId = record.paymentRequestId
         counterparty = record.counterparty
-        counterpartyReceiverPath = record.counterpartyReceiverPath
         amountValue = terms.amount.value
         self.amountSats = amountSats
         note = PaykitPaymentRequest.note(from: terms.metadata).map { String($0.prefix(256)) }
@@ -844,7 +840,6 @@ actor PaykitSubscriptionNotificationScheduler {
                 "payer_identity": payerIdentity,
                 "payment_request_id": subscription.paymentRequestId,
                 "counterparty": subscription.counterparty,
-                "counterparty_receiver_path": subscription.counterpartyReceiverPath,
                 "billing_period_starts_at": PaykitSubscriptionTimestamp.string(from: period.startsAt),
             ]
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
@@ -882,14 +877,14 @@ enum PaykitSubscriptionNotificationIdentifier {
 
     static func identifier(identity: String, subscription: PaykitSubscription, period: PaykitBillingPeriod) -> String {
         "\(prefix)\(identity)|\(subscription.counterparty)|" +
-            "\(subscription.counterpartyReceiverPath)|\(subscription.paymentRequestId)|" +
+            "\(subscription.paymentRequestId)|" +
             PaykitSubscriptionTimestamp.string(from: period.startsAt)
     }
 
     static func identifier(identity: String, requestId: PaykitPaymentRequest.ID) -> String? {
         guard let startsAt = requestId.billingPeriodStartsAt else { return nil }
         return "\(prefix)\(identity)|\(requestId.counterparty)|" +
-            "\(requestId.counterpartyReceiverPath)|\(requestId.paymentRequestId)|" +
+            "\(requestId.paymentRequestId)|" +
             PaykitSubscriptionTimestamp.string(from: startsAt)
     }
 }

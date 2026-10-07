@@ -1,14 +1,15 @@
 <journey name="Payment Request Summary">
   <description>
-    Verifies that the collapsed Payment Request confirmation shows who the request is from and what it is for, keeps the note in the details, and shows "Not specified" in For when the request has no note. Requires two Bitkit instances saved as each other's contacts and linked on receiver path "bitkit/wallet", with the payer funded to cover 21,000 sats; see README.md.
+    Verifies that the collapsed Payment Request confirmation shows who the request is from and what it is for, keeps the note in the details, and shows "Not specified" in For when the request has no note. Requires two Bitkit instances saved as each other's contacts and linked as identities, with the payer funded to cover 21,000 sats; see README.md.
   </description>
   <actions>
     <action>On the requester, send the payer contact a Payment Request for 21,000 sats with the note "Lunch last week"</action>
+    <action>On the requester, verify completion (id "PaymentRequestSent") says "Sent" with "You have sent a payment request", or "Queued" with "Your payment request is queued and will send automatically"; the title and description must agree</action>
     <action>On the payer, verify the Payment Request confirmation screen (id "PaymentRequestConfirm") appears with 21,000 sats without opening the pending Payment Requests bell</action>
     <action>Verify From (id "PaymentRequestFrom") shows the requester's contact name</action>
     <action>Verify For (id "PaymentRequestFor") shows "Lunch last week"</action>
     <action>Tap Show details (id "SendConfirmToggleDetails")</action>
-    <action>Verify From (id "PaymentRequestFrom") and For (id "PaymentRequestFor") are no longer shown, and the recipient (id "ReviewContactRecipient") under Contact is the requester's contact</action>
+    <action>Verify From (id "PaymentRequestFrom") and For (id "PaymentRequestFor") are hidden in details, and the recipient (id "ReviewContactRecipient") under Contact is the requester's contact</action>
     <action>Verify the invoice note (id "PaymentRequestInvoiceNote") shows "Lunch last week"</action>
     <action>Close the Payment Request confirmation screen without paying</action>
     <action>On the requester, send the payer contact a Payment Request for 5,000 sats with no note</action>

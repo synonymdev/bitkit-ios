@@ -605,6 +605,7 @@ class WalletViewModel: ObservableObject {
         address: String,
         sats: UInt64,
         isMaxAmount: Bool = false,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
@@ -623,7 +624,8 @@ class WalletViewModel: ObservableObject {
             sats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
         )
 
         Task {
@@ -933,10 +935,14 @@ class WalletViewModel: ObservableObject {
         bolt11: String,
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         afterListening: (@MainActor (String) -> Void)? = nil,
         onTimeout: (@MainActor (String) -> Void)? = nil
     ) async throws -> SettledLightningPayment {
-        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let hash = try await lightningService.send(
+            bolt11: bolt11, sats: sats,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
+        )
         let paymentHash = String(hash)
         afterListening?(paymentHash)
         return try await waitForLightningPayment(
@@ -1365,7 +1371,7 @@ class WalletViewModel: ObservableObject {
 
     private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         await refreshAndSyncState()
-        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false)
 
         guard isPaykitUIActive else { return }
 
@@ -1429,7 +1435,7 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
         var tagsToMigrate: [String] = []
@@ -1483,7 +1489,7 @@ class WalletViewModel: ObservableObject {
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
 
-        if isPaykitUIActive, sharesPublicPaykitEndpoints {
+        if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
             do {
                 try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
             } catch {

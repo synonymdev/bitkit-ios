@@ -117,9 +117,10 @@ class OnChainHwService {
 
     /// Broadcast a signed raw transaction via Electrum.
     /// - Returns: The transaction ID (txid)
-    func broadcastRawTx(serializedTx: String, electrumUrl: String) async throws -> String {
+    func broadcastRawTx(serializedTx: String, electrumUrl: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
         try await ServiceQueue.background(.core) {
-            try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
+            return try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
         }
     }
 

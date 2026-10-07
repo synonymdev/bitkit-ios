@@ -12,20 +12,9 @@ final class PaykitPublicReadLaneTests: XCTestCase {
                 let resolution = try await service.resolveContactProfile(publicKey: publicKey, allowPubkyProfileFallback: true, priority: .bulk)
                 XCTAssertNil(resolution, "profile lookup")
             }),
-            ("receiver discovery", { service, publicKey in
-                let paths = try await service.discoverRelevantReceiverPaths(publicKey: publicKey, priority: .bulk)
-                XCTAssertEqual(paths, [PaykitReceiverPath.wallet, PaykitReceiverPath.server], "receiver discovery")
-            }),
-            ("payment request receiver paths", { service, publicKey in
-                let paths = try await service.paymentRequestReceiverPaths(publicKey: publicKey, priority: .bulk)
-                XCTAssertEqual(paths, [PaykitReceiverPath.server], "payment request receiver paths")
-            }),
-            ("private receiver path selection", { service, publicKey in
-                let selection = try await service.privateReceiverPathSelection(publicKey: publicKey, savedReceiverPaths: [PaykitReceiverPath.server])
-                XCTAssertEqual(selection.linkableReceiverPaths, [PaykitReceiverPath.server], "private receiver path selection")
-                XCTAssertEqual(selection.publishableReceiverPaths, [PaykitReceiverPath.server], "private receiver path selection")
-                XCTAssertEqual(selection.cleanupProtectedReceiverPaths, [], "private receiver path selection")
-                XCTAssertNil(selection.error, "private receiver path selection")
+            ("payment request capability", { service, publicKey in
+                let canReceive = try await service.canReceivePaymentRequests(publicKey: publicKey, priority: .bulk)
+                XCTAssertTrue(canReceive)
             }),
         ]
         for testCase in cases {
@@ -56,22 +45,6 @@ final class PaykitPublicReadLaneTests: XCTestCase {
                 let result = await task.result
                 XCTAssertNoThrow(try result.get(), testCase.name)
             }
-        }
-    }
-
-    func testPrivateReceiverPathSelectionWithoutAnSdkProtectsEverySavedPath() async throws {
-        let service = PaykitSdkService(sdkFactory: { throw PubkyServiceError.sessionNotActive })
-
-        let selection = try await service.privateReceiverPathSelection(
-            publicKey: "contact",
-            savedReceiverPaths: [PaykitReceiverPath.server]
-        )
-
-        XCTAssertEqual(selection.linkableReceiverPaths, [])
-        XCTAssertEqual(selection.publishableReceiverPaths, [])
-        XCTAssertEqual(selection.cleanupProtectedReceiverPaths, [PaykitReceiverPath.wallet, PaykitReceiverPath.server])
-        guard case .sessionNotActive? = selection.error as? PubkyServiceError else {
-            return XCTFail("Expected sessionNotActive, got \(String(describing: selection.error))")
         }
     }
 
@@ -139,8 +112,8 @@ final class PaykitPublicReadLaneTests: XCTestCase {
             XCTAssertEqual(code, "wallet_wipe_in_progress")
         }
         do {
-            _ = try await service.privateReceiverPathSelection(publicKey: "follower", savedReceiverPaths: [PaykitReceiverPath.server])
-            XCTFail("Expected a receiver path selection during a wipe to be rejected")
+            _ = try await service.canReceivePaymentRequests(publicKey: "follower")
+            XCTFail("Expected a capability read during a wipe to be rejected")
         } catch let PaykitError.Storage(code, _) {
             XCTAssertEqual(code, "wallet_wipe_in_progress")
         }
@@ -222,11 +195,10 @@ private final class PublicReadLaneSdk: PaykitSdk, @unchecked Sendable {
     let log = PublicReadLog()
     let gate = PublicReadGate()
 
-    override func resolveContactProfile(
+    override func resolveProfile(
         publicKey: String,
-        receiverPath _: String,
         allowPubkyProfileFallback _: Bool
-    ) async throws -> ContactProfileResolution? {
+    ) async throws -> ProfileResolution? {
         await log.record("profile:\(publicKey)")
         await gate.wait()
         return nil
@@ -237,21 +209,16 @@ private final class PublicReadLaneSdk: PaykitSdk, @unchecked Sendable {
         return Data()
     }
 
-    override func paykitReceiverPaths(publicKey: String) async throws -> [String] {
-        await log.record("paths:\(publicKey)")
+    override func paykitAppRegistry(publicKey: String) async throws -> PaykitAppRegistry? {
+        await log.record("registry:\(publicKey)")
         await gate.wait()
-        return [PaykitReceiverPath.wallet, PaykitReceiverPath.server]
-    }
-
-    /// The wallet path has no marker; the server path takes private payments and payment requests.
-    override func paykitReceiverMarker(publicKey: String, receiverPath: String) async throws -> PaykitReceiverMarker? {
-        await log.record("marker:\(publicKey):\(receiverPath)")
-        await gate.wait()
-        guard receiverPath == PaykitReceiverPath.server else { return nil }
-        return PaykitReceiverMarker(
-            receiverPath: receiverPath,
-            capabilities: PaykitReceiverCapabilities(privatePayments: true, paymentRequests: true, receipts: false, outgoingPayments: true),
-            noisePublicKey: "noise"
+        return PaykitAppRegistry(
+            keyGeneration: 1, noisePublicKey: nil,
+            apps: [PaykitApp(
+                appId: "bitkit", displayName: "Bitkit",
+                capabilities: PaykitAppCapabilities(privatePayments: true, paymentRequests: true, receipts: false, outgoingPayments: true)
+            )],
+            defaultAppId: nil, defaultAppsByEndpoint: [:]
         )
     }
 
@@ -299,14 +266,14 @@ private final class WipeRaceSdk: PaykitSdk, @unchecked Sendable {
     let log = PublicReadLog()
     let gate = PublicReadGate()
 
-    override func fetchPubkyFollows(publicKey: String) async throws -> [String] {
+    override func fetchPubkyFollows(publicKey: String, maxEntries _: UInt64) async throws -> [String] {
         await log.record("follows:\(publicKey)")
         await gate.wait()
         return ["follow"]
     }
 
-    override func paykitReceiverMarker(publicKey: String, receiverPath: String) async throws -> PaykitReceiverMarker? {
-        await log.record("marker:\(publicKey):\(receiverPath)")
+    override func paykitAppRegistry(publicKey: String) async throws -> PaykitAppRegistry? {
+        await log.record("registry:\(publicKey)")
         return nil
     }
 

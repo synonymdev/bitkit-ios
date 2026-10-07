@@ -155,6 +155,7 @@ class AppViewModel: ObservableObject {
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
+    @Published private(set) var paykitOnchainPaymentResolution: PaykitOnchainPaymentResolution?
 
     /// App status init - shows "ready" until node is actually running
     /// This prevents flashing error status during startup/background transitions
@@ -514,6 +515,18 @@ extension AppViewModel {
     func consumeSendSheetPendingResolution(paymentHash hash: String) {
         guard sendSheetPendingResolution?.paymentHash == hash else { return }
         sendSheetPendingResolution = nil
+    }
+
+    func retainPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, identity: String?) {
+        guard PubkyPublicKeyFormat.matches(resolution.identity, identity),
+              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId
+        else { return }
+        paykitOnchainPaymentResolution = resolution
+    }
+
+    func consumePaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
+        guard paykitOnchainPaymentResolution == resolution else { return }
+        paykitOnchainPaymentResolution = nil
     }
 
     func beginQuickPay(paymentHash: String) {
@@ -1049,6 +1062,7 @@ extension AppViewModel {
         lnurlWithdrawData = nil
         if !preservingContactPaymentContext {
             contactPaymentContext = nil
+            paykitOnchainPaymentResolution = nil
         }
         resetQuickPay()
     }

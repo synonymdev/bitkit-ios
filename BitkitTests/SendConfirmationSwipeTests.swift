@@ -2,6 +2,24 @@
 import XCTest
 
 final class SendConfirmationSwipeTests: XCTestCase {
+    func testPreparingRequestKeepsSwipeDisabledAndLoadingWithKnownFees() {
+        for walletType in [WalletType.lightning, .onchain] {
+            XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
+                walletType: walletType,
+                isHardwarePayment: false,
+                isHardwareConfirmationUnavailable: false,
+                feeRate: 5,
+                isPreparingRequest: true
+            ))
+        }
+        XCTAssertTrue(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: false,
+            feeRateLoadFailed: false,
+            isPreparingRequest: true
+        ))
+    }
+
     func testOnchainPaymentWithoutFeeRateDisablesSwipe() {
         XCTAssertTrue(SendConfirmationView.isSwipeDisabled(
             walletType: .onchain,

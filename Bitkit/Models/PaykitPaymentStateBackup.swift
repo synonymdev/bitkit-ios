@@ -4,17 +4,16 @@ import Paykit
 struct PaykitPaymentStateBackup: Codable {
     let subscriptions: [String: Subscription]
     let pendingProofs: [Proof]
+    var acceptedOneTimeRequests: [String: [RequestID]]? = nil
 
     struct RequestID: Codable {
         let paymentRequestId: String
         let counterparty: String
-        let counterpartyReceiverPath: String
         let billingPeriodStartsAt: String?
 
         init(_ id: PaykitPaymentRequest.ID, billingPeriod: PaykitBillingPeriod?) {
             paymentRequestId = id.paymentRequestId
             counterparty = id.counterparty
-            counterpartyReceiverPath = id.counterpartyReceiverPath
             billingPeriodStartsAt = billingPeriod?.sdkValue.startsAt
         }
 
@@ -22,7 +21,6 @@ struct PaykitPaymentStateBackup: Codable {
             PaykitPaymentRequest.ID(
                 paymentRequestId: paymentRequestId,
                 counterparty: counterparty,
-                counterpartyReceiverPath: counterpartyReceiverPath,
                 billingPeriodStartsAt: billingPeriod?.startsAt
             )
         }
@@ -62,6 +60,7 @@ struct PaykitPaymentStateBackup: Codable {
 
         let identity: String
         let requestId: RequestID
+        let paymentAppId: String
         let paymentEndpointIdentifier: String
         let kind: PaykitPaymentProofKind
         let paymentStarted: Bool
@@ -76,6 +75,7 @@ struct PaykitPaymentStateBackup: Codable {
         init(_ proof: PendingPaykitPaymentProof) {
             identity = proof.identity
             requestId = RequestID(proof.requestId, billingPeriod: proof.billingPeriod)
+            paymentAppId = proof.paymentAppId
             paymentEndpointIdentifier = proof.paymentEndpointIdentifier
             kind = proof.kind
             paymentStarted = proof.paymentStarted
@@ -98,6 +98,7 @@ struct PaykitPaymentStateBackup: Codable {
             return PendingPaykitPaymentProof(
                 identity: identity,
                 requestId: requestId.restored(billingPeriod: period),
+                paymentAppId: paymentAppId,
                 paymentEndpointIdentifier: paymentEndpointIdentifier,
                 kind: kind,
                 billingPeriod: period,
