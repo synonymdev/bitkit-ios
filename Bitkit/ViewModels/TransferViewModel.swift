@@ -490,6 +490,10 @@ class TransferViewModel: ObservableObject {
         case let .accepted(acceptedTxid):
             txid = acceptedTxid
         case let .rejected(rejectedTxid, reason):
+            if let context = try await onchainAttemptService.pendingContext(txid: rejectedTxid) {
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+                throw OnchainFundingPendingError()
+            }
             throw AppError(
                 message: t("wallet__onchain_funding_rejected"),
                 debugMessage: "Broadcast rejected for \(rejectedTxid): \(reason)"
