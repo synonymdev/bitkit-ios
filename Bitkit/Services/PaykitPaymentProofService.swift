@@ -229,12 +229,24 @@ actor PaykitPaymentProofService {
     }
 
     func backupSnapshot(wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet) async throws -> PaykitPaymentStateBackup {
-        let proofs = try await store.load()
-        let active = try await attemptService.backupSnapshot(wallet: wallet, proofs: proofs)
-        return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
-                                            pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
-                                            acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
-                                                .backupSnapshot())
+        try await mutationLock.withLock {
+            let proofs = try await store.load()
+            let active = try await attemptService.backupSnapshot(wallet: wallet, proofs: proofs)
+            // An attempt can clear before its proof cleanup acquires this lock. Defer that
+            // transition gap instead of uploading a started proof without its recovery guard.
+            for proof in proofs where proof.kind == .onchain && !proof.hasUnsupportedOnchainWallet &&
+                proof.paymentStarted && proof.onchainAcceptanceVerified != true
+            {
+                guard active?.requestId?.restored(billingPeriod: proof.billingPeriod) == proof.requestId else {
+                    throw OnchainSendAttemptError.unresolved
+                }
+            }
+            guard try await store.load() == proofs else { throw OnchainSendAttemptError.unresolved }
+            return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
+                                                pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
+                                                acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+                                                    .backupSnapshot())
+        }
     }
 
     func restoreBackup(_ state: PaykitPaymentStateBackup, wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet) async throws {

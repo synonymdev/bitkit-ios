@@ -1286,6 +1286,38 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         try? FileManager.default.removeItem(at: dbPath)
     }
 
+    func testBackupDefersStartedProofWhenOriginalAttemptClearsDuringCapture() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let attempts = OnchainSendAttemptService(store: MemoryAttemptStore())
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts
+        )
+        let wallet = PaykitPaymentStateBackupTests.goldenWallet(index: 0)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress)
+        let id = try await attempts.admit(
+            walletId: XCTUnwrap(wallet.originalWalletId), requestId: request.id, orderId: nil,
+            address: onchainAddress, amountSats: request.amountSats, isMaxAmount: false
+        )
+        let captured = expectation(description: "Backup captured the original started proof")
+        await store.pauseNextLoad { captured.fulfill() }
+        let backup = Task { try await service.backupSnapshot(wallet: wallet) }
+        await fulfillment(of: [captured], timeout: 2)
+        try await attempts.clearBeforeDispatch(attemptId: id)
+        await store.seed([])
+        await store.resumePausedLoad()
+        do {
+            _ = try await backup.value
+            XCTFail("Backup must defer rather than upload an orphaned started proof")
+        } catch {}
+        let settled = try await service.backupSnapshot(wallet: wallet)
+        XCTAssertTrue(settled.pendingProofs.isEmpty)
+        XCTAssertNil(settled.activeOnchainAttempt)
+    }
+
     func testOverlappingReconciliationCompletesOriginalShopFollowupOnlyOnce() async throws {
         let dbPath = FileManager.default.temporaryDirectory.appendingPathComponent("ShopOverlap-\(UUID())")
         await drainCoreServiceQueue()
@@ -2428,17 +2460,34 @@ actor PaymentProofMemoryStore: PaykitPaymentProofStoring {
     private var shouldFailNextLoad = false
     private var shouldFailNextSave = false
     private let onSave: @Sendable ([PendingPaykitPaymentProof]) -> Void
+    private var pausedLoad: CheckedContinuation<Void, Never>?
+    private var onPausedLoad: (@Sendable () -> Void)?
 
     init(onSave: @escaping @Sendable ([PendingPaykitPaymentProof]) -> Void = { _ in }) {
         self.onSave = onSave
     }
 
-    func load() throws -> [PendingPaykitPaymentProof] {
+    func load() async throws -> [PendingPaykitPaymentProof] {
         if shouldFailNextLoad {
             shouldFailNextLoad = false
             throw PaymentProofStoreMockError.load
         }
-        return proofs
+        let snapshot = proofs
+        if let onPausedLoad {
+            self.onPausedLoad = nil
+            await withCheckedContinuation { continuation in
+                pausedLoad = continuation
+                onPausedLoad()
+            }
+        }
+        return snapshot
+    }
+
+    func pauseNextLoad(onCaptured: @escaping @Sendable () -> Void) { onPausedLoad = onCaptured }
+
+    func resumePausedLoad() {
+        pausedLoad?.resume()
+        pausedLoad = nil
     }
 
     func save(_ proofs: [PendingPaykitPaymentProof]) throws {
