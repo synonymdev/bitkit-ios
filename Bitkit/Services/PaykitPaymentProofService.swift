@@ -1051,8 +1051,10 @@ actor PaykitPaymentProofService {
                         Self.hasExactOnchainProof(requestId: requestId, txid: txid, in: $0)
                     })
                 }
-                if hasDurableProof {
-                    _ = await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid)
+                if hasDurableProof, await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid) {
+                    Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
+                        identity: identity, requestId: requestId, transactionId: txid.lowercased()
+                    ))
                 }
             }
             pendingProofs = await removingSettledUnsupportedWalletProofs(from: pendingProofs, identity: identity)

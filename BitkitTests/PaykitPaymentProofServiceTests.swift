@@ -1259,11 +1259,24 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let deliveredProofs = await store.snapshot()
         XCTAssertTrue(deliveredProofs.isEmpty)
         XCTAssertEqual(attemptStore.snapshot().first?.localFollowupComplete, false)
+        var isObservingResolutions = false
+        var resolutions: [PaykitOnchainPaymentResolution] = []
+        let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
+            if isObservingResolutions, resolution.requestId == request.id {
+                resolutions.append(resolution)
+            }
+        }
+        isObservingResolutions = true
+        defer { subscription.cancel() }
         let restarted = paymentProofService(
             sdk: sdk, store: store, attemptService: OnchainSendAttemptService(store: attemptStore)
         )
         await restarted.reconcile()
         XCTAssertEqual(attemptStore.snapshot().first?.localFollowupComplete, true)
+        XCTAssertEqual(resolutions.map(\.transactionId), [txid])
+        XCTAssertEqual(resolutions.first?.identity, identity)
+        await restarted.reconcile()
+        XCTAssertEqual(resolutions.count, 1)
         let saved = try await Bitkit.CoreService.shared.activity.getOnchainActivityByTxId(txid: txid)
         XCTAssertEqual(saved?.value, request.amountSats)
         XCTAssertEqual(saved?.address, onchainAddress)
@@ -1289,12 +1302,14 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false, requestId: request.id,
             followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100)
         ) { try await service.markOnchainPaymentStarted(request, address: self.onchainAddress) }
+        var isObservingResolutions = false
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
-            if resolution.requestId == request.id {
+            if isObservingResolutions, resolution.requestId == request.id {
                 resolutions.append(resolution)
             }
         }
+        isObservingResolutions = true
         defer { subscription.cancel() }
         let completed = await service.completeOnchainPayment(request, txid: txid, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint)
         XCTAssertFalse(completed)
