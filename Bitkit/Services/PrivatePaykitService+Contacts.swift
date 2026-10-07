@@ -630,6 +630,17 @@ extension PrivatePaykitService {
         } catch {
             Logger.warn("Failed to sync private Paykit endpoint publications during \(reason): \(error)", context: "PrivatePaykit")
             firstError = firstError ?? error
+            if !linkRetryKeys.isEmpty {
+                let sessionIsCurrent = await isSessionCurrent?() ?? true
+                let currentIdentity = await operations.currentPublicKey()
+                if !Task.isCancelled, sessionIsCurrent, generation == preparationGeneration, currentIdentity == identity,
+                   !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
+                {
+                    schedulePendingPrivateMessageDrainRetries(
+                        reason: reason, retryKeys: linkRetryKeys.filter { knownSavedContactKeys.contains($0) }
+                    )
+                }
+            }
         }
 
         return requireImmediatePublication ? firstError : nil

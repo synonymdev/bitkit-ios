@@ -1226,6 +1226,41 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(update.reservations.isEmpty)
     }
 
+    func testFailedPublicationRetainsPendingLinksOnlyForCurrentIdentity() async {
+        let publicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        for changesIdentity in [false, true] {
+            var identity = "pubkylocal"
+            let service = PrivatePaykitService()
+            _ = await service.rememberSavedContacts([publicKey], replacing: true)
+            let operations = PrivatePaykitService.EndpointPublicationOperations(
+                currentPublicKey: { identity },
+                ensureLink: { _ in .linking },
+                buildEndpoints: { _ in
+                    [PublicPaykitService.Endpoint(
+                        methodId: .regtestOnchainP2wpkh,
+                        value: "bcrt1qendpoint",
+                        min: nil,
+                        max: nil,
+                        rawPayload: #"{"value":"bcrt1qendpoint"}"#
+                    )]
+                },
+                syncPaymentLists: { _ in
+                    if changesIdentity { identity = "pubkyother" }
+                    throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                }
+            )
+
+            let error = await service.syncLocalEndpointPublication(
+                for: [publicKey], reason: "test", requireImmediatePublication: true, operations: operations
+            )
+
+            XCTAssertNotNil(error)
+            let pending = await service.testPendingMessageDrainRetryKeys()
+            XCTAssertEqual(pending, changesIdentity ? [] : [publicKey])
+            await service.clearTestPendingMessageDrainRetries()
+        }
+    }
+
     func testDeferredPublicationRetainsEndpointPreparationFailureForRetry() async {
         let publicKey = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let preparationError = NSError(domain: "PrivatePaykitServiceTests", code: 1)
