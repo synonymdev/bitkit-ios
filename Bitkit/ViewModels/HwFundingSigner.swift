@@ -586,8 +586,11 @@ final class HwSendCoordinator {
             do {
                 do {
                     try await beforeBroadcastAttempt()
+                    try Task.checkCancellation()
+                    guard signingAttempt == attempt else { throw CancellationError() }
                     try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
                 } catch {
+                    guard signingAttempt == attempt else { throw error }
                     if !broadcastWasAttempted {
                         pendingPayment = nil
                     } else if ((error as? AppError)?.underlyingError ?? error) as? PaykitPaymentRequestError == .requestExpired {
@@ -597,6 +600,15 @@ final class HwSendCoordinator {
                 }
 
                 try await retainSignedPayment(signed)
+                do {
+                    try Task.checkCancellation()
+                    guard signingAttempt == attempt else { throw CancellationError() }
+                } catch {
+                    if !hadPriorBroadcastAttempt {
+                        _ = await clearSignedPaymentBeforeDispatch(signed)
+                    }
+                    throw error
+                }
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
@@ -631,6 +643,7 @@ final class HwSendCoordinator {
                     throw error
                 }
             } catch {
+                guard signingAttempt == attempt else { throw error }
                 if !broadcastWasAttempted {
                     pendingPayment = nil
                 }
