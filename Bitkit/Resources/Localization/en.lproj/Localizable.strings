@@ -1887,3 +1887,6 @@
 "usdt__bridge_refunded_description" = "USDT was returned to your wallet. See details for the refunded amount.";
 "usdt__destination_tx" = "Destination transaction";
 "usdt__refund_tx" = "Refund transaction";
+
+"usdt__bridge_reference" = "Bridge reference";
+"usdt__copy_details" = "Copy Details";
