@@ -1119,7 +1119,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let attemptStore = MemoryAttemptStore()
-        let attempts = OnchainSendAttemptService(store: attemptStore)
+        let attempts = OnchainSendAttemptService(store: attemptStore, localFollowup: FailingShopActivityFollowup())
         let service = paymentProofService(sdk: sdk, store: store, attemptService: attempts)
         let txid = String(repeating: "ab", count: 32)
         try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
@@ -1286,6 +1286,50 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         try? FileManager.default.removeItem(at: dbPath)
     }
 
+    func testOverlappingReconciliationCompletesOriginalShopFollowupOnlyOnce() async throws {
+        let dbPath = FileManager.default.temporaryDirectory.appendingPathComponent("ShopOverlap-\(UUID())")
+        await drainCoreServiceQueue()
+        try FileManager.default.createDirectory(at: dbPath, withIntermediateDirectories: true)
+        _ = try initDb(basePath: dbPath.path)
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let txid = String(repeating: "ab", count: 32)
+        let proof = try paymentProofRecord(endpoint: endpoint, kind: .onchain, data: txid)
+        let record = try paymentRequestRecord(endpoints: [endpoint], paymentProofs: [proof])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let firstSaveStarted = expectation(description: "Original local completion suspended")
+        let followup = SuspendedShopActivityFollowup { firstSaveStarted.fulfill() }
+        let attemptStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptStore, localFollowup: followup)
+        _ = try await attempts.send(
+            using: AttemptNodeMock(result: .accepted(txid: txid)), address: onchainAddress,
+            amountSats: request.amountSats, satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false, requestId: request.id,
+            followupContext: .init(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100)
+        )
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: PaymentProofMemoryStore(), attemptService: attempts
+        )
+        var isObservingResolutions = false
+        var resolutions: [PaykitOnchainPaymentResolution] = []
+        let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
+            if isObservingResolutions, resolution.requestId == request.id { resolutions.append(resolution) }
+        }
+        isObservingResolutions = true
+        defer { subscription.cancel() }
+        let first = Task { await service.reconcile() }
+        await fulfillment(of: [firstSaveStarted], timeout: 2)
+        await service.reconcile()
+        await followup.resumeFirstSave()
+        await first.value
+        let saves = await followup.saveCount()
+        XCTAssertEqual(saves, 1, "Overlapping reconciliation must not repeat the original activity write")
+        XCTAssertEqual(resolutions.map(\.transactionId), [txid])
+        XCTAssertEqual(attemptStore.snapshot().first?.localFollowupComplete, true)
+        await service.reconcile()
+        XCTAssertEqual(resolutions.count, 1)
+        await repointCoreToAppStorage()
+        try? FileManager.default.removeItem(at: dbPath)
+    }
+
     func testAcceptedShopResolutionWaitsForDurableLocalFollowup() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -1362,7 +1406,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
         let attemptStore = MemoryAttemptStore()
-        let attempts = OnchainSendAttemptService(store: attemptStore)
+        let attempts = OnchainSendAttemptService(store: attemptStore, localFollowup: FailingShopActivityFollowup())
         let store = PaymentProofMemoryStore()
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store, attemptService: attempts)
@@ -2345,6 +2389,32 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let data = try XCTUnwrap(text.data(using: .utf8))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
     }
+}
+
+private actor SuspendedShopActivityFollowup: OnchainSendLocalFollowupHandling {
+    private let onFirstSave: @Sendable () -> Void
+    private var saves = 0
+    private var firstContinuation: CheckedContinuation<Void, Never>?
+
+    init(onFirstSave: @escaping @Sendable () -> Void) { self.onFirstSave = onFirstSave }
+
+    func save(_ attempt: OnchainSendAttempt) async throws -> OnchainActivity {
+        saves += 1
+        if saves == 1 {
+            await withCheckedContinuation { continuation in
+                firstContinuation = continuation
+                onFirstSave()
+            }
+        }
+        return try await OnchainSendLocalFollowup().save(attempt)
+    }
+
+    func resumeFirstSave() {
+        firstContinuation?.resume()
+        firstContinuation = nil
+    }
+
+    func saveCount() -> Int { saves }
 }
 
 private struct FailingShopActivityFollowup: OnchainSendLocalFollowupHandling {

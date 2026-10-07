@@ -1051,7 +1051,7 @@ actor PaykitPaymentProofService {
                         Self.hasExactOnchainProof(requestId: requestId, txid: txid, in: $0)
                     })
                 }
-                if hasDurableProof, await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid) {
+                if hasDurableProof, await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid, onlyIfIncomplete: true) {
                     Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
                         identity: identity, requestId: requestId, transactionId: txid.lowercased()
                     ))
@@ -1114,9 +1114,11 @@ actor PaykitPaymentProofService {
         }
     }
 
-    private func resumeAcceptedRequestFollowup(requestId: PaykitPaymentRequest.ID, txid: String) async -> Bool {
+    private func resumeAcceptedRequestFollowup(requestId: PaykitPaymentRequest.ID, txid: String,
+                                               onlyIfIncomplete: Bool = false) async -> Bool
+    {
         do {
-            return try await attemptService.resumeAcceptedRequestSend(requestId: requestId, txid: txid)
+            return try await attemptService.resumeAcceptedRequestSend(requestId: requestId, txid: txid, onlyIfIncomplete: onlyIfIncomplete)
         } catch {
             logWarning("Accepted Paykit payment local follow-up remains guarded: \(error)")
             return false

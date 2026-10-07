@@ -316,6 +316,7 @@ actor OnchainSendAttemptService {
     private let hasPaidOrder: (String) throws -> Bool
     private var knownAttempt: OnchainSendAttempt?
     private var nativeDispatchInProgress: UUID?
+    private var requestFollowupInProgress: UUID?
 
     init(
         store: any OnchainSendAttemptStoring = OnchainSendAttemptStore(),
@@ -720,15 +721,21 @@ actor OnchainSendAttemptService {
     }
 
     @discardableResult
-    func resumeAcceptedRequestSend(requestId: PaykitPaymentRequest.ID, txid: String) async throws -> Bool {
-        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt.requestId == requestId, attempt.orderId == nil,
+    func resumeAcceptedRequestSend(requestId: PaykitPaymentRequest.ID, txid: String,
+                                   onlyIfIncomplete: Bool = false) async throws -> Bool
+    {
+        guard nativeDispatchInProgress == nil, requestFollowupInProgress == nil,
+              let attempt = try currentAttempt(), attempt.requestId == requestId, attempt.orderId == nil,
               attempt.status == .accepted, attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
         else { return false }
-        if !attempt.localFollowupComplete {
-            let winner = try await winningFollowupAttempt(attempt)
-            _ = try await localFollowup.save(winner)
-            try acknowledgeLocalFollowup(txid: txid)
-        }
+        if attempt.localFollowupComplete { return !onlyIfIncomplete }
+        // Keep the transition owned across suspending activity/fee operations. A competing
+        // reconciliation must neither repeat the write nor publish this call's completion.
+        requestFollowupInProgress = attempt.id
+        defer { requestFollowupInProgress = nil }
+        let winner = try await winningFollowupAttempt(attempt)
+        _ = try await localFollowup.save(winner)
+        try acknowledgeLocalFollowup(txid: txid)
         return true
     }
 
