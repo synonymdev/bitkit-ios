@@ -567,7 +567,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             try await service.prepare(
                 request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain, walletId: walletId
             )
-            try await service.markOnchainPaymentStarted(request, address: onchainAddress, walletId: walletId)
+            try await service.markOnchainPaymentStarted(request, address: onchainAddress, amountSats: request.amount.atomic, walletId: walletId)
             let prepared = await store.snapshot()
             XCTAssertEqual(prepared.first?.onchainWalletId, walletId)
             XCTAssertEqual(prepared.first?.onchainMatchingTransactionIdsBeforeAttempt, [oldTxid])

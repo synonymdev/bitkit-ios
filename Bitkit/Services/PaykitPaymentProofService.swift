@@ -359,7 +359,12 @@ actor PaykitPaymentProofService {
         try await persist(pendingProofs)
     }
 
-    func markOnchainPaymentStarted(_ request: PaykitPaymentRequest, address: String, amountSats: UInt64, walletId: String = WalletScope.default) async throws {
+    func markOnchainPaymentStarted(
+        _ request: PaykitPaymentRequest,
+        address: String,
+        amountSats: UInt64,
+        walletId: String = WalletScope.default
+    ) async throws {
         let identity = try await currentIdentity()
         let existingTransactionIds = try await onchainPaymentLookup.existingTransactionIds(
             address: address,
