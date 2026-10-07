@@ -106,6 +106,7 @@ struct UsdtActivityDetail: View {
                         }
                         if let bridge = transfer.orchestra {
                             SendSectionView(t("usdt__bridge_provider")) { BodySSBText("Orchestra") }
+                            SendSectionView(t("usdt__bridge_reference")) { BodySText(bridge.quoteId).textSelection(.enabled) }
                             if let hash = bridge.destinationTx {
                                 SendSectionView(t("usdt__destination_tx")) { BodySText(hash).textSelection(.enabled) }
                             }
@@ -124,6 +125,9 @@ struct UsdtActivityDetail: View {
                             if let url = URL(string: "https://arbiscan.io/tx/" + txHash) {
                                 CustomButton(title: t("wallet__activity_explore"), variant: .secondary, shouldExpand: true) { openURL(url) }
                             }
+                        }
+                        if transfer.destination != .arbitrum {
+                            UsdtSupportActions(details: transfer.supportDetails)
                         }
                     }
                     .bottomSafeAreaPadding()

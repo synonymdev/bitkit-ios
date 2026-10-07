@@ -141,6 +141,7 @@ struct UsdtDepositHistoryView: View {
                              isDisabled: busy || refundAddress.isEmpty, isLoading: busy) { if !busy { confirmRefund = true } }
                     .accessibilityIdentifier("UsdtDepositRefund")
             }
+            UsdtSupportActions(details: detail.supportDetails).disabled(busy || recoveryActive)
         }
     }
 
