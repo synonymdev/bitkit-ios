@@ -194,8 +194,8 @@ enum PubkyService {
     ) async throws {
         guard authUrl == request.rawUrl else { throw PubkyServiceError.invalidAuthUrl }
         let endpoint: PublicPaykitService.Endpoint?
-        if request.bitkitClaim?.sharesUsdt == true {
-            guard let usdtEndpoint, let approvedUsdtAddress else { throw PubkyAuthRequestError.invalidPaymentDetails }
+        if request.bitkitClaim?.sharesUsdt == true, let approvedUsdtAddress {
+            guard let usdtEndpoint else { throw PubkyAuthRequestError.invalidPaymentDetails }
             endpoint = try await usdtEndpoint()
             guard endpoint?.value == approvedUsdtAddress else { throw PubkyAuthRequestError.invalidPaymentDetails }
         } else { endpoint = nil }

@@ -49,7 +49,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     @MainActor
     func testReceivingDetailsShareExactlyTheRequestedAssets() async throws {
         let endpoint = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
-        for claim in [PubkyAuthClaim.usdtAddressV1, .paymentDetailsV1] {
+        for claim in [PubkyAuthClaim.usdtAddressV1, .bitcoinAndUsdt] {
             let defaults = try XCTUnwrap(UserDefaults(suiteName: "EarnSharing.\(UUID().uuidString)"))
             let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
             let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: claim.rawValue)
@@ -84,7 +84,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         let endpoint = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
         let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: "usdt-address-v1")
         let request = try PubkyAuthRequest.parse(url: url)
-        for approvedAddress in [nil, "0x2222222222222222222222222222222222222222"] as [String?] {
+        for approvedAddress in ["0x2222222222222222222222222222222222222222"] {
             do {
                 try await PubkyService.approveAuthRequest(
                     request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret",
@@ -96,6 +96,27 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 XCTAssertEqual(error as? PubkyAuthRequestError, .invalidPaymentDetails)
             }
         }
+    }
+
+    @MainActor
+    func testOptionalUsdtCanBeDeclinedWithoutLoadingAnAddress() async throws {
+        let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: "paykit-access-v1.usdt-address-v1")
+        let request = try PubkyAuthRequest.parse(url: url)
+        var shared: Data?
+        try await PubkyService.approveAuthRequest(
+            request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret",
+            approvedUsdtAddress: nil,
+            usdtEndpoint: { XCTFail("Declined permission must not read the wallet"); throw PubkyAuthRequestError.invalidPaymentDetails },
+            companionApproval: { _, _, _, payload, _ in shared = payload }
+        )
+        let claim = try XCTUnwrap(request.bitkitClaim)
+        let key = try PaykitIdentitySecretKey(bytes: Data(repeating: 11, count: 32), keyGeneration: 3)
+        let encoded = try claim.encode(accountPayload: shared, paykitKey: key)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(Set(json.keys), ["paykit_access"])
+        let access = try XCTUnwrap(json["paykit_access"] as? [String: Any])
+        XCTAssertEqual(access["key_generation"] as? UInt64, 3)
+        XCTAssertEqual(access["secret"] as? String, "CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws")
     }
 
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {

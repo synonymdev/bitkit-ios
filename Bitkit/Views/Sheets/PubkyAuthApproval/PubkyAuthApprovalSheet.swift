@@ -57,6 +57,7 @@ struct PubkyAuthApprovalSheet: View {
     @State private var usdtAddress: String?
     @State private var usdtUnavailable = false
     @State private var showsUsdtAddress = false
+    @State private var shareUsdt = true
 
     private var createsIdentity: Bool {
         Self.requiresIdentityCreation(for: config.request, profile: pubkyProfile)
@@ -197,7 +198,7 @@ struct PubkyAuthApprovalSheet: View {
                 CustomButton(title: t("pubky_auth__title")) {
                     await onAuthorize()
                 }
-                .disabled(config.request.bitkitClaim?.sharesUsdt == true && usdtAddress == nil)
+                .disabled(config.request.bitkitClaim?.sharesUsdt == true && shareUsdt && usdtAddress == nil)
                 .accessibilityIdentifier("PubkyAuthAuthorize")
             }
         }
@@ -221,7 +222,7 @@ struct PubkyAuthApprovalSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             successDescriptionText
                 .padding(.bottom, 16)
-            if config.request.bitkitClaim?.sharesReceivingDetails == true {
+            if config.request.bitkitClaim?.sharesBitcoin == true || (shareUsdt && usdtAddress != nil) {
                 BodyMText(t(sharingSuccessKey))
                     .accessibilityIdentifier("PubkyAuthSharedDetails")
             }
@@ -335,27 +336,20 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var introTitleKey: String {
-        switch config.request.bitkitClaim {
-        case .usdtAddressV1: "pubky_auth__usdt_intro_title"
-        case .paymentDetailsV1: "pubky_auth__payment_details_intro_title"
-        default: "pubky_auth__watch_only_intro_title"
-        }
+        guard config.request.bitkitClaim?.sharesUsdt == true else { return "pubky_auth__watch_only_intro_title" }
+        return config.request.bitkitClaim?.sharesBitcoin == true ? "pubky_auth__payment_details_intro_title" : "pubky_auth__usdt_intro_title"
     }
 
     private var introDescriptionKey: String {
-        switch config.request.bitkitClaim {
-        case .usdtAddressV1: "pubky_auth__usdt_intro_description"
-        case .paymentDetailsV1: "pubky_auth__payment_details_intro_description"
-        default: "pubky_auth__watch_only_intro_description"
-        }
+        guard config.request.bitkitClaim?.sharesUsdt == true else { return "pubky_auth__watch_only_intro_description" }
+        return config.request.bitkitClaim?.sharesBitcoin == true ? "pubky_auth__payment_details_intro_description" : "pubky_auth__usdt_intro_description"
     }
 
     private var sharingSuccessKey: String {
-        switch config.request.bitkitClaim {
-        case .usdtAddressV1: "pubky_auth__shared_usdt"
-        case .paymentDetailsV1: "pubky_auth__shared_both"
-        default: "pubky_auth__shared_bitcoin"
+        if shareUsdt, usdtAddress != nil, config.request.bitkitClaim?.sharesUsdt == true {
+            return config.request.bitkitClaim?.sharesBitcoin == true ? "pubky_auth__shared_both" : "pubky_auth__shared_usdt"
         }
+        return "pubky_auth__shared_bitcoin"
     }
 
     private var paymentDetailsSection: some View {
@@ -370,7 +364,12 @@ struct PubkyAuthApprovalSheet: View {
             }
             if config.request.bitkitClaim?.sharesUsdt == true {
                 VStack(alignment: .leading, spacing: 8) {
-                    BodySSBText("USDT · Arbitrum One", textColor: .greenAccent)
+                    Toggle(isOn: $shareUsdt) {
+                        BodySSBText(t("pubky_auth__share_usdt_optional"), textColor: .greenAccent)
+                    }
+                    .tint(.greenAccent)
+                    .disabled(state == .authorizing)
+                    .accessibilityIdentifier("PubkyAuthShareUsdt")
                     if let usdtAddress {
                         Button { showsUsdtAddress.toggle() } label: {
                             BodySText(showsUsdtAddress ? usdtAddress : String(usdtAddress.prefix(8)) + "…" + String(usdtAddress.suffix(6)))
@@ -407,6 +406,7 @@ struct PubkyAuthApprovalSheet: View {
         } catch {
             usdtAddress = nil
             usdtUnavailable = true
+            shareUsdt = false
         }
     }
 
@@ -563,7 +563,7 @@ struct PubkyAuthApprovalSheet: View {
                 authUrl: config.request.rawUrl,
                 accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey,
-                approvedUsdtAddress: usdtAddress,
+                approvedUsdtAddress: shareUsdt ? usdtAddress : nil,
                 usdtEndpoint: { try await usdt.paymentEndpoint() }
             )
 

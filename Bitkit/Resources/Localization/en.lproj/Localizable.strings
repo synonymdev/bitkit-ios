@@ -1866,11 +1866,11 @@
 "pubky_auth__bitcoin_account" = "Separate watch-only account · xpub";
 "pubky_auth__payment_details" = "PAYMENT DETAILS TO SHARE";
 "pubky_auth__payment_details_intro_title" = "<accent>EARN BITCOIN\nAND USDT</accent>\nFROM YOUR CONTENT";
-"pubky_auth__payment_details_intro_description" = "Share a separate Bitcoin account and your existing USDT address to receive earnings. Sharing these details does not let the service spend your funds.";
+"pubky_auth__payment_details_intro_description" = "Share a separate Bitcoin account to receive earnings. You can also share your existing USDT address. Sharing these details does not let the service spend your funds.";
 "pubky_auth__usdt_intro_title" = "<accent>EARN USDT</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__usdt_intro_description" = "Share your existing USDT address on Arbitrum One to receive earnings directly in Bitkit. The service cannot spend your funds.";
 "pubky_auth__usdt_privacy" = "This is your existing USDT account. The service can see its balance and transaction history, but cannot spend your funds.";
-"pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. Try again before authorizing.";
+"pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. You can retry or continue without sharing it.";
 "pubky_auth__shared_usdt" = "Your USDT receiving address was shared.";
 "pubky_auth__shared_bitcoin" = "Your Bitcoin watch-only account was shared.";
 "pubky_auth__shared_both" = "Your Bitcoin watch-only account and USDT receiving address were shared.";
@@ -1890,3 +1890,5 @@
 
 "usdt__bridge_reference" = "Bridge reference";
 "usdt__copy_details" = "Copy Details";
+
+"pubky_auth__share_usdt_optional" = "Share USDT address (optional)";
