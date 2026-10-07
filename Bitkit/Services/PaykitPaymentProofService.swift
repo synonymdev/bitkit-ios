@@ -625,7 +625,8 @@ actor PaykitPaymentProofService {
 
     /// Only the coordinator's definite first queued-dispatch expiry may remove this exact candidate.
     func clearHardwareCandidateBeforeDispatch(
-        requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String, serializedTx: String
+        requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String, serializedTx: String,
+        privatePaykitService: PrivatePaykitService = .shared
     ) async -> Bool {
         guard let identity = PubkyPublicKeyFormat.normalized(paymentIdentity), walletId != WalletScope.default,
               let txid = try? SignedTransactionId.fromHex(serializedTx)
@@ -640,9 +641,10 @@ actor PaykitPaymentProofService {
                         $0.proofData == nil && $0.onchainAcceptanceVerified != true
                 }) else { return false }
                 if let version = original.privatePaymentListVersion {
-                    try await PrivatePaykitService.shared.releaseUnsentPaymentListVersion(
+                    try await privatePaykitService.releaseUnsentPaymentListVersion(
                         publicKey: original.requestId.counterparty,
-                        version: version
+                        version: version,
+                        previousVersion: original.previousPrivatePaymentListVersion
                     )
                 }
                 try await persist(proofs.filter { $0 != original })

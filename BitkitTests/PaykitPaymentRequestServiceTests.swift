@@ -4573,6 +4573,90 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(newerVersion, 8, "Cleanup of the original receipt cannot release a newer version")
     }
 
+    func testQueuedHardwareExpiryRestoresPreviousConsumptionAfterRestart() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let counterparty = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(counterparty: counterparty, endpoints: [endpoint])])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let privateContext = PrivatePaykitPaymentContext(paymentAppsByEndpoint: [endpoint: "bitkit"], paymentListVersion: 7)
+        let context = ContactPaymentContext(publicKey: counterparty, privatePaymentContext: privateContext, incomingPaymentRequest: request)
+        let app = AppViewModel()
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        let privateService = PrivatePaykitService()
+        let priorContext = PrivatePaykitPaymentContext(paymentAppsByEndpoint: [endpoint: "bitkit"], paymentListVersion: 6)
+        try await privateService.consumePrivatePaymentList(publicKey: counterparty, context: priorContext, attemptId: UUID())
+        let store = HardwarePaymentProofMemoryStore()
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let walletId = "trezor:original-ios-wallet"
+        let proofService = PaykitPaymentProofService(
+            sdk: sdk,
+            store: store,
+            hardwareTransactionLookup: PaymentProofHardwareLookup(result: .failure(NSError(domain: "fixture", code: 1))),
+            logInfo: { _ in },
+            logWarning: { _ in }
+        )
+        try await proofService.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        let previousVersion = await privateService.consumedPaymentListVersion(publicKey: counterparty)
+        XCTAssertEqual(previousVersion, 6)
+        try await manager.prepareForPayment(request) {
+            try await privateService.consumePrivatePaymentList(publicKey: counterparty, context: privateContext, attemptId: context.id)
+        }
+        let signed = HwFundingSignedTx(
+            serializedTx: "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300",
+            miningFeeSats: 141,
+            feeRate: 2,
+            totalSpent: request.amountSats + 141
+        )
+        try await proofService.markOnchainPaymentStarted(
+            request,
+            address: "bcrt1qhardwarecleanup",
+            hardwareWalletId: walletId,
+            paymentIdentity: identity,
+            signedTx: signed,
+            privatePaymentListVersion: privateContext.paymentListVersion,
+            previousPrivatePaymentListVersion: previousVersion
+        )
+        let snapshot = try await proofService.backupSnapshot()
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: encoded)
+        let restored = try decoded.map { try $0.restored() }
+        XCTAssertEqual(restored.first?.privatePaymentListVersion, 7)
+        XCTAssertEqual(restored.first?.previousPrivatePaymentListVersion, 6)
+        try await store.save(restored)
+        // A new private service loads durable consumption but has no in-memory attempt ledger.
+        let restartedPrivateService = PrivatePaykitService()
+        let consumedBefore = await restartedPrivateService.state.contacts[counterparty]?.consumedPrivatePaymentListVersion
+        XCTAssertEqual(consumedBefore, 7)
+        await store.failNextSave()
+        let failed = await proofService.clearHardwareCandidateBeforeDispatch(
+            requestId: request.id, paymentIdentity: identity, walletId: walletId,
+            serializedTx: signed.serializedTx, privatePaykitService: restartedPrivateService
+        )
+        XCTAssertFalse(failed)
+        let retainedAfterFailure = try await store.load()
+        XCTAssertEqual(retainedAfterFailure, restored)
+        let cleared = await proofService.clearHardwareCandidateBeforeDispatch(
+            requestId: request.id, paymentIdentity: identity, walletId: walletId,
+            serializedTx: signed.serializedTx, privatePaykitService: restartedPrivateService
+        )
+        XCTAssertTrue(cleared)
+        let remaining = try await store.load()
+        XCTAssertTrue(remaining.isEmpty)
+        let consumedAfter = await PrivatePaykitService().state.contacts[counterparty]?.consumedPrivatePaymentListVersion
+        XCTAssertEqual(consumedAfter, 6,
+                       "Cancelling the unsent version must preserve the previously consumed boundary")
+        let newerContext = PrivatePaykitPaymentContext(paymentAppsByEndpoint: [endpoint: "bitkit"], paymentListVersion: 8)
+        try await restartedPrivateService.consumePrivatePaymentList(publicKey: counterparty, context: newerContext, attemptId: UUID())
+        try await restartedPrivateService.releaseUnsentPaymentListVersion(publicKey: counterparty, version: 7)
+        let newerVersion = await restartedPrivateService.state.contacts[counterparty]?.consumedPrivatePaymentListVersion
+        XCTAssertEqual(newerVersion, 8, "Cleanup of the original receipt cannot release a newer version")
+    }
+
+
     func testHardwareFailureCleanupPreservesConsumptionProofAndRetryOwnership() async throws {
         snapshotAppDefaultsDomain()
         let counterparty = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
