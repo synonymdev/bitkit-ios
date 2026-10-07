@@ -34,7 +34,7 @@ extension PrivatePaykitService {
                 ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0, priority: readPriority) },
                 pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties(priority: readPriority) },
                 linkedPeers: { try await PaykitSdkService.shared.linkedPeers(priority: readPriority) },
-                processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0) },
+                processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0, priority: readPriority) },
                 receive: { _ = try await PaykitSdkService.shared.receivePrivateMessages(counterparty: $0) }
             )
         }

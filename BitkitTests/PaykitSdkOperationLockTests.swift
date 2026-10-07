@@ -146,6 +146,99 @@ final class PaykitSdkOperationLockTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundOutboundDeliveryWaitsWhenPaymentStartsBeforeSending() async throws {
+        for waitingInQueue in [true, false] {
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let started = expectation(description: "SDK work before outbound delivery started")
+            let recorder = Recorder()
+            let pause: () async -> Void = {
+                guard await recorder.events.isEmpty else { return }
+                await recorder.record("waiting")
+                started.fulfill()
+                for await _ in gate {}
+            }
+            let sdk = PublicReadSdk(noPointer: .init())
+            if waitingInQueue {
+                sdk.lockedRead = pause
+            } else {
+                sdk.backupRevisionRead = pause
+            }
+            sdk.outboundDelivery = { await recorder.record("delivery") }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let holder = waitingInQueue ? Task { try await service.contactRecords() } : nil
+            if waitingInQueue { await fulfillment(of: [started], timeout: 2) }
+            let delivery = Task { try await service.processOutboundPrivateMessages(counterparty: "peer", priority: .background) }
+            defer { delivery.cancel() }
+            if waitingInQueue {
+                try await Task.sleep(for: .milliseconds(50))
+            } else {
+                await fulfillment(of: [started], timeout: 2)
+            }
+            let payment = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(payment) }
+            release.finish()
+            _ = try await holder?.value
+            // The ordered read must still complete while outbound delivery waits for payment to finish.
+            _ = try await service.identityStatus()
+            let heldEvents = await recorder.events
+            XCTAssertEqual(heldEvents, ["waiting"])
+            PaykitPaymentActivity.shared.end(payment)
+            _ = try await delivery.value
+            let events = await recorder.events
+            XCTAssertEqual(events, ["waiting", "delivery"])
+        }
+    }
+
+    @MainActor
+    func testDeferredOutboundDeliveryRejectsCancellationOrReplacedWallet() async throws {
+        for change in ["cancel", "reset", "wipe"] {
+            let recorder = Recorder()
+            let service = PaykitSdkService(sdkFactory: {
+                let sdk = PublicReadSdk(noPointer: .init())
+                sdk.outboundDelivery = { await recorder.record("delivery") }
+                return sdk
+            })
+            let payment = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(payment) }
+            let delivery = Task { try await service.processOutboundPrivateMessages(counterparty: "peer", priority: .background) }
+            defer { delivery.cancel() }
+            try await Task.sleep(for: .milliseconds(50))
+            switch change {
+            case "cancel": delivery.cancel()
+            case "reset": await service.clearState()
+            default: try await service.withWalletWipe {}
+            }
+            PaykitPaymentActivity.shared.end(payment)
+            do {
+                _ = try await delivery.value
+                XCTFail("Deferred outbound delivery must not survive \(change)")
+            } catch is CancellationError {
+                XCTAssertEqual(change, "cancel")
+            } catch PubkyServiceError.identityChanged {
+                XCTAssertNotEqual(change, "cancel")
+            }
+            let events = await recorder.events
+            XCTAssertTrue(events.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testForegroundOutboundDeliveryDoesNotWaitForPaymentToFinish() async throws {
+        let payment = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(payment) }
+        let recorder = Recorder()
+        let sdk = PublicReadSdk(noPointer: .init())
+        sdk.outboundDelivery = { await recorder.record("delivery") }
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        for priority in [PaykitSdkOperationLock.Priority.ordered, .interactive] {
+            _ = try await service.processOutboundPrivateMessages(counterparty: "peer", priority: priority)
+        }
+        let events = await recorder.events
+        XCTAssertEqual(events, ["delivery", "delivery"])
+    }
+
+    @MainActor
     func testBackupExportWaitsForPaymentEvenWhenPaymentStartsWhileExportIsQueued() async throws {
         let (gate, release) = AsyncStream<Void>.makeStream()
         defer { release.finish() }
@@ -534,6 +627,13 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     var publication: (PaykitAppCapabilities) async -> Void = { _ in }
     var paymentMutation: (String) async -> Void = { _ in }
     var backupExport: () async -> Void = {}
+    var outboundDelivery: () async -> Void = {}
+    var backupRevisionRead: () async -> Void = {}
+
+    override func processOutboundPrivateMessages(counterparty _: String) async throws -> OutboundPrivateSendReport {
+        await outboundDelivery()
+        return OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
+    }
 
     override func claimPaymentRequestForExecution(counterparty _: String, paymentRequestId _: String) async throws -> PaymentRequestRecord {
         await paymentMutation("claim")
@@ -559,7 +659,8 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func backupStateRevision() async throws -> String {
-        "revision"
+        await backupRevisionRead()
+        return "revision"
     }
 
     override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {

@@ -347,6 +347,10 @@ enum PubkyService {
 actor PaykitSdkService {
     typealias BootstrapFactory = (String, PubkyClientConfig) throws -> PubkySessionBootstrap
 
+    private enum OperationDeferral: Error {
+        case paymentActive
+    }
+
     struct BackupStateSnapshot {
         let stateRevision: String
         let backupRevision: String
@@ -937,7 +941,7 @@ actor PaykitSdkService {
         counterparty: String,
         priority: PaykitSdkOperationLock.Priority
     ) async throws -> OutboundPrivateSendReport {
-        try await withStateRevisionTracking(priority: priority) { sdk in
+        try await withStateRevisionTracking(priority: priority, deferDuringPayment: priority == .background) { sdk in
             try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
@@ -1230,13 +1234,31 @@ actor PaykitSdkService {
 
     private func withSdk<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
+        deferDuringPayment: Bool = false,
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
-        try await operationLock.withLock(priority: priority) {
-            try await withSdkErrorHandling {
-                try await refreshPaykitKey()
-                return try await operation(handle())
+        let generation = deferDuringPayment ? try operationLock.walletGeneration() : nil
+        let instance = deferDuringPayment ? try handle() : nil
+        while true {
+            if deferDuringPayment { try await PaykitPaymentActivity.shared.waitUntilIdle() }
+            let result: T? = try await operationLock.withLock(priority: priority) {
+                if let instance {
+                    guard sdk === instance, try operationLock.walletGeneration() == generation else {
+                        throw PubkyServiceError.identityChanged
+                    }
+                    // Release the SDK lock before waiting if payment started while this operation was queued.
+                    guard await !PaykitPaymentActivity.shared.isActive else { return nil }
+                }
+                do {
+                    return try await withSdkErrorHandling {
+                        try await refreshPaykitKey()
+                        return try await .some(operation(handle()))
+                    }
+                } catch OperationDeferral.paymentActive {
+                    return nil
+                }
             }
+            if let result { return result }
         }
     }
 
@@ -1258,9 +1280,10 @@ actor PaykitSdkService {
 
     private func withStateRevisionTracking<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
+        deferDuringPayment: Bool = false,
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
-        try await withSdk(priority: priority) { sdk in
+        try await withSdk(priority: priority, deferDuringPayment: deferDuringPayment) { sdk in
             return try await Self.withBackupStateRevisionTracking(
                 readRevision: { try await self.withSdkErrorHandling { try await sdk.backupStateRevision() } },
                 readStateRevision: { try sdk.stateRevision() },
@@ -1272,6 +1295,12 @@ actor PaykitSdkService {
                 cachedSnapshot: self.cachedBackupState,
                 onSnapshot: { self.cachedBackupState = $0 },
                 onChange: { self.markWalletBackupDataChanged() },
+                beforeOperation: {
+                    if deferDuringPayment {
+                        guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
+                        try Task.checkCancellation()
+                    }
+                },
                 operation: { try await operation(sdk) }
             )
         }
@@ -1284,6 +1313,7 @@ actor PaykitSdkService {
         cachedSnapshot: BackupStateSnapshot? = nil,
         onSnapshot: (BackupStateSnapshot?) -> Void = { _ in },
         onChange: () async -> Void,
+        beforeOperation: () async throws -> Void = {},
         operation: () async throws -> T
     ) async throws -> T {
         // An intervening SDK read must not replace the last backup comparison baseline.
@@ -1292,6 +1322,8 @@ actor PaykitSdkService {
         } else {
             try? await readRevision()
         }
+        // Admission can be deferred after the revision read without marking an unattempted write as uncertain.
+        try await beforeOperation()
         let result: T
         do {
             result = try await operation()
