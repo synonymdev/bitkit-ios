@@ -1905,3 +1905,5 @@
 
 "usdt__deposit_minimum" = "Minimum amount is {amount}";
 "usdt__deposit_maximum" = "Maximum amount is {amount}";
+
+"wallet__payment_request_requested_amount" = "Requested amount";

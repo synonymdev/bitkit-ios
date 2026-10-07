@@ -33,7 +33,8 @@ struct ContactPaymentContext: Equatable {
     let endpoints: [PublicPaykitService.Endpoint]
 
     var requiresAssetSelection: Bool {
-        endpoints.contains { $0.methodId == .usdtArbitrum } || incomingPaymentRequest.map { $0.amount.asset != .btc } == true
+        endpoints.contains { $0.methodId == .usdtArbitrum } ||
+            incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
     func prefersUsdt(onchainBalanceSats: UInt64) -> Bool {
@@ -560,6 +561,20 @@ extension AppViewModel {
     }
 }
 
+extension AppViewModel {
+    var paykitPaymentMethod: PublicPaykitService.MethodId {
+        if paykitUsesUsdt { return .usdtArbitrum }
+        return paykitBitcoinMethod(for: selectedWalletToPayFrom)
+    }
+
+    func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
+        if wallet == .lightning {
+            return lnurlPayData != nil ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+        }
+        return PublicPaykitService.onchainMethodId(for: scannedOnchainInvoice?.address ?? "")
+    }
+}
+
 // MARK: Scanning/pasting handling
 
 extension AppViewModel {
@@ -685,7 +700,6 @@ extension AppViewModel {
             data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
-        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(to: .btc, at: Date()).amount.atomic
         let paymentState = scanPaymentOperations.state()
 
         if scope == .onchainPayments {
@@ -695,6 +709,9 @@ extension AppViewModel {
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
+            let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(
+                using: PublicPaykitService.onchainMethodId(for: invoice.address)
+            ).amount.atomic
             // Check network first - treat wrong network as decoding error
             let addressValidation = try? validateBitcoinAddress(address: invoice.address)
             let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
@@ -726,7 +743,10 @@ extension AppViewModel {
                         if nodeIsRunning {
                             // Node is running → we have fresh balances; validate immediately.
                             // Prefer lightning; if insufficient or no channels/capacity, fall back to onchain.
-                            let canSendLightning = scanPaymentOperations.canSendLightning(requestedAmount ?? lightningInvoice.amountSatoshis)
+                            let canSendLightning = try scanPaymentOperations.canSendLightning(
+                                contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic ??
+                                    lightningInvoice.amountSatoshis
+                            )
 
                             if canSendLightning {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
@@ -789,6 +809,7 @@ extension AppViewModel {
 
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
+            let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic
             // Check network first - treat wrong network as decoding error
             let invoiceNetwork = NetworkValidationHelper.convertNetworkType(invoice.networkType)
             if NetworkValidationHelper.isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network) {
@@ -930,7 +951,7 @@ extension AppViewModel {
     }
 
     func handleLnurlPayInvoice(_ data: LnurlPayData) throws {
-        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(to: .btc, at: Date()).amount.atomic
+        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningLnurl, at: Date()).amount.atomic
         if let requestedAmount,
            requestedAmount < data.minSendableSat || requestedAmount > data.maxSendableSat
         {

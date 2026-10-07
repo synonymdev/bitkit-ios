@@ -2157,7 +2157,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertEqual(subscription.pricing.conversion, .fixed(rates: [ConversionRate(asset: "usdt", value: "1")]))
                 let later = now.addingTimeInterval(40 * 86400)
                 let period = try XCTUnwrap(subscription.recurrence.periods(through: later, acceptedAt: PaykitPreciseInstant(date: now)).last)
-                let payment = try subscription.pricing.payment(requested: subscription.amount, asset: .usdt, period: period, at: later)
+                let payment = try subscription.pricing.payment(
+                    requested: subscription.amount,
+                    endpoint: "usdt-arbitrum-address",
+                    period: period,
+                    at: later
+                )
                 XCTAssertEqual(payment.amount.value, "5")
                 XCTAssertNil(payment.quoteId)
                 XCTAssertTrue(payment.isValid(at: later))
@@ -2859,7 +2864,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         let payerSubscription = try XCTUnwrap(manager.subscriptions.first { $0.isPayer })
         let unpaid = try XCTUnwrap(payerSubscription.paymentDueOnAcceptance(at: now))
-        XCTAssertFalse(try unpaid.payment(to: .btc, at: now).isValid(at: now))
+        XCTAssertFalse(try unpaid.payment(using: .bitcoinLightningBolt11, at: now).isValid(at: now))
         XCTAssertTrue(unpaid.isPaymentDeadlineExpired(at: now))
         XCTAssertEqual(unpaid.paymentDeadline?.timestamp, "2027-02-01T09:00:00Z")
         XCTAssertEqual(manager.subscriptions.count, 2)
@@ -3638,9 +3643,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             now: Date()
         ))
 
-        XCTAssertTrue(request.acceptsPaymentAmount(2500))
-        XCTAssertFalse(request.acceptsPaymentAmount(0))
-        XCTAssertFalse(request.acceptsPaymentAmount(2501))
+        XCTAssertTrue(request.acceptsPaymentAmount(2500, method: .bitcoinLightningBolt11))
+        XCTAssertFalse(request.acceptsPaymentAmount(0, method: .bitcoinLightningBolt11))
+        XCTAssertFalse(request.acceptsPaymentAmount(2501, method: .bitcoinLightningBolt11))
         XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: nil))
         XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_500_000))
         XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: 2_499_999))
@@ -7385,21 +7390,34 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
     func testPaymentApprovalRequiresTheApprovedAmountAndUnexpiredTerms() throws {
         var record = try paymentRequestRecord(amount: "5", asset: "usd", paymentDeadline: .at(timestamp: "2027-01-15T08:10:00Z"))
-        record.terms?.conversion = .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001"), ConversionRate(asset: "usdt", value: "1")])
+        record.terms?.conversion = .fixed(rates: [
+            ConversionRate(asset: "btc", value: "0.00002"),
+            ConversionRate(asset: "btc-lightning", value: "0.00001"),
+            ConversionRate(asset: "usdt", value: "1"),
+        ])
         let now = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-15T08:00:00Z"))
         let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: now))
-        let approved = try request.payment(to: .btc, at: now)
-        XCTAssertTrue(request.acceptsPaymentAmount(5000, paymentTerms: approved, at: now))
-        XCTAssertFalse(request.acceptsPaymentAmount(5001, paymentTerms: approved, at: now))
-        XCTAssertFalse(request.acceptsPaymentAmount(5000, paymentTerms: approved, at: now.addingTimeInterval(601)))
-        let usdt = try request.payment(to: .usdt, at: now)
-        XCTAssertTrue(request.acceptsPayment(usdt.amount, paymentTerms: usdt, at: now))
-        XCTAssertFalse(request.acceptsPayment(usdt.amount, paymentTerms: nil, at: now))
-        XCTAssertFalse(request.acceptsPayment(usdt.amount, paymentTerms: usdt, at: now.addingTimeInterval(601)))
-        XCTAssertFalse(request.acceptsPayment(PaykitAmount(asset: .usdt, atomic: usdt.amount.atomic + 1), paymentTerms: usdt, at: now))
+        let approved = try request.payment(using: .bitcoinLightningBolt11, at: now)
+        XCTAssertTrue(request.acceptsPaymentAmount(5000, method: .bitcoinLightningBolt11, paymentTerms: approved, at: now))
+        XCTAssertFalse(request.acceptsPaymentAmount(5001, method: .bitcoinLightningBolt11, paymentTerms: approved, at: now))
+        XCTAssertFalse(request.acceptsPaymentAmount(5000, method: .bitcoinLightningBolt11, paymentTerms: approved, at: now.addingTimeInterval(601)))
+        let onchain = try request.payment(using: .bitcoinOnchainP2wpkh, at: now)
+        XCTAssertEqual(onchain.amount.atomic, 10000)
+        XCTAssertFalse(request.acceptsPaymentAmount(10000, method: .bitcoinOnchainP2wpkh, paymentTerms: approved, at: now))
+        XCTAssertTrue(request.acceptsPaymentAmount(10000, method: .bitcoinOnchainP2wpkh, paymentTerms: onchain, at: now))
+        let usdt = try request.payment(using: .usdtArbitrum, at: now)
+        XCTAssertTrue(request.acceptsPayment(usdt.amount, method: .usdtArbitrum, paymentTerms: usdt, at: now))
+        XCTAssertFalse(request.acceptsPayment(usdt.amount, method: .usdtArbitrum, paymentTerms: nil, at: now))
+        XCTAssertFalse(request.acceptsPayment(usdt.amount, method: .usdtArbitrum, paymentTerms: usdt, at: now.addingTimeInterval(601)))
+        XCTAssertFalse(request.acceptsPayment(
+            PaykitAmount(asset: .usdt, atomic: usdt.amount.atomic + 1),
+            method: .usdtArbitrum,
+            paymentTerms: usdt,
+            at: now
+        ))
         record.terms?.conversion = .fixed(rates: [ConversionRate(asset: "btc", value: "0.00002")])
         let changed = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: now))
-        XCTAssertFalse(changed.acceptsPaymentAmount(10000, paymentTerms: approved, at: now))
+        XCTAssertFalse(changed.acceptsPaymentAmount(10000, method: .bitcoinLightningBolt11, paymentTerms: approved, at: now))
     }
 
     func testReceivedUsdtProofsRequireSatisfiedReceiptsForPaidThroughAndStatus() throws {

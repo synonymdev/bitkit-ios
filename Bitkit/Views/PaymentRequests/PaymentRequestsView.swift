@@ -585,6 +585,7 @@ struct PaymentRequestDetailView: View {
         let paymentDirection = PaymentRequestDisplay.paymentDirection(for: request)
 
         return VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("wallet__payment_request_requested_amount"), textColor: .white64)
             if request.amount.asset == .btc {
                 MoneyText(sats: Int(clamping: request.amount.atomic), unitType: .secondary, size: .caption,
                           symbol: true, color: .white64)

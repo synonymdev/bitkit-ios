@@ -347,31 +347,41 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         }
     }
 
-    func payment(to asset: PaykitAsset, at date: Date = Date(), quoteId: String? = nil) throws -> PaykitRequestPricing.Payment {
-        try pricing.payment(requested: amount, asset: asset, period: billingPeriod, at: date, quoteId: quoteId)
+    func payment(using method: PublicPaykitService.MethodId, at date: Date = Date(), quoteId: String? = nil) throws -> PaykitRequestPricing.Payment {
+        try pricing.payment(requested: amount, endpoint: method.rawValue, period: billingPeriod, at: date, quoteId: quoteId)
     }
 
     func acceptsLightningInvoiceAmount(milliSatoshis: UInt64?, paymentTerms: PaykitRequestPricing.Payment? = nil, at date: Date = Date()) -> Bool {
         guard let milliSatoshis else { return true }
-        guard let payment = try? payment(to: .btc, at: date, quoteId: paymentTerms?.quoteId),
+        guard let payment = try? payment(using: .bitcoinLightningBolt11, at: date, quoteId: paymentTerms?.quoteId),
               paymentTerms == nil || paymentTerms == payment, payment.isValid(at: date) else { return false }
         let (required, overflow) = payment.amount.atomic.multipliedReportingOverflow(by: 1000)
         return !overflow && milliSatoshis == required
     }
 
     func acceptsLightningInvoiceAmount(satoshis: UInt64) -> Bool {
-        satoshis == 0 || acceptsPaymentAmount(satoshis)
+        satoshis == 0 || acceptsPaymentAmount(satoshis, method: .bitcoinLightningBolt11)
     }
 
-    func acceptsPaymentAmount(_ amountSats: UInt64, paymentTerms: PaykitRequestPricing.Payment? = nil, at date: Date = Date()) -> Bool {
-        guard let payment = try? payment(to: .btc, at: date, quoteId: paymentTerms?.quoteId),
+    func acceptsPaymentAmount(
+        _ amountSats: UInt64,
+        method: PublicPaykitService.MethodId,
+        paymentTerms: PaykitRequestPricing.Payment? = nil,
+        at date: Date = Date()
+    ) -> Bool {
+        guard let payment = try? payment(using: method, at: date, quoteId: paymentTerms?.quoteId),
               paymentTerms == nil || paymentTerms == payment, payment.isValid(at: date) else { return false }
         return payment.amount.atomic == amountSats
     }
 
-    func acceptsPayment(_ amount: PaykitAmount, paymentTerms: PaykitRequestPricing.Payment?, at date: Date = Date()) -> Bool {
+    func acceptsPayment(
+        _ amount: PaykitAmount,
+        method: PublicPaykitService.MethodId,
+        paymentTerms: PaykitRequestPricing.Payment?,
+        at date: Date = Date()
+    ) -> Bool {
         guard let paymentTerms, paymentTerms.amount == amount, paymentTerms.isValid(at: date),
-              let current = try? payment(to: amount.asset, at: date, quoteId: paymentTerms.quoteId)
+              let current = try? payment(using: method, at: date, quoteId: paymentTerms.quoteId)
         else { return false }
         return current == paymentTerms
     }
