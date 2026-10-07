@@ -506,6 +506,8 @@ final class HwSendCoordinator {
         sats: UInt64,
         satsPerVByte: UInt64,
         paymentDeadline: PaykitPreciseInstant? = nil,
+        paykitRequestId: PaykitPaymentRequest.ID? = nil,
+        paykitIdentity: String? = nil,
         beforeFirstBroadcast: @escaping () async throws -> Void = {},
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
@@ -515,6 +517,15 @@ final class HwSendCoordinator {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
+        let identity = paykitIdentity.flatMap(PubkyPublicKeyFormat.normalized)
+        guard pendingPayment?.resolvedTransactionId == nil else { throw PaykitPaymentRequestError.requestUnavailable }
+        if let pendingPayment,
+           pendingPayment.request != request || pendingPayment.walletId != walletId ||
+           pendingPayment.paykitRequestId != paykitRequestId || pendingPayment.paykitIdentity != identity
+        {
+            guard !pendingPayment.hasBroadcastAttempted else { throw PaykitPaymentRequestError.requestUnavailable }
+            self.pendingPayment = nil
+        }
         if let operationTask {
             guard operationRequest == request else { throw HwTransferError.deviceBusy(manager.vendor(walletId: walletId)) }
             return try await operationTask.value
@@ -526,6 +537,12 @@ final class HwSendCoordinator {
         isSigning = true
 
         let task = Task { @MainActor in
+            @MainActor
+            func checkAttempt() throws {
+                try Task.checkCancellation()
+                guard signingAttempt == attempt else { throw CancellationError() }
+            }
+
             defer {
                 if signingAttempt == attempt {
                     isSigning = false
@@ -551,13 +568,16 @@ final class HwSendCoordinator {
                         isConnectingDevice = isConnecting
                     }
                 )
-                try Task.checkCancellation()
-                pendingPayment = PendingPayment(request: request, signedTx: signed)
+                try checkAttempt()
+                pendingPayment = PendingPayment(
+                    request: request, signedTx: signed, walletId: walletId,
+                    paykitRequestId: paykitRequestId, paykitIdentity: identity
+                )
             }
 
             if pendingPayment?.isPreparedForBroadcast != true {
                 try await beforeFirstBroadcast()
-                try Task.checkCancellation()
+                try checkAttempt()
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
@@ -566,8 +586,10 @@ final class HwSendCoordinator {
             do {
                 do {
                     try await beforeBroadcastAttempt()
+                    try checkAttempt()
                     try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
                 } catch {
+                    try checkAttempt()
                     if !broadcastWasAttempted {
                         pendingPayment = nil
                     } else if ((error as? AppError)?.underlyingError ?? error) as? PaykitPaymentRequestError == .requestExpired {
@@ -581,9 +603,13 @@ final class HwSendCoordinator {
                 pendingPayment?.hasBroadcastAttempted = true
                 do {
                     let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline)
+                    try checkAttempt()
+                    pendingPayment?.resolvedTransactionId = result.txId
                     await afterBroadcast(result)
+                    try checkAttempt()
                     return result
                 } catch {
+                    try checkAttempt()
                     isBroadcastUnresolved = false
                     let underlyingError = (error as? AppError)?.underlyingError ?? error
                     if underlyingError as? PaykitPaymentRequestError == .requestExpired {
@@ -601,7 +627,9 @@ final class HwSendCoordinator {
                     throw error
                 }
             } catch {
+                try checkAttempt()
                 await afterFailure(broadcastWasAttempted ? .uncertain : .definitePreBroadcastFailure)
+                try checkAttempt()
                 throw error
             }
         }
@@ -615,7 +643,40 @@ final class HwSendCoordinator {
                 operationSession = nil
             }
         }
-        return try await task.value
+        let result = try await task.value
+        guard signingAttempt == attempt else { throw CancellationError() }
+        return result
+    }
+
+    func resolvePayment(
+        _ resolution: PaykitOnchainPaymentResolution,
+        identity: String?,
+        walletId: String
+    ) -> HwFundingBroadcastResult? {
+        guard let pendingPayment, pendingPayment.hasBroadcastAttempted,
+              self.walletId == walletId, pendingPayment.walletId == walletId, resolution.walletId == walletId,
+              pendingPayment.paykitRequestId == resolution.requestId,
+              PubkyPublicKeyFormat.matches(pendingPayment.paykitIdentity, resolution.identity),
+              PubkyPublicKeyFormat.matches(identity, resolution.identity),
+              pendingPayment.resolvedTransactionId == nil || pendingPayment.resolvedTransactionId == resolution.transactionId
+        else { return nil }
+
+        // A verified payment supersedes any retry, including callbacks from uncancellable transports.
+        operationTask?.cancel()
+        signingAttempt += 1
+        operationTask = nil
+        operationRequest = nil
+        operationSession = nil
+        isSigning = false
+        isConnectingDevice = false
+        isBroadcastUnresolved = true
+        self.pendingPayment?.resolvedTransactionId = resolution.transactionId
+        return HwFundingBroadcastResult(
+            txId: resolution.transactionId,
+            miningFeeSats: pendingPayment.signedTx.miningFeeSats,
+            feeRate: UInt64(pendingPayment.signedTx.feeRate.rounded(.up)),
+            totalSpent: pendingPayment.signedTx.totalSpent
+        )
     }
 
     func reconnectWithPassphrase(
@@ -690,8 +751,12 @@ final class HwSendCoordinator {
     private struct PendingPayment {
         let request: PaymentRequest
         let signedTx: HwFundingSignedTx
+        let walletId: String
+        let paykitRequestId: PaykitPaymentRequest.ID?
+        let paykitIdentity: String?
         var isPreparedForBroadcast = false
         var hasBroadcastAttempted = false
+        var resolvedTransactionId: String?
     }
 
     private struct OperationSession {

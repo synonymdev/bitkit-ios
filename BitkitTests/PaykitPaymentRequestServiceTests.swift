@@ -1135,6 +1135,34 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(app.claimContactPaymentContext(second))
     }
 
+    func testOnchainResolutionRemainsAvailableForTheMatchingSendUntilConsumed() throws {
+        let app = AppViewModel()
+        let identity = "pubky" + String(repeating: "y", count: 52)
+        let otherIdentity = "pubky" + String(repeating: "b", count: 52)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(), now: Date()))
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        let resolution = PaykitOnchainPaymentResolution(identity: identity, requestId: request.id, transactionId: "resolved-tx")
+        let unrelated = PaykitOnchainPaymentResolution(
+            identity: identity,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "other", counterparty: request.counterparty),
+            transactionId: "other-tx"
+        )
+
+        app.retainPaykitOnchainPaymentResolution(resolution, identity: otherIdentity)
+        XCTAssertNil(app.paykitOnchainPaymentResolution)
+        app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
+        app.retainPaykitOnchainPaymentResolution(unrelated, identity: identity)
+        app.consumePaykitOnchainPaymentResolution(unrelated)
+        app.resetSendState(preservingContactPaymentContext: true)
+        XCTAssertEqual(app.paykitOnchainPaymentResolution, resolution)
+        app.consumePaykitOnchainPaymentResolution(resolution)
+        XCTAssertNil(app.paykitOnchainPaymentResolution)
+
+        app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
+        app.resetSendState()
+        XCTAssertNil(app.paykitOnchainPaymentResolution)
+    }
+
     func testBlockingPeerHidesRequestsFromAnEarlierSnapshot() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let record = try paymentRequestRecord(
@@ -8108,11 +8136,11 @@ private actor HardwarePaymentProofMemoryStore: PaykitPaymentProofStoring {
 }
 
 private struct HardwarePaymentProofOnchainLookup: PaykitOnchainPaymentProofLookingUp {
-    func existingTransactionIds(address _: String, amountSats _: UInt64) async throws -> Set<String> {
+    func existingTransactionIds(address _: String, amountSats _: UInt64, walletId _: String) async throws -> Set<String> {
         ["transaction-before-attempt"]
     }
 
-    func transactionId(address _: String, amountSats _: UInt64, excluding _: Set<String>) async throws -> String? {
+    func transactionId(address _: String, amountSats _: UInt64, walletId _: String, excluding _: Set<String>) async throws -> String? {
         nil
     }
 }
