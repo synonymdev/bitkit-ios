@@ -326,6 +326,23 @@ extension PrivatePaykitService {
         return state.contacts[key]?.consumedPrivatePaymentListVersion
     }
 
+    /// Preserve the version captured by a retained signed receipt before it can be retried.
+    func retainOriginalPaymentListVersion(publicKey: String, version: UInt64) throws {
+        guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }
+        var contact = state.contacts[key, default: ContactState()]
+        if let consumed = contact.consumedPrivatePaymentListVersion, consumed >= version { return }
+        let previous = state.contacts[key]
+        contact.consumedPrivatePaymentListVersion = version
+        contact.cachedResolvedEndpoints.removeAll()
+        state.contacts[key] = contact
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[key] = previous
+            throw error
+        }
+    }
+
     /// The caller must establish an exact receipt that definitely never reached native dispatch.
     func releaseUnsentPaymentListVersion(publicKey: String, version: UInt64, previousVersion: UInt64? = nil) throws {
         guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }

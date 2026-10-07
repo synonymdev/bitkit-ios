@@ -4647,9 +4647,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(failed)
         let retainedAfterFailure = try await store.load()
         XCTAssertEqual(retainedAfterFailure, restored)
+        let retainedVersion = await PrivatePaykitService().state.contacts[counterparty]?.consumedPrivatePaymentListVersion
+        XCTAssertEqual(retainedVersion, 7, "A failed deletion must retain consumption with the signed receipt")
+        // A process can restart after the version release but before proof removal finishes.
+        try await restartedPrivateService.releaseUnsentPaymentListVersion(publicKey: counterparty, version: 7, previousVersion: 6)
+        let recoveredPrivateService = PrivatePaykitService()
+        let recoveredReceipt = try await proofService.retainedHardwareOnchainPayment(
+            requestId: request.id, paymentIdentity: identity, walletId: walletId,
+            address: "bcrt1qhardwarecleanup", amountSats: request.amountSats,
+            privatePaykitService: recoveredPrivateService
+        )
+        XCTAssertEqual(recoveredReceipt?.signedTx, signed)
+        let recoveredVersion = await PrivatePaykitService().state.contacts[counterparty]?.consumedPrivatePaymentListVersion
+        XCTAssertEqual(recoveredVersion, 7, "Restored receipt must consume its original version before retry")
         let cleared = await proofService.clearHardwareCandidateBeforeDispatch(
             requestId: request.id, paymentIdentity: identity, walletId: walletId,
-            serializedTx: signed.serializedTx, privatePaykitService: restartedPrivateService
+            serializedTx: signed.serializedTx, privatePaykitService: recoveredPrivateService
         )
         XCTAssertTrue(cleared)
         let remaining = try await store.load()

@@ -316,8 +316,9 @@ actor PaykitPaymentProofService {
         var pendingProofs = try await loadProofs()
         guard !pendingProofs.contains(where: {
             PubkyPublicKeyFormat.matches($0.identity, proof.identity) &&
-                $0.requestId == request.id &&
-                ($0.paymentStarted || $0.paymentIdentifier != nil || $0.proofData != nil)
+                (($0.requestId == request.id && ($0.paymentStarted || $0.paymentIdentifier != nil || $0.proofData != nil)) ||
+                    (PubkyPublicKeyFormat.matches($0.requestId.counterparty, request.counterparty) &&
+                        $0.hardwareSignedTransaction != nil && $0.onchainAcceptanceVerified != true))
         }) else {
             throw PaykitPaymentRequestError.operationInProgress
         }
@@ -568,7 +569,8 @@ actor PaykitPaymentProofService {
 
     func retainedHardwareOnchainPayment(
         requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String,
-        address: String, amountSats: UInt64
+        address: String, amountSats: UInt64,
+        privatePaykitService: PrivatePaykitService = .shared
     ) async throws -> RetainedHardwareOnchainPayment? {
         let identity = try await currentIdentity()
         guard PubkyPublicKeyFormat.matches(identity, paymentIdentity), walletId != WalletScope.default,
@@ -589,6 +591,9 @@ actor PaykitPaymentProofService {
             let fee = proof.hardwareMiningFeeSats, let rate = proof.hardwareFeeRate,
             let spent = proof.hardwareTotalSpent
             else { return nil }
+            if let version = proof.privatePaymentListVersion {
+                try await privatePaykitService.retainOriginalPaymentListVersion(publicKey: proof.requestId.counterparty, version: version)
+            }
             return RetainedHardwareOnchainPayment(
                 signedTx: HwFundingSignedTx(serializedTx: raw, miningFeeSats: fee, feeRate: Float(rate), totalSpent: spent),
                 hasAttemptedBroadcast: proof.hardwareDispatchAttempted != false
@@ -647,7 +652,14 @@ actor PaykitPaymentProofService {
                         previousVersion: original.previousPrivatePaymentListVersion
                     )
                 }
-                try await persist(proofs.filter { $0 != original })
+                do {
+                    try await persist(proofs.filter { $0 != original })
+                } catch {
+                    if let version = original.privatePaymentListVersion {
+                        try await privatePaykitService.retainOriginalPaymentListVersion(publicKey: original.requestId.counterparty, version: version)
+                    }
+                    throw error
+                }
                 return true
             }
         } catch { return false }
@@ -987,7 +999,14 @@ actor PaykitPaymentProofService {
                 if let version = original.privatePaymentListVersion {
                     try await privatePaykitService.releaseUnsentPaymentListVersion(publicKey: request.counterparty, version: version, previousVersion: original.previousPrivatePaymentListVersion)
                 }
-                try await persist(proofs.filter { $0 != original })
+                do {
+                    try await persist(proofs.filter { $0 != original })
+                } catch {
+                    if let version = original.privatePaymentListVersion {
+                        try await privatePaykitService.retainOriginalPaymentListVersion(publicKey: original.requestId.counterparty, version: version)
+                    }
+                    throw error
+                }
             }
         } catch {
             logWarning("Failed to clear definitely unsent hardware payment: \(error)")
