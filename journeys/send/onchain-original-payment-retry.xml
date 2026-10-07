@@ -8,6 +8,7 @@
   </description>
   <actions>
     <action>Enable payment PIN authorization in the test wallet, with biometrics disabled for deterministic PIN entry</action>
+    <action>For ordinary sends and channel funding, pause the owned signing fixture after admission but before a prepared transaction exists; request wallet backup and verify it defers without replacing the remote wallet snapshot. Release signing and verify the prepared receipt retains the exact original operation for backup and recovery</action>
     <action>Send a fixed amount to the fixture recipient; for the Max variant use the initial native send-all route, retaining reserves</action>
     <action>Make the owned fault fixture refuse this broadcast or lose its response after dispatch, and verify Payment Pending retains the original amount and transaction ID without Bitcoin Sent or a Shop proof</action>
     <action>For a channel-funding variant, begin Transfer To Spending and withhold the funding acknowledgement after dispatch; verify confirmation yields directly to Payment Pending with the original order/wallet/transaction context, not a generic toast or Lightning Setting Up. Retry must recover this original funding operation only</action>

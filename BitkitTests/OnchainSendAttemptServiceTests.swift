@@ -7,6 +7,57 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     private let walletId = "node-0"
     private let txid = String(repeating: "ab", count: 32)
 
+    func testBackupDefersUnsignedOrdinaryAndTransferAdmissions() async throws {
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        for orderId in [nil, "original-order"] as [String?] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
+            let id = try await service.admit(
+                walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: orderId,
+                address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
+                followupContext: .init(feeSats: 100, feeRate: 1, tags: [], contact: nil, createdAt: 123),
+                transferContext: orderId.map { _ in
+                    .init(clientBalanceSats: 1000, txTotalSats: 1000, preTransferOnchainSats: 2000, originalOrderFeeSats: 0)
+                }
+            )
+            do {
+                _ = try await service.backupSnapshot(wallet: wallet, proofs: [])
+                XCTFail("Unsigned preparation must defer the wallet snapshot")
+            } catch {}
+            XCTAssertEqual(store.snapshot().first?.id, id)
+            XCTAssertEqual(store.snapshot().first?.blocksNewSend, true)
+            XCTAssertEqual(store.snapshot().first?.canRetrySamePayment, false)
+        }
+    }
+
+    func testBackupRetainsPreparedPendingReceiptForSamePaymentRecovery() async throws {
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        let store = MemoryAttemptStore()
+        let original = try OnchainSendAttempt(
+            id: UUID(), walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: nil,
+            address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false, status: .pending, txid: txid,
+            followupContext: .init(feeSats: 100, feeRate: 1, tags: [], contact: nil, createdAt: 123),
+            recoveryContext: .init(inputs: [.init(txid: String(repeating: "cd", count: 32), vout: 0)],
+                                   satsPerVbyte: 1, paymentIdentity: nil, candidateTxids: [txid])
+        )
+        try store.save([original])
+        let service = OnchainSendAttemptService(store: store)
+        let snapshot = try await service.backupSnapshot(wallet: wallet, proofs: [])
+        let wire = try XCTUnwrap(snapshot)
+        let (restored, _) = try wire.restored(wallet: wallet, proofs: [])
+        XCTAssertEqual(restored.id, original.id)
+        XCTAssertEqual(restored.walletId, original.walletId)
+        XCTAssertEqual(restored.address, original.address)
+        XCTAssertEqual(restored.amountSats, original.amountSats)
+        XCTAssertEqual(restored.recoveryContext?.inputs, original.recoveryContext?.inputs)
+        XCTAssertEqual(restored.recoveryContext?.candidateTxids, original.recoveryContext?.candidateTxids)
+        XCTAssertTrue(restored.canRetrySamePayment)
+    }
+
     func testOriginalRetryChecksDeadlineAfterAuthorizationBeforeNativeDispatch() async throws {
         for expired in [false, true] {
             let store = MemoryAttemptStore()
@@ -964,7 +1015,8 @@ final class AttemptNodeMock: OnchainSending {
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
+                            expectedWalletIndex: Int, expectedNode: AnyObject?,
+                            paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
     {
         try await onPrepare?()
         if let preparationError {
@@ -1019,7 +1071,8 @@ final class PreparedAttemptNodeMock: OnchainSending {
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
+                            expectedWalletIndex: Int, expectedNode: AnyObject?,
+                            paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
     {
         preparations += 1
         lastAddress = address

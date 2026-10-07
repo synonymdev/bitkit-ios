@@ -8,7 +8,8 @@ protocol OnchainSending {
     var onchainDispatchNode: AnyObject? { get }
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
-                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws -> PreparedOnchainSendDispatch
+                            expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?) async throws
+        -> PreparedOnchainSendDispatch
 }
 
 extension LightningService: OnchainSending {
@@ -334,6 +335,12 @@ actor OnchainSendAttemptService {
                         proofs: [PendingPaykitPaymentProof]) throws -> PaykitPaymentStateBackup.ActiveOnchainAttempt?
     {
         guard let attempt = try currentAttempt(), attempt.blocksNewSend else { return nil }
+        if attempt.status == .pending, attempt.txid == nil,
+           attempt.recoveryContext?.inputs.isEmpty != false,
+           attempt.recoveryContext?.candidateTxids.isEmpty != false
+        {
+            throw OnchainSendAttemptError.unresolved
+        }
         let wire = try PaykitPaymentStateBackup.ActiveOnchainAttempt(attempt, wallet: wallet)
         _ = try wire.restored(wallet: wallet, proofs: proofs)
         return wire
