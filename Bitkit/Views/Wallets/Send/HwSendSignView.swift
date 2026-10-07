@@ -19,6 +19,8 @@ struct HwSendSignView: View {
     let cancelContactPayment: (PrivatePaymentListSendOutcome) async -> Void
     @State private var signingTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
+    @State private var observedResolution: PaykitOnchainPaymentResolution?
+    @State private var appliedResolution = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -77,6 +79,19 @@ struct HwSendSignView: View {
                 onCancel: dismissPassphrase
             )
         }
+        .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
+            guard resolution.requestId == contactPaymentRequestId,
+                  resolution.walletId == hwSend.walletId,
+                  PubkyPublicKeyFormat.matches(resolution.identity, contactPaymentIdentity)
+            else { return }
+            observedResolution = resolution
+            applyObservedResolution()
+        }
+        .onChange(of: hwSend.isSigning) { _, isSigning in
+            if !isSigning {
+                applyObservedResolution()
+            }
+        }
         .onDisappear {
             guard !hwSend.isBroadcastUnresolved else { return }
             signingTask?.cancel()
@@ -102,6 +117,20 @@ struct HwSendSignView: View {
                 }
             }
         )
+    }
+
+    private func applyObservedResolution() {
+        guard !appliedResolution, let resolution = observedResolution,
+              let route = hwSend.resolveObservedShopPayment(
+                  resolution, paymentIdentity: contactPaymentIdentity, currentIdentity: pubkyProfile.publicKey
+              )
+        else { return }
+        appliedResolution = true
+        app.addPendingContactPaymentContext(
+            resolution.transactionId, context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
+        )
+        navigationPath.append(route)
+        Task { await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution) }
     }
 
     private func startSigning() {
@@ -170,6 +199,7 @@ struct HwSendSignView: View {
                     requestId: requestId,
                     proofVerified: proofVerified
                 )
+                guard !appliedResolution else { return }
                 hwSend.completeBroadcast()
                 let completionRoute = await hwSend.completionRoute(
                     result: result, walletId: walletId, requestId: requestId, paymentIdentity: contactPaymentIdentity,

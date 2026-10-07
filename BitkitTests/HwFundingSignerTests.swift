@@ -839,7 +839,62 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 2)
     }
 
-    func testHardwareCandidateSaveFailurePreventsNativeDispatch() async throws {
+    func testObservedShopPaymentUnlocksOnlyOriginalSignedCandidate() async throws {
+        let funding = MockHwFunding()
+        funding.signedTx = HwFundingSignedTx(
+            serializedTx: "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300",
+            miningFeeSats: 141,
+            feeRate: 2,
+            totalSpent: 42141
+        )
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let txid = try SignedTransactionId.fromHex(funding.signedTx.serializedTx)
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "response lost")
+        let broadcast = AsyncGate()
+        funding.broadcastGate = broadcast
+        let original = PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid, walletId: "jade:wallet")
+        let payment = Task { try await coordinator.signAndBroadcast(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+        ) }
+        await waitUntil { funding.broadcastCalls == 1 }
+        XCTAssertNil(coordinator.resolveObservedShopPayment(original, paymentIdentity: identity, currentIdentity: identity))
+        XCTAssertFalse(coordinator.canLeave)
+        broadcast.open()
+        await assertThrowsAsync { _ = try await payment.value }
+        for unrelated in [
+            PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: "other", walletId: "jade:wallet"),
+            PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid, walletId: "other"),
+            PaykitOnchainPaymentResolution(
+                identity: identity,
+                requestId: .init(paymentRequestId: "other", counterparty: "original-merchant"),
+                transactionId: txid,
+                walletId: "jade:wallet"
+            ),
+            PaykitOnchainPaymentResolution(
+                identity: "pubky" + String(repeating: "x", count: 52),
+                requestId: requestId,
+                transactionId: txid,
+                walletId: "jade:wallet"
+            ),
+        ] {
+            XCTAssertNil(coordinator.resolveObservedShopPayment(unrelated, paymentIdentity: identity, currentIdentity: identity))
+            XCTAssertFalse(coordinator.canLeave)
+        }
+        XCTAssertNil(coordinator.resolveObservedShopPayment(original, paymentIdentity: identity, currentIdentity: "pubky" + String(repeating: "x", count: 52)))
+        XCTAssertEqual(
+            coordinator.resolveObservedShopPayment(original, paymentIdentity: identity, currentIdentity: identity),
+            .success(paymentId: txid, walletId: "jade:wallet")
+        )
+        XCTAssertTrue(coordinator.canLeave)
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
+        XCTAssertNil(coordinator.resolveObservedShopPayment(original, paymentIdentity: identity, currentIdentity: identity))
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
+    func testHardwareCandidateSaveFailurePreventsNativeDispatch() async {
         let funding = MockHwFunding()
         let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
         await assertThrowsAsync {

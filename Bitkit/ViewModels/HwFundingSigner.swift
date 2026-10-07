@@ -670,6 +670,25 @@ final class HwSendCoordinator {
         return .success(paymentId: result.txId, walletId: walletId)
     }
 
+    func resolveObservedShopPayment(
+        _ resolution: PaykitOnchainPaymentResolution,
+        paymentIdentity: String?,
+        currentIdentity: String?
+    ) -> SendRoute? {
+        guard !isSigning, isBroadcastUnresolved,
+              let pendingPayment,
+              pendingPayment.hasBroadcastAttempted,
+              pendingPayment.paymentRequestId == resolution.requestId,
+              walletId == resolution.walletId,
+              PubkyPublicKeyFormat.matches(resolution.identity, paymentIdentity),
+              PubkyPublicKeyFormat.matches(resolution.identity, currentIdentity),
+              let txid = try? SignedTransactionId.fromHex(pendingPayment.signedTx.serializedTx),
+              txid.caseInsensitiveCompare(resolution.transactionId) == .orderedSame
+        else { return nil }
+        completeBroadcast()
+        return .success(paymentId: txid, walletId: resolution.walletId)
+    }
+
     func completeBroadcast() {
         pendingPayment = nil
         isBroadcastUnresolved = false
