@@ -14,6 +14,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         case missingTerms = "missing_terms"
         case recurringRequest = "recurring_request"
         case unsupportedAsset = "unsupported_asset"
+        case unsupportedPricing = "unsupported_pricing"
         case unsupportedPaymentDeadline = "unsupported_payment_deadline"
         case invalidPaymentDeadline = "invalid_payment_deadline"
         case invalidAmount = "invalid_amount"
@@ -153,14 +154,23 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         } else {
             paymentDeadline = nil
         }
-        guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
-        guard let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
-        guard amountSats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
-
-        let acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
+        var acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
             terms.acceptedPaymentEndpointIdentifiers,
             network: network
         )
+        let amountSats: UInt64
+        if terms.conversion != nil {
+            guard let payment = PaykitBitcoinRequestPricing.bitcoinPayment(terms: terms, endpoints: acceptedPaymentEndpointIdentifiers) else {
+                return .failure(.unsupportedPricing)
+            }
+            amountSats = payment.amountSats
+            acceptedPaymentEndpointIdentifiers = payment.endpointIdentifiers
+        } else {
+            guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
+            guard let sats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
+            guard sats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
+            amountSats = sats
+        }
         if requiresActionableRequest, acceptedPaymentEndpointIdentifiers.isEmpty {
             return .failure(.noSupportedEndpoint)
         }

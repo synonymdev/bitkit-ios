@@ -8,6 +8,11 @@ The resolution-failure journey is ported alongside Android's matching `requested
 
 ## Issuer interoperability
 
+`fixed-price-bitcoin.xml` verifies a USD-denominated request settled in BTC and an explicit
+same-asset rail price. The confirmation amount uses the issuer's fixed rate; the displayed fiat
+estimate uses Bitkit's own market rate. The flow stops before broadcasting. Differing rail prices,
+fractional-satoshi Lightning payments, and dynamic quotes remain unsupported.
+
 ### Setup
 
 Run Bitkit against regtest with Paykit UI enabled. Authenticate a Pubky identity, save and link the fixture issuer as a contact, and give the wallet enough on-chain balance to pay 100,000 sats. The fixture issuer must be able to publish a Paykit endpoint and send a one-time Payment Request to that linked peer. Its App ID is `paykit-server`; Bitkit uses `bitkit`.
@@ -87,7 +92,7 @@ the request in history without a Pay action. The iOS controls use `GRAB`, `SendF
 The failure reason vocabulary is:
 
 - Parse: `missing_local_role`, `outgoing_request`, `unsupported_local_role`, `missing_terms`,
-  `recurring_request`, `unsupported_asset`, `unsupported_payment_deadline`, `invalid_amount`, `amount_out_of_range`,
+  `recurring_request`, `unsupported_asset`, `unsupported_pricing`, `unsupported_payment_deadline`, `invalid_amount`, `amount_out_of_range`,
   `no_supported_endpoint`, `invalid_expiration`, `expired`.
 - Resolution: `no_supported_endpoint`, `endpoint_not_payable`, `payment_details_pending`,
   `resolution_failed`.
