@@ -10,6 +10,75 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testFixedBitcoinPricingUsesRailRatesBeforeAssetRatesAndParity() throws {
+        let cases: [(String, String, [ConversionRate], [String], UInt64)] = [
+            ("usd", "1000", [.init(asset: "btc", value: "0.001")], ["btc-lightning-bolt11"], 100_000_000),
+            ("usdt", "12.34", [.init(asset: "btc", value: "0.00002")], ["btc-lightning-lnurl"], 24680),
+            ("btc", "0.001", [.init(asset: "btc", value: "0.5")], ["btc-lightning-bolt11"], 50000),
+            ("btc", "0.001", [.init(asset: "btc", value: "2")], ["btc-lightning-bolt11"], 200_000),
+            ("btc", "0.001", [.init(asset: "usdt", value: "1000")], ["btc-regtest-p2wpkh", "usdt-ethereum-erc20"], 100_000),
+            ("btc", "0.001", [.init(asset: "btc", value: "2"), .init(asset: "btc-regtest", value: "0.5")],
+             ["btc-regtest-p2wpkh"], 50000),
+            ("usd", "1", [.init(asset: "btc", value: "0.000000011")], ["btc-regtest-p2wpkh"], 2),
+            ("usd", "1", [.init(asset: "btc", value: "0.000000019999")], ["btc-lightning-bolt11"], 2),
+            ("usd", "1", [.init(asset: "btc", value: "0.00021")],
+             ["btc-regtest-p2wpkh", "btc-lightning-bolt11", "btc-lightning-lnurl"], 21000),
+        ]
+        for (asset, amount, rates, endpoints, expected) in cases {
+            let record = try paymentRequestRecord(amount: amount, asset: asset, conversion: .fixed(rates: rates), endpoints: endpoints)
+            let request = try PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest).get()
+            XCTAssertEqual(request.amountSats, expected, "\(asset) \(amount) \(endpoints)")
+            XCTAssertEqual(request.amountValue, amount)
+            XCTAssertEqual(record.terms?.amount.asset, asset)
+            XCTAssertEqual(record.terms?.conversion, .fixed(rates: rates))
+            XCTAssertTrue(request.acceptsPaymentAmount(expected))
+            XCTAssertFalse(request.acceptsPaymentAmount(expected + 1))
+            XCTAssertTrue(request.acceptsLightningInvoiceAmount(milliSatoshis: expected * 1000))
+            XCTAssertFalse(request.acceptsLightningInvoiceAmount(milliSatoshis: expected * 1000 + 1))
+        }
+    }
+
+    func testFixedPricingOmitsUnquotedCrossAssetRails() throws {
+        let record = try paymentRequestRecord(
+            amount: "1", asset: "usd", conversion: .fixed(rates: [.init(asset: "btc-regtest", value: "0.00021")]),
+            endpoints: ["btc-lightning-bolt11", "btc-regtest-p2wpkh", "btc-regtest-p2tr"]
+        )
+        let request = try PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest).get()
+        XCTAssertEqual(request.amountSats, 21000)
+        XCTAssertEqual(request.acceptedPaymentEndpointIdentifiers, ["btc-regtest-p2wpkh", "btc-regtest-p2tr"])
+    }
+
+    func testUnsupportedFixedPricingCannotBecomePayable() throws {
+        let rates: [[ConversionRate]] = [
+            [], [.init(asset: "usdt", value: "1")],
+            [.init(asset: "btc", value: "0")], [.init(asset: "btc", value: "-1")],
+            [.init(asset: "btc", value: "1e-3")], [.init(asset: "btc", value: " 1")],
+            [.init(asset: "btc", value: "1\n")], [.init(asset: "btc", value: "184467440738")],
+            [.init(asset: "btc", value: "0.000000011")],
+            [.init(asset: "btc", value: "0.123456789012345678901234567890123456789")],
+            [.init(asset: "btc", value: "1"), .init(asset: "btc", value: "2")],
+            [.init(asset: "btc", value: "1"), .init(asset: "btc-lightning", value: "2")],
+        ]
+        for conversion in rates.map({ PaymentConversion.fixed(rates: $0) }) + [.perPeriod] {
+            let record = try paymentRequestRecord(
+                amount: "1", asset: "usd", conversion: conversion,
+                endpoints: ["btc-regtest-p2wpkh", "btc-lightning-bolt11"]
+            )
+            guard case let .failure(reason) = PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest) else {
+                return XCTFail("Unsupported pricing was accepted")
+            }
+            XCTAssertEqual(reason, .unsupportedPricing)
+        }
+    }
+
+    func testConversionSubscriptionsRemainUnsupported() throws {
+        let record = try paymentRequestRecord(
+            conversion: .fixed(rates: [.init(asset: "btc", value: "0.5")]),
+            recurrence: .init(every: 1, unit: "month", startsAt: "2027-01-01T00:00:00Z", anchor: "2027-01-01T00:00:00Z", endsAt: nil)
+        )
+        XCTAssertNil(PaykitSubscription(record: record))
+    }
+
     func testRefreshModesLoadStoredRequestsAndControlPrivateMessageSync() async throws {
         let stored = try paymentRequestRecord(id: "stored")
         let incoming = try paymentRequestRecord(id: "incoming")
@@ -7282,6 +7351,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         role: PaymentRequestLocalRole? = .payer,
         amount: String = "0.001",
         asset: String = "btc",
+        conversion: PaymentConversion? = nil,
         expiresAt: String? = nil,
         paymentDeadline: PaymentDeadline? = nil,
         recurrence: PaymentRequestRecurrence? = nil,
@@ -7316,7 +7386,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 acceptedPaymentEndpointIdentifiers: endpoints,
                 paymentEndpoints: paymentEndpoints,
                 requiredAppId: "bitkit",
-                conversion: nil,
+                conversion: conversion,
                 paymentDeadline: paymentDeadline,
                 metadata: PrivateJsonObject(text: metadata)
             ),
