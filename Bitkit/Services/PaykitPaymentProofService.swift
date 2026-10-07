@@ -62,6 +62,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var hardwareFeeRate: UInt64?
     var hardwareTotalSpent: UInt64?
     var hardwareDispatchAttempted: Bool?
+    var privatePaymentListVersion: UInt64?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
     var onchainAcceptanceVerified: Bool?
     /// Device-local acknowledgement: backup restore reruns local activity proof.
@@ -490,7 +491,8 @@ actor PaykitPaymentProofService {
         address: String,
         hardwareWalletId: String? = nil,
         paymentIdentity: String? = nil,
-        signedTx: HwFundingSignedTx? = nil
+        signedTx: HwFundingSignedTx? = nil,
+        privatePaymentListVersion: UInt64? = nil
     ) async throws {
         let identity = try await currentIdentity()
         try await mutationLock.withLock {
@@ -501,7 +503,8 @@ actor PaykitPaymentProofService {
                 paymentIdentity: paymentIdentity,
                 identity: identity,
                 serializedTx: signedTx?.serializedTx,
-                signedTx: signedTx
+                signedTx: signedTx,
+                privatePaymentListVersion: privatePaymentListVersion
             )
         }
     }
@@ -513,7 +516,8 @@ actor PaykitPaymentProofService {
         paymentIdentity: String?,
         identity: String,
         serializedTx: String?,
-        signedTx: HwFundingSignedTx?
+        signedTx: HwFundingSignedTx?,
+        privatePaymentListVersion: UInt64?
     ) async throws {
         if let hardwareWalletId {
             guard hardwareWalletId != WalletScope.default, hardwareTransactionLookup.hasWallet(walletId: hardwareWalletId)
@@ -553,6 +557,7 @@ actor PaykitPaymentProofService {
         pendingProofs[index].hardwareFeeRate = signedTx.map { UInt64($0.feeRate.rounded(.up)) }
         pendingProofs[index].hardwareTotalSpent = signedTx?.totalSpent
         pendingProofs[index].hardwareDispatchAttempted = signedTx.map { _ in false }
+        pendingProofs[index].privatePaymentListVersion = privatePaymentListVersion
         try await persist(pendingProofs)
     }
 
@@ -629,6 +634,12 @@ actor PaykitPaymentProofService {
                         $0.paymentIdentifier == txid && $0.hardwareSignedTransaction == serializedTx &&
                         $0.proofData == nil && $0.onchainAcceptanceVerified != true
                 }) else { return false }
+                if let version = original.privatePaymentListVersion {
+                    try await PrivatePaykitService.shared.releaseUnsentPaymentListVersion(
+                        publicKey: original.requestId.counterparty,
+                        version: version
+                    )
+                }
                 try await persist(proofs.filter { $0 != original })
                 return true
             }
@@ -948,18 +959,31 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func cancelHardwarePaymentBeforeDispatch(_ request: PaykitPaymentRequest, paymentIdentity: String, walletId: String) async {
+    func cancelHardwarePaymentBeforeDispatch(
+        _ request: PaykitPaymentRequest, paymentIdentity: String, walletId: String,
+        privatePaykitService: PrivatePaykitService = .shared
+    ) async {
         guard let identity = PubkyPublicKeyFormat.normalized(paymentIdentity), walletId != WalletScope.default,
               hardwareTransactionLookup.hasWallet(walletId: walletId) else { return }
-        // Called only by the coordinator after authorization fails before its first native dispatch.
-        // A profile switch does not change ownership of the original prepared operation.
-        await removeProofs {
-            PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == request.id &&
-                $0.kind == .onchain && $0.onchainWalletId == walletId && $0.paymentStarted &&
-                ($0.paymentIdentifier == nil ||
-                    ($0.hardwareDispatchAttempted == false && $0.paymentIdentifier != nil &&
-                        $0.hardwareSignedTransaction.flatMap { try? SignedTransactionId.fromHex($0) } == $0.paymentIdentifier)) &&
-                $0.proofData == nil && $0.onchainAcceptanceVerified != true
+        do {
+            try await mutationLock.withLock {
+                let proofs = try await loadProofs()
+                guard let original = proofs.first(where: {
+                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == request.id &&
+                        $0.kind == .onchain && $0.onchainWalletId == walletId && $0.paymentStarted &&
+                        ($0.paymentIdentifier == nil ||
+                            ($0.hardwareDispatchAttempted == false && $0.paymentIdentifier != nil &&
+                                $0.hardwareSignedTransaction.flatMap { try? SignedTransactionId.fromHex($0) } == $0.paymentIdentifier)) &&
+                        $0.proofData == nil && $0.onchainAcceptanceVerified != true
+                }) else { return }
+                // Only an exact, definitely unsent receipt authorizes releasing its consumed version.
+                if let version = original.privatePaymentListVersion {
+                    try await privatePaykitService.releaseUnsentPaymentListVersion(publicKey: request.counterparty, version: version)
+                }
+                try await persist(proofs.filter { $0 != original })
+            }
+        } catch {
+            logWarning("Failed to clear definitely unsent hardware payment: \(error)")
         }
     }
 

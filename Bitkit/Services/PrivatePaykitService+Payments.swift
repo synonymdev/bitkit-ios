@@ -318,6 +318,21 @@ extension PrivatePaykitService {
         )
     }
 
+    /// The caller must establish an exact receipt that definitely never reached native dispatch.
+    func releaseUnsentPaymentListVersion(publicKey: String, version: UInt64) throws {
+        guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }
+        guard var contact = state.contacts[key], contact.consumedPrivatePaymentListVersion == version else { return }
+        let previous = contact
+        contact.consumedPrivatePaymentListVersion = nil
+        state.contacts[key] = contact
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[key] = previous
+            throw error
+        }
+    }
+
     private func currentLinkState(
         publicKey: String,
         preparedState: LinkedPeerState? = nil

@@ -77,6 +77,7 @@ struct PaykitPaymentStateBackup: Codable {
         let hardwareFeeRate: UInt64?
         let hardwareTotalSpent: UInt64?
         let hardwareDispatchAttempted: Bool?
+        let privatePaymentListVersion: UInt64?
         let onchainMatchingTransactionIdsBeforeAttempt: Set<String>
         let onchainAcceptanceVerified: Bool?
 
@@ -98,6 +99,7 @@ struct PaykitPaymentStateBackup: Codable {
             hardwareFeeRate = proof.hardwareFeeRate
             hardwareTotalSpent = proof.hardwareTotalSpent
             hardwareDispatchAttempted = proof.hardwareDispatchAttempted
+            privatePaymentListVersion = proof.privatePaymentListVersion
             onchainMatchingTransactionIdsBeforeAttempt = proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
             onchainAcceptanceVerified = proof.onchainAcceptanceVerified
         }
@@ -135,6 +137,7 @@ struct PaykitPaymentStateBackup: Codable {
                 proof.hardwareTotalSpent = hardwareTotalSpent
                 proof.hardwareDispatchAttempted = hardwareDispatchAttempted
             }
+            proof.privatePaymentListVersion = privatePaymentListVersion
             return proof
         }
     }

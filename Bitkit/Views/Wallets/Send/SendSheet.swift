@@ -948,7 +948,7 @@ struct SendSheet: View {
             try await prepareIncomingPaymentRequest(context: context)
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                 request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity,
-                signedTx: signedTx
+                signedTx: signedTx, privatePaymentListVersion: privateContext.paymentListVersion
             )
         } catch {
             _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)
@@ -1006,7 +1006,10 @@ struct SendSheet: View {
         guard outcome == .definitePreBroadcastFailure else { return }
         if let hardwareWalletId {
             guard let paymentIdentity else { return }
-            await paymentProofService.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: paymentIdentity, walletId: hardwareWalletId)
+            await paymentProofService.cancelHardwarePaymentBeforeDispatch(
+                request, paymentIdentity: paymentIdentity, walletId: hardwareWalletId,
+                privatePaykitService: privatePaykitService
+            )
         } else {
             await paymentProofService.failOnchainPayment(request)
         }
