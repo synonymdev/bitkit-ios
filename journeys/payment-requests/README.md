@@ -201,7 +201,13 @@ this test as blocked, not passed, when they are unavailable. Do not change the d
    submission. Verify that no new broadcast occurs and the user can leave without a resolution.
    Dismissal must leave the started proof pending for later reconciliation, not permit a new payment.
 
+For definite hardware failures, inject Core's `InvalidHex` or `InvalidTransaction` before
+the first network submission. Leave the signing screen and reopen the unpaid request; it must
+remain payable. Repeat after an earlier uncertain submission: the proof must stay pending and
+a fresh payment must remain blocked. Electrum and unclassified errors are not proof of rejection.
+
 ## Payment deadline history
+
 
 `absolute-payment-deadline.xml` verifies valid absolute deadlines, acceptance before proposal expiry,
 retry after proposal expiry, expiry during invoice retrieval, and proof reconciliation after the deadline.

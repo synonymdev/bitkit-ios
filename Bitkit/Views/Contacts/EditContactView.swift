@@ -126,7 +126,9 @@ struct EditContactView: View {
                 title: t("contacts__delete_success"),
                 accessibilityIdentifier: "ContactDeletedToast"
             )
-            navigation.returnToContactsAfterRemoving(publicKey: publicKey)
+            if !contactsManager.contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }) {
+                navigation.returnToContactsAfterRemoving(publicKey: publicKey)
+            }
         } catch let PubkyServiceError.activeSubscription(endsAt) {
             let description = endsAt.map {
                 t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])

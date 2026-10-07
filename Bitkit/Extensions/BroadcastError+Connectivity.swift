@@ -37,6 +37,21 @@ extension BroadcastError {
 }
 
 extension Error {
+    func isDefiniteHardwarePreBroadcastFailure() -> Bool {
+        if let error = self as? BroadcastError {
+            switch error {
+            case .InvalidHex, .InvalidTransaction:
+                return true
+            default:
+                return false
+            }
+        }
+        if let error = self as? AppError, let underlyingError = error.underlyingError {
+            return underlyingError.isDefiniteHardwarePreBroadcastFailure()
+        }
+        return false
+    }
+
     func isBroadcastConnectivityFailure() -> Bool {
         if let broadcastError = self as? BroadcastError {
             return broadcastError.isConnectivityFailure

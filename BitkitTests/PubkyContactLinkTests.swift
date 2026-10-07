@@ -25,7 +25,7 @@ final class PubkyContactLinkTests: XCTestCase {
     @MainActor
     func testDeletedContactDoesNotDismissANewerRoute() {
         let navigation = NavigationViewModel()
-        for route: Route in [.contactDetail(publicKey: key), .editContact(publicKey: key)] {
+        for route: Route in [.contactDetail(publicKey: key), .editContact(publicKey: key), .contactSaved(publicKey: key)] {
             navigation.path = [.contacts, route]
             navigation.returnToContactsAfterRemoving(publicKey: key)
             XCTAssertEqual(navigation.path, [.contacts])
@@ -34,9 +34,17 @@ final class PubkyContactLinkTests: XCTestCase {
             let addPath = navigation.path
             navigation.returnToContactsAfterRemoving(publicKey: key)
             XCTAssertEqual(navigation.path, addPath)
+
+            navigation.path = [.contacts, route, .addContact(publicKey: key)]
+            navigation.returnToContactsAfterRemoving(publicKey: key)
+            XCTAssertEqual(navigation.path, [.contacts, .addContact(publicKey: key)])
+
+            navigation.path = [route]
+            navigation.returnToContactsAfterRemoving(publicKey: key)
+            XCTAssertEqual(navigation.path, [.contacts])
         }
         let otherKey = "pubky" + String(repeating: "y", count: 52)
-        for route: Route in [.contactDetail(publicKey: otherKey), .contactSaved(publicKey: key), .settings] {
+        for route: Route in [.contactDetail(publicKey: otherKey), .contactSaved(publicKey: otherKey), .settings] {
             navigation.path = [.contacts, route]
             navigation.returnToContactsAfterRemoving(publicKey: key)
             XCTAssertEqual(navigation.path, [.contacts, route])

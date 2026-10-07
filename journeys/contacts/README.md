@@ -1,5 +1,8 @@
 # Contacts
 
+`delete-newly-saved-contact.xml` checks deletion directly from Contact Saved and adding that
+contact again. It is mirrored on Android. Deleted contact screens must not remain in Back history.
+
 `contacts-entry-points.xml` checks onboarding without an identity and the authenticated
 Contacts list. It has not yet been ported to Android. Saved-identity recovery from the
 drawer and Contacts intro, pending lookup, and leaving while lookup waits require storage

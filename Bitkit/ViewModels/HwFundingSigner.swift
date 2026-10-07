@@ -619,8 +619,8 @@ final class HwSendCoordinator {
                         if !hadPriorBroadcastAttempt { pendingPayment = nil }
                         throw error
                     }
-                    let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
-                    if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
+                    if error.isDefiniteHardwarePreBroadcastFailure(), !hadPriorBroadcastAttempt {
+                        broadcastWasAttempted = false
                         pendingPayment = nil
                     }
                     throw error
