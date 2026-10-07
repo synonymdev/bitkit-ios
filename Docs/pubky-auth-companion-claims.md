@@ -4,6 +4,11 @@ Bitkit can authorize a Pubky session and share Paykit access, a watch-only Bitco
 
 Bitkit's own session includes the Paykit authorizer scope. On identity activation it publishes the identity-signed Noise key before advertising private Paykit capabilities. Sessions granted to other apps keep the normal Paykit scope; they cannot replace this authorization record.
 
+Shared-state deployments require Homeserver 0.15 or newer on every serving instance.
+The Paykit dependency does not upgrade the homeserver or verify its version.
+Uncertain-write recovery retains pending markers and the five-minute
+cooldown; Homeserver 0.15 does not eliminate every uncertain-publication case.
+
 ## Request
 
 - The Pubky Auth URL includes exactly one `x-bitkit-claim` parameter containing a dot-separated list of independent requested items:
