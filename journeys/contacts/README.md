@@ -84,6 +84,23 @@ Hold proof reconciliation during an automatic request refresh, then background t
 it. Reconciliation must finish, but request intake and target discovery wait for resume. Explicit
 payment-completion work keeps its normal behavior. This requires controlled operation blocking.
 
+Hold an explicit request send, payment-proof completion, or sharing withdrawal in progress, then
+background the app and release the operation. It must continue without waiting for foreground
+contact preparation. Acceptance delivery also remains eligible after payment submission ends.
+These checks require controlled operation blocking and do not guarantee execution after OS
+suspension or termination.
+
+On iOS, backgrounding cancels the automatic polling and foreground-publication SwiftUI tasks;
+they are distinct from explicit completion work. Dismissing a send flow can cancel preparation,
+and session changes still stop obsolete work. A confirmed hardware broadcast must finish its
+proof-completion callback even when the caller is canceled.
+
+On iOS, pause contact preparation after a private invoice payment or reserved-address activity.
+The received-payment marker must persist, and wallet sync and post-boost completion must not wait
+for endpoint publication. Resume preparation and verify the updated endpoints are published.
+Repeat while an older endpoint batch is held: the refresh must remain queued for a later batch.
+These checks require controlled operation blocking.
+
 With public sharing enabled, compare a retained-profile startup and Home/resume. Initial public
 publication waits for the signed-in session and running node, with one automatic publication per
 activation when receive endpoints and session inputs are unchanged. Changed receive endpoints and

@@ -597,6 +597,10 @@ final class HwFundingSignerTests: XCTestCase {
         }
         await waitUntil { completionStarted }
         XCTAssertTrue(completionStarted)
+        let wasPaused = await PrivatePaykitService.shared.isBackgroundWorkPaused
+        addTeardownBlock { await PrivatePaykitService.shared.setBackgroundWorkPaused(wasPaused) }
+        await PrivatePaykitService.shared.setBackgroundWorkPaused(true)
+        manager.onAppBackgrounded()
         payment.cancel()
         coordinator.cancel()
         completion.open()

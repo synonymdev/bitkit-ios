@@ -103,11 +103,12 @@ extension PrivatePaykitService {
             _ = rememberSavedContacts(savedPublicKeys + publicKeys, replacing: false)
         }
 
-        _ = await refreshSavedContactEndpointsReturningError(
-            for: publicKeys,
+        guard !Task.isCancelled else { return }
+        scheduleContactPreparation(
+            publicKeys,
             wallet: wallet,
             forceRefreshLightning: forceRefreshLightning,
-            requireImmediatePublication: false
+            requeueActive: true
         )
     }
 
@@ -136,12 +137,13 @@ extension PrivatePaykitService {
         _ publicKeys: [String],
         wallet: WalletViewModel,
         forceRefreshLightning: Bool = false,
+        requeueActive: Bool = false,
         isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) {
         scheduleContactPreparation(
             publicKeys,
             forceRefreshLightning: forceRefreshLightning,
-            requeueActive: isSessionCurrent != nil
+            requeueActive: requeueActive || isSessionCurrent != nil
         ) { keys, forceRefresh in
             guard !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey) else { return }
             _ = await self.refreshSavedContactEndpointsReturningError(
