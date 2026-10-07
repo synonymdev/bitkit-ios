@@ -920,9 +920,11 @@ actor PaykitPaymentProofService {
                 return (true, proofs[index])
             }
             guard result.0 else { return false }
-            await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid)
             if let completed = result.1 {
                 submitInBackground(completed)
+            }
+            guard await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid) else { return false }
+            if let completed = result.1 {
                 Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
                     identity: completed.identity, requestId: requestId, transactionId: txid.lowercased()
                 ))
@@ -1050,7 +1052,7 @@ actor PaykitPaymentProofService {
                     })
                 }
                 if hasDurableProof {
-                    await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid)
+                    _ = await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid)
                 }
             }
             pendingProofs = await removingSettledUnsupportedWalletProofs(from: pendingProofs, identity: identity)
@@ -1110,11 +1112,12 @@ actor PaykitPaymentProofService {
         }
     }
 
-    private func resumeAcceptedRequestFollowup(requestId: PaykitPaymentRequest.ID, txid: String) async {
+    private func resumeAcceptedRequestFollowup(requestId: PaykitPaymentRequest.ID, txid: String) async -> Bool {
         do {
-            _ = try await attemptService.resumeAcceptedRequestSend(requestId: requestId, txid: txid)
+            return try await attemptService.resumeAcceptedRequestSend(requestId: requestId, txid: txid)
         } catch {
             logWarning("Accepted Paykit payment local follow-up remains guarded: \(error)")
+            return false
         }
     }
 

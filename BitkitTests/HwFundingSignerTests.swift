@@ -959,6 +959,28 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.broadcastCalls, 0)
     }
 
+    func testHardwareCandidateSaveFailureRetriesFreshPreparation() async throws {
+        let funding = MockHwFunding()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original", counterparty: "merchant")
+        var preparations = 0
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                paymentRequestId: requestId,
+                beforeFirstBroadcast: { _ in preparations += 1 },
+                retainSignedPayment: { _ in throw MockHwFunding.TestError() }
+            )
+        }
+        _ = try await coordinator.signAndBroadcast(
+            manager: HwWalletManager(), address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+            paymentRequestId: requestId,
+            beforeFirstBroadcast: { _ in preparations += 1 }
+        )
+        XCTAssertEqual(preparations, 2)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
     func testCoordinatorCannotBeLeftWhileABroadcastIsUnresolved() async throws {
         let funding = MockHwFunding()
         let broadcast = AsyncGate()

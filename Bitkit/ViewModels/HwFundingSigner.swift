@@ -631,6 +631,9 @@ final class HwSendCoordinator {
                     throw error
                 }
             } catch {
+                if !broadcastWasAttempted {
+                    pendingPayment = nil
+                }
                 await afterFailure(broadcastWasAttempted ? .uncertain : .definitePreBroadcastFailure)
                 throw error
             }
