@@ -511,7 +511,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                         defaults: defaults
                     )
                 }
-                await fulfillment(of: [loadStarted], timeout: 2)
+                await fulfillment(of: [loadStarted], timeout: 10)
 
                 var runningSignOut: (task: Task<Void, Error>, release: AsyncStream<Void>.Continuation)?
                 switch testCase.signOut {

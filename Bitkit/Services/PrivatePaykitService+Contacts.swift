@@ -31,10 +31,10 @@ extension PrivatePaykitService {
 
         static func live(readPriority: PaykitSdkOperationLock.Priority = .ordered) -> PrivateMessageDrainOperations {
             PrivateMessageDrainOperations(
-                ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0) },
+                ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0, priority: readPriority) },
                 pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties(priority: readPriority) },
                 linkedPeers: { try await PaykitSdkService.shared.linkedPeers(priority: readPriority) },
-                processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0) },
+                processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0, priority: readPriority) },
                 receive: { _ = try await PaykitSdkService.shared.receivePrivateMessages(counterparty: $0) }
             )
         }
@@ -193,6 +193,7 @@ extension PrivatePaykitService {
         pendingPreparationOperation = nil
         activePreparationKeys.removeAll()
         pendingForceRefreshLightning = false
+        activeLinkPreparationKeys.removeAll()
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()
@@ -563,7 +564,9 @@ extension PrivatePaykitService {
             if peerStates[publicKey] == .blocked { continue }
             if !requireImmediatePublication, let retryAt = unavailableLinkRetryAt[publicKey], retryAt > Date() { continue }
             do {
-                if peerStates[publicKey] != .linked, try await operations.ensureLink(publicKey) != .linked {
+                if peerStates[publicKey] != .linked,
+                   try await withLinkPreparation(publicKey, operation: { try await operations.ensureLink(publicKey) }) != .linked
+                {
                     linkRetryKeys.append(publicKey)
                 }
                 unavailableLinkRetryAt[publicKey] = nil
@@ -630,6 +633,17 @@ extension PrivatePaykitService {
         } catch {
             Logger.warn("Failed to sync private Paykit endpoint publications during \(reason): \(error)", context: "PrivatePaykit")
             firstError = firstError ?? error
+            if !linkRetryKeys.isEmpty {
+                let sessionIsCurrent = await isSessionCurrent?() ?? true
+                let currentIdentity = await operations.currentPublicKey()
+                if !Task.isCancelled, sessionIsCurrent, generation == preparationGeneration, currentIdentity == identity,
+                   !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
+                {
+                    schedulePendingPrivateMessageDrainRetries(
+                        reason: reason, retryKeys: linkRetryKeys.filter { knownSavedContactKeys.contains($0) }
+                    )
+                }
+            }
         }
 
         return requireImmediatePublication ? firstError : nil
@@ -684,7 +698,7 @@ extension PrivatePaykitService {
                 if alreadyLinkedKeys.contains(retryKey) { continue }
                 if let retryAt = unavailableLinkRetryAt[retryKey], retryAt > Date() { continue }
                 do {
-                    try await operations.ensureLink(retryKey)
+                    _ = try await withLinkPreparation(retryKey) { try await operations.ensureLink(retryKey) }
                 } catch {
                     Logger.warn(
                         "Failed to advance private Paykit link for \(PubkyPublicKeyFormat.redacted(retryKey)) during \(reason): \(error)",
@@ -723,6 +737,16 @@ extension PrivatePaykitService {
         } catch {
             Logger.warn("Failed to process pending private Paykit messages during \(reason): \(error)", context: "PrivatePaykit")
         }
+    }
+
+    private func withLinkPreparation<T>(_ publicKey: String, operation: () async throws -> T) async throws -> T? {
+        try Task.checkCancellation()
+        guard activeLinkPreparationKeys.insert(publicKey).inserted else { return nil }
+        let generation = preparationGeneration
+        defer {
+            if generation == preparationGeneration { activeLinkPreparationKeys.remove(publicKey) }
+        }
+        return try await operation()
     }
 
     private func schedulePendingPrivateMessageDrainRetries(reason: String, retryKeys: [String]) {

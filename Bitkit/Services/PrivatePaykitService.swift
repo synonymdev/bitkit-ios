@@ -73,6 +73,7 @@ actor PrivatePaykitService {
     var knownSavedContactKeys: Set<String> = []
     var pendingPreparationKeys: Set<String> = []
     var activePreparationKeys: Set<String> = []
+    var activeLinkPreparationKeys: Set<String> = []
     var preparationTask: Task<Void, Never>?
     var pendingPreparationOperation: (([String], Bool) async -> Void)?
     var preparationGeneration = 0

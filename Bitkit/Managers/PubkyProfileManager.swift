@@ -53,6 +53,7 @@ class PubkyProfileManager: ObservableObject {
     enum SessionInitializationResult: Equatable {
         case noSession
         case restored(publicKey: String)
+        case restorationDeferred
         case restorationFailed
     }
 
@@ -105,6 +106,7 @@ class PubkyProfileManager: ObservableObject {
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
     private var completedRecoveryVersion = 0
+    private var sessionRestorationDeferred = false
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
@@ -255,16 +257,27 @@ class PubkyProfileManager: ObservableObject {
     ) async {
         // A usable connection can return without a new network-path event.
         let maximumDelay = Duration.seconds(180)
+        let revision = Self.sessionRevision
         var delay = retryDelay
-        while !Task.isCancelled {
+        var deferredRetries = 0
+        while !Task.isCancelled, revision == Self.sessionRevision {
             await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
-            guard !isAuthenticated, (try? hasStoredIdentity()) != false else { return }
+            guard !Task.isCancelled, revision == Self.sessionRevision,
+                  !isAuthenticated, (try? hasStoredIdentity()) != false
+            else { return }
+            let nextDelay: Duration
+            if sessionRestorationDeferred, deferredRetries < 8 {
+                deferredRetries += 1
+                nextDelay = min(retryDelay, .seconds(5))
+            } else {
+                nextDelay = delay
+                delay = min(delay * 2, maximumDelay)
+            }
             do {
-                try await sleep(min(delay * jitter(), maximumDelay))
+                try await sleep(min(nextDelay * jitter(), maximumDelay))
             } catch {
                 return
             }
-            delay = min(delay * 2, maximumDelay)
         }
     }
 
@@ -273,6 +286,7 @@ class PubkyProfileManager: ObservableObject {
         initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
     ) async {
         let revision = Self.sessionRevision
+        sessionRestorationDeferred = false
         if case .userVisible = mode {
             isInitialized = false
             initializationErrorMessage = nil
@@ -289,12 +303,16 @@ class PubkyProfileManager: ObservableObject {
                 isInitialized = true
                 return
             }
-            Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
-            authState = .idle
-            if case .userVisible = mode {
-                initializationErrorMessage = error.localizedDescription
+            if Self.isTemporarySessionRestorationError(error) {
+                result = .restorationDeferred
+            } else {
+                Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
+                authState = .idle
+                if case .userVisible = mode {
+                    initializationErrorMessage = error.localizedDescription
+                }
+                return
             }
-            return
         }
 
         guard revision == Self.sessionRevision else {
@@ -321,6 +339,10 @@ class PubkyProfileManager: ObservableObject {
             if case .userVisible = mode {
                 sessionRestorationFailed = true
             }
+        case .restorationDeferred:
+            clearAuthenticatedState(clearCachedProfile: false)
+            sessionRestorationFailed = false
+            sessionRestorationDeferred = true
         }
 
         await checkAdoptedSource()
@@ -1774,14 +1796,9 @@ class PubkyProfileManager: ObservableObject {
                 let publicKey = try await importSession(savedSessionSecret)
                 return .restored(publicKey: publicKey)
             } catch {
-                if let error = error as? PaykitError {
-                    switch error {
-                    case .ConcurrentUpdate, .SharedStateBusy, .Transport:
-                        Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
-                        return .restorationFailed
-                    default:
-                        break
-                    }
+                if isTemporarySessionRestorationError(error) {
+                    Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
+                    return .restorationDeferred
                 }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
@@ -1808,7 +1825,16 @@ class PubkyProfileManager: ObservableObject {
             return .restored(publicKey: publicKey)
         } catch {
             Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
-            return .restorationFailed
+            return isTemporarySessionRestorationError(error) ? .restorationDeferred : .restorationFailed
+        }
+    }
+
+    private nonisolated static func isTemporarySessionRestorationError(_ error: Error) -> Bool {
+        switch error {
+        case is CancellationError, PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport:
+            return true
+        default:
+            return false
         }
     }
 }

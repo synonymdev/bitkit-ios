@@ -598,10 +598,15 @@ struct AppScene: View {
                 }
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
-                Task { await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true) }
+                PaykitPaymentActivity.shared.runWhenIdle(.proofRefresh) {
+                    await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true)
+                }
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
-                Task { await associateResolvedPaykitOnchainPayment(resolution) }
+                Task { @MainActor in
+                    app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
+                    await associateResolvedPaykitOnchainPayment(resolution)
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .paykitSubscriptionPaymentDue)) { _ in
                 Task { await handlePendingPaykitSubscriptionNotification() }
@@ -1296,8 +1301,10 @@ struct AppScene: View {
             do {
                 _ = try await tryNTimes(
                     toTry: {
-                        try? await activity.syncLdkNodePayments()
-                        return try await activity.findActivity(byPaymentId: resolution.transactionId)
+                        if resolution.walletId == WalletScope.default {
+                            try? await activity.syncLdkNodePayments()
+                        }
+                        return try await activity.findActivity(byPaymentId: resolution.transactionId, walletId: resolution.walletId)
                     },
                     times: 12,
                     interval: 2
@@ -1305,6 +1312,7 @@ struct AppScene: View {
                 try await activity.setContact(
                     resolution.requestId.counterparty,
                     forPaymentId: resolution.transactionId,
+                    walletId: resolution.walletId,
                     syncLdkPayments: false
                 )
             } catch {

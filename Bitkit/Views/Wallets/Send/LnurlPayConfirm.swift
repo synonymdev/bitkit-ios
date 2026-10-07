@@ -41,13 +41,11 @@ struct LnurlPayConfirm: View {
         return try await send()
     }
 
-    var uri: String {
-        app.lnurlPayData!.uri
-    }
-
     var body: some View {
         ZStack {
-            confirmationContent
+            if let lnurlPayData = app.lnurlPayData {
+                confirmationContent(lnurlPayData: lnurlPayData)
+            }
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
                 InitialSubscriptionPaymentProgress()
             }
@@ -81,7 +79,7 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private var confirmationContent: some View {
+    private func confirmationContent(lnurlPayData: LnurlPayData) -> some View {
         VStack {
             SheetHeader(
                 title: reviewTitle,
@@ -91,7 +89,7 @@ struct LnurlPayConfirm: View {
 
             VStack(alignment: .leading) {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendableSat),
+                    sats: Int(wallet.sendAmountSats ?? lnurlPayData.minSendableSat),
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )
@@ -101,7 +99,7 @@ struct LnurlPayConfirm: View {
                     VStack(alignment: .leading) {
                         CaptionMText(t("wallet__send_invoice"))
                             .padding(.bottom, 8)
-                        BodySSBText(uri)
+                        BodySSBText(lnurlPayData.uri)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -128,7 +126,7 @@ struct LnurlPayConfirm: View {
 
                     Divider()
 
-                    if let commentAllowed = app.lnurlPayData?.commentAllowed, commentAllowed > 0 {
+                    if let commentAllowed = lnurlPayData.commentAllowed, commentAllowed > 0 {
                         VStack(alignment: .leading) {
                             CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
                                 .padding(.bottom, 8)
@@ -179,7 +177,8 @@ struct LnurlPayConfirm: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+        guard let lnurlPayData = app.lnurlPayData,
+              app.contactPaymentContext?.isInitialSubscriptionPayment == true,
               !hasStartedAutomaticPayment
         else { return }
         hasStartedAutomaticPayment = true
@@ -198,7 +197,7 @@ struct LnurlPayConfirm: View {
                 error: error,
                 retryRoute: .lnurlPayConfirm,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                paymentRequest: "LNURL: \(uri)",
+                paymentRequest: "LNURL: \(lnurlPayData.uri)",
                 contactPaymentContext: app.contactPaymentContext
             )))
         }
@@ -269,6 +268,8 @@ struct LnurlPayConfirm: View {
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
         let contactPaymentContext = app.contactPaymentContext
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
+        let paymentActivity = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         var bolt11Invoice: String?
         var lightningPaymentHash: String?
         var shouldCancelPaymentProof = false

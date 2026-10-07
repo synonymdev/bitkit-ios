@@ -930,7 +930,6 @@ struct PaykitPaymentRequestService {
             counterparty: request.counterparty,
             paymentRequestId: request.paymentRequestId
         )
-        _ = try? await processPendingMessages()
     }
 
     func claimForPayment(_ request: PaykitPaymentRequest) async throws {
@@ -973,7 +972,6 @@ struct PaykitPaymentRequestService {
             counterparty: subscription.counterparty,
             paymentRequestId: subscription.paymentRequestId
         )
-        _ = try? await processPendingMessages()
         guard let subscription = PaykitSubscription(record: record) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
@@ -1265,6 +1263,8 @@ final class PaykitPaymentRequestManager {
     private let subscriptionNow: @Sendable () -> Date
     private let logWarning: @Sendable (String) -> Void
     private let isAvailable: @MainActor () -> Bool
+    private let paymentActivity: PaykitPaymentActivity
+    private let scheduleAcceptedRequestDelivery: @MainActor (String) async -> Void
     private var processingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var approvedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var acceptedRequestIds: Set<PaykitPaymentRequest.ID> = []
@@ -1311,6 +1311,8 @@ final class PaykitPaymentRequestManager {
     }
 
     init(
+        scheduleAcceptedRequestDelivery: (@MainActor (String) async -> Void)? = nil,
+        paymentActivity: PaykitPaymentActivity? = nil,
         service: PaykitPaymentRequestService? = nil,
         presentationStore: any PaykitPaymentRequestIdStoring = PaykitPaymentRequestIdStore(),
         acceptanceStore: any PaykitPaymentRequestIdStoring = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests),
@@ -1352,6 +1354,10 @@ final class PaykitPaymentRequestManager {
         self.subscriptionNow = subscriptionNow
         self.retryNow = retryNow
         self.isAvailable = isAvailable
+        self.paymentActivity = paymentActivity ?? .shared
+        self.scheduleAcceptedRequestDelivery = scheduleAcceptedRequestDelivery ?? {
+            await PrivatePaykitService.shared.schedulePrivatePaymentRecovery(for: $0)
+        }
         self.logWarning = logWarning
     }
 
@@ -1773,6 +1779,7 @@ final class PaykitPaymentRequestManager {
                     acceptedRequestIds = ids
                     do {
                         try await service.accept($0)
+                        deferAcceptedRequestDelivery(counterparty: $0.counterparty, identity: identity, generation: actionGeneration)
                     } catch {
                         // An interrupted response may follow a committed acceptance. Keep its local owner for reconciliation.
                         switch error {
@@ -1804,6 +1811,16 @@ final class PaykitPaymentRequestManager {
         }
         try await perform(request, resultingState: .rejected) {
             try await service.reject($0)
+        }
+    }
+
+    private func deferAcceptedRequestDelivery(counterparty: String, identity: String, generation: Int) {
+        paymentActivity.runWhenIdle(.acceptance(identity: identity, counterparty: counterparty)) { [weak self] in
+            guard let self,
+                  generation == stateGeneration,
+                  PubkyPublicKeyFormat.matches(activeIdentity, identity)
+            else { return }
+            await scheduleAcceptedRequestDelivery(counterparty)
         }
     }
 
@@ -1914,13 +1931,14 @@ final class PaykitPaymentRequestManager {
         guard actionGeneration == stateGeneration,
               PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
         else { return nil }
+        deferAcceptedRequestDelivery(counterparty: current.counterparty, identity: activeIdentity, generation: actionGeneration)
         subscriptionAcceptedAt[current.id] = acceptanceInstant
         presentedSubscriptionProposalIds.insert(current.id)
         requestedSubscriptionProposalId = nil
         persistSubscriptionState(identity: activeIdentity)
         await applyCommittedSubscription(acceptedSubscription, at: subscriptionNow())
         invalidateRefresh()
-        await refresh()
+        await refresh(mode: .stored)
         return pendingRequests
             .filter { $0.belongs(to: current) }
             .min { ($0.billingPeriod?.startsAt ?? .distantFuture) < ($1.billingPeriod?.startsAt ?? .distantFuture) }

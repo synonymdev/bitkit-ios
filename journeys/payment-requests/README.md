@@ -173,7 +173,41 @@ the SDK and can push the Pay step well past the budget.
 
 `delete-contact-with-active-subscription.xml` requires an accepted open-ended payer subscription. It verifies that deletion explains why the contact must stay saved until the subscription ends, then that canceling, deleting, and readding does not revive it. No new payment is sent. Both contact-deletion journeys are mirrored on iOS and Android.
 
+## Hardware broadcast recovery (manual)
+
+This requires a funded disposable regtest hardware wallet, a linked issuer with an absolute
+payment deadline, and fault injection that can drop a successful broadcast response and hold
+wallet reconciliation or its UI delivery. These controls are not journey capabilities; record
+this test as blocked, not passed, when they are unavailable. Do not change the device clock.
+
+1. Submit before the deadline, forward the signed transaction to the regtest node, and drop
+   only its response. Record the node's transaction ID and keep wallet reconciliation paused.
+2. Let the payment deadline pass and retry. Verify that no additional broadcast occurs, the
+   signed transaction and started proof remain retained, and an unknown outcome is not treated
+   as a definite failure that allows another payment. Once the retry finishes, Back and ordinary
+   dismissal remain available; an expired retry must not create a navigation lock.
+3. Release reconciliation for that transaction in the same hardware wallet. Verify that the
+   existing send screen reaches normal success, pending progress clears, and navigation is
+   available again. Check the wallet's activity and issuer proof against the recorded transaction;
+   no additional broadcast or duplicate activity may be created.
+4. Repeat with a new request, pausing UI delivery after the matching resolution is retained.
+   Detach and reattach the send view while retaining its AppViewModel and coordinator before releasing delivery. Verify the same
+   completion and navigation result; consuming the global proof event must not lose completion.
+5. Deliver a resolution for a different identity, request or hardware wallet before the matching
+   one. Verify it cannot complete the pending send, then release the matching result and verify
+   normal completion. Capture redacted logs and UI evidence for each boundary.
+6. Repeat with a first broadcast that never reaches the node but reports an uncertain outcome.
+   Retry after expiry, including expiry during authorization and while queued for hardware
+   submission. Verify that no new broadcast occurs and the user can leave without a resolution.
+   Dismissal must leave the started proof pending for later reconciliation, not permit a new payment.
+
+For definite hardware failures, inject Core's `InvalidHex` or `InvalidTransaction` before
+the first network submission. Leave the signing screen and reopen the unpaid request; it must
+remain payable. Repeat after an earlier uncertain submission: the proof must stay pending and
+a fresh payment must remain blocked. Electrum and unclassified errors are not proof of rejection.
+
 ## Payment deadline history
+
 
 `absolute-payment-deadline.xml` verifies valid absolute deadlines, acceptance before proposal expiry,
 retry after proposal expiry, expiry during invoice retrieval, and proof reconciliation after the deadline.

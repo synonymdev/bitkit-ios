@@ -87,6 +87,15 @@ struct HwSendSignView: View {
             observedResolution = resolution
             applyObservedResolution()
         }
+        .onChange(of: app.paykitOnchainPaymentResolution, initial: true) { _, resolution in
+            guard let resolution,
+                  resolution.requestId == contactPaymentRequestId,
+                  resolution.walletId == hwSend.walletId,
+                  PubkyPublicKeyFormat.matches(resolution.identity, contactPaymentIdentity)
+            else { return }
+            observedResolution = resolution
+            applyObservedResolution()
+        }
         .onChange(of: hwSend.isSigning) { _, isSigning in
             if !isSigning {
                 applyObservedResolution()
@@ -129,6 +138,7 @@ struct HwSendSignView: View {
         app.addPendingContactPaymentContext(
             resolution.transactionId, context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
         )
+        app.consumePaykitOnchainPaymentResolution(resolution)
         navigationPath.append(route)
         Task { await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution) }
     }
@@ -136,7 +146,11 @@ struct HwSendSignView: View {
     private func startSigning() {
         guard signingTask == nil else { return }
         signingTask = Task { @MainActor in
-            defer { signingTask = nil }
+            let paymentActivity = PaykitPaymentActivity.shared.begin()
+            defer {
+                PaykitPaymentActivity.shared.end(paymentActivity)
+                signingTask = nil
+            }
             guard let invoice = app.scannedOnchainInvoice,
                   let amount = wallet.sendAmountSats,
                   let feeRate = wallet.selectedFeeRateSatsPerVByte,

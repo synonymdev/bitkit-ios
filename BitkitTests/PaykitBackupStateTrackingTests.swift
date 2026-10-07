@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class PaykitBackupStateTrackingTests: XCTestCase {
-    private enum Failure: Error, Equatable { case revision, operation }
+    private enum Failure: Error, Equatable { case revision, admission, operation }
 
     func testBackupDecisionUsesContentAndTreatsUnreadableRevisionsConservatively() async throws {
         let cases: [(String?, String?, Int)] = [
@@ -47,6 +47,23 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
             XCTAssertEqual(error as? Failure, .operation)
         }
         XCTAssertEqual(changes, 1)
+    }
+
+    func testRejectedAdmissionDoesNotRunOrInvalidateBackup() async {
+        var reads = 0
+        do {
+            try await PaykitSdkService.withBackupStateRevisionTracking(
+                readRevision: { reads += 1; return "before" },
+                onSnapshot: { _ in XCTFail("Admission failure must not replace the backup snapshot") },
+                onChange: { XCTFail("Admission failure must not request a backup") },
+                beforeOperation: { throw Failure.admission },
+                operation: { XCTFail("The write must not run after admission failed") }
+            )
+            XCTFail("Expected admission failure")
+        } catch {
+            XCTAssertEqual(error as? Failure, .admission)
+        }
+        XCTAssertEqual(reads, 1)
     }
 
     func testCancellationAfterMutationStillRequestsBackup() async {
