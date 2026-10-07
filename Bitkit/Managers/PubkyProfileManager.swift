@@ -106,6 +106,7 @@ class PubkyProfileManager: ObservableObject {
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
     private var completedRecoveryVersion = 0
+    private var sessionRestorationDeferred = false
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
@@ -256,16 +257,27 @@ class PubkyProfileManager: ObservableObject {
     ) async {
         // A usable connection can return without a new network-path event.
         let maximumDelay = Duration.seconds(180)
+        let revision = Self.sessionRevision
         var delay = retryDelay
-        while !Task.isCancelled {
+        var deferredRetries = 0
+        while !Task.isCancelled, revision == Self.sessionRevision {
             await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
-            guard !isAuthenticated, (try? hasStoredIdentity()) != false else { return }
+            guard !Task.isCancelled, revision == Self.sessionRevision,
+                  !isAuthenticated, (try? hasStoredIdentity()) != false
+            else { return }
+            let nextDelay: Duration
+            if sessionRestorationDeferred, deferredRetries < 8 {
+                deferredRetries += 1
+                nextDelay = min(retryDelay, .seconds(5))
+            } else {
+                nextDelay = delay
+                delay = min(delay * 2, maximumDelay)
+            }
             do {
-                try await sleep(min(delay * jitter(), maximumDelay))
+                try await sleep(min(nextDelay * jitter(), maximumDelay))
             } catch {
                 return
             }
-            delay = min(delay * 2, maximumDelay)
         }
     }
 
@@ -274,6 +286,7 @@ class PubkyProfileManager: ObservableObject {
         initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
     ) async {
         let revision = Self.sessionRevision
+        sessionRestorationDeferred = false
         if case .userVisible = mode {
             isInitialized = false
             initializationErrorMessage = nil
@@ -329,6 +342,7 @@ class PubkyProfileManager: ObservableObject {
         case .restorationDeferred:
             clearAuthenticatedState(clearCachedProfile: false)
             sessionRestorationFailed = false
+            sessionRestorationDeferred = true
         }
 
         await checkAdoptedSource()

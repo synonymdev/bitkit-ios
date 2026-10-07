@@ -266,6 +266,89 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testDeferredRecoveryUsesBoundedShortRetriesBeforeBackingOff() async {
+        for multiplier in [0.8, 1.0, 1.2] {
+            let manager = RecoveryProfileManager()
+            let attempts = SessionRecoveryAttempts()
+            var delays: [Duration] = []
+            await manager.retrySessionRestoration(
+                jitter: { multiplier },
+                sleep: { delays.append($0) },
+                hasStoredIdentity: { true },
+                initializeSession: {
+                    guard await attempts.next() > 11 else { return .restorationDeferred }
+                    return .restored(publicKey: "existing-identity")
+                }
+            )
+
+            let expected = Array(repeating: 5.0, count: 8) + [10, 20, 40]
+            XCTAssertEqual(delays, expected.map { .seconds($0 * multiplier) })
+            XCTAssertEqual(manager.publicKey, "existing-identity")
+            XCTAssertFalse(manager.sessionRestorationFailed)
+        }
+    }
+
+    @MainActor
+    func testDeferredRecoveryKeepsNormalBackoffForInvalidCredentials() async {
+        let manager = RecoveryProfileManager()
+        let attempts = SessionRecoveryAttempts()
+        var delays: [Duration] = []
+        await manager.retrySessionRestoration(
+            jitter: { 1 },
+            sleep: { delays.append($0) },
+            hasStoredIdentity: { true },
+            initializeSession: {
+                switch await attempts.next() {
+                case 1: throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Locked")
+                case 2: throw PubkyServiceError.authFailed("Invalid credentials")
+                default: return .restored(publicKey: "existing-identity")
+                }
+            }
+        )
+        XCTAssertEqual(delays, [.seconds(5), .seconds(10)])
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+    }
+
+    @MainActor
+    func testDeferredRecoveryStopsAfterCancellationOrIdentityChange() async throws {
+        for changeIdentity in [false, true] {
+            let manager = RecoveryProfileManager()
+            let sleeping = expectation(description: "waiting before deferred retry")
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let attempts = SessionRecoveryAttempts()
+            let recovery = Task {
+                await manager.retrySessionRestoration(
+                    sleep: { _ in
+                        sleeping.fulfill()
+                        for await _ in stream {}
+                    },
+                    hasStoredIdentity: { true },
+                    initializeSession: {
+                        let attempt = await attempts.next()
+                        XCTAssertEqual(attempt, 1, "Invalidated recovery must not restore another session")
+                        return attempt == 1 ? .restorationDeferred : .restored(publicKey: "unexpected-identity")
+                    }
+                )
+            }
+            await fulfillment(of: [sleeping], timeout: 2)
+            if changeIdentity {
+                try await PubkyProfileManager.restoreSessionBackupState(
+                    nil,
+                    deleteKeychainValue: { _ in },
+                    removeOwnSharedRecords: {},
+                    forgetSessionAccess: {}
+                )
+            } else {
+                recovery.cancel()
+            }
+            continuation.finish()
+            await recovery.value
+            XCTAssertNil(manager.publicKey)
+        }
+    }
+
+    @MainActor
     func testCancelledRecoveryDoesNotRetryAfterPendingStartup() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")
