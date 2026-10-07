@@ -148,8 +148,13 @@ struct EditProfileView: View {
         guard !isDeleting else { return }
 
         isDeleting = true
-        defer { isDeleting = false }
+        await PrivatePaykitService.shared.beginProfileDeletion()
+        await deleteProfileWithSessionRetry()
+        await PrivatePaykitService.shared.endProfileDeletion()
+        isDeleting = false
+    }
 
+    private func deleteProfileWithSessionRetry() async {
         do {
             try await performDeleteProfile()
         } catch {
@@ -169,8 +174,9 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile() async throws {
+        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "EditProfileView.deleteProfile")
         await contactsManager.deleteAllContactsBestEffort()
-        try await pubkyProfile.deleteProfile()
+        try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false)
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 

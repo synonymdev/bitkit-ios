@@ -1,5 +1,6 @@
 import BitkitCore
 import Foundation
+import Paykit
 
 @MainActor
 struct PaymentNavigationHelper {
@@ -285,7 +286,15 @@ struct PaymentNavigationHelper {
                 "Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
                 context: "PaymentNavigationHelper"
             )
-            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+            if let description = contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
+    }
+
+    static func contactPaymentErrorDescription(_ error: Error) -> String? {
+        let underlyingError = (error as? AppError)?.underlyingError ?? error
+        if underlyingError is CancellationError { return nil }
+        return underlyingError is PaykitError ? t("other__try_again") : error.localizedDescription
     }
 }

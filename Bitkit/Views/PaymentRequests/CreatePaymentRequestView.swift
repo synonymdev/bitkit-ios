@@ -541,7 +541,9 @@ struct PaymentRequestSentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_sent_title"))
+            SheetHeader(title: t(request.deliveryStatus == .sent
+                    ? "wallet__payment_request_sent_title"
+                    : "subscriptions__proposal_queued_title"))
 
             Spacer(minLength: 8)
 

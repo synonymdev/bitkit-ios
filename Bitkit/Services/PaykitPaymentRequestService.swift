@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import ImageIO
 import LDKNode
@@ -14,6 +15,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         case recurringRequest = "recurring_request"
         case unsupportedAsset = "unsupported_asset"
         case unsupportedPaymentDeadline = "unsupported_payment_deadline"
+        case invalidPaymentDeadline = "invalid_payment_deadline"
         case invalidAmount = "invalid_amount"
         case amountOutOfRange = "amount_out_of_range"
         case noSupportedEndpoint = "no_supported_endpoint"
@@ -38,30 +40,27 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     struct ID: Codable, Hashable {
         let paymentRequestId: String
         let counterparty: String
-        let counterpartyReceiverPath: String
         let billingPeriodStartsAt: Date?
 
         init(
             paymentRequestId: String,
             counterparty: String,
-            counterpartyReceiverPath: String,
             billingPeriodStartsAt: Date? = nil
         ) {
             self.paymentRequestId = paymentRequestId
             self.counterparty = counterparty
-            self.counterpartyReceiverPath = counterpartyReceiverPath
             self.billingPeriodStartsAt = billingPeriodStartsAt
         }
     }
 
     let paymentRequestId: String
     let counterparty: String
-    let counterpartyReceiverPath: String
     let amountValue: String
     let amountSats: UInt64
     let note: String?
     let createdAt: Date?
     let expiresAt: Date?
+    let paymentDeadline: PaykitPreciseInstant?
     let acceptedPaymentEndpointIdentifiers: [String]
     let deliveryStatus: DeliveryStatus?
     let direction: Direction
@@ -77,7 +76,6 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         ID(
             paymentRequestId: paymentRequestId,
             counterparty: counterparty,
-            counterpartyReceiverPath: counterpartyReceiverPath,
             billingPeriodStartsAt: billingPeriod?.startsAt
         )
     }
@@ -133,6 +131,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
                 return .failure(.nonActionableState)
             }
             lifecycleState = actionableState
+        } else if expectedRole == .payer, let actionableState = actionableLifecycleState(for: record) {
+            lifecycleState = actionableState
         } else {
             lifecycleState = record.state
         }
@@ -140,8 +140,18 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         guard record.state != .activeRecurring else { return .failure(.recurringRequest) }
         guard let terms = record.terms else { return .failure(.missingTerms) }
         guard terms.recurrence == nil else { return .failure(.recurringRequest) }
-        if requiresActionableRequest, terms.paymentDeadline != nil {
-            return .failure(.unsupportedPaymentDeadline)
+        let paymentDeadline: PaykitPreciseInstant?
+        if let deadline = terms.paymentDeadline {
+            guard case .at = deadline else { return .failure(.unsupportedPaymentDeadline) }
+            guard let timestamp = try? Paykit.paymentDeadlineAt(deadline: deadline, billingPeriod: nil),
+                  let instant = PaykitPreciseInstant(timestamp: timestamp)
+            else { return .failure(.invalidPaymentDeadline) }
+            if requiresActionableRequest, instant < PaykitPreciseInstant(date: now) {
+                return .failure(.expired)
+            }
+            paymentDeadline = instant
+        } else {
+            paymentDeadline = nil
         }
         guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
         guard let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
@@ -169,12 +179,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         return .success(PaykitPaymentRequest(
             paymentRequestId: record.paymentRequestId,
             counterparty: record.counterparty,
-            counterpartyReceiverPath: record.counterpartyReceiverPath,
             amountValue: terms.amount.value,
             amountSats: amountSats,
             note: Self.note(from: terms.metadata),
             createdAt: record.lastEventAt.flatMap(Self.parseDate),
             expiresAt: expiresAt,
+            paymentDeadline: paymentDeadline,
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
             deliveryStatus: expectedRole == .payee ? Self.deliveryStatus(from: record.proposalOutboundStatus) : nil,
             direction: expectedRole == .payer ? .incoming : .outgoing,
@@ -213,13 +223,13 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         paymentRequestId = createdRecord.paymentRequestId
         counterparty = target.publicKey
-        counterpartyReceiverPath = target.receiverPath
         amountValue = WalletViewModel.formatBitcoinAmount(sats: draft.amountSats)
         amountSats = draft.amountSats
         let trimmedNote = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
         note = trimmedNote.isEmpty ? nil : trimmedNote
         createdAt = createdRecord.lastEventAt.flatMap(Self.parseDate) ?? fallbackCreatedAt
         expiresAt = draft.expiresAt
+        paymentDeadline = nil
         self.acceptedPaymentEndpointIdentifiers = acceptedPaymentEndpointIdentifiers
         self.deliveryStatus = deliveryStatus
         direction = .outgoing
@@ -235,12 +245,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         PaykitPaymentRequest(
             paymentRequestId: paymentRequestId,
             counterparty: counterparty,
-            counterpartyReceiverPath: counterpartyReceiverPath,
             amountValue: amountValue,
             amountSats: amountSats,
             note: note,
             createdAt: createdAt,
             expiresAt: expiresAt,
+            paymentDeadline: paymentDeadline,
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
             deliveryStatus: deliveryStatus,
             direction: direction,
@@ -259,12 +269,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         paymentRequestId = subscription.paymentRequestId
         counterparty = subscription.counterparty
-        counterpartyReceiverPath = subscription.counterpartyReceiverPath
         amountValue = subscription.amountValue
         amountSats = subscription.amountSats
         note = subscription.note
         createdAt = billingPeriod.startsAt
         expiresAt = nil
+        paymentDeadline = nil
         acceptedPaymentEndpointIdentifiers = subscription.acceptedPaymentEndpointIdentifiers
         deliveryStatus = nil
         self.direction = direction
@@ -276,12 +286,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     private init(
         paymentRequestId: String,
         counterparty: String,
-        counterpartyReceiverPath: String,
         amountValue: String,
         amountSats: UInt64,
         note: String?,
         createdAt: Date?,
         expiresAt: Date?,
+        paymentDeadline: PaykitPreciseInstant?,
         acceptedPaymentEndpointIdentifiers: [String],
         deliveryStatus: DeliveryStatus?,
         direction: Direction,
@@ -291,12 +301,12 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         self.paymentRequestId = paymentRequestId
         self.counterparty = counterparty
-        self.counterpartyReceiverPath = counterpartyReceiverPath
         self.amountValue = amountValue
         self.amountSats = amountSats
         self.note = note
         self.createdAt = createdAt
         self.expiresAt = expiresAt
+        self.paymentDeadline = paymentDeadline
         self.acceptedPaymentEndpointIdentifiers = acceptedPaymentEndpointIdentifiers
         self.deliveryStatus = deliveryStatus
         self.direction = direction
@@ -306,7 +316,17 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     }
 
     func isExpired(at date: Date) -> Bool {
-        lifecycleState == .proposed && (expiresAt.map { $0 <= date } ?? false)
+        (lifecycleState == .proposed && (expiresAt.map { $0 <= date } ?? false)) || isPaymentDeadlineExpired(at: date)
+    }
+
+    func isPaymentDeadlineExpired(at date: Date) -> Bool {
+        paymentDeadline.map { $0 < PaykitPreciseInstant(date: date) } ?? false
+    }
+
+    static func checkPaymentDeadline(_ deadline: PaykitPreciseInstant?, at date: Date = Date()) throws {
+        if let deadline, deadline < PaykitPreciseInstant(date: date) {
+            throw PaykitPaymentRequestError.requestExpired
+        }
     }
 
     func acceptsLightningInvoiceAmount(milliSatoshis: UInt64?) -> Bool {
@@ -326,8 +346,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     func belongs(to subscription: PaykitSubscription) -> Bool {
         billingPeriod != nil &&
             paymentRequestId == subscription.paymentRequestId &&
-            counterparty == subscription.counterparty &&
-            counterpartyReceiverPath == subscription.counterpartyReceiverPath
+            counterparty == subscription.counterparty
     }
 
     static func sats(fromBitcoinAmount amount: String) -> UInt64? {
@@ -383,16 +402,16 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
 
 struct PaykitPaymentRequestTarget: Identifiable, Equatable, Hashable {
     let publicKey: String
-    let receiverPath: String
 
     var id: String {
-        "\(publicKey)|\(receiverPath)"
+        publicKey
     }
 }
 
 struct PaykitPaymentRequestTargetDiscovery: Equatable {
     let targets: [PaykitPaymentRequestTarget]
     let isComplete: Bool
+    let capabilityCheckedPublicKeys: Set<String>
 }
 
 struct PaykitPaymentRequestDraft: Hashable {
@@ -425,15 +444,18 @@ struct PaykitPaymentRequestSnapshot: Equatable {
     let incoming: [PaykitPaymentRequest]
     let history: [PaykitPaymentRequest]
     let subscriptions: [PaykitSubscription]
+    let receivedPaymentContacts: PaykitReceivedPaymentContacts
 
     init(
         incoming: [PaykitPaymentRequest],
         history: [PaykitPaymentRequest],
-        subscriptions: [PaykitSubscription] = []
+        subscriptions: [PaykitSubscription] = [],
+        receivedPaymentContacts: PaykitReceivedPaymentContacts = PaykitReceivedPaymentContacts()
     ) {
         self.incoming = incoming
         self.history = history
         self.subscriptions = subscriptions
+        self.receivedPaymentContacts = receivedPaymentContacts
     }
 }
 
@@ -499,39 +521,51 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
 }
 
 protocol PaykitPaymentRequestSdkHandling: Sendable {
-    func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
-    func receivePrivateMessagesFromLinkedPeers() async throws -> [Paykit.PrivateStreamCounterpartyIntakeReport]
+    func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport
+    func processOutboundPrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> Paykit
+        .OutboundPrivateSendReport
+    func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
+    func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) async throws
+        -> [Paykit.PrivateStreamCounterpartyIntakeReport]
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
+    func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord]
+    func sharedPaymentRequests(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.PaymentRequestRecord]
+    func sharedPaymentRequests(expectedIdentity: String) async throws -> [Paykit.PaymentRequestRecord]
     func identityStatus() async throws -> Paykit.IdentityStatus?
+    func identityStatus(priority: PaykitSdkOperationLock.Priority) async throws -> Paykit.IdentityStatus?
     func linkedPeers() async throws -> [Paykit.LinkedPeerRecord]
-    func paymentRequestReceiverPaths(publicKey: String, priority: PaykitPublicReadPriority) async throws -> [String]
+    func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [Paykit.LinkedPeerRecord]
+    func canReceivePaymentRequests(publicKey: String, priority: PaykitPublicReadPriority) async throws -> Bool
     func proposePaymentRequest(
         counterparty: String,
-        counterpartyReceiverPath: String,
         terms: Paykit.PaymentRequestTerms,
         expectedIdentity: String
     ) async throws -> Paykit.PaymentRequestRecord
     func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String?) async throws -> String
     func acceptPaymentRequest(
         counterparty: String,
-        counterpartyReceiverPath: String,
         paymentRequestId: String
     ) async throws -> Paykit.PaymentRequestRecord
+    func claimPaymentRequestForExecution(counterparty: String, paymentRequestId: String) async throws -> Paykit.PaymentRequestRecord
     func rejectPaymentRequest(
         counterparty: String,
-        counterpartyReceiverPath: String,
         paymentRequestId: String,
         reason: String?
     ) async throws -> Paykit.PaymentRequestRecord
     func cancelPaymentRequest(
         counterparty: String,
-        counterpartyReceiverPath: String,
         paymentRequestId: String,
         reason: String?
     ) async throws -> Paykit.PaymentRequestRecord
 }
 
 extension PaykitSdkService: PaykitPaymentRequestSdkHandling {}
+
+enum PaykitPaymentRequestRefreshMode: Comparable {
+    case stored
+    case inbox
+    case full
+}
 
 struct PaykitPaymentRequestService {
     private let sdk: any PaykitPaymentRequestSdkHandling
@@ -559,16 +593,25 @@ struct PaykitPaymentRequestService {
         self.logWarning = logWarning
     }
 
-    func synchronize() async throws -> PaykitPaymentRequestSnapshot {
-        try await processPendingMessages()
-        let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers()
-        logIntakeFailures(intakeReports)
+    func synchronize(
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        priority: PaykitSdkOperationLock.Priority = .ordered,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws -> PaykitPaymentRequestSnapshot {
+        if mode == .full {
+            try await processPendingMessages(priority: messagePriority)
+        }
+        if mode >= .inbox {
+            let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers(priority: messagePriority)
+            logIntakeFailures(intakeReports)
+        }
         let synchronizationDate = now()
-        let records = try await sdk.paymentRequests()
-        let blockedPeers = try await sdk.linkedPeers().filter { $0.state == .blocked }
+        let sharedRecords = try await sdk.sharedPaymentRequests(priority: priority)
+        let records = sharedRecords.filter(PaykitSdkService.isBitkitPaymentRequest)
+        let blockedPeers = try await sdk.linkedPeers(priority: priority).filter { $0.state == .blocked }
         let availableRecords = records.filter { record in
             !blockedPeers.contains {
-                PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty) && $0.counterpartyReceiverPath == record.counterpartyReceiverPath
+                PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty)
             }
         }
         var rejections: [IncomingPaykitPaymentRequestRejection] = []
@@ -602,7 +645,8 @@ struct PaykitPaymentRequestService {
         return PaykitPaymentRequestSnapshot(
             incoming: incoming,
             history: history,
-            subscriptions: subscriptions
+            subscriptions: subscriptions,
+            receivedPaymentContacts: PaykitReceivedPaymentContacts(records: sharedRecords)
         )
     }
 
@@ -610,7 +654,6 @@ struct PaykitPaymentRequestService {
         try await sdk.paymentRequests().first {
             $0.paymentRequestId == request.paymentRequestId &&
                 $0.counterparty == request.counterparty &&
-                $0.counterpartyReceiverPath == request.counterpartyReceiverPath &&
                 $0.localRole == .payer
         }?.state
     }
@@ -620,61 +663,80 @@ struct PaykitPaymentRequestService {
     }
 
     /// Keeps a previously eligible target when its capability lookup fails, so a transient transport error does not hide it.
-    /// Checks run one at a time on the interactive read lane, for a user waiting on them; the background refresh of every
-    /// saved contact passes `.bulk`.
+    /// Foreground lookups use the interactive read lane; background refreshes pass `.bulk`.
     func discoverEligibleTargets(
         savedPublicKeys: [String],
         expectedIdentity: String,
         previousTargets: [PaykitPaymentRequestTarget] = [],
         priority: PaykitPublicReadPriority = .interactive
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
-        let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true)
+        let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true, capabilityCheckedPublicKeys: [])
         guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
-        guard let identityStatus = try await sdk.identityStatus(),
-              identityStatus.liveSessionAvailable,
+        let sdkPriority: PaykitSdkOperationLock.Priority = priority == .bulk ? .background : .interactive
+        guard let identityStatus = try await sdk.identityStatus(priority: sdkPriority),
+              identityStatus.capability == .privateLinkCapable,
               PubkyPublicKeyFormat.matches(identityStatus.publicKey, expectedIdentity)
         else { return unavailable }
         var seenSavedKeys = Set<String>()
         let savedKeys = savedPublicKeys.compactMap(PubkyPublicKeyFormat.normalized).filter {
             seenSavedKeys.insert($0).inserted
         }
-        let linkedPeers = try await sdk.linkedPeers().filter { $0.state == .linked }
-        var linkedPathsByPublicKey: [String: Set<String>] = [:]
-
-        for peer in linkedPeers {
-            guard let publicKey = PubkyPublicKeyFormat.normalized(peer.counterparty),
-                  PaykitReceiverPath.supported.contains(peer.counterpartyReceiverPath)
-            else { continue }
-            linkedPathsByPublicKey[publicKey, default: []].insert(peer.counterpartyReceiverPath)
-        }
-
-        var targets: [PaykitPaymentRequestTarget] = []
-        var isComplete = true
-        for publicKey in savedKeys {
-            guard let linkedPaths = linkedPathsByPublicKey[publicKey] else { continue }
-            let capablePaths: [String]
+        let linkedPeers = try await sdk.linkedPeers(priority: sdkPriority).filter { $0.state == .linked }
+        let linkedKeys = Set(linkedPeers.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) })
+        let candidates = savedKeys.filter { linkedKeys.contains($0) }
+        let lookup: @Sendable (String) async throws -> (String, Result<Bool, Error>) = { [sdk] publicKey in
             do {
                 try Task.checkCancellation()
-                capablePaths = try await sdk.paymentRequestReceiverPaths(publicKey: publicKey, priority: priority)
+                let canReceive = try await sdk.canReceivePaymentRequests(publicKey: publicKey, priority: priority)
+                try Task.checkCancellation()
+                return (publicKey, .success(canReceive))
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                try Task.checkCancellation()
+                return (publicKey, .failure(error))
+            }
+        }
+        let capabilities = try await withThrowingTaskGroup(of: (String, Result<Bool, Error>).self) { group in
+            var remaining = candidates.makeIterator()
+            for _ in 0 ..< 8 {
+                guard let publicKey = remaining.next() else { break }
+                group.addTask { try await lookup(publicKey) }
+            }
+            var results: [String: Result<Bool, Error>] = [:]
+            while let (publicKey, result) = try await group.next() {
+                try Task.checkCancellation()
+                results[publicKey] = result
+                if let nextKey = remaining.next() {
+                    group.addTask { try await lookup(nextKey) }
+                }
+            }
+            return results
+        }
+        try Task.checkCancellation()
+
+        var targets: [PaykitPaymentRequestTarget] = []
+        var isComplete = true
+        var capabilityCheckedPublicKeys = Set<String>()
+        for publicKey in candidates {
+            guard let result = capabilities[publicKey] else { continue }
+            switch result {
+            case let .success(canReceive):
+                capabilityCheckedPublicKeys.insert(publicKey)
+                if canReceive { targets.append(PaykitPaymentRequestTarget(publicKey: publicKey)) }
+            case let .failure(error):
                 isComplete = false
                 logWarning("Failed to inspect Paykit payment request support for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)")
                 if let previousTarget = previousTargets.first(where: {
-                    PubkyPublicKeyFormat.matches($0.publicKey, publicKey) && linkedPaths.contains($0.receiverPath)
+                    PubkyPublicKeyFormat.matches($0.publicKey, publicKey)
                 }) {
                     targets.append(previousTarget)
                 }
-                continue
             }
-            guard let receiverPath = PaykitReceiverPath.supported.first(where: {
-                linkedPaths.contains($0) && capablePaths.contains($0)
-            }) else { continue }
-
-            targets.append(PaykitPaymentRequestTarget(publicKey: publicKey, receiverPath: receiverPath))
         }
-        return PaykitPaymentRequestTargetDiscovery(targets: targets, isComplete: isComplete)
+        return PaykitPaymentRequestTargetDiscovery(
+            targets: targets, isComplete: isComplete, capabilityCheckedPublicKeys: capabilityCheckedPublicKeys
+        )
     }
 
     func propose(
@@ -691,7 +753,9 @@ struct PaykitPaymentRequestService {
         guard draft.expiresAt > proposalDate else {
             throw PaykitPaymentRequestError.requestExpired
         }
-        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+        guard let selectedSavedKey = savedPublicKeys.first(where: { PubkyPublicKeyFormat.matches($0, target.publicKey) }),
+              try await eligibleTargets(savedPublicKeys: [selectedSavedKey], expectedIdentity: expectedIdentity).contains(target)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         let metadataData = try JSONSerialization.data(withJSONObject: ["note": draft.note])
@@ -705,18 +769,19 @@ struct PaykitPaymentRequestService {
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: nil,
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
+            paymentEndpoints: nil,
+            requiredAppId: "bitkit",
             conversion: nil,
             paymentDeadline: nil,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
         let record = try await sdk.proposePaymentRequest(
             counterparty: target.publicKey,
-            counterpartyReceiverPath: target.receiverPath,
             terms: terms,
             expectedIdentity: expectedIdentity
         )
-        let reports = await (try? processPendingMessages()) ?? []
-        let deliveryStatus = proposalWasSent(record, reports: reports) ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
+        let wasSent = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
+        let deliveryStatus = wasSent ? PaykitPaymentRequest.DeliveryStatus.sent : .queued
         return PaykitPaymentRequest(
             createdRecord: record,
             draft: draft,
@@ -747,7 +812,9 @@ struct PaykitPaymentRequestService {
         guard draft.expiresAt > validationDate else {
             throw PaykitPaymentRequestError.requestExpired
         }
-        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+        guard let selectedSavedKey = savedPublicKeys.first(where: { PubkyPublicKeyFormat.matches($0, target.publicKey) }),
+              try await eligibleTargets(savedPublicKeys: [selectedSavedKey], expectedIdentity: expectedIdentity).contains(target)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
@@ -766,7 +833,7 @@ struct PaykitPaymentRequestService {
         } else {
             nil
         }
-        guard try await eligibleTargets(savedPublicKeys: savedPublicKeys, expectedIdentity: expectedIdentity).contains(target) else {
+        guard try await eligibleTargets(savedPublicKeys: [selectedSavedKey], expectedIdentity: expectedIdentity).contains(target) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         try await validateBeforeProposing()
@@ -786,12 +853,10 @@ struct PaykitPaymentRequestService {
         try PaykitSubscriptionProposal.validate(terms)
         let record = try await sdk.proposePaymentRequest(
             counterparty: target.publicKey,
-            counterpartyReceiverPath: target.receiverPath,
             terms: terms,
             expectedIdentity: expectedIdentity
         )
-        let reports = await (try? processPendingMessages()) ?? []
-        let deliveryStatus = proposalWasSent(record, reports: reports)
+        let deliveryStatus = await proposalWasSent(record, to: target.publicKey, expectedIdentity: expectedIdentity)
             ? PaykitPaymentRequest.DeliveryStatus.sent
             : .queued
         guard let subscription = PaykitSubscription(record: record, deliveryStatusOverride: deliveryStatus) else {
@@ -836,6 +901,8 @@ struct PaykitPaymentRequestService {
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
             recurrence: recurrence,
             acceptedPaymentEndpointIdentifiers: endpoints,
+            paymentEndpoints: nil,
+            requiredAppId: "bitkit",
             conversion: nil,
             paymentDeadline: nil,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
@@ -843,10 +910,15 @@ struct PaykitPaymentRequestService {
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        guard !request.isPaymentDeadlineExpired(at: now()) else {
+            throw PaykitPaymentRequestError.requestExpired
+        }
         guard try await !sdk.linkedPeers().contains(where: {
-            $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) &&
-                $0.counterpartyReceiverPath == request.counterpartyReceiverPath
+            $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
         }) else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard !request.isPaymentDeadlineExpired(at: now()) else {
+            throw PaykitPaymentRequestError.requestExpired
+        }
     }
 
     func accept(_ request: PaykitPaymentRequest) async throws {
@@ -856,10 +928,17 @@ struct PaykitPaymentRequestService {
 
         _ = try await sdk.acceptPaymentRequest(
             counterparty: request.counterparty,
-            counterpartyReceiverPath: request.counterpartyReceiverPath,
             paymentRequestId: request.paymentRequestId
         )
-        _ = try? await processPendingMessages()
+    }
+
+    func claimForPayment(_ request: PaykitPaymentRequest) async throws {
+        let record = try await sdk.claimPaymentRequestForExecution(counterparty: request.counterparty, paymentRequestId: request.paymentRequestId)
+        if let period = request.billingPeriod {
+            guard let subscription = PaykitSubscription(record: record), !subscription.paidPeriods.contains(period) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+        }
     }
 
     func reject(_ request: PaykitPaymentRequest) async throws {
@@ -869,7 +948,6 @@ struct PaykitPaymentRequestService {
 
         _ = try await sdk.rejectPaymentRequest(
             counterparty: request.counterparty,
-            counterpartyReceiverPath: request.counterpartyReceiverPath,
             paymentRequestId: request.paymentRequestId,
             reason: nil
         )
@@ -879,7 +957,6 @@ struct PaykitPaymentRequestService {
     func cancel(_ request: PaykitPaymentRequest) async throws {
         _ = try await sdk.cancelPaymentRequest(
             counterparty: request.counterparty,
-            counterpartyReceiverPath: request.counterpartyReceiverPath,
             paymentRequestId: request.paymentRequestId,
             reason: nil
         )
@@ -893,10 +970,8 @@ struct PaykitPaymentRequestService {
 
         let record = try await sdk.acceptPaymentRequest(
             counterparty: subscription.counterparty,
-            counterpartyReceiverPath: subscription.counterpartyReceiverPath,
             paymentRequestId: subscription.paymentRequestId
         )
-        _ = try? await processPendingMessages()
         guard let subscription = PaykitSubscription(record: record) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
@@ -910,7 +985,6 @@ struct PaykitPaymentRequestService {
 
         let record = try await sdk.cancelPaymentRequest(
             counterparty: subscription.counterparty,
-            counterpartyReceiverPath: subscription.counterpartyReceiverPath,
             paymentRequestId: subscription.paymentRequestId,
             reason: nil
         )
@@ -956,9 +1030,22 @@ struct PaykitPaymentRequestService {
     }
 
     @discardableResult
-    private func processPendingMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport] {
+    private func processPendingMessages(
+        to counterparty: String? = nil,
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws -> [Paykit.OutboundPrivateCounterpartySendReport] {
         do {
-            let reports = try await sdk.processPendingPrivateMessages()
+            let reports: [Paykit.OutboundPrivateCounterpartySendReport]
+            if let counterparty {
+                let report = try await sdk.processOutboundPrivateMessages(counterparty: counterparty, priority: .interactive)
+                reports = [Paykit.OutboundPrivateCounterpartySendReport(
+                    counterparty: counterparty,
+                    report: report,
+                    error: nil
+                )]
+            } else {
+                reports = try await sdk.processPendingPrivateMessages(priority: priority)
+            }
             for report in reports {
                 if let error = report.error {
                     logWarning(
@@ -983,16 +1070,47 @@ struct PaykitPaymentRequestService {
 
     private func proposalWasSent(
         _ record: Paykit.PaymentRequestRecord,
-        reports: [Paykit.OutboundPrivateCounterpartySendReport]
-    ) -> Bool {
+        to counterparty: String,
+        expectedIdentity: String
+    ) async -> Bool {
+        let reports: [Paykit.OutboundPrivateCounterpartySendReport]
+        do {
+            reports = try await processPendingMessages(to: counterparty)
+        } catch {
+            return record.proposalOutboundStatus == .sent
+        }
         if case .sent? = record.proposalOutboundStatus {
             return true
         }
         guard let messageId = record.proposalOutboundMessageId else { return false }
-        return reports.contains { report in
+        if reports.contains(where: { report in
             PubkyPublicKeyFormat.matches(report.counterparty, record.counterparty) &&
-                report.counterpartyReceiverPath == record.counterpartyReceiverPath &&
                 report.report?.sent.contains(messageId) == true
+        }) {
+            return true
+        }
+        if reports.contains(where: { report in
+            PubkyPublicKeyFormat.matches(report.counterparty, record.counterparty) &&
+                report.report?.failed.contains(where: { $0.outboundMessageId == messageId }) == true
+        }) {
+            return false
+        }
+        guard !Task.isCancelled else { return false }
+        do {
+            let records = try await sdk.sharedPaymentRequests(expectedIdentity: expectedIdentity)
+            guard !Task.isCancelled else { return false }
+            return records.contains {
+                PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty) &&
+                    $0.paymentRequestId == record.paymentRequestId &&
+                    $0.localRole == .payee &&
+                    $0.proposalOutboundMessageId == messageId &&
+                    $0.proposalOutboundStatus == .sent
+            }
+        } catch is CancellationError {
+            return false
+        } catch {
+            logWarning("Failed to read Paykit proposal delivery status: \(error)")
+            return false
         }
     }
 
@@ -1006,7 +1124,7 @@ struct PaykitPaymentRequestService {
     }
 }
 
-protocol PaykitPaymentRequestPresentationStoring {
+protocol PaykitPaymentRequestIdStoring {
     func load(identity: String) throws -> Set<PaykitPaymentRequest.ID>
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws
 }
@@ -1063,13 +1181,20 @@ enum PaykitPaymentRequestPresentationCoordinator {
     }
 }
 
-struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationStoring {
+struct PaykitPaymentRequestIdStore: PaykitPaymentRequestIdStoring {
+    private static let backupChanged = PassthroughSubject<Void, Never>()
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupChanged.eraseToAnyPublisher()
+    }
+
+    var key: KeychainEntryType = .paykitPresentedPaymentRequests
+
     private struct State: Codable {
         var idsByIdentity: [String: [PaykitPaymentRequest.ID]]
     }
 
     func load(identity: String) throws -> Set<PaykitPaymentRequest.ID> {
-        guard let data = try Keychain.load(key: .paykitPresentedPaymentRequests) else { return [] }
+        guard let data = try Keychain.load(key: key) else { return [] }
         let state = try JSONDecoder().decode(State.self, from: data)
         guard let normalizedIdentity = PubkyPublicKeyFormat.normalized(identity) else { return [] }
         return Set(state.idsByIdentity[normalizedIdentity] ?? [])
@@ -1077,13 +1202,28 @@ struct PaykitPaymentRequestPresentationStore: PaykitPaymentRequestPresentationSt
 
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws {
         guard let normalizedIdentity = PubkyPublicKeyFormat.normalized(identity) else { return }
-        var state: State = if let data = try Keychain.load(key: .paykitPresentedPaymentRequests) {
+        var state: State = if let data = try Keychain.load(key: key) {
             try JSONDecoder().decode(State.self, from: data)
         } else {
             State(idsByIdentity: [:])
         }
         state.idsByIdentity[normalizedIdentity] = Array(ids)
-        try Keychain.upsert(key: .paykitPresentedPaymentRequests, data: JSONEncoder().encode(state))
+        try Keychain.upsert(key: key, data: JSONEncoder().encode(state))
+        if case .paykitAcceptedPaymentRequests = key {
+            Self.backupChanged.send()
+        }
+    }
+
+    func backupSnapshot() throws -> [String: [PaykitPaymentStateBackup.RequestID]] {
+        guard let data = try Keychain.load(key: key) else { return [:] }
+        return try JSONDecoder().decode(State.self, from: data).idsByIdentity.mapValues {
+            $0.map { PaykitPaymentStateBackup.RequestID($0, billingPeriod: nil) }
+        }
+    }
+
+    func restoreBackup(_ snapshot: [String: [PaykitPaymentStateBackup.RequestID]]) throws {
+        let state = State(idsByIdentity: snapshot.mapValues { $0.map { $0.restored(billingPeriod: nil) } })
+        try Keychain.upsert(key: key, data: JSONEncoder().encode(state))
     }
 }
 
@@ -1097,6 +1237,7 @@ final class PaykitPaymentRequestManager {
     private(set) var pendingRequests: [PaykitPaymentRequest] = []
     private(set) var historyRequests: [PaykitPaymentRequest] = []
     private(set) var subscriptions: [PaykitSubscription] = []
+    private(set) var receivedPaymentContacts = PaykitReceivedPaymentContacts()
     private(set) var eligibleTargets: [PaykitPaymentRequestTarget] = []
     private(set) var requestedPresentationId: PaykitPaymentRequest.ID?
     private(set) var requestedSubscriptionProposalId: PaykitSubscription.ID?
@@ -1107,7 +1248,8 @@ final class PaykitPaymentRequestManager {
     private(set) var requestedPresentationUnavailableTrigger = 0
 
     private let service: PaykitPaymentRequestService
-    private let presentationStore: any PaykitPaymentRequestPresentationStoring
+    private let presentationStore: any PaykitPaymentRequestIdStoring
+    private let acceptanceStore: any PaykitPaymentRequestIdStoring
     private let subscriptionStateStore: any PaykitSubscriptionStateStoring
     private let subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler
     private let completedPaymentProofKinds: @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind]
@@ -1121,9 +1263,13 @@ final class PaykitPaymentRequestManager {
     private let subscriptionNow: @Sendable () -> Date
     private let logWarning: @Sendable (String) -> Void
     private let isAvailable: @MainActor () -> Bool
+    private let paymentActivity: PaykitPaymentActivity
+    private let scheduleAcceptedRequestDelivery: @MainActor (String) async -> Void
     private var processingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var approvedPaymentRequestIds: Set<PaykitPaymentRequest.ID> = []
+    private var acceptedRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentedRequestIds: Set<PaykitPaymentRequest.ID> = []
+    private var dismissedPreparingRequestIds: Set<PaykitPaymentRequest.ID> = []
     private var presentationRetryAttempts: [PaykitPaymentRequest.ID: Int] = [:]
     private var presentationRetryDeadlines: [PaykitPaymentRequest.ID: ContinuousClock.Instant] = [:]
     private var automaticPresentationDiagnosticReasons:
@@ -1131,7 +1277,7 @@ final class PaykitPaymentRequestManager {
     private var expiredRequestedPresentations: [PaykitPaymentRequest] = []
     private var unavailableRequestedPresentations: [PaykitPaymentRequest] = []
     private var isPresentingRequests = false
-    private var refreshTask: Task<Void, Never>?
+    private var refreshTask: (mode: PaykitPaymentRequestRefreshMode, task: Task<Bool, Never>)?
     private var expirationTask: Task<Void, Never>?
     private var presentationRetryTask: Task<Void, Never>?
     private var refreshGeneration = 0
@@ -1151,6 +1297,7 @@ final class PaykitPaymentRequestManager {
     private var subscriptionClockOffset: TimeInterval {
         subscriptionNow().timeIntervalSince(now())
     }
+
     private var presentedSubscriptionProposalIds: Set<PaykitSubscription.ID> = []
     private var dismissedSubscriptionPaymentIds: Set<PaykitPaymentRequest.ID> = []
     private var persistedSubscriptionState = PaykitSubscriptionState()
@@ -1164,8 +1311,11 @@ final class PaykitPaymentRequestManager {
     }
 
     init(
+        scheduleAcceptedRequestDelivery: (@MainActor (String) async -> Void)? = nil,
+        paymentActivity: PaykitPaymentActivity? = nil,
         service: PaykitPaymentRequestService? = nil,
-        presentationStore: any PaykitPaymentRequestPresentationStoring = PaykitPaymentRequestPresentationStore(),
+        presentationStore: any PaykitPaymentRequestIdStoring = PaykitPaymentRequestIdStore(),
+        acceptanceStore: any PaykitPaymentRequestIdStoring = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests),
         subscriptionStateStore: any PaykitSubscriptionStateStoring = PaykitSubscriptionStateStore(),
         subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler = PaykitSubscriptionNotificationScheduler(),
         completedPaymentProofKinds: @escaping @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = { identity in
@@ -1194,6 +1344,7 @@ final class PaykitPaymentRequestManager {
         let subscriptionNow = subscriptionNow ?? { SubscriptionClock.subscriptionDate(from: now()) }
         self.service = service ?? PaykitPaymentRequestService(now: now, subscriptionNow: subscriptionNow, logWarning: logWarning)
         self.presentationStore = presentationStore
+        self.acceptanceStore = acceptanceStore
         self.subscriptionStateStore = subscriptionStateStore
         self.subscriptionNotificationScheduler = subscriptionNotificationScheduler
         self.completedPaymentProofKinds = completedPaymentProofKinds
@@ -1203,6 +1354,10 @@ final class PaykitPaymentRequestManager {
         self.subscriptionNow = subscriptionNow
         self.retryNow = retryNow
         self.isAvailable = isAvailable
+        self.paymentActivity = paymentActivity ?? .shared
+        self.scheduleAcceptedRequestDelivery = scheduleAcceptedRequestDelivery ?? {
+            await PrivatePaykitService.shared.schedulePrivatePaymentRecovery(for: $0)
+        }
         self.logWarning = logWarning
     }
 
@@ -1211,6 +1366,13 @@ final class PaykitPaymentRequestManager {
         guard !PubkyPublicKeyFormat.matches(activeIdentity, normalizedIdentity) else { return }
         if activeIdentity != nil {
             clear()
+        }
+        do {
+            acceptedRequestIds = try acceptanceStore.load(identity: normalizedIdentity)
+        } catch {
+            acceptedRequestIds = []
+            logWarning("Failed to restore locally accepted Paykit payment requests: \(error)")
+            return
         }
         do {
             presentedRequestIds = try presentationStore.load(identity: normalizedIdentity)
@@ -1238,11 +1400,21 @@ final class PaykitPaymentRequestManager {
         activeIdentity = normalizedIdentity
     }
 
+    func updateSavedPublicKeys(_ publicKeys: [String]) {
+        let changed = Set(publicKeys.map(Self.eligibilityKey)) != Set(savedPublicKeys.map(Self.eligibilityKey))
+        savedPublicKeys = publicKeys
+        guard changed else { return }
+        eligibilityGeneration += 1
+        eligibleTargets.removeAll { target in
+            !publicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
+        }
+    }
+
     func refreshEligibleTargets(savedPublicKeys: [String]) async {
+        updateSavedPublicKeys(savedPublicKeys)
         eligibilityGeneration += 1
         let generation = eligibilityGeneration
         let currentStateGeneration = stateGeneration
-        self.savedPublicKeys = savedPublicKeys
         guard isAvailable(), let activeIdentity else {
             eligibleTargets = []
             return
@@ -1257,7 +1429,7 @@ final class PaykitPaymentRequestManager {
             )
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration,
-                  savedPublicKeys == self.savedPublicKeys,
+                  Set(savedPublicKeys.map(Self.eligibilityKey)) == Set(self.savedPublicKeys.map(Self.eligibilityKey)),
                   isAvailable(),
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return }
@@ -1270,7 +1442,8 @@ final class PaykitPaymentRequestManager {
             if discovery.isComplete {
                 let checkedAt = now()
                 for publicKey in savedPublicKeys {
-                    eligibilityCheckDates[Self.eligibilityKey(publicKey)] = checkedAt
+                    let key = Self.eligibilityKey(publicKey)
+                    eligibilityCheckDates[key] = discovery.capabilityCheckedPublicKeys.contains(key) ? checkedAt : nil
                 }
             }
         } catch is CancellationError {
@@ -1308,7 +1481,8 @@ final class PaykitPaymentRequestManager {
                   lastFullEligibilityWriteGeneration <= generation
             else { return eligibleTarget(publicKey: publicKey) }
             singleEligibilityWriteGenerations[Self.eligibilityKey(publicKey)] = generation
-            eligibilityCheckDates[Self.eligibilityKey(publicKey)] = now()
+            let key = Self.eligibilityKey(publicKey)
+            eligibilityCheckDates[key] = discovery.capabilityCheckedPublicKeys.contains(key) ? now() : nil
             var targets = eligibleTargets.filter { !PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }
             if let target = discovery.targets.first {
                 targets.append(target)
@@ -1346,8 +1520,7 @@ final class PaykitPaymentRequestManager {
     }
 
     /// Returns the known target at once, otherwise waits at most `timeout` for a refresh without blocking on a slow SDK call.
-    /// The lookup reads linked peers under the SDK lock and the contact's capabilities on the interactive read lane, so a contact
-    /// checked in the last 30 seconds is not looked up again, and a lookup that outlives the timeout is cancelled.
+    /// A contact checked in the last 30 seconds is not looked up again, and a lookup that outlives the timeout is cancelled.
     func eligibleTarget(publicKey: String, waitingAtMost timeout: Duration) async -> PaykitPaymentRequestTarget? {
         if let target = eligibleTarget(publicKey: publicKey) {
             return target
@@ -1421,7 +1594,7 @@ final class PaykitPaymentRequestManager {
         if actionGeneration == stateGeneration,
            isAvailable(),
            PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity),
-           savedPublicKeysSnapshot == savedPublicKeys
+           Set(savedPublicKeysSnapshot.map(Self.eligibilityKey)) == Set(savedPublicKeys.map(Self.eligibilityKey))
         {
             invalidateRefresh()
             historyRequests.removeAll { $0.id == request.id }
@@ -1481,16 +1654,23 @@ final class PaykitPaymentRequestManager {
         return subscription
     }
 
-    func refresh() async {
-        await refresh(excludingProtectedRequestId: nil)
+    @discardableResult
+    func refresh(
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        forceFresh: Bool = false,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+    ) async -> Bool {
+        await refresh(
+            excludingProtectedRequestId: nil,
+            mode: mode,
+            forceFresh: forceFresh,
+            messagePriority: forceFresh ? .ordered : messagePriority
+        )
     }
 
     /// Applies a changed subscription clock offset: waits for a refresh already reading the old clock, then refreshes again.
     func refreshAfterSubscriptionClockChange() async {
-        if let refreshTask {
-            await refreshTask.value
-        }
-        await refresh()
+        await refresh(forceFresh: true)
     }
 
     func synchronizeSubscriptionNotifications(enabled: Bool) async {
@@ -1506,30 +1686,60 @@ final class PaykitPaymentRequestManager {
         )
     }
 
-    private func refresh(excludingProtectedRequestId: PaykitPaymentRequest.ID?) async {
+    @discardableResult
+    private func refresh(
+        excludingProtectedRequestId: PaykitPaymentRequest.ID?,
+        mode: PaykitPaymentRequestRefreshMode = .full,
+        forceFresh: Bool = false,
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+    ) async -> Bool {
         if let refreshTask {
-            await refreshTask.value
-            return
+            let generation = stateGeneration
+            let refreshed = await refreshTask.task.value
+            guard generation == stateGeneration, !Task.isCancelled else { return false }
+            if forceFresh || mode > refreshTask.mode {
+                return await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode, messagePriority: messagePriority)
+            }
+            return refreshed
         }
 
         refreshGeneration += 1
         let generation = refreshGeneration
         let task = Task { [weak self] in
-            guard let self else { return }
-            await performRefresh(generation: generation, excludingProtectedRequestId: excludingProtectedRequestId)
+            guard let self else { return false }
+            let refreshed = await performRefresh(
+                generation: generation,
+                excludingProtectedRequestId: excludingProtectedRequestId,
+                mode: mode,
+                messagePriority: messagePriority
+            )
+            guard generation == refreshGeneration else { return false }
+            refreshTask = nil
+            return refreshed
         }
-        refreshTask = task
-        await task.value
-
-        guard generation == refreshGeneration else { return }
-        refreshTask = nil
+        refreshTask = (mode, task)
+        let refreshed = await task.value
+        return refreshed && !Task.isCancelled
     }
 
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws {
+        let generation = stateGeneration
         do {
+            guard !request.isPaymentDeadlineExpired(at: now()) else {
+                throw PaykitPaymentRequestError.requestExpired
+            }
+            guard let identity = activeIdentity, isApprovedForPayment(request) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
             try await service.ensurePaymentAllowed(request)
+            guard generation == stateGeneration,
+                  PubkyPublicKeyFormat.matches(activeIdentity, identity),
+                  isApprovedForPayment(request)
+            else { throw PaykitPaymentRequestError.requestUnavailable }
         } catch {
-            approvedPaymentRequestIds.remove(request.id)
+            if error as? PaykitPaymentRequestError == .requestUnavailable || error as? PaykitPaymentRequestError == .requestExpired {
+                approvedPaymentRequestIds.remove(request.id)
+            }
             throw error
         }
     }
@@ -1538,6 +1748,8 @@ final class PaykitPaymentRequestManager {
         _ request: PaykitPaymentRequest,
         consumePrivatePaymentList: () async throws -> Void = {}
     ) async throws {
+        guard let identity = activeIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+        let actionGeneration = stateGeneration
         do {
             if isApprovedForPayment(request) {
                 try await ensurePaymentAllowed(request)
@@ -1549,10 +1761,40 @@ final class PaykitPaymentRequestManager {
                 markApprovedForPayment: true,
                 preservePending: !request.requiresAcceptance
             ) {
-                try await ensurePaymentAllowed($0)
+                guard $0.billingPeriod != nil || $0.requiresAcceptance || acceptedRequestIds.contains($0.id) else {
+                    throw PaykitPaymentRequestError.requestUnavailable
+                }
+                try await service.ensurePaymentAllowed($0)
+                try await service.claimForPayment($0)
+                guard !$0.isExpired(at: now()) else { throw PaykitPaymentRequestError.requestExpired }
                 try await consumePrivatePaymentList()
                 if $0.requiresAcceptance {
-                    try await service.accept($0)
+                    guard actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) else {
+                        throw PaykitPaymentRequestError.requestUnavailable
+                    }
+                    var ids = try acceptanceStore.load(identity: identity)
+                    let alreadySaved = ids.contains($0.id)
+                    ids.insert($0.id)
+                    try acceptanceStore.save(ids, identity: identity)
+                    acceptedRequestIds = ids
+                    do {
+                        try await service.accept($0)
+                        deferAcceptedRequestDelivery(counterparty: $0.counterparty, identity: identity, generation: actionGeneration)
+                    } catch {
+                        // An interrupted response may follow a committed acceptance. Keep its local owner for reconciliation.
+                        switch error {
+                        case is CancellationError, PaykitError.Transport, PaykitError.Storage,
+                             PaykitError.Identity, PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy:
+                            break
+                        default:
+                            if !alreadySaved, actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) {
+                                let remaining = try acceptanceStore.load(identity: identity).subtracting([$0.id])
+                                try acceptanceStore.save(remaining, identity: identity)
+                                acceptedRequestIds = remaining
+                            }
+                        }
+                        throw error
+                    }
                 }
             }
         } catch is CancellationError {
@@ -1569,6 +1811,16 @@ final class PaykitPaymentRequestManager {
         }
         try await perform(request, resultingState: .rejected) {
             try await service.reject($0)
+        }
+    }
+
+    private func deferAcceptedRequestDelivery(counterparty: String, identity: String, generation: Int) {
+        paymentActivity.runWhenIdle(.acceptance(identity: identity, counterparty: counterparty)) { [weak self] in
+            guard let self,
+                  generation == stateGeneration,
+                  PubkyPublicKeyFormat.matches(activeIdentity, identity)
+            else { return }
+            await scheduleAcceptedRequestDelivery(counterparty)
         }
     }
 
@@ -1597,7 +1849,9 @@ final class PaykitPaymentRequestManager {
     }
 
     private func clearNotificationTarget(matching request: PaykitPaymentRequest) {
-        if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
+        if let identity = activeIdentity, let target = PaykitSubscriptionNotificationTargetStore.load(),
+           target.matches(identity: identity), target.matches(request)
+        {
             PaykitSubscriptionNotificationTargetStore.clear()
         }
     }
@@ -1677,13 +1931,14 @@ final class PaykitPaymentRequestManager {
         guard actionGeneration == stateGeneration,
               PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
         else { return nil }
+        deferAcceptedRequestDelivery(counterparty: current.counterparty, identity: activeIdentity, generation: actionGeneration)
         subscriptionAcceptedAt[current.id] = acceptanceInstant
         presentedSubscriptionProposalIds.insert(current.id)
         requestedSubscriptionProposalId = nil
         persistSubscriptionState(identity: activeIdentity)
         await applyCommittedSubscription(acceptedSubscription, at: subscriptionNow())
         invalidateRefresh()
-        await refresh()
+        await refresh(mode: .stored)
         return pendingRequests
             .filter { $0.belongs(to: current) }
             .min { ($0.billingPeriod?.startsAt ?? .distantFuture) < ($1.billingPeriod?.startsAt ?? .distantFuture) }
@@ -1733,11 +1988,29 @@ final class PaykitPaymentRequestManager {
               requestedPresentationId == nil
         else { return false }
         presentationGeneration += 1
+        dismissedPreparingRequestIds.remove(request.id)
         presentationRetryAttempts.removeValue(forKey: request.id)
         presentationRetryDeadlines.removeValue(forKey: request.id)
         requestedPresentationId = request.id
+        clearNotificationTarget(matching: request)
         schedulePresentationRetry()
         return true
+    }
+
+    func dismissPreparingRequest(_ request: PaykitPaymentRequest) {
+        guard pendingRequests.contains(where: { $0.id == request.id }),
+              requestedPresentationId == nil || requestedPresentationId == request.id,
+              !presentedRequestIds.contains(request.id) || requestedPresentationId == request.id
+        else { return }
+        dismissedPreparingRequestIds.insert(request.id)
+        clearNotificationTarget(matching: request)
+        presentationGeneration += 1
+        if requestedPresentationId == request.id {
+            requestedPresentationId = nil
+        }
+        presentationRetryAttempts.removeValue(forKey: request.id)
+        presentationRetryDeadlines.removeValue(forKey: request.id)
+        schedulePresentationRetry()
     }
 
     func clear() {
@@ -1755,13 +2028,16 @@ final class PaykitPaymentRequestManager {
         pendingRequests = []
         historyRequests = []
         subscriptions = []
+        receivedPaymentContacts = PaykitReceivedPaymentContacts()
         eligibleTargets = []
         processingRequestIds = []
         approvedPaymentRequestIds = []
+        acceptedRequestIds = []
         activeIdentity = nil
         savedPublicKeys = []
         presentedRequestIds = []
         persistedPresentedRequestIds = []
+        dismissedPreparingRequestIds = []
         presentationRetryAttempts = [:]
         presentationRetryDeadlines = [:]
         automaticPresentationDiagnosticReasons = [:]
@@ -1797,6 +2073,7 @@ final class PaykitPaymentRequestManager {
 
         return pendingRequests.filter {
             !presentedRequestIds.contains($0.id) &&
+                !dismissedPreparingRequestIds.contains($0.id) &&
                 !processingRequestIds.contains($0.id) &&
                 (presentationRetryDeadlines[$0.id].map { $0 <= date } ?? true)
         }
@@ -1828,13 +2105,31 @@ final class PaykitPaymentRequestManager {
         return requestedPresentationId.map { $0 == request.id } ?? true
     }
 
+    func isWaitingForPresentationRetry(_ request: PaykitPaymentRequest) -> Bool {
+        pendingRequests.contains(where: { $0.id == request.id }) &&
+            !processingRequestIds.contains(request.id) &&
+            !dismissedPreparingRequestIds.contains(request.id) &&
+            presentationRetryDeadlines[request.id] != nil &&
+            (requestedPresentationId.map { $0 == request.id } ?? !presentedRequestIds.contains(request.id))
+    }
+
     func isApprovedForPayment(_ request: PaykitPaymentRequest) -> Bool {
-        approvedPaymentRequestIds.contains(request.id)
+        let date = now()
+        guard approvedPaymentRequestIds.contains(request.id), !request.isPaymentDeadlineExpired(at: date) else { return false }
+        guard let billingPeriod = request.billingPeriod else {
+            return historyRequests.contains {
+                $0.id == request.id && $0.direction == .incoming && $0.lifecycleState == .accepted && !$0.isPaymentDeadlineExpired(at: date)
+            }
+        }
+        return subscriptions.contains {
+            request.belongs(to: $0) && $0.lifecycleState == .activeRecurring && !$0.paidPeriods.contains(billingPeriod)
+        }
     }
 
     func finishPayment(_ request: PaykitPaymentRequest) async {
         approvedPaymentRequestIds.remove(request.id)
         guard request.billingPeriod == nil,
+              acceptedRequestIds.contains(request.id),
               let activeIdentity,
               let acceptedRequest = historyRequests.first(where: {
                   $0.id == request.id && $0.direction == .incoming && $0.lifecycleState == .accepted
@@ -1860,6 +2155,7 @@ final class PaykitPaymentRequestManager {
         }
         guard sdkLifecycleState == .accepted,
               actionGeneration == stateGeneration,
+              !acceptedRequest.isPaymentDeadlineExpired(at: now()),
               !pendingRequests.contains(where: { $0.id == request.id })
         else { return }
 
@@ -1890,7 +2186,9 @@ final class PaykitPaymentRequestManager {
         let payableStates: [Paykit.PaymentRequestLifecycleState] = pendingRequest == nil ? [.accepted] : [.proposed, .accepted]
         guard let sdkLifecycleState,
               payableStates.contains(sdkLifecycleState),
-              actionGeneration == stateGeneration
+              sdkLifecycleState != .accepted || acceptedRequestIds.contains(id),
+              actionGeneration == stateGeneration,
+              !request.isPaymentDeadlineExpired(at: now())
         else { return nil }
         if let pendingRequest = pendingRequests.first(where: { $0.id == id }) {
             return pendingRequest
@@ -1997,22 +2295,26 @@ final class PaykitPaymentRequestManager {
 
     private func performRefresh(
         generation: Int,
-        excludingProtectedRequestId: PaykitPaymentRequest.ID?
-    ) async {
+        excludingProtectedRequestId: PaykitPaymentRequest.ID?,
+        mode: PaykitPaymentRequestRefreshMode,
+        messagePriority: PaykitSdkOperationLock.Priority
+    ) async -> Bool {
         do {
-            let snapshot = try await service.synchronize()
-            guard generation == refreshGeneration, let activeIdentity else { return }
+            let snapshot = try await service.synchronize(mode: mode, priority: .background, messagePriority: messagePriority)
+            guard generation == refreshGeneration, let activeIdentity else { return false }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
             let (locallyCompletedProofKinds, locallyInFlightRequestIds) = await (completedProofKinds, inFlightRequestIds)
             let locallyCompletedRequestIds = Set(locallyCompletedProofKinds.keys)
             guard generation == refreshGeneration,
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
-            else { return }
+            else { return false }
+            pruneAcceptedRequestIds(snapshot.history, identity: activeIdentity)
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
             let previousPending = pendingRequests
+            receivedPaymentContacts = snapshot.receivedPaymentContacts
             subscriptions = snapshot.subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
             let visibleProposalIds = Set(subscriptions.filter {
                 $0.isPayer && $0.isProposalVisible(at: subscriptionDate)
@@ -2064,7 +2366,8 @@ final class PaykitPaymentRequestManager {
                 processingRequestIds.contains($0.id) && $0.id != excludingProtectedRequestId
             }
             let oneTimePending = snapshot.incoming.filter {
-                !locallyCompletedRequestIds.contains($0.id) &&
+                ($0.requiresAcceptance || acceptedRequestIds.contains($0.id)) &&
+                    !locallyCompletedRequestIds.contains($0.id) &&
                     !locallyInFlightRequestIds.contains($0.id) &&
                     !approvedPaymentRequestIds.contains($0.id)
             }
@@ -2107,12 +2410,15 @@ final class PaykitPaymentRequestManager {
             persistPresentedRequestIds()
             discardExpiredRequests(handledRequestedExpirationId: handledRequestedExpirationId)
             schedulePresentationRetry()
+            return generation == refreshGeneration &&
+                PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity) && !Task.isCancelled
         } catch is CancellationError {
-            return
+            return false
         } catch {
-            guard generation == refreshGeneration else { return }
+            guard generation == refreshGeneration else { return false }
             discardExpiredRequests()
             logWarning("Failed to refresh incoming Paykit payment requests: \(error)")
+            return false
         }
     }
 
@@ -2186,6 +2492,7 @@ final class PaykitPaymentRequestManager {
             try await operation(request)
             guard actionGeneration == stateGeneration else { return }
             if markApprovedForPayment {
+                guard !request.isPaymentDeadlineExpired(at: now()) else { throw PaykitPaymentRequestError.requestExpired }
                 approvedPaymentRequestIds.insert(request.id)
             }
             if preservePending {
@@ -2219,8 +2526,28 @@ final class PaykitPaymentRequestManager {
 
     private func invalidateRefresh() {
         refreshGeneration += 1
-        refreshTask?.cancel()
+        refreshTask?.task.cancel()
         refreshTask = nil
+    }
+
+    private func pruneAcceptedRequestIds(_ requests: [PaykitPaymentRequest], identity: String) {
+        let finishedIds = Set(requests.compactMap { request -> PaykitPaymentRequest.ID? in
+            guard request.direction == .incoming, request.billingPeriod == nil,
+                  acceptedRequestIds.contains(request.id)
+            else { return nil }
+            switch request.lifecycleState {
+            case .proofSubmitted, .canceled, .rejected: return request.id
+            default: return nil
+            }
+        })
+        guard !finishedIds.isEmpty else { return }
+        do {
+            let remaining = try acceptanceStore.load(identity: identity).subtracting(finishedIds)
+            try acceptanceStore.save(remaining, identity: identity)
+            acceptedRequestIds = remaining
+        } catch {
+            logWarning("Failed to prune accepted Paykit payment requests: \(error)")
+        }
     }
 
     private func discardExpiredRequests(

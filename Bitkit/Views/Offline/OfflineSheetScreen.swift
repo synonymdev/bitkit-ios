@@ -26,9 +26,10 @@ private struct OfflineSheetOverlayModifier: ViewModifier {
 
     let title: String
     var forceShow = false
+    var isEnabled = true
 
     private var isShowing: Bool {
-        !network.isConnected || forceShow
+        isEnabled && (!network.isConnected || forceShow)
     }
 
     func body(content: Content) -> some View {
@@ -54,7 +55,7 @@ extension View {
     /// Overlays a `OfflineSheetScreen` when the device is offline, or whenever `forceShow` is true
     /// (e.g. connection issues beyond device connectivity, like an unreachable Lightning peer).
     /// The underlying content remains mounted so navigation state and inputs are preserved.
-    func offlineSheetOverlay(title: String, forceShow: Bool = false) -> some View {
-        modifier(OfflineSheetOverlayModifier(title: title, forceShow: forceShow))
+    func offlineSheetOverlay(title: String, forceShow: Bool = false, isEnabled: Bool = true) -> some View {
+        modifier(OfflineSheetOverlayModifier(title: title, forceShow: forceShow, isEnabled: isEnabled))
     }
 }

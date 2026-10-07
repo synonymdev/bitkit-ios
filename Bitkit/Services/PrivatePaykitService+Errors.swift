@@ -47,6 +47,10 @@ enum PaykitResolutionFailureDiagnostics {
 
     private static func paykitReason(_ error: PaykitError) -> String {
         switch error {
+        case let .ConcurrentUpdate(code, _):
+            "concurrent_update/\(safeCode(code))"
+        case let .SharedStateBusy(code, _):
+            "shared_state_busy/\(safeCode(code))"
         case let .Storage(code, _):
             "storage/\(safeCode(code))"
         case let .Identity(code, _):

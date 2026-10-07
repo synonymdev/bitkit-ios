@@ -88,6 +88,7 @@ struct SendPendingScreen: View {
         }
         .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
             guard resolution.requestId == paykitPaymentRequestId,
+                  resolution.walletId == WalletScope.default,
                   let identity = pubkyProfile.publicKey,
                   PubkyPublicKeyFormat.matches(resolution.identity, identity)
             else { return }

@@ -216,7 +216,7 @@ struct AddContactView: View {
             canRetryError = false
             isLoading = false
             if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
-                await contactsManager.refreshContactReceiverPaths(publicKey: normalizedKey, wallet: wallet)
+                await contactsManager.refreshContactLink(publicKey: normalizedKey, wallet: wallet)
             }
             return
         case let .valid(normalizedKey):
@@ -278,11 +278,9 @@ struct AddContactView: View {
             }
         } catch {
             Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
-            app.toast(
-                type: .error,
-                title: t("slashtags__error_pay_title"),
-                description: error.localizedDescription
-            )
+            if let description = PaymentNavigationHelper.contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 @testable import Bitkit
+import enum Paykit.PaykitError
 import class Paykit.PubkySessionAccess
 import struct Paykit.PubkySessionBootstrapResult
 import UIKit
@@ -115,7 +116,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
         let savedReference = AdoptedPubkyReference.current
-        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedValues = try keys.map { try Keychain.load(key: $0) }
         defer {
             AdoptedPubkyReference.current = savedReference
@@ -265,6 +266,89 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testDeferredRecoveryUsesBoundedShortRetriesBeforeBackingOff() async {
+        for multiplier in [0.8, 1.0, 1.2] {
+            let manager = RecoveryProfileManager()
+            let attempts = SessionRecoveryAttempts()
+            var delays: [Duration] = []
+            await manager.retrySessionRestoration(
+                jitter: { multiplier },
+                sleep: { delays.append($0) },
+                hasStoredIdentity: { true },
+                initializeSession: {
+                    guard await attempts.next() > 11 else { return .restorationDeferred }
+                    return .restored(publicKey: "existing-identity")
+                }
+            )
+
+            let expected = Array(repeating: 5.0, count: 8) + [10, 20, 40]
+            XCTAssertEqual(delays, expected.map { .seconds($0 * multiplier) })
+            XCTAssertEqual(manager.publicKey, "existing-identity")
+            XCTAssertFalse(manager.sessionRestorationFailed)
+        }
+    }
+
+    @MainActor
+    func testDeferredRecoveryKeepsNormalBackoffForInvalidCredentials() async {
+        let manager = RecoveryProfileManager()
+        let attempts = SessionRecoveryAttempts()
+        var delays: [Duration] = []
+        await manager.retrySessionRestoration(
+            jitter: { 1 },
+            sleep: { delays.append($0) },
+            hasStoredIdentity: { true },
+            initializeSession: {
+                switch await attempts.next() {
+                case 1: throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Locked")
+                case 2: throw PubkyServiceError.authFailed("Invalid credentials")
+                default: return .restored(publicKey: "existing-identity")
+                }
+            }
+        )
+        XCTAssertEqual(delays, [.seconds(5), .seconds(10)])
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+    }
+
+    @MainActor
+    func testDeferredRecoveryStopsAfterCancellationOrIdentityChange() async throws {
+        for changeIdentity in [false, true] {
+            let manager = RecoveryProfileManager()
+            let sleeping = expectation(description: "waiting before deferred retry")
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let attempts = SessionRecoveryAttempts()
+            let recovery = Task {
+                await manager.retrySessionRestoration(
+                    sleep: { _ in
+                        sleeping.fulfill()
+                        for await _ in stream {}
+                    },
+                    hasStoredIdentity: { true },
+                    initializeSession: {
+                        let attempt = await attempts.next()
+                        XCTAssertEqual(attempt, 1, "Invalidated recovery must not restore another session")
+                        return attempt == 1 ? .restorationDeferred : .restored(publicKey: "unexpected-identity")
+                    }
+                )
+            }
+            await fulfillment(of: [sleeping], timeout: 2)
+            if changeIdentity {
+                try await PubkyProfileManager.restoreSessionBackupState(
+                    nil,
+                    deleteKeychainValue: { _ in },
+                    removeOwnSharedRecords: {},
+                    forgetSessionAccess: {}
+                )
+            } else {
+                recovery.cancel()
+            }
+            continuation.finish()
+            await recovery.value
+            XCTAssertNil(manager.publicKey)
+        }
+    }
+
+    @MainActor
     func testCancelledRecoveryDoesNotRetryAfterPendingStartup() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")
@@ -333,7 +417,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testFailedRingAdoptionDoesNotRestoreIdentityAfterLocalReset() async throws {
         let savedReference = AdoptedPubkyReference.current
-        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedCredentials = try keys.map { try Keychain.load(key: $0) }
         let defaults = UserDefaults.standard
         let preferenceKeys = [
@@ -512,7 +596,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testRingAdoptionDropsLateProfileAfterSessionTeardown() async throws {
         let savedReference = AdoptedPubkyReference.current
-        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedCredentials = try keychainKeys.map { try Keychain.load(key: $0) }
         let defaults = UserDefaults.standard
         let preferenceKeys = [
@@ -647,6 +731,44 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(manager.publicKey, "existing-identity")
         XCTAssertEqual(manager.authState, .authenticated)
         XCTAssertNil(manager.initializationErrorMessage)
+    }
+
+    @MainActor
+    func testOverlappingRecoverySharesFailureAndAllowsLaterRetry() async {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "recovery started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let recovery = Task {
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                started.fulfill()
+                for await _ in stream {}
+                throw PubkyServiceError.authFailed("offline")
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let waiting = expectation(description: "recovery callers waiting")
+        waiting.expectedFulfillmentCount = 2
+        let retries = (0 ..< 2).map { _ in
+            Task {
+                waiting.fulfill()
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    XCTFail("Waiting callers must share the completed recovery attempt")
+                    return .noSession
+                }
+            }
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        continuation.finish()
+        await recovery.value
+        for retry in retries {
+            await retry.value
+        }
+        XCTAssertNil(manager.publicKey)
+        XCTAssertFalse(manager.isRestoringSession)
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: "existing-identity") }
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertEqual(manager.authState, .authenticated)
     }
 
     @MainActor
@@ -858,7 +980,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testSignupDoesNotRestoreProfileStateAfterWalletReset() async throws {
         snapshotAppDefaultsDomain()
-        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession, .pubkySecretKey]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let saved = try keys.map { try Keychain.load(key: $0) }
         let savedOverrides = ContactsManager.backupContactProfileOverrides()
         defer {
@@ -874,7 +996,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         for resetStep in ["register", "authorize", "activate"] {
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             do {
@@ -926,7 +1050,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             defaults.set(true, forKey: "pubky_profile_setup_pending")
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             var events: [String] = []
@@ -978,7 +1104,9 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         let manager = PubkyProfileManager()
         let session = PubkyRegisteredIdentity(
-            result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+            result: PubkySessionBootstrapResult(
+                sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+            ),
             walletGeneration: 0
         )
         var shouldFailActivation = true
@@ -1050,7 +1178,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         for cancelSignup in [false, true] {
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             let approvalStarted = expectation(description: "Approval started")
@@ -2094,7 +2224,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 manager.clearAuthenticatedStateForTesting()
             }),
             ("automatic recovery while signed out", true, { manager in
-                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed] {
+                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed, .restorationDeferred] {
                     await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { result }
                 }
             }),
@@ -2727,6 +2857,52 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_saved"))
+    }
+
+    @MainActor
+    func testResolveSessionInitializationKeepsSessionOnTemporaryFailure() async {
+        let errors: [Error] = [
+            PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "Locked"),
+            PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Pending write"),
+            PaykitError.Transport(code: "transport_error", context: "Offline"),
+            CancellationError(),
+        ]
+        for error in errors {
+            let result = await PubkyProfileManager.resolveSessionInitialization(
+                savedSessionSecret: "saved-session",
+                storedSecretKeyHex: "local-secret",
+                importSession: { _ in throw error },
+                signInWithSecretKey: { _ in
+                    XCTFail("Temporary failures should retry the saved session")
+                    return "unused-session"
+                }
+            )
+            XCTAssertEqual(result, .restorationDeferred)
+            let manager = RecoveryProfileManager()
+            await manager.initialize { result }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+            XCTAssertNil(manager.initializationErrorMessage)
+            XCTAssertEqual(manager.authState, .idle)
+
+            await manager.initialize { throw error }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+            XCTAssertNil(manager.initializationErrorMessage)
+        }
+    }
+
+    func testResolveSessionInitializationDefersTemporarySignInFailure() async {
+        let result = await PubkyProfileManager.resolveSessionInitialization(
+            savedSessionSecret: nil,
+            storedSecretKeyHex: "local-secret",
+            importSession: { _ in
+                XCTFail("No saved session to import")
+                return "unused"
+            },
+            signInWithSecretKey: { _ in throw PaykitError.Transport(code: "transport_error", context: "Offline") }
+        )
+        XCTAssertEqual(result, .restorationDeferred)
     }
 
     func testResolveSessionInitializationSignsInWhenOnlySecretKeyExists() async {
