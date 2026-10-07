@@ -163,6 +163,16 @@ struct SendConfirmationView: View {
             !hwSend.isActive && !requiresPaymentConfirmation
     }
 
+    static func acceptedOnchainRoute(
+        txid: String, requestId: PaykitPaymentRequest.ID?, localFollowupComplete: Bool,
+        using attempts: OnchainSendAttemptService = .shared
+    ) async -> SendRoute {
+        guard localFollowupComplete else {
+            return await onchainPendingRoute(txid: txid, requestId: requestId, using: attempts)
+        }
+        return .success(paymentId: txid)
+    }
+
     static func onchainPendingRoute(
         txid: String? = nil, requestId: PaykitPaymentRequest.ID?,
         using attempts: OnchainSendAttemptService = .shared
@@ -1178,7 +1188,10 @@ struct SendConfirmationView: View {
 
                 Logger.info("Onchain send result txid: \(txid)")
 
-                navigationPath.append(.success(paymentId: txid))
+                await navigationPath.append(Self.acceptedOnchainRoute(
+                    txid: txid, requestId: incomingPaymentRequest?.id,
+                    localFollowupComplete: proofSaved && savedActivity != nil
+                ))
             } else {
                 throw NSError(
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"]

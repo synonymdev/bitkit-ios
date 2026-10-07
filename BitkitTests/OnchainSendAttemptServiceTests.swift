@@ -7,6 +7,43 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     private let walletId = "node-0"
     private let txid = String(repeating: "ab", count: 32)
 
+    func testAcceptedConfirmationStaysPendingUntilOriginalFollowupCompletes() async throws {
+        let shopRequest = PaykitPaymentRequest.ID(paymentRequestId: "original-shop-order", counterparty: "original-merchant", billingPeriodStartsAt: nil)
+        for requestId in [nil, shopRequest] as [PaykitPaymentRequest.ID?] {
+            let store = MemoryAttemptStore()
+            let original = OnchainSendAttempt(id: UUID(), walletId: walletId, requestId: requestId, orderId: nil,
+                                             address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
+                                             status: .accepted, txid: txid)
+            try store.save([original])
+            let service = OnchainSendAttemptService(store: store)
+            let route = await SendConfirmationView.acceptedOnchainRoute(
+                txid: txid, requestId: requestId, localFollowupComplete: false, using: service
+            )
+            switch route {
+            case let .onchainPending(context):
+                XCTAssertNil(requestId)
+                XCTAssertEqual(context.attemptId, original.id)
+                XCTAssertEqual(context.walletId, original.walletId)
+                XCTAssertEqual(context.txid, txid)
+            case let .onchainOperationPending(context, actualRequest):
+                XCTAssertEqual(actualRequest, requestId)
+                XCTAssertEqual(context.attemptId, original.id)
+                XCTAssertEqual(context.walletId, original.walletId)
+                XCTAssertEqual(context.txid, txid)
+            default: XCTFail("Accepted payment with incomplete local follow-up must stay Pending")
+            }
+            XCTAssertEqual(store.snapshot(), [original])
+            let completedRoute = await SendConfirmationView.acceptedOnchainRoute(
+                txid: txid, requestId: requestId, localFollowupComplete: true, using: service
+            )
+            guard case let .success(paymentId, _) = completedRoute else {
+                XCTFail("Durably completed payment must show Sent")
+                continue
+            }
+            XCTAssertEqual(paymentId, txid)
+        }
+    }
+
     func testBackupDefersUnsignedOrdinaryAndTransferAdmissions() async throws {
         let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
             kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
