@@ -38,8 +38,8 @@ Requires a wallet with USDT enabled and a matching backend with Orchestra creden
 - [ ] Return to Arbitrum One and verify its original wallet address remains unchanged.
 - [ ] Open cross-network deposit activity. Verify empty history and Load more work without showing a failure.
 - [ ] Enter an amount below the route minimum and verify the limit error appears without a deposit address.
-- [ ] Edit the amount. Verify the old limit error clears immediately, one short fee hint is shown above the keypad divider, and the keypad and button remain fully visible. Get an address with an amount within the route limits.
-- [ ] With a separately authorized source deposit, verify pending progress becomes completed only after destination delivery, and that the green receive celebration, normal USDT activity and main-screen balance independently show the Arbitrum receipt. Record the complete flow.
+- [ ] Edit the amount. Verify the old limit error clears immediately and the keypad and button remain fully visible. Get an address with an amount within the route limits.
+- [ ] With a separately authorized source deposit, verify pending progress becomes completed only after destination delivery, and that the teal receive celebration, normal USDT activity and main-screen balance independently show the Arbitrum receipt. Record the complete flow.
 - [ ] Reopen the app and verify the reusable address and deposit history are recovered. Inspect source and destination transaction IDs in the details.
 - [ ] For a provider-held deposit, verify refund-address entry, explicit review and payment authentication. Do not submit a live refund without authorization. Unknown assets require support. For a completed refund, verify the refund transaction is shown and no delivery is claimed.
 
@@ -68,3 +68,14 @@ Requires funded Arbitrum accounts, controlled billing time, and controlled recei
 - [ ] Using a controlled billing clock, advance to the next installment with the requester offline. Verify its USD amount still maps exactly to USDT, the fee remains additional, and earlier paid periods remain unchanged.
 - [ ] Using controlled payment evidence, verify underpayment and payment after expiry show actual received funds and the corresponding status, without reporting the transfer as failed.
 - [ ] Pay a contact directly without a request and verify the normal asset selector, send review and activity attribution still work. Verify selecting USDT does not request camera access for an already resolved recipient.
+
+## USDT design and receive estimates
+
+Reference: [USDT designs](https://www.figma.com/design/ltqvnKiejWj0JQiqtDf2JJ/Bitkit-Wallet?node-id=48063-274766).
+
+- [ ] Check funded and empty Home and USDT wallet layouts; the USDT accent is #009393 throughout receive, send, Paykit, sharing and celebrations.
+- [ ] In Receive, open Network and select an enabled source. Verify the minimum-amount error is compact and clears on editing.
+- [ ] Enter an accepted amount, switch BTC/USD twice and verify the amount is preserved. Continue and verify Estimated Fees shows the expected deduction and received amount, then continues to the QR for that network.
+- [ ] Open address details, verify Copy and QR target the same address, and return to the QR.
+- [ ] Back out of an unprepared network and verify the displayed network always matches the QR. Return to Arbitrum and verify its original wallet address.
+- [ ] With an authorized incoming transfer or an explicitly identified fixture, verify teal receive confetti, Details and OK; Details opens that transfer.

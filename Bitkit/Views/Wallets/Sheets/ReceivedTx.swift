@@ -10,6 +10,7 @@ struct ReceivedTxSheetDetails: Codable {
     let type: ReceivedTxType
     var sats: UInt64 = 0
     var usdtAmount: UInt64? = nil
+    var usdtTransferId: String? = nil
 }
 
 struct ReceivedTxSheetItem: SheetItem {
@@ -22,6 +23,7 @@ struct ReceivedTx: View {
     let config: ReceivedTxSheetItem
 
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
 
     /// Keep in state so we don't get a new random text on each render
     @State private var buttonText: String = localizedRandom("common__ok_random")
@@ -35,7 +37,7 @@ struct ReceivedTx: View {
             ZStack {
                 PaymentCelebration(
                     isOnchain: isOnchain, isReceived: true,
-                    confettiColor: config.details.usdtAmount != nil ? .greenAccent : nil
+                    confettiColor: config.details.usdtAmount != nil ? .usdtAccent : nil
                 )
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -47,8 +49,16 @@ struct ReceivedTx: View {
                         MoneyStack(sats: Int(config.details.sats), showSymbol: true, testIdPrefix: "ReceivedTransaction")
                     }
                     Spacer()
-                    CustomButton(title: buttonText) { sheets.hideSheet() }
-                        .accessibilityIdentifier("ReceivedTransactionButton")
+                    HStack(spacing: 16) {
+                        if let transferId = config.details.usdtTransferId {
+                            CustomButton(title: t("wallet__send_details"), variant: .secondary) {
+                                sheets.hideSheet()
+                                navigation.navigate(.usdtActivity(transferId: transferId))
+                            }.accessibilityIdentifier("ReceivedTransactionDetails")
+                        }
+                        CustomButton(title: buttonText) { sheets.hideSheet() }
+                            .accessibilityIdentifier("ReceivedTransactionButton")
+                    }
                 }
                 .padding(.horizontal, 16)
             }

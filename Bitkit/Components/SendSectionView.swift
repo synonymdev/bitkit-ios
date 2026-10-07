@@ -3,10 +3,12 @@ import SwiftUI
 /// A section with a caption label, content, and a divider below. Used for form-style rows (e.g. "Send from", "Send to").
 struct SendSectionView<Content: View>: View {
     private let title: String
+    private let dividerSpacing: CGFloat
     @ViewBuilder private let content: () -> Content
 
-    init(_ title: String, @ViewBuilder content: @escaping () -> Content) {
+    init(_ title: String, dividerSpacing: CGFloat = 16, @ViewBuilder content: @escaping () -> Content) {
         self.title = title
+        self.dividerSpacing = dividerSpacing
         self.content = content
     }
 
@@ -18,7 +20,7 @@ struct SendSectionView<Content: View>: View {
             content()
 
             CustomDivider()
-                .padding(.top, 16)
+                .padding(.top, dividerSpacing)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -26,7 +26,7 @@ struct UsdtActivityRow: View {
                         accentColor: .textSecondary
                     )
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    CaptionBText("USDT", textColor: .textSecondary)
+                    CaptionBText(hideBalance ? "• • • • •" : "$ " + usdtOverviewAmount(transfer.activityAmount), textColor: .textSecondary)
                 }
             }
         }
@@ -187,7 +187,7 @@ extension UsdtTransfer {
         switch status {
         case .failed, .replaced: .redAccent
         case .bridgeNeedsAttention, .bridgeFailed: .yellowAccent
-        default: .greenAccent
+        default: .usdtAccent
         }
     }
 }

@@ -79,7 +79,7 @@ struct SendAmountView: View {
         switch selectedFundingSource {
         case .spending: .purpleAccent
         case .savings: .brandAccent
-        case .usdt: .greenAccent
+        case .usdt: .usdtAccent
         case .hardware: .blueAccent
         }
     }
@@ -136,7 +136,7 @@ struct SendAmountView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if app.paykitUsesUsdt {
-                    NumberPadAmountText(value: usdtAmount.isEmpty ? "0" : usdtAmount, symbol: "₮")
+                    NumberPadAmountText(value: usdtAmount.isEmpty ? "0" : usdtAmount, symbol: "$")
                         .accessibilityIdentifier("SendNumberField")
                 } else {
                     NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")

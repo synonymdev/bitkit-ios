@@ -11,6 +11,7 @@ enum Route: Hashable {
     case spendingWallet
     case hardwareWallet(walletId: String)
     case usdtWallet
+    case usdtActivity(transferId: String)
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)

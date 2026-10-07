@@ -5,25 +5,8 @@ struct QrArea: View {
     let uri: String
     let imageAsset: String?
     let accentColor: Color
-    @Binding var navigationPath: [ReceiveRoute]
-    let copyValue: String?
-    let editRoute: ReceiveRoute?
-
-    init(
-        uri: String,
-        imageAsset: String?,
-        accentColor: Color,
-        navigationPath: Binding<[ReceiveRoute]>,
-        copyValue: String? = nil,
-        editRoute: ReceiveRoute? = nil
-    ) {
-        self.uri = uri
-        self.imageAsset = imageAsset
-        self.accentColor = accentColor
-        _navigationPath = navigationPath
-        self.copyValue = copyValue
-        self.editRoute = editRoute
-    }
+    var copyValue: String?
+    var onEdit: (() -> Void)?
 
     @State private var showCopyTooltip = false
     @State private var showShareSheet = false
@@ -51,15 +34,14 @@ struct QrArea: View {
         }
 
         HStack {
-            if let editRoute {
+            if let onEdit {
                 CustomButton(
                     title: t("common__edit"),
                     size: .small,
                     icon: Image("pencil").foregroundColor(accentColor),
-                    shouldExpand: true
-                ) {
-                    navigationPath.append(editRoute)
-                }
+                    shouldExpand: true,
+                    action: onEdit
+                )
                 .accessibilityIdentifier("SpecifyInvoiceButton")
             }
 
