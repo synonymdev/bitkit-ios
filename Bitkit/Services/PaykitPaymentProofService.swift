@@ -61,6 +61,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var hardwareMiningFeeSats: UInt64?
     var hardwareFeeRate: UInt64?
     var hardwareTotalSpent: UInt64?
+    var hardwareDispatchAttempted: Bool?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
     var onchainAcceptanceVerified: Bool?
     /// Device-local acknowledgement: backup restore reruns local activity proof.
@@ -551,13 +552,14 @@ actor PaykitPaymentProofService {
         pendingProofs[index].hardwareMiningFeeSats = signedTx?.miningFeeSats
         pendingProofs[index].hardwareFeeRate = signedTx.map { UInt64($0.feeRate.rounded(.up)) }
         pendingProofs[index].hardwareTotalSpent = signedTx?.totalSpent
+        pendingProofs[index].hardwareDispatchAttempted = signedTx.map { _ in false }
         try await persist(pendingProofs)
     }
 
     func retainedHardwareOnchainPayment(
         requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String,
         address: String, amountSats: UInt64
-    ) async throws -> HwFundingSignedTx? {
+    ) async throws -> RetainedHardwareOnchainPayment? {
         let identity = try await currentIdentity()
         guard PubkyPublicKeyFormat.matches(identity, paymentIdentity), walletId != WalletScope.default,
               hardwareTransactionLookup.hasWallet(walletId: walletId)
@@ -577,7 +579,10 @@ actor PaykitPaymentProofService {
             let fee = proof.hardwareMiningFeeSats, let rate = proof.hardwareFeeRate,
             let spent = proof.hardwareTotalSpent
             else { return nil }
-            return HwFundingSignedTx(serializedTx: raw, miningFeeSats: fee, feeRate: Float(rate), totalSpent: spent)
+            return RetainedHardwareOnchainPayment(
+                signedTx: HwFundingSignedTx(serializedTx: raw, miningFeeSats: fee, feeRate: Float(rate), totalSpent: spent),
+                hasAttemptedBroadcast: proof.hardwareDispatchAttempted != false
+            )
         }
     }
 
@@ -603,6 +608,7 @@ actor PaykitPaymentProofService {
             }) else { throw PaykitPaymentRequestError.operationInProgress }
             proofs[index].paymentIdentifier = txid
             proofs[index].hardwareSignedTransaction = serializedTx
+            proofs[index].hardwareDispatchAttempted = true
             try await persist(proofs)
         }
     }
@@ -950,7 +956,10 @@ actor PaykitPaymentProofService {
         await removeProofs {
             PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == request.id &&
                 $0.kind == .onchain && $0.onchainWalletId == walletId && $0.paymentStarted &&
-                $0.paymentIdentifier == nil && $0.proofData == nil && $0.onchainAcceptanceVerified != true
+                ($0.paymentIdentifier == nil ||
+                    ($0.hardwareDispatchAttempted == false && $0.paymentIdentifier != nil &&
+                        $0.hardwareSignedTransaction.flatMap { try? SignedTransactionId.fromHex($0) } == $0.paymentIdentifier)) &&
+                $0.proofData == nil && $0.onchainAcceptanceVerified != true
         }
     }
 

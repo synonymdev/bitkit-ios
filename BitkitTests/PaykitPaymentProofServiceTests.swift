@@ -397,12 +397,33 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
             address: onchainAddress, amountSats: request.amountSats
         )
-        XCTAssertEqual(retained, receipt)
+        XCTAssertEqual(retained?.signedTx, receipt)
+        XCTAssertEqual(retained?.hasAttemptedBroadcast, false)
         let wrongAmount = try await reopened.retainedHardwareOnchainPayment(
             requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
             address: onchainAddress, amountSats: request.amountSats + 1
         )
         XCTAssertNil(wrongAmount)
+        await reopened.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: hardwareWalletId)
+        let cleared = await store.snapshot()
+        XCTAssertTrue(cleared.isEmpty, "Known pre-dispatch receipt must be removed")
+        try await reopened.restoreBackup(JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: encoded))
+        try await reopened.retainHardwareOnchainCandidate(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats, serializedTx: serializedTx
+        )
+        let attemptedBackup = try await reopened.backupSnapshot()
+        let attemptedEncoded = try JSONEncoder().encode(attemptedBackup)
+        await store.clear()
+        try await reopened.restoreBackup(JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: attemptedEncoded))
+        let attempted = try await reopened.retainedHardwareOnchainPayment(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats
+        )
+        XCTAssertEqual(attempted?.hasAttemptedBroadcast, true)
+        await reopened.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: hardwareWalletId)
+        let guarded = await store.snapshot()
+        XCTAssertEqual(guarded.count, 1)
     }
 
     func testHardwareTransactionIdMatchesBackendAndRejectsInvalidReceipt() throws {

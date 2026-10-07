@@ -848,7 +848,7 @@ final class HwFundingSignerTests: XCTestCase {
         await assertThrowsAsync {
             _ = try await coordinator.signAndBroadcast(
                 manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId,
-                loadSignedPayment: { receipt },
+                loadSignedPayment: { RetainedHardwareOnchainPayment(signedTx: receipt, hasAttemptedBroadcast: true) },
                 beforeFirstBroadcast: { _ in XCTFail("Restored proof must not prepare another payment") },
                 beforeBroadcastAttempt: { throw MockHwFunding.TestError() }
             )
@@ -863,6 +863,27 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertEqual(funding.signCalls, 0)
         XCTAssertEqual(funding.broadcastCalls, 1)
         XCTAssertEqual(funding.broadcastTransactions, [receipt.serializedTx])
+    }
+
+    func testRestoredUnattemptedShopReceiptDenialIsDefinitelyBeforeDispatch() async {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        var outcomes: [PrivatePaymentListSendOutcome] = []
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId,
+                loadSignedPayment: { RetainedHardwareOnchainPayment(signedTx: funding.signedTx, hasAttemptedBroadcast: false) },
+                beforeFirstBroadcast: { _ in XCTFail("Restored proof must not prepare another payment") },
+                beforeBroadcastAttempt: { throw MockHwFunding.TestError() },
+                afterFailure: { outcomes.append($0) }
+            )
+        }
+        XCTAssertEqual(outcomes, [.definitePreBroadcastFailure])
+        XCTAssertFalse(coordinator.isBroadcastUnresolved)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
     }
 
     func testObservedShopPaymentUnlocksOnlyOriginalSignedCandidate() async throws {

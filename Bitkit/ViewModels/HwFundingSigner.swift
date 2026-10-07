@@ -1,6 +1,11 @@
 import BitkitCore
 import Observation
 
+struct RetainedHardwareOnchainPayment {
+    let signedTx: HwFundingSignedTx
+    let hasAttemptedBroadcast: Bool
+}
+
 /// Orchestrates an on-chain payment from a hardware wallet: reconnect the device, compose the exact
 /// payment, sign it on-device, and broadcast. Owns the per-phase timeouts and fee-reserve math.
 ///
@@ -507,7 +512,7 @@ final class HwSendCoordinator {
         satsPerVByte: UInt64,
         paymentDeadline: PaykitPreciseInstant? = nil,
         paymentRequestId: PaykitPaymentRequest.ID? = nil,
-        loadSignedPayment: @escaping () async throws -> HwFundingSignedTx? = { nil },
+        loadSignedPayment: @escaping () async throws -> RetainedHardwareOnchainPayment? = { nil },
         beforeFirstBroadcast: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         retainSignedPayment: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
@@ -543,10 +548,10 @@ final class HwSendCoordinator {
             }
 
             if pendingPayment == nil, let restored = try await loadSignedPayment() {
-                pendingPayment = PendingPayment(request: request, signedTx: restored, paymentRequestId: paymentRequestId)
+                pendingPayment = PendingPayment(request: request, signedTx: restored.signedTx, paymentRequestId: paymentRequestId)
                 pendingPayment?.isPreparedForBroadcast = true
-                pendingPayment?.hasBroadcastAttempted = true
-                isBroadcastUnresolved = true
+                pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
+                isBroadcastUnresolved = restored.hasAttemptedBroadcast
             }
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
