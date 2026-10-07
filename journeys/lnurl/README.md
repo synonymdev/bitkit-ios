@@ -11,12 +11,12 @@ cd /path/to/bitkit-docker
 docker compose --profile lnurl-pay up -d --build --wait lnurl-server-fixture
 ```
 
-It serves on port 3010. Read the link to paste from it:
+It serves on port 23010. Read the link to paste from it:
 
 ```bash
-curl -fsS http://127.0.0.1:3010/generate/pay        # {"url":..., "lnurl":"lnurl1...", ...}
+curl -fsS http://127.0.0.1:23010/generate/pay       # {"url":..., "lnurl":"lnurl1...", ...}
 curl -fsS -X POST -H 'content-type: application/json' \
-  -d '{"mode":"healthy"}' http://127.0.0.1:3010/fixture   # or "error"; it starts in "error"
+  -d '{"mode":"healthy"}' http://127.0.0.1:23010/fixture   # or "error"; it starts in "error"
 ```
 
 The callback URLs it returns follow the address the request used, so a simulator that reaches the
