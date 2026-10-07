@@ -1,5 +1,7 @@
 # USDT configuration
 
+Normal builds use published bitkit-core `0.8.0-rc1`, including its matching native libraries and generated bindings.
+
 USDT uses Arbitrum One regardless of the Bitcoin network setting. `USDT_RPC_URL` and `USDT_BUNDLER_URL` must point to the controlled service's credential-free HTTPS chain and bundler routes. Info.plist/build settings provide release configuration; local runs can supply process environment overrides. Missing endpoints hide the wallet entry.
 
 Optional `USDT_DEPOSITS_URL` enables wallet-signed Orchestra deposits. Provider keys remain on the service. Source support covers Ethereum, Tron, Solana, Polygon, Base and BNB Smart Chain, subject to explicit service enablement and live route availability. Each source requires funded acceptance before release. Users approve a source-network refund address when requesting an eligible refund; unconverted Tron refunds require provider support. History and addresses recover under the same provider partner account. Linked order amounts are batch totals. Outbound USDT0 destinations are enabled with `USDT_BRIDGE_NETWORKS`, a comma-separated subset of `ethereum,polygon,plasma,stable`, matching the service configuration. Empty configuration offers Arbitrum only. Paykit always uses direct Arbitrum payments.
@@ -14,7 +16,7 @@ History catch-up is deferred while the USDT send sheet is open. Balance and pend
 
 ## Paykit
 
-Paykit uses the released rc63 SDK and a direct Arbitrum USDT0 endpoint (`usdt-arbitrum-address`). Existing public/private sharing settings control publication. The payload binds the address, chain 42161 and pinned token; bridge routes are excluded from Paykit choices.
+Paykit uses the rc66 SDK and a direct Arbitrum USDT0 endpoint (`usdt-arbitrum-address`). Existing public/private sharing settings control publication. The payload binds the address, chain 42161 and pinned token; bridge routes are excluded from Paykit choices.
 
 Bitkit creates BTC or USD requests and also reads USDT-denominated requests from other wallets. The accepted methods are immutable request terms. Every accepted cross-asset currency has an explicit requester-supplied rate; the denominating asset needs no conversion. USD/USDT is exactly 1:1. Bitcoin rates come from the existing BTC/USD source when issuing terms, not when verifying received funds. External requests without rates allow only same-asset payment. A listed method without its required rate cannot be used.
 
