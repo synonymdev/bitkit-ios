@@ -927,7 +927,11 @@ actor PaykitSdkService {
 
     @discardableResult
     func receivePrivateMessages(counterparty: String) async throws -> PrivateStreamIntakeReport {
-        try await withStateRevisionTracking { sdk in
+        try await receivePrivateMessages(counterparty: counterparty, priority: .ordered)
+    }
+
+    func receivePrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> PrivateStreamIntakeReport {
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.receivePrivateMessages(counterparty: counterparty)
         }
     }
