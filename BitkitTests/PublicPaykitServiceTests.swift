@@ -289,6 +289,44 @@ final class PublicPaykitServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testPublicationFinishesAdmittedAppWriteButSkipsEndpointsAfterSessionEnds() async throws {
+        for cancelTask in [false, true] {
+            var isCurrent = true
+            var calls: [String] = []
+            var finishWrite: CheckedContinuation<Void, Never>?
+            let admitted = expectation(description: "App write admitted")
+            let publication = Task {
+                try await PublicPaykitService.syncPublishedEndpoints(
+                    publish: true,
+                    isSessionCurrent: { isCurrent && !Task.isCancelled },
+                    buildEndpoints: { [self.endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")] },
+                    syncApp: {
+                        calls.append("app")
+                        await withCheckedContinuation {
+                            finishWrite = $0
+                            admitted.fulfill()
+                        }
+                        calls.append("app-finished")
+                    },
+                    applyEndpoints: { _ in calls.append("endpoints") }
+                )
+            }
+            await fulfillment(of: [admitted], timeout: 2)
+            if cancelTask {
+                publication.cancel()
+            } else {
+                isCurrent = false
+            }
+            finishWrite?.resume()
+            do {
+                try await publication.value
+                XCTFail("Expected the ended session to stop the next write")
+            } catch PubkyServiceError.sessionNotActive {}
+            XCTAssertEqual(calls, ["app", "app-finished"])
+        }
+    }
+
+    @MainActor
     func testPublicationSyncsAppWhenEndpointBuildFails() async {
         var calls: [String] = []
 

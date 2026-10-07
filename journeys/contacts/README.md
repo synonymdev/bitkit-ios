@@ -74,6 +74,23 @@ On iOS, inactive transitions alone do not pause preparation. An admitted endpoin
 batch finishes its reservations and publication together, even after backgrounding. Explicit
 foreground preparation and cleanup remain ordered; scheduled work uses background priority.
 
+Emit several proof-state notifications while backgrounded without changing proof persistence.
+No observer-driven stored request refresh starts until the app is active; returning to the app
+refreshes the latest state once. Repeat while payment activity is held: refresh waits until that
+activity ends. A session change discards the old session's pending refresh. These notifications
+and the payment-activity hold require the same controlled fixture, not a real payment.
+
+Hold proof reconciliation during an automatic request refresh, then background the app and release
+it. Reconciliation must finish, but request intake and target discovery wait for resume. Explicit
+payment-completion work keeps its normal behavior. This requires controlled operation blocking.
+
+With public sharing enabled, compare a retained-profile startup and Home/resume. Initial public
+publication waits for the signed-in session and running node, with one automatic publication per
+activation when receive endpoints and session inputs are unchanged. Changed receive endpoints and
+forced channel invoice refresh still publish their latest values. Disable sharing or end the session
+while app registration is held; the admitted write may
+finish, but the next endpoint publication must not start for the ended session or disabled sharing.
+
 ## Foreground wait isolation
 
 Hold an unrelated contact's background preparation in progress, then open a saved, linked contact
