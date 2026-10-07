@@ -128,6 +128,7 @@ struct HwSendSignView: View {
                     sats: amount,
                     satsPerVByte: UInt64(feeRate),
                     paymentDeadline: contactPaymentDeadline,
+                    paymentRequestId: requestId,
                     beforeFirstBroadcast: prepareContactPayment,
                     beforeBroadcastAttempt: authorizeContactPayment,
                     afterBroadcast: { result in

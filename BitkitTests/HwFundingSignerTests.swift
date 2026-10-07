@@ -809,6 +809,36 @@ final class HwFundingSignerTests: XCTestCase {
         _ = try await payment.value
     }
 
+    func testShopBroadcastFailurePreservesSignedPaymentAcrossCancel() async throws {
+        let funding = MockHwFunding()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let manager = HwWalletManager()
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+            )
+        }
+        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.canLeave)
+        coordinator.cancel()
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                paymentRequestId: .init(paymentRequestId: "other-request", counterparty: "original-merchant")
+            )
+        }
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        funding.broadcastError = nil
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+        )
+        XCTAssertEqual(funding.signCalls, 1)
+        XCTAssertEqual(funding.broadcastCalls, 2)
+    }
+
     func testCoordinatorCannotBeLeftWhileABroadcastIsUnresolved() async throws {
         let funding = MockHwFunding()
         let broadcast = AsyncGate()
@@ -937,7 +967,7 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertTrue(connecting.staleDisconnects.isEmpty, "a finished payment keeps its session")
     }
 
-    func testCoordinatorCanBeLeftWhileTheDeviceReconnectsBeforeASignRetry() async throws {
+    func testCoordinatorCanBeLeftWhileTheDeviceReconnectsBeforeASignRetry() async {
         let walletId = "jade:wallet"
         let funding = MockHwFunding()
         funding.signErrors = [Bitkit.AppError(error: JadeError.DeviceDisconnected)]

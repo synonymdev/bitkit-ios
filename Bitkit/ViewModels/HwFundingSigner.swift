@@ -506,6 +506,7 @@ final class HwSendCoordinator {
         sats: UInt64,
         satsPerVByte: UInt64,
         paymentDeadline: PaykitPreciseInstant? = nil,
+        paymentRequestId: PaykitPaymentRequest.ID? = nil,
         beforeFirstBroadcast: @escaping () async throws -> Void = {},
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
@@ -515,6 +516,11 @@ final class HwSendCoordinator {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
+        if isBroadcastUnresolved, let pendingPayment {
+            guard pendingPayment.request == request, pendingPayment.paymentRequestId == paymentRequestId else {
+                throw PaykitPaymentRequestError.operationInProgress
+            }
+        }
         if let operationTask {
             guard operationRequest == request else { throw HwTransferError.deviceBusy(manager.vendor(walletId: walletId)) }
             return try await operationTask.value
@@ -552,7 +558,7 @@ final class HwSendCoordinator {
                     }
                 )
                 try Task.checkCancellation()
-                pendingPayment = PendingPayment(request: request, signedTx: signed)
+                pendingPayment = PendingPayment(request: request, signedTx: signed, paymentRequestId: paymentRequestId)
             }
 
             if pendingPayment?.isPreparedForBroadcast != true {
@@ -584,18 +590,20 @@ final class HwSendCoordinator {
                     await afterBroadcast(result)
                     return result
                 } catch {
-                    isBroadcastUnresolved = false
+                    isBroadcastUnresolved = paymentRequestId != nil
                     let underlyingError = (error as? AppError)?.underlyingError ?? error
                     if underlyingError as? PaykitPaymentRequestError == .requestExpired {
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
                         isBroadcastUnresolved = hadPriorBroadcastAttempt
                         broadcastWasAttempted = hadPriorBroadcastAttempt
                         pendingPayment?.hasBroadcastAttempted = hadPriorBroadcastAttempt
-                        if !hadPriorBroadcastAttempt { pendingPayment = nil }
+                        if !hadPriorBroadcastAttempt {
+                            pendingPayment = nil
+                        }
                         throw error
                     }
                     let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
-                    if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
+                    if paymentRequestId == nil, !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
                         pendingPayment = nil
                     }
                     throw error
@@ -704,6 +712,7 @@ final class HwSendCoordinator {
     private struct PendingPayment {
         let request: PaymentRequest
         let signedTx: HwFundingSignedTx
+        let paymentRequestId: PaykitPaymentRequest.ID?
         var isPreparedForBroadcast = false
         var hasBroadcastAttempted = false
     }
