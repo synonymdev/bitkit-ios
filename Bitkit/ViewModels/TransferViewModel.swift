@@ -2,6 +2,9 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+/// Funding was dispatched but unresolved; confirmation must yield to its retained Pending sheet.
+struct OnchainFundingPendingError: Error {}
+
 struct TransferUiState {
     var clientBalanceSat: UInt64 = 0
     var lspBalanceSat: UInt64 = 0
@@ -492,6 +495,10 @@ class TransferViewModel: ObservableObject {
                 debugMessage: "Broadcast rejected for \(rejectedTxid): \(reason)"
             )
         case let .unknown(unknownTxid):
+            if let context = try await onchainAttemptService.pendingContext(txid: unknownTxid) {
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+                throw OnchainFundingPendingError()
+            }
             throw AppError(
                 message: t("wallet__onchain_funding_unknown"),
                 debugMessage: "Broadcast outcome unknown for \(unknownTxid)"

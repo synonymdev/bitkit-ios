@@ -237,6 +237,9 @@ struct SpendingConfirm: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 hideSwipeButton = true
             }
+        } catch is OnchainFundingPendingError {
+            // The exact operation's Pending sheet replaces funding confirmation, not setup success.
+            return
         } catch {
             if !(error is SpendingFeesIncreasedError) {
                 app.toast(error)

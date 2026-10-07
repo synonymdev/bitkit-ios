@@ -783,6 +783,37 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     @MainActor
+    func testUnknownOrderFundingOpensExactPendingWithoutFinishingSetup() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .unknown(txid: txid))
+        let sheets = SheetViewModel()
+        let order = IBtOrder.mock()
+        let vm = TransferViewModel(
+            transferService: makeService(), sheetViewModel: sheets,
+            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
+            onchainSender: node, onchainBalanceProvider: { 50000 }
+        )
+        do {
+            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
+            XCTFail("Unknown funding must not finish setup")
+        } catch {}
+        let original = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(original.orderId, order.id)
+        XCTAssertTrue(original.blocksNewSend)
+        XCTAssertTrue(try Bitkit.TransferStorage(defaults: transferDefaults).getAll().isEmpty)
+        XCTAssertEqual(node.calls, 1)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
+        guard case let .onchainPending(context) = config.initialRoute else {
+            return XCTFail("Funding lost the exact original Pending route")
+        }
+        XCTAssertEqual(context.attemptId, original.id)
+        XCTAssertEqual(context.walletId, original.walletId)
+        XCTAssertEqual(context.txid, txid)
+    }
+
+    @MainActor
     func testTransferResumeRetainsOriginalBalanceMetadataAfterTrackingFailure() async throws {
         for isMax in [false, true] {
             transferDefaults.removeObject(forKey: "transfers")
