@@ -460,6 +460,7 @@ class TransferViewModel: ObservableObject {
     ) async throws {
         if let context = try await onchainAttemptService.orderPendingContext(orderId: order.id) {
             await showFundingPending(context)
+            if recoveredOnchainFundingOrderId == order.id { return }
             throw OnchainFundingPendingError()
         }
         guard let address = order.payment?.onchain?.address else {
@@ -548,6 +549,15 @@ class TransferViewModel: ObservableObject {
     private func showFundingPending(_ context: OnchainSendPendingContext) async {
         pendingOnchainFunding = context
         sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+        do {
+            if let attempt = try await onchainAttemptService.pendingAttempt(context: context),
+               attempt.status == .accepted, !attempt.localFollowupComplete,
+               let orderId = attempt.orderId, let txid = attempt.txid {
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(orderId: orderId, txid: txid, using: transferService)
+            }
+        } catch {
+            Logger.warn("Accepted original funding follow-up remains Pending: \(error)", context: "TransferViewModel")
+        }
         // Acceptance can precede the sheet and its subscription's next delivery.
         await resumeRecoveredOnchainFunding(context: context)
     }

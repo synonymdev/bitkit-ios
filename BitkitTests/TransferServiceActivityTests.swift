@@ -944,6 +944,43 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     @MainActor
+    func testAcceptedIncompleteFundingReopensExpiredOriginalAndRepairsWithoutBroadcast() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let attempts = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
+        let sheets = SheetViewModel()
+        let order = IBtOrder.mock()
+        let vm = TransferViewModel(transferService: makeService(), sheetViewModel: sheets,
+                                  onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 })
+        vm.onOrderCreated(order: order)
+        transferDefaults.set(Data("broken-transfer-store".utf8), forKey: "transfers")
+        do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
+        let original = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(original.status, .accepted)
+        XCTAssertFalse(original.localFollowupComplete)
+        sheets.hideSheet()
+        do {
+            _ = try await vm.orderForSwipe { _, _ in
+                XCTFail("Accepted incomplete funding must retain the expired original order")
+                return IBtOrder.mock(id: "replacement-order")
+            }
+            XCTFail("Incomplete accepted funding must reopen Pending")
+        } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong error: \(error)") }
+        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
+        guard case let .onchainPending(context) = config.initialRoute else { return XCTFail("Missing Pending") }
+        XCTAssertEqual(context.attemptId, original.id)
+        XCTAssertEqual(context.walletId, original.walletId)
+        XCTAssertEqual(context.txid, txid)
+        XCTAssertEqual(node.calls, 1)
+        transferDefaults.removeObject(forKey: "transfers")
+        try await vm.payOrder(order: order, speed: .normal, txFee: 999, satsPerVbyte: 9)
+        XCTAssertTrue(try XCTUnwrap(store.snapshot().first).localFollowupComplete)
+        XCTAssertEqual(vm.recoveredOnchainFundingOrderId, order.id)
+        XCTAssertEqual(node.calls, 1)
+    }
+
+    @MainActor
     func testAcceptedOrderFollowupKeepsAdmissionContextWhenWalletChangesAfterDispatch() async throws {
         let store = MemoryAttemptStore()
         let txid = String(repeating: "ab", count: 32)
