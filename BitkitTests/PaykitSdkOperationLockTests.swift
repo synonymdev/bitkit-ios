@@ -33,58 +33,64 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         )
     }
 
-    func testCapabilitySyncPriorityPreservesOrderedWorkAndOnlyOvertakesQueuedIntake() async throws {
+    func testCapabilitySyncPriorityPreservesOrderedWorkAndOnlyOvertakesQueuedBackgroundWork() async throws {
+        let operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.receivePrivateMessagesFromLinkedPeers(priority: .background) },
+            { _ = try await $0.ensureLinkWithPeer("peer", priority: .background) },
+        ]
         let cases: [(priority: PaykitSdkOperationLock.Priority?, orderedBarrier: Bool, expected: [String])] = [
             (nil, false, ["active", "intake", "publish"]),
             (.interactive, false, ["active", "publish", "intake"]),
             (.interactive, true, ["active", "intake", "ordered", "publish"]),
         ]
-        for testCase in cases {
-            let recorder = Recorder()
-            let (gate, release) = AsyncStream<Void>.makeStream()
-            defer { release.finish() }
-            let started = expectation(description: "Active SDK operation started")
-            let sdk = PublicReadSdk(noPointer: .init())
-            sdk.lockedRead = {
-                if await recorder.events.isEmpty {
-                    await recorder.record("active")
-                    started.fulfill()
-                    for await _ in gate {}
-                } else {
-                    await recorder.record("ordered")
+        for operation in operations {
+            for testCase in cases {
+                let recorder = Recorder()
+                let (gate, release) = AsyncStream<Void>.makeStream()
+                defer { release.finish() }
+                let started = expectation(description: "Active SDK operation started")
+                let sdk = PublicReadSdk(noPointer: .init())
+                sdk.lockedRead = {
+                    if await recorder.events.isEmpty {
+                        await recorder.record("active")
+                        started.fulfill()
+                        for await _ in gate {}
+                    } else {
+                        await recorder.record("ordered")
+                    }
                 }
-            }
-            sdk.intake = { await recorder.record("intake") }
-            sdk.publication = { capabilities in
-                XCTAssertFalse(capabilities.privatePayments)
-                await recorder.record("publish")
-            }
-            let service = PaykitSdkService(sdkFactory: { sdk })
-            let active = Task { _ = try await service.contactRecords() }
-            await fulfillment(of: [started], timeout: 2)
-
-            let intake = Task { _ = try await service.receivePrivateMessagesFromLinkedPeers(priority: .background) }
-            try await Task.sleep(for: .milliseconds(50))
-            let barrier = testCase.orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
-            if barrier != nil { try await Task.sleep(for: .milliseconds(50)) }
-            let publication = Task {
-                if let priority = testCase.priority {
-                    try await service.syncPaykitApp(privatePaymentsEnabled: false, priority: priority)
-                } else {
-                    try await service.syncPaykitApp(privatePaymentsEnabled: false)
+                sdk.intake = { await recorder.record("intake") }
+                sdk.publication = { capabilities in
+                    XCTAssertFalse(capabilities.privatePayments)
+                    await recorder.record("publish")
                 }
-            }
-            try await Task.sleep(for: .milliseconds(50))
-            let heldEvents = await recorder.events
-            XCTAssertEqual(heldEvents, ["active"])
+                let service = PaykitSdkService(sdkFactory: { sdk })
+                let active = Task { _ = try await service.contactRecords() }
+                await fulfillment(of: [started], timeout: 2)
 
-            release.finish()
-            try await active.value
-            try await intake.value
-            try await barrier?.value
-            try await publication.value
-            let events = await recorder.events
-            XCTAssertEqual(events, testCase.expected)
+                let intake = Task { try await operation(service) }
+                try await Task.sleep(for: .milliseconds(50))
+                let barrier = testCase.orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
+                if barrier != nil { try await Task.sleep(for: .milliseconds(50)) }
+                let publication = Task {
+                    if let priority = testCase.priority {
+                        try await service.syncPaykitApp(privatePaymentsEnabled: false, priority: priority)
+                    } else {
+                        try await service.syncPaykitApp(privatePaymentsEnabled: false)
+                    }
+                }
+                try await Task.sleep(for: .milliseconds(50))
+                let heldEvents = await recorder.events
+                XCTAssertEqual(heldEvents, ["active"])
+
+                release.finish()
+                try await active.value
+                try await intake.value
+                try await barrier?.value
+                try await publication.value
+                let events = await recorder.events
+                XCTAssertEqual(events, testCase.expected)
+            }
         }
     }
 
@@ -563,6 +569,12 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     override func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
         await intake()
         return []
+    }
+
+    override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps: UInt32) async throws -> LinkedPeerHandshakeReport {
+        XCTAssertEqual(maxAdvanceSteps, 1)
+        await intake()
+        return LinkedPeerHandshakeReport(counterparty: counterparty, state: .linking, generation: 1, handshakeRole: nil)
     }
 
     override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {

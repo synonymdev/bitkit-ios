@@ -864,9 +864,10 @@ actor PaykitSdkService {
 
     func ensureLinkWithPeer(
         _ counterparty: String,
-        maxAdvanceSteps: UInt32 = 1
+        maxAdvanceSteps: UInt32 = 1,
+        priority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws -> LinkedPeerHandshakeReport {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.ensureLinkWithPeer(counterparty: counterparty, maxAdvanceSteps: maxAdvanceSteps)
         }
     }

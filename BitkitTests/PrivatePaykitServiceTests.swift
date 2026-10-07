@@ -327,6 +327,81 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(received, keys + keys)
     }
 
+    func testOverlappingLinkPreparationRetriesAfterFailureOrCancellation() async {
+        for cancel in [false, true] {
+            let service = PrivatePaykitService()
+            let started = expectation(description: "Link preparation started")
+            let (resume, continuation) = AsyncStream<Void>.makeStream()
+            var advances = 0
+            let operations = PrivatePaykitService.PrivateMessageDrainOperations(
+                ensureLink: { _ in
+                    advances += 1
+                    if advances == 1 {
+                        started.fulfill()
+                        for await _ in resume {
+                            break
+                        }
+                        try Task.checkCancellation()
+                        throw PrivatePaykitError.privateUnavailable
+                    }
+                },
+                pendingOutbound: { [] }, linkedPeers: { [] }, processPending: { _ in }, receive: { _ in }
+            )
+            let first = Task {
+                await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
+            }
+            await fulfillment(of: [started], timeout: 2)
+            await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
+            XCTAssertEqual(advances, 1)
+            if cancel { first.cancel() }
+            continuation.finish()
+            await first.value
+            await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
+            XCTAssertEqual(advances, 2)
+        }
+    }
+
+    func testInvalidatedLinkPreparationCannotReleaseNewPreparation() async {
+        let service = PrivatePaykitService()
+        let oldStarted = expectation(description: "Old preparation started")
+        let newStarted = expectation(description: "New preparation started")
+        let (oldResume, oldContinuation) = AsyncStream<Void>.makeStream()
+        let (newResume, newContinuation) = AsyncStream<Void>.makeStream()
+        var advances = 0
+        let operations = PrivatePaykitService.PrivateMessageDrainOperations(
+            ensureLink: { _ in
+                advances += 1
+                if advances == 1 {
+                    oldStarted.fulfill()
+                    for await _ in oldResume {
+                        break
+                    }
+                } else if advances == 2 {
+                    newStarted.fulfill()
+                    for await _ in newResume {
+                        break
+                    }
+                }
+            },
+            pendingOutbound: { [] }, linkedPeers: { [] }, processPending: { _ in }, receive: { _ in }
+        )
+        let old = Task {
+            await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
+        }
+        await fulfillment(of: [oldStarted], timeout: 2)
+        await service.invalidateContactPreparation()
+        let current = Task {
+            await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
+        }
+        await fulfillment(of: [newStarted], timeout: 2)
+        oldContinuation.finish()
+        await old.value
+        await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
+        XCTAssertEqual(advances, 2)
+        newContinuation.finish()
+        await current.value
+    }
+
     func testPrivateMessageDrainAdvancesRecoveryDetectedDuringSendOnNextPass() async {
         let service = PrivatePaykitService()
         let publicKey = "peer"
