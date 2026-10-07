@@ -1092,68 +1092,130 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertFalse(coordinator.isSigning)
     }
 
-    func testCancelledAuthorizationOrRetentionCannotBroadcastOrResetANewerAttempt() async throws {
-        for cancelDuringRetention in [false, true] {
+    func testCancelledAuthorizationCannotBroadcastOrResetANewerAttempt() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let suspended = AsyncGate()
+        let nextPreparation = AsyncGate()
+        var suspensionStarted = false
+        var nextStarted = false
+        var retained = 0
+        var cleared = 0
+        var staleFailures = 0
+        let first = Task {
+            try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                beforeBroadcastAttempt: {
+                    suspensionStarted = true
+                    await suspended.wait()
+                },
+                retainSignedPayment: { _ in
+                    retained += 1
+                },
+                clearSignedPaymentBeforeDispatch: { _ in
+                    cleared += 1
+                    return true
+                },
+                afterFailure: { _ in staleFailures += 1 }
+            )
+        }
+        await waitUntil { suspensionStarted }
+        XCTAssertTrue(suspensionStarted)
+        coordinator.cancel()
+        let second = Task {
+            try await self.signAndBroadcast(coordinator, manager: manager) { _ in
+                nextStarted = true
+                await nextPreparation.wait()
+            }
+        }
+        await waitUntil { nextStarted }
+        XCTAssertTrue(nextStarted)
+        suspended.open()
+        await assertThrowsAsync {
+            _ = try await first.value
+        } _: { error in
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(funding.broadcastCalls, 0, "the abandoned payment must never submit")
+        XCTAssertEqual(retained, 0)
+        XCTAssertEqual(cleared, 0)
+        XCTAssertEqual(staleFailures, 0, "the old callback must not cancel the new payment")
+        XCTAssertTrue(coordinator.isSigning)
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        XCTAssertFalse(coordinator.isBroadcastUnresolved)
+        nextPreparation.open()
+        _ = try await second.value
+        XCTAssertEqual(funding.broadcastCalls, 1)
+    }
+
+    func testCancellationKeepsReceiptOwnershipUntilRetentionCleanupCompletes() async throws {
+        for cleanupSucceeds in [true, false] {
             let funding = MockHwFunding()
             let manager = HwWalletManager()
             let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
-            let suspended = AsyncGate()
-            let nextPreparation = AsyncGate()
-            var suspensionStarted = false
-            var nextStarted = false
-            var retained = 0
-            var cleared = 0
-            var staleFailures = 0
-            let first = Task {
+            let retaining = AsyncGate()
+            let clearing = AsyncGate()
+            var receipt: HwFundingSignedTx?
+            var retainingStarted = false
+            var clearingStarted = false
+            var concurrentStarted = false
+            var loads = 0
+            var authCalls = 0
+            let send = {
                 try await coordinator.signAndBroadcast(
                     manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
-                    beforeBroadcastAttempt: {
-                        if !cancelDuringRetention {
-                            suspensionStarted = true
-                            await suspended.wait()
-                        }
+                    loadSignedPayment: {
+                        loads += 1
+                        return receipt.map { RetainedHardwareOnchainPayment(signedTx: $0, hasAttemptedBroadcast: false) }
                     },
-                    retainSignedPayment: { _ in
-                        retained += 1
-                        if cancelDuringRetention {
-                            suspensionStarted = true
-                            await suspended.wait()
-                        }
+                    beforeBroadcastAttempt: { authCalls += 1 },
+                    retainSignedPayment: { signed in
+                        receipt = signed
+                        retainingStarted = true
+                        await retaining.wait()
                     },
                     clearSignedPaymentBeforeDispatch: { _ in
-                        cleared += 1
-                        return true
-                    },
-                    afterFailure: { _ in staleFailures += 1 }
+                        clearingStarted = true
+                        await clearing.wait()
+                        if cleanupSucceeds { receipt = nil }
+                        return cleanupSucceeds
+                    }
                 )
             }
-            await waitUntil { suspensionStarted }
-            XCTAssertTrue(suspensionStarted)
+            let first = Task { try await send() }
+            await waitUntil { retainingStarted }
+            XCTAssertTrue(retainingStarted)
             coordinator.cancel()
-            let second = Task {
-                try await self.signAndBroadcast(coordinator, manager: manager) { _ in
-                    nextStarted = true
-                    await nextPreparation.wait()
+            let concurrent = Task {
+                concurrentStarted = true
+                return try await send()
+            }
+            await waitUntil { concurrentStarted }
+            retaining.open()
+            await waitUntil { clearingStarted }
+            XCTAssertTrue(clearingStarted)
+            XCTAssertEqual(loads, 1, "no newer attempt may reuse the receipt being cleared")
+            XCTAssertEqual(authCalls, 1)
+            XCTAssertEqual(funding.broadcastCalls, 0)
+            clearing.open()
+            for payment in [first, concurrent] {
+                await assertThrowsAsync {
+                    _ = try await payment.value
+                } _: { error in
+                    XCTAssertTrue(error is CancellationError, "\(error)")
                 }
             }
-            await waitUntil { nextStarted }
-            XCTAssertTrue(nextStarted)
-            suspended.open()
-            await assertThrowsAsync {
-                _ = try await first.value
-            } _: { error in
-                XCTAssertTrue(error is CancellationError, "\(error)")
+            XCTAssertEqual(coordinator.isBroadcastUnresolved, !cleanupSucceeds)
+            XCTAssertEqual(coordinator.hasPendingBroadcast, !cleanupSucceeds)
+            XCTAssertEqual(receipt == nil, cleanupSucceeds)
+            XCTAssertEqual(funding.broadcastCalls, 0)
+            if cleanupSucceeds {
+                _ = try await send()
+                XCTAssertEqual(funding.broadcastCalls, 1)
+                XCTAssertEqual(loads, 2)
+                XCTAssertNotNil(receipt, "the new submitted attempt retains its own receipt")
             }
-            XCTAssertEqual(funding.broadcastCalls, 0, "the abandoned payment must never submit")
-            XCTAssertEqual(retained, cancelDuringRetention ? 1 : 0)
-            XCTAssertEqual(cleared, cancelDuringRetention ? 1 : 0)
-            XCTAssertEqual(staleFailures, 0, "the old callback must not cancel the new payment")
-            XCTAssertTrue(coordinator.isSigning)
-            XCTAssertTrue(coordinator.hasPendingBroadcast)
-            XCTAssertFalse(coordinator.isBroadcastUnresolved)
-            nextPreparation.open()
-            _ = try await second.value
-            XCTAssertEqual(funding.broadcastCalls, 1)
         }
     }
 

@@ -368,6 +368,7 @@ final class HwSendCoordinator {
     private var operationTask: Task<HwFundingBroadcastResult, Error>?
     private var operationRequest: PaymentRequest?
     private var operationSession: OperationSession?
+    private var isRetainingSignedPayment = false
     /// Bumped by every sign attempt and every cancel. A cancelled task can keep running until its
     /// device call returns, and must not write over the state of an attempt started after it.
     private var signingAttempt = 0
@@ -599,15 +600,26 @@ final class HwSendCoordinator {
                     throw error
                 }
 
-                try await retainSignedPayment(signed)
                 do {
-                    try Task.checkCancellation()
-                    guard signingAttempt == attempt else { throw CancellationError() }
-                } catch {
-                    if !hadPriorBroadcastAttempt {
-                        _ = await clearSignedPaymentBeforeDispatch(signed)
+                    // Cancellation keeps this operation's ownership until its receipt is either
+                    // retained for submission or durably cleared. No newer task may reuse it meanwhile.
+                    isRetainingSignedPayment = true
+                    defer { isRetainingSignedPayment = false }
+                    try await retainSignedPayment(signed)
+                    do {
+                        try Task.checkCancellation()
+                        guard signingAttempt == attempt else { throw CancellationError() }
+                    } catch {
+                        if !hadPriorBroadcastAttempt {
+                            let cleared = await clearSignedPaymentBeforeDispatch(signed)
+                            if !cleared {
+                                isBroadcastUnresolved = true
+                                broadcastWasAttempted = true
+                                pendingPayment?.hasBroadcastAttempted = true
+                            }
+                        }
+                        throw error
                     }
-                    throw error
                 }
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
@@ -732,6 +744,9 @@ final class HwSendCoordinator {
         guard !isBroadcastUnresolved else { return }
         let abandonedSession = operationSession
         operationTask?.cancel()
+        // Receipt persistence/cleanup is suspended work. Keep the cancelled operation registered
+        // until it finishes, so a concurrent send joins it instead of adopting its receipt.
+        guard !isRetainingSignedPayment else { return }
         signingAttempt += 1
         operationTask = nil
         operationRequest = nil
