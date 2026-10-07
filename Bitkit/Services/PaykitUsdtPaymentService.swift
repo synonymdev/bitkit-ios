@@ -113,23 +113,24 @@ final class PaykitUsdtPaymentService {
     }
 
     func send(_ quote: UsdtQuote, context: ContactPaymentContext, paymentTerms: PaykitRequestPricing.Payment?,
-              wallet: UsdtWalletManager, authorize: () async throws -> Void) async throws
+              wallet: UsdtWalletManager, authorize: @escaping @MainActor () async throws -> Void) async throws
     {
         try setPaymentStarted(quoteId: quote.id, started: true)
         do {
-            try await authorize()
-            try Task.checkCancellation()
-            if let request = context.incomingPaymentRequest {
-                guard !request.isExpired(at: Date()),
-                      request.acceptsPayment(PaykitAmount(asset: .usdt, atomic: quote.amount), paymentTerms: paymentTerms)
-                else { throw PaykitPaymentRequestError.amountMismatch }
+            try await wallet.send(quote) {
+                do {
+                    try await authorize()
+                    try Task.checkCancellation()
+                    if let request = context.incomingPaymentRequest {
+                        guard !request.isExpired(at: Date()),
+                              request.acceptsPayment(PaykitAmount(asset: .usdt, atomic: quote.amount), paymentTerms: paymentTerms)
+                        else { throw PaykitPaymentRequestError.amountMismatch }
+                    }
+                } catch {
+                    try? self.setPaymentStarted(quoteId: quote.id, started: false)
+                    throw error
+                }
             }
-        } catch {
-            try? setPaymentStarted(quoteId: quote.id, started: false)
-            throw error
-        }
-        do {
-            try await wallet.send(quote)
         } catch {
             // Core persists signed operations before broadcast. Only this completed send can establish non-submission.
             if !(error is CancellationError), await (try? wallet.storedTransfer(quote.id) == nil) == true {

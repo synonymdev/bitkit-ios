@@ -231,6 +231,7 @@ class BackupService {
 
             do {
                 if category == .wallet {
+                    try await PaykitPaymentActivity.shared.waitUntilIdle()
                     try await persistWalletBackup()
                 } else {
                     let data = try await getBackupDataBytes(category: category)

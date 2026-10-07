@@ -1758,7 +1758,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         await manager.refresh()
 
-        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["incoming", "deadline-proposed"])
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), ["incoming"])
         XCTAssertEqual(
             Set(manager.historyRequests.map(\.paymentRequestId)),
             Set([
@@ -2856,8 +2856,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         await manager.refresh()
 
-        XCTAssertEqual(manager.pendingRequests.count, 1)
-        XCTAssertFalse(try XCTUnwrap(manager.pendingRequests.first).payment(to: .btc, at: now).isValid(at: now))
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        let payerSubscription = try XCTUnwrap(manager.subscriptions.first { $0.isPayer })
+        let unpaid = try XCTUnwrap(payerSubscription.paymentDueOnAcceptance(at: now))
+        XCTAssertFalse(try unpaid.payment(to: .btc, at: now).isValid(at: now))
+        XCTAssertTrue(unpaid.isPaymentDeadlineExpired(at: now))
+        XCTAssertEqual(unpaid.paymentDeadline?.timestamp, "2027-02-01T09:00:00Z")
         XCTAssertEqual(manager.subscriptions.count, 2)
         for subscription in manager.subscriptions {
             XCTAssertEqual(subscription.paidPeriods.count, 1)

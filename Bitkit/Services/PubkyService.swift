@@ -1168,17 +1168,17 @@ actor PaykitSdkService {
         }
     }
 
-    func exportBackupState() async throws -> String {
+    func exportBackupState(priority: PaykitSdkOperationLock.Priority = .background) async throws -> String {
         let generation = try operationLock.walletGeneration()
         let instance = try handle()
         while true {
-            try await PaykitPaymentActivity.shared.waitUntilIdle()
-            let exported: String? = try await withSdk(priority: .background) { sdk in
+            if priority == .background { try await PaykitPaymentActivity.shared.waitUntilIdle() }
+            let exported: String? = try await withSdk(priority: priority) { sdk in
                 guard sdk === instance, try operationLock.walletGeneration() == generation else {
                     throw PubkyServiceError.identityChanged
                 }
                 // Payment may have started while this export waited for the SDK lock.
-                guard await !PaykitPaymentActivity.shared.isActive else { return nil }
+                if priority == .background, await PaykitPaymentActivity.shared.isActive { return nil }
                 return try await sdk.exportBackupString()
             }
             if let exported { return exported }

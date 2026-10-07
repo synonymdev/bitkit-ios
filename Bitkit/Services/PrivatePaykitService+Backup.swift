@@ -7,8 +7,9 @@ extension PrivatePaykitService {
         guard try await PaykitSdkService.shared.currentPublicKey() != nil else {
             return nil
         }
+        // Wallet backups may be required before broadcast; they cannot wait for payment to finish.
         let backup = try await Backup(
-            sdkState: PaykitSdkService.shared.exportBackupState(),
+            sdkState: PaykitSdkService.shared.exportBackupState(priority: .interactive),
             consumedPrivatePaymentListVersions: state.contacts.compactMapValues { contactState in
                 contactState.consumedPrivatePaymentListVersion
             }

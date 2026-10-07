@@ -56,6 +56,20 @@ enum TrezorAccountTypeSelection: String, CaseIterable, Identifiable, CustomStrin
         case .taproot: "BIP86"
         }
     }
+
+    /// Explicit selection for the BIP purpose of `path` (e.g. `m/84'/1'/0'` is `.nativeSegwit`),
+    /// or nil when the purpose is not one of BIP-44/49/84/86.
+    static func matching(derivationPath path: String) -> TrezorAccountTypeSelection? {
+        let components = path.split(separator: "/")
+        guard components.count > 1, components[0] == "m" else { return nil }
+        switch components[1].trimmingCharacters(in: CharacterSet(charactersIn: "'hH")) {
+        case "44": return .legacy
+        case "49": return .wrappedSegwit
+        case "84": return .nativeSegwit
+        case "86": return .taproot
+        default: return nil
+        }
+    }
 }
 
 /// ViewModel for the Trezor hardware-wallet dev/dashboard screens. Owns only the dev-screen
@@ -113,8 +127,14 @@ class TrezorViewModel {
     /// Account-level derivation path for public key
     var publicKeyPath: String = "m/84'/\(OnChainHwService.defaultCoinTypeComponent)/0'"
 
-    /// Retrieved xpub string
+    /// Retrieved normalized xpub/tpub. Use with `publicKeyAccountType`, since it carries no type prefix.
     var xpub: String?
+
+    /// Retrieved key formatted for display (SLIP-132 for SegWit; can be a descriptor for Taproot)
+    var displayablePublicKey: String?
+
+    /// Account type matching the retrieved key's derivation path
+    var publicKeyAccountType: TrezorAccountTypeSelection?
 
     /// Retrieved compressed public key hex
     var publicKeyHex: String?
@@ -452,6 +472,8 @@ class TrezorViewModel {
 
             let response = try await trezorService.getPublicKey(params: params)
             xpub = response.xpub
+            displayablePublicKey = response.displayablePublicKey
+            publicKeyAccountType = TrezorAccountTypeSelection.matching(derivationPath: response.path)
             publicKeyHex = response.publicKey
             connection.showConfirmOnDevice = false
 
@@ -571,6 +593,8 @@ class TrezorViewModel {
     func clearWalletResults() {
         generatedAddress = nil
         xpub = nil
+        displayablePublicKey = nil
+        publicKeyAccountType = nil
         publicKeyHex = nil
         signedMessage = nil
         error = nil
@@ -962,10 +986,13 @@ class TrezorViewModel {
 
     // MARK: - Event Watcher Operations
 
-    /// Copy the most recently retrieved xpub into the watcher's extended-key field.
+    /// Copy the most recently retrieved xpub into the watcher's extended-key field and select the
+    /// account type of its derivation path, since a normalized xpub/tpub would otherwise be detected as Legacy.
     func populateWatcherFromXpub() {
-        if let xpub {
-            watcherExtendedKey = xpub
+        guard let xpub else { return }
+        watcherExtendedKey = xpub
+        if let publicKeyAccountType {
+            onchainAccountTypeSelection = publicKeyAccountType
         }
     }
 

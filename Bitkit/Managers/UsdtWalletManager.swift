@@ -132,13 +132,14 @@ final class UsdtWalletManager {
         return try PaykitUsdt.endpoint(address: wallet.receiveAddress())
     }
 
-    func send(_ quote: UsdtQuote) async throws {
+    func send(_ quote: UsdtQuote, beforeSubmission: @escaping @MainActor () async throws -> Void = {}) async throws {
         try beginOperation()
         defer { finishOperation() }
         let wallet = try await wallet()
         let transfer = try await ServiceQueue.background(.core, wrapErrors: false) {
             guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
             let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
+            try await beforeSubmission()
             return try await wallet.send(quoteId: quote.id, mnemonic: mnemonic, passphrase: passphrase)
         }
         transfers.removeAll { $0.id == transfer.id }

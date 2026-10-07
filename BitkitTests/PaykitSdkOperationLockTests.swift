@@ -264,11 +264,15 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         _ = try await service.identityStatus()
         let heldEvents = await recorder.events
         XCTAssertTrue(heldEvents.isEmpty)
+        let requiredBackup = try await service.exportBackupState(priority: .interactive)
+        XCTAssertEqual(requiredBackup, "backup")
+        let paymentEvents = await recorder.events
+        XCTAssertEqual(paymentEvents, ["export"])
         PaykitPaymentActivity.shared.end(payment)
         let backup = try await export.value
         XCTAssertEqual(backup, "backup")
         let events = await recorder.events
-        XCTAssertEqual(events, ["export"])
+        XCTAssertEqual(events, ["export", "export"])
     }
 
     @MainActor
