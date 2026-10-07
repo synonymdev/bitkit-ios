@@ -777,8 +777,8 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(restored.txid, String(repeating: "cd", count: 32))
         XCTAssertEqual(restored.status, .unknown)
         XCTAssertFalse(restored.localFollowupComplete)
-        // This is the exact original-wallet received observation, not queued local activity.
-        let observed = try await attempts.observeTransaction(txid: winner, walletId: restored.walletId)
+        // Multiple restored candidates require exact original-wallet confirmation, not a queued received event.
+        let observed = try await attempts.observeTransaction(txid: winner, walletId: restored.walletId, isConfirmed: true)
         XCTAssertTrue(observed)
         let context = OnchainSendPendingContext(attemptId: restored.id, walletId: restored.walletId, txid: restored.txid)
         await sdk.setIdentity("pubky" + String(repeating: "y", count: 52))

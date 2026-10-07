@@ -871,8 +871,15 @@ actor OnchainSendAttemptService {
     }
 
     @discardableResult
-    func observeTransaction(txid: String, walletId: String) throws -> Bool {
-        guard try currentAttempt()?.walletId == walletId else { return false }
+    func observeTransaction(txid: String, walletId: String, isConfirmed: Bool = false) throws -> Bool {
+        guard let attempt = try currentAttempt(), attempt.walletId == walletId else { return false }
+        // Received events can be queued for an original that a retained retry replaces.
+        // With multiple unresolved candidates, only confirmation establishes the winner.
+        if !isConfirmed, attempt.status != .accepted,
+           (attempt.recoveryContext?.candidateTxids.count ?? 0) > 1
+        {
+            return false
+        }
         return try observeConfirmedTransaction(txid: txid)
     }
 

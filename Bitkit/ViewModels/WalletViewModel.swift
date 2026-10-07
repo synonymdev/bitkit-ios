@@ -127,10 +127,10 @@ class WalletViewModel: ObservableObject {
                 Logger.warn("Accepted order local follow-up remains guarded: \(error)", context: "WalletViewModel")
             }
         }
-        let onchainObservation: @Sendable (String) async -> Void = { txid in
+        let onchainObservation: @Sendable (String, Bool) async -> Void = { txid, isConfirmed in
             let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
             do {
-                guard try await onchainAttemptService.observeTransaction(txid: txid, walletId: walletId) else { return }
+                guard try await onchainAttemptService.observeTransaction(txid: txid, walletId: walletId, isConfirmed: isConfirmed) else { return }
                 _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
                 _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId, using: transferService)
                 await PaykitPaymentProofService.shared.reconcile()
@@ -138,8 +138,8 @@ class WalletViewModel: ObservableObject {
                 Logger.warn("Observed payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
             }
         }
-        lightningService.onchainTransactionReceived = onchainObservation
-        lightningService.onchainTransactionConfirmed = onchainObservation
+        lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
+        lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
     }
 
     /// Convenience initializer for previews and testing

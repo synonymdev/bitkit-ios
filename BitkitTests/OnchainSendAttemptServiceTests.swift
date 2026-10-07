@@ -230,6 +230,34 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertThrowsError(try OnchainSendLocalFollowup.exactFee(details: details, previous: { _ in wrong }))
     }
 
+    func testReceivedOriginalCannotWinWhileReplacementIsUnresolved() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        let original = try XCTUnwrap(store.snapshot().first)
+        let originalTxid = try XCTUnwrap(original.txid)
+        sender.txid = String(repeating: "cd", count: 32)
+        _ = try await service.retrySamePayment(using: sender,
+                                               context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
+                                               satsPerVbyte: 2, authorize: { _, _ in })
+        let before = store.snapshot()
+        let received = try await service.observeTransaction(txid: originalTxid, walletId: original.walletId)
+        XCTAssertFalse(received, "An unconfirmed original must not finalize a multi-candidate payment")
+        XCTAssertEqual(store.snapshot(), before)
+        let confirmed = try await service.observeConfirmedTransaction(txid: sender.txid)
+        XCTAssertTrue(confirmed)
+        let winner = try XCTUnwrap(store.snapshot().first)
+        XCTAssertEqual(winner.id, original.id)
+        XCTAssertEqual(winner.walletId, original.walletId)
+        XCTAssertEqual(winner.amountSats, original.amountSats)
+        XCTAssertEqual(winner.recoveryContext?.inputs, original.recoveryContext?.inputs)
+        XCTAssertEqual(winner.txid, sender.txid)
+        XCTAssertEqual(winner.status, .accepted)
+        XCTAssertFalse(winner.localFollowupComplete)
+    }
+
     func testOriginalWinnerRetainsItsRateAfterHigherFeeSuccessorIsPrepared() async throws {
         let store = MemoryAttemptStore()
         let followup = CapturingWinningFeeFollowup()
@@ -244,7 +272,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         _ = try await service.retrySamePayment(using: sender,
                                                context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
                                                satsPerVbyte: 2, authorize: { _, _ in })
-        _ = try await service.observeTransaction(txid: originalTxid, walletId: original.walletId)
+        _ = try await service.observeTransaction(txid: originalTxid, walletId: original.walletId, isConfirmed: true)
         do { _ = try await service.resumeAcceptedOrdinarySend(walletId: original.walletId) } catch {}
         XCTAssertEqual(followup.attempt?.followupContext?.feeRate, 1)
         XCTAssertEqual(followup.attempt?.followupContext?.feeSats, 143)
