@@ -323,9 +323,10 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
-    func testPaymentDeadlineRejectionPreservesOnlyPriorBroadcastUncertainty() async throws {
+    func testPaymentDeadlineRejectionRetainsPriorAttemptWithoutBlockingDismissal() async throws {
+        enum ExpiryPhase { case beforeRetry, authorization, queuedBroadcast }
         for hadPriorAttempt in [false, true] {
-            for expiresInQueue in [false, true] {
+            for phase in [ExpiryPhase.beforeRetry, .authorization, .queuedBroadcast] {
                 let funding = MockHwFunding()
                 let manager = HwWalletManager()
                 let coordinator = HwSendCoordinator(
@@ -341,13 +342,17 @@ final class HwFundingSignerTests: XCTestCase {
                     }
                     funding.broadcastError = nil
                 }
-                let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(expiresInQueue ? 60 : -60))
+                let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(phase == .beforeRetry ? -60 : 60))
                 funding.broadcastNow = { deadline.date.addingTimeInterval(1) }
                 var outcomes: [PrivatePaymentListSendOutcome] = []
                 do {
                     _ = try await coordinator.signAndBroadcast(
                         manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
-                        paymentDeadline: deadline, afterFailure: { outcomes.append($0) }
+                        paymentDeadline: deadline,
+                        beforeBroadcastAttempt: {
+                            if phase == .authorization { throw PaykitPaymentRequestError.requestExpired }
+                        },
+                        afterFailure: { outcomes.append($0) }
                     )
                     XCTFail("Expired payment must not broadcast")
                 } catch {
@@ -356,7 +361,13 @@ final class HwFundingSignerTests: XCTestCase {
                 XCTAssertEqual(funding.broadcastCalls, hadPriorAttempt ? 1 : 0)
                 XCTAssertEqual(outcomes, [hadPriorAttempt ? .uncertain : .definitePreBroadcastFailure])
                 XCTAssertEqual(coordinator.hasPendingBroadcast, hadPriorAttempt)
-                XCTAssertEqual(coordinator.isBroadcastUnresolved, hadPriorAttempt)
+                XCTAssertFalse(coordinator.isBroadcastUnresolved)
+                XCTAssertTrue(coordinator.canLeave)
+                XCTAssertEqual(funding.signCalls, 1)
+                coordinator.cancel()
+                XCTAssertFalse(coordinator.hasPendingBroadcast)
+                XCTAssertTrue(coordinator.canLeave)
+                XCTAssertEqual(outcomes, [hadPriorAttempt ? .uncertain : .definitePreBroadcastFailure])
             }
         }
     }
@@ -392,9 +403,9 @@ final class HwFundingSignerTests: XCTestCase {
             }
         }
 
-        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+        XCTAssertFalse(coordinator.isBroadcastUnresolved)
         XCTAssertTrue(coordinator.hasPendingBroadcast)
-        XCTAssertFalse(coordinator.canLeave)
+        XCTAssertTrue(coordinator.canLeave)
         XCTAssertEqual(failures, [.uncertain, .uncertain])
         let resolution = PaykitOnchainPaymentResolution(
             identity: identity, requestId: requestId, transactionId: "resolved-tx", walletId: "trezor:wallet"

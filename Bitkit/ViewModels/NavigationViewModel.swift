@@ -204,6 +204,16 @@ class NavigationViewModel: ObservableObject {
         path.removeLast()
     }
 
+    func returnToContactsAfterRemoving(publicKey: String) {
+        switch currentRoute {
+        case let .contactDetail(shownKey), let .editContact(shownKey):
+            guard PubkyPublicKeyFormat.matches(shownKey, publicKey) else { return }
+            path = [.contacts]
+        default:
+            break
+        }
+    }
+
     func reset() {
         path.removeAll()
     }

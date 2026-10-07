@@ -68,3 +68,12 @@ selected retry contacts should be sent to or read from in that drain. Repeat dur
 with one withdrawal failing: OFF remains immediate, cleanup remains pending on failure, and no new
 publication starts. Record action-to-result time separately from SDK lock and network waits; these
 fault-injection checks do not establish staging latency or a guaranteed completion deadline.
+
+Hold deletion cleanup after a contact disappears from the list, then open that contact's Add
+screen using its deep link. Release cleanup: the Add screen must remain open and Save must
+still work. Repeat from Edit Contact and while viewing a different contact. Cleanup from the
+deleted contact must not replace the newer navigation destination.
+
+Make a Contact Pay lookup fail with SDK contention, on both Contact Detail and the Send contact
+picker. Verify the error uses localized retry guidance rather than SDK codes or context. A canceled
+lookup must not display an error. Restore access and retry; payment validation must run again.

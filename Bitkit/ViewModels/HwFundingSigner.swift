@@ -379,8 +379,8 @@ final class HwSendCoordinator {
     }
 
     /// Whether the sign screen may be left. Reaching the device (a Jade may wait minutes for its PIN)
-    /// can be abandoned, and leaving cancels it; once the device is asked to sign, or a broadcast may
-    /// have gone out, it cannot.
+    /// can be abandoned, and leaving cancels it; signing, an active broadcast and completion of a
+    /// verified payment must finish first.
     var canLeave: Bool {
         (!isSigning || isConnectingDevice) && !isBroadcastUnresolved
     }
@@ -534,6 +534,7 @@ final class HwSendCoordinator {
         signingAttempt += 1
         let attempt = signingAttempt
         let signer = signerFactory(manager, address, satsPerVByte)
+        let wasBroadcastUnresolved = isBroadcastUnresolved
         isSigning = true
 
         let task = Task { @MainActor in
@@ -592,8 +593,6 @@ final class HwSendCoordinator {
                     try checkAttempt()
                     if !broadcastWasAttempted {
                         pendingPayment = nil
-                    } else if ((error as? AppError)?.underlyingError ?? error) as? PaykitPaymentRequestError == .requestExpired {
-                        isBroadcastUnresolved = true
                     }
                     throw error
                 }
@@ -614,7 +613,7 @@ final class HwSendCoordinator {
                     let underlyingError = (error as? AppError)?.underlyingError ?? error
                     if underlyingError as? PaykitPaymentRequestError == .requestExpired {
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
-                        isBroadcastUnresolved = hadPriorBroadcastAttempt
+                        isBroadcastUnresolved = wasBroadcastUnresolved
                         broadcastWasAttempted = hadPriorBroadcastAttempt
                         pendingPayment?.hasBroadcastAttempted = hadPriorBroadcastAttempt
                         if !hadPriorBroadcastAttempt { pendingPayment = nil }

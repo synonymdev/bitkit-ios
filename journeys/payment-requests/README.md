@@ -184,7 +184,8 @@ this test as blocked, not passed, when they are unavailable. Do not change the d
    only its response. Record the node's transaction ID and keep wallet reconciliation paused.
 2. Let the payment deadline pass and retry. Verify that no additional broadcast occurs, the
    signed transaction and started proof remain retained, and an unknown outcome is not treated
-   as a definite failure that allows another payment.
+   as a definite failure that allows another payment. Once the retry finishes, Back and ordinary
+   dismissal remain available; an expired retry must not create a navigation lock.
 3. Release reconciliation for that transaction in the same hardware wallet. Verify that the
    existing send screen reaches normal success, pending progress clears, and navigation is
    available again. Check the wallet's activity and issuer proof against the recorded transaction;
@@ -195,6 +196,10 @@ this test as blocked, not passed, when they are unavailable. Do not change the d
 5. Deliver a resolution for a different identity, request or hardware wallet before the matching
    one. Verify it cannot complete the pending send, then release the matching result and verify
    normal completion. Capture redacted logs and UI evidence for each boundary.
+6. Repeat with a first broadcast that never reaches the node but reports an uncertain outcome.
+   Retry after expiry, including expiry during authorization and while queued for hardware
+   submission. Verify that no new broadcast occurs and the user can leave without a resolution.
+   Dismissal must leave the started proof pending for later reconciliation, not permit a new payment.
 
 ## Payment deadline history
 

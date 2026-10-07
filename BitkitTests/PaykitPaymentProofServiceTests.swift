@@ -572,6 +572,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             XCTAssertEqual(prepared.first?.onchainWalletId, walletId)
             XCTAssertEqual(prepared.first?.onchainMatchingTransactionIdsBeforeAttempt, [oldTxid])
             XCTAssertNil(prepared.first?.proofData)
+            await service.cancelPreparation(request, walletId: walletId)
+            let afterDismissal = await store.snapshot()
+            XCTAssertEqual(afterDismissal, prepared)
 
             let backup = try await service.backupSnapshot()
             let restoredBackup = try JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: JSONEncoder().encode(backup))
@@ -585,6 +588,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             await restoredService.reconcile()
             let beforeMatchingActivity = await restoredStore.snapshot()
             XCTAssertEqual(beforeMatchingActivity, prepared)
+            let inFlightRequests = await restoredService.inFlightRequestIds(identity: identity)
+            XCTAssertEqual(inFlightRequests, [request.id])
             let submissionsBeforeMatchingActivity = await sdk.submissionCount()
             XCTAssertEqual(submissionsBeforeMatchingActivity, 0)
 

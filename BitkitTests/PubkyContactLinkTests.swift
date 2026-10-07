@@ -22,6 +22,27 @@ final class PubkyContactLinkTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testDeletedContactDoesNotDismissANewerRoute() {
+        let navigation = NavigationViewModel()
+        for route: Route in [.contactDetail(publicKey: key), .editContact(publicKey: key)] {
+            navigation.path = [.contacts, route]
+            navigation.returnToContactsAfterRemoving(publicKey: key)
+            XCTAssertEqual(navigation.path, [.contacts])
+
+            navigation.navigate(.addContact(publicKey: key))
+            let addPath = navigation.path
+            navigation.returnToContactsAfterRemoving(publicKey: key)
+            XCTAssertEqual(navigation.path, addPath)
+        }
+        let otherKey = "pubky" + String(repeating: "y", count: 52)
+        for route: Route in [.contactDetail(publicKey: otherKey), .contactSaved(publicKey: key), .settings] {
+            navigation.path = [.contacts, route]
+            navigation.returnToContactsAfterRemoving(publicKey: key)
+            XCTAssertEqual(navigation.path, [.contacts, route])
+        }
+    }
+
     func testRejectsMalformedLinksAndNonKeyPayloads() throws {
         for link in [
             "https://contact?pubky=\(key)",
