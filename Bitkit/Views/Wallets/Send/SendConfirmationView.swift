@@ -941,6 +941,8 @@ struct SendConfirmationView: View {
     }
 
     private func performPayment(isAutomatic: Bool) async throws {
+        let paymentActivity = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         isSubmittingPayment = true
         defer { isSubmittingPayment = false }
         var createdMetadataPaymentId: String? = nil

@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "7185ae7da9315028e5331442d71d739c27f1442c",
-        "version" : "0.1.0-rc65"
+        "revision" : "a96161a6bc5f202dd0b4517202386dcc957099a5",
+        "version" : "0.1.0-rc66"
       }
     },
     {

@@ -114,6 +114,8 @@ struct HwSendSignView: View {
             }
             let contactPaymentContext = app.contactPaymentContext
             let contactPublicKey = contactPaymentContext?.publicKey
+            let paymentActivity = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(paymentActivity) }
 
             do {
                 let result = try await hwSend.signAndBroadcast(

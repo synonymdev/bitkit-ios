@@ -2141,7 +2141,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 manager.clearAuthenticatedStateForTesting()
             }),
             ("automatic recovery while signed out", true, { manager in
-                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed] {
+                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed, .restorationDeferred] {
                     await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { result }
                 }
             }),
@@ -2776,11 +2776,13 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(result, .restored(publicKey: "pubky_saved"))
     }
 
+    @MainActor
     func testResolveSessionInitializationKeepsSessionOnTemporaryFailure() async {
-        let errors: [PaykitError] = [
-            .ConcurrentUpdate(code: "concurrent_update", context: "Locked"),
-            .SharedStateBusy(code: "shared_state_busy", context: "Pending write"),
-            .Transport(code: "transport_error", context: "Offline"),
+        let errors: [Error] = [
+            PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "Locked"),
+            PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Pending write"),
+            PaykitError.Transport(code: "transport_error", context: "Offline"),
+            CancellationError(),
         ]
         for error in errors {
             let result = await PubkyProfileManager.resolveSessionInitialization(
@@ -2792,8 +2794,32 @@ final class PubkyProfileManagerTests: XCTestCase {
                     return "unused-session"
                 }
             )
-            XCTAssertEqual(result, .restorationFailed)
+            XCTAssertEqual(result, .restorationDeferred)
+            let manager = RecoveryProfileManager()
+            await manager.initialize { result }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+            XCTAssertNil(manager.initializationErrorMessage)
+            XCTAssertEqual(manager.authState, .idle)
+
+            await manager.initialize { throw error }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+            XCTAssertNil(manager.initializationErrorMessage)
         }
+    }
+
+    func testResolveSessionInitializationDefersTemporarySignInFailure() async {
+        let result = await PubkyProfileManager.resolveSessionInitialization(
+            savedSessionSecret: nil,
+            storedSecretKeyHex: "local-secret",
+            importSession: { _ in
+                XCTFail("No saved session to import")
+                return "unused"
+            },
+            signInWithSecretKey: { _ in throw PaykitError.Transport(code: "transport_error", context: "Offline") }
+        )
+        XCTAssertEqual(result, .restorationDeferred)
     }
 
     func testResolveSessionInitializationSignsInWhenOnlySecretKeyExists() async {

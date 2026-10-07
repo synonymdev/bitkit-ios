@@ -1028,9 +1028,8 @@ actor PaykitSdkService {
         counterparty: String,
         paymentRequestId: String
     ) async throws -> Paykit.PaymentRequestRecord {
-        try await withStateRevisionTracking { sdk in
-            _ = try await sdk.claimPaymentRequestForExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
-            return try await sdk.acceptPaymentRequest(
+        try await withStateRevisionTracking(priority: .interactive) { sdk in
+            try await sdk.claimAndAcceptPaymentRequest(
                 counterparty: counterparty,
                 paymentRequestId: paymentRequestId
             )
@@ -1038,7 +1037,7 @@ actor PaykitSdkService {
     }
 
     func claimPaymentRequestForExecution(counterparty: String, paymentRequestId: String) async throws -> Paykit.PaymentRequestRecord {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: .interactive) { sdk in
             try await sdk.claimPaymentRequestForExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
         }
     }
@@ -1126,8 +1125,19 @@ actor PaykitSdkService {
     }
 
     func exportBackupState() async throws -> String {
-        try await withSdk { sdk in
-            try await sdk.exportBackupString()
+        let generation = try operationLock.walletGeneration()
+        let instance = try handle()
+        while true {
+            try await PaykitPaymentActivity.shared.waitUntilIdle()
+            let exported: String? = try await withSdk(priority: .background) { sdk in
+                guard sdk === instance, try operationLock.walletGeneration() == generation else {
+                    throw PubkyServiceError.identityChanged
+                }
+                // Payment may have started while this export waited for the SDK lock.
+                guard await !PaykitPaymentActivity.shared.isActive else { return nil }
+                return try await sdk.exportBackupString()
+            }
+            if let exported { return exported }
         }
     }
 

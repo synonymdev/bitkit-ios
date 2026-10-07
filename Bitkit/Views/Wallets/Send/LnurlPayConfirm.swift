@@ -269,6 +269,8 @@ struct LnurlPayConfirm: View {
         let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
         let contactPaymentContext = app.contactPaymentContext
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
+        let paymentActivity = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         var bolt11Invoice: String?
         var lightningPaymentHash: String?
         var shouldCancelPaymentProof = false

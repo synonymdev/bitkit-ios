@@ -232,7 +232,7 @@ class BackupService {
                 updateBackupStatus(category: category) { status in
                     BackupItemStatus(
                         synced: status.synced,
-                        required: status.synced,
+                        required: category == .wallet ? status.required : status.synced,
                         running: false
                     )
                 }

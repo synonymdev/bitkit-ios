@@ -53,6 +53,7 @@ class PubkyProfileManager: ObservableObject {
     enum SessionInitializationResult: Equatable {
         case noSession
         case restored(publicKey: String)
+        case restorationDeferred
         case restorationFailed
     }
 
@@ -289,12 +290,16 @@ class PubkyProfileManager: ObservableObject {
                 isInitialized = true
                 return
             }
-            Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
-            authState = .idle
-            if case .userVisible = mode {
-                initializationErrorMessage = error.localizedDescription
+            if Self.isTemporarySessionRestorationError(error) {
+                result = .restorationDeferred
+            } else {
+                Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
+                authState = .idle
+                if case .userVisible = mode {
+                    initializationErrorMessage = error.localizedDescription
+                }
+                return
             }
-            return
         }
 
         guard revision == Self.sessionRevision else {
@@ -321,6 +326,9 @@ class PubkyProfileManager: ObservableObject {
             if case .userVisible = mode {
                 sessionRestorationFailed = true
             }
+        case .restorationDeferred:
+            clearAuthenticatedState(clearCachedProfile: false)
+            sessionRestorationFailed = false
         }
 
         await checkAdoptedSource()
@@ -1774,14 +1782,9 @@ class PubkyProfileManager: ObservableObject {
                 let publicKey = try await importSession(savedSessionSecret)
                 return .restored(publicKey: publicKey)
             } catch {
-                if let error = error as? PaykitError {
-                    switch error {
-                    case .ConcurrentUpdate, .SharedStateBusy, .Transport:
-                        Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
-                        return .restorationFailed
-                    default:
-                        break
-                    }
+                if isTemporarySessionRestorationError(error) {
+                    Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
+                    return .restorationDeferred
                 }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
@@ -1808,7 +1811,16 @@ class PubkyProfileManager: ObservableObject {
             return .restored(publicKey: publicKey)
         } catch {
             Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
-            return .restorationFailed
+            return isTemporarySessionRestorationError(error) ? .restorationDeferred : .restorationFailed
+        }
+    }
+
+    private nonisolated static func isTemporarySessionRestorationError(_ error: Error) -> Bool {
+        switch error {
+        case is CancellationError, PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport:
+            return true
+        default:
+            return false
         }
     }
 }

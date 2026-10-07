@@ -598,7 +598,9 @@ struct AppScene: View {
                 }
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
-                Task { await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true) }
+                PaykitPaymentActivity.shared.runWhenIdle(.proofRefresh) {
+                    await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true)
+                }
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { await associateResolvedPaykitOnchainPayment(resolution) }
