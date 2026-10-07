@@ -352,8 +352,8 @@ struct MainNavView: View {
             }
         }
         .onReceive(usdt.receivedTxPublisher) { tx in
-            guard navigation.currentRoute != .usdtWallet, !wallet.isRestoringWallet else { return }
-            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount))
+            guard navigation.currentRoute != .usdtWallet, !wallet.isRestoringWallet, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
+            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
         }
         .onReceive(hwWalletManager.receivedTxPublisher) { tx in
             // New inbound transaction to a watched hardware wallet — show the received celebration.
@@ -519,6 +519,7 @@ struct MainNavView: View {
                 case .spendingWallet: SpendingWalletScreen()
                 case let .hardwareWallet(walletId): HardwareWalletScreen(walletId: walletId)
                 case .usdtWallet: UsdtWalletScreen()
+                case let .usdtActivity(transferId): UsdtActivityDetail(transferId: transferId)
                 case .scanner: ScannerScreen()
 
                 // Transfer

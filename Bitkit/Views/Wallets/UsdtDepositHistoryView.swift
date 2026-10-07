@@ -39,8 +39,8 @@ struct UsdtDepositHistoryView: View {
                                         ActivityRowContent(title: deposit.network.uppercased(), subtitle: deposit.statusText) {
                                             CircularIcon(
                                                 icon: "arrow-down",
-                                                iconColor: .greenAccent,
-                                                backgroundColor: .greenAccent.opacity(0.16),
+                                                iconColor: .usdtAccent,
+                                                backgroundColor: .usdtAccent.opacity(0.16),
                                                 size: 40
                                             )
                                         } amount: { BodySSBText(deposit.asset == "USDT" ? amount(deposit.amount) : deposit.asset) }

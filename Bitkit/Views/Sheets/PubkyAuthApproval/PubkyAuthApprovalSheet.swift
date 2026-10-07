@@ -152,7 +152,7 @@ struct PubkyAuthApprovalSheet: View {
             image: "coin-stack",
             continueText: t("pubky_auth__watch_only_intro_approve"),
             cancelText: t("common__cancel"),
-            accentColor: config.request.bitkitClaim == .usdtAddressV1 ? .greenAccent : .blueAccent,
+            accentColor: config.request.bitkitClaim == .usdtAddressV1 ? .usdtAccent : .blueAccent,
             testID: "PubkyAuthWatchOnlyConsent",
             cancelTestID: "PubkyAuthWatchOnlyCancel",
             continueTestID: "PubkyAuthWatchOnlyApprove",
@@ -365,9 +365,9 @@ struct PubkyAuthApprovalSheet: View {
             if config.request.bitkitClaim?.sharesUsdt == true {
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle(isOn: $shareUsdt) {
-                        BodySSBText(t("pubky_auth__share_usdt_optional"), textColor: .greenAccent)
+                        BodySSBText(t("pubky_auth__share_usdt_optional"), textColor: .usdtAccent)
                     }
-                    .tint(.greenAccent)
+                    .tint(.usdtAccent)
                     .disabled(state == .authorizing)
                     .accessibilityIdentifier("PubkyAuthShareUsdt")
                     if let usdtAddress {
@@ -378,13 +378,13 @@ struct PubkyAuthApprovalSheet: View {
                         .accessibilityIdentifier("PubkyAuthUsdtAddress")
                         if showsUsdtAddress {
                             Button(t("common__copy")) { UIPasteboard.general.string = usdtAddress }
-                                .tint(.greenAccent)
+                                .tint(.usdtAccent)
                                 .accessibilityIdentifier("PubkyAuthCopyUsdtAddress")
                         }
                     } else if usdtUnavailable {
                         BodySText(t("pubky_auth__usdt_unavailable"), textColor: .white64)
                         Button(t("common__retry")) { Task { await loadUsdtAddress() } }
-                            .tint(.greenAccent)
+                            .tint(.usdtAccent)
                     } else {
                         ProgressView()
                     }

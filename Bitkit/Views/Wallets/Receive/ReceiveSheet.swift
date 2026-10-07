@@ -59,14 +59,6 @@ struct ReceiveSheet: View {
     @State private var navigationPath: [ReceiveRoute] = []
 
     var body: some View {
-        if config.initialRoute == .usdt {
-            Sheet(id: .receive, data: config) { UsdtReceiveView() }
-        } else {
-            bitcoinReceiveSheet
-        }
-    }
-
-    private var bitcoinReceiveSheet: some View {
         Sheet(id: .receive, data: config) {
             NavigationStack(path: $navigationPath) {
                 viewForRoute(config.initialRoute)
@@ -76,7 +68,7 @@ struct ReceiveSheet: View {
             }
             .id(config.id)
         }
-        .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
+        .offlineSheetOverlay(title: t("wallet__receive"), isEnabled: config.initialRoute != .usdt)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
@@ -110,7 +102,7 @@ struct ReceiveSheet: View {
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
-        case .usdt: EmptyView()
+        case .usdt: ReceiveQr(navigationPath: $navigationPath, tab: .usdt, hardwareWalletId: config.hardwareWalletId)
         case let .qr(cjitInvoice, tab):
             ReceiveQr(
                 navigationPath: $navigationPath,

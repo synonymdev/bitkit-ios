@@ -10,6 +10,11 @@ struct UsdtWalletScreen: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            UsdtCoinIllustration()
+                .scaleEffect(x: -1, y: 1)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .offset(x: 97, y: 4)
+                .allowsHitTesting(false)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 32) {
                     UsdtAmountHeader(
@@ -18,18 +23,6 @@ struct UsdtWalletScreen: View {
                     )
                     .balanceVisibilityToggle()
                     .accessibilityIdentifier("UsdtBalance")
-                    HStack(spacing: 16) {
-                        CustomButton(
-                            title: t("usdt__receive"), variant: .secondary,
-                            icon: Image("arrow-down").foregroundColor(.greenAccent), shouldExpand: true
-                        ) { sheets.showSheet(.receive, data: ReceiveConfig(view: .usdt)) }
-                            .accessibilityIdentifier("UsdtReceive")
-                        CustomButton(
-                            title: t("usdt__send"),
-                            icon: Image("arrow-up").foregroundColor(.greenAccent), shouldExpand: true
-                        ) { showSend = true }
-                            .accessibilityIdentifier("UsdtSend")
-                    }
                     if let error = usdt.errorMessage { BodySText(error, textColor: .brandAccent) }
                     activityList
                 }
@@ -37,13 +30,37 @@ struct UsdtWalletScreen: View {
             .contentMargins(.top, ScreenLayout.topPaddingWithoutSafeArea)
             .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
             .refreshable { await usdt.refresh(includeHistory: true) }
-            NavigationBar(title: "USDT")
+            VStack {
+                Spacer()
+                LinearGradient(
+                    colors: [.black.opacity(0), .black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
+            }
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
+            VStack {
+                Spacer()
+                HStack(spacing: 0) {
+                    TabBarButton(title: t("wallet__send"), icon: "arrow-up", variant: .left) { showSend = true }
+                        .accessibilityIdentifier("UsdtSend")
+                    TabBarButton(title: t("wallet__receive"), icon: "arrow-down", variant: .right) {
+                        sheets.showSheet(.receive, data: ReceiveConfig(view: .usdt))
+                    }
+                    .accessibilityIdentifier("UsdtReceive")
+                }
+                .overlay { ScanButton { sheets.showSheet(.scanner) } }
+            }
+            .bottomSafeAreaPadding()
+            NavigationBar(title: "USDT", icon: "tether-circle")
         }
         .padding(.horizontal, 16)
         .navigationBarHidden(true)
         .onReceive(usdt.receivedTxPublisher) { tx in
             guard !showSend, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
-            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount))
+            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
         }
         .sheet(isPresented: $showSend) {
             Sheet(id: .send, data: SendSheetItem()) {
@@ -63,16 +80,10 @@ struct UsdtWalletScreen: View {
 
     private var activityList: some View {
         LazyVStack(alignment: .leading, spacing: 16) {
-            if usdt.transfers.isEmpty {
-                CaptionMText(t("usdt__activity"))
-                RectangleButton(icon: "heartbeat", iconColor: .yellowAccent, title: t("usdt__empty"), testID: "UsdtEmptyActivity") {
-                    sheets.showSheet(.receive, data: ReceiveConfig(view: .usdt))
-                }
-            }
             ForEach(Array(usdt.transfers.enumerated()), id: \.element.id) { index, transfer in
                 let header = transfer.groupTitle
                 if index == 0 || usdt.transfers[index - 1].groupTitle != header {
-                    CaptionMText(header).frame(height: 34, alignment: .bottom)
+                    CaptionMText(header).padding(.top, index == 0 ? 0 : 16)
                 }
                 Button { selectedTransferId = transfer.id } label: {
                     UsdtActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
@@ -85,17 +96,34 @@ struct UsdtWalletScreen: View {
     }
 }
 
+struct UsdtCoinIllustration: View {
+    var body: some View {
+        Image("tether-coin")
+            .resizable().scaledToFill()
+            .frame(width: 304.76, height: 228.57).clipped()
+            .frame(width: 256, height: 256)
+            .accessibilityHidden(true)
+    }
+}
+
 struct UsdtAmountHeader: View {
     let amount: String
     let network: String
     var prefix = ""
     var hideBalance = false
 
+    @EnvironmentObject private var currency: CurrencyViewModel
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            CaptionMText("USDT · " + network, textColor: .textSecondary)
+            if let sats = usdtDisplaySats(amount: amount, rate: currency.paykitRate) {
+                MoneyText(sats: sats, forceUnit: .bitcoin, size: .caption, symbol: true,
+                          enableHide: hideBalance, color: .textSecondary)
+            } else {
+                CaptionMText("USDT · " + network, textColor: .textSecondary)
+            }
             DisplayText(
-                "<accent>\(prefix)₮</accent> " + (hideBalance ? " • • • • •" : amount),
+                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : amount),
                 accentColor: .textSecondary, accentFont: Fonts.extraBold
             )
             .lineLimit(1).minimumScaleFactor(0.5)
@@ -133,4 +161,19 @@ extension UsdtTransferStatus {
         case .bridgeRefunded: t("usdt__deposit_refunded")
         }
     }
+}
+
+func usdtDisplaySats(amount: String, rate: PaykitExchangeRate?, now: Date = Date()) -> Int? {
+    guard let dollars = Decimal(string: amount, locale: Locale(identifier: "en_US_POSIX")),
+          dollars >= 0, let price = try? rate?.value(at: now), price > 0 else { return nil }
+    var value = dollars / price * 100_000_000
+    var rounded = Decimal()
+    NSDecimalRound(&rounded, &value, 0, .down)
+    guard rounded <= Decimal(Int.max) else { return nil }
+    return NSDecimalNumber(decimal: rounded).intValue
+}
+
+func usdtOverviewAmount(_ amount: UInt64) -> String {
+    if amount > 0, amount < 10000 { return "<0.01" }
+    return (Decimal(amount) / 1_000_000).formatted(.number.precision(.fractionLength(0 ... 2)))
 }

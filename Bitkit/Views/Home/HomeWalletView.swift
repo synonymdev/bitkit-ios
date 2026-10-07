@@ -6,19 +6,21 @@ struct HomeWalletView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     var hasActivity: Bool {
-        return activity.latestActivities?.isEmpty == false
+        return activity.latestActivities?.isEmpty == false || !usdt.transfers.isEmpty
     }
 
     /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
     private var headlineSats: Int {
         let hw = Int(clamping: hwWalletManager.totalSats)
-        return wallet.totalBalanceSats.saturatingAdd(hw)
+        let usdtSats = usdt.balance.flatMap { usdtDisplaySats(amount: usdtFormatAmount(amount: $0), rate: currency.paykitRate) } ?? 0
+        return wallet.totalBalanceSats.saturatingAdd(hw).saturatingAdd(usdtSats)
     }
 
     var body: some View {
@@ -52,13 +54,13 @@ struct HomeWalletView: View {
                 }
             }
             .frame(height: 50)
-            .padding(.bottom, 32)
+            .padding(.bottom, usdt.isConfigured && hwWalletManager.wallets.isEmpty ? 24 : 32)
 
             if !hwWalletManager.wallets.isEmpty {
                 HardwareWalletsGrid(wallets: hwWalletManager.wallets) { hwWallet in
                     navigation.navigate(.hardwareWallet(walletId: hwWallet.id))
                 }
-                .padding(.bottom, 32)
+                .padding(.bottom, usdt.isConfigured ? 24 : 32)
             }
 
             if usdt.isConfigured {
@@ -67,9 +69,9 @@ struct HomeWalletView: View {
                         WalletBalanceContent {
                             CaptionMText("USDT")
                         } icon: {
-                            CircularIcon(icon: "coins", iconColor: .greenAccent, backgroundColor: .green16, size: 24)
+                            Image("tether-circle").resizable().frame(width: 24, height: 24)
                         } amount: {
-                            SubtitleText(settings.hideBalance ? " • • • • •" : usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—")
+                            SubtitleText(settings.hideBalance ? " • • • • •" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—")
                                 .lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }

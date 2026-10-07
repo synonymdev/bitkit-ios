@@ -120,7 +120,7 @@ struct CreateSubscriptionView: View {
             CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
             HStack(spacing: 16) {
                 if acceptedEndpoints.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue) {
-                    BodyMSBText("USDT", textColor: .greenAccent)
+                    BodyMSBText("USDT", textColor: .usdtAccent)
                 }
                 if acceptedEndpoints.contains(where: { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }) {
                     BodyMSBText(t("lightning__savings"), textColor: .brandAccent)

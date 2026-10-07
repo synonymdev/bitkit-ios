@@ -340,7 +340,7 @@ struct PaymentRequestAmountView: View {
             HStack {
                 Spacer()
                 ForEach([PaykitAsset.btc, .usd], id: \.self) { choice in
-                    NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .greenAccent : .brandAccent,
+                    NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
                                           variant: asset == choice ? .primary : .secondary)
                     {
                         guard choice != asset else { return }
@@ -503,7 +503,7 @@ struct PaymentRequestDetailsView: View {
                     let selected = restrictedEndpoints ?? enabledEndpoints
                     let isSelected = endpoints.allSatisfy(selected.contains)
                     NumberPadActionButton(text: usdt ? "USDT" : t(lightning ? "lightning__spending" : "lightning__savings").uppercased(),
-                                          color: usdt ? .greenAccent : lightning ? .purpleAccent : .brandAccent,
+                                          color: usdt ? .usdtAccent : lightning ? .purpleAccent : .brandAccent,
                                           variant: isSelected ? .primary : .secondary)
                     {
                         restrictedEndpoints = isSelected

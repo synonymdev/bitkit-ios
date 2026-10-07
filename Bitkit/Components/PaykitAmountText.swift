@@ -11,9 +11,9 @@ struct PaykitAmountText: View {
             MoneyText(sats: Int(clamping: amount.atomic), size: size, symbol: true,
                       prefix: prefix, color: color, symbolColor: .textSecondary, fillsWidth: false)
         } else if size == .display {
-            NumberPadAmountText(value: prefix + amount.value, symbol: amount.asset == .usd ? "$" : "₮")
+            NumberPadAmountText(value: prefix + amount.value, symbol: "$")
         } else {
-            BodyMSBText(prefix + (amount.asset == .usd ? "$" : "₮") + amount.value, textColor: color)
+            BodyMSBText(prefix + "$" + amount.value, textColor: color)
         }
     }
 }

@@ -100,3 +100,46 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
         }
     }
 }
+
+enum WalletActivity: Hashable {
+    case bitcoin(Activity)
+    case usdt(UsdtTransfer)
+
+    var timestamp: UInt64 {
+        switch self {
+        case let .bitcoin(.lightning(item)): item.timestamp
+        case let .bitcoin(.onchain(item)): item.timestamp
+        case let .usdt(item): item.timestamp
+        }
+    }
+
+    var groupTitle: String {
+        DateFormatterHelpers.getActivityGroupHeader(for: Date(timeIntervalSince1970: TimeInterval(timestamp)))
+    }
+
+    static func merged(_ bitcoin: [Activity], _ usdt: [UsdtTransfer]) -> [WalletActivity] {
+        (bitcoin.map(Self.bitcoin) + usdt.map(Self.usdt)).sorted { $0.timestamp > $1.timestamp }
+    }
+}
+
+struct WalletActivityRow: View {
+    let item: WalletActivity
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
+    @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
+    @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    var body: some View {
+        switch item {
+        case let .bitcoin(activity):
+            NavigationLink(value: Route.activityDetail(activity)) {
+                ActivityRow(item: activity, feeEstimates: feeEstimatesManager.estimates,
+                            contact: PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled ? activity.contact(in: contactsManager.contacts) : nil)
+            }
+        case let .usdt(transfer):
+            NavigationLink(value: Route.usdtActivity(transferId: transfer.id)) {
+                UsdtActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
+            }
+        }
+    }
+}

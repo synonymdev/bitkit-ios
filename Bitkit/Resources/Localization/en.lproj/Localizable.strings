@@ -1817,7 +1817,7 @@
 "usdt__replaced" = "Replaced by another payment";
 
 "usdt__balance" = "Balance";
-"usdt__receive_title" = "Receive USDT";
+"usdt__receive_title" = "Receive Dollars";
 "usdt__send_title" = "Send USDT";
 
 "usdt__deposit_amount" = "Deposit amount";
@@ -1827,7 +1827,7 @@
 "usdt__deposit_empty" = "No deposits yet.";
 "usdt__deposit_estimate" = "Estimated received (USDT)";
 "usdt__deposit_estimate_note" = "Indicative price only. Costs are deducted from the USDT received and may change before conversion. The sender pays their network gas separately.";
-"usdt__deposit_fee_note" = "Fees are deducted from your deposit.";
+"usdt__deposit_fee_note" = "Fees are deducted from the USDT you receive. The sender pays their network fees separately.";
 "usdt__deposit_history" = "Cross-network Deposits";
 "usdt__deposit_limits" = "Deposit limits";
 "usdt__deposit_limits_note" = "Live liquidity and network costs can further restrict these limits. Amounts outside the limits may be held.";
@@ -1892,3 +1892,16 @@
 "usdt__copy_details" = "Copy Details";
 
 "pubky_auth__share_usdt_optional" = "Share USDT address (optional)";
+
+"usdt__receive_network_title" = "USDT Network";
+
+"usdt__receive_estimate" = "Receive (est)";
+"usdt__receive_fee" = "Fees";
+"usdt__receive_fees_title" = "Estimated Fees";
+
+"usdt__receive_network_note" = "Regardless of the receiving network, your USDT is credited to your Arbitrum One balance.";
+
+"usdt__receive_network" = "Network: {network}";
+
+"usdt__deposit_minimum" = "Minimum amount is {amount}";
+"usdt__deposit_maximum" = "Maximum amount is {amount}";
