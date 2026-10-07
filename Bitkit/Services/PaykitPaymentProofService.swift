@@ -63,6 +63,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var hardwareTotalSpent: UInt64?
     var hardwareDispatchAttempted: Bool?
     var privatePaymentListVersion: UInt64?
+    var previousPrivatePaymentListVersion: UInt64?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
     var onchainAcceptanceVerified: Bool?
     /// Device-local acknowledgement: backup restore reruns local activity proof.
@@ -492,7 +493,8 @@ actor PaykitPaymentProofService {
         hardwareWalletId: String? = nil,
         paymentIdentity: String? = nil,
         signedTx: HwFundingSignedTx? = nil,
-        privatePaymentListVersion: UInt64? = nil
+        privatePaymentListVersion: UInt64? = nil,
+        previousPrivatePaymentListVersion: UInt64? = nil
     ) async throws {
         let identity = try await currentIdentity()
         try await mutationLock.withLock {
@@ -504,7 +506,8 @@ actor PaykitPaymentProofService {
                 identity: identity,
                 serializedTx: signedTx?.serializedTx,
                 signedTx: signedTx,
-                privatePaymentListVersion: privatePaymentListVersion
+                privatePaymentListVersion: privatePaymentListVersion,
+                previousPrivatePaymentListVersion: previousPrivatePaymentListVersion
             )
         }
     }
@@ -517,7 +520,8 @@ actor PaykitPaymentProofService {
         identity: String,
         serializedTx: String?,
         signedTx: HwFundingSignedTx?,
-        privatePaymentListVersion: UInt64?
+        privatePaymentListVersion: UInt64?,
+        previousPrivatePaymentListVersion: UInt64?
     ) async throws {
         if let hardwareWalletId {
             guard hardwareWalletId != WalletScope.default, hardwareTransactionLookup.hasWallet(walletId: hardwareWalletId)
@@ -558,6 +562,7 @@ actor PaykitPaymentProofService {
         pendingProofs[index].hardwareTotalSpent = signedTx?.totalSpent
         pendingProofs[index].hardwareDispatchAttempted = signedTx.map { _ in false }
         pendingProofs[index].privatePaymentListVersion = privatePaymentListVersion
+        pendingProofs[index].previousPrivatePaymentListVersion = privatePaymentListVersion == nil ? nil : previousPrivatePaymentListVersion
         try await persist(pendingProofs)
     }
 
@@ -978,7 +983,7 @@ actor PaykitPaymentProofService {
                 }) else { return }
                 // Only an exact, definitely unsent receipt authorizes releasing its consumed version.
                 if let version = original.privatePaymentListVersion {
-                    try await privatePaykitService.releaseUnsentPaymentListVersion(publicKey: request.counterparty, version: version)
+                    try await privatePaykitService.releaseUnsentPaymentListVersion(publicKey: request.counterparty, version: version, previousVersion: original.previousPrivatePaymentListVersion)
                 }
                 try await persist(proofs.filter { $0 != original })
             }

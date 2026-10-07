@@ -4506,6 +4506,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let app = AppViewModel()
         XCTAssertTrue(app.claimContactPaymentContext(context))
         let privateService = PrivatePaykitService()
+        let priorContext = PrivatePaykitPaymentContext(paymentAppsByEndpoint: [endpoint: "bitkit"], paymentListVersion: 6)
+        try await privateService.consumePrivatePaymentList(publicKey: counterparty, context: priorContext, attemptId: UUID())
         let store = HardwarePaymentProofMemoryStore()
         let identity = "pubky" + String(repeating: "z", count: 52)
         let walletId = "trezor:original-ios-wallet"
@@ -4517,6 +4519,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             logWarning: { _ in }
         )
         try await proofService.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        let previousVersion = await privateService.consumedPaymentListVersion(publicKey: counterparty)
+        XCTAssertEqual(previousVersion, 6)
         try await manager.prepareForPayment(request) {
             try await privateService.consumePrivatePaymentList(publicKey: counterparty, context: privateContext, attemptId: context.id)
         }
@@ -4532,13 +4536,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             hardwareWalletId: walletId,
             paymentIdentity: identity,
             signedTx: signed,
-            privatePaymentListVersion: privateContext.paymentListVersion
+            privatePaymentListVersion: privateContext.paymentListVersion,
+            previousPrivatePaymentListVersion: previousVersion
         )
         let snapshot = try await proofService.backupSnapshot()
         let encoded = try JSONEncoder().encode(snapshot)
         let decoded = try JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: encoded)
         let restored = try decoded.map { try $0.restored() }
         XCTAssertEqual(restored.first?.privatePaymentListVersion, 7)
+        XCTAssertEqual(restored.first?.previousPrivatePaymentListVersion, 6)
         try await store.save(restored)
         // A new private service loads durable consumption but has no in-memory attempt ledger.
         let restartedPrivateService = PrivatePaykitService()
@@ -4558,8 +4564,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let remaining = try await store.load()
         XCTAssertTrue(remaining.isEmpty)
         let consumedAfter = await PrivatePaykitService().state.contacts[counterparty]?.consumedPrivatePaymentListVersion
-        XCTAssertNil(consumedAfter,
-                     "Removing a definitely unsent proof must not strand its consumed private version after restart")
+        XCTAssertEqual(consumedAfter, 6,
+                       "Cancelling the unsent version must preserve the previously consumed boundary")
         let newerContext = PrivatePaykitPaymentContext(paymentAppsByEndpoint: [endpoint: "bitkit"], paymentListVersion: 8)
         try await restartedPrivateService.consumePrivatePaymentList(publicKey: counterparty, context: newerContext, attemptId: UUID())
         try await restartedPrivateService.releaseUnsentPaymentListVersion(publicKey: counterparty, version: 7)

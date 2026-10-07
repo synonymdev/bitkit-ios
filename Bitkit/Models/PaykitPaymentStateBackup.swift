@@ -78,6 +78,7 @@ struct PaykitPaymentStateBackup: Codable {
         let hardwareTotalSpent: UInt64?
         let hardwareDispatchAttempted: Bool?
         let privatePaymentListVersion: UInt64?
+        let previousPrivatePaymentListVersion: UInt64?
         let onchainMatchingTransactionIdsBeforeAttempt: Set<String>
         let onchainAcceptanceVerified: Bool?
 
@@ -100,6 +101,7 @@ struct PaykitPaymentStateBackup: Codable {
             hardwareTotalSpent = proof.hardwareTotalSpent
             hardwareDispatchAttempted = proof.hardwareDispatchAttempted
             privatePaymentListVersion = proof.privatePaymentListVersion
+            previousPrivatePaymentListVersion = proof.previousPrivatePaymentListVersion
             onchainMatchingTransactionIdsBeforeAttempt = proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
             onchainAcceptanceVerified = proof.onchainAcceptanceVerified
         }
@@ -137,7 +139,13 @@ struct PaykitPaymentStateBackup: Codable {
                 proof.hardwareTotalSpent = hardwareTotalSpent
                 proof.hardwareDispatchAttempted = hardwareDispatchAttempted
             }
+            if let previousPrivatePaymentListVersion {
+                guard let privatePaymentListVersion, previousPrivatePaymentListVersion < privatePaymentListVersion else {
+                    throw invalidBackup("Invalid private payment-list boundary")
+                }
+            }
             proof.privatePaymentListVersion = privatePaymentListVersion
+            proof.previousPrivatePaymentListVersion = previousPrivatePaymentListVersion
             return proof
         }
     }

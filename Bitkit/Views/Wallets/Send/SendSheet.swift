@@ -944,11 +944,13 @@ struct SendSheet: View {
             paymentEndpointIdentifier: endpointIdentifier,
             kind: .onchain
         )
+        let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(publicKey: request.counterparty, attemptId: context?.id)
         do {
             try await prepareIncomingPaymentRequest(context: context)
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                 request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity,
-                signedTx: signedTx, privatePaymentListVersion: privateContext.paymentListVersion
+                signedTx: signedTx, privatePaymentListVersion: privateContext.paymentListVersion,
+                previousPrivatePaymentListVersion: previousVersion
             )
         } catch {
             _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)
