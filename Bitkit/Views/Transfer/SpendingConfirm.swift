@@ -150,6 +150,10 @@ struct SpendingConfirm: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .offlineOverlay(title: t("lightning__transfer__nav_title"))
+        .onChange(of: transfer.recoveredOnchainFundingOrderId) { _, orderId in
+            guard let orderId, orderId == transfer.uiState.order?.id else { return }
+            navigation.navigate(.settingUp)
+        }
         .task(id: transfer.uiState.feeSat) {
             await sizeFunding()
         }

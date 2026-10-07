@@ -746,10 +746,30 @@ final class TransferServiceActivityTests: XCTestCase {
         let txid = String(repeating: "ab", count: 32)
         let node = AttemptNodeMock(result: .unknown(txid: txid))
         let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
-        _ = try await service.send(using: node, address: "original", amountSats: 4321,
-                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false, orderId: "original-order",
-                                   followupContext: .init(feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: 100),
-                                   transferContext: .init(clientBalanceSats: 3333, txTotalSats: 4444, preTransferOnchainSats: 10000))
+        let order = IBtOrder.mock(id: "original-order")
+        let recoveryReady = expectation(description: "Recovered original order resumes funding setup")
+        var balanceRefreshes = 0
+        let vm = TransferViewModel(
+            transferService: makeService(), sheetViewModel: SheetViewModel(),
+            onBalanceRefresh: { balanceRefreshes += 1; recoveryReady.fulfill() },
+            onchainAttemptService: service, onchainSender: node, onchainBalanceProvider: { 10000 }
+        )
+        vm.onOrderCreated(order: order)
+        do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
+        XCTAssertNil(vm.recoveredOnchainFundingOrderId)
+        XCTAssertEqual(balanceRefreshes, 0, "Unknown funding must not advance setup")
+        let unrelatedStore = MemoryAttemptStore()
+        let unrelatedNode = AttemptNodeMock(result: .unknown(txid: String(repeating: "cd", count: 32)))
+        var unrelatedRefreshes = 0
+        let unrelatedVM = TransferViewModel(
+            transferService: makeService(), sheetViewModel: SheetViewModel(),
+            onBalanceRefresh: { unrelatedRefreshes += 1 },
+            onchainAttemptService: OnchainSendAttemptService(store: unrelatedStore, hasPaidOrder: { _ in false }),
+            onchainSender: unrelatedNode, onchainBalanceProvider: { 10000 }
+        )
+        do {
+            try await unrelatedVM.payOrder(order: .mock(id: "other-order"), speed: .normal, txFee: 123, satsPerVbyte: 2)
+        } catch {}
         let original = try XCTUnwrap(store.snapshot().first)
         let wallet = makeWallet(attempts: service)
         let resolutionReady = expectation(description: "Visible Pending receives exact durable transfer resolution")
@@ -762,7 +782,14 @@ final class TransferServiceActivityTests: XCTestCase {
         }
         defer { observation.cancel() }
         await Bitkit.LightningService.shared.onchainTransactionReceived?(txid)
-        await fulfillment(of: [resolutionReady], timeout: 2)
+        await fulfillment(of: [resolutionReady, recoveryReady], timeout: 2)
+        XCTAssertEqual(vm.recoveredOnchainFundingOrderId, order.id)
+        XCTAssertEqual(balanceRefreshes, 1)
+        XCTAssertNil(unrelatedVM.recoveredOnchainFundingOrderId)
+        XCTAssertEqual(unrelatedRefreshes, 0)
+        XCTAssertEqual(unrelatedNode.calls, 1)
+        await Bitkit.LightningService.shared.onchainTransactionReceived?(txid)
+        XCTAssertEqual(balanceRefreshes, 1, "A delayed repeat event must not resume order setup twice")
         XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
         XCTAssertEqual(resolved?.activity.txId, txid, "Pending Details must refer to the actual winning funding transaction")
         XCTAssertEqual(resolved?.activity.isTransfer, true)
@@ -811,6 +838,37 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(context.attemptId, original.id)
         XCTAssertEqual(context.walletId, original.walletId)
         XCTAssertEqual(context.txid, txid)
+    }
+
+    @MainActor
+    func testDismissedFundingPendingReopensWithoutCreatingOrSendingAnotherOrder() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .unknown(txid: txid))
+        let sheets = SheetViewModel()
+        let order = IBtOrder.mock()
+        let vm = TransferViewModel(
+            transferService: makeService(), sheetViewModel: sheets,
+            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
+            onchainSender: node, onchainBalanceProvider: { 50000 }
+        )
+        vm.onOrderCreated(order: order)
+        do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
+        let original = try XCTUnwrap(store.snapshot().first)
+        sheets.hideSheet()
+        do {
+            _ = try await vm.orderForSwipe { _, _ in
+                XCTFail("An unresolved funding operation must not create a new order")
+                return IBtOrder.mock(id: "replacement-order")
+            }
+            XCTFail("The reset swipe must yield to original Pending")
+        } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong funding re-entry error: \(error)") }
+        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
+        guard case let .onchainPending(context) = config.initialRoute else { return XCTFail("Missing Pending") }
+        XCTAssertEqual(context.attemptId, original.id)
+        XCTAssertEqual(context.walletId, original.walletId)
+        XCTAssertEqual(context.txid, txid)
+        XCTAssertEqual(node.calls, 1)
     }
 
     @MainActor

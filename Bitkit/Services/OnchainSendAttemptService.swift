@@ -829,6 +829,12 @@ actor OnchainSendAttemptService {
         return .init(attemptId: attempt.id, walletId: attempt.walletId, txid: txid ?? attempt.txid)
     }
 
+    func orderPendingContext(orderId: String) throws -> OnchainSendPendingContext? {
+        guard let attempt = try currentAttemptForPending(), attempt.requestId == nil,
+              attempt.orderId == orderId, attempt.status != .accepted, attempt.blocksNewSend else { return nil }
+        return .init(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
+    }
+
     func pendingAttempt(context: OnchainSendPendingContext) throws -> OnchainSendAttempt? {
         try currentAttempt().flatMap {
             $0.id == context.attemptId && $0.walletId == context.walletId && $0.containsCandidate(context.txid) ? $0 : nil

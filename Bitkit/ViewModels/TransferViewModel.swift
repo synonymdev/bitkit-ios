@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import LDKNode
 import SwiftUI
 
@@ -137,6 +138,9 @@ class TransferViewModel: ObservableObject {
 
     @Published var uiState = TransferUiState()
     private var fundedOrderId: String?
+    @Published private(set) var recoveredOnchainFundingOrderId: String?
+    private var pendingOnchainFunding: OnchainSendPendingContext?
+    private var fundingResolutionObservation: AnyCancellable?
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()
 
@@ -240,6 +244,13 @@ class TransferViewModel: ObservableObject {
         } else {
             self.hwConnecting = nil
             hwSigner = nil
+        }
+        fundingResolutionObservation = OnchainSendAttemptService.localResolutionPublisher.sink { [weak self] resolution in
+            Task { @MainActor [weak self] in
+                guard let self, let context = pendingOnchainFunding,
+                      context.attemptId == resolution.attemptId, context.walletId == resolution.walletId else { return }
+                await resumeRecoveredOnchainFunding(context: context)
+            }
         }
     }
 
@@ -368,6 +379,10 @@ class TransferViewModel: ObservableObject {
     func orderForSwipe(
         createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
     ) async throws -> IBtOrder {
+        if let order = uiState.order, let context = try await onchainAttemptService.orderPendingContext(orderId: order.id) {
+            await showFundingPending(context)
+            throw OnchainFundingPendingError()
+        }
         guard let order = try await currentOrder(createOrder: createOrder, isCurrent: { true }) else { throw CancellationError() }
         return order
     }
@@ -443,6 +458,10 @@ class TransferViewModel: ObservableObject {
         isMaxAmount: Bool = false,
         maxSendableAmount: UInt64? = nil
     ) async throws {
+        if let context = try await onchainAttemptService.orderPendingContext(orderId: order.id) {
+            await showFundingPending(context)
+            throw OnchainFundingPendingError()
+        }
         guard let address = order.payment?.onchain?.address else {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
@@ -491,7 +510,7 @@ class TransferViewModel: ObservableObject {
             txid = acceptedTxid
         case let .rejected(rejectedTxid, reason):
             if let context = try await onchainAttemptService.pendingContext(txid: rejectedTxid) {
-                sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+                await showFundingPending(context)
                 throw OnchainFundingPendingError()
             }
             throw AppError(
@@ -500,7 +519,7 @@ class TransferViewModel: ObservableObject {
             )
         case let .unknown(unknownTxid):
             if let context = try await onchainAttemptService.pendingContext(txid: unknownTxid) {
-                sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+                await showFundingPending(context)
                 throw OnchainFundingPendingError()
             }
             throw AppError(
@@ -524,6 +543,32 @@ class TransferViewModel: ObservableObject {
         lightningSetupStep = 0
         await onBalanceRefresh?()
         watchOrder(orderId: order.id)
+    }
+
+    private func showFundingPending(_ context: OnchainSendPendingContext) async {
+        pendingOnchainFunding = context
+        sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+        // Acceptance can precede the sheet and its subscription's next delivery.
+        await resumeRecoveredOnchainFunding(context: context)
+    }
+
+    private func resumeRecoveredOnchainFunding(context: OnchainSendPendingContext) async {
+        do {
+            guard pendingOnchainFunding?.attemptId == context.attemptId,
+                  pendingOnchainFunding?.walletId == context.walletId,
+                  let attempt = try await onchainAttemptService.pendingAttempt(context: context),
+                  attempt.status == .accepted, attempt.localFollowupComplete,
+                  attempt.requestId == nil, let orderId = attempt.orderId,
+                  fundedOrderId != orderId else { return }
+            pendingOnchainFunding = nil
+            fundedOrderId = orderId
+            lightningSetupStep = 0
+            watchOrder(orderId: orderId)
+            recoveredOnchainFundingOrderId = orderId
+            await onBalanceRefresh?()
+        } catch {
+            Logger.warn("Recovered funding order remains guarded: \(error)", context: "TransferViewModel")
+        }
     }
 
     @discardableResult

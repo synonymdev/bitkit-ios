@@ -11,6 +11,7 @@
     <action>Send a fixed amount to the fixture recipient; for the Max variant use the initial native send-all route, retaining reserves</action>
     <action>Make the owned fault fixture refuse this broadcast or lose its response after dispatch, and verify Payment Pending retains the original amount and transaction ID without Bitcoin Sent or a Shop proof</action>
     <action>For a channel-funding variant, begin Transfer To Spending and withhold the funding acknowledgement after dispatch; verify confirmation yields directly to Payment Pending with the original order/wallet/transaction context, not a generic toast or Lightning Setting Up. Retry must recover this original funding operation only</action>
+    <action>For iOS channel funding, dismiss Pending and swipe the original confirmation again, including after the original order expires; verify the exact original Pending reopens without creating an order, broadcasting or showing a generic failure toast</action>
     <action>Close and reopen Send; verify the original Pending context is restored, rather than a fresh payment or selected wallet amount</action>
     <action>Tap Retry original payment (id "RetryOriginalOnchainPayment"); verify the confirmation shows the original recipient and actual amount, and for fixed sends requires an explicit fee rate in sat/vB; for Max shows the original fee rate without any editable fee field</action>
     <action>For fixed sends, clear the fee, enter zero, and enter a value above 4294967295; verify confirmation is disabled or gives explicit invalid fee feedback, never silently dismissing or sending</action>
@@ -21,6 +22,7 @@
     <action>Keep Payment Pending open while restoring observation of the original candidate after a rejected successor; verify its uncertainty warning and Retry button disappear and Details becomes enabled without closing or reopening the sheet</action>
     <action>Verify the exact positively accepted or original-wallet observed winner creates one local Sent activity and enables its original Details, with durable local completion; verify Details displays the exact winning transaction fee and its own authorized fee rate, including when an earlier candidate wins</action>
     <action>For Shop, verify proof uses only that exact winner and the original payer/request, with no fresh request acceptance or private-list consume. For a channel order, verify original order tracking and balance metadata are retained</action>
+    <action>For iOS channel funding, observe the original accepted funding candidate while the confirmation flow remains open; verify the same original order resumes Lightning Setting Up and order watching without app restart, and a paid order proceeds to channel opening. An unrelated payment resolution must not advance this flow</action>
     <action>Change the selected wallet or payer during preparation or authorization; verify no mismatched wallet broadcast or proof, and no success for a different operation</action>
     <action>Restore all owned fault/PIN fixture settings, stop recording and shut down only the task-owned device and helpers</action>
   </actions>
