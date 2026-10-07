@@ -56,6 +56,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var onchainAddress: String?
     var onchainAmountSats: UInt64?
     var onchainWalletId: String?
+    /// Original signed candidate retained before hardware dispatch; never a payment proof.
+    var hardwareSignedTransaction: String?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
     var onchainAcceptanceVerified: Bool?
     /// Device-local acknowledgement: backup restore reruns local activity proof.
@@ -225,7 +227,8 @@ actor PaykitPaymentProofService {
         let active = try await attemptService.backupSnapshot(wallet: wallet, proofs: proofs)
         return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
                                             pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
-                                            acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).backupSnapshot())
+                                            acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+                                                .backupSnapshot())
     }
 
     func restoreBackup(_ state: PaykitPaymentStateBackup, wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet) async throws {
@@ -288,7 +291,12 @@ actor PaykitPaymentProofService {
             }
             throw PaykitPaymentRequestError.operationInProgress
         }
-        let proof = try await pendingProof(request: request, paymentAppId: paymentAppId, paymentEndpointIdentifier: paymentEndpointIdentifier, kind: kind)
+        let proof = try await pendingProof(
+            request: request,
+            paymentAppId: paymentAppId,
+            paymentEndpointIdentifier: paymentEndpointIdentifier,
+            kind: kind
+        )
         try await mutationLock.withLock { try await prepareLocked(request: request, proof: proof) }
     }
 
@@ -522,6 +530,54 @@ actor PaykitPaymentProofService {
         pendingProofs[index].onchainAmountSats = request.amountSats
         pendingProofs[index].onchainWalletId = hardwareWalletId
         try await persist(pendingProofs)
+    }
+
+    func retainHardwareOnchainCandidate(
+        requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String,
+        address: String, amountSats: UInt64, serializedTx: String
+    ) async throws {
+        let txid = try SignedTransactionId.fromHex(serializedTx)
+        let identity = try await currentIdentity()
+        guard PubkyPublicKeyFormat.matches(identity, paymentIdentity), walletId != WalletScope.default,
+              hardwareTransactionLookup.hasWallet(walletId: walletId)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        try await mutationLock.withLock {
+            guard try await PubkyPublicKeyFormat.matches(currentIdentity(), identity) else { throw PaykitPaymentRequestError.requestUnavailable }
+            var proofs = try await loadProofs()
+            guard let index = proofs.lastIndex(where: {
+                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                    $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
+                    $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
+                    $0.proofData == nil && $0.onchainAcceptanceVerified != true &&
+                    ($0.paymentIdentifier == nil || $0.paymentIdentifier == txid) &&
+                    ($0.hardwareSignedTransaction == nil || $0.hardwareSignedTransaction == serializedTx)
+            }) else { throw PaykitPaymentRequestError.operationInProgress }
+            proofs[index].paymentIdentifier = txid
+            proofs[index].hardwareSignedTransaction = serializedTx
+            try await persist(proofs)
+        }
+    }
+
+    /// Only the coordinator's definite first queued-dispatch expiry may remove this exact candidate.
+    func clearHardwareCandidateBeforeDispatch(
+        requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String, serializedTx: String
+    ) async -> Bool {
+        guard let identity = PubkyPublicKeyFormat.normalized(paymentIdentity), walletId != WalletScope.default,
+              let txid = try? SignedTransactionId.fromHex(serializedTx)
+        else { return false }
+        do {
+            return try await mutationLock.withLock {
+                let proofs = try await loadProofs()
+                guard let original = proofs.first(where: {
+                    PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                        $0.onchainWalletId == walletId && $0.kind == .onchain && $0.paymentStarted &&
+                        $0.paymentIdentifier == txid && $0.hardwareSignedTransaction == serializedTx &&
+                        $0.proofData == nil && $0.onchainAcceptanceVerified != true
+                }) else { return false }
+                try await persist(proofs.filter { $0 != original })
+                return true
+            }
+        } catch { return false }
     }
 
     @discardableResult

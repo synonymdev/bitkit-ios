@@ -131,6 +131,21 @@ struct HwSendSignView: View {
                     paymentRequestId: requestId,
                     beforeFirstBroadcast: prepareContactPayment,
                     beforeBroadcastAttempt: authorizeContactPayment,
+                    retainSignedPayment: { signed in
+                        guard let requestId else { return }
+                        guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                        try await PaykitPaymentProofService.shared.retainHardwareOnchainCandidate(
+                            requestId: requestId, paymentIdentity: identity, walletId: walletId,
+                            address: invoice.address, amountSats: amount, serializedTx: signed.serializedTx
+                        )
+                    },
+                    clearSignedPaymentBeforeDispatch: { signed in
+                        guard let requestId else { return true }
+                        guard let identity = contactPaymentIdentity else { return false }
+                        return await PaykitPaymentProofService.shared.clearHardwareCandidateBeforeDispatch(
+                            requestId: requestId, paymentIdentity: identity, walletId: walletId, serializedTx: signed.serializedTx
+                        )
+                    },
                     afterBroadcast: { result in
                         if requestId != nil {
                             // Save original tags before proof reconciliation can complete.

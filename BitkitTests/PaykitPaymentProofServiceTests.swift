@@ -322,6 +322,103 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    func testExactHardwareCandidateReleaseRequiresDurableClear() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        let signed = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress, hardwareWalletId: hardwareWalletId, paymentIdentity: identity)
+        try await service.retainHardwareOnchainCandidate(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats, serializedTx: signed
+        )
+        await store.failNextSave()
+        let failed = await service.clearHardwareCandidateBeforeDispatch(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId, serializedTx: signed
+        )
+        XCTAssertFalse(failed)
+        let retained = await store.snapshot()
+        XCTAssertEqual(retained.count, 1)
+        let foreign = await service.clearHardwareCandidateBeforeDispatch(
+            requestId: request.id, paymentIdentity: identity, walletId: "trezor:other-wallet", serializedTx: signed
+        )
+        XCTAssertFalse(foreign)
+        let cleared = await service.clearHardwareCandidateBeforeDispatch(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId, serializedTx: signed
+        )
+        XCTAssertTrue(cleared)
+        let remaining = await store.snapshot()
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
+    func testHardwareTransactionIdMatchesBackendAndRejectsInvalidReceipt() throws {
+        let signed = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        let legacy = "0200000001f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa724c0300"
+        let expected = "605fe246a6d51450ecff51ac3d0415f8824964e06a60ed6e186fa163cf1e9d4e"
+        XCTAssertEqual(try SignedTransactionId.fromHex(signed), expected)
+        XCTAssertEqual(try SignedTransactionId.fromHex(legacy), expected)
+        XCTAssertThrowsError(try SignedTransactionId.fromHex(String(signed.dropLast(2))))
+        XCTAssertThrowsError(try SignedTransactionId.fromHex(signed + "00"))
+        XCTAssertThrowsError(try SignedTransactionId.fromHex("not-a-transaction"))
+    }
+
+    func testHardwareRestartWithoutBroadcastReturnObservesOriginalCandidate() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let txid = "605fe246a6d51450ecff51ac3d0415f8824964e06a60ed6e186fa163cf1e9d4e"
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        await sdk.setSubmissionFailure(true)
+        let lookup = PaymentProofHardwareLookup(result: .success(hardwareTransaction(txid: txid)))
+        let service = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress, hardwareWalletId: hardwareWalletId, paymentIdentity: identity)
+        let serializedTx = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        await store.failNextSave()
+        do {
+            try await service.retainHardwareOnchainCandidate(
+                requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+                address: onchainAddress, amountSats: request.amountSats, serializedTx: serializedTx
+            )
+            XCTFail("Failed receipt persistence must stop dispatch")
+        } catch {}
+        let unsaved = await store.snapshot().first
+        XCTAssertNil(unsaved?.paymentIdentifier)
+        try await service.retainHardwareOnchainCandidate(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats, serializedTx: serializedTx
+        )
+        let retained = await store.snapshot().first
+        XCTAssertEqual(retained?.paymentIdentifier, txid)
+        XCTAssertNil(retained?.proofData)
+        XCTAssertEqual(retained?.onchainAcceptanceVerified, false)
+        do {
+            try await service.retainHardwareOnchainCandidate(
+                requestId: request.id, paymentIdentity: identity, walletId: "trezor:other-wallet",
+                address: onchainAddress, amountSats: request.amountSats, serializedTx: serializedTx
+            )
+            XCTFail("Another wallet cannot replace the original hardware receipt")
+        } catch {}
+        // The native dispatch has no return value: recreate the service from its durable backup.
+        let snapshot = try await service.backupSnapshot()
+        let backup = try JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: JSONEncoder().encode(snapshot))
+        await store.clear()
+        let restarted = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
+        try await restarted.restoreBackup(backup)
+        await restarted.reconcile()
+        let observed = await lookup.calls()
+        XCTAssertEqual(observed, [.init(walletId: hardwareWalletId, txid: txid)])
+        let restored = await store.snapshot().first
+        XCTAssertEqual(restored?.hardwareSignedTransaction, serializedTx)
+        XCTAssertEqual(restored?.paymentIdentifier, txid)
+        XCTAssertEqual(restored?.onchainAcceptanceVerified, true)
+    }
+
     func testHardwareCandidateCannotBeReplacedByDifferentWalletRequestOrTxid() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])

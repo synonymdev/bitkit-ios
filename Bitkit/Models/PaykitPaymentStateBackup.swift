@@ -72,6 +72,7 @@ struct PaykitPaymentStateBackup: Codable {
         let onchainAddress: String?
         let onchainAmountSats: UInt64?
         let onchainWalletId: String?
+        let hardwareSignedTransaction: String?
         let onchainMatchingTransactionIdsBeforeAttempt: Set<String>
         let onchainAcceptanceVerified: Bool?
 
@@ -88,6 +89,7 @@ struct PaykitPaymentStateBackup: Codable {
             onchainAddress = proof.onchainAddress
             onchainAmountSats = proof.onchainAmountSats
             onchainWalletId = proof.onchainWalletId
+            hardwareSignedTransaction = proof.hardwareSignedTransaction
             onchainMatchingTransactionIdsBeforeAttempt = proof.onchainMatchingTransactionIdsBeforeAttempt ?? []
             onchainAcceptanceVerified = proof.onchainAcceptanceVerified
         }
@@ -99,7 +101,7 @@ struct PaykitPaymentStateBackup: Codable {
                 }
                 return period
             }
-            return PendingPaykitPaymentProof(
+            var proof = PendingPaykitPaymentProof(
                 identity: identity,
                 requestId: requestId.restored(billingPeriod: period),
                 paymentAppId: paymentAppId,
@@ -115,6 +117,13 @@ struct PaykitPaymentStateBackup: Codable {
                 onchainMatchingTransactionIdsBeforeAttempt: onchainMatchingTransactionIdsBeforeAttempt,
                 onchainAcceptanceVerified: onchainAcceptanceVerified
             )
+            if let hardwareSignedTransaction {
+                guard kind == .onchain, paymentStarted, let walletId = onchainWalletId, walletId != WalletScope.default,
+                      try SignedTransactionId.fromHex(hardwareSignedTransaction) == paymentIdentifier
+                else { throw invalidBackup("Invalid hardware payment receipt") }
+                proof.hardwareSignedTransaction = hardwareSignedTransaction
+            }
+            return proof
         }
     }
 

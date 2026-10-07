@@ -509,6 +509,8 @@ final class HwSendCoordinator {
         paymentRequestId: PaykitPaymentRequest.ID? = nil,
         beforeFirstBroadcast: @escaping () async throws -> Void = {},
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
+        retainSignedPayment: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
+        clearSignedPaymentBeforeDispatch: @escaping (HwFundingSignedTx) async -> Bool = { _ in true },
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
         afterFailure: @escaping (PrivatePaymentListSendOutcome) async -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
@@ -582,6 +584,7 @@ final class HwSendCoordinator {
                     throw error
                 }
 
+                try await retainSignedPayment(signed)
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
@@ -594,10 +597,17 @@ final class HwSendCoordinator {
                     let underlyingError = (error as? AppError)?.underlyingError ?? error
                     if underlyingError as? PaykitPaymentRequestError == .requestExpired {
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
-                        isBroadcastUnresolved = hadPriorBroadcastAttempt
-                        broadcastWasAttempted = hadPriorBroadcastAttempt
-                        pendingPayment?.hasBroadcastAttempted = hadPriorBroadcastAttempt
-                        if !hadPriorBroadcastAttempt {
+                        let cleared: Bool
+                        if hadPriorBroadcastAttempt {
+                            cleared = false
+                        } else {
+                            cleared = await clearSignedPaymentBeforeDispatch(signed)
+                        }
+                        let unresolved = hadPriorBroadcastAttempt || !cleared
+                        isBroadcastUnresolved = unresolved
+                        broadcastWasAttempted = unresolved
+                        pendingPayment?.hasBroadcastAttempted = unresolved
+                        if !unresolved {
                             pendingPayment = nil
                         }
                         throw error
