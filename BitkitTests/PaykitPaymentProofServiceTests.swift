@@ -227,8 +227,54 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             [originalResolution, originalResolution],
             "Returning to the original payer must resume its already verified local result"
         )
+        await service.reconcile()
+        XCTAssertEqual(resolutions, [originalResolution, originalResolution], "Returning-payer replay occurs once")
         let lookups = await lookup.calls()
         XCTAssertEqual(lookups.count, 1, "Already verified original follow-up must not repeat payment or observation")
+    }
+
+    func testOverlappingHardwareReconciliationCompletesFollowupAndPublishesOnce() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let txid = String(repeating: "ab", count: 32)
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        await sdk.setSubmissionFailure(true)
+        let began = expectation(description: "Hardware local follow-up suspended")
+        let followup = SuspendedHardwareShopFollowup { began.fulfill() }
+        let service = paymentProofService(
+            sdk: sdk, store: store,
+            hardwareLookup: PaymentProofHardwareLookup(result: .success(hardwareTransaction(txid: txid))),
+            hardwareFollowup: { _, _ in await followup.save() }
+        )
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        try await service.markOnchainPaymentStarted(request, address: onchainAddress, hardwareWalletId: hardwareWalletId, paymentIdentity: identity)
+        var observing = false
+        var resolutions: [PaykitOnchainPaymentResolution] = []
+        let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
+            if observing, resolution.requestId == request.id { resolutions.append(resolution) }
+        }
+        observing = true
+        defer { subscription.cancel() }
+        let first = Task { await service.completeHardwareOnchainPayment(request, paymentIdentity: self.identity, walletId: self.hardwareWalletId, txid: txid) }
+        await fulfillment(of: [began], timeout: 2)
+        await service.reconcile()
+        await followup.resume()
+        let completed = await first.value
+        XCTAssertTrue(completed)
+        await sdk.waitForSubmissionStart()
+        let saves = await followup.saveCount()
+        let submissions = await sdk.submissionCount()
+        XCTAssertEqual(saves, 1)
+        XCTAssertEqual(submissions, 1)
+        XCTAssertEqual(resolutions.map(\.transactionId), [txid])
+        await service.reconcile()
+        let retrySaves = await followup.saveCount()
+        let retriedSubmissions = await sdk.submissionCount()
+        XCTAssertEqual(retrySaves, 1)
+        XCTAssertEqual(retriedSubmissions, 2, "Failed proof delivery retries without repeating local completion")
+        XCTAssertEqual(resolutions.count, 1)
     }
 
     func testHardwareShopProofRequiresExactFreshOriginalWalletObservation() async throws {
@@ -2332,14 +2378,15 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         store: PaymentProofMemoryStore,
         lightningStatus: PaykitLightningPaymentProofStatus = .unknown,
         hardwareLookup: any PaykitHardwareTransactionLookingUp = PaymentProofHardwareLookup(result: .failure(PaymentProofStoreMockError.load)),
-        attemptService: OnchainSendAttemptService = OnchainSendAttemptService(store: MemoryAttemptStore())
+        attemptService: OnchainSendAttemptService = OnchainSendAttemptService(store: MemoryAttemptStore()),
+        hardwareFollowup: @escaping @Sendable (PendingPaykitPaymentProof, TransactionDetail?) async throws -> Void = { _, _ in }
     ) -> PaykitPaymentProofService {
         let service = PaykitPaymentProofService(
             sdk: sdk,
             store: store,
             lightningPaymentLookup: PaymentProofLightningLookup(status: lightningStatus),
             hardwareTransactionLookup: hardwareLookup,
-            hardwareFollowup: { _, _ in },
+            hardwareFollowup: hardwareFollowup,
             attemptService: attemptService,
             logInfo: { _ in },
             logWarning: { _ in }
@@ -2747,4 +2794,29 @@ private actor SuspendedProofSaveStore: PaykitPaymentProofStoring {
     func resumeSave() {
         saveWaiter?.resume(); saveWaiter = nil
     }
+}
+
+private actor SuspendedHardwareShopFollowup {
+    private let onFirstSave: @Sendable () -> Void
+    private var saves = 0
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(onFirstSave: @escaping @Sendable () -> Void) { self.onFirstSave = onFirstSave }
+
+    func save() async {
+        saves += 1
+        if saves == 1 {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                onFirstSave()
+            }
+        }
+    }
+
+    func resume() {
+        continuation?.resume()
+        continuation = nil
+    }
+
+    func saveCount() -> Int { saves }
 }

@@ -223,6 +223,14 @@ actor PaykitPaymentProofService {
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
     private let mutationLock = PaykitProofMutationLock()
+    private struct HardwareCompletionKey: Hashable {
+        let identity: String
+        let requestId: PaykitPaymentRequest.ID
+        let walletId: String
+    }
+
+    private var hardwareCompletionsInProgress: Set<HardwareCompletionKey> = []
+    private var hardwareResolutionsAwaitingIdentity: Set<HardwareCompletionKey> = []
 
     func backupSnapshot() async throws -> [PaykitPaymentStateBackup.Proof] {
         try await store.load().map(PaykitPaymentStateBackup.Proof.init)
@@ -691,6 +699,9 @@ actor PaykitPaymentProofService {
         deliverInBackground: Bool = true
     ) async -> Bool {
         guard walletId != WalletScope.default, Self.isHex(txid, byteCount: 32) else { return false }
+        let key = HardwareCompletionKey(identity: identity, requestId: requestId, walletId: walletId)
+        guard hardwareCompletionsInProgress.insert(key).inserted else { return false }
+        defer { hardwareCompletionsInProgress.remove(key) }
         do {
             let original: PendingPaykitPaymentProof? = try await mutationLock.withLock {
                 var proofs = try await loadProofs()
@@ -709,6 +720,7 @@ actor PaykitPaymentProofService {
             guard let original else { return false }
             var detail: TransactionDetail?
             var completed = original
+            var didCompleteLocalFollowup = false
             if original.onchainAcceptanceVerified != true || original.proofData == nil {
                 let observed = try await hardwareTransactionLookup.transactionDetail(walletId: walletId, txid: txid)
                 guard observed.txid.caseInsensitiveCompare(txid) == .orderedSame, observed.sent > 0 else { return false }
@@ -733,26 +745,28 @@ actor PaykitPaymentProofService {
                         try await persist(proofs)
                         return proofs[index]
                     }
-                    // Another reconciliation may have acknowledged this exact original proof.
-                    return proofs.first {
-                        PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
-                            $0.onchainWalletId == walletId && $0.kind == .onchain && $0.paymentStarted &&
-                            $0.onchainAcceptanceVerified == true && $0.onchainLocalFollowupComplete == true &&
-                            $0.paymentIdentifier?.caseInsensitiveCompare(txid) == .orderedSame &&
-                            $0.proofData?.caseInsensitiveCompare(txid) == .orderedSame
-                    }
+                    return nil
                 }
                 guard let followedUp else { return false }
                 completed = followedUp
+                didCompleteLocalFollowup = true
             }
             if deliverInBackground {
                 submitInBackground(completed)
             } else {
                 _ = await submit(completed)
             }
-            Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
-                identity: completed.identity, requestId: requestId, transactionId: txid.lowercased(), walletId: walletId
-            ))
+            let currentIdentity = (try? await sdk.identityStatus())?.publicKey
+            let identityIsActive = PubkyPublicKeyFormat.matches(currentIdentity, identity)
+            if didCompleteLocalFollowup, !identityIsActive {
+                hardwareResolutionsAwaitingIdentity.insert(key)
+            }
+            let replayForReturningPayer = identityIsActive && hardwareResolutionsAwaitingIdentity.remove(key) != nil
+            if didCompleteLocalFollowup || replayForReturningPayer {
+                Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
+                    identity: completed.identity, requestId: requestId, transactionId: txid.lowercased(), walletId: walletId
+                ))
+            }
             return true
         } catch {
             logWarning("Hardware Paykit payment remains pending exact transaction/local follow-up: \(error)")
