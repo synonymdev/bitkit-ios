@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct HomeWalletView: View {
@@ -6,6 +7,7 @@ struct HomeWalletView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     var hasActivity: Bool {
@@ -59,6 +61,27 @@ struct HomeWalletView: View {
                 .padding(.bottom, 32)
             }
 
+            if usdt.isConfigured {
+                HStack(spacing: 16) {
+                    Button { navigation.navigate(.usdtWallet) } label: {
+                        WalletBalanceContent {
+                            CaptionMText("USDT")
+                        } icon: {
+                            CircularIcon(icon: "coins", iconColor: .greenAccent, backgroundColor: .green16, size: 24)
+                        } amount: {
+                            SubtitleText(settings.hideBalance ? " • • • • •" : usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—")
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("UsdtWallet")
+                    CustomDivider(color: .gray4, type: .vertical)
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+                .frame(height: 50)
+                .padding(.bottom, 32)
+            }
+
             if hasActivity {
                 ActivityLatest()
 
@@ -69,7 +92,7 @@ struct HomeWalletView: View {
                 }
             } else {
                 Spacer()
-                WalletOnboardingView(type: .home)
+                if usdt.balance ?? 0 == 0 { WalletOnboardingView(type: .home) }
             }
         }
         .padding(.top, ScreenLayout.topPaddingWithSafeArea)

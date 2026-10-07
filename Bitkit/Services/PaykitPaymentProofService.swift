@@ -8,10 +8,11 @@ import Paykit
 enum PaykitPaymentProofKind: String, Codable {
     case lightning = "bitcoin-bolt11-preimage"
     case onchain = "bitcoin-onchain-txid"
+    case usdt = "erc20-transfer-eip712"
 
     init?(paymentEndpointIdentifier: String) {
         guard let method = PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier) else { return nil }
-        self = method.onchainNetwork == nil ? .lightning : .onchain
+        self = method == .usdtArbitrum ? .usdt : method.onchainNetwork == nil ? .lightning : .onchain
     }
 }
 
@@ -53,6 +54,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var paymentStarted: Bool
     var paymentIdentifier: String?
     var proofData: String?
+    var conversionQuoteId: String?
     var onchainAddress: String?
     var onchainAmountSats: UInt64?
     var onchainWalletId: String?
@@ -103,6 +105,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         paymentStarted: Bool = false,
         paymentIdentifier: String?,
         proofData: String?,
+        conversionQuoteId: String? = nil,
         onchainAddress: String? = nil,
         onchainAmountSats: UInt64? = nil,
         onchainWalletId: String? = nil,
@@ -119,6 +122,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         self.paymentStarted = paymentStarted
         self.paymentIdentifier = paymentIdentifier
         self.proofData = proofData
+        self.conversionQuoteId = conversionQuoteId
         self.onchainAddress = onchainAddress
         self.onchainAmountSats = onchainAmountSats
         self.onchainWalletId = onchainWalletId
@@ -1459,6 +1463,7 @@ actor PaykitPaymentProofService {
             let isAlreadyQueued = request.paymentProofs.contains(where: {
                 Self.billingPeriod($0.billingPeriod, matches: pendingProof.billingPeriod) &&
                     $0.paymentAppId == pendingProof.paymentAppId &&
+                    $0.conversionQuoteId == pendingProof.conversionQuoteId &&
                     $0.paymentEndpointIdentifier == pendingProof.paymentEndpointIdentifier &&
                     Self.proofValues($0.proof.exportText()) == Self.proofValues(proofText)
             })
@@ -1472,7 +1477,7 @@ actor PaykitPaymentProofService {
                         paymentAppId: pendingProof.paymentAppId,
                         paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
                         allowanceId: nil,
-                        conversionQuoteId: nil,
+                        conversionQuoteId: pendingProof.conversionQuoteId,
                         proof: Paykit.PrivateJsonObject(text: proofText)
                     )
                 )
@@ -1483,7 +1488,7 @@ actor PaykitPaymentProofService {
                     logWarning("Paykit payment proof remains queued for private delivery: \(error)")
                 }
             }
-            await removeRequestProofs(pendingProof)
+            if pendingProof.kind != .usdt { await removeRequestProofs(pendingProof) }
             return true
         } catch {
             logWarning("Failed to queue a Paykit payment proof: \(error)")
@@ -1593,6 +1598,8 @@ actor PaykitPaymentProofService {
             return methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl
         case .onchain:
             return methodId.onchainNetwork != nil
+        case .usdt:
+            return methodId == .usdtArbitrum
         }
     }
 
@@ -1620,8 +1627,10 @@ actor PaykitPaymentProofService {
     }
 
     private static func proofText(kind: PaykitPaymentProofKind, data: String) throws -> String {
+        if kind == .usdt { return data }
+        let values = ["data": data, "type": kind.rawValue]
         let encoded = try JSONSerialization.data(
-            withJSONObject: ["data": data, "type": kind.rawValue],
+            withJSONObject: values,
             options: [.sortedKeys]
         )
         return String(decoding: encoded, as: UTF8.self)

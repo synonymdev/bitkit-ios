@@ -63,11 +63,12 @@ struct SendContactSelectView: View {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: contact.publicKey, wallet: wallet)
 
             switch result {
-            case let .opened(paymentRequest, privatePaymentContext):
+            case let .opened(paymentRequest, privatePaymentContext, endpoints):
                 _ = await openContactPayment(
                     paymentRequest: paymentRequest,
                     publicKey: contact.publicKey,
-                    privatePaymentContext: privatePaymentContext
+                    privatePaymentContext: privatePaymentContext,
+                    endpoints: endpoints
                 )
             case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
@@ -90,11 +91,13 @@ struct SendContactSelectView: View {
     private func openContactPayment(
         paymentRequest: String,
         publicKey: String,
-        privatePaymentContext: PrivatePaykitPaymentContext?
+        privatePaymentContext: PrivatePaykitPaymentContext?,
+        endpoints: [PublicPaykitService.Endpoint]
     ) async -> Bool {
         let contactPaymentContext = ContactPaymentContext(
             publicKey: publicKey,
-            privatePaymentContext: privatePaymentContext
+            privatePaymentContext: privatePaymentContext,
+            endpoints: endpoints
         )
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
 

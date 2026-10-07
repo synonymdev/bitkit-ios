@@ -249,7 +249,8 @@ extension PrivatePaykitService {
                     uniquingKeysWith: { first, _ in first }
                 ),
                 paymentListVersion: paymentListVersion
-            )
+            ),
+            endpoints: payableEndpoints
         )
     }
 

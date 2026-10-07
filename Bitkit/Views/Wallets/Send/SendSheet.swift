@@ -52,6 +52,7 @@ enum SendRoute: Hashable {
     case comingSoon
     case manual
     case amount
+    case usdt(recipient: String, amount: String)
     case utxoSelection
     case confirm
     case hardwareSign
@@ -141,6 +142,7 @@ struct SendSheet: View {
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
+    @State private var usdtDetails: String?
 
     init(config: SendSheetItem, isEmbedded: Bool = false) {
         self.config = config
@@ -370,7 +372,7 @@ struct SendSheet: View {
             if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }
-            wallet.sendAmountSats = request.amountSats
+            wallet.sendAmountSats = request.amount.asset == .btc ? request.amount.atomic : nil
             incomingPaymentRequest = request
         } else {
             tagManager.clearSelectedTags()
@@ -412,9 +414,10 @@ struct SendSheet: View {
             } catch {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
-            if let request = incomingPaymentRequest {
+            if let request = incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true {
                 guard isCurrentIncomingRequest(request.id) else { return }
-                guard await selectHardwareFundingSourceIfNeeded(amountSats: request.amountSats, requestId: request.id) else { return }
+                guard let amount = try? request.payment(to: .btc).amount.atomic,
+                      await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id) else { return }
                 guard isCurrentIncomingRequest(request.id) else { return }
                 if !shouldShowSyncOverlay {
                     validatePaymentAfterSync()
@@ -793,6 +796,23 @@ struct SendSheet: View {
             SendEnterManuallyView(navigationPath: $navigationPath, hwSend: hwSend)
         case .amount:
             SendAmountView(navigationPath: $navigationPath, hwSend: hwSend)
+        case let .usdt(recipient, amount):
+            UsdtSendView(onDetails: { id in
+                usdtDetails = id
+            }, initialRecipient: recipient, initialAmount: amount, embedded: true,
+            sendPayment: { quote in
+                guard let context = app.contactPaymentContext else { throw PaykitPaymentRequestError.requestUnavailable }
+                let paymentTerms = app.paykitPaymentTerms
+                try await PaykitUsdtPaymentService.shared.prepare(context: context, quote: quote, wallet: wallet.usdtWallet,
+                                                                  amount: app.paykitReviewedAmount, paymentTerms: paymentTerms)
+                guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
+                try await prepareIncomingPaymentRequest()
+                guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
+                try await PaykitUsdtPaymentService.shared.send(quote, context: context, paymentTerms: paymentTerms, wallet: wallet.usdtWallet) {
+                    if let request = context.incomingPaymentRequest { try await paykitPaymentRequestManager.ensurePaymentAllowed(request) }
+                    guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
+                }
+            }, onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
@@ -941,9 +961,13 @@ struct SendSheet: View {
         guard let context,
               let request = context.incomingPaymentRequest
         else { return }
+        // A durable USDT attempt must keep its recovery and payment proof on the same rail.
+        guard app.paykitUsesUsdt || !PaykitUsdtPaymentService.shared.hasBinding(for: request.id) else {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
 
         try await paykitPaymentRequestManager.prepareForPayment(request) {
-            guard let privatePaymentContext = context.privatePaymentContext else { return }
+            guard !app.paykitUsesUsdt, let privatePaymentContext = context.privatePaymentContext else { return }
             try await PrivatePaykitService.shared.consumePrivatePaymentList(
                 publicKey: context.publicKey,
                 context: privatePaymentContext,
@@ -968,6 +992,7 @@ struct SendSheet: View {
         else { throw PaykitPaymentRequestError.requestUnavailable }
         _ = try hwWalletManager.getFundingAccount(walletId: walletId)
 
+        let paymentTerms = app.paykitPaymentTerms
         let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
         guard let privateContext = context?.privatePaymentContext else {
             throw PaykitPaymentRequestError.requestUnavailable
@@ -1077,7 +1102,8 @@ struct SendSheet: View {
             publicKey: context.publicKey,
             privatePaymentContext: context.privatePaymentContext,
             incomingPaymentRequest: retriedRequest,
-            isInitialSubscriptionPayment: context.isInitialSubscriptionPayment
+            isInitialSubscriptionPayment: context.isInitialSubscriptionPayment,
+            endpoints: context.endpoints
         )
     }
 
@@ -1150,7 +1176,6 @@ struct SendSheet: View {
 
         app.resetSendState()
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-        wallet.sendAmountSats = request.amountSats
 
         let resolution: PublicPaykitPaymentLaunchResult
         do {
@@ -1160,7 +1185,7 @@ struct SendSheet: View {
             return
         }
 
-        guard case let .opened(paymentTarget, privatePaymentContext) = resolution else {
+        guard case let .opened(paymentTarget, privatePaymentContext, endpoints) = resolution else {
             showEmbeddedInitialPaymentFailure(request, error: PaykitPaymentRequestError.requestUnavailable)
             return
         }
@@ -1170,7 +1195,7 @@ struct SendSheet: View {
             publicKey: request.counterparty,
             privatePaymentContext: privatePaymentContext,
             incomingPaymentRequest: request,
-            isInitialSubscriptionPayment: true
+            isInitialSubscriptionPayment: true, endpoints: endpoints
         )
         guard app.claimContactPaymentContext(context) else {
             app.toast(PaykitPaymentRequestError.operationInProgress)
@@ -1213,7 +1238,7 @@ struct SendSheet: View {
             return
         }
 
-        pendingEmbeddedRetryRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
         hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }
         validatePaymentAfterSync()

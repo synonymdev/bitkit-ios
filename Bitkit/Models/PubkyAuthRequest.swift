@@ -6,10 +6,14 @@ struct PubkyAuthClaim: Equatable {
     private enum Item: String {
         case paykitAccessV1 = "paykit-access-v1"
         case watchOnlyAccountV1 = "watch-only-account-v1"
+        case usdtAddressV1 = "usdt-address-v1"
+        case paymentDetailsV1 = "payment-details-v1"
     }
 
     static let watchOnlyAccountV1 = Self(items: [.watchOnlyAccountV1])
     static let paykitAccessV1 = Self(items: [.paykitAccessV1])
+    static let usdtAddressV1 = Self(items: [.usdtAddressV1])
+    static let paymentDetailsV1 = Self(items: [.paymentDetailsV1])
 
     private let items: [Item]
 
@@ -21,6 +25,7 @@ struct PubkyAuthClaim: Equatable {
         let values = rawValue.split(separator: ".", omittingEmptySubsequences: false)
         let items = values.compactMap { Item(rawValue: String($0)) }
         guard !items.isEmpty, items.count == values.count, Set(items).count == items.count else { return nil }
+        guard items.count == 1 || !items.contains(where: { $0 == .usdtAddressV1 || $0 == .paymentDetailsV1 }) else { return nil }
         self.items = items
     }
 
@@ -33,14 +38,49 @@ struct PubkyAuthClaim: Equatable {
     static let requiredCapabilities = Paykit.requiredSessionCapabilities()
 
     var includesWatchOnlyAccount: Bool {
-        items.contains(.watchOnlyAccountV1)
+        items.contains(.watchOnlyAccountV1) || items.contains(.paymentDetailsV1)
     }
 
     var includesPaykitAccess: Bool {
         items.contains(.paykitAccessV1)
     }
 
+    var sharesBitcoin: Bool {
+        includesWatchOnlyAccount
+    }
+
+    var sharesUsdt: Bool {
+        items.contains(.usdtAddressV1) || items.contains(.paymentDetailsV1)
+    }
+
+    var sharesReceivingDetails: Bool {
+        sharesBitcoin || sharesUsdt
+    }
+
+    func unsignedPayload(account: WatchOnlyAccountRecord?, usdtEndpoint: PublicPaykitService.Endpoint?) throws -> Data? {
+        guard sharesUsdt else {
+            return try account.map { try WatchOnlyAccountClaimCodec.encode(record: $0) }
+        }
+        guard let usdtEndpoint, usdtEndpoint.methodId == .usdtArbitrum,
+              PaykitUsdt.address(from: usdtEndpoint.rawPayload) == usdtEndpoint.value
+        else { throw PubkyAuthRequestError.invalidPaymentDetails }
+        var payload: [String: Any] = try [
+            PublicPaykitService.MethodId.usdtArbitrum.rawValue:
+                JSONSerialization.jsonObject(with: Data(usdtEndpoint.rawPayload.utf8)),
+        ]
+        if sharesBitcoin {
+            guard let account else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            _ = try WatchOnlyAccountClaimCodec.encode(record: account)
+            payload["bitcoin_account"] = ["account_index": account.accountIndex, "address_type": account.addressType, "xpub": account.xpub]
+        }
+        return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+    }
+
     func encode(accountPayload: Data?, paykitKey: PaykitIdentitySecretKey?) throws -> Data {
+        if sharesUsdt {
+            guard let accountPayload, !includesPaykitAccess else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            return accountPayload
+        }
         guard includesWatchOnlyAccount == (accountPayload != nil),
               includesPaykitAccess == (paykitKey != nil)
         else {
@@ -68,6 +108,7 @@ struct PubkyAuthClaim: Equatable {
 
 enum PubkyAuthRequestError: Error, Equatable {
     case invalidUrl
+    case invalidPaymentDetails
     case missingBitkitClaim
     case duplicateBitkitClaim
     case duplicateRelay

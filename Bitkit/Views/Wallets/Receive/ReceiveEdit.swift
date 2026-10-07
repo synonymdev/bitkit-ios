@@ -108,7 +108,7 @@ struct ReceiveEdit: View {
                         ) {
                             onSendPaymentRequest(
                                 PaykitPaymentRequestDraft(
-                                    amountSats: amountSats,
+                                    amount: PaykitAmount(asset: .btc, atomic: amountSats),
                                     note: note.trimmingCharacters(in: .whitespacesAndNewlines),
                                     expiresAt: PaymentRequestExpiration.week.date(from: .now)
                                 )

@@ -148,7 +148,8 @@ struct Sheet<Content: View>: View {
                 .padding(.top, 12)
         }
         .presentationBackgroundInteraction(.disabled)
-        .presentationDetents([.height(sheetSize.height)])
+        // The system adds the bottom safe area to a fixed-height detent.
+        .presentationDetents([.height(sheetSize.height - windowSafeAreaInsets.bottom)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(32)
         .presentationBackground { backgroundColor }

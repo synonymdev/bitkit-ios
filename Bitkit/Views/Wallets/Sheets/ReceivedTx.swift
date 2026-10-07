@@ -1,4 +1,4 @@
-import Lottie
+import BitkitCore
 import SwiftUI
 
 struct ReceivedTxSheetDetails: Codable {
@@ -8,7 +8,8 @@ struct ReceivedTxSheetDetails: Codable {
     }
 
     let type: ReceivedTxType
-    let sats: UInt64
+    var sats: UInt64 = 0
+    var usdtAmount: UInt64? = nil
 }
 
 struct ReceivedTxSheetItem: SheetItem {
@@ -25,42 +26,26 @@ struct ReceivedTx: View {
     /// Keep in state so we don't get a new random text on each render
     @State private var buttonText: String = localizedRandom("common__ok_random")
 
-    /// Load the confetti animation
-    private var confettiAnimation: LottieAnimation? {
-        let isOnchain = config.details.type == .onchain
-        let animationName = isOnchain ? "confetti-orange" : "confetti-purple"
-
-        guard let filepathURL = Bundle.main.url(forResource: animationName, withExtension: "json") else {
-            print("Could not find \(animationName).json in bundle")
-            return nil
-        }
-
-        return LottieAnimation.filepath(filepathURL.path)
-    }
-
     var body: some View {
         let isOnchain = config.details.type == .onchain
-        let title = isOnchain ? t("wallet__payment_received") : t("wallet__instant_payment_received")
+        let title = config.details.usdtAmount != nil ? t("usdt__payment_received")
+            : isOnchain ? t("wallet__payment_received") : t("wallet__instant_payment_received")
 
         Sheet(id: .receivedTx, data: config) {
             ZStack {
-                if let animation = confettiAnimation {
-                    LottieView(animation: animation)
-                        .playing(loopMode: .loop)
-                        // Scale the animation to fill the sheet
-                        .scaleEffect(1.9)
-                        .frame(width: .infinity, height: .infinity)
-                }
-
-                Image("coins-received")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .offset(y: 50)
+                PaymentCelebration(
+                    isOnchain: isOnchain, isReceived: true,
+                    confettiColor: config.details.usdtAmount != nil ? .greenAccent : nil
+                )
 
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: title)
-                    MoneyStack(sats: Int(config.details.sats), showSymbol: true, testIdPrefix: "ReceivedTransaction")
+                    if let amount = config.details.usdtAmount {
+                        UsdtAmountHeader(amount: usdtFormatAmount(amount: amount), network: "Arbitrum One")
+                            .accessibilityIdentifier("ReceivedTransaction")
+                    } else {
+                        MoneyStack(sats: Int(config.details.sats), showSymbol: true, testIdPrefix: "ReceivedTransaction")
+                    }
                     Spacer()
                     CustomButton(title: buttonText) { sheets.hideSheet() }
                         .accessibilityIdentifier("ReceivedTransactionButton")

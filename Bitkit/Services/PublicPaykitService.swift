@@ -56,7 +56,7 @@ enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
 }
 
 enum PublicPaykitPaymentLaunchResult {
-    case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?)
+    case opened(paymentRequest: String, privatePaymentContext: PrivatePaykitPaymentContext?, endpoints: [PublicPaykitService.Endpoint] = [])
     case noEndpoint
     case notOpened
     case privateLinkPending
@@ -123,6 +123,7 @@ enum PublicPaykitService {
     static let publishingEnabledKey = "sharesPublicPaykitEndpoints"
     static let lightningPaymentOptionEnabledKey = "paykitPaymentOptionLightningEnabled"
     static let onchainPaymentOptionEnabledKey = "paykitPaymentOptionOnchainEnabled"
+    static let usdtPaymentOptionEnabledKey = "paykitPaymentOptionUsdtEnabled"
     static let cleanupPendingKey = "publicPaykitCleanupPending"
 
     static func setCleanupPending(_ isPending: Bool) {
@@ -146,6 +147,7 @@ enum PublicPaykitService {
     }
 
     enum MethodId: String, Hashable, CaseIterable {
+        case usdtArbitrum = "usdt-arbitrum-address"
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
         case bitcoinLightningLnurl = "btc-lightning-lnurl"
         case bitcoinOnchainP2tr = "btc-bitcoin-p2tr"
@@ -168,11 +170,11 @@ enum PublicPaykitService {
         static let payablePreferenceOrder: [MethodId] = [
             .bitcoinLightningBolt11,
             .bitcoinLightningLnurl,
-        ] + onchainPreferenceOrder
+        ] + onchainPreferenceOrder + [.usdtArbitrum]
 
         static let publishableMethodIds: [MethodId] = [
             .bitcoinLightningBolt11,
-        ] + onchainPreferenceOrder
+        ] + onchainPreferenceOrder + [.usdtArbitrum]
 
         static let onchainPreferenceOrder: [MethodId] = [
             .bitcoinOnchainP2tr,
@@ -203,7 +205,7 @@ enum PublicPaykitService {
                 .signet
             case .regtestOnchainP2tr, .regtestOnchainP2wpkh, .regtestOnchainP2sh, .regtestOnchainP2pkh:
                 .regtest
-            case .bitcoinLightningBolt11, .bitcoinLightningLnurl:
+            case .bitcoinLightningBolt11, .bitcoinLightningLnurl, .usdtArbitrum:
                 nil
             }
         }
@@ -246,7 +248,7 @@ enum PublicPaykitService {
         var appId: String?
 
         var paymentRequest: String {
-            value
+            methodId == .usdtArbitrum ? PaykitUsdt.paymentURI(address: value) : value
         }
     }
 
@@ -278,6 +280,7 @@ enum PublicPaykitService {
         guard let payload = PaykitIssuerInterop.parseEndpointPayload(endpointData) else {
             return nil
         }
+        if methodId == .usdtArbitrum, PaykitUsdt.address(from: endpointData) == nil { return nil }
 
         return Endpoint(
             methodId: methodId,
@@ -426,7 +429,7 @@ enum PublicPaykitService {
             return endpoints.isEmpty ? .noEndpoint : .notOpened
         }
 
-        return .opened(paymentRequest: paymentRequest(from: payableEndpoints), privatePaymentContext: nil)
+        return .opened(paymentRequest: paymentRequest(from: payableEndpoints), privatePaymentContext: nil, endpoints: payableEndpoints)
     }
 
     static func paymentRequest(from endpoints: [Endpoint]) -> String {
@@ -466,6 +469,10 @@ enum PublicPaykitService {
 
     static func isOnchainPaymentOptionEnabled(defaults: UserDefaults = .standard) -> Bool {
         defaults.object(forKey: onchainPaymentOptionEnabledKey) as? Bool ?? true
+    }
+
+    static func isUsdtPaymentOptionEnabled(defaults: UserDefaults = .standard) -> Bool {
+        Env.isUsdtEnabled && (defaults.object(forKey: usdtPaymentOptionEnabledKey) as? Bool ?? true)
     }
 
     static func hasLightningRouteHints(bolt11: String) -> Bool {
@@ -515,7 +522,7 @@ enum PublicPaykitService {
         let includeOnchain = isOnchainPaymentOptionEnabled()
         let includeLightning = isLightningPaymentOptionEnabled()
 
-        if refreshIfNeeded {
+        if refreshIfNeeded, includeOnchain || includeLightning {
             let isNodeReady = await wallet.waitForNodeToRun()
             let lifecycleState = wallet.nodeLifecycleState
             guard isNodeReady || lifecycleState == .running else {
@@ -562,6 +569,10 @@ enum PublicPaykitService {
             )
         }
 
+        if isUsdtPaymentOptionEnabled() {
+            try await endpoints.append(wallet.usdtWallet.paymentEndpoint())
+        }
+
         guard !endpoints.isEmpty || !requireEndpoint else {
             throw PublicPaykitError.noSupportedEndpoint
         }
@@ -571,6 +582,8 @@ enum PublicPaykitService {
 
     private static func isPayableEndpoint(_ endpoint: Endpoint) async -> Bool {
         switch endpoint.methodId {
+        case .usdtArbitrum:
+            return Env.isUsdtEnabled && PaykitUsdt.address(from: endpoint.rawPayload) != nil
         case .bitcoinLightningBolt11:
             guard case let .lightning(invoice) = try? await decode(invoice: endpoint.paymentRequest) else {
                 return false
