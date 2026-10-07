@@ -103,7 +103,9 @@ class BackupService {
     private var isWiping = false
     private var lastNotificationTime: UInt64 = 0
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let backupData: ((BackupCategory) async throws -> Data)?
+    private let uploadBackup: (String, Data) async throws -> Void
     private let backupStatusesKey = "backupStatuses"
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
@@ -125,7 +127,16 @@ class BackupService {
             .eraseToAnyPublisher()
     }
 
-    private init() {
+    init(
+        defaults: UserDefaults = .standard,
+        backupData: ((BackupCategory) async throws -> Data)? = nil,
+        uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
+            _ = try await VssBackupClient.shared.putObject(key: key, data: data)
+        }
+    ) {
+        self.defaults = defaults
+        self.backupData = backupData
+        self.uploadBackup = uploadBackup
         let statuses = getAllBackupStatuses()
         var clearedStatuses = statuses
         for category in BackupCategory.allCases {
@@ -216,8 +227,12 @@ class BackupService {
             }
 
             do {
-                let data = try await getBackupDataBytes(category: category)
-                let _ = try await vssBackupClient.putObject(key: category.rawValue, data: data)
+                let data = if let backupData {
+                    try await backupData(category)
+                } else {
+                    try await getBackupDataBytes(category: category)
+                }
+                try await uploadBackup(category.rawValue, data)
 
                 updateBackupStatus(category: category) { status in
                     BackupItemStatus(
@@ -251,7 +266,11 @@ class BackupService {
         }
 
         try? await ServiceQueue.background(.backup) { self.runningBackupTasks[category] = backupTask }
-        await backupTask.value
+        await withTaskCancellationHandler {
+            await backupTask.value
+        } onCancel: {
+            backupTask.cancel()
+        }
     }
 
     func hasPendingWalletRestore() -> Bool {
