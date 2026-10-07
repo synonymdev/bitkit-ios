@@ -264,6 +264,71 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     @MainActor
+    func testVisiblePendingRecoversAcceptedFundingWithoutCompletionEvent() async throws {
+        let store = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: store)
+        let walletId = OnchainSendAttemptService.walletId(index: 0)
+        let txid = String(repeating: "ab", count: 32)
+        let id = try await attempts.admit(
+            walletId: walletId, requestId: nil, orderId: "original-lost-event-order",
+            address: "bcrt1qoriginal", amountSats: 1200, isMaxAmount: true,
+            followupContext: OnchainSendFollowupContext(feeSats: 100, feeRate: 1, tags: [], contact: nil, createdAt: 100),
+            transferContext: OnchainSendTransferContext(clientBalanceSats: 1000, txTotalSats: 1300,
+                                                        preTransferOnchainSats: 1300, originalOrderFeeSats: 200)
+        )
+        try await attempts.record(.unknown(txid: txid), attemptId: id)
+        let received = Bitkit.LightningService.shared.onchainTransactionReceived
+        let confirmed = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionReceived = received
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmed
+        }
+        let wallet = makeWallet(attempts: attempts)
+        var path: [SendRoute] = []
+        let context = OnchainSendPendingContext(attemptId: id, walletId: walletId, txid: txid)
+        let view = SendPendingScreen(
+            paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: nil,
+            routingCacheResetAttempted: false, attemptService: attempts, ordinaryPendingContext: context,
+            navigationPath: Binding(get: { path }, set: { path = $0 })
+        )
+        .environment(PaykitPaymentRequestManager())
+        .environmentObject(CurrencyViewModel())
+        .environmentObject(SettingsViewModel.shared)
+        .environmentObject(ActivityListViewModel())
+        .environmentObject(AppViewModel())
+        .environmentObject(NavigationViewModel())
+        .environmentObject(PubkyProfileManager())
+        .environmentObject(SheetViewModel())
+        .environmentObject(wallet)
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = UIHostingController(rootView: view)
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        try await Task.sleep(for: .milliseconds(500))
+        // Store the positive original result after initialization, without delivering a
+        // native callback or a completion event to the already-visible Pending screen.
+        _ = try await attempts.observeConfirmedTransaction(txid: txid)
+        for _ in 0 ..< 12 {
+            if store.snapshot().first?.localFollowupComplete == true {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true,
+                       "Visible Pending never reloaded the durable accepted original")
+        let saved = try await activity.getOnchainActivityByTxId(txid: txid)
+        XCTAssertEqual(saved?.txId, txid)
+        XCTAssertEqual(saved?.isTransfer, true)
+        let records = try makeService().getActiveTransfers()
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.lspOrderId, "original-lost-event-order")
+        XCTAssertTrue(path.isEmpty, "Funding recovery must not mark a new unsent payment successful")
+    }
+
+    @MainActor
     func testHardwareShopCandidateDoesNotCreateSentActivityUntilVerified() async throws {
         let requestId = PaykitPaymentRequest.ID(
             paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52),

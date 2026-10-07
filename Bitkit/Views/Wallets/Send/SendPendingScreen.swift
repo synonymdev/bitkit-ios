@@ -102,7 +102,7 @@ struct SendPendingScreen: View {
 
             Spacer()
 
-            if pendingHardwareWalletId == nil, onchainAttempt?.canRetrySamePayment == true, !onchainStateUnavailable {
+            if pendingHardwareWalletId == nil, onchainAttempt?.canRetrySamePayment == true, !ordinarySendResolved, !onchainStateUnavailable {
                 CustomButton(title: t("wallet__onchain_retry_original"), isDisabled: retryingOnchain) {
                     retryFeeRate = String(onchainAttempt?.recoveryContext?.satsPerVbyte ?? 1)
                     showingRetryConfirmation = true
@@ -225,6 +225,15 @@ struct SendPendingScreen: View {
             }
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
             await searchForActivity()
+            // Completion events are one-shot. Keep the visible original operation in sync
+            // with its durable result even when an event preceded subscription or initialization.
+            while paymentHash == nil, paykitPaymentRequestId == nil, pendingHardwareWalletId == nil,
+                  !ordinarySendResolved, !Task.isCancelled
+            {
+                do { try await Task.sleep(for: .seconds(2)) }
+                catch { return }
+                await refreshVisibleOrdinaryOutcome()
+            }
         }
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             applyPendingResolutionIfNeeded(resolution)
@@ -242,7 +251,7 @@ struct SendPendingScreen: View {
 
     @MainActor
     private func retryOriginalPayment(feeRate: UInt32) async {
-        guard !retryingOnchain, let original = onchainAttempt, original.canRetrySamePayment else { return }
+        guard !ordinarySendResolved, !retryingOnchain, let original = onchainAttempt, original.canRetrySamePayment else { return }
         retryingOnchain = true
         defer { retryingOnchain = false }
         let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
@@ -353,15 +362,15 @@ struct SendPendingScreen: View {
         if pendingHardwareWalletId != nil {
             return t("wallet__onchain_hardware_pending")
         }
+        if ordinarySendResolved {
+            return t("wallet__onchain_earlier_restored")
+        }
         switch onchainAttempt?.status {
         case .rejected:
             return t("wallet__onchain_rejected_pending", variables: ["reason": onchainAttempt?.rejectionReason ?? ""])
         case .unknown, .pending:
             return t("wallet__onchain_unknown_pending")
         case .accepted:
-            if ordinarySendResolved {
-                return t("wallet__onchain_earlier_restored")
-            }
             if localFollowupUnavailable {
                 return t("wallet__onchain_pending_followup_failed")
             }
