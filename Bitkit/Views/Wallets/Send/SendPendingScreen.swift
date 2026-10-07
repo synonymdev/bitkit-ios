@@ -53,6 +53,7 @@ struct SendPendingScreen: View {
     @State private var onchainStateUnavailable = false
     @State private var ordinarySendResolved = false
     @State private var localFollowupUnavailable = false
+    @State private var refreshingOrdinaryOutcome = false
     @State private var showingRetryConfirmation = false
     @State private var retryFeeRate = ""
     @State private var retryingOnchain = false
@@ -228,7 +229,10 @@ struct SendPendingScreen: View {
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             applyPendingResolutionIfNeeded(resolution)
         }
-        .onReceive(OnchainSendAttemptService.localResolutionPublisher) { resolution in
+        .onReceive(activityList.activitiesChangedPublisher.receive(on: DispatchQueue.main)) { _ in
+            Task { await refreshVisibleOrdinaryOutcome() }
+        }
+        .onReceive(OnchainSendAttemptService.localResolutionPublisher.receive(on: DispatchQueue.main)) { resolution in
             applyOrdinarySendResolution(resolution)
         }
         .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
@@ -386,6 +390,26 @@ struct SendPendingScreen: View {
             }
         }
         return (attempt, nil, false)
+    }
+
+    @MainActor
+    private func refreshVisibleOrdinaryOutcome() async {
+        guard paymentHash == nil, paykitPaymentRequestId == nil, pendingHardwareWalletId == nil,
+              !ordinarySendResolved, !refreshingOrdinaryOutcome, let original = onchainAttempt,
+              original.requestId == nil
+        else { return }
+        refreshingOrdinaryOutcome = true
+        defer { refreshingOrdinaryOutcome = false }
+        let context = ordinaryPendingContext ?? OnchainSendPendingContext(
+            attemptId: original.id, walletId: original.walletId, txid: original.txid
+        )
+        do {
+            // Recover a one-shot resolution missed while the visible sheet changed routes.
+            // The existing path validates the original operation before reading durable Details.
+            try await refreshOriginalOutcome(context: context)
+        } catch {
+            localFollowupUnavailable = true
+        }
     }
 
     private func applyOrdinarySendResolution(_ resolution: OnchainSendLocalResolution) {
