@@ -243,8 +243,14 @@ struct SendPendingScreen: View {
         defer { retryingOnchain = false }
         let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
         do {
+            // Capture the original request deadline without mutating its proof before authentication.
+            let paymentDeadline: PaykitPreciseInstant? = if original.requestId != nil {
+                try await proofService.authorizeOnchainRecovery(original, restoreStartedProof: false).paymentDeadline
+            } else {
+                nil
+            }
             let result = try await attemptService.retrySamePayment(
-                using: LightningService.shared, context: context, satsPerVbyte: feeRate,
+                using: LightningService.shared, context: context, satsPerVbyte: feeRate, paymentDeadline: paymentDeadline,
                 authorize: { attempt, _ in
                     if settings.requirePinForPayments && settings.pinEnabled {
                         if settings.useBiometrics && BiometricAuth.isAvailable {
@@ -255,6 +261,7 @@ struct SendPendingScreen: View {
                     }
                     if attempt.requestId != nil {
                         let request = try await proofService.authorizeOnchainRecovery(attempt)
+                        guard request.paymentDeadline == paymentDeadline else { throw PaykitPaymentRequestError.requestUnavailable }
                         try await paymentRequests.ensurePaymentAllowed(request)
                         guard let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
                         try await proofService.requireRecoveryPayer(payer)

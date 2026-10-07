@@ -400,7 +400,7 @@ actor PaykitPaymentProofService {
         return identity
     }
 
-    func authorizeOnchainRecovery(_ attempt: OnchainSendAttempt) async throws -> PaykitPaymentRequest {
+    func authorizeOnchainRecovery(_ attempt: OnchainSendAttempt, restoreStartedProof: Bool = true) async throws -> PaykitPaymentRequest {
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
@@ -424,7 +424,7 @@ actor PaykitPaymentProofService {
         !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
         else { throw PaykitPaymentRequestError.requestUnavailable }
         try await requireRecoveryPayer(payer)
-        if !proof.paymentStarted {
+        if restoreStartedProof && !proof.paymentStarted {
             // Receipt persistence can precede a crash before the first proof-start write.
             // Restore only this original approved request; never accept/consume a new one.
             try await mutationLock.withLock {

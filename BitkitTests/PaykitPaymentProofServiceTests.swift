@@ -91,7 +91,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     func testRecoveryAuthorizationUsesOriginalStartedRequestWithoutProofMutationOrSubmission() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
-        for invalid in 0 ..< 4 {
+        for invalid in 0 ..< 8 {
             let record = try paymentRequestRecord(endpoints: [endpoint], state: .accepted)
             let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
             let attemptsStore = MemoryAttemptStore()
@@ -104,20 +104,20 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             let original = try XCTUnwrap(attemptsStore.snapshot().first)
             let proof = PendingPaykitPaymentProof(
                 identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain,
-                paymentStarted: true, paymentIdentifier: original.txid, proofData: nil,
-                onchainAddress: invalid == 2 ? "foreign-address" : onchainAddress,
+                paymentStarted: invalid < 4, paymentIdentifier: original.txid, proofData: nil,
+                onchainAddress: invalid % 4 == 2 ? "foreign-address" : onchainAddress,
                 onchainAmountSats: request.amountSats
             )
             let store = PaymentProofMemoryStore()
             await store.seed([proof])
-            let sdk = PaymentProofSdkMock(identity: invalid == 1 ? counterparty : identity, records: invalid == 3 ? [] : [record])
+            let sdk = PaymentProofSdkMock(identity: invalid % 4 == 1 ? counterparty : identity, records: invalid % 4 == 3 ? [] : [record])
             let service = paymentProofService(sdk: sdk, store: store, attemptService: attempts)
             do {
-                let authorized = try await service.authorizeOnchainRecovery(original)
-                XCTAssertEqual(invalid, 0)
+                let authorized = try await service.authorizeOnchainRecovery(original, restoreStartedProof: false)
+                XCTAssertEqual(invalid % 4, 0)
                 XCTAssertEqual(authorized.id, request.id)
                 XCTAssertEqual(authorized.amountSats, request.amountSats)
-            } catch { XCTAssertNotEqual(invalid, 0) }
+            } catch { XCTAssertNotEqual(invalid % 4, 0) }
             let saved = await store.snapshot()
             let submissions = await sdk.submissionCount()
             XCTAssertEqual(saved, [proof])

@@ -438,6 +438,7 @@ actor OnchainSendAttemptService {
 
     func retrySamePayment(
         using sender: any OnchainSending, context: OnchainSendPendingContext, satsPerVbyte: UInt32? = nil,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         authorize: (OnchainSendAttempt, UInt32) async throws -> Void
     ) async throws -> OnchainSendResult {
         guard nativeDispatchInProgress == nil, let original = try currentAttempt(),
@@ -466,7 +467,7 @@ actor OnchainSendAttemptService {
             let receipt = try await sender.prepareOnchainSend(
                 address: original.address, sats: original.amountSats, satsPerVbyte: authorizedFeeRate,
                 utxosToSpend: recovery.inputs.map(\.utxo), isMaxAmount: false,
-                expectedWalletIndex: index, expectedNode: node, paymentDeadline: nil
+                expectedWalletIndex: index, expectedNode: node, paymentDeadline: paymentDeadline
             )
             prepared = receipt
             do { try validateReceipt(prepared, amount: original.amountSats, inputs: recovery.inputs) }

@@ -7,6 +7,37 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     private let walletId = "node-0"
     private let txid = String(repeating: "ab", count: 32)
 
+    func testOriginalRetryChecksDeadlineAfterAuthorizationBeforeNativeDispatch() async throws {
+        for expired in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+            let original = try XCTUnwrap(store.snapshot().first)
+            let originalTxid = try XCTUnwrap(original.txid)
+            let deadlineDate = Date(timeIntervalSince1970: 1_800_000_000)
+            let deadline = PaykitPreciseInstant(date: deadlineDate)
+            var dispatchTime = deadlineDate.addingTimeInterval(-1)
+            sender.deadlineClock = { dispatchTime }
+            sender.txid = String(repeating: "cd", count: 32)
+            let result = try await service.retrySamePayment(
+                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
+                paymentDeadline: deadline, authorize: { _, _ in
+                    // Deadline crosses after request authorization while native dispatch awaits its queue.
+                    sender.onNativeQueueDispatch = { dispatchTime = deadlineDate.addingTimeInterval(expired ? 0.001 : 0) }
+                }
+            )
+            XCTAssertEqual(sender.broadcasts, expired ? 1 : 2, "An expired successor must never reach native broadcast")
+            XCTAssertEqual(result, .unknown(txid: sender.txid))
+            XCTAssertEqual(store.snapshot().first?.id, original.id)
+            XCTAssertEqual(store.snapshot().first?.address, original.address)
+            XCTAssertEqual(store.snapshot().first?.amountSats, original.amountSats)
+            XCTAssertEqual(store.snapshot().first?.recoveryContext?.inputs, original.recoveryContext?.inputs)
+            XCTAssertEqual(store.snapshot().first?.blocksNewSend, true)
+        }
+    }
+
     func testPublishedPreparedSendNativeEntryPointsRequireRunningNode() async throws {
         try await ServiceQueue.background(.ldk, wrapErrors: false) {
             let storage = FileManager.default.temporaryDirectory.appendingPathComponent("bi717-rc69-native-\(UUID().uuidString)")
@@ -983,6 +1014,8 @@ final class PreparedAttemptNodeMock: OnchainSending {
     var onBroadcast: (() async throws -> Void)?
     var onPrepare: (() async throws -> Void)?
     var result: OnchainSendResult?
+    var deadlineClock: () -> Date = Date.init
+    var onNativeQueueDispatch: (() -> Void)?
 
     func prepareOnchainSend(address: String, sats: UInt64, satsPerVbyte: UInt32,
                             utxosToSpend: [SpendableUtxo]?, isMaxAmount: Bool,
@@ -997,6 +1030,8 @@ final class PreparedAttemptNodeMock: OnchainSending {
         try await onPrepare?()
         let candidateId = txid
         return PreparedOnchainSendDispatch(txid: candidateId, inputs: inputs, recipientAmountSats: amount) {
+            self.onNativeQueueDispatch?()
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: self.deadlineClock())
             self.broadcasts += 1
             try await self.onBroadcast?()
             return self.result ?? .unknown(txid: candidateId)
