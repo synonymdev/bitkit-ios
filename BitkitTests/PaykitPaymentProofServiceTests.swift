@@ -355,6 +355,56 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testHardwareStartAtomicallyRetainsReceiptAcrossAuthorizationBackup() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        let serializedTx = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        let receipt = HwFundingSignedTx(serializedTx: serializedTx, miningFeeSats: 141, feeRate: 2, totalSpent: request.amountSats + 141)
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        await store.failNextSave()
+        do {
+            try await service.markOnchainPaymentStarted(
+                request, address: onchainAddress, hardwareWalletId: hardwareWalletId,
+                paymentIdentity: identity, signedTx: receipt
+            )
+            XCTFail("Failed atomic receipt save must stop preparation")
+        } catch {}
+        let unsaved = await store.snapshot().first
+        XCTAssertEqual(unsaved?.paymentStarted, false)
+        XCTAssertNil(unsaved?.hardwareSignedTransaction)
+        try await service.markOnchainPaymentStarted(
+            request, address: onchainAddress, hardwareWalletId: hardwareWalletId,
+            paymentIdentity: identity, signedTx: receipt
+        )
+        let started = await store.snapshot().first
+        XCTAssertEqual(started?.hardwareSignedTransaction, serializedTx)
+        XCTAssertEqual(started?.paymentIdentifier, try SignedTransactionId.fromHex(serializedTx))
+        XCTAssertEqual(started?.paymentStarted, true)
+        XCTAssertNil(started?.proofData)
+        let snapshot = try await service.backupSnapshot()
+        let encoded = try JSONEncoder().encode(snapshot)
+        await store.clear()
+        let reopened = paymentProofService(sdk: sdk, store: store)
+        try await reopened.restoreBackup(JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: encoded))
+        let restored = await store.snapshot().first
+        XCTAssertEqual(restored?.hardwareSignedTransaction, serializedTx)
+        XCTAssertEqual(restored?.paymentIdentifier, started?.paymentIdentifier)
+        let retained = try await reopened.retainedHardwareOnchainPayment(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats
+        )
+        XCTAssertEqual(retained, receipt)
+        let wrongAmount = try await reopened.retainedHardwareOnchainPayment(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats + 1
+        )
+        XCTAssertNil(wrongAmount)
+    }
+
     func testHardwareTransactionIdMatchesBackendAndRejectsInvalidReceipt() throws {
         let signed = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
         let legacy = "0200000001f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa724c0300"

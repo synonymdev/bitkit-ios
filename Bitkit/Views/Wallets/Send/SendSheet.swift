@@ -782,12 +782,13 @@ struct SendSheet: View {
                 contactPaymentRequestId: contactContext?.incomingPaymentRequest?.id,
                 contactPaymentIdentity: paymentIdentity,
                 contactPaymentDeadline: contactContext?.incomingPaymentRequest?.paymentDeadline,
-                prepareContactPayment: {
+                prepareContactPayment: { signedTx in
                     try await prepareHardwareContactPayment(
                         context: contactContext,
                         address: address,
                         walletId: walletId,
-                        paymentIdentity: paymentIdentity
+                        paymentIdentity: paymentIdentity,
+                        signedTx: signedTx
                     )
                 },
                 authorizeContactPayment: {
@@ -921,7 +922,8 @@ struct SendSheet: View {
         context: ContactPaymentContext?,
         address: String?,
         walletId: String?,
-        paymentIdentity: String?
+        paymentIdentity: String?,
+        signedTx: HwFundingSignedTx
     ) async throws {
         guard let request = context?.incomingPaymentRequest else {
             try await prepareIncomingPaymentRequest(context: context)
@@ -945,7 +947,8 @@ struct SendSheet: View {
         do {
             try await prepareIncomingPaymentRequest(context: context)
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
-                request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity
+                request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity,
+                signedTx: signedTx
             )
         } catch {
             _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)

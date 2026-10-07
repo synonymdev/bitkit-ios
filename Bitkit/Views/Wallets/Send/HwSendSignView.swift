@@ -13,7 +13,7 @@ struct HwSendSignView: View {
     let contactPaymentRequestId: PaykitPaymentRequest.ID?
     let contactPaymentIdentity: String?
     let contactPaymentDeadline: PaykitPreciseInstant?
-    let prepareContactPayment: () async throws -> Void
+    let prepareContactPayment: (HwFundingSignedTx) async throws -> Void
     let authorizeContactPayment: () async throws -> Void
     let completeContactPayment: (String) async -> Bool
     let cancelContactPayment: (PrivatePaymentListSendOutcome) async -> Void
@@ -158,6 +158,14 @@ struct HwSendSignView: View {
                     satsPerVByte: UInt64(feeRate),
                     paymentDeadline: contactPaymentDeadline,
                     paymentRequestId: requestId,
+                    loadSignedPayment: {
+                        guard let requestId else { return nil }
+                        guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                        return try await PaykitPaymentProofService.shared.retainedHardwareOnchainPayment(
+                            requestId: requestId, paymentIdentity: identity, walletId: walletId,
+                            address: invoice.address, amountSats: amount
+                        )
+                    },
                     beforeFirstBroadcast: prepareContactPayment,
                     beforeBroadcastAttempt: authorizeContactPayment,
                     retainSignedPayment: { signed in

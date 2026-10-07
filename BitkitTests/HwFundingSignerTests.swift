@@ -321,7 +321,7 @@ final class HwFundingSignerTests: XCTestCase {
             var preparationCalls = 0
             var authorizationCalls = 0
             var isPaymentAllowed = true
-            let preparePayment: () async throws -> Void = {
+            let preparePayment: (HwFundingSignedTx) async throws -> Void = { _ in
                 preparationCalls += 1
                 await store.seed([PendingPaykitPaymentProof(
                     identity: identity, requestId: request.id, paymentAppId: "bitkit",
@@ -441,7 +441,7 @@ final class HwFundingSignerTests: XCTestCase {
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeFirstBroadcast: {
+                beforeFirstBroadcast: { _ in
                     try await proofService.prepare(
                         request: request, paymentAppId: "bitkit",
                         paymentEndpointIdentifier: originalProof.paymentEndpointIdentifier,
@@ -542,7 +542,7 @@ final class HwFundingSignerTests: XCTestCase {
                     address: "bc1qtest",
                     sats: 42000,
                     satsPerVByte: 2,
-                    beforeFirstBroadcast: { preparationCalls += 1 },
+                    beforeFirstBroadcast: { _ in preparationCalls += 1 },
                     beforeBroadcastAttempt: { throw authorizationError },
                     afterFailure: { failureOutcomes.append($0) }
                 )
@@ -558,7 +558,7 @@ final class HwFundingSignerTests: XCTestCase {
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeFirstBroadcast: { preparationCalls += 1 }
+                beforeFirstBroadcast: { _ in preparationCalls += 1 }
             )
 
             XCTAssertEqual(preparationCalls, 2)
@@ -654,7 +654,7 @@ final class HwFundingSignerTests: XCTestCase {
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeFirstBroadcast: { throw PaykitPaymentRequestError.operationInProgress },
+                beforeFirstBroadcast: { _ in throw PaykitPaymentRequestError.operationInProgress },
                 afterFailure: { failureOutcomes.append($0) }
             )
         }
@@ -685,7 +685,7 @@ final class HwFundingSignerTests: XCTestCase {
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeFirstBroadcast: {
+                beforeFirstBroadcast: { _ in
                     beforeFirstBroadcastCalls += 1
                     throw MockHwFunding.TestError()
                 }
@@ -700,7 +700,7 @@ final class HwFundingSignerTests: XCTestCase {
             address: "bc1qtest",
             sats: 42000,
             satsPerVByte: 2,
-            beforeFirstBroadcast: { beforeFirstBroadcastCalls += 1 }
+            beforeFirstBroadcast: { _ in beforeFirstBroadcastCalls += 1 }
         )
 
         XCTAssertEqual(beforeFirstBroadcastCalls, 2)
@@ -734,7 +734,7 @@ final class HwFundingSignerTests: XCTestCase {
                 address: "bc1qtest",
                 sats: 42000,
                 satsPerVByte: 2,
-                beforeFirstBroadcast: { preparationCalls += 1 },
+                beforeFirstBroadcast: { _ in preparationCalls += 1 },
                 beforeBroadcastAttempt: { authorizationCalls += 1 },
                 afterBroadcast: { completedTransactionIds.append($0.txId) }
             )
@@ -750,7 +750,7 @@ final class HwFundingSignerTests: XCTestCase {
             address: "bc1qtest",
             sats: 42000,
             satsPerVByte: 2,
-            beforeFirstBroadcast: { preparationCalls += 1 },
+            beforeFirstBroadcast: { _ in preparationCalls += 1 },
             beforeBroadcastAttempt: { authorizationCalls += 1 },
             afterBroadcast: { completedTransactionIds.append($0.txId) }
         )
@@ -837,6 +837,32 @@ final class HwFundingSignerTests: XCTestCase {
         )
         XCTAssertEqual(funding.signCalls, 1)
         XCTAssertEqual(funding.broadcastCalls, 2)
+    }
+
+    func testRestoredShopReceiptRequiresAuthorizationAndNeverSignsAgain() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        let receipt = funding.signedTx
+        await assertThrowsAsync {
+            _ = try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId,
+                loadSignedPayment: { receipt },
+                beforeFirstBroadcast: { _ in XCTFail("Restored proof must not prepare another payment") },
+                beforeBroadcastAttempt: { throw MockHwFunding.TestError() }
+            )
+        }
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        XCTAssertTrue(coordinator.isBroadcastUnresolved)
+        _ = try await coordinator.signAndBroadcast(
+            manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId,
+            beforeFirstBroadcast: { _ in XCTFail("Original preparation retained") }
+        )
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(funding.broadcastTransactions, [receipt.serializedTx])
     }
 
     func testObservedShopPaymentUnlocksOnlyOriginalSignedCandidate() async throws {
@@ -989,7 +1015,7 @@ final class HwFundingSignerTests: XCTestCase {
         let secondPreparation = AsyncGate()
 
         let first = Task {
-            try await self.signAndBroadcast(coordinator, manager: manager) {
+            try await self.signAndBroadcast(coordinator, manager: manager) { _ in
                 preparations.record("first")
                 await firstPreparation.wait()
             }
@@ -998,7 +1024,7 @@ final class HwFundingSignerTests: XCTestCase {
         coordinator.cancel()
 
         let second = Task {
-            try await self.signAndBroadcast(coordinator, manager: manager) {
+            try await self.signAndBroadcast(coordinator, manager: manager) { _ in
                 preparations.record("second")
                 await secondPreparation.wait()
             }
@@ -1131,7 +1157,7 @@ final class HwFundingSignerTests: XCTestCase {
     private func signAndBroadcast(
         _ coordinator: HwSendCoordinator,
         manager: HwWalletManager,
-        beforeFirstBroadcast: @escaping () async throws -> Void = {}
+        beforeFirstBroadcast: @escaping (HwFundingSignedTx) async throws -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
         try await coordinator.signAndBroadcast(
             manager: manager,

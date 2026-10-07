@@ -58,6 +58,9 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var onchainWalletId: String?
     /// Original signed candidate retained before hardware dispatch; never a payment proof.
     var hardwareSignedTransaction: String?
+    var hardwareMiningFeeSats: UInt64?
+    var hardwareFeeRate: UInt64?
+    var hardwareTotalSpent: UInt64?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
     var onchainAcceptanceVerified: Bool?
     /// Device-local acknowledgement: backup restore reruns local activity proof.
@@ -485,7 +488,8 @@ actor PaykitPaymentProofService {
         _ request: PaykitPaymentRequest,
         address: String,
         hardwareWalletId: String? = nil,
-        paymentIdentity: String? = nil
+        paymentIdentity: String? = nil,
+        signedTx: HwFundingSignedTx? = nil
     ) async throws {
         let identity = try await currentIdentity()
         try await mutationLock.withLock {
@@ -494,7 +498,9 @@ actor PaykitPaymentProofService {
                 address: address,
                 hardwareWalletId: hardwareWalletId,
                 paymentIdentity: paymentIdentity,
-                identity: identity
+                identity: identity,
+                serializedTx: signedTx?.serializedTx,
+                signedTx: signedTx
             )
         }
     }
@@ -504,7 +510,9 @@ actor PaykitPaymentProofService {
         address: String,
         hardwareWalletId: String?,
         paymentIdentity: String?,
-        identity: String
+        identity: String,
+        serializedTx: String?,
+        signedTx: HwFundingSignedTx?
     ) async throws {
         if let hardwareWalletId {
             guard hardwareWalletId != WalletScope.default, hardwareTransactionLookup.hasWallet(walletId: hardwareWalletId)
@@ -512,6 +520,15 @@ actor PaykitPaymentProofService {
         }
         if hardwareWalletId != nil || paymentIdentity != nil {
             guard PubkyPublicKeyFormat.matches(identity, paymentIdentity) else { throw PaykitPaymentRequestError.requestUnavailable }
+        }
+        if let signedTx {
+            guard signedTx.feeRate.isFinite, signedTx.feeRate >= 0,
+                  UInt64(exactly: signedTx.feeRate.rounded(.up)) != nil
+            else { throw PaykitPaymentRequestError.requestUnavailable }
+        }
+        let signedTxid = try serializedTx.map { raw in
+            guard hardwareWalletId != nil else { throw PaykitPaymentRequestError.requestUnavailable }
+            return try SignedTransactionId.fromHex(raw)
         }
         var pendingProofs = try await loadProofs()
         guard let index = pendingProofs.lastIndex(where: {
@@ -529,7 +546,39 @@ actor PaykitPaymentProofService {
         pendingProofs[index].onchainAddress = address
         pendingProofs[index].onchainAmountSats = request.amountSats
         pendingProofs[index].onchainWalletId = hardwareWalletId
+        pendingProofs[index].paymentIdentifier = signedTxid
+        pendingProofs[index].hardwareSignedTransaction = serializedTx
+        pendingProofs[index].hardwareMiningFeeSats = signedTx?.miningFeeSats
+        pendingProofs[index].hardwareFeeRate = signedTx.map { UInt64($0.feeRate.rounded(.up)) }
+        pendingProofs[index].hardwareTotalSpent = signedTx?.totalSpent
         try await persist(pendingProofs)
+    }
+
+    func retainedHardwareOnchainPayment(
+        requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String,
+        address: String, amountSats: UInt64
+    ) async throws -> HwFundingSignedTx? {
+        let identity = try await currentIdentity()
+        guard PubkyPublicKeyFormat.matches(identity, paymentIdentity), walletId != WalletScope.default,
+              hardwareTransactionLookup.hasWallet(walletId: walletId)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        return try await mutationLock.withLock {
+            guard try await PubkyPublicKeyFormat.matches(currentIdentity(), identity) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            let proofs = try await loadProofs()
+            guard let proof = proofs.first(where: {
+                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                    $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
+                    $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
+                    $0.proofData == nil && $0.onchainAcceptanceVerified != true
+            }), let raw = proof.hardwareSignedTransaction,
+            try SignedTransactionId.fromHex(raw) == proof.paymentIdentifier,
+            let fee = proof.hardwareMiningFeeSats, let rate = proof.hardwareFeeRate,
+            let spent = proof.hardwareTotalSpent
+            else { return nil }
+            return HwFundingSignedTx(serializedTx: raw, miningFeeSats: fee, feeRate: Float(rate), totalSpent: spent)
+        }
     }
 
     func retainHardwareOnchainCandidate(

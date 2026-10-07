@@ -507,7 +507,8 @@ final class HwSendCoordinator {
         satsPerVByte: UInt64,
         paymentDeadline: PaykitPreciseInstant? = nil,
         paymentRequestId: PaykitPaymentRequest.ID? = nil,
-        beforeFirstBroadcast: @escaping () async throws -> Void = {},
+        loadSignedPayment: @escaping () async throws -> HwFundingSignedTx? = { nil },
+        beforeFirstBroadcast: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         retainSignedPayment: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
         clearSignedPaymentBeforeDispatch: @escaping (HwFundingSignedTx) async -> Bool = { _ in true },
@@ -541,6 +542,12 @@ final class HwSendCoordinator {
                 }
             }
 
+            if pendingPayment == nil, let restored = try await loadSignedPayment() {
+                pendingPayment = PendingPayment(request: request, signedTx: restored, paymentRequestId: paymentRequestId)
+                pendingPayment?.isPreparedForBroadcast = true
+                pendingPayment?.hasBroadcastAttempted = true
+                isBroadcastUnresolved = true
+            }
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
                 signed = pendingPayment.signedTx
@@ -564,7 +571,7 @@ final class HwSendCoordinator {
             }
 
             if pendingPayment?.isPreparedForBroadcast != true {
-                try await beforeFirstBroadcast()
+                try await beforeFirstBroadcast(signed)
                 try Task.checkCancellation()
                 pendingPayment?.isPreparedForBroadcast = true
             }
