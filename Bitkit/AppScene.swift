@@ -361,6 +361,7 @@ struct AppScene: View {
     @State private var showRecoveryScreen = false
     /// Lets only a return from the background retry a failed node start, not a brief inactive phase.
     @State private var foregroundReturnTracker = ForegroundReturnTracker()
+    @State private var paykitLifecycleTask: Task<Void, Never>?
 
     private var nodeRestarter: NodeRestarter {
         NodeRestarter(
@@ -1176,6 +1177,14 @@ struct AppScene: View {
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
         let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
+
+        if newPhase != .inactive {
+            let previous = paykitLifecycleTask
+            paykitLifecycleTask = Task {
+                await previous?.value
+                await PrivatePaykitService.shared.setBackgroundWorkPaused(newPhase == .background)
+            }
+        }
 
         if newPhase == .background {
             if settings.pinEnabled {

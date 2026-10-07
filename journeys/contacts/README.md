@@ -58,6 +58,22 @@ Hold withdrawal in progress and foreground the app. It must not start another cl
 sharing on again before withdrawal finishes: publication must wait until the earlier cleanup ends,
 then leave sharing on. Repeat while a foreground cleanup is already running.
 
+## Background preparation
+
+With saved contacts and scheduled private preparation or retry work, press Home between SDK
+operations. Saved contacts must remain intact; scheduled preparation and retries pause before
+their next operation and resume on return to the app. Background the app while an SDK call is
+held in progress: that call must finish without cancellation. Delete the disposable profile while
+preparation is paused; returning to the app must not resume work for the old identity.
+
+Controlled SDK blocking and lifecycle-boundary observations require an instrumented fixture,
+which the standard journey runner does not provide. Record ordinary Home/resume separately;
+it does not prove every controlled case. Do not delete a profile containing data to preserve.
+
+On iOS, inactive transitions alone do not pause preparation. An admitted endpoint publication
+batch finishes its reservations and publication together, even after backgrounding. Explicit
+foreground preparation and cleanup remain ordered; scheduled work uses background priority.
+
 ## Foreground wait isolation
 
 Hold an unrelated contact's background preparation in progress, then open a saved, linked contact

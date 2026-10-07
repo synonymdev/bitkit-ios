@@ -77,6 +77,8 @@ actor PrivatePaykitService {
     var preparationTask: Task<Void, Never>?
     var pendingPreparationOperation: (([String], Bool) async -> Void)?
     var preparationGeneration = 0
+    var isBackgroundWorkPaused = false
+    var backgroundWorkWaiters: [UUID: AsyncStream<Void>.Continuation] = [:]
     var isDeletingProfile = false
     var pendingForceRefreshLightning = false
     var unavailableLinkRetryAt: [String: Date] = [:]
