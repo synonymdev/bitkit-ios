@@ -287,7 +287,8 @@ struct LnurlPayConfirm: View {
                     request: incomingPaymentRequest,
                     paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
                     paymentEndpointIdentifier: endpointIdentifier,
-                    kind: .lightning
+                    kind: .lightning,
+                    paymentTerms: app.paykitPaymentTerms
                 )
                 shouldCancelPaymentProof = true
             }
@@ -397,8 +398,8 @@ struct LnurlPayConfirm: View {
         }
         guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
         guard let amountSats = wallet.sendAmountSats,
-              request.acceptsPaymentAmount(amountSats),
-              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+              request.acceptsPaymentAmount(amountSats, paymentTerms: app.paykitPaymentTerms),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats, paymentTerms: app.paykitPaymentTerms)
         else {
             throw PaykitPaymentRequestError.amountMismatch
         }

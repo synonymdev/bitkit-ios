@@ -172,6 +172,8 @@ enum PubkyService {
         accountName: String,
         secretKeyHex: String,
         accountManager: WatchOnlyAccountManager? = nil,
+        approvedUsdtAddress: String? = nil,
+        usdtEndpoint: (() async throws -> PublicPaykitService.Endpoint)? = nil,
         ordinaryApproval: @escaping OrdinaryAuthApproval = { authUrl, capabilities, clientID, secretKeyHex in
             try await approveAuth(
                 authUrl: authUrl,
@@ -191,6 +193,12 @@ enum PubkyService {
         }
     ) async throws {
         guard authUrl == request.rawUrl else { throw PubkyServiceError.invalidAuthUrl }
+        let endpoint: PublicPaykitService.Endpoint?
+        if request.bitkitClaim?.sharesUsdt == true {
+            guard let usdtEndpoint, let approvedUsdtAddress else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            endpoint = try await usdtEndpoint()
+            guard endpoint?.value == approvedUsdtAddress else { throw PubkyAuthRequestError.invalidPaymentDetails }
+        } else { endpoint = nil }
         if let claim = request.bitkitClaim, claim.includesWatchOnlyAccount {
             let accountManager = accountManager ?? .shared
             let preparedClaim = try await accountManager.prepareUnsignedClaim(
@@ -210,7 +218,8 @@ enum PubkyService {
             }
 
             do {
-                try await companionApproval(authUrl, request.clientID, claim, preparedClaim.1, secretKeyHex)
+                let payload = try claim.unsignedPayload(account: preparedClaim.0, usdtEndpoint: endpoint)
+                try await companionApproval(authUrl, request.clientID, claim, payload, secretKeyHex)
             } catch {
                 if !didDeliverCompanionClaim(error: error) {
                     await cancelIncompleteAuthorization(
@@ -223,7 +232,8 @@ enum PubkyService {
 
             try await accountManager.markSetupActive(attempt: authorizationAttempt)
         } else if let claim = request.bitkitClaim {
-            try await companionApproval(authUrl, request.clientID, claim, nil, secretKeyHex)
+            let payload = try claim.unsignedPayload(account: nil, usdtEndpoint: endpoint)
+            try await companionApproval(authUrl, request.clientID, claim, payload, secretKeyHex)
         } else {
             try await ordinaryApproval(authUrl, request.capabilities, request.clientID, secretKeyHex)
         }
@@ -380,6 +390,8 @@ actor PaykitSdkService {
     }
 
     static let shared = PaykitSdkService()
+    /// Maximum plaintext size accepted by Paykit's pubky-noise transport.
+    static let maximumMessageBytes = 1000
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {

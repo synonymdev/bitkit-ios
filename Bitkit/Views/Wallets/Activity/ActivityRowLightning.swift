@@ -48,20 +48,13 @@ struct ActivityRowLightning: View {
     }
 
     var body: some View {
-        HStack(spacing: 16) {
+        ActivityRowContent(title: status, subtitle: description) {
             if let contact {
                 PubkyContactAvatar(contact: contact, size: 40)
             } else {
                 ActivityIcon(activity: .lightning(item), size: 40, context: .row)
             }
-
-            VStack(alignment: .leading, spacing: 2) {
-                BodyMSBText(status).lineLimit(1)
-                CaptionBText(description).lineLimit(1)
-            }
-
-            Spacer()
-
+        } amount: {
             MoneyCell(sats: amount, prefix: amountPrefix, enableHide: true)
         }
     }

@@ -21,7 +21,7 @@ enum PaykitIssuerInterop {
                 return onchainNetwork == network
             }
 
-            return methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl
+            return methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl || methodId == .usdtArbitrum
         }
     }
 

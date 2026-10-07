@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>UIDesignRequiresCompatibility</key>
+	<true/>
+	<key>USDT_BRIDGE_NETWORKS</key>
+	<string>$(USDT_BRIDGE_NETWORKS)</string>
+	<key>USDT_BUNDLER_URL</key>
+	<string>$(USDT_BUNDLER_URL)</string>
+	<key>USDT_DEPOSITS_URL</key>
+	<string>$(USDT_DEPOSITS_URL)</string>
+	<key>USDT_BRIDGES_URL</key>
+	<string>$(USDT_BRIDGES_URL)</string>
+	<key>USDT_RPC_URL</key>
+	<string>$(USDT_RPC_URL)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

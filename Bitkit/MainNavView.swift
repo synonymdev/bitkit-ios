@@ -76,6 +76,7 @@ struct MainNavView: View {
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(\.scenePhase) var scenePhase
 
     @State private var showClipboardAlert = false
@@ -342,6 +343,18 @@ struct MainNavView: View {
                 sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
             }
         }
+        .task(id: scenePhase) {
+            guard usdt.isConfigured, scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await usdt.refresh(includeHistory: true)
+                let pending = usdt.transfers.contains { $0.status == .pending }
+                try? await Task.sleep(for: .seconds(pending ? 10 : 30))
+            }
+        }
+        .onReceive(usdt.receivedTxPublisher) { tx in
+            guard navigation.currentRoute != .usdtWallet, !wallet.isRestoringWallet else { return }
+            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount))
+        }
         .onReceive(hwWalletManager.receivedTxPublisher) { tx in
             // New inbound transaction to a watched hardware wallet — show the received celebration.
             sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: tx.sats))
@@ -351,6 +364,11 @@ struct MainNavView: View {
             TabBar()
                 .ignoresSafeArea(.keyboard)
             DrawerView()
+        }
+        .onChange(of: sheets.activeSheetConfiguration?.id) { _, sheet in
+            if sheet != nil {
+                app.showDrawer = false
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -500,6 +518,7 @@ struct MainNavView: View {
                 case .savingsWallet: SavingsWalletScreen()
                 case .spendingWallet: SpendingWalletScreen()
                 case let .hardwareWallet(walletId): HardwareWalletScreen(walletId: walletId)
+                case .usdtWallet: UsdtWalletScreen()
                 case .scanner: ScannerScreen()
 
                 // Transfer

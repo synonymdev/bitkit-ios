@@ -429,16 +429,21 @@ struct PaykitSubscription: Identifiable, Hashable {
     struct Payment: Hashable {
         let billingPeriod: PaykitBillingPeriod
         let proofKind: PaykitPaymentProofKind?
+        let proofEventId: String
     }
 
     let paymentRequestId: String
     let counterparty: String
-    let amountValue: String
-    let amountSats: UInt64
+    let amount: PaykitAmount
+    let paymentReference: String
+    let pricing: PaykitRequestPricing
+    var amountValue: String {
+        amount.value
+    }
+
     let note: String?
     let createdAt: Date?
     let proposalExpiresAt: Date?
-    let hasPaymentDeadline: Bool
     let recurrence: PaykitSubscriptionRecurrence
     let metadata: PaykitSubscriptionMetadata
     let acceptedPaymentEndpointIdentifiers: [String]
@@ -447,9 +452,20 @@ struct PaykitSubscription: Identifiable, Hashable {
     let deliveryStatus: PaykitPaymentRequest.DeliveryStatus?
     var lifecycleState: Paykit.PaymentRequestLifecycleState
     let payments: [Payment]
+    private var verifiedUsdtPeriods: Set<PaykitBillingPeriod> = []
 
     var paidPeriods: [PaykitBillingPeriod] {
-        payments.map(\.billingPeriod)
+        payments.filter { isPayer || $0.proofKind != .usdt || verifiedUsdtPeriods.contains($0.billingPeriod) }.map(\.billingPeriod)
+    }
+
+    func withVerifiedUsdtPayments(_ proofs: [PaykitPaymentRequest.ID: Set<String>]) -> Self {
+        var subscription = self
+        subscription.verifiedUsdtPeriods = Set(payments.compactMap { payment in
+            let id = PaykitPaymentRequest.ID(paymentRequestId: paymentRequestId, counterparty: counterparty,
+                                             billingPeriodStartsAt: payment.billingPeriod.startsAt)
+            return proofs[id]?.contains(payment.proofEventId) == true ? payment.billingPeriod : nil
+        })
+        return subscription
     }
 
     var id: ID {
@@ -473,7 +489,6 @@ struct PaykitSubscription: Identifiable, Hashable {
 
     func isProposalActionable(at date: Date) -> Bool {
         isProposalVisible(at: date) &&
-            !hasPaymentDeadline &&
             recurrence.unit.isSupported &&
             recurrence.canMaterializePeriods &&
             !acceptedPaymentEndpointIdentifiers.isEmpty
@@ -561,9 +576,9 @@ struct PaykitSubscription: Identifiable, Hashable {
 
         guard let terms = record.terms,
               let recurrence = terms.recurrence.flatMap(PaykitSubscriptionRecurrence.init),
-              terms.amount.asset == PaykitIssuerInterop.bitcoinAsset,
-              let amountSats = PaykitPaymentRequest.sats(fromBitcoinAmount: terms.amount.value),
-              amountSats <= UInt64.max / 1000
+              let asset = PaykitAsset(rawValue: terms.amount.asset),
+              let amount = try? PaykitAmount(asset: asset, value: terms.amount.value),
+              asset != .btc || amount.atomic <= UInt64.max / 1000
         else { return nil }
 
         let proposalExpiresAt = terms.proposalExpiresAt.flatMap(PaykitPaymentRequest.parseDate)
@@ -573,12 +588,12 @@ struct PaykitSubscription: Identifiable, Hashable {
 
         paymentRequestId = record.paymentRequestId
         counterparty = record.counterparty
-        amountValue = terms.amount.value
-        self.amountSats = amountSats
+        self.amount = amount
+        paymentReference = terms.paymentReference.exportText()
+        pricing = PaykitRequestPricing(conversion: terms.conversion, deadline: terms.paymentDeadline, quotes: record.conversionQuotes)
         note = PaykitPaymentRequest.note(from: terms.metadata).map { String($0.prefix(256)) }
         createdAt = record.lastEventAt.flatMap(PaykitPaymentRequest.parseDate)
         self.proposalExpiresAt = proposalExpiresAt
-        hasPaymentDeadline = terms.paymentDeadline != nil
         self.recurrence = recurrence
         metadata = PaykitSubscriptionMetadata(terms.metadata)
         acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
@@ -598,7 +613,8 @@ struct PaykitSubscription: Identifiable, Hashable {
             else { continue }
             paymentsByPeriod[billingPeriod] = Payment(
                 billingPeriod: billingPeriod,
-                proofKind: PaykitPaymentProofKind(paymentEndpointIdentifier: proof.paymentEndpointIdentifier)
+                proofKind: PaykitPaymentProofKind(paymentEndpointIdentifier: proof.paymentEndpointIdentifier),
+                proofEventId: proof.eventId
             )
         }
         payments = paymentsByPeriod.values.sorted { $0.billingPeriod.startsAt < $1.billingPeriod.startsAt }
@@ -620,7 +636,7 @@ struct PaykitSubscription: Identifiable, Hashable {
     /// The period that accepting at `acceptedAt` makes due on the schedule clock `date`; `acceptedAt` is real time, which
     /// differs from `date` only while the subscription clock offset is on.
     func paymentDueOnAcceptance(at date: Date, acceptedAt: Date? = nil) -> PaykitPaymentRequest? {
-        guard isPayer, !hasPaymentDeadline else { return nil }
+        guard isPayer else { return nil }
         let acceptedAt = PaykitPreciseInstant(date: acceptedAt ?? date)
         guard let period = recurrence.periods(through: date, acceptedAt: acceptedAt).first else { return nil }
         return PaykitPaymentRequest(subscription: self, billingPeriod: period, lifecycleState: .activeRecurring)
@@ -748,7 +764,6 @@ actor PaykitSubscriptionNotificationScheduler {
         let previousClockOffset = lastClockOffset
         let eligibleSubscriptions = subscriptions.filter {
             $0.isPayer &&
-                !$0.hasPaymentDeadline &&
                 $0.recurrence.unit.isSupported &&
                 acceptedAt[$0.id] != nil
         }

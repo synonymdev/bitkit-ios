@@ -28,21 +28,34 @@ struct ContactPaymentContext: Equatable {
     let id: UUID
     let publicKey: String
     let privatePaymentContext: PrivatePaykitPaymentContext?
-    let incomingPaymentRequest: PaykitPaymentRequest?
+    var incomingPaymentRequest: PaykitPaymentRequest?
     let isInitialSubscriptionPayment: Bool
+    let endpoints: [PublicPaykitService.Endpoint]
+
+    var requiresAssetSelection: Bool {
+        endpoints.contains { $0.methodId == .usdtArbitrum } || incomingPaymentRequest.map { $0.amount.asset != .btc } == true
+    }
+
+    func prefersUsdt(onchainBalanceSats: UInt64) -> Bool {
+        endpoints.contains { $0.methodId == .usdtArbitrum } &&
+            (incomingPaymentRequest.map { $0.amount.asset != .btc } == true ||
+                !endpoints.contains { $0.methodId != .usdtArbitrum } || onchainBalanceSats == 0)
+    }
 
     init(
         id: UUID = UUID(),
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext? = nil,
         incomingPaymentRequest: PaykitPaymentRequest? = nil,
-        isInitialSubscriptionPayment: Bool = false
+        isInitialSubscriptionPayment: Bool = false,
+        endpoints: [PublicPaykitService.Endpoint] = []
     ) {
         self.id = id
         self.publicKey = publicKey
         self.privatePaymentContext = privatePaymentContext
         self.incomingPaymentRequest = incomingPaymentRequest
         self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
+        self.endpoints = endpoints
     }
 }
 
@@ -96,6 +109,9 @@ class AppViewModel: ObservableObject {
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPaymentForInsufficientBalance = false
+    @Published var paykitUsesUsdt = false
+    @Published var paykitReviewedAmount: PaykitAmount?
+    @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -567,6 +583,23 @@ extension AppViewModel {
             }
         }
 
+        if let context = claimedContactPaymentContext, context.requiresAssetSelection {
+            resetSendState(preservingContactPaymentContext: true)
+            for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
+                switch try await decode(invoice: endpoint.paymentRequest) {
+                case let .onChain(invoice): scannedOnchainInvoice = invoice
+                case let .lightning(invoice): scannedLightningInvoice = invoice
+                case let .lnurlPay(data): lnurlPayData = data
+                default: break
+                }
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
+            }
+            paykitUsesUsdt = context.prefersUsdt(onchainBalanceSats: lightningService.balances?.spendableOnchainBalanceSats ?? 0) ||
+                context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
+            selectedWalletToPayFrom = scannedLightningInvoice != nil || lnurlPayData != nil ? .lightning : .onchain
+            return
+        }
+
         let rawUri = uri
         let sourceURI = rawUri.removingLightningSchemes()
         let uri = PubkyAuthRequest.normalizedProtocolURL(sourceURI)
@@ -652,7 +685,7 @@ extension AppViewModel {
             data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
-        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
+        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(to: .btc, at: Date()).amount.atomic
         let paymentState = scanPaymentOperations.state()
 
         if scope == .onchainPayments {
@@ -897,7 +930,7 @@ extension AppViewModel {
     }
 
     func handleLnurlPayInvoice(_ data: LnurlPayData) throws {
-        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
+        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(to: .btc, at: Date()).amount.atomic
         if let requestedAmount,
            requestedAmount < data.minSendableSat || requestedAmount > data.maxSendableSat
         {
@@ -1053,10 +1086,13 @@ extension AppViewModel {
     }
 
     var hasSendPaymentTarget: Bool {
-        scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
+        paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }
 
     func resetSendState(preservingContactPaymentContext: Bool = false) {
+        paykitUsesUsdt = false
+        paykitReviewedAmount = nil
+        paykitPaymentTerms = nil
         scannedLightningInvoice = nil
         scannedOnchainInvoice = nil
         selectedWalletToPayFrom = .onchain // Reset to default

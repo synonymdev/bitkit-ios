@@ -62,7 +62,7 @@ struct ActivityRow: View {
     }
 
     var body: some View {
-        Group {
+        ActivityRowContainer {
             switch item {
             case let .lightning(activity):
                 ActivityRowLightning(item: activity, contact: rowContactAvatar, titleOverride: rowTitleOverride)
@@ -70,8 +70,33 @@ struct ActivityRow: View {
                 ActivityRowOnchain(item: activity, feeEstimates: feeEstimates, contact: rowContactAvatar, titleOverride: rowTitleOverride)
             }
         }
-        .padding(16)
-        .background(Color.gray6)
-        .cornerRadius(16)
+    }
+}
+
+struct ActivityRowContainer<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content().padding(16).background(Color.gray6).cornerRadius(16)
+    }
+}
+
+struct ActivityRowContent<Icon: View, Amount: View>: View {
+    let title: String
+    let subtitle: String
+    @ViewBuilder var icon: () -> Icon
+    @ViewBuilder var amount: () -> Amount
+
+    var body: some View {
+        HStack(spacing: 16) {
+            icon()
+            VStack(alignment: .leading, spacing: 2) {
+                BodyMSBText(title).lineLimit(1)
+                CaptionBText(subtitle).lineLimit(1)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            amount()
+        }
     }
 }

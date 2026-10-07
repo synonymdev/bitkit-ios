@@ -265,8 +265,8 @@ struct AddContactView: View {
             let result = try await PublicPaykitService.beginPayment(to: normalizedPublicKey)
 
             switch result {
-            case let .opened(paymentRequest, _):
-                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
+            case let .opened(paymentRequest, _, endpoints):
+                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey, endpoints: endpoints)
             case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
@@ -285,8 +285,8 @@ struct AddContactView: View {
     }
 
     @MainActor
-    private func openContactPayment(paymentRequest: String, publicKey: String) async -> Bool {
-        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+    private func openContactPayment(paymentRequest: String, publicKey: String, endpoints: [PublicPaykitService.Endpoint]) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey, endpoints: endpoints)
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
 
         do {

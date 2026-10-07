@@ -44,6 +44,10 @@ enum AppReset {
         // Before the paired devices are wiped, so a reconnect still running cannot save one back.
         await hardwareWallets?.resetForWipe()
 
+        var usdtCleanupError: Error?
+        do { try await wallet.usdtWallet.wipe() }
+        catch { usdtCleanupError = error }
+
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
 
@@ -82,6 +86,8 @@ enum AppReset {
         // Avoid showing splash during when app is reset
         session.skipSplashOnce = true
         session.bump()
+
+        if let usdtCleanupError { throw usdtCleanupError }
 
         // Show toast
         app.toast(

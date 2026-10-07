@@ -39,30 +39,12 @@ struct SendEnterManuallyView: View {
             CaptionMText(t("wallet__send_to"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            ZStack(alignment: .topLeading) {
-                if app.manualEntryInput.isEmpty {
-                    TitleText(t("wallet__send_address_placeholder"), textColor: .textSecondary)
-                        .padding(20)
-                }
-
-                TextEditor(text: manualEntryBinding)
-                    .focused($isTextEditorFocused)
-                    .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
-                    .padding(20)
-                    .frame(maxHeight: .infinity)
-                    .scrollContentBackground(.hidden)
-                    .font(.custom(Fonts.bold, size: 22))
-                    .foregroundColor(.textPrimary)
-                    .accentColor(.brandAccent)
-                    .submitLabel(.done)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .dismissKeyboardOnReturn(text: manualEntryBinding, isFocused: $isTextEditorFocused)
-                    .accessibilityValue(app.manualEntryInput)
-                    .accessibilityIdentifier("RecipientInput")
-            }
-            .background(Color.white06)
-            .cornerRadius(8)
+            PaymentAddressInput(
+                text: manualEntryBinding,
+                isFocused: $isTextEditorFocused,
+                placeholder: t("wallet__send_address_placeholder"),
+                testIdentifier: "RecipientInput"
+            )
 
             Spacer(minLength: 16)
 
