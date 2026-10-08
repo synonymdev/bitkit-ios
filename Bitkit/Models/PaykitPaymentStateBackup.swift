@@ -291,6 +291,9 @@ struct PaykitPaymentStateBackup: Codable {
             guard rates?.keys.allSatisfy({ validTxid($0) && candidateTxids.contains($0) }) != false else {
                 throw invalidBackup("Candidate fee does not belong to this operation")
             }
+            if state == .accepted, txid != candidateTxids.first, txid.flatMap({ rates?[$0] }) == nil {
+                throw invalidBackup("Missing accepted candidate fee rate")
+            }
             let restoredRequest = try requestId.map { value in
                 let date = try value.billingPeriodStartsAt.map { try parseTimestamp($0).date }
                 return PaykitPaymentRequest.ID(paymentRequestId: value.paymentRequestId, counterparty: value.counterparty,

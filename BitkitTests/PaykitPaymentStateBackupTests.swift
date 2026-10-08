@@ -171,7 +171,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         }
         var foreignProof = try XCTUnwrap(proofs.first)
         foreignProof = PendingPaykitPaymentProof(identity: "pubky" + String(repeating: "y", count: 52), requestId: foreignProof.requestId,
-                                                 paymentAppId: "bitkit", paymentEndpointIdentifier: foreignProof.paymentEndpointIdentifier, kind: .onchain,
+                                                 paymentAppId: "bitkit", paymentEndpointIdentifier: foreignProof.paymentEndpointIdentifier,
+                                                 kind: .onchain,
                                                  paymentStarted: true, paymentIdentifier: foreignProof.paymentIdentifier, proofData: nil,
                                                  onchainAddress: foreignProof.onchainAddress, onchainAmountSats: foreignProof.onchainAmountSats)
         XCTAssertThrowsError(try wire.restored(wallet: Self.goldenWallet(), proofs: [foreignProof]))
@@ -220,12 +221,40 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         }
     }
 
+    func testAcceptedSuccessorBackupRequiresItsFeeRate() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let state = try XCTUnwrap(envelope.paykitPaymentState)
+        let wire = try XCTUnwrap(state.activeOnchainAttempt)
+        let proofs = try state.pendingProofs.map { try $0.restored() }
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        let original = try XCTUnwrap(wire.candidateTxids.first)
+        let successor = try XCTUnwrap(wire.candidateTxids.last)
+        object["status"] = "accepted"
+        object["txid"] = successor
+        for rates: [String: String]? in [nil, [:], [original: "2"]] {
+            object["candidateFeeRates"] = rates
+            let backup = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                                  from: JSONSerialization.data(withJSONObject: object))
+            XCTAssertThrowsError(try backup.restored(wallet: Self.goldenWallet(), proofs: proofs))
+        }
+        object["candidateFeeRates"] = [successor: "4"]
+        let valid = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                             from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(try valid.restored(wallet: Self.goldenWallet(), proofs: proofs).0.recoveryContext?.feeRate(for: successor), 4)
+        object["candidateFeeRates"] = nil
+        object["txid"] = original
+        let firstWinner = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                                   from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(try firstWinner.restored(wallet: Self.goldenWallet(), proofs: proofs).0.recoveryContext?.feeRate(for: original), 2)
+    }
+
     func testAcceptedBackupRequiresMatchingVerifiedProofData() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
         let state = try XCTUnwrap(envelope.paykitPaymentState)
         let wire = try XCTUnwrap(state.activeOnchainAttempt)
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
         object["status"] = "accepted"
+        object["candidateFeeRates"] = try [XCTUnwrap(wire.txid): "4"]
         let accepted = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
                                                 from: JSONSerialization.data(withJSONObject: object))
         var proof = try XCTUnwrap(state.pendingProofs.first).restored()
