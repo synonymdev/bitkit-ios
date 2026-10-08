@@ -283,7 +283,7 @@ struct PubkyAuthApprovalSheet: View {
                     trustWarning
                         .padding(.bottom, 16)
 
-                    if let homeserver = config.request.homeserverPublicKey {
+                    if createsIdentity, let homeserver = config.request.homeserverPublicKey {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("pubky_auth__homeserver"), textColor: .white64)
                             BodyMSBText(homeserver)
