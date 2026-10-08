@@ -7,6 +7,11 @@ screens (Send, Transfer→Spending, Receiving capacity, External node).
 A fifth screen shares that path — the hardware Transfer To Spending amount. It needs a paired device,
 so its journey lives in [`../hardware-wallet/transfer-to-spending-over-max.xml`](../hardware-wallet/transfer-to-spending-over-max.xml).
 
+`custom-fee-wallet-switch.xml` covers adjacent send preparation: a custom fee switches Spending to
+Savings, with manual or automatic coin selection after returning through the fee picker. It requires
+a unified invoice and balances on both rails, but never submits a payment. This two-stage return is
+iOS-only; Android applies the fee and returns directly to confirmation.
+
 ## What the feature does
 - Typing a digit that would push the amount **over the cap is rejected** — the display stays at the
   largest value still within the cap (e.g. tapping `9` repeatedly stops at `9 999` when the cap is

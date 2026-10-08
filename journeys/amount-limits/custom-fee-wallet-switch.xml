@@ -4,7 +4,8 @@
     after returning through the fee picker. Use a dedicated simulator and disposable regtest wallet
     with sufficient Savings and Spending balances, manual coin selection enabled, and a valid unified
     invoice payable from either balance. Never swipe to pay or authorize a payment in this journey.
-    This covers iOS-specific fee navigation.
+    This two-stage return through the fee picker is iOS-specific. Android returns directly to
+    confirmation when applying a custom fee, so it has no intermediate fee-picker wait to check.
   </description>
   <actions>
     <action>Open the unified invoice and continue to confirmation (id "SendConfirm") with Spending selected</action>
