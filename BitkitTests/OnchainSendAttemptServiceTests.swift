@@ -470,6 +470,73 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    func testCancelledRetryDropsOnlyItsUnsubmittedCandidateAndOriginalCanComplete() async throws {
+        for walletChanges in [false, true] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                       satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+            let original = try XCTUnwrap(store.snapshot().first)
+            let originalTxid = try XCTUnwrap(original.txid)
+            sender.txid = String(repeating: "cd", count: 32)
+            do {
+                _ = try await service.retrySamePayment(
+                    using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
+                    satsPerVbyte: 2, authorize: { _, _ in
+                        if walletChanges { sender.currentWalletIndex = 1 }
+                        else { throw CancellationError() }
+                    }
+                )
+                XCTFail("Pre-dispatch exit submitted the successor")
+            } catch {}
+            let retained = try XCTUnwrap(store.snapshot().first)
+            XCTAssertEqual(retained.id, original.id)
+            XCTAssertEqual(retained.recoveryContext?.inputs, original.recoveryContext?.inputs)
+            XCTAssertEqual(retained.recoveryContext?.candidateTxids, [originalTxid])
+            XCTAssertNil(retained.recoveryContext?.candidateFeeRates?[sender.txid])
+            XCTAssertEqual(sender.broadcasts, 1)
+            XCTAssertTrue(retained.blocksNewSend)
+            let restarted = OnchainSendAttemptService(store: store)
+            let observed = try await restarted.observeTransaction(txid: originalTxid, walletId: original.walletId)
+            XCTAssertTrue(observed, "an undispatched successor must not suppress the original received event")
+            XCTAssertEqual(store.snapshot().first?.txid, originalTxid)
+            XCTAssertEqual(store.snapshot().first?.status, .accepted)
+        }
+    }
+
+    func testCancelledRetryCleanupFailureRetainsTheOriginalGuard() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        do {
+            _ = try await service.retrySamePayment(
+                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                satsPerVbyte: 2, authorize: { _, _ in
+                    store.failSave = true
+                    throw CancellationError()
+                }
+            )
+            XCTFail("Failed cleanup submitted the successor")
+        } catch let error as OnchainSendAttemptError {
+            guard case .unresolved = error else { return XCTFail("Failed cleanup was not reported as unresolved") }
+        } catch { XCTFail("Failed cleanup was not reported as unresolved: \(error)") }
+        store.failSave = false
+        XCTAssertEqual(sender.broadcasts, 1)
+        XCTAssertEqual(store.snapshot().first?.id, original.id)
+        XCTAssertTrue(store.snapshot().first?.blocksNewSend == true)
+        do {
+            _ = try await service.send(using: sender, address: "different", amountSats: 1,
+                                       satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+            XCTFail("Failed cleanup released the original payment")
+        } catch {}
+        XCTAssertEqual(sender.broadcasts, 1)
+    }
+
     func testAmbiguousGuardWithoutReceiptCannotRetryAndWrongWalletCannotPromote() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)

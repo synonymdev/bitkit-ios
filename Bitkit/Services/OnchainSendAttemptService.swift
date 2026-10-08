@@ -495,7 +495,8 @@ actor OnchainSendAttemptService {
         guard var attempt = try currentAttempt(), attempt.id == original.id,
               attempt.recoveryContext == recovery
         else { throw OnchainSendAttemptError.unresolved }
-        if !attempt.containsCandidate(prepared.txid) {
+        let addedCandidate = !attempt.containsCandidate(prepared.txid)
+        if addedCandidate {
             attempt.recoveryContext?.candidateTxids.append(prepared.txid)
         }
         if let previousRate = attempt.recoveryContext?.candidateFeeRates?[prepared.txid.lowercased()],
@@ -517,10 +518,21 @@ actor OnchainSendAttemptService {
         // One authorization, after preparation and immediately before native dispatch.
         // It validates the original payer/request/order and the chosen fee policy without
         // repeating initial proof-start/consume side effects.
-        try await authorize(attempt, authorizedFeeRate)
-        try checkWallet(sender, index: index, node: node)
-        if let winner = try winningResult(attemptId: original.id) {
-            return winner
+        do {
+            try Task.checkCancellation()
+            try await authorize(attempt, authorizedFeeRate)
+            try Task.checkCancellation()
+            try checkWallet(sender, index: index, node: node)
+            if let winner = try winningResult(attemptId: original.id) {
+                try discardUnsubmittedRetryCandidate(prepared.txid, attemptId: original.id, wasAdded: addedCandidate)
+                return winner
+            }
+        } catch {
+            // The native dispatch closure has not been entered. Remove only the new
+            // candidate from this retry; earlier submitted candidates remain guarded.
+            do { try discardUnsubmittedRetryCandidate(prepared.txid, attemptId: original.id, wasAdded: addedCandidate) }
+            catch { throw OnchainSendAttemptError.unresolved }
+            throw error
         }
         let result: OnchainSendResult
         do { result = try await normalized(prepared.broadcast(), candidate: prepared.txid) }
@@ -528,6 +540,24 @@ actor OnchainSendAttemptService {
         do { try record(result, attemptId: original.id) }
         catch { Logger.warn("Could not persist the known recovery outcome; original inputs remain guarded", context: "OnchainSendAttempt") }
         return (try? winningResult(attemptId: original.id)) ?? result
+    }
+
+    private func discardUnsubmittedRetryCandidate(_ txid: String, attemptId: UUID, wasAdded: Bool) throws {
+        guard wasAdded else { return }
+        guard var current = try currentAttempt(), current.id == attemptId, var recovery = current.recoveryContext else {
+            throw OnchainSendAttemptError.unresolved
+        }
+        guard current.containsCandidate(txid) else { return }
+        // Never overwrite an accepted winner or remove an earlier submitted candidate.
+        guard !(current.status == .accepted && current.txid?.caseInsensitiveCompare(txid) == .orderedSame),
+              recovery.candidateTxids.count > 1,
+              recovery.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame
+        else { return }
+        recovery.candidateTxids.removeAll { $0.caseInsensitiveCompare(txid) == .orderedSame }
+        recovery.candidateFeeRates?.removeValue(forKey: txid.lowercased())
+        current.recoveryContext = recovery
+        try store.save([current])
+        knownAttempt = current
     }
 
     private func checkWallet(_ sender: any OnchainSending, index: Int, node: AnyObject?) throws {
