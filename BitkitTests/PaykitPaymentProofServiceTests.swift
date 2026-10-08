@@ -134,6 +134,65 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    func testRecurringRecoveryKeepsOriginalUnpaidBillingPeriod() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
+            anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
+        )
+        let record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).first)
+        let period = try XCTUnwrap(request.billingPeriod)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amountSats
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amountSats,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let original = try XCTUnwrap(attemptsStore.snapshot().first)
+        let proof = PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint,
+            kind: .onchain, billingPeriod: period, paymentStarted: true,
+            paymentIdentifier: original.txid, proofData: nil, onchainAddress: onchainAddress, onchainAmountSats: request.amountSats
+        )
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store, attemptService: attempts)
+        let authorized = try await service.authorizeOnchainRecovery(original, restoreStartedProof: false)
+        XCTAssertEqual(authorized.id, request.id)
+        XCTAssertEqual(authorized.billingPeriod, period)
+        XCTAssertEqual(authorized.amountSats, original.amountSats)
+        let saved = await store.snapshot()
+        let submissions = await sdk.submissionCount()
+        XCTAssertEqual(saved, [proof])
+        XCTAssertEqual(submissions, 0)
+        XCTAssertEqual(sender.broadcasts, 1)
+        let settledProof = try paymentProofRecord(endpoint: endpoint, kind: .onchain,
+                                                 data: try XCTUnwrap(original.txid), billingPeriod: period.sdkValue)
+        let invalidRecords = [
+            try paymentRequestRecord(endpoints: [endpoint], paymentProofs: [settledProof], state: .activeRecurring, recurrence: recurrence),
+            try paymentRequestRecord(endpoints: [endpoint], state: .canceled, recurrence: recurrence),
+            try paymentRequestRecord(endpoints: [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
+                                     state: .activeRecurring, recurrence: recurrence),
+        ]
+        for invalid in invalidRecords {
+            let invalidSdk = PaymentProofSdkMock(identity: identity, records: [invalid])
+            let invalidService = paymentProofService(sdk: invalidSdk, store: store, attemptService: attempts)
+            do {
+                _ = try await invalidService.authorizeOnchainRecovery(original, restoreStartedProof: false)
+                XCTFail("Authorized a settled, canceled or changed-endpoint recurring payment")
+            } catch {}
+            let unchanged = await store.snapshot()
+            let invalidSubmissions = await invalidSdk.submissionCount()
+            XCTAssertEqual(unchanged, [proof])
+            XCTAssertEqual(invalidSubmissions, 0)
+        }
+        XCTAssertEqual(sender.broadcasts, 1)
+    }
+
     func testHardwarePredispatchReleaseMatchesOnlyOriginalProofAndFailsClosedOnSave() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -1190,10 +1249,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await sdk.waitForSubmissionStart()
         await sdk.setIdentityAvailable(false)
         try await attempts.acknowledgeLocalFollowup(txid: txid)
-        _ = try await attempts.admit(
-            walletId: "node-0", requestId: nil, orderId: nil,
-            address: "bcrt1qnew", amountSats: 9000, isMaxAmount: false
-        )
+        let laterSender = PreparedAttemptNodeMock()
+        laterSender.amount = 9000
+        _ = try await attempts.send(using: laterSender, address: "bcrt1qnew", amountSats: 9000,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
         let countBefore = await sdk.submissionCount()
         await sdk.setIdentityAvailable(true)
         await sdk.setSubmissionFailure(false)
@@ -1205,7 +1264,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let submitted = await sdk.lastSubmission()
         XCTAssertGreaterThan(countAfter, countBefore)
         XCTAssertEqual(try proofValues(XCTUnwrap(submitted).proof.exportText()), ["data": txid, "type": PaykitPaymentProofKind.onchain.rawValue])
-        XCTAssertEqual(attemptStore.snapshot().first?.status, .pending, "Earlier paid proof mutated the later send guard")
+        XCTAssertEqual(attemptStore.snapshot().first?.status, .unknown, "Earlier paid proof mutated the later send guard")
     }
 
     func testOnchainProofWriterRequiresExactPositiveAttemptEvidence() async throws {

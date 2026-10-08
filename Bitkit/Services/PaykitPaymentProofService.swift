@@ -465,11 +465,26 @@ actor PaykitPaymentProofService {
         guard let record = records.first(where: {
             $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
                 PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
-        }), let request = PaykitPaymentRequest(record: record, now: Date()),
-        request.id == requestId, request.amountSats == attempt.amountSats, !request.requiresAcceptance,
-        request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier),
-        !request.isExpired(at: Date()), record.state != .proofSubmitted,
-        !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
+        }) else { throw PaykitPaymentRequestError.requestUnavailable }
+        let now = Date()
+        let request: PaykitPaymentRequest
+        if let period = proof.billingPeriod {
+            guard let subscription = PaykitSubscription(record: record), subscription.isPayer,
+                  subscription.isActive(at: now), !subscription.hasPaymentDeadline,
+                  subscription.recurrence.unit.isSupported, subscription.recurrence.canMaterializePeriods,
+                  period.startsAt <= now, subscription.recurrence.contains(period)
+            else { throw PaykitPaymentRequestError.requestUnavailable }
+            request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+        } else {
+            guard let original = PaykitPaymentRequest(record: record, now: now) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            request = original
+        }
+        guard request.id == requestId, request.amountSats == attempt.amountSats, !request.requiresAcceptance,
+              request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier),
+              !request.isExpired(at: Date()), record.state != .proofSubmitted,
+              !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
         else { throw PaykitPaymentRequestError.requestUnavailable }
         try await requireRecoveryPayer(payer)
         if restoreStartedProof && !proof.paymentStarted {
