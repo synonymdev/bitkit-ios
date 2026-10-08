@@ -396,6 +396,61 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(store.snapshot().first?.blocksNewSend, true)
     }
 
+    func testRetryApprovesExactPreparedFeeBeforeAuthenticationAndDispatch() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        sender.miningFee = 800
+        var approved = false
+        _ = try await service.retrySamePayment(
+            using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+            satsPerVbyte: 2, approvePrepared: { prepared in
+                XCTAssertEqual(prepared.miningFeeSats, 800)
+                XCTAssertEqual(prepared.recipientAmountSats, original.amountSats)
+                XCTAssertEqual(prepared.txid, sender.txid)
+                XCTAssertEqual(sender.broadcasts, 1)
+                approved = true
+            }, authorize: { _, _ in XCTAssertTrue(approved) }
+        )
+        XCTAssertEqual(sender.preparations, 2)
+        XCTAssertEqual(sender.broadcasts, 2)
+        XCTAssertEqual(store.snapshot().first?.txid, sender.txid)
+    }
+
+    func testCancelledFeeApprovalDoesNotSubmitOrRetainNewCandidate() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        var authenticated = false
+        do {
+            _ = try await service.retrySamePayment(
+                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                satsPerVbyte: 2, approvePrepared: { _ in throw CancellationError() },
+                authorize: { _, _ in authenticated = true }
+            )
+            XCTFail("Cancelled fee approval must stop the retry")
+        } catch is CancellationError {}
+        XCTAssertFalse(authenticated)
+        XCTAssertEqual(sender.broadcasts, 1)
+        XCTAssertEqual(store.snapshot().first, original)
+        do {
+            _ = try await service.retrySamePayment(
+                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                satsPerVbyte: 1000, authorize: { _, _ in authenticated = true }
+            )
+            XCTFail("Recovery must share the normal fee ceiling")
+        } catch {}
+        XCTAssertEqual(sender.preparations, 2)
+    }
+
     func testMaxRetryRejectsFeeIncreaseBeforePreparationOrAuthorization() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)

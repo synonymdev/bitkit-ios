@@ -486,6 +486,7 @@ actor OnchainSendAttemptService {
     func retrySamePayment(
         using sender: any OnchainSending, context: OnchainSendPendingContext, satsPerVbyte: UInt32? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
+        approvePrepared: (PreparedOnchainSendDispatch) async throws -> Void = { _ in },
         authorize: (OnchainSendAttempt, UInt32) async throws -> Void
     ) async throws -> OnchainSendResult {
         guard nativeDispatchInProgress == nil, let original = try currentAttempt(),
@@ -499,7 +500,7 @@ actor OnchainSendAttemptService {
         nativeDispatchInProgress = original.id
         defer { nativeDispatchInProgress = nil }
         let authorizedFeeRate = satsPerVbyte ?? recovery.satsPerVbyte
-        guard authorizedFeeRate > 0 else { throw OnchainSendAttemptError.unresolved }
+        guard authorizedFeeRate > 0, authorizedFeeRate <= 999 else { throw OnchainSendAttemptError.unresolved }
         // Send-all already spends the original inputs minus its fee. A bump cannot
         // preserve both the exact input set and the original recipient amount.
         guard !original.isMaxAmount || authorizedFeeRate == recovery.satsPerVbyte else {
@@ -558,6 +559,8 @@ actor OnchainSendAttemptService {
         // It validates the original payer/request/order and the chosen fee policy without
         // repeating initial proof-start/consume side effects.
         do {
+            try Task.checkCancellation()
+            try await approvePrepared(prepared)
             try Task.checkCancellation()
             try await authorize(attempt, authorizedFeeRate)
             try Task.checkCancellation()

@@ -41,6 +41,7 @@ struct SendPendingScreen: View {
 
     @EnvironmentObject private var activityList: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var settings: SettingsViewModel
@@ -58,6 +59,8 @@ struct SendPendingScreen: View {
     @State private var retryFeeRate = ""
     @State private var retryingOnchain = false
     @State private var pendingOnchainProof: PendingPaykitPaymentProof?
+    @State private var retryApprovalMessage: String?
+    @State private var retryApprovalContinuation: CheckedContinuation<Bool, Never>?
 
     private var pendingHardwareWalletId: String? {
         hardwareWalletId ?? pendingOnchainProof?.onchainWalletId.flatMap { $0 == WalletScope.default ? nil : $0 }
@@ -133,14 +136,14 @@ struct SendPendingScreen: View {
                 TextField(t("wallet__onchain_retry_fee"), text: $retryFeeRate).keyboardType(.numberPad)
             }
             Button(t("common__cancel"), role: .cancel) {}
-            Button(t("common__retry")) {
-                guard let rate = UInt32(retryFeeRate), rate > 0 else {
+            Button(t("common__continue")) {
+                guard let rate = UInt32(retryFeeRate), rate > 0, rate <= 999 else {
                     app.toast(type: .warning, title: t("wallet__onchain_retry_invalid_fee"))
                     return
                 }
                 Task { await retryOriginalPayment(feeRate: rate) }
             }
-            .disabled(UInt32(retryFeeRate).map { $0 > 0 } != true)
+            .disabled(UInt32(retryFeeRate).map { $0 > 0 && $0 <= 999 } != true)
         } message: {
             Text(t(onchainAttempt?.isMaxAmount == true ? "wallet__onchain_retry_max_note" : "wallet__onchain_retry_note", variables: [
                 "amount": CurrencyFormatter.formatSats(onchainAttempt?.amountSats ?? 0),
@@ -148,6 +151,16 @@ struct SendPendingScreen: View {
                 "fee": String(onchainAttempt?.recoveryContext?.satsPerVbyte ?? 1),
             ]))
         }
+        .alert(t("wallet__onchain_retry_original"), isPresented: Binding(
+            get: { retryApprovalMessage != nil },
+            set: { if !$0 { finishRetryApproval(false) } }
+        )) {
+            Button(t("common__cancel"), role: .cancel) { finishRetryApproval(false) }
+            Button(t("wallet__send_yes")) { finishRetryApproval(true) }
+        } message: {
+            Text(retryApprovalMessage ?? "")
+        }
+        .onDisappear { finishRetryApproval(false) }
         .navigationBarHidden(true)
         .allowSwipeBack(false)
         .padding(.horizontal, 16)
@@ -256,6 +269,11 @@ struct SendPendingScreen: View {
         defer { retryingOnchain = false }
         let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
         do {
+            let feeLimits = await wallet.getFeeLimits()
+            guard feeRate > 0, feeRate <= feeLimits.maxFee else {
+                app.toast(type: .warning, title: t("wallet__onchain_retry_invalid_fee"))
+                return
+            }
             // Capture the original request deadline without mutating its proof before authentication.
             let paymentDeadline: PaykitPreciseInstant? = if original.requestId != nil {
                 try await proofService.authorizeOnchainRecovery(original, restoreStartedProof: false).paymentDeadline
@@ -264,6 +282,18 @@ struct SendPendingScreen: View {
             }
             let result = try await attemptService.retrySamePayment(
                 using: LightningService.shared, context: context, satsPerVbyte: feeRate, paymentDeadline: paymentDeadline,
+                approvePrepared: { prepared in
+                    guard let fee = prepared.miningFeeSats else { throw OnchainSendAttemptError.retryUnavailable }
+                    let message = original.address + "\n" + CurrencyFormatter.formatSats(original.amountSats) + "\n" +
+                        t("wallet__send_fee_total", variables: ["feeSats": String(fee)])
+                    guard await requestRetryApproval(message) else { throw CancellationError() }
+                    if let usd = currency.convert(sats: fee, to: "USD"), usd.value > 10 {
+                        guard await requestRetryApproval(t("wallet__send_dialog4")) else { throw CancellationError() }
+                    }
+                    if fee > original.amountSats / 2 {
+                        guard await requestRetryApproval(t("wallet__send_dialog3")) else { throw CancellationError() }
+                    }
+                },
                 authorize: { attempt, _ in
                     if settings.requirePinForPayments && settings.pinEnabled {
                         if settings.useBiometrics && BiometricAuth.isAvailable {
@@ -301,6 +331,26 @@ struct SendPendingScreen: View {
             try? await refreshOriginalOutcome(context: context)
             app.toast(error is NodeError ? OnchainSendAttemptError.retryUnavailable : error)
         }
+    }
+
+    @MainActor
+    private func requestRetryApproval(_ message: String) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                retryApprovalContinuation = continuation
+                retryApprovalMessage = message
+            }
+        } onCancel: {
+            Task { @MainActor in finishRetryApproval(false) }
+        }
+    }
+
+    private func finishRetryApproval(_ approved: Bool) {
+        let continuation = retryApprovalContinuation
+        retryApprovalContinuation = nil
+        retryApprovalMessage = nil
+        continuation?.resume(returning: approved)
     }
 
     @MainActor

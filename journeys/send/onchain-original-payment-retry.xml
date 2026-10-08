@@ -1,31 +1,28 @@
-<journey name="manual onchain original payment retry">
+<journey name="onchain original payment retry">
   <description>
-    Manual Test: controlled broadcast refusal or response loss is not a listed Capability.
-    Use only a funded regtest wallet, a test recipient and an owned backend fault fixture.
-    Record the initial prepared txid, exact input set, recipient amount, wallet and any original
-    Shop request/payer or channel order. A missing backend lookup never authorizes a new payment.
-    This spec does not claim that a controlled UI fixture reproduced a real backend failure.
+    Verifies explicit fee approval and normal spend authentication for retrying one original software
+    on-chain payment. Precondition: an onboarded funded dev wallet, PIN enabled, a synced node, and a
+    retained unresolved prepared-send receipt with its exact original recipient, amount, inputs and
+    candidate transaction IDs. Creating a controlled refusal or response-loss fixture is not provided
+    by the Capabilities table and remains in Manual Tests. A seeded Pending fixture must be labelled
+    as state injection, never as proof of a native fault. Manual Tests must verify the exact backend
+    winning transaction retains the complete original input set and recipient amount, and any original
+    Shop request or Blocktank order completes once without a new request or order. Local activity alone
+    cannot prove these checks. The funded native fault journey remains unrun.
+      iOS adaptations: Max recovery keeps the original fee rate without an editable field because the original drain has no higher-fee headroom. The UI also checks wallet.getFeeLimits().maxFee (at most 999). For channel funding, manually verify reopening the original Pending after expiry or failed local completion creates no new order or broadcast, and that accepted original funding resumes its own order watcher. During retry preparation/authentication, check original-winner races and wallet/payer changes; backup must retain the original guarded amount, inputs and candidates. These extra channel-funding and backup checks extend the common actions rather than replace their wording.
   </description>
   <actions>
-    <action>Enable payment PIN authorization in the test wallet, with biometrics disabled for deterministic PIN entry</action>
-    <action>For ordinary sends and channel funding, pause the owned signing fixture after admission but before a prepared transaction exists; request wallet backup and verify it defers without replacing the remote wallet snapshot. Release signing and verify the prepared receipt retains the exact original operation for backup and recovery</action>
-    <action>Send a fixed amount to the fixture recipient; for the Max variant use the initial native send-all route, retaining reserves</action>
-    <action>Make the owned fault fixture refuse this broadcast or lose its response after dispatch, and verify Payment Pending retains the original amount and transaction ID without Bitcoin Sent or a Shop proof</action>
-    <action>For a channel-funding variant, begin Transfer To Spending and withhold the funding acknowledgement after dispatch; verify confirmation yields directly to Payment Pending with the original order/wallet/transaction context, not a generic toast or Lightning Setting Up. Retry must recover this original funding operation only</action>
-    <action>For iOS channel funding, dismiss Pending and swipe the original confirmation again, including after the original order expires and when broadcast was accepted but local transfer/activity persistence failed; verify the exact original Pending reopens without creating an order, broadcasting or showing a generic failure toast</action>
-    <action>Close and reopen Send; verify the original Pending context is restored, rather than a fresh payment or selected wallet amount</action>
-    <action>Tap Retry original payment (id "RetryOriginalOnchainPayment"); verify the confirmation shows the original recipient and actual amount, and for fixed sends requires an explicit fee rate in sat/vB; for Max shows the original fee rate without any editable fee field</action>
-    <action>For fixed sends, clear the fee, enter zero, and enter a value above 4294967295; verify confirmation is disabled or gives explicit invalid fee feedback, never silently dismissing or sending</action>
-    <action>For fixed sends enter a valid fee rate; for Max confirm the displayed original fee. Confirm; authorize exactly once with the original payment PIN. Cancel once and verify the original durable guard remains, with no broadcast</action>
-    <action>Confirm a valid retry again; the successor must pay the original exact amount using the original exact inputs. A Max recovery is fixed amount, not another drain. If the original coins cannot pay the chosen fee, verify the fee-headroom explanation and unchanged recipient amount/guard</action>
-    <action>Restore the fixture backend and authorize the original payment retry. Record every attempted candidate txid; query exact backend transactions and verify all candidates conflict on the original input set and preserve the original recipient amount</action>
-    <action>Allow the original candidate to be observed while successor preparation or authorization awaits; verify no new broadcast once the original wins and no later Unknown or Rejected result replaces that winner</action>
-    <action>Keep Payment Pending open while restoring observation of the original candidate after a rejected successor; verify its uncertainty warning and Retry button disappear and Details becomes enabled without closing or reopening the sheet</action>
-    <action>Verify the exact positively accepted or original-wallet observed winner creates one local Sent activity and enables its original Details, with durable local completion; verify Details displays the exact winning transaction fee and its own authorized fee rate, including when an earlier candidate wins</action>
-    <action>For iOS channel funding, keep Payment Pending open while the exact funding transaction becomes accepted and local transfer completion is saved; verify Unknown and Retry disappear and Details is enabled without reopening, including when the completion event is missed</action>
-    <action>For Shop, verify proof uses only that exact winner and the original payer/request, with no fresh request acceptance or private-list consume. For a channel order, verify original order tracking and balance metadata are retained</action>
-    <action>For iOS channel funding, observe the original accepted funding candidate while the confirmation flow remains open; verify the same original order resumes Lightning Setting Up and order watching without app restart, and a paid order proceeds to channel opening. An unrelated payment resolution must not advance this flow</action>
-    <action>Change the selected wallet or payer during preparation or authorization; verify no mismatched wallet broadcast or proof, and no success for a different operation</action>
-    <action>Restore all owned fault/PIN fixture settings, stop recording and shut down only the task-owned device and helpers</action>
+    <action>Open the retained original payment's Pending screen and record its displayed transaction ID</action>
+    <action>Verify Pending describes the unresolved outcome and offers Retry original payment</action>
+    <action>Tap Retry original payment</action>
+    <action>Verify the dialog shows the original recipient and amount and prefills the original fee rate</action>
+    <action>Enter an invalid fee rate of 1000 sat/vB and verify valid positive fee feedback appears and Continue is disabled</action>
+    <action>Enter a valid authorized fee rate that the funded fixture can support and tap Continue</action>
+    <action>Verify the exact prepared mining fee in sats is shown beside the original recipient amount; tap Authorize retry, accept any normal fee-over-half or fee-over-10-USD warnings, and verify the normal payment PIN screen appears before dispatch</action>
+    <action>Go Back without entering the PIN and verify the original Pending payment remains retained</action>
+    <action>Tap Retry original payment again, choose the fixture-supported fee, tap Continue, approve the exact prepared fee and any normal fee warnings</action>
+    <action>Enter the fixture's normal payment PIN without recording entered digits</action>
+    <action>Wait for Bitcoin Sent only after exact positive evidence, or verify Pending remains with a readable error if fee headroom is insufficient</action>
+    <action>If successful, tap Details then Explore and record the exact winning transaction ID shown by TXID</action>
   </actions>
 </journey>
