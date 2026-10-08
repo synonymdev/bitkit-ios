@@ -55,6 +55,7 @@ struct UsdtReceiveView: View {
                     address: deposit?.address ?? usdt.address,
                     uri: deposit?.uri ?? receiveUri,
                     network: networkName,
+                    isDefaultNetwork: network == nil,
                     error: error ?? usdt.errorMessage,
                     onEdit: { page = .amount },
                     onNetwork: { page = .networks }
@@ -141,7 +142,7 @@ struct UsdtReceiveView: View {
 
     private func feeEstimate(_ deposit: UsdtDepositAddress) -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            UsdtAmountHeader(amount: usdtFormatAmount(amount: deposit.amount), network: networkName)
+            UsdtAmountHeader(amount: usdtFormatAmount(amount: deposit.amount))
             BodyMText(t("usdt__deposit_fee_note"), textColor: .textSecondary)
             VStack(alignment: .leading, spacing: 24) {
                 feeRow(
@@ -167,6 +168,7 @@ struct UsdtReceiveAddressContent: View {
     let address: String
     let uri: String
     let network: String
+    let isDefaultNetwork: Bool
     var error: String?
     let onEdit: () -> Void
     let onNetwork: () -> Void
@@ -190,10 +192,16 @@ struct UsdtReceiveAddressContent: View {
             } else if let error { BodySText(error, textColor: .brandAccent) }
             else { ProgressView() }
         }
-        CustomButton(title: t("usdt__receive_network", variables: ["network": network]), variant: .secondary, size: .small,
-                     icon: Image("usdt-network").resizable().frame(width: 16, height: 16), shouldExpand: true, action: onNetwork)
-            .padding(.bottom, 16)
-            .accessibilityIdentifier("UsdtReceiveNetwork")
+        CustomButton(
+            title: t("usdt__receive_network", variables: ["network": isDefaultNetwork ? t("common__default") : network]),
+            variant: .secondary,
+            size: .small,
+            icon: Image("usdt-network").resizable().frame(width: 16, height: 16),
+            shouldExpand: true,
+            action: onNetwork
+        )
+        .padding(.bottom, 16)
+        .accessibilityIdentifier("UsdtReceiveNetwork")
         CustomButton(title: t(showDetails ? "wallet__receive_show_qr" : "common__show_details"),
                      icon: showDetails ? Image("qr").resizable().frame(width: 16, height: 16) : nil, shouldExpand: true)
         { showDetails.toggle() }.accessibilityIdentifier("UsdtReceiveDetails")

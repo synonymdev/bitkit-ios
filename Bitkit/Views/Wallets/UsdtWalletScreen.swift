@@ -18,8 +18,7 @@ struct UsdtWalletScreen: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 32) {
                     UsdtAmountHeader(
-                        amount: usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—",
-                        network: usdt.networkName, hideBalance: settings.hideBalance
+                        amount: usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—", hideBalance: settings.hideBalance
                     )
                     .balanceVisibilityToggle()
                     .accessibilityIdentifier("UsdtBalance")
@@ -108,7 +107,6 @@ struct UsdtCoinIllustration: View {
 
 struct UsdtAmountHeader: View {
     let amount: String
-    let network: String
     var prefix = ""
     var hideBalance = false
 
@@ -120,7 +118,7 @@ struct UsdtAmountHeader: View {
                 MoneyText(sats: sats, forceUnit: .bitcoin, size: .caption, symbol: true,
                           enableHide: hideBalance, color: .textSecondary)
             } else {
-                CaptionMText("USDT · " + network, textColor: .textSecondary)
+                CaptionMText("USDT", textColor: .textSecondary)
             }
             DisplayText(
                 "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : amount),

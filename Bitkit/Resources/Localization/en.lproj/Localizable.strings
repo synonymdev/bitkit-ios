@@ -1940,3 +1940,5 @@
 "usdt__deposit_maximum" = "Maximum amount is {amount}";
 
 "wallet__payment_request_requested_amount" = "Requested amount";
+
+"profile__auth_approval_services_separator" = " and ";

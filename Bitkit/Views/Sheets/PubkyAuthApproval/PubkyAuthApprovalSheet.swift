@@ -320,7 +320,7 @@ struct PubkyAuthApprovalSheet: View {
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
 
-                    Spacer(minLength: 32)
+                    Spacer().frame(height: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
@@ -350,7 +350,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var serviceText: String {
-        pubkyAuthLiteralText(config.request.serviceNames.joined(separator: " and "))
+        pubkyAuthLiteralText(config.request.serviceNames.joined(separator: t("profile__auth_approval_services_separator")))
     }
 
     private var requesterText: String {
@@ -546,6 +546,8 @@ struct PubkyAuthApprovalSheet: View {
         .padding(24)
         .background(Color.gray6)
         .cornerRadius(16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("PubkyAuthProfile")
     }
 
     /// Figma draws the check illustration at 274pt inside its 256pt slot.

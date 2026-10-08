@@ -110,8 +110,7 @@ struct UsdtDepositHistoryView: View {
     private func detail(_ detail: UsdtDepositDetail) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if detail.deposit.asset == "USDT" {
-                UsdtAmountHeader(amount: detail.deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—",
-                                 network: detail.deposit.network.uppercased(), hideBalance: settings.hideBalance)
+                UsdtAmountHeader(amount: detail.deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—", hideBalance: settings.hideBalance)
             } else {
                 BodySSBText(detail.deposit.asset + " · " + detail.deposit.network.uppercased())
             }
