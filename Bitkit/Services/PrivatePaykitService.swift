@@ -84,6 +84,7 @@ actor PrivatePaykitService {
     var pendingPreparationOperation: (([String], Bool) async -> Void)?
     var preparationGeneration = 0
     var isBackgroundWorkPaused = false
+    var messageSchedulingGeneration = 0
     var backgroundWorkWaiters: [UUID: AsyncStream<Void>.Continuation] = [:]
     var isDeletingProfile = false
     var pendingForceRefreshLightning = false
