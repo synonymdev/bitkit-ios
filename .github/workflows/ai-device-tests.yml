@@ -231,11 +231,21 @@ jobs:
           set -euo pipefail
           deadline=$(( SECONDS + 11400 ))
           finished=false
+          # gh api does not retry and this polls every 30s for hours, so one 502
+          # must not end the job - ending it takes the stack down under the tests.
+          failures=0
           while (( SECONDS < deadline )); do
             if ! jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100"); then
-              echo "::error::could not read this run's jobs from the API"
-              exit 1
+              failures=$(( failures + 1 ))
+              echo "::warning::jobs API failed (${failures} in a row)"
+              if (( failures >= 10 )); then
+                echo "::error::could not read this run's jobs from the API"
+                exit 1
+              fi
+              sleep 30
+              continue
             fi
+            failures=0
             remote=$(jq '[.jobs[] | select(.name == "trezor-emu-remote")]' <<<"$jobs_json")
             started=$(jq 'length' <<<"$remote")
             pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$remote")
@@ -282,6 +292,9 @@ jobs:
   # Same suite as trezor-emu, on a GitHub-hosted Mac with the emulator stack on
   # another runner. Runs alongside it until it has earned replacing it.
   trezor-emu-remote:
+    permissions:
+      contents: read
+      actions: read
     if: inputs.suite == 'trezor-emu-remote'
     runs-on: macos-latest
     timeout-minutes: 180
@@ -329,8 +342,20 @@ jobs:
           args: --accept-dns=false
 
       - name: Find the stack runner
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # "Re-run failed jobs" reuses the stack job instead of running it, so
+          # its tailnet node is already gone and no name can match. Only treat a
+          # job list that omits this attempt entirely as proof of that.
+          if ! jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100&filter=all"); then
+            echo "::warning::could not check whether the stack job ran in this attempt"
+          elif [ "$(jq --argjson a "${{ github.run_attempt }}" '[.jobs[] | select(.name == "trezor-stack" and .run_attempt == $a)] | length' <<<"$jobs")" -eq 0 ]; then
+            echo "::error::trezor-stack did not run in attempt ${{ github.run_attempt }}; use \"Re-run all jobs\""
+            exit 1
+          fi
+
           deadline=$(( SECONDS + 1800 ))
           while :; do
             ip=$(tailscale status --json 2>/dev/null \
