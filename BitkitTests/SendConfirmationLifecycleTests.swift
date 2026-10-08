@@ -155,9 +155,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertTrue(shownToasts.isEmpty)
     }
 
-    func testCustomFeeWalletSwitchWaitsForConfirmationBeforePreparingUtxos() async throws {
+    func testCustomFeeWalletSwitchSurvivesFeeScreenNavigation() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        FeeEstimatesManager().devOverrideFeeEstimates = true
         for operation in [ControlledSendWallet.Operation.manualUtxos, .selection] {
             let wallet = ControlledSendWallet(operation: operation)
             let app = AppViewModel()
@@ -170,23 +171,25 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             SettingsViewModel.shared.coinSelectionMethod = operation == .manualUtxos ? .manual : .autopilot
             let navigation = SendConfirmationTestNavigation()
             let window = host(app: app, wallet: wallet, sheets: sheets,
-                              path: Binding(get: { navigation.path }, set: { navigation.path = $0 }))
+                              path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation)
             defer { close(window) }
-            try await Task.sleep(for: .milliseconds(100))
+            try await navigation.waitForAppearance(.confirm)
 
-            navigation.path = [.confirm, .feeRate, .feeCustom]
-            await Task.yield()
-            try await Task.sleep(for: .milliseconds(100))
-            wallet.selectedSpeed = .custom(satsPerVByte: 2)
+            navigation.path.append(.feeRate)
+            try await navigation.waitForAppearance(.feeRate)
+            XCTAssertEqual(navigation.confirmationDisappearances, 1)
+            navigation.path.append(.feeCustom)
+            try await navigation.waitForAppearance(.feeCustom)
+            wallet.selectedSpeed = .custom(satsPerVByte: 3)
+            wallet.selectedFeeRateSatsPerVByte = 3
             app.selectedWalletToPayFrom = .onchain
             navigation.path.removeLast()
-            await Task.yield()
-            try await Task.sleep(for: .milliseconds(100))
+            try await navigation.waitForAppearance(.feeRate)
             XCTAssertEqual(wallet.preparationCount, 0)
             XCTAssertEqual(navigation.path, [.confirm, .feeRate])
 
             navigation.path.removeLast()
-            await Task.yield()
+            try await navigation.waitForAppearance(.confirm)
             await fulfillment(of: [wallet.started], timeout: 3)
             guard wallet.preparationCount > 0 else { continue }
             wallet.resume()
@@ -282,11 +285,18 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertTrue(shownToasts.isEmpty)
     }
 
-    private func host(app: AppViewModel, wallet: WalletViewModel, sheets: SheetViewModel, path: Binding<[SendRoute]>) -> UIWindow {
-        let view = SendConfirmationView(
+    private func host(
+        app: AppViewModel,
+        wallet: WalletViewModel,
+        sheets: SheetViewModel,
+        path: Binding<[SendRoute]>,
+        navigation: SendConfirmationTestNavigation? = nil
+    ) -> UIWindow {
+        let hwSend = HwSendCoordinator()
+        let confirmation = SendConfirmationView(
             navigationPath: path,
             isSubmittingPayment: .constant(false),
-            hwSend: HwSendCoordinator(),
+            hwSend: hwSend,
             requestPinCheck: {
                 XCTFail("Preparing confirmation must not authorize a payment")
                 return false
@@ -296,6 +306,31 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             },
             routingCacheResetAttempted: false
         )
+        let view = Group {
+            if let navigation {
+                @Bindable var navigation = navigation
+                NavigationStack(path: $navigation.path) {
+                    Color.clear
+                        .navigationDestination(for: SendRoute.self) { route in
+                            Group {
+                                switch route {
+                                case .confirm: confirmation
+                                case .feeRate: SendFeeRate(navigationPath: $navigation.path, hwSend: hwSend)
+                                case .feeCustom: SendFeeCustom(navigationPath: $navigation.path, hwSend: hwSend)
+                                default: Color.clear
+                                }
+                            }
+                            .onAppear { navigation.visibleRoutes.insert(route) }
+                            .onDisappear {
+                                navigation.visibleRoutes.remove(route)
+                                if route == .confirm { navigation.confirmationDisappearances += 1 }
+                            }
+                        }
+                }
+            } else {
+                confirmation
+            }
+        }
         .environment(PaykitPaymentRequestManager())
         .environment(HwWalletManager())
         .environmentObject(app)
@@ -308,6 +343,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         .environmentObject(SettingsViewModel.shared)
         .environmentObject(TagManager())
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        if navigation != nil {
+            // Navigation transitions need a scene-backed window.
+            window.windowScene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        }
         window.rootViewController = UIHostingController(rootView: view)
         window.makeKeyAndVisible()
         window.rootViewController?.view.layoutIfNeeded()
@@ -325,8 +364,19 @@ final class SendConfirmationLifecycleTests: XCTestCase {
 }
 
 @Observable
+@MainActor
 private final class SendConfirmationTestNavigation {
     var path: [SendRoute] = [.confirm]
+    var visibleRoutes: Set<SendRoute> = []
+    var confirmationDisappearances = 0
+
+    func waitForAppearance(_ route: SendRoute, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = ContinuousClock.now + .seconds(3)
+        while visibleRoutes != [route], ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(visibleRoutes, [route], file: file, line: line)
+    }
 }
 
 @MainActor
