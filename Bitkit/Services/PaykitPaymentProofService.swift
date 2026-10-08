@@ -68,6 +68,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var onchainAcceptanceVerified: Bool?
     /// Device-local acknowledgement: backup restore reruns local activity proof.
     var onchainLocalFollowupComplete: Bool?
+    /// Retain the bounded original proof until its payer consumes the local resolution.
+    var onchainResolutionAwaitingConsumption: Bool? = false
 
     var hasUnsupportedOnchainWallet: Bool {
         kind == .onchain && onchainWalletId != nil && onchainWalletId != WalletScope.default
@@ -230,7 +232,6 @@ actor PaykitPaymentProofService {
     }
 
     private var hardwareCompletionsInProgress: Set<HardwareCompletionKey> = []
-    private var hardwareResolutionsAwaitingIdentity: Set<HardwareCompletionKey> = []
 
     private var hardwarePaymentsInProgress: Set<String> = []
 
@@ -770,6 +771,7 @@ actor PaykitPaymentProofService {
                     var proofs = try await loadProofs()
                     if let index = proofs.firstIndex(of: completed) {
                         proofs[index].onchainLocalFollowupComplete = true
+                        proofs[index].onchainResolutionAwaitingConsumption = true
                         try await persist(proofs)
                         return proofs[index]
                     }
@@ -784,16 +786,13 @@ actor PaykitPaymentProofService {
             } else {
                 _ = await submit(completed)
             }
-            let currentIdentity = (try? await sdk.identityStatus())?.publicKey
-            let identityIsActive = PubkyPublicKeyFormat.matches(currentIdentity, identity)
-            if didCompleteLocalFollowup, !identityIsActive {
-                hardwareResolutionsAwaitingIdentity.insert(key)
-            }
-            let replayForReturningPayer = identityIsActive && hardwareResolutionsAwaitingIdentity.remove(key) != nil
-            if didCompleteLocalFollowup || replayForReturningPayer {
-                Self.onchainPaymentResolutionSubject.send(PaykitOnchainPaymentResolution(
+            if didCompleteLocalFollowup || completed.onchainResolutionAwaitingConsumption == true {
+                let resolution = PaykitOnchainPaymentResolution(
                     identity: completed.identity, requestId: requestId, transactionId: txid.lowercased(), walletId: walletId
-                ))
+                )
+                if didCompleteLocalFollowup || Self.onchainPaymentResolutionSubject.value != resolution {
+                    Self.onchainPaymentResolutionSubject.send(resolution)
+                }
             }
             return true
         } catch {
@@ -1325,7 +1324,37 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func consumeOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
+    func consumeOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, activeIdentity: String?) async {
+        if resolution.walletId != WalletScope.default {
+            guard PubkyPublicKeyFormat.matches(activeIdentity, resolution.identity),
+                  PubkyPublicKeyFormat.matches((try? await sdk.identityStatus())?.publicKey, resolution.identity)
+            else {
+                if Self.onchainPaymentResolutionSubject.value == resolution {
+                    Self.onchainPaymentResolutionSubject.send(nil)
+                }
+                return
+            }
+            do {
+                let consumed: PendingPaykitPaymentProof? = try await mutationLock.withLock {
+                    var proofs = try await loadProofs()
+                    guard let index = proofs.firstIndex(where: {
+                        PubkyPublicKeyFormat.matches($0.identity, resolution.identity) && $0.requestId == resolution.requestId &&
+                            $0.onchainWalletId == resolution.walletId && $0.kind == .onchain &&
+                            $0.paymentIdentifier?.caseInsensitiveCompare(resolution.transactionId) == .orderedSame &&
+                            $0.proofData?.caseInsensitiveCompare(resolution.transactionId) == .orderedSame &&
+                            $0.onchainAcceptanceVerified == true && $0.onchainLocalFollowupComplete == true &&
+                            $0.onchainResolutionAwaitingConsumption == true
+                    }) else { return nil }
+                    proofs[index].onchainResolutionAwaitingConsumption = false
+                    try await persist(proofs)
+                    return proofs[index]
+                }
+                if let consumed { submitInBackground(consumed) }
+            } catch {
+                logWarning("Failed to acknowledge the original hardware payment resolution: \(error)")
+                return
+            }
+        }
         guard Self.onchainPaymentResolutionSubject.value == resolution else { return }
         Self.onchainPaymentResolutionSubject.send(nil)
     }
@@ -1409,7 +1438,8 @@ actor PaykitPaymentProofService {
         await removeProofs {
             PubkyPublicKeyFormat.matches($0.identity, proof.identity) &&
                 $0.requestId == proof.requestId &&
-                (!$0.hasUnsupportedOnchainWallet || $0 == proof)
+                (!$0.hasUnsupportedOnchainWallet || $0 == proof) &&
+                (!$0.hasUnsupportedOnchainWallet || $0.onchainResolutionAwaitingConsumption != true)
         }
     }
 

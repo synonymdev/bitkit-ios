@@ -138,7 +138,7 @@ struct HwSendSignView: View {
         app.prepareResolvedOnchainContactContext(resolution, isHardware: true)
         app.consumePaykitOnchainPaymentResolution(resolution)
         navigationPath.append(route)
-        Task { await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution) }
+        Task { await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution, activeIdentity: pubkyProfile.publicKey) }
     }
 
     private func startSigning() {

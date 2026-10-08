@@ -278,15 +278,22 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             identity: identity, requestId: request.id, transactionId: txid, walletId: hardwareWalletId
         )
         XCTAssertEqual(resolutions, [originalResolution])
-        await service.consumeOnchainPaymentResolution(originalResolution)
+        await service.consumeOnchainPaymentResolution(originalResolution, activeIdentity: (try? await sdk.identityStatus())?.publicKey)
+        // Recreate the service to discard every process-local replay marker.
+        let reopened = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
         await sdk.setIdentity(identity)
-        await service.reconcile()
+        await sdk.setSubmissionFailure(false)
+        await reopened.reconcile()
         XCTAssertEqual(
             resolutions,
             [originalResolution, originalResolution],
             "Returning to the original payer must resume its already verified local result"
         )
-        await service.reconcile()
+        let awaitingConsumption = await store.snapshot().first { PubkyPublicKeyFormat.matches($0.identity, identity) }
+        XCTAssertEqual(awaitingConsumption?.onchainResolutionAwaitingConsumption, true,
+                       "Proof delivery must retain the original local result until its payer consumes it")
+        await reopened.consumeOnchainPaymentResolution(originalResolution, activeIdentity: (try? await sdk.identityStatus())?.publicKey)
+        await reopened.reconcile()
         XCTAssertEqual(resolutions, [originalResolution, originalResolution], "Returning-payer replay occurs once")
         let lookups = await lookup.calls()
         XCTAssertEqual(lookups.count, 1, "Already verified original follow-up must not repeat payment or observation")
@@ -369,6 +376,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         await sdk.setSubmissionFailure(false)
         let restarted = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
+        await restarted.reconcile()
+        let deliveredProofs = await store.snapshot()
+        XCTAssertEqual(deliveredProofs.first?.onchainResolutionAwaitingConsumption, true)
+        await restarted.consumeOnchainPaymentResolution(
+            .init(identity: identity, requestId: request.id, transactionId: txid, walletId: hardwareWalletId),
+            activeIdentity: identity
+        )
         await restarted.reconcile()
         let remainingProofs = await store.snapshot()
         XCTAssertTrue(remainingProofs.isEmpty)

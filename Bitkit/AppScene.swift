@@ -1339,7 +1339,7 @@ struct AppScene: View {
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
         await Self.associateResolvedPaykitOnchainPayment(resolution, activeIdentity: pubkyProfile.publicKey, activity: activity)
-        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
+        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution, activeIdentity: pubkyProfile.publicKey)
     }
 
     static func associateResolvedPaykitOnchainPayment(

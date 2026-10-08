@@ -345,7 +345,7 @@ struct SendPendingScreen: View {
         ordinarySendResolved = true
         app.prepareResolvedOnchainContactContext(resolution, isHardware: pendingHardwareWalletId != nil)
         Task {
-            await proofService.consumeOnchainPaymentResolution(resolution)
+            await proofService.consumeOnchainPaymentResolution(resolution, activeIdentity: pubkyProfile.publicKey)
             guard PubkyPublicKeyFormat.matches(resolution.identity, pubkyProfile.publicKey) else { return }
             navigationPath.append(.success(paymentId: resolution.transactionId, walletId: resolution.walletId))
         }

@@ -405,7 +405,7 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(sent?.contact, PubkyPublicKeyFormat.normalized(requestId.counterparty))
         let tags = try await activity.tags(forActivity: txid, walletId: walletId)
         XCTAssertEqual(tags, ["original tag"])
-        await service.consumeOnchainPaymentResolution(.init(identity: identity, requestId: requestId, transactionId: txid, walletId: walletId))
+        await service.consumeOnchainPaymentResolution(.init(identity: identity, requestId: requestId, transactionId: txid, walletId: walletId), activeIdentity: identity)
         let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
         let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
         defer {
