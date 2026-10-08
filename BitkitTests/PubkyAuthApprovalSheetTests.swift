@@ -621,4 +621,10 @@ private func XCTAssertThrowsErrorAsync(
         _ = try await expression()
         XCTFail("Expected expression to throw", file: file, line: line)
     } catch {}
+
+    func testRequestTextLosesAccentMarkupEvenWhenTagsAreNested() {
+        XCTAssertEqual(pubkyAuthLiteralText("<accent>evil</accent>.app"), "evil.app")
+        XCTAssertEqual(pubkyAuthLiteralText("<acc<accent>ent>evil</acc</accent>ent>.app"), "evil.app")
+        XCTAssertEqual(pubkyAuthLiteralText("app.paykit.server"), "app.paykit.server")
+    }
 }
