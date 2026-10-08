@@ -1,0 +1,24 @@
+<journey name="custom fee wallet switch prepares coins">
+  <description>
+    Verifies that choosing a custom on-chain fee from a Lightning confirmation prepares coin selection
+    after returning through the fee picker. Use a dedicated simulator and disposable regtest wallet
+    with sufficient Savings and Spending balances, manual coin selection enabled, and a valid unified
+    invoice payable from either balance. Never swipe to pay or authorize a payment in this journey.
+    This covers iOS-specific fee navigation.
+  </description>
+  <actions>
+    <action>Open the unified invoice and continue to confirmation (id "SendConfirm") with Spending selected</action>
+    <action>Tap Show Details (id "SendConfirmToggleDetails"), then the Fee and Speed row</action>
+    <action>Choose Custom and enter a valid fee rate</action>
+    <action>Tap Continue and wait for the fee picker to appear. Stay there for two seconds</action>
+    <action>Verify the fee picker remains visible and manual coin selection has not opened</action>
+    <action>Tap Continue to return to confirmation</action>
+    <action>Verify the coin selection screen opens and lists available Savings coins</action>
+    <action>Select enough coins for the amount and fee, then tap Continue</action>
+    <action>On confirmation, tap Show Details (id "SendConfirmToggleDetails") if details are collapsed</action>
+    <action>Verify confirmation (id "SendConfirm") shows Savings and the chosen custom fee</action>
+    <action>Close the send sheet without paying and verify no send error toast appears</action>
+    <action>Enable automatic coin selection, reopen the unified invoice with Spending selected, and repeat the custom-fee steps through the fee picker</action>
+    <action>Verify confirmation (id "SendConfirm") shows Savings and the chosen custom fee without opening manual coin selection; close without paying</action>
+  </actions>
+</journey>

@@ -1,0 +1,18 @@
+<journey name="Payment Request Success Dismissal">
+  <description>
+    Covers iOS send-confirmation cleanup after a successful Lightning Payment Request. Requires two linked disposable regtest wallets, with the payer funded for 6,007 sats plus fees. Never use real funds. The hosted SendConfirmationLifecycleTests cover teardown and suspended work without broadcasting; this journey checks the complete device flow when regtest payments are authorized. This covers iOS-specific send navigation.
+  </description>
+  <actions>
+    <action>On the requester, send the payer a Lightning Payment Request for 6,007 sats</action>
+    <action>On the payer, verify the Payment Request confirmation screen (id "PaymentRequestConfirm") shows 6,007 sats and Spending is selected</action>
+    <action>Swipe to pay using the control with id "GRAB" and complete authorization if requested</action>
+    <action>Verify the success screen (id "SendSuccess") is visible</action>
+    <action>Tap Close and wait five seconds</action>
+    <action>Verify the send sheet is closed and no send error toast appears</action>
+    <action>Verify the payer's Activity contains exactly one outgoing payment for this request</action>
+    <action>On the requester, send the payer a new Lightning Payment Request for 5,000 sats</action>
+    <action>On the payer, verify the Payment Request confirmation screen (id "PaymentRequestConfirm") shows the new amount and Spending is selected</action>
+    <action>Close the confirmation without paying and wait five seconds</action>
+    <action>Verify the send sheet stays closed, no send error toast appears, and no payment was made for the second request</action>
+  </actions>
+</journey>

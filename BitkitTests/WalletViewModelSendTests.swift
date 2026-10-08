@@ -5,6 +5,22 @@ import XCTest
 final class WalletViewModelSendTests: XCTestCase {
     private struct FeeFetchError: Error {}
 
+    func testFeeRateDoesNotApplyToAnExpiredSendContext() async throws {
+        snapshotAppDefaultsDomain()
+        FeeEstimatesManager().devOverrideFeeEstimates = true
+        let wallet = WalletViewModel()
+
+        do {
+            try await wallet.setFeeRate(speed: .normal, isCurrentSend: { false })
+            XCTFail("Expected the expired send preparation to be cancelled")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+
+        XCTAssertNil(wallet.selectedFeeRateSatsPerVByte)
+        XCTAssertFalse(wallet.feeRateLoadFailed)
+    }
+
     func testFeeRateLoadRetriesAFailedFetchAndRecovers() async throws {
         let wallet = WalletViewModel()
         var attempts = 0
