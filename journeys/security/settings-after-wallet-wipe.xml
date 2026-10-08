@@ -2,8 +2,10 @@
   <description>
     Precondition: a disposable, unfunded wallet without a PIN, on an English device, using an
     E2E_BUILD app with the local regtest backend from journeys/README.md. The default Electrum
-    endpoint is 127.0.0.1:60001 and must also be reachable as localhost:60001. Start with no custom
-    server setting. This deletes the wallet. Keep Bitkit running throughout so the settings
+    endpoint is 127.0.0.1:60001 and must also be reachable as localhost:60001.
+    The RGS steps also require internet access to bitkit.stag0.blocktank.to, the default RGS
+    snapshot host for regtest; it is not part of the local stack.
+    Start with no custom server setting. This deletes the wallet. Keep Bitkit running throughout so the settings
     singleton survives the reset.
   </description>
   <actions>
