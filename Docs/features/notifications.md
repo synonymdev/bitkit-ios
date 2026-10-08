@@ -19,7 +19,7 @@ Scope: notification settings and permission flow, the one-shot background-paymen
 
 ## Code
 - `Bitkit/Managers/PushNotificationManager.swift`, `Bitkit/BitkitApp.swift` (`AppDelegate`, notification delegate), `Bitkit/MainNavView.swift`, `Bitkit/AppScene.swift`, `Bitkit/Models/BlocktankNotificationType.swift`, `Bitkit/Constants/Env.swift` (`pushNotificationFeatures`).
-- `BitkitNotification/NotificationService.swift`, `BitkitNotification/Info.plist`, `BitkitNotification.entitlements`; `Bitkit/Bitkit.entitlements` (`aps-environment` = `development`, App Group `group.bitkit`). Crypto/keychain/`StateLocker` shared with the app.
+- `BitkitNotification/NotificationService.swift`, `BitkitNotification/Info.plist`, `BitkitNotification/BitkitNotification.entitlements`; `Bitkit/Bitkit.entitlements` (`aps-environment` = `development`, App Group `group.bitkit`). Crypto/keychain/`StateLocker` shared with the app.
 - `Bitkit/Views/Settings/Notifications/NotificationsSettings.swift`, `NotificationsIntro.swift`, `Bitkit/Views/Sheets/NotificationsSheet.swift`, `Bitkit/Managers/TimedSheets/NotificationsTimedSheet.swift`, `Bitkit/Components/NotificationPreview.swift`.
 - Routes: `Route.notifications`, `Route.notificationsIntro`; sheet: `SheetID.notifications` (`NotificationsSheetItem`).
 - Manual tooling: `test-push-server/` (Node + APNs key, `README.md`) sends a push to a device token.

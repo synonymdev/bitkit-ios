@@ -1,6 +1,6 @@
 # Feature map
 
-Read `Docs/features/<x>.md` before changing or testing feature `x`. It names the screens and accessibility identifiers, the code that owns the feature, the journeys and e2e specs that drive it, what each proves, and what no test covers. A PR that changes a flow updates that flow's file in the same change. File names match the Android feature map so one feature has the same name on both platforms.
+Read `Docs/features/<x>.md` before changing or testing feature `x`. It names the screens and accessibility identifiers, the code that owns the feature, the journeys and e2e specs that drive it, what each proves, and what no test covers. A PR that changes a flow updates that flow's file in the same change; `node scripts/validate-feature-map.js`, run in CI, fails when a file names a repository path that no longer exists. File names match the Android feature map so one feature has the same name on both platforms.
 
 ## How the files are shaped
 
