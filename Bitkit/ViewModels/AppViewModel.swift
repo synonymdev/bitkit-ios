@@ -996,9 +996,17 @@ extension AppViewModel {
 
         if request.isSignup {
             do {
-                guard try !PubkyProfileManager.hasStoredIdentity() else {
+                let hasIdentity = try PubkyProfileManager.hasStoredIdentity()
+                if hasIdentity, !request.isGrantSignup {
                     sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity already exists")
                     toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                    return
+                }
+                if !hasIdentity {
+                    sheetViewModel.showSheet(
+                        .pubkyAuthApproval,
+                        data: PubkyAuthApprovalConfig(request: request)
+                    )
                     return
                 }
             } catch {
@@ -1007,12 +1015,6 @@ extension AppViewModel {
                 toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
                 return
             }
-
-            sheetViewModel.showSheet(
-                .pubkyAuthApproval,
-                data: PubkyAuthApprovalConfig(request: request)
-            )
-            return
         }
 
         let hasSession = (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false

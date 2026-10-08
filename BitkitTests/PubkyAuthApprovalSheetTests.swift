@@ -22,6 +22,30 @@ private func ordinaryApprovalTestAuthUrl() -> String {
 }
 
 final class PubkyAuthApprovalSheetTests: XCTestCase {
+    @MainActor
+    func testGrantSignupAuthorizesTheRequestedAppThroughTheGrantApi() async throws {
+        let url = ordinaryApprovalTestAuthUrl().replacingOccurrences(of: "signin_grant", with: "signup_grant") +
+            "&hs=\(approvalTestClientPublicKey)&st=invite"
+        let request = try PubkyAuthRequest.parse(url: url)
+        var approved = false
+
+        try await PubkyService.approveSignupAuthorization(
+            request: request,
+            secretKeyHex: "derived-secret",
+            ordinaryApproval: { authUrl, capabilities, clientID, secretKey in
+                XCTAssertEqual(authUrl, url)
+                XCTAssertEqual(capabilities, request.capabilities)
+                XCTAssertEqual(clientID, "paykit.test")
+                XCTAssertEqual(secretKey, "derived-secret")
+                approved = true
+            },
+            ringApproval: { _, _ in XCTFail("Grant signup must use the grant API") }
+        )
+
+        XCTAssertTrue(approved)
+        XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
+    }
+
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
         XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd...w5xg")
         XCTAssertEqual(pubkyAuthDisplayPublicKey("3rsd123456789w5xg"), "3rsd...w5xg")

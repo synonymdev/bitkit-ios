@@ -139,6 +139,29 @@ enum PubkyService {
         return false
     }
 
+    static func approveSignupAuthorization(
+        request: PubkyAuthRequest,
+        secretKeyHex: String,
+        ordinaryApproval: OrdinaryAuthApproval = { authUrl, capabilities, clientID, secretKeyHex in
+            try await approveAuth(
+                authUrl: authUrl,
+                expectedCapabilities: capabilities,
+                approvedClientID: clientID,
+                secretKeyHex: secretKeyHex
+            )
+        },
+        ringApproval: (String, String) async throws -> Void = { authUrl, secretKeyHex in
+            try await approveRingAuth(authUrl: authUrl, secretKeyHex: secretKeyHex)
+        }
+    ) async throws {
+        guard let authorizationUrl = request.authorizationUrl else { return }
+        if request.isGrantSignup {
+            try await ordinaryApproval(authorizationUrl, request.capabilities, request.clientID, secretKeyHex)
+        } else {
+            try await ringApproval(authorizationUrl, secretKeyHex)
+        }
+    }
+
     typealias OrdinaryAuthApproval = (String, String, String, String) async throws -> Void
     typealias CompanionAuthApproval = (String, String, PubkyAuthClaim, Data?, String) async throws -> Void
 

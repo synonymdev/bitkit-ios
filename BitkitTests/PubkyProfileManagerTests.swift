@@ -13,6 +13,11 @@ final class PubkyProfileManagerTests: XCTestCase {
 
     @MainActor
     func testNavigationLookupReadsStoredIdentityWithoutCachedMetadata() async throws {
+        let key = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+        let request = try PubkyAuthRequest.parse(
+            url: "pubkyauth://signup_grant?caps=/pub/example/:rw&relay=https://relay.example/inbox/" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&cid=paykit.test&cpk=\(key)&hs=\(key)"
+        )
         try await withEmptyIdentityStorage {
             for source in ["none", "local", "session", "ring"] {
                 for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
@@ -27,9 +32,11 @@ final class PubkyProfileManagerTests: XCTestCase {
                 }
                 let manager = PubkyProfileManager()
                 XCTAssertNil(manager.cachedName)
+                XCTAssertNil(manager.publicKey)
                 let exists = await manager.hasExistingIdentityForNavigation()
                 XCTAssertEqual(exists, source != "none", source)
                 XCTAssertEqual(manager.hasExistingIdentity, exists, source)
+                XCTAssertEqual(PubkyAuthApprovalSheet.requiresIdentityCreation(for: request, profile: manager), source == "none", source)
             }
         }
     }

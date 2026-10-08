@@ -54,6 +54,10 @@ struct PubkyAuthApprovalSheet: View {
     @State private var state: ApprovalState
     @State private var isShowingAuthCheck = false
 
+    private var createsIdentity: Bool {
+        Self.requiresIdentityCreation(for: config.request, profile: pubkyProfile)
+    }
+
     enum ApprovalState: Equatable {
         case watchOnlyConsent
         case authorize
@@ -86,6 +90,10 @@ struct PubkyAuthApprovalSheet: View {
 
     static func initialState(for request: PubkyAuthRequest) -> ApprovalState {
         request.bitkitClaim?.includesWatchOnlyAccount == true ? .watchOnlyConsent : .authorize
+    }
+
+    static func requiresIdentityCreation(for request: PubkyAuthRequest, profile: PubkyProfileManager) -> Bool {
+        request.requiresIdentityCreation(hasIdentity: profile.hasExistingIdentity)
     }
 
     private var headerTitle: String {
@@ -231,7 +239,7 @@ struct PubkyAuthApprovalSheet: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if config.request.isSignup {
+                    if createsIdentity {
                         BodyMText(t("pubky_auth__signup_description"))
                             .padding(.bottom, 16)
                     }
@@ -445,7 +453,7 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
-            if config.request.isSignup {
+            if createsIdentity {
                 try await pubkyProfile.approveSignupAuth(request: config.request)
                 guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
                     return
