@@ -162,6 +162,36 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertEqual(again.0, restored.0)
     }
 
+    func testRecurringActiveAttemptPreservesExactBillingTimestamp() async throws {
+        for timestamp in ["2026-09-24T10:00:00.100Z", "2026-09-24T10:00:00.123456789Z"] {
+            var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.completeAttemptGolden()) as? [String: Any])
+            var state = try XCTUnwrap(envelope["paykitPaymentState"] as? [String: Any])
+            var active = try XCTUnwrap(state["activeOnchainAttempt"] as? [String: Any])
+            var request = try XCTUnwrap(active["requestId"] as? [String: Any])
+            request["billingPeriodStartsAt"] = timestamp
+            active["requestId"] = request
+            var proofs = try XCTUnwrap(state["pendingProofs"] as? [[String: Any]])
+            proofs[0]["requestId"] = request
+            proofs[0]["billingPeriod"] = ["startsAt": timestamp, "endsAt": "2026-09-25T10:00:00.123456789Z"]
+            state["activeOnchainAttempt"] = active
+            state["pendingProofs"] = proofs
+            envelope["paykitPaymentState"] = state
+            let decoded = try JSONDecoder().decode(WalletBackupV1.self, from: JSONSerialization.data(withJSONObject: envelope))
+            let paymentState = try XCTUnwrap(decoded.paykitPaymentState)
+            let restoredProofs = try paymentState.pendingProofs.map { try $0.restored() }
+            let attempt = try XCTUnwrap(paymentState.activeOnchainAttempt).restored(
+                wallet: Self.goldenWallet(), proofs: restoredProofs
+            ).0
+            let store = MemoryAttemptStore()
+            try store.save([attempt])
+            let service = OnchainSendAttemptService(store: store)
+            let backup = try await service.backupSnapshot(wallet: Self.goldenWallet(), proofs: restoredProofs)
+            let snapshot = try XCTUnwrap(backup)
+            XCTAssertEqual(snapshot.requestId?.billingPeriodStartsAt, timestamp)
+            XCTAssertEqual(snapshot.requestId?.billingPeriodStartsAt, paymentState.pendingProofs.first?.requestId.billingPeriodStartsAt)
+        }
+    }
+
     func testHardwareBackupRequiresCompleteSignedReceipt() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.completeAttemptGolden())
         let proof = try XCTUnwrap(envelope.paykitPaymentState?.pendingProofs.first)

@@ -343,7 +343,10 @@ actor OnchainSendAttemptService {
         {
             throw OnchainSendAttemptError.unresolved
         }
-        let wire = try PaykitPaymentStateBackup.ActiveOnchainAttempt(attempt, wallet: wallet)
+        let billingPeriod = proofs.first {
+            $0.requestId == attempt.requestId && $0.identity == attempt.recoveryContext?.paymentIdentity
+        }?.billingPeriod
+        let wire = try PaykitPaymentStateBackup.ActiveOnchainAttempt(attempt, wallet: wallet, billingPeriod: billingPeriod)
         _ = try wire.restored(wallet: wallet, proofs: proofs)
         return wire
     }

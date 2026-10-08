@@ -209,12 +209,12 @@ struct PaykitPaymentStateBackup: Codable {
         let followup: Followup?
         let transfer: Transfer?
 
-        init(_ attempt: OnchainSendAttempt, wallet: Wallet) throws {
+        init(_ attempt: OnchainSendAttempt, wallet: Wallet, billingPeriod: PaykitBillingPeriod? = nil) throws {
             guard attempt.walletId == wallet.originalWalletId else { throw invalidBackup("On-chain attempt belongs to another backup wallet") }
             version = 1
             self.wallet = wallet
             attemptId = attempt.id.uuidString.lowercased()
-            requestId = attempt.requestId.map { RequestID($0, billingPeriod: nil) }
+            requestId = attempt.requestId.map { RequestID($0, billingPeriod: billingPeriod) }
             orderId = attempt.orderId
             payerIdentity = attempt.recoveryContext?.paymentIdentity
             address = attempt.address
