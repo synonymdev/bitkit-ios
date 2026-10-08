@@ -232,6 +232,19 @@ actor PaykitPaymentProofService {
     private var hardwareCompletionsInProgress: Set<HardwareCompletionKey> = []
     private var hardwareResolutionsAwaitingIdentity: Set<HardwareCompletionKey> = []
 
+    private var hardwarePaymentsInProgress: Set<String> = []
+
+    /// Own receipt loading through submission or pre-dispatch cleanup across recreated send sheets.
+    /// Cancellation does not release ownership until the original coordinator has finished cleanup.
+    func withHardwarePaymentOwnership<T>(walletId: String, operation: @MainActor () async throws -> T) async throws -> T {
+        try Task.checkCancellation()
+        guard hardwarePaymentsInProgress.insert(walletId).inserted else {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
+        defer { hardwarePaymentsInProgress.remove(walletId) }
+        return try await operation()
+    }
+
     func backupSnapshot() async throws -> [PaykitPaymentStateBackup.Proof] {
         try await store.load().map(PaykitPaymentStateBackup.Proof.init)
     }

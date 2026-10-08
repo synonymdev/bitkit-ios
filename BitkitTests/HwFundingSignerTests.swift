@@ -929,7 +929,11 @@ final class HwFundingSignerTests: XCTestCase {
             XCTAssertNil(coordinator.resolveObservedShopPayment(unrelated, paymentIdentity: identity, currentIdentity: identity))
             XCTAssertFalse(coordinator.canLeave)
         }
-        XCTAssertNil(coordinator.resolveObservedShopPayment(original, paymentIdentity: identity, currentIdentity: "pubky" + String(repeating: "x", count: 52)))
+        XCTAssertNil(coordinator.resolveObservedShopPayment(
+            original,
+            paymentIdentity: identity,
+            currentIdentity: "pubky" + String(repeating: "x", count: 52)
+        ))
         XCTAssertEqual(
             coordinator.resolveObservedShopPayment(original, paymentIdentity: identity, currentIdentity: identity),
             .success(paymentId: txid, walletId: "jade:wallet")
@@ -1178,7 +1182,9 @@ final class HwFundingSignerTests: XCTestCase {
                     clearSignedPaymentBeforeDispatch: { _ in
                         clearingStarted = true
                         await clearing.wait()
-                        if cleanupSucceeds { receipt = nil }
+                        if cleanupSucceeds {
+                            receipt = nil
+                        }
                         return cleanupSucceeds
                     }
                 )
@@ -1217,6 +1223,79 @@ final class HwFundingSignerTests: XCTestCase {
                 XCTAssertNotNil(receipt, "the new submitted attempt retains its own receipt")
             }
         }
+    }
+
+    func testRecreatedCoordinatorCannotAdoptReceiptUntilCancelledOwnerFinishesCleanup() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let firstCoordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let reopenedCoordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let proofService = PaykitPaymentProofService(
+            sdk: PaymentProofSdkMock(identity: "pubky" + String(repeating: "z", count: 52), records: []),
+            store: PaymentProofMemoryStore(), logInfo: { _ in }, logWarning: { _ in }
+        )
+        let retaining = AsyncGate()
+        let clearing = AsyncGate()
+        var receipt: HwFundingSignedTx?
+        var retainingStarted = false
+        var clearingStarted = false
+        var loads = 0
+        let first = Task {
+            try await proofService.withHardwarePaymentOwnership(walletId: "jade:wallet") {
+                try await firstCoordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                    loadSignedPayment: { loads += 1; return nil },
+                    retainSignedPayment: { signed in
+                        receipt = signed
+                        retainingStarted = true
+                        await retaining.wait()
+                    },
+                    clearSignedPaymentBeforeDispatch: { _ in
+                        clearingStarted = true
+                        await clearing.wait()
+                        receipt = nil
+                        return true
+                    }
+                )
+            }
+        }
+        await waitUntil { retainingStarted }
+        XCTAssertTrue(retainingStarted)
+        firstCoordinator.cancel()
+        let sendFromReopenedSheet = {
+            try await proofService.withHardwarePaymentOwnership(walletId: "jade:wallet") {
+                try await reopenedCoordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                    loadSignedPayment: {
+                        loads += 1
+                        return receipt.map { RetainedHardwareOnchainPayment(signedTx: $0, hasAttemptedBroadcast: false) }
+                    },
+                    retainSignedPayment: { receipt = $0 }
+                )
+            }
+        }
+        await assertThrowsAsync { _ = try await sendFromReopenedSheet() } _: { error in
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+        retaining.open()
+        await waitUntil { clearingStarted }
+        XCTAssertTrue(clearingStarted)
+        await assertThrowsAsync { _ = try await sendFromReopenedSheet() } _: { error in
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+        XCTAssertEqual(loads, 1, "the recreated sheet must not even load the old owner's receipt")
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        let otherWallet = try await proofService.withHardwarePaymentOwnership(walletId: "jade:other-wallet") { true }
+        XCTAssertTrue(otherWallet, "ownership is scoped to the original hardware wallet")
+        clearing.open()
+        await assertThrowsAsync { _ = try await first.value } _: { error in
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertNil(receipt)
+        _ = try await sendFromReopenedSheet()
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        XCTAssertEqual(loads, 2)
+        XCTAssertNotNil(receipt, "cleanup from the old owner cannot remove the new payment")
     }
 
     func testCancelWithNothingInFlightKeepsTheSession() async throws {

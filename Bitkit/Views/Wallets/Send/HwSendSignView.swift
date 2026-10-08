@@ -165,52 +165,54 @@ struct HwSendSignView: View {
 
             do {
                 var proofVerified = requestId == nil
-                let result = try await hwSend.signAndBroadcast(
-                    manager: hwWalletManager,
-                    address: invoice.address,
-                    sats: amount,
-                    satsPerVByte: UInt64(feeRate),
-                    paymentDeadline: contactPaymentDeadline,
-                    paymentRequestId: requestId,
-                    loadSignedPayment: {
-                        guard let requestId else { return nil }
-                        guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
-                        return try await PaykitPaymentProofService.shared.retainedHardwareOnchainPayment(
-                            requestId: requestId, paymentIdentity: identity, walletId: walletId,
-                            address: invoice.address, amountSats: amount
-                        )
-                    },
-                    beforeFirstBroadcast: prepareContactPayment,
-                    beforeBroadcastAttempt: authorizeContactPayment,
-                    retainSignedPayment: { signed in
-                        guard let requestId else { return }
-                        guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
-                        try await PaykitPaymentProofService.shared.retainHardwareOnchainCandidate(
-                            requestId: requestId, paymentIdentity: identity, walletId: walletId,
-                            address: invoice.address, amountSats: amount, serializedTx: signed.serializedTx
-                        )
-                    },
-                    clearSignedPaymentBeforeDispatch: { signed in
-                        guard let requestId else { return true }
-                        guard let identity = contactPaymentIdentity else { return false }
-                        return await PaykitPaymentProofService.shared.clearHardwareCandidateBeforeDispatch(
-                            requestId: requestId, paymentIdentity: identity, walletId: walletId, serializedTx: signed.serializedTx
-                        )
-                    },
-                    afterBroadcast: { result in
-                        if requestId != nil {
-                            // Save original tags before proof reconciliation can complete.
-                            // This retains metadata only; a bare Core txid is not Sent.
-                            await Self.recordPaymentResult(
-                                result, walletId: walletId, address: invoice.address, amount: amount,
-                                contactPublicKey: contactPublicKey, tags: tags, requestId: requestId,
-                                proofVerified: false
+                let result = try await PaykitPaymentProofService.shared.withHardwarePaymentOwnership(walletId: walletId) {
+                    try await hwSend.signAndBroadcast(
+                        manager: hwWalletManager,
+                        address: invoice.address,
+                        sats: amount,
+                        satsPerVByte: UInt64(feeRate),
+                        paymentDeadline: contactPaymentDeadline,
+                        paymentRequestId: requestId,
+                        loadSignedPayment: {
+                            guard let requestId else { return nil }
+                            guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                            return try await PaykitPaymentProofService.shared.retainedHardwareOnchainPayment(
+                                requestId: requestId, paymentIdentity: identity, walletId: walletId,
+                                address: invoice.address, amountSats: amount
                             )
-                        }
-                        proofVerified = await completeContactPayment(result.txId)
-                    },
-                    afterFailure: cancelContactPayment
-                )
+                        },
+                        beforeFirstBroadcast: prepareContactPayment,
+                        beforeBroadcastAttempt: authorizeContactPayment,
+                        retainSignedPayment: { signed in
+                            guard let requestId else { return }
+                            guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                            try await PaykitPaymentProofService.shared.retainHardwareOnchainCandidate(
+                                requestId: requestId, paymentIdentity: identity, walletId: walletId,
+                                address: invoice.address, amountSats: amount, serializedTx: signed.serializedTx
+                            )
+                        },
+                        clearSignedPaymentBeforeDispatch: { signed in
+                            guard let requestId else { return true }
+                            guard let identity = contactPaymentIdentity else { return false }
+                            return await PaykitPaymentProofService.shared.clearHardwareCandidateBeforeDispatch(
+                                requestId: requestId, paymentIdentity: identity, walletId: walletId, serializedTx: signed.serializedTx
+                            )
+                        },
+                        afterBroadcast: { result in
+                            if requestId != nil {
+                                // Save original tags before proof reconciliation can complete.
+                                // This retains metadata only; a bare Core txid is not Sent.
+                                await Self.recordPaymentResult(
+                                    result, walletId: walletId, address: invoice.address, amount: amount,
+                                    contactPublicKey: contactPublicKey, tags: tags, requestId: requestId,
+                                    proofVerified: false
+                                )
+                            }
+                            proofVerified = await completeContactPayment(result.txId)
+                        },
+                        afterFailure: cancelContactPayment
+                    )
+                }
                 await Self.recordPaymentResult(
                     result,
                     walletId: walletId,
