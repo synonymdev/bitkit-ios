@@ -499,7 +499,12 @@ jobs:
             [ -n "$ip" ] && break
             if (( SECONDS >= deadline )); then
               echo "::error::stack runner never joined the tailnet as regtest-${{ github.run_id }}-${{ github.run_attempt }}"
-              tailscale status || true
+              # Only this workflow's own node names. A bare `tailscale status`
+              # prints every peer's address, hostname and owner, and this
+              # repository's Actions logs are public.
+              tailscale status --json 2>/dev/null \
+                | jq -r '.Peer[]? | select(.HostName | startswith("regtest-")) | .HostName' \
+                || true
               exit 1
             fi
             sleep 10
