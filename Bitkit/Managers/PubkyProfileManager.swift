@@ -1610,6 +1610,32 @@ class PubkyProfileManager: ObservableObject {
         return PubkyPublicKeyFormat.matches(prefixedPublicKey, publicKey)
     }
 
+    nonisolated static func hasPrivatePaymentAccess(
+        for publicKey: String?,
+        loadKeychainString: (KeychainEntryType) throws -> String? = {
+            guard let data = try Keychain.load(key: $0) else { return nil }
+            guard let value = String(data: data, encoding: .utf8) else { throw KeychainError.failedToLoad }
+            return value
+        },
+        adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current,
+        loadSharedSecret: (String, String) throws -> String? = {
+            try SharedPubkyKeychain.readSecret(sourceApp: $0, pubky: $1)
+        }
+    ) throws -> Bool {
+        guard let publicKey else { return false }
+        let secretKeyHex: String? = if let localSecret = try loadKeychainString(.pubkySecretKey), !localSecret.isEmpty {
+            localSecret
+        } else if let adopted {
+            try loadSharedSecret(adopted.sourceApp, adopted.pubky)
+        } else {
+            nil
+        }
+        guard let secretKeyHex else { return false }
+        let rawPublicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        let prefixedPublicKey = rawPublicKey.hasPrefix("pubky") ? rawPublicKey : "pubky\(rawPublicKey)"
+        return PubkyPublicKeyFormat.matches(prefixedPublicKey, publicKey)
+    }
+
     nonisolated static func snapshotSessionBackupState(
         loadKeychainString: (KeychainEntryType) throws -> String? = {
             try Keychain.loadString(key: $0)

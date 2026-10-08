@@ -2838,6 +2838,67 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(secretKeyHex)
     }
 
+    func testPrivatePaymentAccessRequiresAMatchingLocalOrAdoptedSecret() throws {
+        let secretKeyHex = String(repeating: "01", count: 32)
+        let publicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        let otherSecretKeyHex = String(repeating: "02", count: 32)
+        let cases: [(local: String?, shared: String?, expected: Bool)] = [
+            (secretKeyHex, nil, true),
+            (nil, secretKeyHex, true),
+            ("", secretKeyHex, true),
+            (nil, nil, false),
+            (otherSecretKeyHex, secretKeyHex, false),
+            (nil, otherSecretKeyHex, false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(try PubkyProfileManager.hasPrivatePaymentAccess(
+                for: publicKey,
+                loadKeychainString: { _ in testCase.local },
+                adopted: (SharedPubkyKeychain.ringSourceApp, publicKey),
+                loadSharedSecret: { sourceApp, pubky in
+                    XCTAssertTrue(testCase.local == nil || testCase.local == "")
+                    XCTAssertEqual(sourceApp, SharedPubkyKeychain.ringSourceApp)
+                    XCTAssertEqual(pubky, publicKey)
+                    return testCase.shared
+                }
+            ), testCase.expected)
+        }
+        XCTAssertFalse(try PubkyProfileManager.hasPrivatePaymentAccess(
+            for: publicKey, loadKeychainString: { _ in nil }, adopted: nil,
+            loadSharedSecret: { _, _ in XCTFail("No adopted identity"); return nil }
+        ))
+    }
+
+    func testPrivatePaymentAccessPreservesKeyReadErrors() {
+        XCTAssertThrowsError(try PubkyProfileManager.hasPrivatePaymentAccess(
+            for: "pubky-current",
+            loadKeychainString: { _ in throw KeychainError.failedToLoad },
+            adopted: (SharedPubkyKeychain.ringSourceApp, "current"),
+            loadSharedSecret: { _, _ in XCTFail("An unreadable local key must not fall back"); return nil }
+        )) { XCTAssertTrue($0 is KeychainError) }
+
+        XCTAssertThrowsError(try PubkyProfileManager.hasPrivatePaymentAccess(
+            for: "pubky-current",
+            loadKeychainString: { _ in nil },
+            adopted: (SharedPubkyKeychain.ringSourceApp, "current"),
+            loadSharedSecret: { _, _ in throw KeychainError.failedToLoad }
+        )) { XCTAssertTrue($0 is KeychainError) }
+    }
+
+    @MainActor
+    func testPrivatePaymentAccessDoesNotTreatInvalidLocalKeysAsMissing() async throws {
+        try await withEmptyIdentityStorage {
+            let secretKeyHex = String(repeating: "01", count: 32)
+            let publicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+            for data in [Data("invalid-key".utf8), Data([0xFF])] {
+                try Keychain.upsert(key: .pubkySecretKey, data: data)
+                XCTAssertThrowsError(try PubkyProfileManager.hasPrivatePaymentAccess(for: publicKey))
+            }
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secretKeyHex.utf8))
+            XCTAssertTrue(try PubkyProfileManager.hasPrivatePaymentAccess(for: publicKey))
+        }
+    }
+
     func testResolveSessionInitializationRestoresSavedSessionWithoutReSigningIn() async {
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: "saved-session",
