@@ -1003,14 +1003,17 @@ extension PrivatePaykitService {
             processPending: { try await self.retryDrainOperations(for: publicKey).processPending($0) },
             receive: { try await self.retryDrainOperations(for: publicKey).receive($0) }
         )
-        let drainKeys = await pendingPrivateMessageDrainKeys(
-            [publicKey], retryMissingPeers: retry.expectedIdentity != nil, priority: .background,
-            operations: operations, isCurrent: isCurrent
-        )
+        let drainKeys: Set<String> = if retry.expectedIdentity != nil {
+            [publicKey]
+        } else {
+            await pendingPrivateMessageDrainKeys(
+                [publicKey], priority: .background, operations: operations, isCurrent: isCurrent
+            )
+        }
         guard await isCurrent() else { return }
         var received = Set<String>()
         await drainPendingPrivateMessages(
-            reason: reason, advancing: retry.expectedIdentity == nil ? Array(drainKeys) : [publicKey],
+            reason: reason, advancing: Array(drainKeys),
             isBackgroundWork: true, operations: operations, isCurrent: isCurrent, onReceived: { received = $0 }
         )
         guard await waitForBackgroundWork(generation: generation), await isCurrent() else { return }

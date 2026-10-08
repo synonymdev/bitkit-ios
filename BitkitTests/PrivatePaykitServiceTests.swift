@@ -41,6 +41,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
         var sleepDelays: [UInt64] = []
         var advanced = false
         var priorities: [PaykitSdkOperationLock.Priority] = []
+        var peerReads = 0
+        var outboundReads = 0
         let service = PrivatePaykitService(messageRetryOperations: .init(
             now: { now },
             sleep: { delay in
@@ -54,8 +56,11 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 priorities.append(priority)
                 return .init(
                     ensureLink: { key in XCTAssertEqual(key, newKey); advanced = true },
-                    pendingOutbound: { [] },
-                    linkedPeers: { [self.drainPeer(newKey, state: advanced ? .linked : .linking)] },
+                    pendingOutbound: { outboundReads += 1; return [] },
+                    linkedPeers: {
+                        peerReads += 1
+                        return [self.drainPeer(newKey, state: advanced ? .linked : .linking)]
+                    },
                     processPending: { _ in XCTFail("No outbound messages") },
                     receive: { XCTAssertEqual($0, newKey) }
                 )
@@ -80,6 +85,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(olderRetry?.retryIndex, 5)
         XCTAssertFalse(priorities.isEmpty)
         XCTAssertTrue(priorities.allSatisfy { $0 == .interactive })
+        XCTAssertEqual(peerReads, 3)
+        XCTAssertEqual(outboundReads, 2)
         await service.invalidateContactPreparation()
     }
 
