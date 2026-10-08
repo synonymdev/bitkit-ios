@@ -3808,6 +3808,33 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testUnpayableEndpointEndsPreparationAndAllowsManualRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        for isRequested in [false, true] {
+            if isRequested { XCTAssertTrue(manager.requestPresentation(request)) }
+            let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
+                deferring: request,
+                reason: .endpointNotPayable,
+                with: manager
+            )
+
+            XCTAssertTrue(feedback.isTerminal)
+            XCTAssertEqual(feedback.diagnosticReason, .endpointNotPayable)
+            XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestUnavailableToast")
+            XCTAssertEqual(feedback.toast?.isInformational, false)
+            XCTAssertNil(manager.requestedPresentationId)
+            XCTAssertFalse(manager.isWaitingForPresentationRetry(request))
+            await manager.refresh()
+            XCTAssertEqual(manager.pendingRequests, [request])
+            XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        }
+        XCTAssertTrue(manager.requestPresentation(request))
+    }
+
     func testPendingPrivateLinkRecoveryReleasesRequestedPresentationForRetry() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)

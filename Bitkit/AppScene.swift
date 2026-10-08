@@ -227,6 +227,13 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         reason: IncomingPaykitPaymentRequestFailureReason,
         with manager: PaykitPaymentRequestManager
     ) -> IncomingPaykitPaymentRequestPresentationFeedback {
+        if reason == .endpointNotPayable {
+            manager.dismissPreparingRequest(request)
+            return IncomingPaykitPaymentRequestPresentationFeedback(
+                deferral: .requestedPresentationEnded,
+                fallbackReason: reason
+            )
+        }
         let result = manager.deferPresentation(request, diagnosticReason: reason)
         return IncomingPaykitPaymentRequestPresentationFeedback(
             deferral: result.deferral,

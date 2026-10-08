@@ -77,7 +77,11 @@ the request in history without a Pay action. The iOS controls use `GRAB`, `SendF
   endpoint payload.
 - Open-time rejection emits a warning with `category=resolution` or `category=presentation`, a
   stable reason code, and only the redacted counterparty.
-- An explicit Pay action tries immediately and fourteen more times at two-second intervals. After
+- An endpoint rejected as `endpoint_not_payable`, including an already-paid one-time address,
+  ends preparation immediately with `PaymentRequestUnavailableToast`. The request stays pending
+  for manual retry, but does not automatically reopen during the current identity's app session.
+  `unpayable-endpoint.xml` checks this using an address already recorded as paid by the payer.
+- Other resolution failures from an explicit Pay action are tried immediately and fourteen more times at two-second intervals. After
   the fifteenth failure, Bitkit shows an error toast with localized keys `wallet__payment_request`
   and `wallet__payment_request_unavailable`, then leaves the request available for another attempt.
 - If the request expires during an explicit presentation attempt, Bitkit logs
