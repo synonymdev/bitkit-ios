@@ -389,11 +389,21 @@ jobs:
           set -euo pipefail
           deadline=$(( SECONDS + 15600 ))
           finished=false
+          # gh api does not retry and this polls every 30s for hours, so one 502
+          # must not end the job - ending it takes the stack down under the tests.
+          failures=0
           while (( SECONDS < deadline )); do
             if ! jobs_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100"); then
-              echo "::error::could not read this run's jobs from the API"
-              exit 1
+              failures=$(( failures + 1 ))
+              echo "::warning::jobs API failed (${failures} in a row)"
+              if (( failures >= 10 )); then
+                echo "::error::could not read this run's jobs from the API"
+                exit 1
+              fi
+              sleep 30
+              continue
             fi
+            failures=0
             # Matrix jobs are named "<job> - <shard>", so match on the prefix.
             remote=$(jq '[.jobs[] | select(.name | startswith("e2e-tests-remote"))]' <<<"$jobs_json")
             started=$(jq 'length' <<<"$remote")
@@ -423,6 +433,9 @@ jobs:
   # Same suite as e2e-tests-local, on a GitHub-hosted Mac with the stack on
   # another runner. Runs alongside it until it has earned replacing it.
   e2e-tests-remote:
+    permissions:
+      contents: read
+      actions: read
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
     needs: [detect-changes, build-local, e2e-branch]
@@ -478,8 +491,20 @@ jobs:
           args: --accept-dns=false
 
       - name: Find the stack runner
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # "Re-run failed jobs" reuses the stack job instead of running it, so
+          # its tailnet node is already gone and no name can match. Only treat a
+          # job list that omits this attempt entirely as proof of that.
+          if ! jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100&filter=all"); then
+            echo "::warning::could not check whether the stack job ran in this attempt"
+          elif [ "$(jq --argjson a "${{ github.run_attempt }}" '[.jobs[] | select(.name == "regtest-stack" and .run_attempt == $a)] | length' <<<"$jobs")" -eq 0 ]; then
+            echo "::error::regtest-stack did not run in attempt ${{ github.run_attempt }}; use \"Re-run all jobs\""
+            exit 1
+          fi
+
           deadline=$(( SECONDS + 1800 ))
           while :; do
             ip=$(tailscale status --json 2>/dev/null \
