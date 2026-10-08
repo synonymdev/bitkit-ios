@@ -31,6 +31,16 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
     return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
 }
 
+/// Request data is shown literally: accent tags inside it must not be read as markup by the text components.
+func pubkyAuthLiteralText(_ value: String) -> String {
+    var text = value
+    while true {
+        let stripped = text.replacingOccurrences(of: "<accent>", with: "").replacingOccurrences(of: "</accent>", with: "")
+        if stripped == text { return text }
+        text = stripped
+    }
+}
+
 struct PubkyAuthApprovalConfig {
     let request: PubkyAuthRequest
 }
@@ -213,20 +223,28 @@ struct PubkyAuthApprovalSheet: View {
 
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            successDescriptionText
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        successDescriptionText
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 16)
 
-            Spacer()
+                        Spacer(minLength: 0)
 
-            Image("check")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 256, height: 256)
-                .scaleEffect(Self.checkIllustrationScale)
-                .frame(maxWidth: .infinity)
+                        Image("check")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 256, height: 256)
+                            .scaleEffect(Self.checkIllustrationScale)
+                            .frame(maxWidth: .infinity)
 
-            Spacer()
+                        Spacer(minLength: 16)
+                    }
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                }
+                .scrollIndicators(.hidden)
+            }
 
             CustomButton(title: t("common__ok")) {
                 sheets.hideSheet()
@@ -301,14 +319,18 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var serviceText: String {
-        config.request.serviceNames.joined(separator: " and ")
+        pubkyAuthLiteralText(config.request.serviceNames.joined(separator: " and "))
+    }
+
+    private var requesterText: String {
+        pubkyAuthLiteralText(config.request.clientID)
     }
 
     private var descriptionText: some View {
         BodyMText(
-            config.request.clientID.isEmpty
+            requesterText.isEmpty
                 ? t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix")
-                : t("pubky_auth__description_named", variables: ["clientId": config.request.clientID, "service": serviceText]),
+                : t("pubky_auth__description_named", variables: ["clientId": requesterText, "service": serviceText]),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
         )
@@ -336,13 +358,13 @@ struct PubkyAuthApprovalSheet: View {
 
     private var successDescriptionText: some View {
         BodyMText(
-            config.request.clientID.isEmpty
+            requesterText.isEmpty
                 ? t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
                 + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
                 + t("pubky_auth__success_suffix")
                 : t(
                     "pubky_auth__success_named",
-                    variables: ["pubky": truncatedPublicKey, "clientId": config.request.clientID, "service": serviceText]
+                    variables: ["pubky": truncatedPublicKey, "clientId": requesterText, "service": serviceText]
                 ),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
