@@ -155,15 +155,28 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             var dispatchTime = deadlineDate.addingTimeInterval(-1)
             sender.deadlineClock = { dispatchTime }
             sender.txid = String(repeating: "cd", count: 32)
-            let result = try await service.retrySamePayment(
-                using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
-                paymentDeadline: deadline, authorize: { _, _ in
-                    // Deadline crosses after request authorization while native dispatch awaits its queue.
-                    sender.onNativeQueueDispatch = { dispatchTime = deadlineDate.addingTimeInterval(expired ? 0.001 : 0) }
+            do {
+                let result = try await service.retrySamePayment(
+                    using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
+                    paymentDeadline: deadline, authorize: { _, _ in
+                        sender.onNativeQueueDispatch = { dispatchTime = deadlineDate.addingTimeInterval(expired ? 0.001 : 0) }
+                    }
+                )
+                if expired {
+                    XCTFail("Definitely unsent retry must report pre-dispatch failure")
+                } else {
+                    XCTAssertEqual(result, .unknown(txid: sender.txid))
                 }
-            )
+            } catch OnchainSendAttemptError.preDispatch {
+                XCTAssertTrue(expired)
+            }
             XCTAssertEqual(sender.broadcasts, expired ? 1 : 2, "An expired successor must never reach native broadcast")
-            XCTAssertEqual(result, .unknown(txid: sender.txid))
+            if expired {
+                XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateTxids, [originalTxid])
+                XCTAssertNil(store.snapshot().first?.recoveryContext?.candidateFeeRates?[sender.txid])
+                let observed = try await service.observeTransaction(txid: originalTxid, walletId: original.walletId)
+                XCTAssertTrue(observed, "The original must remain observable without an unsent competitor")
+            }
             XCTAssertEqual(store.snapshot().first?.id, original.id)
             XCTAssertEqual(store.snapshot().first?.address, original.address)
             XCTAssertEqual(store.snapshot().first?.amountSats, original.amountSats)
@@ -1326,6 +1339,8 @@ final class AttemptNodeMock: OnchainSending {
         self.result = result
     }
 
+    var preparedMiningFeeSats: UInt64?
+    var preparedRecipientAmountSats: UInt64?
     var preparationError: Error?
     var onPrepare: (() async throws -> Void)?
 
@@ -1342,7 +1357,8 @@ final class AttemptNodeMock: OnchainSending {
         case let .accepted(txid), let .rejected(txid, _), let .unknown(txid): txid
         }
         return PreparedOnchainSendDispatch(txid: candidate,
-                                           inputs: [OnchainSendInput(txid: String(repeating: "ef", count: 32), vout: 0)], recipientAmountSats: sats)
+                                           inputs: [OnchainSendInput(txid: String(repeating: "ef", count: 32), vout: 0)],
+                                           recipientAmountSats: preparedRecipientAmountSats ?? sats, miningFeeSats: preparedMiningFeeSats)
         {
             try await self.send(address: address, sats: sats, satsPerVbyte: satsPerVbyte, utxosToSpend: utxosToSpend,
                                 isMaxAmount: isMaxAmount, expectedWalletIndex: expectedWalletIndex, expectedNode: expectedNode)

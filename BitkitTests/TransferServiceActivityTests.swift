@@ -921,6 +921,16 @@ final class TransferServiceActivityTests: XCTestCase {
         do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
         let original = try XCTUnwrap(store.snapshot().first)
         sheets.hideSheet()
+        vm.onEstimateReady(clientBalance: 20000, lspBalance: 10000, feeSat: 21000)
+        XCTAssertNil(vm.uiState.order, "A new estimate drops the screen order, not the global payment guard")
+        do {
+            _ = try await vm.orderForConfirmation { _, _ in
+                XCTFail("Confirmation must route retained funding before creating another order")
+                return IBtOrder.mock(id: "replacement-confirmation-order")
+            }
+            XCTFail("A new confirmation must yield to original Pending")
+        } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong confirmation re-entry error: \(error)") }
+        sheets.hideSheet()
         do {
             _ = try await vm.orderForSwipe { _, _ in
                 XCTFail("An unresolved funding operation must not create a new order")
@@ -928,6 +938,12 @@ final class TransferServiceActivityTests: XCTestCase {
             }
             XCTFail("The reset swipe must yield to original Pending")
         } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong funding re-entry error: \(error)") }
+        sheets.hideSheet()
+        await vm.onTransferToSpendingHwConfirm(walletId: "hardware-wallet") { _, _ in
+            XCTFail("Hardware confirmation must not create a replacement order")
+            return IBtOrder.mock(id: "replacement-hardware-order")
+        }
+        XCTAssertNil(vm.hwTransferError, "Routing Pending must not add a generic hardware error")
         let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
         guard case let .onchainPending(context) = config.initialRoute else { return XCTFail("Missing Pending") }
         XCTAssertEqual(context.attemptId, original.id)
@@ -977,6 +993,10 @@ final class TransferServiceActivityTests: XCTestCase {
             let attempts = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
             let order = IBtOrder.mock()
             let initialTotal = isMax ? UInt64(20000) : order.feeSat + 123
+            if isMax {
+                node.preparedMiningFeeSats = 123
+                node.preparedRecipientAmountSats = initialTotal - 123
+            }
             let vm = TransferViewModel(
                 transferService: makeService(), sheetViewModel: SheetViewModel(),
                 onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 }

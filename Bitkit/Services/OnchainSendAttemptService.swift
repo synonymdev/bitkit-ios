@@ -578,7 +578,19 @@ actor OnchainSendAttemptService {
         }
         let result: OnchainSendResult
         do { result = try await normalized(prepared.broadcast(), candidate: prepared.txid) }
-        catch { result = .unknown(txid: prepared.txid) }
+        catch let failure as PreparedOnchainSendNotSubmitted {
+            do {
+                try discardUnsubmittedRetryCandidate(prepared.txid, attemptId: original.id, wasAdded: addedCandidate)
+            } catch {
+                throw OnchainSendAttemptError.unresolved
+            }
+            if let winner = try winningResult(attemptId: original.id) {
+                return winner
+            }
+            throw OnchainSendAttemptError.preDispatch(failure.underlying)
+        } catch {
+            result = .unknown(txid: prepared.txid)
+        }
         do { try record(result, attemptId: original.id) }
         catch { Logger.warn("Could not persist the known recovery outcome; original inputs remain guarded", context: "OnchainSendAttempt") }
         return (try? winningResult(attemptId: original.id)) ?? result

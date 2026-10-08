@@ -379,10 +379,6 @@ class TransferViewModel: ObservableObject {
     func orderForSwipe(
         createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
     ) async throws -> IBtOrder {
-        if let order = uiState.order, let context = try await onchainAttemptService.orderPendingContext(orderId: order.id) {
-            await showFundingPending(context)
-            throw OnchainFundingPendingError()
-        }
         guard let order = try await currentOrder(createOrder: createOrder, isCurrent: { true }) else { throw CancellationError() }
         return order
     }
@@ -392,6 +388,13 @@ class TransferViewModel: ObservableObject {
         isCurrent: () -> Bool
     ) async throws -> IBtOrder? {
         guard isCurrent() else { return nil }
+        if let retained = try await onchainAttemptService.blockingAttempt(),
+           retained.requestId == nil, retained.orderId != nil
+        {
+            let context = OnchainSendPendingContext(attemptId: retained.id, walletId: retained.walletId, txid: retained.txid)
+            await showFundingPending(context)
+            throw OnchainFundingPendingError()
+        }
         if let order = uiState.order {
             if pendingHwFundingBroadcast?.orderId == order.id {
                 return order
@@ -833,6 +836,8 @@ class TransferViewModel: ObservableObject {
             ) else { return }
             guard hwOrderCreationToken == token else { return }
             onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+        } catch is OnchainFundingPendingError {
+            return
         } catch {
             hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
         }
