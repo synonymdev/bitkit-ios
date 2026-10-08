@@ -2,6 +2,8 @@ import Foundation
 import Paykit
 
 enum PaykitBitcoinRequestPricing {
+    private static let maxSignificantDigits = 38
+
     struct BitcoinPayment {
         let amountSats: UInt64
         let endpointIdentifiers: [String]
@@ -21,6 +23,7 @@ enum PaykitBitcoinRequestPricing {
             let rate = rates.first { $0.asset == selector } ?? rates.first { $0.asset == "btc" }
             guard let rateValue = rate?.value ?? (terms.amount.asset == "btc" ? "1" : nil) else { continue }
             guard let multiplier = positiveDecimal(rateValue),
+                  significantDigits(terms.amount.value) + significantDigits(rateValue) <= maxSignificantDigits,
                   let sats = sats(amount: requestedAmount, rate: multiplier, lightning: selector == "btc-lightning")
             else { return nil }
             // The send sheet can switch rails without asking the user to approve a different amount.
@@ -48,10 +51,14 @@ enum PaykitBitcoinRequestPricing {
         return sats <= UInt64.max / 1000 ? sats : nil
     }
 
+    private static func significantDigits(_ value: String) -> Int {
+        value.filter { $0 != "." }.drop(while: { $0 == "0" }).reversed().drop(while: { $0 == "0" }).count
+    }
+
     private static func positiveDecimal(_ value: String) -> Decimal? {
         guard value.count <= 80,
               value.range(of: #"\A(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)\z"#, options: .regularExpression) != nil,
-              value.filter({ $0 != "." }).drop(while: { $0 == "0" }).count <= 38,
+              value.filter({ $0 != "." }).drop(while: { $0 == "0" }).count <= maxSignificantDigits,
               let decimal = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")),
               decimal > 0
         else { return nil }

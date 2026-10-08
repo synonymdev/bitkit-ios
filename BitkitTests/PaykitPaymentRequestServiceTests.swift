@@ -38,6 +38,31 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testFixedPricingRejectsProductsBeyondExactDecimalPrecision() throws {
+        let cases: [(String, String, UInt64?)] = [
+            ("9." + String(repeating: "0", count: 35) + "1", "0.00004", 36001),
+            ("9." + String(repeating: "0", count: 36) + "1", "0.00004", nil),
+            ("9." + String(repeating: "0", count: 36) + "1", "1", nil),
+            ("0009." + String(repeating: "0", count: 35) + "10", "0.0000400", 36001),
+        ]
+        for (amount, rate, expected) in cases {
+            let record = try paymentRequestRecord(
+                amount: amount, asset: "usd", conversion: .fixed(rates: [.init(asset: "btc", value: rate)]),
+                endpoints: ["btc-regtest-p2wpkh"]
+            )
+            let result = PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest)
+            if let expected {
+                XCTAssertEqual(try result.get().amountSats, expected, "\(amount) * \(rate)")
+            } else {
+                guard case let .failure(reason) = result else {
+                    XCTFail("Unsupported product precision was accepted: \(amount) * \(rate)")
+                    continue
+                }
+                XCTAssertEqual(reason, .unsupportedPricing)
+            }
+        }
+    }
+
     func testFixedPricingOmitsUnquotedCrossAssetRails() throws {
         let record = try paymentRequestRecord(
             amount: "1", asset: "usd", conversion: .fixed(rates: [.init(asset: "btc-regtest", value: "0.00021")]),
