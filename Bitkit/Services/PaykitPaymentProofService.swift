@@ -1001,21 +1001,30 @@ actor PaykitPaymentProofService {
         return true
     }
 
-    func failOnchainPayment(_ request: PaykitPaymentRequest, paymentIdentity: String? = nil) async {
-        if let paymentIdentity {
-            await removeProofs {
-                PubkyPublicKeyFormat.matches($0.identity, paymentIdentity) && $0.requestId == request.id &&
-                    $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet && $0.paymentStarted &&
-                    $0.paymentIdentifier == nil && $0.proofData == nil
+    @discardableResult
+    func failOnchainPayment(_ request: PaykitPaymentRequest, paymentIdentity: String? = nil) async -> Bool {
+        let liveIdentity = paymentIdentity == nil ? try? await currentIdentity() : nil
+        return await mutationLock.withLock {
+            do {
+                let pendingProofs = try await loadProofs()
+                let candidates = pendingProofs.filter {
+                    $0.requestId == request.id && $0.kind == .onchain && !$0.hasUnsupportedOnchainWallet &&
+                        $0.paymentStarted && $0.paymentIdentifier == nil && $0.proofData == nil
+                }
+                guard !candidates.isEmpty else { return true }
+                let candidateIdentities = Set(candidates.compactMap { PubkyPublicKeyFormat.normalized($0.identity) })
+                guard let targetIdentity = paymentIdentity ?? liveIdentity ??
+                    (candidateIdentities.count == 1 ? candidateIdentities.first : nil)
+                else { return false }
+                let remainingProofs = pendingProofs.filter { proof in
+                    !(candidates.contains(proof) && PubkyPublicKeyFormat.matches(proof.identity, targetIdentity))
+                }
+                if remainingProofs != pendingProofs { try await persist(remainingProofs) }
+                return true
+            } catch {
+                logWarning("Failed to roll back an undispatched Paykit payment proof: \(error)")
+                return false
             }
-            return
-        }
-        await removeRequestProofs(request) {
-            $0.kind == .onchain &&
-                !$0.hasUnsupportedOnchainWallet &&
-                $0.paymentStarted &&
-                $0.paymentIdentifier == nil &&
-                $0.proofData == nil
         }
     }
 

@@ -92,6 +92,7 @@ enum OnchainSendAttemptError: LocalizedError {
     case retryConstruction
     case retryUnavailable
     case preDispatch(Error)
+    case preDispatchCleanupFailed
 
     var errorDescription: String? {
         switch self {
@@ -101,7 +102,7 @@ enum OnchainSendAttemptError: LocalizedError {
             t("wallet__onchain_send_duplicate")
         case .outcomeNotSaved:
             t("wallet__onchain_outcome_save_failed")
-        case .localFollowupNotSaved:
+        case .localFollowupNotSaved, .preDispatchCleanupFailed:
             t("wallet__onchain_followup_failed")
         case .retryConstruction:
             t("wallet__onchain_retry_construction")
@@ -429,6 +430,9 @@ actor OnchainSendAttemptService {
             try await beforeBroadcastAttempt()
             try checkWallet(lightningService, index: walletIndex, node: dispatchNode)
         } catch {
+            if case OnchainSendAttemptError.preDispatchCleanupFailed = error {
+                throw OnchainSendAttemptError.unresolved
+            }
             let preDispatchError = error
             do { try clearBeforeDispatch(attemptId: attemptId) }
             catch { throw OnchainSendAttemptError.unresolved }
