@@ -580,14 +580,15 @@ struct AppScene: View {
                 receivedPaymentBackfillCache.invalidate()
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
-                    let session = pubkyProfile.currentSession
                     Task {
                         await handlePendingPaykitSubscriptionNotification()
                         try? await contactsManager.loadContacts(for: pk)
                         if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
                             await retryPendingPaykitEndpointRemoval()
                         }
-                        guard isPaykitSceneActive, let session, session == pubkyProfile.currentSession else { return }
+                        guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                              PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
+                        else { return }
                         await refreshPrivateOnlyPaykitApp()
                         await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
                         if PaykitSubscriptionNotificationTargetStore.load() == nil {
@@ -603,13 +604,14 @@ struct AppScene: View {
                 let publicKeys = contacts.map(\.publicKey)
                 guard PaykitFeatureFlags.isUIEnabled,
                       wallet.walletExists == true,
-                      pubkyProfile.authState == .authenticated
+                      pubkyProfile.authState == .authenticated, let pk = pubkyProfile.publicKey
                 else { return }
                 paykitPaymentRequestManager.updateSavedPublicKeys(publicKeys)
-                let session = pubkyProfile.currentSession
                 Task {
                     await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
-                    guard isPaykitSceneActive, let session, session == pubkyProfile.currentSession else { return }
+                    guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                          PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
+                    else { return }
                     await refreshIncomingPaykitPaymentRequests(forceFresh: true, onlyWhileActive: true)
                 }
             }
