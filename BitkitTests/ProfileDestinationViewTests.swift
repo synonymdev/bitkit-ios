@@ -400,6 +400,7 @@ final class ProfileDestinationViewTests: XCTestCase {
 
     private func hostProfile(_ manager: PubkyProfileManager, navigation: NavigationViewModel? = nil) throws -> UIWindow {
         let view = ProfileDestinationView(hasSeenIntro: true)
+            .environment(\.accessibilityEnabled, true)
             .environmentObject(manager)
             .environmentObject(AppViewModel())
             .environmentObject(navigation ?? NavigationViewModel())
