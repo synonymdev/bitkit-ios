@@ -58,6 +58,64 @@ Hold withdrawal in progress and foreground the app. It must not start another cl
 sharing on again before withdrawal finishes: publication must wait until the earlier cleanup ends,
 then leave sharing on. Repeat while a foreground cleanup is already running.
 
+## Background preparation
+
+Sign in from Pubky Ring with a saved, request-capable contact while holding the selected
+identity's profile lookup. After authentication and contact loading finish, Paykit target
+discovery must run without waiting for the profile lookup or a maintenance poll. Verify the
+Receive contact-request entry point once discovery finishes. Repeat with backgrounding or an
+identity change during contact loading: automatic refresh must not start for an inactive app
+or the previous identity. This requires Pubky Ring and controlled profile lookup timing,
+which are not journey-runner capabilities. Android uses the same authenticated-identity gate.
+
+With saved contacts and scheduled private preparation or retry work, press Home between SDK
+operations. Saved contacts must remain intact; scheduled preparation and retries pause before
+their next operation and resume on return to the app. Background the app while an SDK call is
+held in progress: that call must finish without cancellation. Delete the disposable profile while
+preparation is paused; returning to the app must not resume work for the old identity.
+
+Controlled SDK blocking and lifecycle-boundary observations require an instrumented fixture,
+which the standard journey runner does not provide. Record ordinary Home/resume separately;
+it does not prove every controlled case. Do not delete a profile containing data to preserve.
+
+On iOS, inactive transitions alone do not pause preparation. An admitted endpoint publication
+batch finishes its reservations and publication together, even after backgrounding. Explicit
+foreground preparation and cleanup remain ordered; scheduled work uses background priority.
+
+Emit several proof-state notifications while backgrounded without changing proof persistence.
+No observer-driven stored request refresh starts until the app is active; returning to the app
+refreshes the latest state once. Repeat while payment activity is held: refresh waits until that
+activity ends. A session change discards the old session's pending refresh. These notifications
+and the payment-activity hold require the same controlled fixture, not a real payment.
+
+Hold proof reconciliation during an automatic request refresh, then background the app and release
+it. Reconciliation must finish, but request intake and target discovery wait for resume. Explicit
+payment-completion work keeps its normal behavior. This requires controlled operation blocking.
+
+Hold an explicit request send, payment-proof completion, or sharing withdrawal in progress, then
+background the app and release the operation. It must continue without waiting for foreground
+contact preparation. Acceptance delivery also remains eligible after payment submission ends.
+These checks require controlled operation blocking and do not guarantee execution after OS
+suspension or termination.
+
+On iOS, backgrounding cancels the automatic polling and foreground-publication SwiftUI tasks;
+they are distinct from explicit completion work. Dismissing a send flow can cancel preparation,
+and session changes still stop obsolete work. A confirmed hardware broadcast must finish its
+proof-completion callback even when the caller is canceled.
+
+On iOS, pause contact preparation after a private invoice payment or reserved-address activity.
+The received-payment marker must persist, and wallet sync and post-boost completion must not wait
+for endpoint publication. Resume preparation and verify the updated endpoints are published.
+Repeat while an older endpoint batch is held: the refresh must remain queued for a later batch.
+These checks require controlled operation blocking.
+
+With public sharing enabled, compare a retained-profile startup and Home/resume. Initial public
+publication waits for the signed-in session and running node, with one automatic publication per
+activation when receive endpoints and session inputs are unchanged. Changed receive endpoints and
+forced channel invoice refresh still publish their latest values. Disable sharing or end the session
+while app registration is held; the admitted write may
+finish, but the next endpoint publication must not start for the ended session or disabled sharing.
+
 ## Foreground wait isolation
 
 Hold an unrelated contact's background preparation in progress, then open a saved, linked contact

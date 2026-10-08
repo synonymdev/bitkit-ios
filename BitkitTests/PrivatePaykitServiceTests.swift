@@ -612,14 +612,81 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertFalse(PrivatePaykitService.paymentRequestNeedsPrivateLinkRecovery(linkState: .notLinked))
     }
 
-    func testReceivedPrivateInvoiceHashKeepsContactAttribution() async {
-        let service = PrivatePaykitService()
-        let publicKey = "pubkycontact"
-
-        await service.rememberReceivedInvoicePaymentHash("payment-hash", publicKey: publicKey)
-
-        let matchedPublicKey = await service.contactPublicKey(forPrivateInvoicePaymentHash: "payment-hash")
+    @MainActor
+    func testReceivedPrivateInvoicePersistsWhileEndpointPreparationIsPaused() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        var published = [String]()
+        let service = PrivatePaykitService(publicationOperations: .init(
+            currentPublicKey: { "pubkylocal" },
+            ensureLink: { _ in .linked },
+            buildEndpoints: { _ in [] },
+            syncPaymentLists: { updates in
+                published += updates.map(\.counterparty)
+                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            }
+        ))
+        _ = await service.rememberSavedContacts([publicKey], replacing: true)
+        await service.setTestLocalInvoice(.init(bolt11: "lnbc1private", paymentHash: "payment-hash", expiresAt: 123), publicKey: publicKey)
+        await service.setBackgroundWorkPaused(true)
+        let completed = expectation(description: "Received payment completes while endpoint preparation is paused")
+        let receipt = Task {
+            await service.handleReceivedPayment(paymentHash: "payment-hash", wallet: WalletViewModel())
+            completed.fulfill()
+        }
+        await fulfillment(of: [completed], timeout: 2)
+        XCTAssertTrue(published.isEmpty)
+        let restored = PrivatePaykitService()
+        let receivedHashes = await restored.testContactState(publicKey: publicKey)?.receivedInvoicePaymentHashes
+        XCTAssertEqual(receivedHashes, ["payment-hash"])
+        let matchedPublicKey = await restored.contactPublicKey(forPrivateInvoicePaymentHash: "payment-hash")
         XCTAssertEqual(matchedPublicKey, publicKey)
+
+        await service.setBackgroundWorkPaused(false)
+        await receipt.value
+        try await service.awaitContactPreparation()
+        XCTAssertEqual(published, [publicKey])
+    }
+
+    @MainActor
+    func testEndpointRefreshRequeuesAnActivePreparation() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        var endpointPayload = #"{"value":"bcrt1qold"}"#
+        var published = [[String]]()
+        let publishing = expectation(description: "Older endpoints are being published")
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let service = PrivatePaykitService(publicationOperations: .init(
+            currentPublicKey: { "pubkylocal" },
+            ensureLink: { _ in .linked },
+            buildEndpoints: { _ in
+                [.init(methodId: .regtestOnchainP2wpkh, value: "bcrt1qendpoint", min: nil, max: nil, rawPayload: endpointPayload)]
+            },
+            syncPaymentLists: { updates in
+                published.append(updates.flatMap(\.reservations).map(\.payload))
+                if published.count == 1 {
+                    publishing.fulfill()
+                    for await _ in resume {}
+                }
+                return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            }
+        ))
+        let wallet = WalletViewModel()
+        _ = await service.prepareSavedContacts([publicKey], wallet: wallet)
+        await fulfillment(of: [publishing], timeout: 2)
+        endpointPayload = #"{"value":"bcrt1qnew"}"#
+        let refreshed = expectation(description: "Endpoint refresh is queued without waiting for the active publication")
+        let refresh = Task {
+            await service.refreshSavedContactEndpoints(for: [publicKey], wallet: wallet)
+            refreshed.fulfill()
+        }
+        await fulfillment(of: [refreshed], timeout: 2)
+        continuation.finish()
+        await refresh.value
+        try await service.awaitContactPreparation()
+
+        XCTAssertEqual(published, [[#"{"value":"bcrt1qold"}"#], [#"{"value":"bcrt1qnew"}"#]])
     }
 
     func testPrivateReservationAttributionMatchesSdkPublicationMetadata() async throws {
@@ -1144,6 +1211,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             }
         )
 
+        await service.setBackgroundWorkPaused(true)
         do {
             try await service.removePublishedEndpoints(operations: operations)
             XCTFail("Failed discovery must keep cleanup pending")
@@ -1287,6 +1355,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let service = PrivatePaykitService()
 
         _ = await service.rememberSavedContacts([failedPublicKey, successfulPublicKey], replacing: true)
+        await service.setBackgroundWorkPaused(true)
         let error = await service.syncLocalEndpointPublication(
             for: [failedPublicKey, successfulPublicKey],
             reason: "test",
@@ -1411,6 +1480,193 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let prepared = expectation(description: "New preparation starts")
         await service.scheduleContactPreparation([publicKey]) { _, _ in prepared.fulfill() }
         await fulfillment(of: [prepared], timeout: 2)
+    }
+
+    func testBackgroundPreparationRetainsCoalescedKeysAndForceRefreshUntilResumed() async throws {
+        let service = PrivatePaykitService()
+        let keys = [String(repeating: "y", count: 52), String(repeating: "o", count: 52)].map { "pubky" + $0 }
+        _ = await service.rememberSavedContacts(keys, replacing: true)
+        await service.setBackgroundWorkPaused(true)
+        var batches: [[String]] = []
+        let operation: ([String], Bool) async -> Void = { keys, forceRefresh in
+            XCTAssertTrue(forceRefresh)
+            batches.append(keys)
+        }
+        await service.scheduleContactPreparation([keys[0]], operation: operation)
+        await service.scheduleContactPreparation(keys, forceRefreshLightning: true, operation: operation)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(batches.isEmpty)
+        let pending = await service.pendingPreparationKeys
+        XCTAssertEqual(pending, Set(keys))
+        let task = await service.preparationTask
+        XCTAssertEqual(task?.isCancelled, false)
+
+        await service.setBackgroundWorkPaused(false)
+        await task?.value
+        XCTAssertEqual(batches, [keys.sorted()])
+    }
+
+    func testInvalidationDiscardsPausedPreparationWithoutLosingNewWork() async throws {
+        let service = PrivatePaykitService()
+        let key = "pubky" + String(repeating: "y", count: 52)
+        _ = await service.rememberSavedContacts([key], replacing: true)
+        await service.setBackgroundWorkPaused(true)
+        await service.scheduleContactPreparation([key]) { _, _ in XCTFail("Invalidated preparation must not run") }
+        try await Task.sleep(for: .milliseconds(50))
+        await service.invalidateContactPreparation()
+        var prepared: [String] = []
+        await service.scheduleContactPreparation([key]) { keys, _ in prepared = keys }
+        await service.setBackgroundWorkPaused(false)
+        try await service.awaitContactPreparation()
+        XCTAssertEqual(prepared, [key])
+    }
+
+    func testBackgroundPauseDoesNotSplitAnAdmittedPublicationBatch() async {
+        let service = PrivatePaykitService()
+        let key = "pubky" + String(repeating: "y", count: 52)
+        _ = await service.rememberSavedContacts([key], replacing: true)
+        var published = false
+        let operations = PrivatePaykitService.EndpointPublicationOperations(
+            currentPublicKey: { "local" },
+            ensureLink: { _ in .linked },
+            buildEndpoints: { _ in
+                await service.setBackgroundWorkPaused(true)
+                return []
+            },
+            syncPaymentLists: { updates in
+                XCTAssertFalse(Task.isCancelled)
+                XCTAssertEqual(updates.map(\.counterparty), [key])
+                published = true
+                return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+            }
+        )
+        _ = await service.syncLocalEndpointPublication(
+            for: [key], reason: "test", requireImmediatePublication: false, operations: operations
+        )
+        XCTAssertTrue(published)
+    }
+
+    func testBackgroundPreparationWaitsBeforeReadingPeersAfterTransportFailure() async throws {
+        for invalidate in [false, true] {
+            let service = PrivatePaykitService()
+            let key = "pubky" + String(repeating: "y", count: 52)
+            _ = await service.rememberSavedContacts([key], replacing: true)
+            let failed = expectation(description: "Link failed while backgrounded")
+            var reads = 0
+            let operations = PrivatePaykitService.EndpointPublicationOperations(
+                currentPublicKey: { "local" },
+                ensureLink: { _ in
+                    await service.setBackgroundWorkPaused(true)
+                    failed.fulfill()
+                    throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                },
+                buildEndpoints: { _ in XCTFail("No prepared link"); return [] },
+                syncPaymentLists: { _ in XCTFail("No prepared link"); return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                linkedPeers: { reads += 1; return [] }
+            )
+            let task = Task {
+                await service.syncLocalEndpointPublication(
+                    for: [key], reason: "test", requireImmediatePublication: false, operations: operations
+                )
+            }
+            await fulfillment(of: [failed], timeout: 2)
+            try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(reads, 1)
+            if invalidate { await service.invalidateContactPreparation() }
+            await service.setBackgroundWorkPaused(false)
+            _ = await task.value
+            XCTAssertEqual(reads, invalidate ? 1 : 2)
+            await service.invalidateContactPreparation()
+        }
+    }
+
+    func testBackgroundDrainFinishesActiveCallThenWaitsAtEachBoundary() async throws {
+        let order = ["initialPeers", "link", "link", "outbound", "send", "send", "peers", "receive", "receive"]
+        for stage in ["initialPeers", "link", "outbound", "send", "peers", "receive"] {
+            for outcome in ["resume", "invalidate", "cancel"] {
+                let service = PrivatePaykitService()
+                let started = expectation(description: "Active \(stage) started")
+                let (gate, release) = AsyncStream<Void>.makeStream()
+                defer { release.finish() }
+                var events: [String] = []
+                var paused = false
+                let record: (String) async -> Void = { event in
+                    events.append(event)
+                    if event == stage, !paused {
+                        paused = true
+                        started.fulfill()
+                        for await _ in gate {}
+                        XCTAssertFalse(Task.isCancelled)
+                    }
+                }
+                let task = Task {
+                    await service.drainPendingPrivateMessages(
+                        reason: "test", advancing: ["first", "second"], isBackgroundWork: true, operations: .init(
+                            ensureLink: { _ in await record("link") },
+                            pendingOutbound: { await record("outbound"); return ["first", "second"] },
+                            linkedPeers: {
+                                let initial = events.isEmpty
+                                await record(initial ? "initialPeers" : "peers")
+                                return initial ? [] : [self.drainPeer("first"), self.drainPeer("second")]
+                            },
+                            processPending: { _ in await record("send") },
+                            receive: { _ in await record("receive") }
+                        )
+                    )
+                }
+                await fulfillment(of: [started], timeout: 2)
+                await service.setBackgroundWorkPaused(true)
+                XCTAssertFalse(task.isCancelled)
+                release.finish()
+                try await Task.sleep(for: .milliseconds(50))
+                let prefix = try Array(order.prefix(through: XCTUnwrap(order.firstIndex(of: stage))))
+                XCTAssertEqual(events, prefix, "\(stage): \(outcome)")
+                let waiters = await service.backgroundWorkWaiters.count
+                XCTAssertEqual(waiters, 1)
+                switch outcome {
+                case "resume": await service.setBackgroundWorkPaused(false)
+                case "invalidate": await service.invalidateContactPreparation()
+                default: task.cancel()
+                }
+                await task.value
+                XCTAssertEqual(events, outcome == "resume" ? order : prefix)
+                let remainingWaiters = await service.backgroundWorkWaiters.count
+                XCTAssertEqual(remainingWaiters, 0)
+            }
+        }
+    }
+
+    func testExplicitDrainDoesNotWaitForBackgroundPreparation() async {
+        let service = PrivatePaykitService()
+        await service.setBackgroundWorkPaused(true)
+        var received = false
+        await service.drainPendingPrivateMessages(reason: "cleanup", advancing: ["peer"], operations: .init(
+            ensureLink: { _ in XCTFail("Peer is already linked") },
+            pendingOutbound: { [] },
+            linkedPeers: { [self.drainPeer("peer")] },
+            processPending: { _ in XCTFail("No pending messages") },
+            receive: { _ in received = true }
+        ))
+        XCTAssertTrue(received)
+    }
+
+    func testBackgroundPauseRetainsRetryTaskKeysAndGeneration() async throws {
+        let service = PrivatePaykitService()
+        let key = "pubky" + String(repeating: "y", count: 52)
+        await service.setBackgroundWorkPaused(true)
+        await service.schedulePrivatePaymentRecovery(for: key)
+        let generation = await service.pendingMessageDrainRetryGeneration
+        try await Task.sleep(for: .milliseconds(1100))
+        let keys = await service.pendingMessageDrainRetryKeys
+        let task = await service.pendingMessageDrainRetryTask
+        let currentGeneration = await service.pendingMessageDrainRetryGeneration
+        XCTAssertEqual(keys, [key])
+        XCTAssertEqual(currentGeneration, generation)
+        XCTAssertEqual(task?.isCancelled, false)
+        await service.invalidateContactPreparation()
+        await task?.value
+        let invalidatedKeys = await service.pendingMessageDrainRetryKeys
+        XCTAssertTrue(invalidatedKeys.isEmpty)
     }
 
     func testResumingPublicationRetainsCleanupOnlyWhenRestorationFails() async {

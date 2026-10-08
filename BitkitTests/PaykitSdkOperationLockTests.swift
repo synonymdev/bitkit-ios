@@ -37,6 +37,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         let operations: [(PaykitSdkService) async throws -> Void] = [
             { _ = try await $0.receivePrivateMessagesFromLinkedPeers(priority: .background) },
             { _ = try await $0.ensureLinkWithPeer("peer", priority: .background) },
+            { _ = try await $0.receivePrivateMessages(counterparty: "peer", priority: .background) },
         ]
         let cases: [(priority: PaykitSdkOperationLock.Priority?, orderedBarrier: Bool, expected: [String])] = [
             (nil, false, ["active", "intake", "publish"]),
@@ -670,6 +671,11 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     override func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
         await intake()
         return []
+    }
+
+    override func receivePrivateMessages(counterparty _: String) async throws -> PrivateStreamIntakeReport {
+        await intake()
+        return PrivateStreamIntakeReport(receiveBatchId: nil, streamItemIds: [], eventConflicts: [])
     }
 
     override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps: UInt32) async throws -> LinkedPeerHandshakeReport {

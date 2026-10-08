@@ -364,15 +364,22 @@ enum PublicPaykitService {
             }
 
             try await syncApp()
+            if let isSessionCurrent, !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
             // Keep the App Registry current even when wallet endpoints are unavailable.
             try await applyEndpoints(desiredEndpoints.get())
         }
     }
 
     @MainActor
-    static func syncCurrentPublishedEndpoints(wallet: WalletViewModel) async throws {
+    static func syncCurrentPublishedEndpoints(wallet: WalletViewModel, isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
-        try await applyPublishedEndpoints(desiredEndpoints, beforeApplying: { try await syncPaykitApp() })
+        try await syncPublishedEndpoints(
+            publish: true,
+            isSessionCurrent: isSessionCurrent,
+            buildEndpoints: { desiredEndpoints },
+            syncApp: { try await syncPaykitApp() },
+            applyEndpoints: applyPublishedEndpointsLocked
+        )
     }
 
     static func removePublishedEndpoints() async throws {

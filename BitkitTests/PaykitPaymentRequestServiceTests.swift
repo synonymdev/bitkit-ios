@@ -6652,10 +6652,19 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
         let target = try XCTUnwrap(manager.eligibleTargets.first)
 
-        let request = try await manager.propose(
-            PaykitPaymentRequestDraft(amountSats: 1, note: "Coffee", expiresAt: expiresAt),
-            to: target
-        )
+        let wasPaused = await PrivatePaykitService.shared.isBackgroundWorkPaused
+        addTeardownBlock { await PrivatePaykitService.shared.setBackgroundWorkPaused(wasPaused) }
+        await sdk.pauseNextProposal()
+        let proposal = Task {
+            try await manager.propose(
+                PaykitPaymentRequestDraft(amountSats: 1, note: "Coffee", expiresAt: expiresAt),
+                to: target
+            )
+        }
+        try await waitUntil { await sdk.proposalIsPaused() }
+        await PrivatePaykitService.shared.setBackgroundWorkPaused(true)
+        await sdk.resumeProposal()
+        let request = try await proposal.value
 
         XCTAssertEqual(request.amountSats, 1)
         XCTAssertEqual(request.note, "Coffee")

@@ -1,9 +1,34 @@
 import Foundation
 
+struct PaykitPaymentProofRefreshState {
+    struct Request: Equatable {
+        let id = UUID()
+        let session: PubkyProfileManager.SignedInSession
+    }
+
+    private var pending: Request?
+
+    mutating func invalidate(session: PubkyProfileManager.SignedInSession?) {
+        pending = session.map { Request(session: $0) }
+    }
+
+    func request(session: PubkyProfileManager.SignedInSession?, isActive: Bool) -> Request? {
+        guard isActive, let pending, pending.session == session else { return nil }
+        return pending
+    }
+
+    mutating func complete(_ request: Request) {
+        if pending == request { pending = nil }
+    }
+
+    mutating func discard(unlessSession session: PubkyProfileManager.SignedInSession?) {
+        if pending?.session != session { pending = nil }
+    }
+}
+
 @MainActor
 final class PaykitPaymentActivity {
     enum DeferredWork: Hashable {
-        case proofRefresh
         case acceptance(identity: String, counterparty: String)
     }
 
