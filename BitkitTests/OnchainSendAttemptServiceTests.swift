@@ -984,7 +984,11 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                     do {
                         _ = try await service.send(
                             using: node, address: "bcrt1qexample", amountSats: 1000, satsPerVbyte: 1,
-                            utxosToSpend: nil, isMaxAmount: index % 2 == 0, orderId: index % 3 == 0 ? "order" : nil
+                            utxosToSpend: nil, isMaxAmount: index % 2 == 0, orderId: index % 3 == 0 ? "order" : nil,
+                            transferContext: index % 3 == 0 ? OnchainSendTransferContext(
+                                clientBalanceSats: 900, txTotalSats: 1100,
+                                preTransferOnchainSats: 1100, originalOrderFeeSats: 1000
+                            ) : nil
                         )
                         return true
                     } catch { return false }
