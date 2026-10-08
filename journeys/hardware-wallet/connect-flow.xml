@@ -18,7 +18,7 @@
     <action>If iOS shows a Bluetooth or Local Network permission prompt, allow it and continue waiting on the Searching step</action>
     <action>Verify the sheet advances to the "Found Device" step (id "HardwareWalletFoundScreen") headed "Found Trezor" within 15 seconds</action>
     <action>Capture a screenshot and verify the centered black Trezor device render has clear edge highlights, a transparent background, and no clipping</action>
-    <action>Tap "Connect" on the Found Device step</action>
+    <action>Tap "Connect" (id "HardwareWalletFoundConnect") on the Found Device step</action>
     <action>Verify the sheet advances to the "Device Connected" step (id "HardwareWalletPairedScreen") headed "Paired Trezor", showing a balance and an editable "Label Funds" field, with no PIN or pairing prompt</action>
     <action>Clear the "Label Funds" field (id "HardwareWalletLabelInput") and type "My Trezor"</action>
     <action>Tap the "Finish" button (id "HardwareWalletPairedFinish") and verify the sheet closes back to the Hardware Wallets screen</action>
