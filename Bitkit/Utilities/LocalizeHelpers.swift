@@ -6,6 +6,11 @@ enum LocalizationHelper {
     private static let appGroupSuiteName = "group.bitkit"
     private static let selectedLanguageCodeKey = "selectedLanguageCode"
 
+    private struct PluralArgument: Decodable {
+        let name: String
+        let isPlural: Bool
+    }
+
     private static var currentLanguageCode: String {
         let appGroupCode = UserDefaults(suiteName: appGroupSuiteName)?.string(forKey: selectedLanguageCodeKey) ?? ""
         if !appGroupCode.isEmpty {
@@ -28,22 +33,68 @@ enum LocalizationHelper {
 
     /// Gets a localized string with English fallback
     static func getString(for key: String, comment: String = "") -> String {
+        guard let resource = localizedResource(for: key) else { return key }
+        return NSLocalizedString(key, bundle: resource.bundle, comment: comment)
+    }
+
+    /// Formats synchronized plural translations using Foundation's locale-aware rules.
+    static func getPluralString(for key: String, comment: String = "", arguments: [String: Any]) -> String {
+        guard let resource = localizedResource(for: key) else { return key }
+        let source = NSLocalizedString(key, bundle: resource.bundle, comment: comment)
+        let fallback = arguments.reduce(source) { result, argument in
+            result.replacingOccurrences(of: "{\(argument.key)}", with: String(describing: argument.value))
+        }
+        guard let metadataURL = resource.bundle.url(forResource: "PluralArguments", withExtension: "plist"),
+              let data = try? Data(contentsOf: metadataURL),
+              let metadata = try? PropertyListDecoder().decode([String: [PluralArgument]].self, from: data),
+              let parameters = metadata[key]
+        else {
+            return fallback
+        }
+
+        var values: [CVarArg] = []
+        for parameter in parameters {
+            guard let value = arguments[parameter.name] else { return fallback }
+            if parameter.isPlural {
+                guard let count = integerCount(value) else { return fallback }
+                values.append(count)
+            } else {
+                values.append(String(describing: value))
+            }
+        }
+
+        let format = resource.bundle.localizedString(forKey: key, value: key, table: "LocalizablePlurals")
+        guard format != key else { return fallback }
+        return String(format: format, locale: Locale(identifier: resource.languageCode), arguments: values)
+    }
+
+    private static func integerCount(_ value: Any) -> Int64? {
+        if let count = value as? Int64 {
+            return count
+        }
+        if let count = value as? UInt64 {
+            return Int64(exactly: count)
+        }
+        if let count = value as? Double {
+            return Int64(exactly: count)
+        }
+        return Int64(String(describing: value))
+    }
+
+    private static func localizedResource(for key: String) -> (bundle: Bundle, languageCode: String)? {
         let languageCode = currentLanguageCode
 
-        // Get English bundle for fallback
-        guard let englishBundle = getBundle(for: "en") else {
-            return key // Ultimate fallback
-        }
+        guard let englishBundle = getBundle(for: "en") else { return nil }
 
         // If requesting English or if selected language bundle doesn't exist
         guard languageCode != "en", let selectedBundle = getBundle(for: languageCode) else {
-            return getStringFromBundle(englishBundle, key: key, comment: comment)
+            return (englishBundle, "en")
         }
 
         if keyExists(in: selectedBundle, key: key) {
-            return NSLocalizedString(key, bundle: selectedBundle, comment: comment)
+            return (selectedBundle, languageCode)
         } else {
-            return getStringFromBundle(englishBundle, key: key, comment: comment)
+            return (englishBundle, "en")
         }
     }
 
@@ -53,73 +104,6 @@ enum LocalizationHelper {
             return nil
         }
         return Bundle(path: path)
-    }
-
-    /// Gets a string from a bundle with optional key fallback
-    private static func getStringFromBundle(_ bundle: Bundle, key: String, comment: String) -> String {
-        if keyExists(in: bundle, key: key) {
-            return NSLocalizedString(key, bundle: bundle, comment: comment)
-        } else {
-            return key
-        }
-    }
-
-    /// Formats a string using ICU MessageFormat with pluralization support
-    static func formatPlural(_ pattern: String, arguments: [String: Any], locale: Locale = Locale.current) -> String {
-        return formatterPlural(pattern, arguments: arguments)
-    }
-
-    // TODO: implement a ICU message format library
-    /// Fallback pluralization formatter for when ICU MessageFormat isn't available
-    private static func formatterPlural(_ pattern: String, arguments: [String: Any]) -> String {
-        var result = pattern
-
-        // Handle basic plural syntax: {count, plural, one {...} other {...}}
-        let pluralRegex = try! NSRegularExpression(pattern: "\\{(\\w+),\\s*plural,\\s*one\\s*\\{([^}]+)\\}\\s*other\\s*\\{([^}]+)\\}\\}", options: [])
-
-        let matches = pluralRegex.matches(in: pattern, options: [], range: NSRange(location: 0, length: pattern.count))
-
-        for match in matches.reversed() { // Process in reverse to maintain string indices
-            let fullMatchRange = match.range
-            let countVarRange = match.range(at: 1)
-            let oneFormRange = match.range(at: 2)
-            let otherFormRange = match.range(at: 3)
-
-            let countVarName = String(pattern[Range(countVarRange, in: pattern)!])
-            let oneForm = String(pattern[Range(oneFormRange, in: pattern)!])
-            let otherForm = String(pattern[Range(otherFormRange, in: pattern)!])
-
-            if let countValue = arguments[countVarName] {
-                let count: Int = if let intValue = countValue as? Int {
-                    intValue
-                } else if let doubleValue = countValue as? Double {
-                    Int(doubleValue)
-                } else if let stringValue = countValue as? String, let intValue = Int(stringValue) {
-                    intValue
-                } else {
-                    0
-                }
-
-                let selectedForm = (count == 1) ? oneForm : otherForm
-                var processedForm = selectedForm.replacingOccurrences(of: "#", with: "\(count)")
-
-                // Replace other variables in the selected form
-                for (key, value) in arguments {
-                    if key != countVarName {
-                        processedForm = processedForm.replacingOccurrences(of: "{\(key)}", with: "\(value)")
-                    }
-                }
-
-                result = result.replacingCharacters(in: Range(fullMatchRange, in: result)!, with: processedForm)
-            }
-        }
-
-        // Replace any remaining simple variables
-        for (key, value) in arguments {
-            result = result.replacingOccurrences(of: "{\(key)}", with: "\(value)")
-        }
-
-        return result
     }
 }
 
@@ -138,8 +122,7 @@ func t(_ key: String, comment: String = "", variables: [String: String] = [:]) -
 }
 
 func tPlural(_ key: String, comment: String = "", arguments: [String: Any] = [:]) -> String {
-    let localizedString = LocalizationHelper.getString(for: key, comment: comment)
-    return LocalizationHelper.formatPlural(localizedString, arguments: arguments)
+    return LocalizationHelper.getPluralString(for: key, comment: comment, arguments: arguments)
 }
 
 /// Get a random line from a localized string

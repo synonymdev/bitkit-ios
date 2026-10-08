@@ -385,6 +385,7 @@
 				96FE1F5D2C2DE6AA006D0C8B /* Sources */,
 				96FE1F5E2C2DE6AA006D0C8B /* Frameworks */,
 				96FE1F5F2C2DE6AA006D0C8B /* Resources */,
+				751000000000000000000001 /* Generate Plural Localizations */,
 				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
 				96EMBED0012026012000FRAME /* Remove Static Framework Stubs */,
 			);
@@ -568,6 +569,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		751000000000000000000001 /* Generate Plural Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = (
+				"$(SRCROOT)/scripts/generate-plural-localizations.swift",
+				"$(SRCROOT)/Bitkit/Resources/Localization",
+			);
+			name = "Generate Plural Localizations";
+			outputPaths = ();
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/usr/bin/xcrun --sdk macosx swift -sdk \"$(/usr/bin/xcrun --sdk macosx --show-sdk-path)\" \"${SRCROOT}/scripts/generate-plural-localizations.swift\" \"${SRCROOT}/Bitkit/Resources/Localization\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n";
+		};
 		96EMBED0012026012000FRAME /* Remove Static Framework Stubs */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
