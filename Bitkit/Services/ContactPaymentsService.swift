@@ -78,13 +78,16 @@ enum ContactPaymentsService {
         pubkyProfile: PubkyProfileManager,
         contactsManager: ContactsManager,
         operations: Operations,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        privatePaymentAccess: (String) throws -> Bool = { try PubkyProfileManager.hasPrivatePaymentAccess(for: $0) }
     ) async throws -> Bool {
         latestChange += 1
         let change = latestChange
         guard let session = pubkyProfile.currentSession else { return false }
         let isChangeCurrent: ChangeCheck = { Self.latestChange == change && pubkyProfile.currentSession == session }
-        let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
+        try Task.checkCancellation()
+        let canUsePrivatePayments = enabled ? try privatePaymentAccess(session.publicKey) : false
+        try Task.checkCancellation()
         if enabled, canUsePrivatePayments {
             do {
                 try await contactsManager.loadContactsIfNeeded(for: session.publicKey)

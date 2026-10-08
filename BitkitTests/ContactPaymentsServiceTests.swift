@@ -125,6 +125,106 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testPrivateAccessFailurePreservesPreferencesAndAllowsSetupRetry() async throws {
+        for failure in [KeychainError.failedToLoad as Error, CancellationError()] {
+            try await withIsolatedDefaultsAsync { defaults in
+                let profile = signedInProfile(ownerKey: "pubky-current")
+                let contactsLoaded = expectation(description: "Contacts loaded after access check")
+                let contacts = ContactsManager(contactRecords: { contactsLoaded.fulfill(); return [] })
+                let operations = OperationsSpy()
+                defaults.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
+                defaults.set(true, forKey: PrivatePaykitService.cleanupPendingKey)
+                defaults.set(false, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+                defaults.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+                let previousPreferences = defaults.dictionaryRepresentation() as NSDictionary
+
+                do {
+                    try await ContactPaymentsService.setEnabled(
+                        true, pubkyProfile: profile, contactsManager: contacts,
+                        operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                        privatePaymentAccess: { publicKey in
+                            XCTAssertEqual(publicKey, "pubky-current")
+                            throw failure
+                        }
+                    )
+                    XCTFail("Setup must surface the access failure")
+                } catch {
+                    XCTAssertEqual(error is CancellationError, failure is CancellationError)
+                    XCTAssertEqual(error is KeychainError, failure is KeychainError)
+                }
+                XCTAssertEqual(defaults.dictionaryRepresentation() as NSDictionary, previousPreferences)
+                XCTAssertFalse(contacts.hasLoaded)
+                XCTAssertTrue(operations.calls.isEmpty)
+                XCTAssertTrue(operations.publicCleanupValues.isEmpty)
+                XCTAssertTrue(operations.privateCleanupValues.isEmpty)
+
+                operations.onSyncPublicEndpoints = { publish in
+                    XCTAssertTrue(publish)
+                    XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+                }
+                let applied = try await ContactPaymentsService.setEnabled(
+                    true, pubkyProfile: profile, contactsManager: contacts,
+                    operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                    privatePaymentAccess: { _ in true }
+                )
+                XCTAssertTrue(applied)
+                await fulfillment(of: [contactsLoaded], timeout: 2)
+                XCTAssertEqual(operations.calls, ["public:true", "private:publish"])
+                XCTAssertTrue(ContactPaymentsService.isEnabled(defaults: defaults))
+                XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
+            }
+        }
+    }
+
+    func testCancelledSetupDoesNotReadKeysOrPublish() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let contacts = ContactsManager(contactRecords: { XCTFail("Cancelled setup must not load contacts"); return [] })
+            let operations = OperationsSpy()
+            let task = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                return try await ContactPaymentsService.setEnabled(
+                    true, pubkyProfile: profile, contactsManager: contacts,
+                    operations: operations.makeOperations(), defaults: defaults,
+                    privatePaymentAccess: { _ in XCTFail("Cancelled setup must not read keys"); return true }
+                )
+            }
+            do {
+                _ = try await task.value
+                XCTFail("Setup must remain cancelled")
+            } catch {
+                XCTAssertTrue(error is CancellationError)
+            }
+            XCTAssertTrue(operations.calls.isEmpty)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+        }
+    }
+
+    func testSetupWithoutPrivateAccessPublishesPublicOnlyAndDisableDoesNotReadKeys() async throws {
+        try await withIsolatedDefaultsAsync { defaults in
+            let profile = signedInProfile(ownerKey: "pubky-current")
+            let contacts = ContactsManager(contactRecords: { XCTFail("Public-only setup must not load contacts"); return [] })
+            let operations = OperationsSpy()
+            let enabled = try await ContactPaymentsService.setEnabled(
+                true, pubkyProfile: profile, contactsManager: contacts,
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in false }
+            )
+            XCTAssertTrue(enabled)
+            XCTAssertEqual(operations.calls, ["public:true"])
+            XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+
+            let disabled = try await ContactPaymentsService.setEnabled(
+                false, pubkyProfile: profile, contactsManager: contacts,
+                operations: operations.makeOperations(defaults: defaults), defaults: defaults,
+                privatePaymentAccess: { _ in XCTFail("Disabling must not read keys"); throw KeychainError.failedToLoad }
+            )
+            XCTAssertTrue(disabled)
+            XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertTrue(operations.privatePublications.isEmpty)
+        }
+    }
+
     func testDisablingContactPaymentsRemovesBothEndpointTypes() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
