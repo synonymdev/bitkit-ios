@@ -708,7 +708,20 @@ struct SendConfirmationView: View {
             selectedUtxos: wallet.selectedUtxos
         ) {
             guard let context = confirmationContext else { return }
-            await onSwitchToOnchainWallet(context: context)
+            func isCurrentSend() -> Bool {
+                !Task.isCancelled && confirmationContext == context
+            }
+            guard isCurrentSend() else { throw CancellationError() }
+            do {
+                try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
+                guard isCurrentSend() else { throw CancellationError() }
+                navigationPath.append(.utxoSelection)
+            } catch {
+                guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
+                Logger.error("Failed to reload UTXOs for manual selection: \(error)")
+                showManualCoinSelectionError()
+                throw error
+            }
         }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
@@ -847,6 +860,10 @@ struct SendConfirmationView: View {
         isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
     }
 
+    private func showManualCoinSelectionError() {
+        app.toast(type: .error, title: t("other__try_again"))
+    }
+
     private func showFeeRateUnavailableToast() {
         app.toast(
             type: .error,
@@ -870,11 +887,11 @@ struct SendConfirmationView: View {
         isHardwarePayment: Bool,
         coinSelectionMethod: CoinSelectionMethod,
         selectedUtxos: [SpendableUtxo]?,
-        prepareSelection: () async -> Void
+        prepareSelection: () async throws -> Void
     ) async throws {
         guard walletType == .onchain, !isHardwarePayment, coinSelectionMethod == .manual,
               selectedUtxos?.isEmpty != false else { return }
-        await prepareSelection()
+        try await prepareSelection()
         throw CancellationError()
     }
 
@@ -1511,7 +1528,7 @@ struct SendConfirmationView: View {
                     guard isCurrentSend(), !(error is CancellationError) else { return }
                     Logger.error("Failed to load UTXOs when switching to on-chain: \(error)")
                     app.selectedWalletToPayFrom = .lightning
-                    app.toast(type: .error, title: t("other__try_again"))
+                    showManualCoinSelectionError()
                 }
                 return
             }

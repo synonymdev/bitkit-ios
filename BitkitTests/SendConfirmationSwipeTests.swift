@@ -3,6 +3,33 @@ import LDKNode
 import XCTest
 
 final class SendConfirmationSwipeTests: XCTestCase {
+    func testManualSelectionFailureStopsSubmissionAndAllowsRetry() async throws {
+        enum SelectionError: Error { case unavailable }
+        var attempts = 0
+        var openedSelection = false
+        for shouldFail in [true, false] {
+            do {
+                try await SendConfirmationView.requireManualCoinSelection(
+                    walletType: .onchain,
+                    isHardwarePayment: false,
+                    coinSelectionMethod: .manual,
+                    selectedUtxos: nil
+                ) {
+                    attempts += 1
+                    if shouldFail { throw SelectionError.unavailable }
+                    openedSelection = true
+                }
+                XCTFail("Manual selection must stop before payment authorization")
+            } catch SelectionError.unavailable {
+                XCTAssertTrue(shouldFail)
+            } catch is CancellationError {
+                XCTAssertFalse(shouldFail)
+            }
+            XCTAssertEqual(openedSelection, !shouldFail)
+        }
+        XCTAssertEqual(attempts, 2)
+    }
+
     func testManualSelectionInterruptsSubmissionUntilCoinsAreChosen() async throws {
         for selectedUtxos: [SpendableUtxo]? in [nil, []] {
             var openedSelection = false

@@ -333,6 +333,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                     coinSelectionMethod: SettingsViewModel.shared.coinSelectionMethod,
                     selectedUtxos: wallet.selectedUtxos
                 ) {
+                    try await wallet.loadAvailableUtxos()
                     navigation.path.append(.utxoSelection)
                 }
                 XCTFail("Returning without coins must not continue to payment authorization")
@@ -340,6 +341,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             try await navigation.waitForAppearance(.utxoSelection)
             XCTAssertEqual(navigation.path, [.confirm, .utxoSelection])
         }
+        XCTAssertEqual(wallet.preparationCount, 3)
         sheets.activeSheetConfiguration = nil
         app.resetSendState()
         wallet.resetSendState(speed: .normal)
