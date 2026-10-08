@@ -19,6 +19,12 @@ final class SendConfirmationViewTests: XCTestCase {
         }
     }
 
+    func testAutomaticPaymentLacksFeeOnlyForOnchainWithoutCalculatedFee() {
+        XCTAssertTrue(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 0))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 143))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .lightning, transactionFee: 0))
+    }
+
     func testLightningFailureReleasesOnlyDefinitePreSubmissionAttempts() {
         XCTAssertEqual(
             SendConfirmationView.privatePaymentListOutcomeForLightningFailure(
