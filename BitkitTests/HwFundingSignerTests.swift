@@ -405,6 +405,40 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
+    func testConfirmedBroadcastCompletesProofBeforeReturningToCancelledCaller() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "trezor:wallet", funding: funding, connecting: MockHwConnecting())
+        let completion = AsyncGate()
+        var completionStarted = false
+        var completedTransactionId: String?
+        let payment = Task {
+            try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                afterBroadcast: { result in
+                    completionStarted = true
+                    await completion.wait()
+                    completedTransactionId = result.txId
+                }
+            )
+        }
+        await waitUntil { completionStarted }
+        XCTAssertTrue(completionStarted)
+        let wasPaused = await PrivatePaykitService.shared.isBackgroundWorkPaused
+        addTeardownBlock { await PrivatePaykitService.shared.setBackgroundWorkPaused(wasPaused) }
+        await PrivatePaykitService.shared.setBackgroundWorkPaused(true)
+        manager.onAppBackgrounded()
+        payment.cancel()
+        coordinator.cancel()
+        completion.open()
+
+        let result = try await payment.value
+        XCTAssertEqual(completedTransactionId, result.txId)
+        XCTAssertEqual(result.txId, funding.broadcastTxId)
+        XCTAssertEqual(funding.broadcastCalls, 1)
+        coordinator.completeBroadcast()
+    }
+
     func testCoordinatorDeniedFirstAttemptDropsPreparedPayment() async throws {
         let funding = MockHwFunding()
         let manager = HwWalletManager()
@@ -1096,60 +1130,55 @@ final class HwFundingSignerTests: XCTestCase {
         XCTAssertFalse(coordinator.isSigning)
     }
 
-    func testCancelledAuthorizationCannotBroadcastOrResetANewerAttempt() async throws {
+    func testCancelledAuthorizationKeepsOwnershipUntilProofCleanupFinishes() async throws {
         let funding = MockHwFunding()
         let manager = HwWalletManager()
         let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
-        let suspended = AsyncGate()
-        let nextPreparation = AsyncGate()
-        var suspensionStarted = false
-        var nextStarted = false
-        var retained = 0
-        var cleared = 0
-        var staleFailures = 0
+        let authorization = AsyncGate()
+        let cleanup = AsyncGate()
+        var authorizationStarted = false
+        var cleanupStarted = false
+        var proofStarted = false
+        var outcomes: [PrivatePaymentListSendOutcome] = []
         let first = Task {
             try await coordinator.signAndBroadcast(
                 manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                beforeFirstBroadcast: { _ in proofStarted = true },
                 beforeBroadcastAttempt: {
-                    suspensionStarted = true
-                    await suspended.wait()
+                    authorizationStarted = true
+                    await authorization.wait()
                 },
-                retainSignedPayment: { _ in
-                    retained += 1
-                },
-                clearSignedPaymentBeforeDispatch: { _ in
-                    cleared += 1
-                    return true
-                },
-                afterFailure: { _ in staleFailures += 1 }
+                afterFailure: { outcome in
+                    outcomes.append(outcome)
+                    cleanupStarted = true
+                    await cleanup.wait()
+                    proofStarted = false
+                }
             )
         }
-        await waitUntil { suspensionStarted }
-        XCTAssertTrue(suspensionStarted)
+        await waitUntil { authorizationStarted }
+        XCTAssertTrue(proofStarted)
         coordinator.cancel()
+        authorization.open()
+        await waitUntil { cleanupStarted || !coordinator.isSigning }
+        XCTAssertTrue(cleanupStarted, "Cancellation must release the definitely unsent original proof")
+        XCTAssertEqual(outcomes, [.definitePreBroadcastFailure])
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        var secondPrepared = false
         let second = Task {
-            try await self.signAndBroadcast(coordinator, manager: manager) { _ in
-                nextStarted = true
-                await nextPreparation.wait()
-            }
+            try await coordinator.signAndBroadcast(
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                beforeFirstBroadcast: { _ in secondPrepared = true }
+            )
         }
-        await waitUntil { nextStarted }
-        XCTAssertTrue(nextStarted)
-        suspended.open()
-        await assertThrowsAsync {
-            _ = try await first.value
-        } _: { error in
-            XCTAssertTrue(error is CancellationError, "\(error)")
-        }
-        XCTAssertEqual(funding.broadcastCalls, 0, "the abandoned payment must never submit")
-        XCTAssertEqual(retained, 0)
-        XCTAssertEqual(cleared, 0)
-        XCTAssertEqual(staleFailures, 0, "the old callback must not cancel the new payment")
-        XCTAssertTrue(coordinator.isSigning)
-        XCTAssertTrue(coordinator.hasPendingBroadcast)
-        XCTAssertFalse(coordinator.isBroadcastUnresolved)
-        nextPreparation.open()
-        _ = try await second.value
+        await Task.yield()
+        XCTAssertFalse(secondPrepared, "New proof preparation must wait for the original cleanup")
+        cleanup.open()
+        await assertThrowsAsync { _ = try await first.value } _: { XCTAssertTrue($0 is CancellationError) }
+        await assertThrowsAsync { _ = try await second.value } _: { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertFalse(proofStarted)
+        XCTAssertFalse(coordinator.hasPendingBroadcast)
+        _ = try await signAndBroadcast(coordinator, manager: manager)
         XCTAssertEqual(funding.broadcastCalls, 1)
     }
 

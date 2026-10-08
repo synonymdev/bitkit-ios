@@ -343,10 +343,7 @@ struct SendPendingScreen: View {
             else { return }
         }
         ordinarySendResolved = true
-        app.addPendingContactPaymentContext(
-            resolution.transactionId,
-            context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
-        )
+        app.prepareResolvedOnchainContactContext(resolution, isHardware: pendingHardwareWalletId != nil)
         Task {
             await proofService.consumeOnchainPaymentResolution(resolution)
             guard PubkyPublicKeyFormat.matches(resolution.identity, pubkyProfile.publicKey) else { return }

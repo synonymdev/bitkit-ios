@@ -1118,6 +1118,21 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(triggers.values.filter { $0.day == 15 && $0.second == 32 }.count, 1)
     }
 
+    func testHardwareResolutionDoesNotReapplyOriginalContact() {
+        let app = AppViewModel()
+        let resolution = PaykitOnchainPaymentResolution(
+            identity: "payer", requestId: .init(paymentRequestId: "original", counterparty: "original-peer"),
+            transactionId: "original-tx", walletId: "trezor:wallet"
+        )
+        app.addPendingContactPaymentContext("original-tx", context: ContactPaymentContext(publicKey: "original-peer"))
+        app.addPendingContactPaymentContext("other-tx", context: ContactPaymentContext(publicKey: "new-peer"))
+        app.prepareResolvedOnchainContactContext(resolution, isHardware: true)
+        XCTAssertNil(app.contactPaymentContext(forPendingPaymentHash: "original-tx"))
+        XCTAssertEqual(app.contactPaymentContext(forPendingPaymentHash: "other-tx")?.publicKey, "new-peer")
+        app.prepareResolvedOnchainContactContext(resolution, isHardware: false)
+        XCTAssertEqual(app.contactPaymentContext(forPendingPaymentHash: "original-tx")?.publicKey, "original-peer")
+    }
+
     func testContactPaymentContextClaimIsExclusiveAndIdentityBased() {
         let app = AppViewModel()
         let first = ContactPaymentContext(publicKey: "pubkycontact")
@@ -6831,10 +6846,19 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refreshEligibleTargets(savedPublicKeys: [publicKey])
         let target = try XCTUnwrap(manager.eligibleTargets.first)
 
-        let request = try await manager.propose(
-            PaykitPaymentRequestDraft(amountSats: 1, note: "Coffee", expiresAt: expiresAt),
-            to: target
-        )
+        let wasPaused = await PrivatePaykitService.shared.isBackgroundWorkPaused
+        addTeardownBlock { await PrivatePaykitService.shared.setBackgroundWorkPaused(wasPaused) }
+        await sdk.pauseNextProposal()
+        let proposal = Task {
+            try await manager.propose(
+                PaykitPaymentRequestDraft(amountSats: 1, note: "Coffee", expiresAt: expiresAt),
+                to: target
+            )
+        }
+        try await waitUntil { await sdk.proposalIsPaused() }
+        await PrivatePaykitService.shared.setBackgroundWorkPaused(true)
+        await sdk.resumeProposal()
+        let request = try await proposal.value
 
         XCTAssertEqual(request.amountSats, 1)
         XCTAssertEqual(request.note, "Coffee")

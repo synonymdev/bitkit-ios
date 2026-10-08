@@ -135,9 +135,7 @@ struct HwSendSignView: View {
               )
         else { return }
         appliedResolution = true
-        app.addPendingContactPaymentContext(
-            resolution.transactionId, context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
-        )
+        app.prepareResolvedOnchainContactContext(resolution, isHardware: true)
         app.consumePaykitOnchainPaymentResolution(resolution)
         navigationPath.append(route)
         Task { await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution) }

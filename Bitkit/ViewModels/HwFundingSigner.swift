@@ -369,6 +369,7 @@ final class HwSendCoordinator {
     private var operationRequest: PaymentRequest?
     private var operationSession: OperationSession?
     private var isRetainingSignedPayment = false
+    private var isAuthorizingPayment = false
     /// Bumped by every sign attempt and every cancel. A cancelled task can keep running until its
     /// device call returns, and must not write over the state of an attempt started after it.
     private var signingAttempt = 0
@@ -584,6 +585,8 @@ final class HwSendCoordinator {
 
             let hadPriorBroadcastAttempt = pendingPayment?.hasBroadcastAttempted == true
             var broadcastWasAttempted = hadPriorBroadcastAttempt
+            isAuthorizingPayment = true
+            defer { isAuthorizingPayment = false }
             do {
                 do {
                     try await beforeBroadcastAttempt()
@@ -746,7 +749,7 @@ final class HwSendCoordinator {
         operationTask?.cancel()
         // Receipt persistence/cleanup is suspended work. Keep the cancelled operation registered
         // until it finishes, so a concurrent send joins it instead of adopting its receipt.
-        guard !isRetainingSignedPayment else { return }
+        guard !isRetainingSignedPayment, !isAuthorizingPayment else { return }
         signingAttempt += 1
         operationTask = nil
         operationRequest = nil

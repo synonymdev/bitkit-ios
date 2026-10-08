@@ -503,6 +503,17 @@ extension AppViewModel {
         pendingContactPaymentContexts[hash] = context
     }
 
+    func prepareResolvedOnchainContactContext(_ resolution: PaykitOnchainPaymentResolution, isHardware: Bool) {
+        if isHardware {
+            // Verified hardware activity already owns its contact, including later user edits.
+            consumeContactPaymentContext(forPendingPaymentHash: resolution.transactionId)
+        } else {
+            addPendingContactPaymentContext(
+                resolution.transactionId, context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
+            )
+        }
+    }
+
     func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
         pendingContactPaymentContexts[hash]
     }

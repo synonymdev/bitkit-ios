@@ -353,7 +353,7 @@ class WalletViewModel: ObservableObject {
         }
 
         Task { @MainActor in
-            try await refreshBip21()
+            try await refreshBip21(syncPublicPaykit: false)
         }
 
         // Always sync on start but don't need to wait for this
@@ -1392,11 +1392,16 @@ class WalletViewModel: ObservableObject {
         return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
     }
 
-    func refreshPublicPaykitEndpointsOnForeground() async {
-        guard isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
-
+    func refreshPublicPaykitEndpointsOnForeground(isSessionCurrent: @escaping @MainActor () -> Bool) async {
+        guard !Task.isCancelled, isSessionCurrent(), isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
         do {
-            try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+            try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self, isSessionCurrent: {
+                isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints
+            })
+        } catch is CancellationError {
+            return
+        } catch PubkyServiceError.sessionNotActive {
+            return
         } catch {
             Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
         }
