@@ -345,7 +345,16 @@ final class ProfileDestinationViewTests: XCTestCase {
     }
 
     private func assertReadOnlyControls(_ window: UIWindow, navigation: NavigationViewModel) async throws {
-        for id in ["ProfileEdit", "ProfileAddTag"] {
+        let identifiers = ["ProfileEdit", "ProfileAddTag"]
+        let deadline = ContinuousClock.now + .seconds(3)
+        repeat {
+            window.layoutIfNeeded()
+            let available = Set(accessibilityElements(in: window).compactMap(accessibilityIdentifier))
+            if available.isSuperset(of: identifiers) { break }
+            try await Task.sleep(for: .milliseconds(20))
+        } while ContinuousClock.now < deadline
+
+        for id in identifiers {
             let control = try element(id, in: window)
             XCTAssertTrue(control.accessibilityTraits.contains(.notEnabled), id)
             _ = control.accessibilityActivate()
@@ -361,7 +370,7 @@ final class ProfileDestinationViewTests: XCTestCase {
         let elements = accessibilityElements(in: window)
         return try XCTUnwrap(
             elements.first { accessibilityIdentifier($0) == id },
-            "Missing \(id)"
+            "Missing \(id); available: \(elements.compactMap(accessibilityIdentifier).sorted())"
         )
     }
 
