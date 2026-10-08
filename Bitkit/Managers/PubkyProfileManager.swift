@@ -733,7 +733,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func approveSignupAuth(request: PubkyAuthRequest) async throws {
-        guard request.isSignup, let homeserver = request.homeserverPublicKey else {
+        guard request.isSignup, request.bitkitClaim == nil, let homeserver = request.homeserverPublicKey else {
             throw PubkyServiceError.invalidAuthUrl
         }
         guard publicKey == nil, try !Self.hasStoredIdentity() else {
@@ -757,9 +757,7 @@ class PubkyProfileManager: ObservableObject {
                 )
             },
             approveAuth: {
-                if let authorizationUrl = request.authorizationUrl {
-                    try await PubkyService.approveRingAuth(authUrl: authorizationUrl, secretKeyHex: secretKeyHex)
-                }
+                try await PubkyService.approveSignupAuthorization(request: request, secretKeyHex: secretKeyHex)
             },
             activateIdentity: { try await PubkyService.activateRegisteredIdentity($0) }
         )

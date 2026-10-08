@@ -183,8 +183,9 @@ When you port an Android feature, port its journeys too — see the Journeys sec
 
 Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
 spending maximum differently, `cjit-notifications` because the notification copy differs, and
-`pubky-marketplace` because the two-wallet payment runs on regtest here. `pubky-auth` is
-iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Android counterpart.
+`pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
+watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
+`grant-signup-existing-identity.xml` are shared with Android.
 
 `profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
 after staging signup. Android also supports this signup flow, but this journey has not been ported there.
