@@ -389,7 +389,7 @@ struct PubkyAuthApprovalSheet: View {
                 PubkyImage(uri: imageUri, size: 48)
             } else {
                 Circle()
-                    .fill(Color.pubkyGreen)
+                    .fill(Color.gray5)
                     .frame(width: 48, height: 48)
                     .overlay {
                         Image("user-square")
