@@ -7,6 +7,28 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     private let walletId = "node-0"
     private let txid = String(repeating: "ab", count: 32)
 
+    func testBlockedNewRequestRoutesToOriginalPayment() async throws {
+        let originalShop = PaykitPaymentRequest.ID(paymentRequestId: "original-shop", counterparty: "original-merchant", billingPeriodStartsAt: nil)
+        let newShop = PaykitPaymentRequest.ID(paymentRequestId: "new-shop", counterparty: "new-merchant", billingPeriodStartsAt: nil)
+        for originalRequest in [nil, originalShop] as [PaykitPaymentRequest.ID?] {
+            let store = MemoryAttemptStore()
+            let retained = OnchainSendAttempt(id: UUID(), walletId: walletId, requestId: originalRequest, orderId: nil,
+                                              address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
+                                              status: .unknown, txid: txid)
+            try store.save([retained])
+            let service = OnchainSendAttemptService(store: store)
+            let route = await SendConfirmationView.onchainPendingRoute(requestId: newShop, using: service)
+            guard case let .onchainOperationPending(context, requestId) = route else {
+                return XCTFail("Blocked new request must display the original payment")
+            }
+            XCTAssertEqual(context.attemptId, retained.id)
+            XCTAssertEqual(context.walletId, retained.walletId)
+            XCTAssertEqual(context.txid, retained.txid)
+            XCTAssertEqual(requestId, originalRequest)
+            XCTAssertEqual(store.snapshot(), [retained])
+        }
+    }
+
     func testAcceptedConfirmationStaysPendingUntilOriginalFollowupCompletes() async throws {
         let shopRequest = PaykitPaymentRequest.ID(paymentRequestId: "original-shop-order", counterparty: "original-merchant", billingPeriodStartsAt: nil)
         for requestId in [nil, shopRequest] as [PaykitPaymentRequest.ID?] {

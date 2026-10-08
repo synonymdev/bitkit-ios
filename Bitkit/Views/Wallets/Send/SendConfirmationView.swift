@@ -180,6 +180,10 @@ struct SendConfirmationView: View {
         if let context = try? await attempts.pendingContext(requestId: requestId, txid: txid) {
             return requestId == nil ? .onchainPending(context) : .onchainOperationPending(context, requestId: requestId)
         }
+        if let retained = try? await attempts.blockingAttempt() {
+            let context = OnchainSendPendingContext(attemptId: retained.id, walletId: retained.walletId, txid: retained.txid)
+            return .onchainOperationPending(context, requestId: retained.requestId)
+        }
         return .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId)
     }
 

@@ -927,6 +927,10 @@ actor OnchainSendAttemptService {
         }
     }
 
+    func blockingAttempt() throws -> OnchainSendAttempt? {
+        try currentAttemptForPending().flatMap { $0.blocksNewSend ? $0 : nil }
+    }
+
     func unresolvedAttempt(walletId: String) throws -> OnchainSendAttempt? {
         try currentAttempt().flatMap { $0.walletId == walletId && $0.blocksNewSend ? $0 : nil }
     }
