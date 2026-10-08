@@ -26,7 +26,8 @@ private struct MessageParser {
         var text = ""
         while index < characters.count {
             let character = characters[index]
-            if character == "}", inBranch {
+            if character == "}" {
+                guard inBranch else { throw invalidPattern() }
                 index += 1
                 if !text.isEmpty {
                     parts.append(.text(text))
@@ -158,7 +159,7 @@ private func generate(source: URL, destination: URL) throws {
         var messages: [String: Any] = [:]
         var metadata: [String: [FormatArgument]] = [:]
         for (key, pattern) in translations.sorted(by: { $0.key < $1.key }) {
-            guard pattern.range(of: #"\{\s*\w+\s*,\s*plural\s*,"#, options: .regularExpression) != nil else { continue }
+            guard pattern.range(of: #"\{\s*\w+(?:\s*,\s*|\s+)plural\b"#, options: .regularExpression) != nil else { continue }
             do {
                 var parser = MessageParser(characters: Array(pattern))
                 let parts = try parser.parse()

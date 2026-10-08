@@ -32,6 +32,7 @@ do {
         "message": "💸 {owner}: {count, plural, other {# inputs, ₿ {funds}, 100%} one {1 input, ₿ {funds}, 100%}} Done.",
         "empty": "{count, plural, one {} other {#}}",
         "plain": "No plural here",
+        "plain_variable": "{pluralCount}",
     ], language: "en", root: root)
     try check(status == 0, "Valid templates must compile")
     let bundle = Bundle(path: directory.path)!
@@ -50,6 +51,10 @@ do {
         bundle.localizedString(forKey: "plain", value: nil, table: "LocalizablePlurals") == "plain",
         "Ordinary translations must stay in their original table"
     )
+    try check(
+        bundle.localizedString(forKey: "plain_variable", value: nil, table: "LocalizablePlurals") == "plain_variable",
+        "A simple variable containing the word plural must not be treated as a plural message"
+    )
 
     let (arabicStatus, arabicDirectory) = try generate([
         "categories": "{count, plural, zero {ZERO} one {ONE} two {TWO} few {FEW} many {MANY} other {OTHER}}",
@@ -65,6 +70,10 @@ do {
     }
 
     for invalid in [
+        "{count plural, one {One} other {Many}}",
+        "{count, plural one {One} other {Many}}",
+        "{count, plural}",
+        "{count, plural, one {One} other {Many}}}",
         "{count, plural, one {One}}",
         "{count, plural, one {One} other {Many}",
         "{count, plural, one {One} one {Duplicate} other {Many}}",
