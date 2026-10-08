@@ -19,7 +19,7 @@ extension LightningService: OnchainSending {
         expectedWalletIndex: Int, expectedNode: AnyObject?, paymentDeadline: PaykitPreciseInstant?
     ) async throws -> PreparedOnchainSendDispatch {
         guard let node = onchainDispatchNode as? Node else { throw NodeError.NotRunning(message: "Node not set up") }
-        let (prepared, txid, inputs, recipientAmountSats) = try await ServiceQueue.background(.ldk, wrapErrors: false) {
+        let (prepared, txid, inputs, recipientAmountSats, miningFeeSats) = try await ServiceQueue.background(.ldk, wrapErrors: false) {
             guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
                 throw NodeError.NotRunning(message: "Wallet or node changed before on-chain preparation")
             }
@@ -36,10 +36,10 @@ extension LightningService: OnchainSending {
                 )
             }
             return (prepared, prepared.txid(), prepared.inputs().map { OnchainSendInput(txid: $0.txid, vout: $0.vout) },
-                    prepared.recipientAmountSats())
+                    prepared.recipientAmountSats(), prepared.miningFeeSats())
         }
         return PreparedOnchainSendDispatch(
-            txid: txid, inputs: inputs, recipientAmountSats: recipientAmountSats,
+            txid: txid, inputs: inputs, recipientAmountSats: recipientAmountSats, miningFeeSats: miningFeeSats,
             broadcast: {
                 try await ServiceQueue.background(.ldk, wrapErrors: false) {
                     guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
@@ -66,6 +66,7 @@ struct PreparedOnchainSendDispatch {
     let txid: String
     let inputs: [OnchainSendInput]
     let recipientAmountSats: UInt64
+    var miningFeeSats: UInt64? = nil
     let broadcast: () async throws -> OnchainSendResult
 }
 
@@ -418,8 +419,10 @@ actor OnchainSendAttemptService {
                 if orderId != nil && isMaxAmount {
                     guard let context = attempt.transferContext,
                           let originalFee = context.originalOrderFeeSats,
+                          let miningFee = prepared.miningFeeSats,
+                          miningFee <= context.txTotalSats,
                           prepared.recipientAmountSats >= originalFee,
-                          prepared.recipientAmountSats <= context.txTotalSats
+                          prepared.recipientAmountSats <= context.txTotalSats - miningFee
                     else { throw OnchainSendAttemptError.unresolved }
                 }
                 attempt.amountSats = prepared.recipientAmountSats

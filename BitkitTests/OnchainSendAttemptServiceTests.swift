@@ -171,23 +171,27 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     }
 
     func testPreparedMaxFundingMustRespectOriginalOrderBeforeBroadcast() async throws {
-        for amount: UInt64 in [98999, 100001, 99500] {
+        for (amount, fee, valid): (UInt64, UInt64?, Bool) in [
+            (98999, 500, false), (100001, 500, false), (99500, 500, true),
+            (99500, nil, false), (99500, 501, false), (99500, UInt64.max, false)
+        ] {
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
             let sender = PreparedAttemptNodeMock()
             sender.amount = amount
+            sender.miningFee = fee
             let context = OnchainSendTransferContext(clientBalanceSats: 97000, txTotalSats: 100000,
                                                      preTransferOnchainSats: 100000, originalOrderFeeSats: 99000)
             do {
                 _ = try await service.send(using: sender, address: "original", amountSats: 99000,
                                            satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: true,
                                            orderId: "original-order", transferContext: context)
-                XCTAssertEqual(amount, 99500)
+                XCTAssertTrue(valid, "Funding total must include its actual mining fee")
                 XCTAssertEqual(sender.broadcasts, 1)
                 XCTAssertEqual(store.snapshot().first?.amountSats, 99500)
                 XCTAssertEqual(store.snapshot().first?.transferContext, context)
             } catch {
-                XCTAssertNotEqual(amount, 99500, "Valid surplus funding must remain supported")
+                XCTAssertFalse(valid, "Valid surplus funding must remain supported")
                 XCTAssertEqual(sender.broadcasts, 0)
                 XCTAssertTrue(store.snapshot().isEmpty)
             }
@@ -1278,6 +1282,7 @@ final class PreparedAttemptNodeMock: OnchainSending {
 
     var txid = String(repeating: "ab", count: 32)
     var amount: UInt64 = 1234
+    var miningFee: UInt64? = 500
     var inputs = [OnchainSendInput(txid: String(repeating: "ef", count: 32), vout: 0)]
     var preparations = 0
     var broadcasts = 0
@@ -1306,7 +1311,7 @@ final class PreparedAttemptNodeMock: OnchainSending {
         lastInputs = utxosToSpend?.map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) }
         try await onPrepare?()
         let candidateId = txid
-        return PreparedOnchainSendDispatch(txid: candidateId, inputs: inputs, recipientAmountSats: amount) {
+        return PreparedOnchainSendDispatch(txid: candidateId, inputs: inputs, recipientAmountSats: amount, miningFeeSats: miningFee) {
             self.onNativeQueueDispatch?()
             try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: self.deadlineClock())
             self.broadcasts += 1
