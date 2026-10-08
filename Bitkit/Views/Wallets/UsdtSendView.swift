@@ -7,10 +7,12 @@ struct UsdtSendView: View {
     var initialRecipient = ""
     var initialAmount = ""
     var embedded = false
+    var paymentContext: ContactPaymentContext?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
     @Environment(UsdtWalletManager.self) private var usdt
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.dismiss) private var dismiss
@@ -37,6 +39,7 @@ struct UsdtSendView: View {
         initialRecipient: String = "",
         initialAmount: String = "",
         embedded: Bool = false,
+        paymentContext: ContactPaymentContext? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
@@ -45,12 +48,31 @@ struct UsdtSendView: View {
         self.initialRecipient = initialRecipient
         self.initialAmount = initialAmount
         self.embedded = embedded
+        self.paymentContext = paymentContext
         self.sendPayment = sendPayment
         self.onBack = onBack
         self.onClose = onClose
         _recipient = State(initialValue: initialRecipient)
         _amount = State(initialValue: initialAmount)
         _editingAmount = State(initialValue: !initialRecipient.isEmpty)
+    }
+
+    private var paymentRequest: PaykitPaymentRequest? {
+        paymentContext?.incomingPaymentRequest
+    }
+
+    private var requestNote: String? {
+        guard let note = paymentRequest?.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else { return nil }
+        return note
+    }
+
+    private var contact: PubkyContact? {
+        guard let key = paymentContext?.publicKey else { return nil }
+        return contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, key) }
+    }
+
+    private var contactName: String {
+        contact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(paymentContext?.publicKey ?? "")
     }
 
     private var submittedStatus: UsdtTransferStatus? {
@@ -72,7 +94,7 @@ struct UsdtSendView: View {
             if bridgeNeedsAttention { return t("usdt__bridge_attention") }
             return t(submissionFailed ? "wallet__send_error_tx_failed" : "usdt__submitted")
         }
-        if quote != nil { return t("wallet__send_review") }
+        if quote != nil { return t(paymentRequest == nil ? "wallet__send_review" : "wallet__payment_request") }
         return t(editingAmount ? "usdt__amount" : "usdt__send_title")
     }
 
@@ -96,7 +118,9 @@ struct UsdtSendView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: title, showBackButton: !submitted, onBack: goBack).disabled(busy)
+            SheetHeader(title: title, showBackButton: !submitted,
+                        action: paymentContext == nil ? nil : AnyView(SendContactHeaderAvatar(publicKey: paymentContext?.publicKey)), onBack: goBack)
+                .disabled(busy)
             if submitted, !busy { submittedContent }
             else if let quote { confirmation(quote) }
             else if editingAmount { amountContent }
@@ -258,23 +282,36 @@ struct UsdtSendView: View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), network: quote.destination.label)
+                    UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount))
                         .contentShape(Rectangle()).onTapGesture { if !busy { goBack() } }
-                        .padding(.bottom, 44)
+                        .padding(.bottom, paymentRequest == nil ? 44 : 24)
                     if showDetails {
                         VStack(alignment: .leading, spacing: 16) {
                             HStack(alignment: .top, spacing: 16) {
                                 SendSectionView(t("wallet__send_from")) {
                                     NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
                                 }
-                                SendSectionView(t("usdt__destination")) { BodySSBText(quote.destination.label).frame(height: 28) }
+                                if paymentContext != nil {
+                                    SendSectionView(t("wallet__payment_request_contact")) {
+                                        HStack(spacing: 4) {
+                                            if let contact { PubkyContactAvatar(contact: contact, size: 20) }
+                                            BodySSBText(contactName).lineLimit(1)
+                                        }.frame(height: 28)
+                                    }
+                                } else {
+                                    SendSectionView(t("usdt__destination")) { BodySSBText(quote.destination.label).frame(height: 28) }
+                                }
                             }
                             SendSectionView(t("wallet__send_to")) { BodySSBText(quote.recipient).textSelection(.enabled) }
                             if let provider = quote.bridgeProvider {
                                 SendSectionView(t("usdt__bridge_provider")) { BodySSBText(provider == .orchestra ? "Orchestra" : "USDT0") }
                             }
                         }
+                        if let requestNote { PaymentRequestInvoiceNote(note: requestNote).padding(.top, 16) }
                     } else {
+                        if paymentRequest != nil {
+                            PaymentRequestSummary(contactName: contactName, note: requestNote).padding(.bottom, 16)
+                        }
                         PaymentReviewIllustration(swipeProgress: swipeProgress, maximumHeight: 220)
                     }
                     if quote.destination != .arbitrum {
@@ -323,7 +360,7 @@ struct UsdtSendView: View {
     private var submittedContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let quote {
-                UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), network: quote.destination.label).padding(.bottom, 32)
+                UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount)).padding(.bottom, 32)
             }
             if submittedStatus == .bridgeRefunded {
                 BodyMText(t("usdt__bridge_refunded_description"), textColor: .textSecondary)

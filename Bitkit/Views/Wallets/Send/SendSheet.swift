@@ -747,7 +747,7 @@ struct SendSheet: View {
         case let .usdt(recipient, amount):
             UsdtSendView(onDetails: { id in
                 usdtDetails = id
-            }, initialRecipient: recipient, initialAmount: amount, embedded: true,
+            }, initialRecipient: recipient, initialAmount: amount, embedded: true, paymentContext: app.contactPaymentContext,
             sendPayment: { quote in
                 guard let context = app.contactPaymentContext else { throw PaykitPaymentRequestError.requestUnavailable }
                 let paymentTerms = app.paykitPaymentTerms

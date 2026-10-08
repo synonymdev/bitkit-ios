@@ -43,7 +43,7 @@ struct ReceivedTx: View {
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: title)
                     if let amount = config.details.usdtAmount {
-                        UsdtAmountHeader(amount: usdtFormatAmount(amount: amount), network: "Arbitrum One")
+                        UsdtAmountHeader(amount: usdtFormatAmount(amount: amount))
                             .accessibilityIdentifier("ReceivedTransaction")
                     } else {
                         MoneyStack(sats: Int(config.details.sats), showSymbol: true, testIdPrefix: "ReceivedTransaction")

@@ -221,6 +221,8 @@ struct PubkyAuthApprovalSheet: View {
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             successDescriptionText
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
                 .padding(.bottom, 16)
             if config.request.bitkitClaim?.sharesBitcoin == true || (shareUsdt && usdtAddress != nil) {
                 BodyMText(t(sharingSuccessKey))
@@ -257,16 +259,7 @@ struct PubkyAuthApprovalSheet: View {
 
                     if !config.request.permissions.isEmpty {
                         descriptionText
-                            .padding(.bottom, 8)
-                    }
-
-                    if !config.request.clientID.isEmpty {
-                        BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
                             .padding(.bottom, 32)
-                    } else {
-                        Spacer().frame(height: 24)
                     }
 
                     if let relayOrigin = config.request.relayOrigin {
@@ -285,15 +278,15 @@ struct PubkyAuthApprovalSheet: View {
                     if config.request.bitkitClaim?.includesPaykitAccess == true {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("pubky_auth__paykit_access_title"), textColor: .white64)
-                            BodySText(t("pubky_auth__paykit_access_description"))
+                            BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 32)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
 
-                    Spacer(minLength: 32)
+                    Spacer().frame(height: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
@@ -323,12 +316,17 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var serviceText: String {
-        config.request.serviceNames.joined(separator: " and ")
+        config.request.serviceNames.joined(separator: t("profile__auth_approval_services_separator"))
+    }
+
+    private var descriptionPrefix: String {
+        config.request.clientID.isEmpty ? t("pubky_auth__description_prefix")
+            : t("pubky_auth__named_description_prefix", variables: ["clientId": config.request.clientID])
     }
 
     private var descriptionText: some View {
         BodyMText(
-            t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix"),
+            descriptionPrefix + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix"),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
         )
@@ -432,7 +430,11 @@ struct PubkyAuthApprovalSheet: View {
     private var successDescriptionText: some View {
         BodyMText(
             t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
-                + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
+                + (config.request.clientID.isEmpty ? t("pubky_auth__success_middle")
+                    : t(
+                        "pubky_auth__named_success_middle",
+                        variables: ["clientId": config.request.clientID]
+                    )) + "<accent>" + serviceText + "</accent>"
                 + t("pubky_auth__success_suffix"),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
@@ -447,8 +449,6 @@ struct PubkyAuthApprovalSheet: View {
             ForEach(Array(config.request.permissions.enumerated()), id: \.offset) { _, permission in
                 permissionRow(permission)
             }
-
-            CustomDivider(color: .white10)
         }
     }
 
@@ -468,40 +468,28 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var trustWarning: some View {
-        BodySText(t("pubky_auth__trust_warning"))
-            .lineSpacing(4)
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("pubky_auth__before_continue"), textColor: .white64)
+            BodySText(t("pubky_auth__trust_warning"), textColor: .white64)
+        }
     }
 
     private var profileCard: some View {
-        VStack(spacing: 16) {
-            CaptionMText(
-                truncatedPublicKey.localizedUppercase,
-                textColor: .white64
-            )
-
-            if let imageUri = pubkyProfile.displayImageUri {
-                PubkyImage(uri: imageUri, size: 96)
-            } else {
-                Circle()
-                    .fill(Color.pubkyGreen)
-                    .frame(width: 96, height: 96)
-                    .overlay {
-                        Image("user-square")
-                            .resizable()
-                            .scaledToFit()
-                            .foregroundColor(.white32)
-                            .frame(width: 48, height: 48)
-                    }
+        HStack(spacing: 16) {
+            PubkyContactAvatar(name: pubkyProfile.displayName ?? "", imageUrl: pubkyProfile.displayImageUri, size: 48)
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionMText(truncatedPublicKey.localizedUppercase, textColor: .white64)
+                    .lineLimit(1)
+                BodyMSBText(pubkyProfile.displayName ?? "")
+                    .lineLimit(1)
             }
-
-            HeadlineText(pubkyProfile.displayName ?? "")
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
         .padding(24)
         .background(Color.gray6)
         .cornerRadius(16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("PubkyAuthProfile")
     }
 
     // MARK: - Actions

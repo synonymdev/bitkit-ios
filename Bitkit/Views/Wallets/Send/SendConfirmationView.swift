@@ -218,8 +218,11 @@ struct SendConfirmationView: View {
                 }
             } else {
                 if let request = oneOffPaymentRequest {
-                    paymentRequestSummary(request)
-                        .padding(.bottom, 16)
+                    PaymentRequestSummary(
+                        contactName: contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
+                        note: oneOffPaymentRequestNote
+                    )
+                    .padding(.bottom, 16)
                 }
 
                 PaymentReviewIllustration(swipeProgress: swipeProgress)
@@ -494,7 +497,7 @@ struct SendConfirmationView: View {
             }
 
             if let note = oneOffPaymentRequestNote {
-                paymentRequestInvoiceNote(note)
+                PaymentRequestInvoiceNote(note: note)
             }
         }
     }
@@ -615,7 +618,7 @@ struct SendConfirmationView: View {
             }
 
             if let note = oneOffPaymentRequestNote {
-                paymentRequestInvoiceNote(note)
+                PaymentRequestInvoiceNote(note: note)
             }
         }
     }
@@ -882,65 +885,6 @@ struct SendConfirmationView: View {
         }
 
         return note
-    }
-
-    private func paymentRequestSummary(_ request: PaykitPaymentRequest) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            SendSectionView(t("wallet__send_from")) {
-                paymentRequestSummaryValue(
-                    contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
-                    icon: "user",
-                    accessibilityIdentifier: "PaymentRequestFrom"
-                )
-            }
-
-            let note = oneOffPaymentRequestNote
-
-            SendSectionView(t("wallet__payment_request_for")) {
-                paymentRequestSummaryValue(
-                    note ?? t("wallet__payment_request_for_not_specified"),
-                    icon: "note",
-                    textColor: note == nil ? .textSecondary : .textPrimary,
-                    accessibilityIdentifier: "PaymentRequestFor"
-                )
-            }
-        }
-    }
-
-    private func paymentRequestInvoiceNote(_ note: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CaptionMText(t("wallet__activity_invoice_note"))
-                .padding(.bottom, 8)
-
-            VStack(alignment: .leading, spacing: 0) {
-                ZigzagDivider()
-
-                TitleText(note, textColor: .primary)
-                    .padding(24)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white10)
-                    .accessibilityIdentifier("PaymentRequestInvoiceNote")
-            }
-        }
-    }
-
-    private func paymentRequestSummaryValue(
-        _ text: String,
-        icon: String,
-        textColor: Color = .textPrimary,
-        accessibilityIdentifier: String
-    ) -> some View {
-        HStack(spacing: 4) {
-            Image(icon)
-                .resizable()
-                .scaledToFit()
-                .foregroundColor(accentColor)
-                .frame(width: 16, height: 16)
-
-            BodySSBText(text, textColor: textColor)
-                .lineLimit(1)
-                .accessibilityIdentifier(accessibilityIdentifier)
-        }
     }
 
     private func performPayment(isAutomatic: Bool) async throws {

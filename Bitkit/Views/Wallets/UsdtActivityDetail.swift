@@ -64,7 +64,7 @@ struct UsdtActivityDetail: View {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack(alignment: .bottom) {
                             UsdtAmountHeader(
-                                amount: usdtFormatAmount(amount: transfer.activityAmount), network: transfer.destination.label,
+                                amount: usdtFormatAmount(amount: transfer.activityAmount),
                                 prefix: transfer.isIncoming ? "+ " : "− ", hideBalance: settings.hideBalance
                             )
                             UsdtActivityIcon(transfer: transfer, size: 48)
