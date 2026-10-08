@@ -175,7 +175,7 @@ final class ProfileDestinationViewTests: XCTestCase {
             let manager = DisconnectedProfileManager()
             manager.isInitialized = true
             manager.sessionRestorationFailed = false
-            let window = hostProfile(manager)
+            let window = try hostProfile(manager)
             defer { close(window) }
             try await Task.sleep(for: .milliseconds(100))
             let (_, labels) = try snapshot(window, name: "Disconnected profile - \(source)")
@@ -197,7 +197,7 @@ final class ProfileDestinationViewTests: XCTestCase {
             manager.restoration.finish()
             manager.profileFetch.finish()
         }
-        let window = hostProfile(manager)
+        let window = try hostProfile(manager)
         defer { close(window) }
 
         await fulfillment(of: [manager.restoration.started], timeout: 3)
@@ -258,7 +258,7 @@ final class ProfileDestinationViewTests: XCTestCase {
         await manager.initialize { .restorationDeferred }
         await manager.loadProfile()
         let navigation = NavigationViewModel()
-        let window = hostProfile(manager, navigation: navigation)
+        let window = try hostProfile(manager, navigation: navigation)
         let pasteboard = UIPasteboard.general.string
         defer {
             close(window)
@@ -398,17 +398,26 @@ final class ProfileDestinationViewTests: XCTestCase {
         return walk(root)
     }
 
-    private func hostProfile(_ manager: PubkyProfileManager, navigation: NavigationViewModel? = nil) -> UIWindow {
+    private func hostProfile(_ manager: PubkyProfileManager, navigation: NavigationViewModel? = nil) throws -> UIWindow {
         let view = ProfileDestinationView(hasSeenIntro: true)
             .environmentObject(manager)
             .environmentObject(AppViewModel())
             .environmentObject(navigation ?? NavigationViewModel())
             .environmentObject(ContactsManager())
             .preferredColorScheme(.dark)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousKeyWindow = scene.keyWindow
+        addTeardownBlock {
+            await MainActor.run { previousKeyWindow?.makeKey() }
+        }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = UIHostingController(rootView: view)
         window.makeKeyAndVisible()
         window.rootViewController?.view.layoutIfNeeded()
+        XCTAssertTrue(window.isKeyWindow)
         return window
     }
 
