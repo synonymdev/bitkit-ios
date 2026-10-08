@@ -410,6 +410,13 @@ actor OnchainSendAttemptService {
                                     inputs: isMaxAmount ? nil : utxosToSpend?
                                         .map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
                 guard var attempt = try currentAttempt(), attempt.id == attemptId else { throw OnchainSendAttemptError.unresolved }
+                if orderId != nil && isMaxAmount {
+                    guard let context = attempt.transferContext,
+                          let originalFee = context.originalOrderFeeSats,
+                          prepared.recipientAmountSats >= originalFee,
+                          prepared.recipientAmountSats <= context.txTotalSats
+                    else { throw OnchainSendAttemptError.unresolved }
+                }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid
                 attempt.recoveryContext = OnchainSendRecoveryContext(

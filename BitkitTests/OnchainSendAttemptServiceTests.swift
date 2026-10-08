@@ -148,6 +148,30 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    func testPreparedMaxFundingMustRespectOriginalOrderBeforeBroadcast() async throws {
+        for amount: UInt64 in [98999, 100001, 99500] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = amount
+            let context = OnchainSendTransferContext(clientBalanceSats: 97000, txTotalSats: 100000,
+                                                     preTransferOnchainSats: 100000, originalOrderFeeSats: 99000)
+            do {
+                _ = try await service.send(using: sender, address: "original", amountSats: 99000,
+                                           satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: true,
+                                           orderId: "original-order", transferContext: context)
+                XCTAssertEqual(amount, 99500)
+                XCTAssertEqual(sender.broadcasts, 1)
+                XCTAssertEqual(store.snapshot().first?.amountSats, 99500)
+                XCTAssertEqual(store.snapshot().first?.transferContext, context)
+            } catch {
+                XCTAssertNotEqual(amount, 99500, "Valid surplus funding must remain supported")
+                XCTAssertEqual(sender.broadcasts, 0)
+                XCTAssertTrue(store.snapshot().isEmpty)
+            }
+        }
+    }
+
     func testPreparedReceiptIsDurableBeforeNativeDispatch() async throws {
         for max in [false, true] {
             let store = MemoryAttemptStore()
