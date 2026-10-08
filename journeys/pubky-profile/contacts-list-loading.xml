@@ -19,7 +19,9 @@
     rather than failing. If the Pubky session is still restoring when Contacts is tapped, Contacts
     shows Profile recovery first: a loading screen (id "ProfileLoading") or the read-only public
     profile. It moves on to the list by itself once the session is back. Public profile visibility
-    does not unlock Contacts; wait for the list before evaluating contact rows. See README.md.
+    does not unlock Contacts; wait for the list before evaluating contact rows. With a saved identity,
+    Android may show the contacts intro first or navigate to Profile recovery; reopen Contacts after
+    recovery there. See README.md.
   </description>
   <actions>
     <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`</action>

@@ -108,6 +108,7 @@ class PubkyProfileManager: ObservableObject {
     private var initializationTask: Task<Void, Never>?
     private var completedRecoveryVersion = 0
     private var sessionRestorationDeferred = false
+    private var readOnlySignOutRevision: UUID?
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
@@ -1427,8 +1428,16 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
+        let retainedProfile = hasReadOnlyProfileIdentity ? readOnlyProfile : nil
         Self.beginSessionMutation()
-        defer { Self.endSessionMutation() }
+        if let retainedProfile {
+            readOnlySignOutRevision = Self.sessionRevision
+            readOnlyProfile = (retainedProfile.publicKey, retainedProfile.profile, Self.sessionRevision)
+        }
+        defer {
+            readOnlySignOutRevision = nil
+            Self.endSessionMutation()
+        }
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
 
@@ -1510,7 +1519,10 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private var hasReadOnlyProfileIdentity: Bool {
-        Self.sessionMutationCount == 0 && readOnlyProfile?.revision == Self.sessionRevision
+        guard readOnlyProfile?.revision == Self.sessionRevision else { return false }
+        // Only this Disconnect may retain display ownership; any other identity mutation invalidates it.
+        return Self.sessionMutationCount == 0 ||
+            (Self.sessionMutationCount == 1 && readOnlySignOutRevision == Self.sessionRevision)
     }
 
     /// The cached name and avatar for the authenticated or credential-verified display identity. It has no bio, links

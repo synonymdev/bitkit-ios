@@ -2071,6 +2071,95 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testFailedSignOutKeepsReadOnlyProfileDisplayed() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+            let manager = PubkyProfileManager(remoteProfileResolver: { _ in expected })
+            await manager.initialize { .restorationDeferred }
+            await manager.loadProfile()
+
+            let started = expectation(description: "disconnect started")
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let disconnect = Task {
+                try await manager.signOut {
+                    started.fulfill()
+                    for await _ in stream {}
+                    throw PubkyServiceError.sessionNotActive
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            XCTAssertEqual(manager.profileForDisplay?.name, expected.name)
+            XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
+            XCTAssertNil(manager.currentSession)
+
+            continuation.finish()
+            await XCTAssertThrowsErrorAsync { try await disconnect.value }
+            XCTAssertEqual(manager.profileForDisplay?.name, expected.name)
+            XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
+            XCTAssertNil(manager.profile)
+            XCTAssertNil(manager.currentSession)
+            XCTAssertEqual(try Keychain.loadString(key: .pubkySecretKey), secret)
+
+            try await manager.signOut(performSessionCleanup: {})
+            XCTAssertNil(manager.profileForDisplay)
+            XCTAssertNil(manager.publicKeyForDisplay)
+        }
+    }
+
+    @MainActor
+    func testFailedSignOutDoesNotRestoreReadOnlyProfileAcrossIdentityChanges() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            let otherSecret = String(repeating: "02", count: 32)
+            let otherPublicKey = try PubkyProfileManager.publicKeyFromSecretKey(otherSecret)
+            for changeBeforeDisconnect in [false, true] {
+                AdoptedPubkyReference.current = nil
+                try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+                let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+                let manager = PubkyProfileManager(remoteProfileResolver: { _ in expected })
+                await manager.initialize { .restorationDeferred }
+                await manager.loadProfile()
+                let changeIdentity = {
+                    _ = try await manager.adoptRingIdentity(
+                        pubky: otherPublicKey,
+                        loadSecret: { _, _ in otherSecret },
+                        signIn: { _ in },
+                        fetchProfile: { _ in nil }
+                    )
+                }
+                if changeBeforeDisconnect { try await changeIdentity() }
+
+                let started = expectation(description: "disconnect started")
+                let (stream, continuation) = AsyncStream<Void>.makeStream()
+                defer { continuation.finish() }
+                let disconnect = Task {
+                    try await manager.signOut {
+                        started.fulfill()
+                        for await _ in stream {}
+                        throw PubkyServiceError.sessionNotActive
+                    }
+                }
+                await fulfillment(of: [started], timeout: 2)
+                if !changeBeforeDisconnect { try await changeIdentity() }
+                XCTAssertNil(manager.profileForDisplay)
+                continuation.finish()
+                await XCTAssertThrowsErrorAsync { try await disconnect.value }
+                XCTAssertNil(manager.profileForDisplay)
+                XCTAssertEqual(manager.publicKeyForDisplay, otherPublicKey)
+
+                await manager.initialize { .restorationDeferred }
+                XCTAssertNil(manager.profileForDisplay)
+                XCTAssertNil(manager.publicKeyForDisplay)
+            }
+        }
+    }
+
+    @MainActor
     func testRecoveryDiscardsReadOnlyProfileForDifferentIdentity() async throws {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)

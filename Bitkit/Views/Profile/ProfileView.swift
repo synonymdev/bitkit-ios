@@ -136,6 +136,8 @@ struct ProfileView: View {
                 .padding(.bottom, 16)
 
                 if !canEditProfile {
+                    retryButton
+                        .padding(.bottom, 16)
                     signOutButton
                         .accessibilityIdentifier("ProfileSignOut")
                 }
@@ -357,7 +359,12 @@ struct ProfileView: View {
     }
 
     private var retryButton: some View {
-        CustomButton(title: t("profile__retry_load"), variant: .secondary) {
+        CustomButton(
+            title: t("profile__retry_load"),
+            variant: .secondary,
+            isDisabled: isSigningOut,
+            isLoading: isRefreshing || pubkyProfile.isRestoringSession || pubkyProfile.isLoadingProfile
+        ) {
             await refreshProfile()
         }
         .accessibilityIdentifier("ProfileRetry")

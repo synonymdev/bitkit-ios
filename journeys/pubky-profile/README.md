@@ -81,7 +81,12 @@ header showed.
 After a temporary restoration failure, a saved credential can identify the public profile for a
 read-only fetch. Further private-session retries do not block that fetch. A full public profile
 shows its QR code, Copy and Share, but Edit and Add Tag stay disabled and tags have no remove action.
-Sign Out remains available below the read-only profile or cached header, with the usual confirmation.
+Retry and Disconnect remain available below the read-only profile, with Retry disabled while loading
+and Disconnect using the usual confirmation. A failed authenticated profile fetch leaves Retry
+available, so recovery does not require leaving Profile. The cached header also offers Retry when
+idle and Disconnect. After Edit becomes enabled, the read-only footer disappears.
+Check and cancel the footer confirmation only while Edit is still disabled, and
+skip that check if restoration finishes first.
 The cache alone never authenticates an identity or enables writes.
 
 Contacts opened while the Pubky session is still restoring after a relaunch uses the Profile
@@ -94,6 +99,11 @@ Contacts, so wait for the list before evaluating contact rows.
 - **Profile while loading.** iOS shows the cached name and avatar read-only under
   `ProfileCachedHeader`, with no edit, copy, share, QR code or tag controls, and then the full
   profile under `ProfileViewName`.
+- **Contacts during session restoration.** With a saved identity, iOS renders Profile recovery
+  (`ProfileLoading` or the read-only public profile) inside the Contacts destination and moves to
+  the contacts list once the session returns. Android may show the contacts intro first; otherwise
+  it navigates to Profile recovery. On Android, reopen Contacts after recovery to reach the list.
+  Public profile visibility does not unlock Contacts on either platform.
 - **Contact import after leaving and Contacts list.** `contact-import-after-leaving.xml` and
   `contacts-list-loading.xml` are new on both platforms at once: synonymdev/bitkit-android#1399 adds
   both to Android with the same file names, journey names and prose, changing only identifiers and
@@ -119,7 +129,7 @@ Contacts, so wait for the list before evaluating contact rows.
   `ProfileIntro-button`.
 - Profile: cached header `ProfileCachedHeader` and its name `ProfileCachedName`; full profile name
   `ProfileViewName`; actions `ProfileEdit`, `ProfileCopy`, `ProfileShare`, `ProfileQRCode` and
-  `ProfileAddTag`.
+  `ProfileAddTag`; read-only recovery `ProfileRetry` and Disconnect `ProfileSignOut`.
 - Choice screen: Ring rows `PubkyChoiceRing_<pubky>`, a row's lookup spinner
   `PubkyChoiceRingLookup_<pubky>`, and the create option `PubkyChoiceCreate`.
 - After adopting: the contact import overview `ContactImportOverviewProfile`, or Pay Contacts

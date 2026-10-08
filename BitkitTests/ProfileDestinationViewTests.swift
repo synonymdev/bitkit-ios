@@ -288,6 +288,27 @@ final class ProfileDestinationViewTests: XCTestCase {
         XCTAssertNil(manager.publicKey)
         XCTAssertNil(manager.currentSession)
 
+        let disconnectGate = ProfileOperationGate(name: "Read-only disconnect")
+        defer { disconnectGate.finish() }
+        let disconnect = Task {
+            try await manager.signOut {
+                disconnectGate.started.fulfill()
+                for await _ in disconnectGate.stream {}
+                throw PubkyServiceError.sessionNotActive
+            }
+        }
+        await fulfillment(of: [disconnectGate.started], timeout: 3)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(accessibilityElements(in: window).contains { accessibilityIdentifier($0) == "ProfileViewName" })
+        disconnectGate.finish()
+        do {
+            try await disconnect.value
+            XCTFail("Disconnect should fail without an active session")
+        } catch PubkyServiceError.sessionNotActive {}
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(accessibilityElements(in: window).contains { accessibilityIdentifier($0) == "ProfileViewName" })
+        XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
+
         await response.setProfile(nil)
         await manager.initialize { .restored(publicKey: publicKey) }
         try await Task.sleep(for: .milliseconds(150))
@@ -296,10 +317,26 @@ final class ProfileDestinationViewTests: XCTestCase {
         XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
         try await assertReadOnlyControls(window, navigation: navigation)
 
-        await response.setProfile(profile)
-        await manager.loadProfile()
-        try await Task.sleep(for: .milliseconds(150))
+        for nextProfile in [nil, profile] {
+            await response.setProfile(nextProfile)
+            let retryGate = await response.holdNextRequest()
+            defer { retryGate.finish() }
+            let retry = try element("ProfileRetry", in: window)
+            XCTAssertFalse(retry.accessibilityTraits.contains(.notEnabled))
+            XCTAssertTrue(retry.accessibilityActivate())
+            await fulfillment(of: [retryGate.started], timeout: 3)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertTrue(try element("ProfileRetry", in: window).accessibilityTraits.contains(.notEnabled))
+            XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
+            try await assertReadOnlyControls(window, navigation: navigation)
+            retryGate.finish()
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertEqual(manager.profile != nil, nextProfile != nil)
+        }
         XCTAssertNotNil(manager.profile)
+        for id in ["ProfileRetry", "ProfileSignOut"] {
+            XCTAssertFalse(accessibilityElements(in: window).contains { accessibilityIdentifier($0) == id })
+        }
         XCTAssertFalse(try element("ProfileEdit", in: window).accessibilityTraits.contains(.notEnabled))
         XCTAssertFalse(try element("ProfileAddTag", in: window).accessibilityTraits.contains(.notEnabled))
         XCTAssertNotNil(try element("Tag-public-tag-delete", in: window))
@@ -515,6 +552,7 @@ private struct ProfileOperationGate {
 
 private actor ProfileResponse {
     var profile: PubkyProfile?
+    private var gate: ProfileOperationGate?
 
     init(profile: PubkyProfile) {
         self.profile = profile
@@ -524,7 +562,18 @@ private actor ProfileResponse {
         self.profile = profile
     }
 
-    func resolve() throws -> PubkyProfile {
+    func holdNextRequest() -> ProfileOperationGate {
+        let gate = ProfileOperationGate(name: "Profile retry")
+        self.gate = gate
+        return gate
+    }
+
+    func resolve() async throws -> PubkyProfile {
+        if let gate {
+            self.gate = nil
+            gate.started.fulfill()
+            for await _ in gate.stream {}
+        }
         guard let profile else { throw URLError(.notConnectedToInternet) }
         return profile
     }
