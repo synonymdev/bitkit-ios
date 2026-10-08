@@ -1128,7 +1128,13 @@ struct SendConfirmationView: View {
                                 createdAt: UInt64(Date().timeIntervalSince1970)
                             ),
                             paymentDeadline: incomingPaymentRequest?.paymentDeadline,
-                            beforeBroadcastAttempt: beforeBroadcastAttempt
+                            beforeBroadcastAttempt: beforeBroadcastAttempt,
+                            onPreDispatchFailure: { _ in
+                                guard let incomingPaymentRequest else { return }
+                                guard await PaykitPaymentProofService.shared.failOnchainPayment(
+                                    incomingPaymentRequest, paymentIdentity: originalPaymentIdentity
+                                ) else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
+                            }
                         )
                     }
                 )

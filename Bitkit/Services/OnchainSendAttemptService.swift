@@ -42,10 +42,14 @@ extension LightningService: OnchainSending {
             txid: txid, inputs: inputs, recipientAmountSats: recipientAmountSats, miningFeeSats: miningFeeSats,
             broadcast: {
                 try await ServiceQueue.background(.ldk, wrapErrors: false) {
-                    guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
-                        throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
+                    do {
+                        guard self.currentWalletIndex == expectedWalletIndex, self.onchainDispatchNode === node, expectedNode === node else {
+                            throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
+                        }
+                        try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
+                    } catch {
+                        throw PreparedOnchainSendNotSubmitted(underlying: error)
                     }
-                    try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
                     return try prepared.broadcast()
                 }
             }
@@ -60,6 +64,11 @@ struct OnchainSendInput: Codable, Equatable, Hashable {
     var utxo: SpendableUtxo {
         SpendableUtxo(outpoint: OutPoint(txid: Txid(txid), vout: vout), valueSats: 0)
     }
+}
+
+// Produced only by the adapter before entering the native broadcast call.
+struct PreparedOnchainSendNotSubmitted: Error {
+    let underlying: Error
 }
 
 struct PreparedOnchainSendDispatch {
@@ -377,7 +386,8 @@ actor OnchainSendAttemptService {
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
-        beforeBroadcastAttempt: () async throws -> Void = {}
+        beforeBroadcastAttempt: () async throws -> Void = {},
+        onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
     ) async throws -> OnchainSendResult {
         guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
         let walletIndex = lightningService.currentWalletIndex
@@ -452,6 +462,16 @@ actor OnchainSendAttemptService {
         let result: OnchainSendResult
         // Once broadcast starts, any thrown error is ambiguous. Never release its receipt.
         do { result = try await normalized(prepared.broadcast(), candidate: prepared.txid) }
+        catch let failure as PreparedOnchainSendNotSubmitted {
+            // Remove the exact durable proof before releasing its matching wallet guard.
+            do {
+                if requestId != nil { try await onPreDispatchFailure(failure.underlying) }
+                try clearBeforeDispatch(attemptId: attemptId)
+            } catch {
+                throw OnchainSendAttemptError.unresolved
+            }
+            throw OnchainSendAttemptError.preDispatch(failure.underlying)
+        }
         catch { result = .unknown(txid: prepared.txid) }
 
         do {

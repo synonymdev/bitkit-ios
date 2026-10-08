@@ -117,6 +117,30 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(restored.canRetrySamePayment)
     }
 
+    func testInitialQueuedExpiryReleasesDefinitelyUnsentAttempt() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        let deadlineDate = Date(timeIntervalSince1970: 1_800_000_000)
+        sender.deadlineClock = { deadlineDate.addingTimeInterval(-1) }
+        sender.onNativeQueueDispatch = { sender.deadlineClock = { deadlineDate.addingTimeInterval(1) } }
+        do {
+            _ = try await service.send(
+                using: sender, address: "original", amountSats: sender.amount, satsPerVbyte: 1,
+                utxosToSpend: nil, isMaxAmount: false,
+                paymentDeadline: PaykitPreciseInstant(date: deadlineDate)
+            )
+            XCTFail("Queued expiry must surface a definite pre-submission failure")
+        } catch OnchainSendAttemptError.preDispatch {}
+        XCTAssertEqual(sender.broadcasts, 0)
+        XCTAssertTrue(store.snapshot().isEmpty)
+        let restarted = OnchainSendAttemptService(store: store)
+        sender.onNativeQueueDispatch = nil
+        _ = try await restarted.send(using: sender, address: "next", amountSats: sender.amount,
+                                     satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        XCTAssertEqual(sender.broadcasts, 1)
+    }
+
     func testOriginalRetryChecksDeadlineAfterAuthorizationBeforeNativeDispatch() async throws {
         for expired in [false, true] {
             let store = MemoryAttemptStore()
@@ -1313,7 +1337,8 @@ final class PreparedAttemptNodeMock: OnchainSending {
         let candidateId = txid
         return PreparedOnchainSendDispatch(txid: candidateId, inputs: inputs, recipientAmountSats: amount, miningFeeSats: miningFee) {
             self.onNativeQueueDispatch?()
-            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: self.deadlineClock())
+            do { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: self.deadlineClock()) }
+            catch { throw PreparedOnchainSendNotSubmitted(underlying: error) }
             self.broadcasts += 1
             try await self.onBroadcast?()
             return self.result ?? .unknown(txid: candidateId)

@@ -2160,6 +2160,56 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(remainingProofs, [onchainProof])
     }
 
+    func testInitialQueuedExpiryRollsBackProofBeforeReleasingAttempt() async throws {
+        for failCleanup in [false, true] {
+            let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+            let record = try paymentRequestRecord(endpoints: [endpoint])
+            let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+            let store = PaymentProofMemoryStore()
+            let attemptsStore = MemoryAttemptStore()
+            let attempts = OnchainSendAttemptService(store: attemptsStore)
+            let sender = PreparedAttemptNodeMock()
+            sender.amount = request.amountSats
+            let service = paymentProofService(
+                sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts
+            )
+            try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+            let deadline = Date(timeIntervalSince1970: 1_800_000_000)
+            sender.deadlineClock = { deadline.addingTimeInterval(-1) }
+            sender.onNativeQueueDispatch = { sender.deadlineClock = { deadline.addingTimeInterval(1) } }
+            do {
+                _ = try await attempts.send(
+                    using: sender, address: onchainAddress, amountSats: request.amountSats,
+                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                    requestId: request.id, paymentIdentity: identity,
+                    paymentDeadline: PaykitPreciseInstant(date: deadline),
+                    beforeBroadcastAttempt: {
+                        try await service.markOnchainPaymentStarted(request, address: self.onchainAddress, paymentIdentity: self.identity)
+                        if failCleanup { await store.failNextSave() }
+                    },
+                    onPreDispatchFailure: { _ in
+                        XCTAssertEqual(attemptsStore.snapshot().first?.requestId, request.id)
+                        guard await service.failOnchainPayment(request, paymentIdentity: self.identity) else {
+                            throw OnchainSendAttemptError.preDispatchCleanupFailed
+                        }
+                    }
+                )
+                XCTFail("Definitely unsent expiry must not become Unknown")
+            } catch OnchainSendAttemptError.preDispatch {
+                XCTAssertFalse(failCleanup)
+            } catch OnchainSendAttemptError.unresolved {
+                XCTAssertTrue(failCleanup)
+            }
+            let proofs = await store.snapshot()
+            XCTAssertEqual(sender.broadcasts, 0)
+            XCTAssertEqual(proofs.isEmpty, !failCleanup)
+            XCTAssertEqual(attemptsStore.snapshot().isEmpty, !failCleanup)
+            let restarted = OnchainSendAttemptService(store: attemptsStore)
+            let stillBlocked = try await restarted.hasAttempt(for: request.id)
+            XCTAssertEqual(stillBlocked, failCleanup)
+        }
+    }
+
     func testAuthorizationRollbackFailureKeepsMatchingAttemptWithoutBroadcast() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])

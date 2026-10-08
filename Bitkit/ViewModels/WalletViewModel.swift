@@ -632,7 +632,8 @@ class WalletViewModel: ObservableObject {
         paymentIdentity: String? = nil,
         followupContext: OnchainSendFollowupContext? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
-        beforeBroadcastAttempt: () async throws -> Void = {}
+        beforeBroadcastAttempt: () async throws -> Void = {},
+        onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
     ) async throws -> OnchainSendResult {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
@@ -655,7 +656,8 @@ class WalletViewModel: ObservableObject {
             paymentIdentity: paymentIdentity,
             followupContext: followupContext,
             paymentDeadline: paymentDeadline,
-            beforeBroadcastAttempt: beforeBroadcastAttempt
+            beforeBroadcastAttempt: beforeBroadcastAttempt,
+            onPreDispatchFailure: onPreDispatchFailure
         )
 
         if case .accepted = result {
