@@ -118,6 +118,25 @@ finish, but the next endpoint publication must not start for the ended session o
 
 ## Foreground wait isolation
 
+With one peer waiting at the ninety-second retry interval, explicitly add or refresh another
+contact. Its retry age must start independently and wake the sleeping worker. Repeat the action
+while its link operation is held: the operation is shared, and the twenty-second foreground
+admission window is not extended. After expiry, subsequent SDK calls use background priority;
+expiry and backgrounding must not cancel an admitted write. Resume after expiry, delete the
+contact, and switch identity while work is paused to check stale work is discarded. These checks
+need controlled clocks and SDK holds, outside the journey runner. On successful linked intake
+during the window, only that contact's request eligibility is refreshed. Linked alone does not
+prove that a usable incoming payment list exists. These checks establish scheduling behavior,
+not device latency or a guaranteed link-completion deadline.
+
+Fail identity inspection before linking and after an admitted write, then recover: the retry
+keeps its existing backoff and window, and no further SDK work starts while identity is unverified.
+For a linked peer with no outbound messages, failed intake keeps the explicit retry pending
+within that window. After expiry, normal background drain rules apply without signaling readiness.
+Target eligibility discovery remains owned by the existing request manager. It coalesces lookups
+but does not automatically retry a failed targeted refresh; a later full refresh or contact
+eligibility lookup can retry it. Successful intake does not guarantee successful discovery.
+
 Hold an unrelated contact's background preparation in progress, then open a saved, linked contact
 and request or pay it. The selected contact must be eligible for its own lookup before the full
 contact scan finishes. Hold its public capability lookup separately: this public read must not

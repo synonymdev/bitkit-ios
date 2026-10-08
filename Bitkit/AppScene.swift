@@ -622,6 +622,13 @@ struct AppScene: View {
                     await refreshIncomingPaykitPaymentRequests(forceFresh: true, onlyWhileActive: true)
                 }
             }
+            .onReceive(PrivatePaykitService.contactLinkCompletedPublisher.receive(on: DispatchQueue.main)) { completion in
+                guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                      PubkyPublicKeyFormat.matches(completion.identity, pubkyProfile.publicKey),
+                      contactsManager.contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, completion.publicKey) })
+                else { return }
+                paykitPaymentRequestManager.startEligibleTargetRefresh(publicKey: completion.publicKey)
+            }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
                 paykitProofRefresh.invalidate(session: pubkyProfile.currentSession)
             }
