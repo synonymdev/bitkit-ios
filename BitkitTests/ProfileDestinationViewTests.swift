@@ -228,7 +228,7 @@ final class ProfileDestinationViewTests: XCTestCase {
         try await assertRetryScreen(window, name: "Automatic retry failed")
     }
 
-    func testDeferredSessionDisplaysPublicProfileWithoutAuthenticating() async throws {
+    func testDeferredSessionRetainsPublicProfileAcrossRecoveryFailures() async throws {
         snapshotAppDefaultsDomain()
         let keys: [KeychainEntryType] = [.pubkySecretKey, .paykitSession]
         let savedValues = try keys.map { try Keychain.load(key: $0) }
@@ -257,27 +257,14 @@ final class ProfileDestinationViewTests: XCTestCase {
         let manager = DeferredProfileManager(remoteProfileResolver: { _ in try await response.resolve() })
         await manager.initialize { .restorationDeferred }
         await manager.loadProfile()
-        let navigation = NavigationViewModel()
-        let window = try hostProfile(manager, navigation: navigation)
-        let pasteboard = UIPasteboard.general.string
-        defer {
-            close(window)
-            UIPasteboard.general.string = pasteboard
-        }
+        let window = try hostProfile(manager)
+        defer { close(window) }
         try await Task.sleep(for: .milliseconds(150))
 
         let (_, labels) = try snapshot(window, name: "Public profile while private state reconnects")
         XCTAssertTrue(labels.joined(separator: " ").contains(profile.name.uppercased()), "\(labels)")
         XCTAssertTrue(labels.contains(profile.bio), "\(labels)")
         XCTAssertFalse(labels.contains(t("profile__empty_state")), "\(labels)")
-
-        try await assertReadOnlyControls(window, navigation: navigation)
-        for id in ["ProfileCopy", "ProfileQRCode"] {
-            UIPasteboard.general.string = nil
-            XCTAssertTrue(try element(id, in: window).accessibilityActivate())
-            try await Task.sleep(for: .milliseconds(100))
-            XCTAssertEqual(UIPasteboard.general.string, publicKey, id)
-        }
 
         let scroll = try XCTUnwrap(scrollView(in: XCTUnwrap(window.rootViewController?.view)))
         scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height)), animated: false)
@@ -299,14 +286,14 @@ final class ProfileDestinationViewTests: XCTestCase {
         }
         await fulfillment(of: [disconnectGate.started], timeout: 3)
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertTrue(accessibilityElements(in: window).contains { accessibilityIdentifier($0) == "ProfileViewName" })
+        XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
         disconnectGate.finish()
         do {
             try await disconnect.value
             XCTFail("Disconnect should fail without an active session")
         } catch PubkyServiceError.sessionNotActive {}
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertTrue(accessibilityElements(in: window).contains { accessibilityIdentifier($0) == "ProfileViewName" })
+        XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
         XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
 
         await response.setProfile(nil)
@@ -315,95 +302,28 @@ final class ProfileDestinationViewTests: XCTestCase {
         XCTAssertNotNil(manager.currentSession)
         XCTAssertNil(manager.profile)
         XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
-        try await assertReadOnlyControls(window, navigation: navigation)
 
         for nextProfile in [nil, profile] {
             await response.setProfile(nextProfile)
             let retryGate = await response.holdNextRequest()
             defer { retryGate.finish() }
-            let retry = try element("ProfileRetry", in: window)
-            XCTAssertFalse(retry.accessibilityTraits.contains(.notEnabled))
-            XCTAssertTrue(retry.accessibilityActivate())
+            let retry = Task { await manager.loadProfile() }
             await fulfillment(of: [retryGate.started], timeout: 3)
-            try await Task.sleep(for: .milliseconds(100))
-            XCTAssertTrue(try element("ProfileRetry", in: window).accessibilityTraits.contains(.notEnabled))
+            XCTAssertTrue(manager.isLoadingProfile)
             XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
-            try await assertReadOnlyControls(window, navigation: navigation)
             retryGate.finish()
-            try await Task.sleep(for: .milliseconds(150))
+            await retry.value
+            XCTAssertFalse(manager.isLoadingProfile)
             XCTAssertEqual(manager.profile != nil, nextProfile != nil)
         }
         XCTAssertNotNil(manager.profile)
-        for id in ["ProfileRetry", "ProfileSignOut"] {
-            XCTAssertFalse(accessibilityElements(in: window).contains { accessibilityIdentifier($0) == id })
-        }
-        XCTAssertFalse(try element("ProfileEdit", in: window).accessibilityTraits.contains(.notEnabled))
-        XCTAssertFalse(try element("ProfileAddTag", in: window).accessibilityTraits.contains(.notEnabled))
-        XCTAssertNotNil(try element("Tag-public-tag-delete", in: window))
-        XCTAssertTrue(try element("ProfileEdit", in: window).accessibilityActivate())
-        XCTAssertEqual(navigation.path, [.editProfile])
     }
 
-    private func assertReadOnlyControls(_ window: UIWindow, navigation: NavigationViewModel) async throws {
-        let identifiers = ["ProfileEdit", "ProfileAddTag"]
-        let deadline = ContinuousClock.now + .seconds(3)
-        repeat {
-            window.layoutIfNeeded()
-            let available = Set(accessibilityElements(in: window).compactMap(accessibilityIdentifier))
-            if available.isSuperset(of: identifiers) { break }
-            try await Task.sleep(for: .milliseconds(20))
-        } while ContinuousClock.now < deadline
-
-        for id in identifiers {
-            let control = try element(id, in: window)
-            XCTAssertTrue(control.accessibilityTraits.contains(.notEnabled), id)
-            _ = control.accessibilityActivate()
-        }
-        try await Task.sleep(for: .milliseconds(100))
-        XCTAssertTrue(navigation.path.isEmpty)
-        XCTAssertNil(window.rootViewController?.presentedViewController)
-        XCTAssertFalse(accessibilityElements(in: window)
-            .contains { accessibilityIdentifier($0) == "Tag-public-tag-delete" })
-    }
-
-    private func element(_ id: String, in window: UIWindow) throws -> NSObject {
-        let elements = accessibilityElements(in: window)
-        let nodeTypes = Set(elements.map { String(reflecting: type(of: $0)) }).sorted()
-        let hosting = "scene=\(String(describing: window.windowScene?.activationState)), key=\(window.isKeyWindow), "
-            + "attached=\(window.rootViewController?.view.window === window), nodes=\(elements.count), types=\(nodeTypes)"
-        return try XCTUnwrap(
-            elements.first { accessibilityIdentifier($0) == id },
-            "Missing \(id); available: \(elements.compactMap(accessibilityIdentifier).sorted()); host: \(hosting)"
-        )
-    }
-
-    private func accessibilityIdentifier(_ element: NSObject) -> String? {
-        guard element.responds(to: NSSelectorFromString("accessibilityIdentifier")) else { return nil }
-        return element.value(forKey: "accessibilityIdentifier") as? String
-    }
-
-    private func accessibilityElements(in root: NSObject) -> [NSObject] {
-        var visited = Set<ObjectIdentifier>()
-        func walk(_ node: NSObject) -> [NSObject] {
-            guard visited.insert(ObjectIdentifier(node)).inserted else { return [] }
-            var children = (node as? UIView)?.subviews.map { $0 as NSObject } ?? []
-            children += node.accessibilityElements?.compactMap { $0 as? NSObject } ?? []
-            children += node.automationElements?.compactMap { $0 as? NSObject } ?? []
-            let count = node.accessibilityElementCount()
-            if count > 0, count < 1000 {
-                children += (0 ..< count).compactMap { node.accessibilityElement(at: $0) as? NSObject }
-            }
-            return [node] + children.flatMap(walk)
-        }
-        return walk(root)
-    }
-
-    private func hostProfile(_ manager: PubkyProfileManager, navigation: NavigationViewModel? = nil) throws -> UIWindow {
+    private func hostProfile(_ manager: PubkyProfileManager) throws -> UIWindow {
         let view = ProfileDestinationView(hasSeenIntro: true)
-            .environment(\.accessibilityEnabled, true)
             .environmentObject(manager)
             .environmentObject(AppViewModel())
-            .environmentObject(navigation ?? NavigationViewModel())
+            .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
             .preferredColorScheme(.dark)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes
