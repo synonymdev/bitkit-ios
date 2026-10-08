@@ -713,6 +713,10 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
+        if isAutomatic, isFeeRateMissing {
+            showManualConfirmation()
+            return
+        }
         try await Self.requireManualCoinSelection(
             walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive,
