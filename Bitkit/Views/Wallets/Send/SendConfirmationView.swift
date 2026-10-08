@@ -53,7 +53,7 @@ struct SendConfirmationView: View {
 
     private var sendContext: ConfirmationContext? {
         guard preparingRequest == nil, !isSubmittingPayment,
-              navigationPath.last == nil || navigationPath.last == .confirm || isShowingFeeOptions,
+              navigationPath.last == nil || navigationPath.last == .confirm || isEditingSendDetails,
               let sheet = sheets.activeSheetConfiguration,
               sheet.presentationID == presentationID,
               sheet.id == .send || sheet.id == .subscription,
@@ -71,8 +71,8 @@ struct SendConfirmationView: View {
         )
     }
 
-    private var isShowingFeeOptions: Bool {
-        navigationPath.last == .feeRate || navigationPath.last == .feeCustom
+    private var isEditingSendDetails: Bool {
+        navigationPath.last == .feeRate || navigationPath.last == .feeCustom || navigationPath.last == .tag
     }
 
     var accentColor: Color {
@@ -290,7 +290,7 @@ struct SendConfirmationView: View {
                     : t("wallet__send_swipe"),
                 accentColor: accentColor,
                 isDisabled: isSwipeDisabled,
-                isLoading: Self.isSwipeLoading(
+                isLoading: walletSwitchContext != nil || Self.isSwipeLoading(
                     hasStartedAutomaticPayment: hasStartedAutomaticPayment,
                     isFeeRateMissing: isFeeRateMissing,
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
@@ -356,7 +356,7 @@ struct SendConfirmationView: View {
             }
         }
         .onDisappear {
-            if !isShowingFeeOptions || sendContext != walletSwitchContext {
+            if !isEditingSendDetails || sendContext != walletSwitchContext {
                 walletSwitchContext = nil
             }
             feeCalculationId += 1
@@ -700,7 +700,7 @@ struct SendConfirmationView: View {
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
-        guard preparingRequest == nil else { throw CancellationError() }
+        guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
         }
@@ -861,9 +861,10 @@ struct SendConfirmationView: View {
         isHardwarePayment: Bool,
         isHardwareConfirmationUnavailable: Bool,
         feeRate: UInt32?,
-        isPreparingRequest: Bool = false
+        isPreparingRequest: Bool = false,
+        isPreparingWallet: Bool = false
     ) -> Bool {
-        isPreparingRequest || isHardwareConfirmationUnavailable
+        isPreparingRequest || isPreparingWallet || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
 
@@ -881,7 +882,8 @@ struct SendConfirmationView: View {
             isHardwarePayment: hwSend.isActive,
             isHardwareConfirmationUnavailable: isHardwareConfirmationUnavailable,
             feeRate: wallet.selectedFeeRateSatsPerVByte,
-            isPreparingRequest: preparingRequest != nil
+            isPreparingRequest: preparingRequest != nil,
+            isPreparingWallet: walletSwitchContext != nil
         )
     }
 

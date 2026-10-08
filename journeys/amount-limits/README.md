@@ -12,6 +12,16 @@ Savings, with manual or automatic coin selection after returning through the fee
 a unified invoice and balances on both rails, but never submits a payment. This two-stage return is
 iOS-only; Android applies the fee and returns directly to confirmation.
 
+### Pending coin preparation and Tags (manual)
+
+Suspending wallet UTXO loading is not a journey capability. With a controlled wallet fixture,
+enable manual coin selection, open a unified invoice on Spending, switch to Savings and hold the
+UTXO read. Open Tags before releasing the read; coin selection must not open over Tags. Return
+to confirmation and verify preparation resumes, the swipe stays unavailable while it runs, and
+the manual coin picker opens. Repeat with automatic selection and verify the selected coins
+are prepared on return. Closing or replacing the send while Tags is open must discard the old
+preparation. Do not submit a payment.
+
 ## What the feature does
 - Typing a digit that would push the amount **over the cap is rejected** — the display stays at the
   largest value still within the cap (e.g. tapping `9` repeatedly stops at `9 999` when the cap is
