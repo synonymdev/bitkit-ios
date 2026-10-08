@@ -325,7 +325,10 @@ struct PaykitPaymentStateBackup: Codable {
             }
             let orderContext = try transfer.map { value -> OnchainSendTransferContext in
                 let originalFee: UInt64 = try number(value.originalOrderFeeSats)
-                guard orderId != nil, amount == originalFee else { throw invalidBackup("Original transfer context mismatch") }
+                let transactionTotal: UInt64 = try number(value.txTotalSats)
+                guard orderId != nil,
+                      isMaxAmount ? amount >= originalFee && amount <= transactionTotal : amount == originalFee
+                else { throw invalidBackup("Original transfer context mismatch") }
                 return try OnchainSendTransferContext(clientBalanceSats: number(value.originalOrderClientBalanceSats),
                                                       txTotalSats: number(value.txTotalSats),
                                                       preTransferOnchainSats: number(value.preTransferOnchainSats),

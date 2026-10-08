@@ -277,6 +277,41 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertEqual(attempt.transferContext?.originalOrderFeeSats, attempt.amountSats)
     }
 
+    func testSendAllFundingBackupPreservesActualAmountAndOriginalOrderTerms() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.completeAttemptGolden())
+        let wire = try XCTUnwrap(envelope.paykitPaymentState?.activeOnchainAttempt)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(wire)) as? [String: Any])
+        object["requestId"] = nil
+        object["payerIdentity"] = nil
+        object["orderId"] = "original-order"
+        object["isMaxAmount"] = true
+        object["amountSats"] = "99500"
+        object["transfer"] = ["txTotalSats": "100000", "preTransferOnchainSats": "100000",
+                              "originalOrderClientBalanceSats": "97000", "originalOrderFeeSats": "99000"]
+        func restored(_ fields: [String: Any]) throws -> OnchainSendAttempt {
+            let backup = try JSONDecoder().decode(PaykitPaymentStateBackup.ActiveOnchainAttempt.self,
+                                                  from: JSONSerialization.data(withJSONObject: fields))
+            return try backup.restored(wallet: Self.goldenWallet(), proofs: []).0
+        }
+        for status in ["pending", "unknown", "rejected", "accepted"] {
+            object["status"] = status
+            let attempt = try restored(object)
+            XCTAssertEqual(attempt.amountSats, 99500)
+            XCTAssertEqual(attempt.transferContext?.originalOrderFeeSats, 99000)
+            let encoded = try PaykitPaymentStateBackup.ActiveOnchainAttempt(attempt, wallet: Self.goldenWallet())
+            let roundTrip = try encoded.restored(wallet: Self.goldenWallet(), proofs: []).0
+            XCTAssertEqual(roundTrip.amountSats, 99500)
+            XCTAssertEqual(roundTrip.transferContext, attempt.transferContext)
+        }
+        for amount in ["98999", "100001"] {
+            object["amountSats"] = amount
+            XCTAssertThrowsError(try restored(object))
+        }
+        object["amountSats"] = "99500"
+        object["isMaxAmount"] = false
+        XCTAssertThrowsError(try restored(object))
+    }
+
     func testCandidateFeeRatesRoundtripAndRejectForeignOrMalformedRates() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.completeAttemptGolden())
         let state = try XCTUnwrap(envelope.paykitPaymentState)
