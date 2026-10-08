@@ -623,12 +623,9 @@ class ContactsManager: ObservableObject {
         else { return }
 
         do {
-            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name)
-            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
-                for: [prefixedKey],
-                savedPublicKeys: contacts.map(\.publicKey),
-                wallet: wallet
-            )
+            let identity = await PubkyService.currentPublicKey()
+            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, expectedIdentity: identity)
+            await PrivatePaykitService.shared.startExplicitContactLink(publicKey: prefixedKey, expectedIdentity: identity, wallet: wallet)
         } catch is CancellationError {
             return
         } catch {

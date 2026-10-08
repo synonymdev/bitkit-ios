@@ -243,11 +243,13 @@ struct AddContactView: View {
                 return
             }
 
+            let identity = pubkyProfile.publicKey
             try await contactsManager.addContact(
                 publicKey: normalizedPublicKey,
                 existingProfile: fetchedProfile,
-                ownPublicKey: pubkyProfile.publicKey
+                ownPublicKey: identity
             )
+            await PrivatePaykitService.shared.startExplicitContactLink(publicKey: normalizedPublicKey, expectedIdentity: identity, wallet: wallet)
             navigation.path = [.contacts, .contactSaved(publicKey: normalizedPublicKey)]
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")
