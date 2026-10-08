@@ -44,6 +44,11 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) {
+        if app.contactPaymentContext?.requiresAssetSelection == true {
+            sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+            return
+        }
+
         // Handle LNURL withdraw
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             Logger.info("LNURL withdraw data: \(lnurlWithdrawData)")
@@ -108,6 +113,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
+        if app.contactPaymentContext?.requiresAssetSelection == true { return .amount }
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             if lnurlWithdrawData.isFixedAmount {
                 return .lnurlWithdrawConfirm
@@ -196,6 +202,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
+        if app.contactPaymentContext?.requiresAssetSelection == true { return .amount }
         guard let route = appropriateSendRoute(
             app: app,
             currency: currency,
@@ -238,8 +245,8 @@ struct PaymentNavigationHelper {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
             guard !Task.isCancelled else { return }
             switch result {
-            case let .opened(paymentRequest, privatePaymentContext):
-                let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
+            case let .opened(paymentRequest, privatePaymentContext, endpoints):
+                let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext, endpoints: endpoints)
                 guard app.claimContactPaymentContext(context) else { return }
 
                 do {

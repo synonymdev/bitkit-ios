@@ -97,25 +97,35 @@ struct NumberPadTextField: View {
         let isSuffix = currency.primaryDisplay == .fiat && isSuffixSymbolCurrency(currency.selectedCurrency)
         let symbolText = currency.primaryDisplay == .bitcoin ? "₿" : currency.symbol
 
+        NumberPadAmountText(
+            value: viewModel.displayText,
+            placeholder: viewModel.getPlaceholder(currency: currency),
+            symbol: symbolText,
+            isSymbolSuffix: isSuffix,
+            isFocused: isFocused
+        )
+    }
+}
+
+struct NumberPadAmountText: View {
+    let value: String
+    var placeholder: String = ""
+    let symbol: String
+    var isSymbolSuffix = false
+    var isFocused = true
+
+    var body: some View {
         HStack(spacing: 6) {
-            if !isSuffix {
-                Text(symbolText)
-                    .font(.custom(Fonts.extraBold, size: 44))
-                    .foregroundColor(.textSecondary)
-            }
-
-            // Value and placeholder
-            (Text(viewModel.displayText)
-                .foregroundColor(.textPrimary)
-                + Text(viewModel.getPlaceholder(currency: currency))
-                .foregroundColor(isFocused ? .textSecondary : .textPrimary))
+            if !isSymbolSuffix { symbolView }
+            (Text(value).foregroundColor(.textPrimary)
+                + Text(placeholder).foregroundColor(isFocused ? .textSecondary : .textPrimary))
                 .font(.custom(Fonts.black, size: 44))
-
-            if isSuffix {
-                Text(symbolText)
-                    .font(.custom(Fonts.extraBold, size: 44))
-                    .foregroundColor(.textSecondary)
-            }
+                .lineLimit(1).minimumScaleFactor(0.5)
+            if isSymbolSuffix { symbolView }
         }
+    }
+
+    private var symbolView: some View {
+        Text(symbol).font(.custom(Fonts.extraBold, size: 44)).foregroundColor(.textSecondary)
     }
 }

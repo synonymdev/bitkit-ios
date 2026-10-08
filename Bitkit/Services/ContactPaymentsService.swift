@@ -67,6 +67,7 @@ enum ContactPaymentsService {
     static func enableAllPaymentOptions(defaults: UserDefaults = .standard) {
         defaults.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
         defaults.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        defaults.set(true, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
     }
 
     /// Applies the latest sharing preference for the current session. Enabling waits for saved contacts;

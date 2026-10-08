@@ -41,12 +41,17 @@ struct LnurlPayConfirm: View {
         return try await send()
     }
 
+    private var shouldAutomaticallyPay: Bool {
+        app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
+            app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
+    }
+
     var body: some View {
         ZStack {
             if let lnurlPayData = app.lnurlPayData {
                 confirmationContent(lnurlPayData: lnurlPayData)
             }
-            if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
+            if shouldAutomaticallyPay {
                 InitialSubscriptionPaymentProgress()
             }
         }
@@ -178,7 +183,7 @@ struct LnurlPayConfirm: View {
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
         guard let lnurlPayData = app.lnurlPayData,
-              app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+              shouldAutomaticallyPay,
               !hasStartedAutomaticPayment
         else { return }
         hasStartedAutomaticPayment = true
@@ -287,7 +292,8 @@ struct LnurlPayConfirm: View {
                     request: incomingPaymentRequest,
                     paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
                     paymentEndpointIdentifier: endpointIdentifier,
-                    kind: .lightning
+                    kind: .lightning,
+                    paymentTerms: app.paykitPaymentTerms
                 )
                 shouldCancelPaymentProof = true
             }
@@ -397,8 +403,8 @@ struct LnurlPayConfirm: View {
         }
         guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
         guard let amountSats = wallet.sendAmountSats,
-              request.acceptsPaymentAmount(amountSats),
-              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+              request.acceptsPaymentAmount(amountSats, method: .bitcoinLightningLnurl, paymentTerms: app.paykitPaymentTerms),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats, paymentTerms: app.paykitPaymentTerms)
         else {
             throw PaykitPaymentRequestError.amountMismatch
         }

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CreateSubscriptionView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     @Binding var draft: PaykitSubscriptionDraft
     let onEditAmount: () -> Void
@@ -29,6 +30,7 @@ struct CreateSubscriptionView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 24) {
                             amount
+                            acceptedMethods
                             frequency
                             name
                             description
@@ -49,9 +51,9 @@ struct CreateSubscriptionView: View {
 
             CustomButton(
                 title: t("subscriptions__choose_recipient"),
-                isDisabled: draft.amountSats == 0 ||
+                isDisabled: draft.amount.atomic == 0 ||
                     draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    isLoadingIcon
+                    isLoadingIcon || acceptedEndpoints.isEmpty
             ) {
                 onChooseRecipient()
             }
@@ -83,8 +85,8 @@ struct CreateSubscriptionView: View {
             CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
-                    MoneyText(
-                        sats: Int(clamping: draft.amountSats),
+                    if draft.amount.asset == .btc { MoneyText(
+                        sats: Int(clamping: draft.amount.atomic),
                         unitType: .primary,
                         size: .display,
                         symbol: true,
@@ -94,6 +96,7 @@ struct CreateSubscriptionView: View {
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
+                    } else { NumberPadAmountText(value: draft.amount.value, symbol: "$") }
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -103,6 +106,35 @@ struct CreateSubscriptionView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("SubscriptionEditAmount")
         }
+    }
+
+    private var acceptedEndpoints: [String] {
+        PaykitRequestPricing.subscriptionEndpoints(
+            requested: draft.amount.asset,
+            available: PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+        )
+    }
+
+    private var acceptedMethods: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
+            HStack(spacing: 16) {
+                if acceptedEndpoints.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue) {
+                    BodyMSBText("USDT", textColor: .usdtAccent)
+                }
+                if acceptedEndpoints.contains(where: { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }) {
+                    BodyMSBText(t("lightning__savings"), textColor: .brandAccent)
+                }
+                if acceptedEndpoints.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue) {
+                    BodyMSBText(t("lightning__spending"), textColor: .purpleAccent)
+                }
+                if acceptedEndpoints.isEmpty {
+                    BodySText(t("wallet__payment_request_status_unavailable"), textColor: .white64)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SubscriptionAcceptedMethods")
     }
 
     private var frequency: some View {
@@ -197,15 +229,15 @@ struct CreateSubscriptionView: View {
 }
 
 struct SubscriptionAmountView: View {
-    let initialAmountSats: UInt64
+    let initialAmount: PaykitAmount
     let onBack: () -> Void
-    let onContinue: (UInt64) -> Void
+    let onContinue: (PaykitAmount) -> Void
 
     var body: some View {
         PaymentRequestAmountView(
-            initialDraft: PaykitPaymentRequestDraft(amountSats: initialAmountSats, note: "", expiresAt: .distantFuture),
+            initialDraft: PaykitPaymentRequestDraft(amount: initialAmount, note: "", expiresAt: .distantFuture),
             target: nil,
-            onContinue: { onContinue($0.amountSats) },
+            onContinue: { onContinue($0.amount) },
             onBack: onBack,
             // Android tags this step PaymentRequest* on the subscription flow too; the journeys
             // share the vocabulary, so keep the odd-reading prefix rather than diverging.

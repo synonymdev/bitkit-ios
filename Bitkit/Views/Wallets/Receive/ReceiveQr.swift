@@ -6,6 +6,7 @@ struct ReceiveQr: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Binding var navigationPath: [ReceiveRoute]
@@ -13,6 +14,7 @@ struct ReceiveQr: View {
     let tab: ReceiveTab?
     let hardwareWalletId: String?
 
+    @State private var needsInvoiceRefresh: Bool
     @State private var selectedTab: ReceiveTab
     @State private var showDetails = false
     @State private var hasAppliedDefaultTab = false
@@ -45,12 +47,13 @@ struct ReceiveQr: View {
             // We'll set this in onAppear since we need access to wallet.channelCount
             .savings
         }
+        _needsInvoiceRefresh = State(initialValue: tab == .usdt)
         _selectedTab = State(initialValue: defaultTab)
         _hasAppliedDefaultTab = State(initialValue: tab != nil)
     }
 
     enum ReceiveTab: CaseIterable, CustomStringConvertible {
-        case savings, unified, spending, hardware
+        case savings, unified, spending, hardware, usdt
 
         var description: String {
             switch self {
@@ -60,6 +63,8 @@ struct ReceiveQr: View {
                 return "Auto"
             case .spending:
                 return t("lightning__spending")
+            case .usdt:
+                return "USDT"
             case .hardware:
                 return t("hardware__receive_tab_hardware")
             }
@@ -79,6 +84,7 @@ struct ReceiveQr: View {
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
         }
+        if usdt.isConfigured, cjitInvoice == nil { items.append(TabItem(.usdt)) }
         return items
     }
 
@@ -120,6 +126,14 @@ struct ReceiveQr: View {
     }
 
     var body: some View {
+        if selectedTab == .usdt {
+            UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
+        } else {
+            bitcoinContent
+        }
+    }
+
+    private var bitcoinContent: some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__receive_bitcoin"), action: paymentRequestAction)
                 .padding(.horizontal, 16)
@@ -142,6 +156,7 @@ struct ReceiveQr: View {
                     }
 
                     tabContent(for: .spending)
+                    if usdt.isConfigured, cjitInvoice == nil { Color.clear.tag(ReceiveTab.usdt) }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
@@ -308,7 +323,9 @@ struct ReceiveQr: View {
 
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
-            if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
+            if needsInvoiceRefresh && tab != .hardware {
+                ProgressView()
+            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
                 cjitOnboarding
             } else if showDetails {
                 detailsContent(for: tab)
@@ -335,9 +352,8 @@ struct ReceiveQr: View {
                     uri: uri,
                     imageAsset: "btc-circle-blue",
                     accentColor: .blueAccent,
-                    navigationPath: $navigationPath,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
-                    editRoute: .edit(tab: .hardware, onchainOnly: true)
+                    onEdit: { navigationPath.append(.edit(tab: .hardware, onchainOnly: true)) }
                 )
             } else if hardwareAddressLoadFailed {
                 VStack(spacing: 16) {
@@ -360,8 +376,9 @@ struct ReceiveQr: View {
                     uri: config.uri,
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
-                    navigationPath: $navigationPath,
-                    editRoute: editRoute(for: tab)
+                    onEdit: editRoute(for: tab).map { route in
+                        { navigationPath.append(route) }
+                    }
                 )
             } else {
                 ProgressView()
@@ -389,6 +406,8 @@ struct ReceiveQr: View {
                 imageAsset: "ln",
                 accentColor: .purpleAccent
             )
+        case .usdt:
+            return (uri: usdt.receiveUri, imageAsset: "tether-circle", accentColor: .usdtAccent)
         case .hardware:
             return (uri: "", imageAsset: "btc-circle-blue", accentColor: .blueAccent)
         }
@@ -487,6 +506,8 @@ struct ReceiveQr: View {
                             )
                         )
                     }
+                case .usdt:
+                    pairs.append(CopyAddressPair(title: t("wallet__activity_address"), address: usdt.address, type: .onchain))
                 case .hardware:
                     if let hardwareAddress = displayedHardwareAddress {
                         pairs.append(
@@ -527,7 +548,11 @@ struct ReceiveQr: View {
     func refreshBip21() async {
         guard wallet.nodeLifecycleState == .running else { return }
         do {
-            try await wallet.refreshBip21()
+            if needsInvoiceRefresh, let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
+                try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
+            }
+            try await wallet.refreshBip21(forceRefreshBolt11: needsInvoiceRefresh)
+            needsInvoiceRefresh = false
         } catch {
             app.toast(error)
         }

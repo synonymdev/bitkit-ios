@@ -55,8 +55,13 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
 
     let paymentRequestId: String
     let counterparty: String
-    let amountValue: String
-    let amountSats: UInt64
+    let amount: PaykitAmount
+    let paymentReference: String
+    let pricing: PaykitRequestPricing
+    var amountValue: String {
+        amount.value
+    }
+
     let note: String?
     let createdAt: Date?
     let expiresAt: Date?
@@ -67,6 +72,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     let lifecycleState: Paykit.PaymentRequestLifecycleState
     let billingPeriod: PaykitBillingPeriod?
     let paymentProofKind: PaykitPaymentProofKind?
+    let paymentProofEventId: String?
 
     var requiresAcceptance: Bool {
         billingPeriod == nil && lifecycleState == .proposed
@@ -153,9 +159,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         } else {
             paymentDeadline = nil
         }
-        guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
-        guard let amountSats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
-        guard amountSats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
+        guard let asset = PaykitAsset(rawValue: terms.amount.asset) else { return .failure(.unsupportedAsset) }
+        guard let amount = try? PaykitAmount(asset: asset, value: terms.amount.value) else { return .failure(.invalidAmount) }
+        guard asset != .btc || amount.atomic <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
 
         let acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
             terms.acceptedPaymentEndpointIdentifiers,
@@ -179,8 +185,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         return .success(PaykitPaymentRequest(
             paymentRequestId: record.paymentRequestId,
             counterparty: record.counterparty,
-            amountValue: terms.amount.value,
-            amountSats: amountSats,
+            amount: amount,
+            paymentReference: terms.paymentReference.exportText(),
+            pricing: PaykitRequestPricing(conversion: terms.conversion, deadline: terms.paymentDeadline, quotes: record.conversionQuotes),
             note: Self.note(from: terms.metadata),
             createdAt: record.lastEventAt.flatMap(Self.parseDate),
             expiresAt: expiresAt,
@@ -192,7 +199,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             billingPeriod: nil,
             paymentProofKind: record.paymentProofs.last.flatMap {
                 PaykitPaymentProofKind(paymentEndpointIdentifier: $0.paymentEndpointIdentifier)
-            }
+            },
+            paymentProofEventId: record.paymentProofs.last?.eventId
         ))
     }
 
@@ -223,19 +231,21 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         paymentRequestId = createdRecord.paymentRequestId
         counterparty = target.publicKey
-        amountValue = WalletViewModel.formatBitcoinAmount(sats: draft.amountSats)
-        amountSats = draft.amountSats
+        amount = draft.amount
+        paymentReference = createdRecord.terms?.paymentReference.exportText() ?? ""
+        pricing = PaykitRequestPricing(conversion: createdRecord.terms?.conversion, deadline: createdRecord.terms?.paymentDeadline)
         let trimmedNote = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
         note = trimmedNote.isEmpty ? nil : trimmedNote
         createdAt = createdRecord.lastEventAt.flatMap(Self.parseDate) ?? fallbackCreatedAt
         expiresAt = draft.expiresAt
-        paymentDeadline = nil
+        paymentDeadline = pricing.precisePaymentDeadline(period: nil)
         self.acceptedPaymentEndpointIdentifiers = acceptedPaymentEndpointIdentifiers
         self.deliveryStatus = deliveryStatus
         direction = .outgoing
         lifecycleState = .proposed
         billingPeriod = nil
         paymentProofKind = nil
+        paymentProofEventId = nil
     }
 
     func updatingLifecycleState(
@@ -245,8 +255,9 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         PaykitPaymentRequest(
             paymentRequestId: paymentRequestId,
             counterparty: counterparty,
-            amountValue: amountValue,
-            amountSats: amountSats,
+            amount: amount,
+            paymentReference: paymentReference,
+            pricing: pricing,
             note: note,
             createdAt: createdAt,
             expiresAt: expiresAt,
@@ -256,7 +267,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             direction: direction,
             lifecycleState: state,
             billingPeriod: billingPeriod,
-            paymentProofKind: paymentProofKind ?? self.paymentProofKind
+            paymentProofKind: paymentProofKind ?? self.paymentProofKind,
+            paymentProofEventId: paymentProofEventId
         )
     }
 
@@ -269,25 +281,28 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         paymentRequestId = subscription.paymentRequestId
         counterparty = subscription.counterparty
-        amountValue = subscription.amountValue
-        amountSats = subscription.amountSats
+        amount = subscription.amount
+        paymentReference = subscription.paymentReference
+        pricing = subscription.pricing
         note = subscription.note
         createdAt = billingPeriod.startsAt
         expiresAt = nil
-        paymentDeadline = nil
+        paymentDeadline = pricing.precisePaymentDeadline(period: billingPeriod)
         acceptedPaymentEndpointIdentifiers = subscription.acceptedPaymentEndpointIdentifiers
         deliveryStatus = nil
         self.direction = direction
         self.lifecycleState = lifecycleState
         self.billingPeriod = billingPeriod
         self.paymentProofKind = paymentProofKind
+        paymentProofEventId = subscription.payments.last { $0.billingPeriod == billingPeriod }?.proofEventId
     }
 
     private init(
         paymentRequestId: String,
         counterparty: String,
-        amountValue: String,
-        amountSats: UInt64,
+        amount: PaykitAmount,
+        paymentReference: String,
+        pricing: PaykitRequestPricing,
         note: String?,
         createdAt: Date?,
         expiresAt: Date?,
@@ -297,12 +312,14 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         direction: Direction,
         lifecycleState: Paykit.PaymentRequestLifecycleState,
         billingPeriod: PaykitBillingPeriod?,
-        paymentProofKind: PaykitPaymentProofKind?
+        paymentProofKind: PaykitPaymentProofKind?,
+        paymentProofEventId: String?
     ) {
         self.paymentRequestId = paymentRequestId
         self.counterparty = counterparty
-        self.amountValue = amountValue
-        self.amountSats = amountSats
+        self.amount = amount
+        self.paymentReference = paymentReference
+        self.pricing = pricing
         self.note = note
         self.createdAt = createdAt
         self.expiresAt = expiresAt
@@ -313,6 +330,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         self.lifecycleState = lifecycleState
         self.billingPeriod = billingPeriod
         self.paymentProofKind = paymentProofKind
+        self.paymentProofEventId = paymentProofEventId
     }
 
     func isExpired(at date: Date) -> Bool {
@@ -329,18 +347,43 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         }
     }
 
-    func acceptsLightningInvoiceAmount(milliSatoshis: UInt64?) -> Bool {
+    func payment(using method: PublicPaykitService.MethodId, at date: Date = Date(), quoteId: String? = nil) throws -> PaykitRequestPricing.Payment {
+        try pricing.payment(requested: amount, endpoint: method.rawValue, period: billingPeriod, at: date, quoteId: quoteId)
+    }
+
+    func acceptsLightningInvoiceAmount(milliSatoshis: UInt64?, paymentTerms: PaykitRequestPricing.Payment? = nil, at date: Date = Date()) -> Bool {
         guard let milliSatoshis else { return true }
-        let (requestedMilliSatoshis, overflow) = amountSats.multipliedReportingOverflow(by: 1000)
-        return !overflow && milliSatoshis == requestedMilliSatoshis
+        guard let payment = try? payment(using: .bitcoinLightningBolt11, at: date, quoteId: paymentTerms?.quoteId),
+              paymentTerms == nil || paymentTerms == payment, payment.isValid(at: date) else { return false }
+        let (required, overflow) = payment.amount.atomic.multipliedReportingOverflow(by: 1000)
+        return !overflow && milliSatoshis == required
     }
 
     func acceptsLightningInvoiceAmount(satoshis: UInt64) -> Bool {
-        satoshis == 0 || satoshis == amountSats
+        satoshis == 0 || acceptsPaymentAmount(satoshis, method: .bitcoinLightningBolt11)
     }
 
-    func acceptsPaymentAmount(_ amountSats: UInt64) -> Bool {
-        amountSats == self.amountSats
+    func acceptsPaymentAmount(
+        _ amountSats: UInt64,
+        method: PublicPaykitService.MethodId,
+        paymentTerms: PaykitRequestPricing.Payment? = nil,
+        at date: Date = Date()
+    ) -> Bool {
+        guard let payment = try? payment(using: method, at: date, quoteId: paymentTerms?.quoteId),
+              paymentTerms == nil || paymentTerms == payment, payment.isValid(at: date) else { return false }
+        return payment.amount.atomic == amountSats
+    }
+
+    func acceptsPayment(
+        _ amount: PaykitAmount,
+        method: PublicPaykitService.MethodId,
+        paymentTerms: PaykitRequestPricing.Payment?,
+        at date: Date = Date()
+    ) -> Bool {
+        guard let paymentTerms, paymentTerms.amount == amount, paymentTerms.isValid(at: date),
+              let current = try? payment(using: method, at: date, quoteId: paymentTerms.quoteId)
+        else { return false }
+        return current == paymentTerms
     }
 
     func belongs(to subscription: PaykitSubscription) -> Bool {
@@ -415,13 +458,21 @@ struct PaykitPaymentRequestTargetDiscovery: Equatable {
 }
 
 struct PaykitPaymentRequestDraft: Hashable {
-    let amountSats: UInt64
+    let amount: PaykitAmount
+    var acceptedPaymentEndpointIdentifiers: [String]?
     let note: String
     let expiresAt: Date
+
+    init(amount: PaykitAmount, acceptedPaymentEndpointIdentifiers: [String]? = nil, note: String, expiresAt: Date) {
+        self.amount = amount
+        self.acceptedPaymentEndpointIdentifiers = acceptedPaymentEndpointIdentifiers
+        self.note = note
+        self.expiresAt = expiresAt
+    }
 }
 
 struct PaykitSubscriptionDraft: Hashable {
-    var amountSats: UInt64
+    var amount: PaykitAmount
     var name: String
     var description: String
     var frequency: PaykitSubscriptionRecurrence.Unit
@@ -429,14 +480,8 @@ struct PaykitSubscriptionDraft: Hashable {
     var iconData: Data?
 
     static var empty: PaykitSubscriptionDraft {
-        PaykitSubscriptionDraft(
-            amountSats: 0,
-            name: "",
-            description: "",
-            frequency: .month,
-            expiresAt: Date().addingTimeInterval(7 * 24 * 60 * 60),
-            iconData: nil
-        )
+        PaykitSubscriptionDraft(amount: PaykitAmount(asset: .btc, atomic: 0), name: "", description: "", frequency: .month,
+                                expiresAt: Date().addingTimeInterval(7 * 24 * 60 * 60), iconData: nil)
     }
 }
 
@@ -572,6 +617,8 @@ struct PaykitPaymentRequestService {
     private let now: @Sendable () -> Date
     private let subscriptionNow: @Sendable () -> Date
     private let isPrivatePaymentPublishingEnabled: @Sendable () -> Bool
+    private let canReceiveLightning: @MainActor @Sendable () -> Bool
+    private let marketRate: @MainActor @Sendable () -> PaykitExchangeRate?
     private let logWarning: @Sendable (String) -> Void
     private let incomingRejectionLog = IncomingPaykitPaymentRequestRejectionLog()
 
@@ -582,11 +629,21 @@ struct PaykitPaymentRequestService {
         isPrivatePaymentPublishingEnabled: @escaping @Sendable () -> Bool = {
             UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         },
+        canReceiveLightning: @escaping @MainActor @Sendable () -> Bool = {
+            LightningService.shared.channels?.contains(where: \.isUsable) ?? false
+        },
+        marketRate: @escaping @MainActor @Sendable ()
+            -> PaykitExchangeRate? = { CurrencyService.shared.loadCachedRates()?.first { $0.quote == "USD" }.map { PaykitExchangeRate(
+                price: $0.lastPrice,
+                timestamp: $0.timestamp
+            ) } },
         logWarning: @escaping @Sendable (String) -> Void = {
             Logger.warn($0, context: "PaykitPaymentRequest")
         }
     ) {
         self.sdk = sdk
+        self.canReceiveLightning = canReceiveLightning
+        self.marketRate = marketRate
         self.now = now
         self.subscriptionNow = subscriptionNow ?? { SubscriptionClock.subscriptionDate(from: now()) }
         self.isPrivatePaymentPublishingEnabled = isPrivatePaymentPublishingEnabled
@@ -671,7 +728,8 @@ struct PaykitPaymentRequestService {
         priority: PaykitPublicReadPriority = .interactive
     ) async throws -> PaykitPaymentRequestTargetDiscovery {
         let unavailable = PaykitPaymentRequestTargetDiscovery(targets: [], isComplete: true, capabilityCheckedPublicKeys: [])
-        guard isPrivatePaymentPublishingEnabled(), !Self.acceptedPaymentEndpointIdentifiers().isEmpty else { return unavailable }
+        guard isPrivatePaymentPublishingEnabled(),
+              await !Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning()).isEmpty else { return unavailable }
         let sdkPriority: PaykitSdkOperationLock.Priority = priority == .bulk ? .background : .interactive
         guard let identityStatus = try await sdk.identityStatus(priority: sdkPriority),
               identityStatus.capability == .privateLinkCapable,
@@ -745,9 +803,12 @@ struct PaykitPaymentRequestService {
         savedPublicKeys: [String],
         expectedIdentity: String
     ) async throws -> PaykitPaymentRequest {
-        let acceptedPaymentEndpointIdentifiers = Self.acceptedPaymentEndpointIdentifiers()
+        let enabled = await Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning())
+        let acceptedPaymentEndpointIdentifiers = draft.acceptedPaymentEndpointIdentifiers.map { selected in
+            enabled.filter { selected.contains($0) }
+        } ?? enabled
         let proposalDate = now()
-        guard draft.amountSats > 0, !acceptedPaymentEndpointIdentifiers.isEmpty else {
+        guard draft.amount.atomic > 0, !acceptedPaymentEndpointIdentifiers.isEmpty else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         guard draft.expiresAt > proposalDate else {
@@ -760,10 +821,12 @@ struct PaykitPaymentRequestService {
         }
         let metadataData = try JSONSerialization.data(withJSONObject: ["note": draft.note])
         let metadataText = String(decoding: metadataData, as: UTF8.self)
+        let rates = try await PaykitRequestPricing.rates(requested: draft.amount.asset,
+                                                         endpoints: acceptedPaymentEndpointIdentifiers, market: marketRate(), at: proposalDate)
         let terms = try Paykit.PaymentRequestTerms(
             amount: Paykit.PaymentRequestAmount(
-                value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats),
-                asset: PaykitIssuerInterop.bitcoinAsset
+                value: draft.amount.value,
+                asset: draft.amount.asset.rawValue
             ),
             paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
@@ -771,8 +834,8 @@ struct PaykitPaymentRequestService {
             acceptedPaymentEndpointIdentifiers: acceptedPaymentEndpointIdentifiers,
             paymentEndpoints: nil,
             requiredAppId: "bitkit",
-            conversion: nil,
-            paymentDeadline: nil,
+            conversion: rates.isEmpty ? nil : .fixed(rates: rates),
+            paymentDeadline: .at(timestamp: Self.timestamp(draft.expiresAt)),
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
         let record = try await sdk.proposePaymentRequest(
@@ -799,10 +862,13 @@ struct PaykitPaymentRequestService {
         expectedIdentity: String,
         validateBeforeProposing: @MainActor () throws -> Void
     ) async throws -> PaykitSubscription {
-        let acceptedPaymentEndpointIdentifiers = Self.acceptedPaymentEndpointIdentifiers()
+        let acceptedPaymentEndpointIdentifiers = await PaykitRequestPricing.subscriptionEndpoints(
+            requested: draft.amount.asset,
+            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning())
+        )
         let validationDate = now()
         let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard draft.amountSats > 0,
+        guard draft.amount.atomic > 0,
               !name.isEmpty,
               draft.frequency.isSupported,
               !acceptedPaymentEndpointIdentifiers.isEmpty
@@ -837,7 +903,10 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         try await validateBeforeProposing()
-        guard Self.acceptedPaymentEndpointIdentifiers() == acceptedPaymentEndpointIdentifiers else {
+        guard await PaykitRequestPricing.subscriptionEndpoints(
+            requested: draft.amount.asset,
+            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning())
+        ) == acceptedPaymentEndpointIdentifiers else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         let proposalDate = now()
@@ -884,6 +953,7 @@ struct PaykitPaymentRequestService {
             "subscription": subscriptionMetadata,
         ])
         let metadataText = String(decoding: metadataData, as: UTF8.self)
+        let rates = try PaykitRequestPricing.rates(requested: draft.amount.asset, endpoints: endpoints, market: nil, at: proposalDate)
         let timestamp = Self.timestamp(proposalDate)
         let recurrence = Paykit.PaymentRequestRecurrence(
             every: 1,
@@ -894,8 +964,8 @@ struct PaykitPaymentRequestService {
         )
         return try Paykit.PaymentRequestTerms(
             amount: Paykit.PaymentRequestAmount(
-                value: WalletViewModel.formatBitcoinAmount(sats: draft.amountSats),
-                asset: PaykitIssuerInterop.bitcoinAsset
+                value: draft.amount.value,
+                asset: draft.amount.asset.rawValue
             ),
             paymentReference: Paykit.PaymentReference(text: "bitkit-\(UUID().uuidString)"),
             proposalExpiresAt: Self.timestamp(draft.expiresAt),
@@ -903,7 +973,7 @@ struct PaykitPaymentRequestService {
             acceptedPaymentEndpointIdentifiers: endpoints,
             paymentEndpoints: nil,
             requiredAppId: "bitkit",
-            conversion: nil,
+            conversion: rates.isEmpty ? nil : .fixed(rates: rates),
             paymentDeadline: nil,
             metadata: Paykit.PrivateJsonObject(text: metadataText)
         )
@@ -995,10 +1065,11 @@ struct PaykitPaymentRequestService {
         return subscription
     }
 
-    private static func acceptedPaymentEndpointIdentifiers() -> [String] {
+    static func acceptedPaymentEndpointIdentifiers(canReceiveLightning: Bool) -> [String] {
         PublicPaykitService.MethodId.publishableMethodIds.compactMap { methodId in
+            if methodId == .usdtArbitrum { return PublicPaykitService.isUsdtPaymentOptionEnabled() ? methodId.rawValue : nil }
             if methodId == .bitcoinLightningBolt11 {
-                return PublicPaykitService.isLightningPaymentOptionEnabled() ? methodId.rawValue : nil
+                return canReceiveLightning && PublicPaykitService.isLightningPaymentOptionEnabled() ? methodId.rawValue : nil
             }
             guard methodId.onchainNetwork == Env.network,
                   PublicPaykitService.isOnchainPaymentOptionEnabled()
@@ -1319,19 +1390,28 @@ final class PaykitPaymentRequestManager {
         subscriptionStateStore: any PaykitSubscriptionStateStoring = PaykitSubscriptionStateStore(),
         subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler = PaykitSubscriptionNotificationScheduler(),
         completedPaymentProofKinds: @escaping @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = { identity in
-            await PaykitPaymentProofService.shared.completedRequestProofKindsAwaitingSubmission(identity: identity)
+            let bitcoin = await PaykitPaymentProofService.shared.completedRequestProofKindsAwaitingSubmission(identity: identity)
+            let usdt = (try? PaykitUsdtPaymentService.shared.paymentProtection(identity: identity).completed) ?? [:]
+            return bitcoin.merging(usdt) { existing, _ in existing }
         },
         inFlightPaymentRequestIds: @escaping @Sendable (String) async -> Set<PaykitPaymentRequest.ID> = { identity in
-            await PaykitPaymentProofService.shared.inFlightRequestIds(identity: identity)
+            let bitcoin = await PaykitPaymentProofService.shared.inFlightRequestIds(identity: identity)
+            let usdt = (try? PaykitUsdtPaymentService.shared.paymentProtection(identity: identity).inFlight) ?? []
+            return bitcoin.union(usdt)
         },
         protectedRequestIdsForSubscriptionCancellation: @escaping @Sendable (
             String,
             PaykitSubscription.ID
         ) async throws -> Set<PaykitPaymentRequest.ID> = { identity, subscriptionId in
-            try await PaykitPaymentProofService.shared.protectedRequestIdsForSubscriptionCancellation(
+            let bitcoin = try await PaykitPaymentProofService.shared.protectedRequestIdsForSubscriptionCancellation(
                 identity: identity,
                 subscriptionId: subscriptionId
             )
+            let usdt = try PaykitUsdtPaymentService.shared.paymentProtection(identity: identity).inFlight.filter {
+                $0.billingPeriodStartsAt != nil && $0.paymentRequestId == subscriptionId.paymentRequestId &&
+                    $0.counterparty == subscriptionId.counterparty
+            }
+            return bitcoin.union(usdt)
         },
         now: @escaping @Sendable () -> Date = { Date() },
         subscriptionNow: (@Sendable () -> Date)? = nil,
@@ -1566,7 +1646,7 @@ final class PaykitPaymentRequestManager {
     }
 
     func propose(_ draft: PaykitPaymentRequestDraft, to target: PaykitPaymentRequestTarget) async throws -> PaykitPaymentRequest {
-        guard draft.amountSats > 0,
+        guard draft.amount.atomic > 0,
               isAvailable(),
               let activeIdentity,
               eligibleTargets.contains(target)
@@ -1608,7 +1688,7 @@ final class PaykitPaymentRequestManager {
         _ draft: PaykitSubscriptionDraft,
         to target: PaykitPaymentRequestTarget
     ) async throws -> PaykitSubscription {
-        guard draft.amountSats > 0,
+        guard draft.amount.atomic > 0,
               isAvailable(),
               let activeIdentity,
               eligibleTargets.contains(target)
@@ -1728,13 +1808,15 @@ final class PaykitPaymentRequestManager {
             guard !request.isPaymentDeadlineExpired(at: now()) else {
                 throw PaykitPaymentRequestError.requestExpired
             }
-            guard let identity = activeIdentity, isApprovedForPayment(request) else {
+            guard let identity = activeIdentity, isApprovedForPayment(request),
+                  request.billingPeriod == nil || !isProcessingSubscription
+            else {
                 throw PaykitPaymentRequestError.requestUnavailable
             }
             try await service.ensurePaymentAllowed(request)
             guard generation == stateGeneration,
                   PubkyPublicKeyFormat.matches(activeIdentity, identity),
-                  isApprovedForPayment(request)
+                  isApprovedForPayment(request), request.billingPeriod == nil || !isProcessingSubscription
             else { throw PaykitPaymentRequestError.requestUnavailable }
         } catch {
             if error as? PaykitPaymentRequestError == .requestUnavailable || error as? PaykitPaymentRequestError == .requestExpired {
@@ -2315,7 +2397,10 @@ final class PaykitPaymentRequestManager {
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
             let previousPending = pendingRequests
             receivedPaymentContacts = snapshot.receivedPaymentContacts
-            subscriptions = snapshot.subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
+            let satisfiedUsdtProofs = (try? PaykitUsdtPaymentService.shared.satisfiedProofs(identity: activeIdentity)) ?? [:]
+            subscriptions = snapshot.subscriptions.map {
+                $0.withVerifiedUsdtPayments(satisfiedUsdtProofs).withExpiredLifecycle(at: subscriptionDate)
+            }
             let visibleProposalIds = Set(subscriptions.filter {
                 $0.isPayer && $0.isProposalVisible(at: subscriptionDate)
             }.map(\.id))
@@ -2343,7 +2428,7 @@ final class PaykitPaymentRequestManager {
             dismissedSubscriptionPaymentIds.formIntersection(activeRecurringRequestIds)
             persistSubscriptionState()
             let recurringPending = recurringRequestsBySubscription
-                .filter { $0.0.lifecycleState == .activeRecurring && !$0.0.hasPaymentDeadline }
+                .filter { $0.0.lifecycleState == .activeRecurring }
                 .flatMap { _, requests in
                     requests.filter {
                         $0.lifecycleState != .proofSubmitted &&
@@ -2424,6 +2509,8 @@ final class PaykitPaymentRequestManager {
 
     private func applyCommittedSubscription(_ subscription: PaykitSubscription, at date: Date) async {
         guard let activeIdentity else { return }
+        let satisfiedUsdtProofs = (try? PaykitUsdtPaymentService.shared.satisfiedProofs(identity: activeIdentity)) ?? [:]
+        let subscription = subscription.withVerifiedUsdtPayments(satisfiedUsdtProofs)
         subscriptions.removeAll { $0.id == subscription.id }
         subscriptions.append(subscription)
 
@@ -2445,7 +2532,7 @@ final class PaykitPaymentRequestManager {
             subscription.requests(through: date, acceptedAt: $0)
         } ?? []
         pendingRequests.removeAll { $0.belongs(to: subscription) }
-        if subscription.lifecycleState == .activeRecurring, !subscription.hasPaymentDeadline {
+        if subscription.lifecycleState == .activeRecurring {
             pendingRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState != .proofSubmitted })
             pendingRequests.sort { ($0.createdAt ?? .distantFuture) < ($1.createdAt ?? .distantFuture) }
         }

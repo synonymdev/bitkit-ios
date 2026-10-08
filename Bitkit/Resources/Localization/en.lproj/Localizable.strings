@@ -716,22 +716,24 @@
 "security__authorization__pubky_auth_error_title" = "Pubky Auth Error";
 "security__authorization__pubky_auth_error_description" = "Unable to auth with Pubky service";
 "pubky_auth__title" = "Authorize";
+"pubky_auth__before_continue" = "BEFORE YOU CONTINUE";
+"pubky_auth__named_description_prefix" = "<accent>{clientId}</accent> is requesting permission to access and edit your ";
+"pubky_auth__named_success_middle" = " and gave <accent>{clientId}</accent> permission to access and edit your ";
 "pubky_auth__description_prefix" = "A service is requesting permission to access and edit your ";
 "pubky_auth__description_suffix" = " data.";
-"pubky_auth__requester" = "Requester ID: {clientId}";
 "pubky_auth__requested_permissions" = "REQUESTED PERMISSIONS";
 "pubky_auth__watch_only_account_default_name" = "{service} account";
 "pubky_auth__watch_only_account_fallback_name" = "Paykit server account";
 "pubky_auth__watch_only_account_name_error" = "Enter an account name between 1 and 64 characters.";
 "pubky_auth__watch_only_intro_approve" = "Approve";
 "pubky_auth__watch_only_intro_description" = "To earn, you need to share a watch-only Bitcoin account with Paykit. It can view sales activity, but cannot spend funds.";
-"pubky_auth__paykit_access_title" = "PRIVATE PAYKIT ACCESS";
-"pubky_auth__paykit_access_description" = "Read and manage your private Paykit data, and send Paykit messages on your behalf. Your Pubky identity secret and wallet spending keys are not shared.";
+"pubky_auth__paykit_access_title" = "DETAILS";
+"pubky_auth__paykit_access_description" = "This service will manage your private Paykit data and send Paykit messages for you. Your pubky secret and wallet keys stay private.";
 "pubky_auth__watch_only_intro_relay" = "Your authorization will be delivered to <accent>{relay}</accent>.";
 "pubky_auth__watch_only_intro_nav_title" = "Earn";
 "pubky_auth__watch_only_intro_title" = "<accent>EARN BITCOIN</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit could not create a valid account xpub.";
-"pubky_auth__trust_warning" = "Make sure you trust the service, browser, or device before authorizing with your pubky.";
+"pubky_auth__trust_warning" = "Make sure you trust the service, browser, and device before authorizing with your pubky.";
 "pubky_auth__authorization_relay" = "AUTHORIZATION RELAY";
 "pubky_auth__authorizing" = "Authorizing...";
 "pubky_auth__success_title" = "Authorization Successful";
@@ -1772,3 +1774,140 @@
 "settings__adv__pp_both" = "Both";
 "settings__adv__pp_lightning_short" = "Lightning";
 "settings__adv__pp_onchain_short" = "On-chain";
+
+// USDT
+"usdt__activity" = "Activity";
+"usdt__address" = "Recipient address";
+"usdt__amount" = "Amount (USDT)";
+"usdt__bridge_attention" = "Bridge needs attention";
+"usdt__bridging" = "Delivering to destination";
+"usdt__confirmed" = "Confirmed";
+"usdt__destination" = "Recipient network";
+"usdt__empty" = "No activity found yet.";
+"usdt__error_address" = "Enter a valid address for the selected network.";
+"usdt__error_amount" = "Enter a valid amount with up to 6 decimal places.";
+"usdt__error_backup" = "Unable to back up this payment. It will be retried when backup is available.";
+"usdt__error_balance" = "Not enough USDT to cover the amount and fees.";
+"usdt__error_clock" = "Set your device date and time automatically, then try again.";
+"usdt__error_configuration" = "USDT is currently unavailable. Please try again later.";
+"usdt__error_delegation" = "This address uses another wallet’s smart account. Disable its smart account mode there before sending with Bitkit.";
+"usdt__error_expired" = "The fee quote expired. Review the payment again.";
+"usdt__error_network" = "Could not update USDT. Check your connection and try again.";
+"usdt__error_pending" = "A payment is still pending. Wait for confirmation before sending again.";
+"usdt__error_rate_limit" = "Too many requests. Please try again shortly.";
+"usdt__error_rejected" = "The USDT network rejected the request. Please try again.";
+"usdt__error_response" = "The USDT service returned an invalid response. Please try again later.";
+"usdt__error_storage" = "Could not access USDT wallet data. Please try again.";
+"usdt__error_wallet" = "Could not access your USDT wallet. Reopen Bitkit and try again.";
+"usdt__error_route" = "This network is currently unavailable.";
+"usdt__expected_amount" = "Expected amount";
+"usdt__failed" = "Failed";
+"usdt__fee_note" = "All fees are paid in USDT. The final network fee may be lower than this maximum.";
+"usdt__history_sync" = "Older activity is still syncing. Your balance is up to date when the connection is available.";
+"usdt__maximum_fee" = "Maximum fee";
+"usdt__network_warning" = "Select the network used by the recipient. Sending to an address on the wrong network can lose funds.";
+"usdt__pending" = "Pending";
+"usdt__receive" = "Receive";
+"usdt__receive_warning" = "Receive USDT on Arbitrum One only. Bridge funds from other networks before sending.";
+"usdt__received" = "Received";
+"usdt__recipient_gets" = "Recipient gets";
+"usdt__send" = "Send";
+"usdt__sent" = "Sent";
+"usdt__submitted" = "Payment submitted";
+"usdt__submitted_description" = "Your payment is being processed. You can track its status in Activity.";
+"usdt__track_bridge" = "Track cross-network delivery";
+"usdt__replaced" = "Replaced by another payment";
+
+"usdt__balance" = "Balance";
+"usdt__receive_title" = "Receive Dollars";
+"usdt__send_title" = "Send USDT";
+
+"usdt__deposit_amount" = "Deposit amount";
+"usdt__deposit_attention" = "This deposit needs provider assistance. Contact Bitkit support with the deposit reference.";
+"usdt__deposit_cost" = "Estimated deduction (USDT)";
+"usdt__deposit_create" = "Get Deposit Address";
+"usdt__deposit_empty" = "No deposits yet.";
+"usdt__deposit_estimate" = "Estimated received (USDT)";
+"usdt__deposit_estimate_note" = "Indicative price only. Costs are deducted from the USDT received and may change before conversion. The sender pays their network gas separately.";
+"usdt__deposit_fee_note" = "Fees are deducted from the USDT you receive. The sender pays their network fees separately.";
+"usdt__deposit_history" = "Cross-network Deposits";
+"usdt__deposit_limits" = "Deposit limits";
+"usdt__deposit_limits_note" = "Live liquidity and network costs can further restrict these limits. Amounts outside the limits may be held.";
+"usdt__deposit_more" = "Load more";
+"usdt__deposit_needs_attention" = "Needs attention";
+"usdt__deposit_notice" = "Send only USDT on the selected network. Orchestra delivers USDT0 to your Arbitrum One wallet. This address is reusable; pricing is set when each deposit is processed. Deposits may be held for review.";
+"usdt__deposit_reference" = "Deposit reference";
+"usdt__deposit_refresh" = "Refresh";
+"usdt__deposit_refund" = "Request Refund";
+"usdt__deposit_refunded" = "Refunded";
+"usdt__deposit_status_note" = "Provider status is shown here. Your spendable balance updates only when USDT arrives on Arbitrum.";
+"usdt__deposit_unavailable" = "Cross-network receiving is currently unavailable. Direct Arbitrum receive still works.";
+"usdt__deposit_wrong_asset" = "Unsupported deposit asset — contact support";
+
+"usdt__payment_sent" = "USDT Sent";
+
+"usdt__payment_received" = "Received USDT";
+
+"usdt__bridge_submitted_description" = "Your payment is pending. You can track confirmation and cross-network delivery in Activity.";
+
+"usdt__send_failed_description" = "Your payment was not completed. Check Activity for details.";
+
+"usdt__deposit_authorization" = "The deposit service could not verify this request. Try again.";
+"usdt__deposit_amount_out_of_range" = "Amount outside deposit limits.";
+"usdt__deposit_not_found" = "Deposit details changed. Refresh the deposit history and select it again.";
+
+"wallet__payment_request_accepted_methods" = "Accept payment with";
+"wallet__payment_request_rate_unavailable" = "Payment rates are unavailable or expired. Try again when online.";
+
+"wallet__payment_request_payment_verified" = "Payment verified";
+"wallet__payment_request_review_received" = "Received · Review needed";
+
+"wallet__payment_request_underpaid" = "Received · Underpaid";
+"wallet__payment_request_after_expiry" = "Received · After expiry";
+
+"pubky_auth__bitcoin_account" = "Separate watch-only account · xpub";
+"pubky_auth__payment_details" = "PAYMENT DETAILS TO SHARE";
+"pubky_auth__payment_details_intro_title" = "<accent>EARN BITCOIN\nAND USDT</accent>\nFROM YOUR CONTENT";
+"pubky_auth__payment_details_intro_description" = "Share a separate Bitcoin account to receive earnings. You can also share your existing USDT address. Sharing these details does not let the service spend your funds.";
+"pubky_auth__usdt_intro_title" = "<accent>EARN USDT</accent>\nFROM YOUR\nCONTENT";
+"pubky_auth__usdt_intro_description" = "Share your existing USDT address on Arbitrum One to receive earnings directly in Bitkit. The service cannot spend your funds.";
+"pubky_auth__usdt_privacy" = "This is your existing USDT account. The service can see its balance and transaction history, but cannot spend your funds.";
+"pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. You can retry or continue without sharing it.";
+"pubky_auth__shared_usdt" = "Your USDT receiving address was shared.";
+"pubky_auth__shared_bitcoin" = "Your Bitcoin watch-only account was shared.";
+"pubky_auth__shared_both" = "Your Bitcoin watch-only account and USDT receiving address were shared.";
+"usdt__deposit_batch" = "Converted batch";
+"usdt__deposit_refund_address" = "Refund address on the source network";
+"usdt__deposit_refund_note" = "Confirm a refund address with the sender. Do not assume an exchange deposit can be returned to its sending address. Refund fees may apply. TRON refunds can require Orchestra operator assistance.";
+"usdt__deposit_refund_requested" = "Refund requested. This is not a confirmed refund; check the deposit status.";
+"usdt__deposit_refunding" = "Refund in progress";
+
+"usdt__bridge_provider" = "Bridge";
+"usdt__bridge_deducted_fee" = "Estimated bridge cost (included)";
+"usdt__maximum_total" = "Maximum total debit";
+"usdt__bridge_estimate_note" = "Delivery is estimated. Bridge costs are deducted from the amount; the network fee is additional.";
+"usdt__bridge_refunded_description" = "USDT was returned to your wallet. See details for the refunded amount.";
+"usdt__destination_tx" = "Destination transaction";
+"usdt__refund_tx" = "Refund transaction";
+
+"usdt__bridge_reference" = "Bridge reference";
+"usdt__copy_details" = "Copy Details";
+
+"pubky_auth__share_usdt_optional" = "Share USDT address (optional)";
+
+"usdt__receive_network_title" = "USDT Network";
+
+"usdt__receive_estimate" = "Receive (est)";
+"usdt__receive_fee" = "Fees";
+"usdt__receive_fees_title" = "Estimated Fees";
+
+"usdt__receive_network_note" = "Regardless of the receiving network, your USDT is credited to your Arbitrum One balance.";
+
+"usdt__receive_network" = "Network: {network}";
+
+"usdt__deposit_minimum" = "Minimum amount is {amount}";
+"usdt__deposit_maximum" = "Maximum amount is {amount}";
+
+"wallet__payment_request_requested_amount" = "Requested amount";
+
+"profile__auth_approval_services_separator" = " and ";

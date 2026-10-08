@@ -310,6 +310,13 @@ struct PaymentRequestAmountView: View {
     var testIdentifierPrefix = "PaymentRequest"
 
     @State private var amountViewModel = AmountInputViewModel()
+    @State private var asset: PaykitAsset = .btc
+    @State private var dollarAmount = ""
+    @State private var conversionError = false
+
+    private var amount: PaykitAmount? {
+        asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? PaykitAmount(asset: .usd, value: dollarAmount)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -320,41 +327,54 @@ struct PaymentRequestAmountView: View {
                 onBack: onBack
             )
 
-            NumberPadTextField(
-                viewModel: amountViewModel,
-                showEditButton: false,
-                isFocused: true,
-                testIdentifier: "\(testIdentifierPrefix)AmountField"
-            )
+            if asset == .usd {
+                NumberPadAmountText(value: dollarAmount.isEmpty ? "0" : dollarAmount, symbol: "$")
+                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
+            } else {
+                NumberPadTextField(viewModel: amountViewModel, showEditButton: false, isFocused: true,
+                                   testIdentifier: "\(testIdentifierPrefix)AmountField")
+            }
 
             Spacer()
 
             HStack {
                 Spacer()
-                NumberPadActionButton(
-                    text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                    imageName: "arrow-up-down",
-                    color: .brandAccent
-                ) {
-                    withAnimation {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                ForEach([PaykitAsset.btc, .usd], id: \.self) { choice in
+                    NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
+                                          variant: asset == choice ? .primary : .secondary)
+                    {
+                        guard choice != asset else { return }
+                        do {
+                            if let current = amount, current.atomic > 0 {
+                                let converted = try current.converted(to: choice, rate: currency.paykitRate, at: Date())
+                                if choice == .usd { dollarAmount = converted.value }
+                                else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
+                            }
+                            asset = choice
+                            conversionError = false
+                        } catch { conversionError = true }
                     }
+                    .accessibilityIdentifier("\(testIdentifierPrefix)Asset-\(choice.rawValue)")
                 }
-                .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
             }
             .padding(.bottom, 12)
 
+            if conversionError {
+                BodySText(t("wallet__payment_request_rate_unavailable"), textColor: .white64)
+            }
             NumberPad(
-                type: amountViewModel.getNumberPadType(currency: currency),
+                type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
                 errorKey: amountViewModel.errorKey
             ) { key in
-                amountViewModel.handleNumberPadInput(key, currency: currency)
+                if asset == .usd { dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2) }
+                else { amountViewModel.handleNumberPadInput(key, currency: currency) }
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: amountViewModel.amountSats == 0) {
+            CustomButton(title: t("common__continue"), isDisabled: (amount?.atomic ?? 0) == 0) {
+                guard let amount else { return }
                 onContinue(
                     PaykitPaymentRequestDraft(
-                        amountSats: amountViewModel.amountSats,
+                        amount: amount, acceptedPaymentEndpointIdentifiers: initialDraft.acceptedPaymentEndpointIdentifiers,
                         note: initialDraft.note,
                         expiresAt: initialDraft.expiresAt
                     )
@@ -366,7 +386,9 @@ struct PaymentRequestAmountView: View {
         .sheetBackground()
         .navigationBarHidden(true)
         .task {
-            amountViewModel.updateFromSats(initialDraft.amountSats, currency: currency)
+            asset = initialDraft.amount.asset == .btc ? .btc : .usd
+            if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
+            else { dollarAmount = initialDraft.amount.value }
         }
     }
 
@@ -393,6 +415,8 @@ struct PaymentRequestDetailsView: View {
     let onSent: (PaykitPaymentRequest) -> Void
 
     @State private var note = ""
+    @EnvironmentObject private var wallet: WalletViewModel
+    @State private var restrictedEndpoints: [String]?
     @State private var expiration = PaymentRequestExpiration.week
     @FocusState private var isNoteFocused: Bool
 
@@ -409,6 +433,7 @@ struct PaymentRequestDetailsView: View {
                     amount
                     noteInput
                     recipient
+                    acceptedMethods
                     expirationPicker
                 }
             }
@@ -416,6 +441,7 @@ struct PaymentRequestDetailsView: View {
             CustomButton(
                 title: t("wallet__payment_request_send_request"),
                 icon: Image("airplane").resizable().frame(width: 16, height: 16),
+                isDisabled: (restrictedEndpoints ?? enabledEndpoints).isEmpty,
                 isLoading: paymentRequests.isCreatingRequest
             ) {
                 await sendRequest()
@@ -428,6 +454,7 @@ struct PaymentRequestDetailsView: View {
         .navigationBarHidden(true)
         .interactiveDismissDisabled(paymentRequests.isCreatingRequest)
         .task {
+            restrictedEndpoints = initialDraft.acceptedPaymentEndpointIdentifiers
             note = initialDraft.note
             if initialDraft.expiresAt > Date() {
                 expiration = .closest(to: initialDraft.expiresAt, from: Date())
@@ -441,33 +468,51 @@ struct PaymentRequestDetailsView: View {
     }
 
     private var amount: some View {
+        Button { onEditAmount(currentDraft) } label: {
+            HStack(spacing: 8) {
+                if initialDraft.amount.asset == .btc {
+                    MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
+                              symbol: true, color: .textPrimary, symbolColor: .textSecondary)
+                } else { NumberPadAmountText(value: initialDraft.amount.value, symbol: "$") }
+                Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
+            }
+        }.buttonStyle(.plain)
+    }
+
+    private var enabledEndpoints: [String] {
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+    }
+
+    private var acceptedMethodGroups: [[PublicPaykitService.MethodId]] {
+        let groups: [[PublicPaykitService.MethodId]] = [
+            PublicPaykitService.MethodId.onchainPreferenceOrder,
+            [.bitcoinLightningBolt11, .bitcoinLightningLnurl],
+            [.usdtArbitrum],
+        ]
+        return groups.map { $0.filter { enabledEndpoints.contains($0.rawValue) } }.filter { !$0.isEmpty }
+    }
+
+    private var acceptedMethods: some View {
         VStack(alignment: .leading, spacing: 8) {
-            MoneyText(
-                sats: Int(clamping: initialDraft.amountSats),
-                unitType: .secondary,
-                size: .caption,
-                symbol: true,
-                color: .white64
-            )
-            Button {
-                onEditAmount(currentDraft)
-            } label: {
-                HStack(spacing: 8) {
-                    MoneyText(
-                        sats: Int(clamping: initialDraft.amountSats),
-                        unitType: .primary,
-                        size: .display,
-                        symbol: true,
-                        color: .textPrimary,
-                        symbolColor: .textSecondary
-                    )
-                    Image("pencil")
-                        .resizable()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(.textPrimary)
+            CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
+            HStack {
+                ForEach(acceptedMethodGroups, id: \.self) { methods in
+                    let endpoints = methods.map(\.rawValue)
+                    let usdt = methods.contains(.usdtArbitrum)
+                    let lightning = methods.contains(.bitcoinLightningBolt11) || methods.contains(.bitcoinLightningLnurl)
+                    let selected = restrictedEndpoints ?? enabledEndpoints
+                    let isSelected = endpoints.allSatisfy(selected.contains)
+                    NumberPadActionButton(text: usdt ? "USDT" : t(lightning ? "lightning__spending" : "lightning__savings").uppercased(),
+                                          color: usdt ? .usdtAccent : lightning ? .purpleAccent : .brandAccent,
+                                          variant: isSelected ? .primary : .secondary)
+                    {
+                        restrictedEndpoints = isSelected
+                            ? selected.filter { !endpoints.contains($0) }
+                            : selected + endpoints.filter { !selected.contains($0) }
+                    }
+                    .accessibilityIdentifier("PaymentRequestAccept-\(usdt ? "usdt" : lightning ? "spending" : "savings")")
                 }
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -500,7 +545,8 @@ struct PaymentRequestDetailsView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                MoneyCell(sats: Int(clamping: initialDraft.amountSats), prefix: "")
+                if initialDraft.amount.asset == .btc { MoneyCell(sats: Int(clamping: initialDraft.amount.atomic), prefix: "") }
+                else { BodyMSBText("$" + initialDraft.amount.value) }
             }
             .padding(16)
             .background(Color.gray6)
@@ -517,7 +563,7 @@ struct PaymentRequestDetailsView: View {
 
     private var currentDraft: PaykitPaymentRequestDraft {
         PaykitPaymentRequestDraft(
-            amountSats: initialDraft.amountSats,
+            amount: initialDraft.amount, acceptedPaymentEndpointIdentifiers: restrictedEndpoints,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
             expiresAt: expiration.date(from: Date())
         )

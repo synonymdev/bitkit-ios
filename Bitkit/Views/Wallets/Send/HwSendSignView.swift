@@ -10,7 +10,7 @@ struct HwSendSignView: View {
 
     @Binding var navigationPath: [SendRoute]
     let hwSend: HwSendCoordinator
-    let prepareContactPayment: (ContactPaymentContext?) async throws -> Void
+    let prepareContactPayment: (ContactPaymentContext?, UInt64) async throws -> Void
     let authorizeContactPayment: (ContactPaymentContext?) async throws -> Void
     let completeContactPayment: (ContactPaymentContext?, String) async -> Void
     let cancelContactPayment: (ContactPaymentContext?, PrivatePaymentListSendOutcome) async -> Void
@@ -133,7 +133,7 @@ struct HwSendSignView: View {
                     paymentDeadline: contactPaymentContext?.incomingPaymentRequest?.paymentDeadline,
                     paykitRequestId: contactPaymentContext?.incomingPaymentRequest?.id,
                     paykitIdentity: pubkyProfile.publicKey,
-                    beforeFirstBroadcast: { try await prepareContactPayment(contactPaymentContext) },
+                    beforeFirstBroadcast: { try await prepareContactPayment(contactPaymentContext, amount) },
                     beforeBroadcastAttempt: { try await authorizeContactPayment(contactPaymentContext) },
                     afterBroadcast: { result in
                         await completeContactPayment(contactPaymentContext, result.txId)

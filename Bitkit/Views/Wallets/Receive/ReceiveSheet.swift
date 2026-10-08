@@ -2,6 +2,7 @@ import BitkitCore
 import SwiftUI
 
 enum ReceiveRoute: Hashable {
+    case usdt
     case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
     case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool, replacesCurrentQr: Bool = false)
     case tag
@@ -19,7 +20,7 @@ enum ReceiveRoute: Hashable {
         switch self {
         case .qr, .edit, .tag, .cjitAmount, .cjitConfirm, .cjitLearnMore, .cjitGeoBlocked:
             return true
-        case .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
+        case .usdt, .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
             return false
         }
     }
@@ -67,7 +68,7 @@ struct ReceiveSheet: View {
             }
             .id(config.id)
         }
-        .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
+        .offlineSheetOverlay(title: t("wallet__receive"), isEnabled: config.initialRoute != .usdt)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
@@ -101,6 +102,7 @@ struct ReceiveSheet: View {
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
+        case .usdt: ReceiveQr(navigationPath: $navigationPath, tab: .usdt, hardwareWalletId: config.hardwareWalletId)
         case let .qr(cjitInvoice, tab):
             ReceiveQr(
                 navigationPath: $navigationPath,
@@ -128,7 +130,7 @@ struct ReceiveSheet: View {
             }
         case let .paymentRequestRecipient(draft):
             PaymentRequestRecipientView { target in
-                if draft.amountSats == 0 {
+                if draft.amount.atomic == 0 {
                     navigationPath.append(.paymentRequestAmount(draft, target))
                 } else {
                     navigationPath.append(.paymentRequestDetails(draft, target))
@@ -164,7 +166,7 @@ struct ReceiveSheet: View {
 
     static var defaultPaymentRequestDraft: PaykitPaymentRequestDraft {
         PaykitPaymentRequestDraft(
-            amountSats: 0,
+            amount: PaykitAmount(asset: .btc, atomic: 0),
             note: "",
             expiresAt: PaymentRequestExpiration.week.date(from: Date())
         )

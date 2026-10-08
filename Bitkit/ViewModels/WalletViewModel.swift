@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor
 class WalletViewModel: ObservableObject {
+    let usdtWallet = UsdtWalletManager()
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
@@ -112,6 +113,7 @@ class WalletViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.feeEstimatesManager = feeEstimatesManager
+        BackupService.shared.usdtWallet = usdtWallet
         balanceManager = BalanceManager(
             lightningService: lightningService,
             transferService: transferService,

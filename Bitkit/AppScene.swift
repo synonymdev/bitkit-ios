@@ -570,6 +570,7 @@ struct AppScene: View {
             .environment(trezorViewModel)
             .environment(jadeManager)
             .environment(hwWalletManager)
+            .environment(wallet.usdtWallet)
             .environment(calculatorInputManager)
             .environment(paykitPaymentRequestManager)
     }
@@ -1309,6 +1310,7 @@ struct AppScene: View {
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
+            await PaykitUsdtPaymentService.shared.reconcile(wallet: wallet.usdtWallet)
         }
         guard !Task.isCancelled, !onlyWhileActive || isPaykitSceneActive else { return false }
         guard let identity = pubkyProfile.publicKey else { return false }
@@ -1481,7 +1483,7 @@ struct AppScene: View {
                         }
                         return
                     }
-                    guard case let .opened(paymentTarget, privatePaymentContext) = result else {
+                    guard case let .opened(paymentTarget, privatePaymentContext, endpoints) = result else {
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
                             reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
@@ -1492,7 +1494,8 @@ struct AppScene: View {
                     let contactPaymentContext = ContactPaymentContext(
                         publicKey: request.counterparty,
                         privatePaymentContext: privatePaymentContext,
-                        incomingPaymentRequest: request
+                        incomingPaymentRequest: request,
+                        endpoints: endpoints
                     )
                     guard app.claimContactPaymentContext(contactPaymentContext) else { return }
                     preparation.paymentContext = contactPaymentContext

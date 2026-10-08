@@ -166,6 +166,46 @@ final class ShopPaymentRequestTests: XCTestCase {
         }
     }
 
+    func testContactFundingPreferenceRespectsAvailableAssets() throws {
+        let usdt = try PaykitUsdt.endpoint(address: "0x4cdDcC65AF3Aa77803d1A99A030eb17751AC7780")
+        let bitcoin = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh,
+            value: "bcrt1qexample",
+            min: nil,
+            max: nil,
+            rawPayload: "bcrt1qexample"
+        )
+        let usdtOnly = ContactPaymentContext(publicKey: "contact", endpoints: [usdt])
+        let both = ContactPaymentContext(publicKey: "contact", endpoints: [bitcoin, usdt])
+        let btcOnly = ContactPaymentContext(publicKey: "contact", endpoints: [bitcoin])
+        XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 100_000))
+        XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 100_000))
+        XCTAssertTrue(both.prefersUsdt(onchainBalanceSats: 0))
+        XCTAssertFalse(btcOnly.prefersUsdt(onchainBalanceSats: 0))
+    }
+
+    func testUsdtContactPaymentCanBePreparedAndCleared() async throws {
+        let app = AppViewModel()
+        let endpoint = try PaykitUsdt.endpoint(address: "0x4cdDcC65AF3Aa77803d1A99A030eb17751AC7780")
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: [endpoint])
+        XCTAssertFalse(app.hasSendPaymentTarget)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(endpoint.paymentRequest, claimedContactPaymentContext: context)
+
+        XCTAssertTrue(app.hasSendPaymentTarget)
+        XCTAssertTrue(app.paykitUsesUsdt)
+        XCTAssertTrue(app.ownsContactPaymentContext(context))
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(app.scannedLightningInvoice)
+
+        app.resetSendState()
+
+        XCTAssertFalse(app.hasSendPaymentTarget)
+        XCTAssertFalse(app.paykitUsesUsdt)
+        XCTAssertNil(app.contactPaymentContext)
+    }
+
     private var lightningInvoice: LightningInvoice {
         LightningInvoice(
             bolt11: "test-invoice",

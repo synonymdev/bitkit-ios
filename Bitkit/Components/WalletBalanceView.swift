@@ -8,27 +8,16 @@ struct WalletBalanceView: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
-        VStack(alignment: .leading) {
+        WalletBalanceContent {
             CaptionMText(type.title)
-                .padding(.bottom, 4)
-
-            HStack(spacing: 4) {
-                Image(type.imageAsset)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-                    .padding(.trailing, 4)
-
-                MoneyText(
-                    sats: Int(sats),
-                    size: .subtitle,
-                    enableHide: true,
-                    symbolColor: .textPrimary,
-                    testIdentifier: amountTestIdentifier
-                )
-            }
+        } icon: {
+            Image(type.imageAsset).resizable().scaledToFit().frame(width: 24, height: 24)
+        } amount: {
+            MoneyText(
+                sats: Int(sats), size: .subtitle, enableHide: true,
+                symbolColor: .textPrimary, testIdentifier: amountTestIdentifier
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -141,4 +130,21 @@ struct WalletBalanceView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding()
     .preferredColorScheme(.dark)
+}
+
+struct WalletBalanceContent<Label: View, Icon: View, Amount: View>: View {
+    @ViewBuilder var label: () -> Label
+    @ViewBuilder var icon: () -> Icon
+    @ViewBuilder var amount: () -> Amount
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            label().padding(.bottom, 4)
+            HStack(spacing: 4) {
+                icon().padding(.trailing, 4)
+                amount()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }

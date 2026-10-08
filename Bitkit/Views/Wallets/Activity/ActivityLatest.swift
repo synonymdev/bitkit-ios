@@ -2,20 +2,14 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityLatest: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
-
     @EnvironmentObject private var activity: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
-
-    private var isPaykitUIActive: Bool {
-        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
-    }
 
     private var shouldShowBanner: Bool {
         wallet.balanceInTransferToSavings > 0 || wallet.balanceInTransferToSpending > 0
@@ -56,8 +50,9 @@ struct ActivityLatest: View {
         return max(0, slotCapacity - nonItemSlots)
     }
 
-    private var displayedActivities: [Activity]? {
-        guard let items = activity.latestActivities, !items.isEmpty else { return nil }
+    private var displayedActivities: [WalletActivity]? {
+        let items = WalletActivity.merged(activity.latestActivities ?? [], usdt.transfers)
+        guard !items.isEmpty else { return nil }
         return Array(items.prefix(maxActivityItemsOnHome))
     }
 
@@ -72,14 +67,8 @@ struct ActivityLatest: View {
             if let rows = displayedActivities {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(zip(rows.indices, rows)), id: \.1) { index, item in
-                        NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(
-                                item: item,
-                                feeEstimates: feeEstimatesManager.estimates,
-                                contact: isPaykitUIActive ? item.contact(in: contactsManager.contacts) : nil
-                            )
-                        }
-                        .accessibilityIdentifier("ActivityShort-\(index)")
+                        WalletActivityRow(item: item)
+                            .accessibilityIdentifier("ActivityShort-\(index)")
                     }
                 }
 
