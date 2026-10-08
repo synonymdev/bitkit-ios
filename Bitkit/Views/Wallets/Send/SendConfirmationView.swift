@@ -701,6 +701,15 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
+        try await Self.requireManualCoinSelection(
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive,
+            coinSelectionMethod: settings.coinSelectionMethod,
+            selectedUtxos: wallet.selectedUtxos
+        ) {
+            guard let context = confirmationContext else { return }
+            await onSwitchToOnchainWallet(context: context)
+        }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
         }
@@ -854,6 +863,19 @@ struct SendConfirmationView: View {
         } catch {
             Logger.error("Failed to retry fee rate: \(error)")
         }
+    }
+
+    static func requireManualCoinSelection(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?,
+        prepareSelection: () async -> Void
+    ) async throws {
+        guard walletType == .onchain, !isHardwarePayment, coinSelectionMethod == .manual,
+              selectedUtxos?.isEmpty != false else { return }
+        await prepareSelection()
+        throw CancellationError()
     }
 
     static func isSwipeDisabled(
