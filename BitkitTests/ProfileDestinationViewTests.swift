@@ -185,7 +185,7 @@ final class ProfileDestinationViewTests: XCTestCase {
         }
     }
 
-    func testProfileShowsLoadingUntilRestorationAndProfileFetchFinish() async throws {
+    func testProfileShowsLoadingWhileRestorationOrProfileFetchIsPending() async throws {
         snapshotAppDefaultsDomain()
         let savedReference = AdoptedPubkyReference.current
         AdoptedPubkyReference.current = nil
@@ -206,12 +206,12 @@ final class ProfileDestinationViewTests: XCTestCase {
 
         manager.restoration.finish()
         await fulfillment(of: [manager.profileFetch.started], timeout: 3)
-        XCTAssertFalse(manager.isRestoringSession)
         XCTAssertTrue(manager.isLoadingProfile)
         try await assertLoadingScreen(window, name: "Fetching profile")
 
         manager.profileFetch.finish()
         try await assertRetryScreen(window, name: "Recovery failed")
+        XCTAssertFalse(manager.isRestoringSession)
 
         // Automatic recovery must also update an already visible Retry screen.
         manager.restoration = ProfileOperationGate(name: "Automatic restoration")
@@ -226,6 +226,45 @@ final class ProfileDestinationViewTests: XCTestCase {
         await recovery.value
         XCTAssertFalse(manager.isRestoringSession)
         try await assertRetryScreen(window, name: "Automatic retry failed")
+    }
+
+    func testDeferredSessionDisplaysPublicProfileWithoutAuthenticating() async throws {
+        snapshotAppDefaultsDomain()
+        let keys: [KeychainEntryType] = [.pubkySecretKey, .paykitSession]
+        let savedValues = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        defer {
+            AdoptedPubkyReference.current = savedReference
+            for (key, value) in zip(keys, savedValues) {
+                if let value { try? Keychain.upsert(key: key, data: value) }
+                else { try? Keychain.delete(key: key) }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        let secret = String(repeating: "01", count: 32)
+        let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+        let profile = PubkyProfile(publicKey: publicKey, name: "Saved public profile", bio: "Public biography", imageUrl: nil, links: [], status: nil)
+        let manager = DeferredProfileManager(remoteProfileResolver: { _ in profile })
+        await manager.initialize { .restorationDeferred }
+        await manager.loadProfile()
+        let window = hostProfile(manager)
+        defer { close(window) }
+        try await Task.sleep(for: .milliseconds(150))
+
+        let (_, labels) = try snapshot(window, name: "Public profile while private state reconnects")
+        XCTAssertTrue(labels.joined(separator: " ").contains(profile.name.uppercased()), "\(labels)")
+        XCTAssertTrue(labels.contains(profile.bio), "\(labels)")
+        XCTAssertFalse(labels.contains(t("profile__empty_state")), "\(labels)")
+
+        let scroll = try XCTUnwrap(scrollView(in: XCTUnwrap(window.rootViewController?.view)))
+        scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height)), animated: false)
+        try await Task.sleep(for: .milliseconds(100))
+        let (_, footerLabels) = try snapshot(window, name: "Read-only profile disconnect")
+        XCTAssertTrue(footerLabels.contains(t("profile__sign_out")), "\(footerLabels)")
+        XCTAssertNil(manager.profile)
+        XCTAssertNil(manager.publicKey)
+        XCTAssertNil(manager.currentSession)
     }
 
     private func hostProfile(_ manager: PubkyProfileManager) -> UIWindow {
@@ -259,6 +298,11 @@ final class ProfileDestinationViewTests: XCTestCase {
     private func close(_ window: UIWindow) {
         window.isHidden = true
         window.rootViewController = nil
+    }
+
+    private func scrollView(in view: UIView) -> UIScrollView? {
+        if let scroll = view as? UIScrollView { return scroll }
+        return view.subviews.lazy.compactMap { self.scrollView(in: $0) }.first
     }
 
     private func snapshot(_ window: UIWindow, name: String) throws -> (UIImage, [String]) {
@@ -346,6 +390,16 @@ private final class ContactsRecoveryProfileManager: PubkyProfileManager {
     }
 
     override func loadProfile() async {}
+}
+
+@MainActor
+private final class DeferredProfileManager: PubkyProfileManager {
+    override func restoreSessionIfNeeded(
+        hasStoredIdentity: () throws -> Bool,
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
+    ) async {
+        await super.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restorationDeferred }
+    }
 }
 
 @MainActor

@@ -2002,6 +2002,122 @@ final class PubkyProfileManagerTests: XCTestCase {
     // MARK: - Cached profile preview
 
     @MainActor
+    func testSavedIdentityLoadsPublicProfileWhilePrivateStateIsBusy() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            try Keychain.upsert(key: .paykitSession, data: Data("saved-session".utf8))
+            let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+            let manager = PubkyProfileManager(
+                remoteProfileResolver: { key in
+                    XCTAssertEqual(key, publicKey)
+                    return expected
+                },
+                profilePublisher: { _, _ in XCTFail("A display identity cannot publish") }
+            )
+
+            await manager.initialize {
+                throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Pending write")
+            }
+            await manager.loadProfile()
+            XCTAssertEqual(manager.profileForDisplay?.publicKey, publicKey)
+            XCTAssertEqual(manager.profileForDisplay?.name, expected.name)
+            XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
+            XCTAssertNil(manager.profile)
+            XCTAssertFalse(manager.isAuthenticated)
+            XCTAssertNil(manager.currentSession)
+            XCTAssertNil(manager.publicKey)
+            XCTAssertEqual(manager.authState, .idle)
+            let saved = try await manager.saveProfile(name: "Not published", bio: "", links: [])
+            XCTAssertFalse(saved)
+            XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "saved-session")
+            XCTAssertEqual(try Keychain.loadString(key: .pubkySecretKey), secret)
+
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: publicKey) }
+            await manager.loadProfile()
+            await waitUntil("the authenticated profile loads") { manager.profile != nil }
+            XCTAssertTrue(manager.isAuthenticated)
+            XCTAssertEqual(manager.currentSession?.publicKey, publicKey)
+            XCTAssertEqual(manager.profile?.publicKey, publicKey)
+        }
+    }
+
+    @MainActor
+    func testReadOnlyProfileRequiresValidCredentialsAndMatchingCacheOwner() async throws {
+        try await withEmptyIdentityStorage {
+            let defaults = UserDefaults.standard
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            defaults.set("Cached profile", forKey: "pubky_profile_name")
+            for (credential, owner, showsPreview) in [
+                ("", publicKey, false),
+                ("invalid", publicKey, false),
+                (secret, ringKeyB, false),
+                (secret, publicKey, true),
+            ] {
+                try Keychain.upsert(key: .pubkySecretKey, data: Data(credential.utf8))
+                defaults.set(owner, forKey: "pubky_profile_owner")
+                let manager = PubkyProfileManager(remoteProfileResolver: { _ in throw PubkyServiceError.profileNotFound })
+                await manager.initialize { .restorationDeferred }
+                await manager.loadProfile()
+                XCTAssertEqual(manager.cachedProfilePreview != nil, showsPreview)
+                XCTAssertNil(manager.profile)
+                XCTAssertFalse(manager.isAuthenticated)
+            }
+        }
+    }
+
+    @MainActor
+    func testAuthenticationFailureClearsReadOnlyProfileWithoutDeletingCredentials() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+            let manager = PubkyProfileManager(remoteProfileResolver: { _ in expected })
+            await manager.initialize { .restorationDeferred }
+            await manager.loadProfile()
+            XCTAssertNotNil(manager.profileForDisplay)
+
+            await manager.initialize { .restorationFailed }
+            await manager.loadProfile()
+            XCTAssertNil(manager.profileForDisplay)
+            XCTAssertNil(manager.publicKeyForDisplay)
+            XCTAssertTrue(manager.sessionRestorationFailed)
+            XCTAssertEqual(try Keychain.loadString(key: .pubkySecretKey), secret)
+        }
+    }
+
+    @MainActor
+    func testReadOnlyProfileReadSurvivesDeferredRetryButNotIdentityChange() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            for endSession in [false, true] {
+                try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+                let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+                let stub = RemoteProfileStub(profiles: [publicKey: expected])
+                await stub.setHoldsRequests(true)
+                let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+                await manager.initialize { .restorationDeferred }
+                let read = Task { await manager.loadProfile() }
+                await stub.waitForRequests(1)
+                if endSession {
+                    try await manager.signOut(performSessionCleanup: {})
+                } else {
+                    await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restorationDeferred }
+                }
+                await stub.release(request: 0)
+                await read.value
+                XCTAssertEqual(manager.profileForDisplay?.publicKey, endSession ? nil : publicKey)
+                XCTAssertNil(manager.profile)
+                XCTAssertNil(manager.currentSession)
+            }
+        }
+    }
+
+    @MainActor
     func testCachedProfilePreviewShowsOnlyForThePubkyItWasCachedFor() async {
         await withRestoredProfileDefaults {
             let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Alice")])
