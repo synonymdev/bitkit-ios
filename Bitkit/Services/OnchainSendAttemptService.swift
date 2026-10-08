@@ -318,6 +318,7 @@ actor OnchainSendAttemptService {
     private var knownAttempt: OnchainSendAttempt?
     private var nativeDispatchInProgress: UUID?
     private var requestFollowupInProgress: UUID?
+    private var ordinaryFollowupInProgress: UUID?
 
     init(
         store: any OnchainSendAttemptStoring = OnchainSendAttemptStore(),
@@ -701,6 +702,7 @@ actor OnchainSendAttemptService {
     func resumeAcceptedOrdinarySend(walletId: String, observedTxid: String? = nil,
                                     pendingContext: OnchainSendPendingContext? = nil) async throws -> OnchainSendLocalResolution?
     {
+        guard ordinaryFollowupInProgress == nil else { return nil }
         guard var attempt = try currentAttempt(), attempt.walletId == walletId,
               attempt.requestId == nil, attempt.orderId == nil, let txid = attempt.txid
         else { return nil }
@@ -732,6 +734,8 @@ actor OnchainSendAttemptService {
                 attemptId: attempt.id, walletId: walletId, txid: txid, amountSats: saved.value, contact: saved.contact, activity: saved
             )
         }
+        ordinaryFollowupInProgress = attempt.id
+        defer { ordinaryFollowupInProgress = nil }
         attempt = try await winningFollowupAttempt(attempt)
         let activity = try await localFollowup.save(attempt)
         try acknowledgeLocalFollowup(txid: txid)

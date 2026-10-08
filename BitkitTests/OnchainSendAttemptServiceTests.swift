@@ -192,6 +192,27 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    func testOrdinaryFollowupIsOwnedAcrossSuspensionAndReleasedAfterFailure() async throws {
+        let store = MemoryAttemptStore()
+        let attempt = OnchainSendAttempt(id: UUID(), walletId: "original-wallet", requestId: nil, orderId: nil,
+                                          address: "original", amountSats: 1000, isMaxAmount: false,
+                                          status: .accepted, txid: String(repeating: "ab", count: 32))
+        try store.save([attempt])
+        let followup = SuspendedOrdinaryFollowup()
+        let service = OnchainSendAttemptService(store: store, localFollowup: followup)
+        let first = Task { try? await service.resumeAcceptedOrdinarySend(walletId: attempt.walletId) }
+        await followup.waitForStart()
+        let competing = try? await service.resumeAcceptedOrdinarySend(walletId: attempt.walletId)
+        XCTAssertNil(competing)
+        let calls = await followup.callCount()
+        XCTAssertEqual(calls, 1, "A competing call must not repeat a suspended activity write")
+        await followup.release()
+        _ = await first.value
+        _ = try? await service.resumeAcceptedOrdinarySend(walletId: attempt.walletId)
+        let retriedCalls = await followup.callCount()
+        XCTAssertEqual(retriedCalls, calls + 1, "A failed owner must allow a later retry")
+    }
+
     func testSuccessorFollowupRetainsWinningFeeInsteadOfOriginalFee() async throws {
         let store = MemoryAttemptStore()
         let followup = CapturingWinningFeeFollowup()
@@ -1286,4 +1307,32 @@ private final class CapturingWinningFeeFollowup: OnchainSendLocalFollowupHandlin
         self.attempt = attempt
         throw OnchainSendAttemptError.localFollowupNotSaved
     }
+}
+
+private actor SuspendedOrdinaryFollowup: OnchainSendLocalFollowupHandling {
+    private var calls = 0
+    private var started: CheckedContinuation<Void, Never>?
+    private var suspended: CheckedContinuation<Void, Never>?
+
+    func waitForStart() async {
+        if calls > 0 { return }
+        await withCheckedContinuation { started = $0 }
+    }
+
+    func save(_ attempt: OnchainSendAttempt) async throws -> OnchainActivity {
+        calls += 1
+        if calls == 1 {
+            started?.resume()
+            started = nil
+            await withCheckedContinuation { suspended = $0 }
+        }
+        throw OnchainSendAttemptError.localFollowupNotSaved
+    }
+
+    func release() {
+        suspended?.resume()
+        suspended = nil
+    }
+
+    func callCount() -> Int { calls }
 }
