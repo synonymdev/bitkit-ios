@@ -570,15 +570,24 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
             let sender = PreparedAttemptNodeMock()
-            _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+            _ = try await service.send(using: sender, address: "bcrt1qoriginal", amountSats: sender.amount,
                                        satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
             let original = try XCTUnwrap(store.snapshot().first)
             let originalTxid = try XCTUnwrap(original.txid)
+            let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+                kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+            )
+            let beforeRetry = try await service.backupSnapshot(wallet: wallet, proofs: [])
+            XCTAssertNotNil(beforeRetry)
             sender.txid = String(repeating: "cd", count: 32)
             do {
                 _ = try await service.retrySamePayment(
                     using: sender, context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
                     satsPerVbyte: 2, authorize: { _, _ in
+                        do {
+                            _ = try await service.backupSnapshot(wallet: wallet, proofs: [])
+                            XCTFail("Authorization must not upload the undispatched retry candidate")
+                        } catch {}
                         if walletChanges { sender.currentWalletIndex = 1 }
                         else { throw CancellationError() }
                     }

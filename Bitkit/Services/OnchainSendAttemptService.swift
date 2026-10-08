@@ -347,6 +347,7 @@ actor OnchainSendAttemptService {
     func backupSnapshot(wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet,
                         proofs: [PendingPaykitPaymentProof]) throws -> PaykitPaymentStateBackup.ActiveOnchainAttempt?
     {
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
         guard let attempt = try currentAttempt(), attempt.blocksNewSend else { return nil }
         if attempt.status == .pending, attempt.txid == nil,
            attempt.recoveryContext?.inputs.isEmpty != false,
