@@ -43,7 +43,16 @@ struct ClipboardPromptHistory {
 }
 
 enum ClipboardPromptValidator {
-    static func isSupportedURI(_ uri: String, ownPublicKey: String?, contacts: [PubkyContact]) async -> Bool {
+    // Mirrors bitkit-core's LNURL_ADDRESS_REGEX and Scanner::find_lnurl, whose matches can trigger network resolution.
+    private static let lightningAddressPattern = #"^[a-z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"#
+    private static let lnurlPattern = #"^(?:(http.*|bitcoin:.*)[&?]lightning=|lightning:)?(lnurl1[02-9ac-hj-np-z]+)"#
+
+    static func isSupportedURI(
+        _ uri: String,
+        ownPublicKey: String?,
+        contacts: [PubkyContact],
+        decodeURI: (String) async -> Bool = { await (try? decode(invoice: $0)) != nil }
+    ) async -> Bool {
         if resolvePastedPubkyRoute(input: uri, ownPublicKey: ownPublicKey, contacts: contacts) != nil {
             return true
         }
@@ -59,6 +68,23 @@ enum ClipboardPromptValidator {
 
         let normalized = uri.removingLightningSchemes()
         guard !Bip21Utils.isDuplicatedBip21(normalized) else { return false }
-        return await (try? decode(invoice: normalized)) != nil
+        // Only recognize these shapes here: fetching remote metadata must wait for the user's OK tap.
+        if requiresNetworkResolution(normalized) {
+            return true
+        }
+        return await decodeURI(normalized)
+    }
+
+    private static func requiresNetworkResolution(_ uri: String) -> Bool {
+        var payload = uri
+        if payload.hasPrefix("bitkit://") {
+            // The core scanner removes all Bitkit wrappers, then recursively decodes the remaining payload.
+            payload = payload.replacingOccurrences(of: "bitkit://", with: "")
+            if payload.hasPrefix("lightning:") {
+                payload.removeFirst("lightning:".count)
+            }
+        }
+        return payload.lowercased().range(of: lnurlPattern, options: .regularExpression) != nil
+            || payload.range(of: lightningAddressPattern, options: .regularExpression) != nil
     }
 }
