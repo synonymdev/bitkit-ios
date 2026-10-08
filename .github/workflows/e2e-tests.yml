@@ -475,6 +475,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Cache npm cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: Install dependencies
         working-directory: bitkit-e2e-tests
         run: npm ci
