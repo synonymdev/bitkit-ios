@@ -148,8 +148,13 @@ struct EditProfileView: View {
         guard !isDeleting else { return }
 
         isDeleting = true
-        defer { isDeleting = false }
+        await PrivatePaykitService.shared.beginProfileDeletion()
+        await deleteProfileWithSessionRetry()
+        await PrivatePaykitService.shared.endProfileDeletion()
+        isDeleting = false
+    }
 
+    private func deleteProfileWithSessionRetry() async {
         do {
             try await performDeleteProfile()
         } catch {
@@ -169,8 +174,9 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile() async throws {
+        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "EditProfileView.deleteProfile")
         await contactsManager.deleteAllContactsBestEffort()
-        try await pubkyProfile.deleteProfile()
+        try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false)
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 
@@ -185,6 +191,8 @@ struct EditProfileView: View {
 
     // MARK: - Save Profile
 
+    /// The save belongs to the Pubky session Save was tapped in. Once that session ends, even while the avatar still uploads
+    /// or the profile publishes, it stops quietly, with no toast and no navigation.
     private func saveProfile() async {
         let trimmedName = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
@@ -193,18 +201,14 @@ struct EditProfileView: View {
         defer { isSaving = false }
 
         do {
-            var avatarUri: String?
-            if let avatarImage {
-                avatarUri = try await pubkyProfile.uploadAvatar(image: avatarImage)
-            }
-
-            try await pubkyProfile.saveProfile(
+            let isSaved = try await pubkyProfile.saveProfile(
                 name: trimmedName,
                 bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
                 links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
                 tags: tags,
-                newImageUrl: avatarUri
+                avatarImage: avatarImage
             )
+            guard isSaved else { return }
             app.toast(type: .success, title: t("profile__edit_saved"), accessibilityIdentifier: "ProfileUpdatedToast")
             navigation.navigateBack()
         } catch {

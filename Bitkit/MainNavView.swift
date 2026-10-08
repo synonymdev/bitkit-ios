@@ -59,7 +59,7 @@ func resolvePendingProfileSetupResumeState(
 struct MainNavView: View {
     private let canHandleDeepLinks: Bool
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject private var app: AppViewModel
     @Environment(CameraManager.self) private var cameraManager
@@ -531,20 +531,8 @@ struct MainNavView: View {
                 case .contacts:
                     if !isPaykitUIActive {
                         ComingSoonScreen()
-                    } else if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
-                        pubkyInitializationErrorView(message: initializationErrorMessage)
-                    } else if app.hasSeenContactsIntro || !contactsManager.contacts.isEmpty {
-                        if !pubkyProfile.isInitialized {
-                            pubkyLoadingView
-                        } else if pubkyProfile.isAuthenticated {
-                            ContactsListView()
-                        } else if app.hasSeenProfileIntro {
-                            PubkyChoiceView()
-                        } else {
-                            ProfileIntroView()
-                        }
                     } else {
-                        ContactsIntroView()
+                        ContactsDestinationView()
                     }
                 case .contactsIntro:
                     if isPaykitUIActive {
@@ -616,12 +604,8 @@ struct MainNavView: View {
                         pubkyInitializationErrorView(message: initializationErrorMessage)
                     } else if !pubkyProfile.isInitialized {
                         pubkyLoadingView
-                    } else if pubkyProfile.isAuthenticated {
-                        ProfileView()
-                    } else if app.hasSeenProfileIntro {
-                        PubkyChoiceView()
                     } else {
-                        ProfileIntroView()
+                        ProfileDestinationView(hasSeenIntro: app.hasSeenProfileIntro)
                     }
                 case .profileIntro:
                     if isPaykitUIActive {
@@ -781,7 +765,7 @@ struct MainNavView: View {
                 ) {
                     navigation.navigate(route)
                     if case let .contactDetail(publicKey) = route {
-                        await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+                        await contactsManager.refreshContactLink(publicKey: publicKey, wallet: wallet)
                     }
                     clipboardUri = nil
                     return
@@ -863,37 +847,6 @@ struct MainNavView: View {
         // Web URLs from widgets (e.g. news article tap) bypass payment handling
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             await UIApplication.shared.open(url)
-            return
-        }
-
-        if let callback = PubkyRingAuthCallback.parse(url: url) {
-            guard isPaykitUIActive else {
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: t("other__qr_error_text")
-                )
-                return
-            }
-
-            let handlingResult = await pubkyProfile.handleAuthCallback(callback)
-
-            switch handlingResult {
-            case let .trustedError(message):
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title"),
-                    description: message ?? t("other__qr_error_text")
-                )
-            case .untrustedError:
-                app.toast(
-                    type: .error,
-                    title: t("profile__auth_error_title")
-                )
-            case .handled, .ignored:
-                break
-            }
-
             return
         }
 

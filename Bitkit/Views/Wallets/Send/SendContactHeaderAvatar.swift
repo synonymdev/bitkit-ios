@@ -4,6 +4,8 @@ struct SendContactHeaderAvatar: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
 
+    var publicKey: String?
+
     var body: some View {
         if let contact {
             PubkyContactAvatar(contact: contact, size: 32)
@@ -14,7 +16,7 @@ struct SendContactHeaderAvatar: View {
     }
 
     private var contact: PubkyContact? {
-        guard let publicKey = app.contactPaymentContext?.publicKey else {
+        guard let publicKey = publicKey ?? app.contactPaymentContext?.publicKey else {
             return nil
         }
 

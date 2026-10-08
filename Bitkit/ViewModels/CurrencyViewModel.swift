@@ -75,6 +75,7 @@ class CurrencyViewModel: ObservableObject {
             error = nil
             hasStaleData = false
             syncDisplayCurrencyToAppGroup()
+            Logger.debug("Currency rates refreshed successfully")
         } catch {
             self.error = error
             Logger.error(error, context: "Currency rates refresh failed")
@@ -155,5 +156,27 @@ extension CurrencyViewModel {
         let btc = fiatAmount / Double(truncating: rate.rate as NSNumber)
         let sats = (btc * 100_000_000).rounded()
         return UInt64(sats)
+    }
+}
+
+extension CurrencyViewModel {
+    func primaryAmountText(sats: UInt64) -> String {
+        Self.primaryAmountText(sats: sats, converted: convert(sats: sats), primaryDisplay: primaryDisplay, displayUnit: displayUnit)
+    }
+
+    nonisolated static func primaryAmountText(
+        sats: UInt64,
+        converted: ConvertedAmount?,
+        primaryDisplay: PrimaryDisplay,
+        displayUnit: BitcoinDisplayUnit
+    ) -> String {
+        guard let converted else { return "₿ \(CurrencyFormatter.formatSats(sats))" }
+        switch primaryDisplay {
+        case .fiat:
+            return converted.formattedWithSymbol()
+        case .bitcoin:
+            let components = converted.bitcoinDisplay(unit: displayUnit)
+            return "\(components.symbol) \(components.value)"
+        }
     }
 }

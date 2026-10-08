@@ -155,6 +155,7 @@ class AppViewModel: ObservableObject {
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
+    @Published private(set) var paykitOnchainPaymentResolution: PaykitOnchainPaymentResolution?
 
     /// App status init - shows "ready" until node is actually running
     /// This prevents flashing error status during startup/background transitions
@@ -188,9 +189,6 @@ class AppViewModel: ObservableObject {
 
     private static func requiresLightningNode(_ url: URL) -> Bool {
         if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-            return false
-        }
-        if PubkyRingAuthCallback.parse(url: url) != nil {
             return false
         }
         if PubkyContactLink.matches(url) {
@@ -427,10 +425,10 @@ extension AppViewModel {
     }
 
     func toast(_ error: Error) {
-        if error is CancellationError || error.isTrezorUserCancellation() {
+        if error is CancellationError || error.isHwUserCancellation() {
             return
         }
-        toast(type: .error, title: "Error", description: error.localizedDescription)
+        toast(type: .error, title: "Error", description: HwErrorPresenter.jadeMessage(from: error) ?? error.localizedDescription)
     }
 
     func toast(_ error: HwTransferError) {
@@ -465,8 +463,8 @@ extension AppViewModel {
                 title: t("hardware__send_broadcast_failed_title"),
                 description: t("hardware__send_broadcast_failed_text")
             )
-        case .deviceBusy:
-            toast(type: .info, title: t("hardware__device_busy"))
+        case let .deviceBusy(vendor):
+            toast(type: .info, title: HwErrorPresenter.deviceBusyMessage(for: vendor))
         case .firmwareReconnect:
             toast(
                 type: .error,
@@ -475,6 +473,8 @@ extension AppViewModel {
             )
         case .passphraseMismatch:
             toast(type: .error, title: t("common__error"), description: t("hardware__passphrase_mismatch"))
+        case .walletMismatch:
+            toast(type: .error, title: t("common__error"), description: t("hardware__wallet_mismatch"))
         case let .funding(message):
             toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
         case let .generic(message):
@@ -515,6 +515,18 @@ extension AppViewModel {
     func consumeSendSheetPendingResolution(paymentHash hash: String) {
         guard sendSheetPendingResolution?.paymentHash == hash else { return }
         sendSheetPendingResolution = nil
+    }
+
+    func retainPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, identity: String?) {
+        guard PubkyPublicKeyFormat.matches(resolution.identity, identity),
+              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId
+        else { return }
+        paykitOnchainPaymentResolution = resolution
+    }
+
+    func consumePaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
+        guard paykitOnchainPaymentResolution == resolution else { return }
+        paykitOnchainPaymentResolution = nil
     }
 
     func beginQuickPay(paymentHash: String) {
@@ -907,7 +919,8 @@ extension AppViewModel {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
-                description: t("other__lnurl_pay_error_no_capacity")
+                description: t("other__lnurl_pay_error_no_capacity"),
+                accessibilityIdentifier: "LnurlPayNoCapacityToast"
             )
             return
         }
@@ -1008,12 +1021,9 @@ extension AppViewModel {
             toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
             return
         }
-
-        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
-              !secretKey.isEmpty
-        else {
+        guard PubkyProfileManager.activeSecretKeyHex() != nil else {
             sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity requires Ring")
-            toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
+            toast(type: .warning, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
             return
         }
 
@@ -1052,6 +1062,7 @@ extension AppViewModel {
         lnurlWithdrawData = nil
         if !preservingContactPaymentContext {
             contactPaymentContext = nil
+            paykitOnchainPaymentResolution = nil
         }
         resetQuickPay()
     }

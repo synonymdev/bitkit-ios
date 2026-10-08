@@ -126,6 +126,9 @@ enum Env {
         return networkSuffix == "bitcoin" ? base : "\(base).\(networkSuffix)"
     }
 
+    /// Keychain access group shared with Pubky Ring for cross-app pubky records
+    static let sharedKeychainGroup = "KYH47R284B.pubky.shared"
+
     // MARK: wallet services
 
     static let network: LDKNode.Network = {

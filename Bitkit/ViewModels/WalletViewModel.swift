@@ -25,6 +25,8 @@ class WalletViewModel: ObservableObject {
     // Send flow
     @Published var sendAmountSats: UInt64?
     @Published var selectedFeeRateSatsPerVByte: UInt32?
+    /// True once the send flow gave up loading the fee rate, so the confirmation offers a retry instead of waiting forever.
+    @Published private(set) var feeRateLoadFailed = false
     @Published var selectedSpeed: TransactionSpeed = .normal
     @Published var selectedUtxos: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
@@ -60,7 +62,7 @@ class WalletViewModel: ObservableObject {
     private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
 
     private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 30 * 60
@@ -603,6 +605,7 @@ class WalletViewModel: ObservableObject {
         address: String,
         sats: UInt64,
         isMaxAmount: Bool = false,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
@@ -621,7 +624,8 @@ class WalletViewModel: ObservableObject {
             sats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
         )
 
         Task {
@@ -646,8 +650,53 @@ class WalletViewModel: ObservableObject {
         }
 
         selectedFeeRateSatsPerVByte = speed.getFeeRate(from: feeEstimates)
+        feeRateLoadFailed = false
 
         Logger.info("Selected fee rate: \(selectedFeeRateSatsPerVByte ?? 0) sats/vbyte for speed: \(speed)")
+    }
+
+    static let feeRateLoadAttempts = 2
+    static let feeRateRetryDelay: Duration = .seconds(2)
+
+    /// Loads the send flow's fee rate, retrying a failed fetch once. Sets `feeRateLoadFailed` when it still fails.
+    func loadFeeRateWithRetry(
+        speed: TransactionSpeed,
+        retryDelay: Duration = WalletViewModel.feeRateRetryDelay,
+        fetch: ((TransactionSpeed) async throws -> Void)? = nil
+    ) async throws {
+        feeRateLoadFailed = false
+        do {
+            try await Self.retry(attempts: Self.feeRateLoadAttempts, delay: retryDelay) {
+                if let fetch {
+                    try await fetch(speed)
+                } else {
+                    try await setFeeRate(speed: speed)
+                }
+            }
+        } catch {
+            if !(error is CancellationError) {
+                feeRateLoadFailed = true
+            }
+            throw error
+        }
+    }
+
+    /// Runs `operation` up to `attempts` times, waiting `delay` between failures. Cancellation is never retried.
+    static func retry(attempts: Int, delay: Duration, operation: () async throws -> Void) async throws {
+        var attempt = 1
+        while true {
+            do {
+                try await operation()
+                return
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                guard attempt < attempts else { throw error }
+                Logger.warn("Fee rate load failed (attempt \(attempt) of \(attempts)): \(error)")
+                attempt += 1
+                try await Task.sleep(for: delay)
+            }
+        }
     }
 
     func loadAvailableUtxos() async throws {
@@ -886,10 +935,14 @@ class WalletViewModel: ObservableObject {
         bolt11: String,
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         afterListening: (@MainActor (String) -> Void)? = nil,
         onTimeout: (@MainActor (String) -> Void)? = nil
     ) async throws -> SettledLightningPayment {
-        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let hash = try await lightningService.send(
+            bolt11: bolt11, sats: sats,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
+        )
         let paymentHash = String(hash)
         afterListening?(paymentHash)
         return try await waitForLightningPayment(
@@ -1318,7 +1371,7 @@ class WalletViewModel: ObservableObject {
 
     private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         await refreshAndSyncState()
-        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false)
 
         guard isPaykitUIActive else { return }
 
@@ -1382,7 +1435,7 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
         var tagsToMigrate: [String] = []
@@ -1436,7 +1489,7 @@ class WalletViewModel: ObservableObject {
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
 
-        if isPaykitUIActive, sharesPublicPaykitEndpoints {
+        if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
             do {
                 try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
             } catch {
@@ -1501,6 +1554,7 @@ class WalletViewModel: ObservableObject {
     func resetSendState(speed: TransactionSpeed) {
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil
+        feeRateLoadFailed = false
         selectedUtxos = nil
         availableUtxos = []
         selectedSpeed = speed

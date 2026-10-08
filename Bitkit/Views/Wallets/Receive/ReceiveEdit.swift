@@ -10,7 +10,7 @@ struct ReceiveEdit: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @Binding var navigationPath: [ReceiveRoute]
     let sourceTab: ReceiveQr.ReceiveTab
@@ -36,7 +36,7 @@ struct ReceiveEdit: View {
             return .auto
         case .spending:
             return .spending
-        case .trezor:
+        case .hardware:
             return .savings
         }
     }

@@ -14,6 +14,15 @@ enum ReceiveRoute: Hashable {
     case paymentRequestAmount(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
     case paymentRequestDetails(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
     case paymentRequestSent(PaykitPaymentRequest)
+
+    var requiresInvoiceRefresh: Bool {
+        switch self {
+        case .qr, .edit, .tag, .cjitAmount, .cjitConfirm, .cjitLearnMore, .cjitGeoBlocked:
+            return true
+        case .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
+            return false
+        }
+    }
 }
 
 struct ReceiveConfig {
@@ -67,6 +76,7 @@ struct ReceiveSheet: View {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
+            guard config.initialRoute.requiresInvoiceRefresh else { return }
             Task {
                 // Reset tags for current payment ID before refreshing
                 if let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
@@ -128,6 +138,8 @@ struct ReceiveSheet: View {
             PaymentRequestAmountView(initialDraft: draft, target: target) { updatedDraft in
                 navigationPath.append(.paymentRequestDetails(updatedDraft, target))
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("PaymentRequestAmount")
         case let .paymentRequestDetails(draft, target):
             PaymentRequestDetailsView(
                 initialDraft: draft,

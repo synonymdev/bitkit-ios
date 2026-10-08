@@ -131,6 +131,20 @@ extension Route {
             false
         }
     }
+
+    var isPubkyIdentityRoute: Bool {
+        if isContactImportRoute {
+            return true
+        }
+
+        switch self {
+        case .profile, .editProfile, .createProfile, .payContacts,
+             .contacts, .contactDetail, .contactSaved, .addContact, .editContact:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bool {
@@ -188,6 +202,19 @@ class NavigationViewModel: ObservableObject {
     func navigateBack() {
         guard !path.isEmpty else { return }
         path.removeLast()
+    }
+
+    func returnToContactsAfterRemoving(publicKey: String) {
+        let remainingPath = path.filter { route in
+            switch route {
+            case let .contactDetail(shownKey), let .editContact(shownKey), let .contactSaved(shownKey):
+                return !PubkyPublicKeyFormat.matches(shownKey, publicKey)
+            default:
+                return true
+            }
+        }
+        guard remainingPath != path else { return }
+        path = remainingPath.isEmpty ? [.contacts] : remainingPath
     }
 
     func reset() {

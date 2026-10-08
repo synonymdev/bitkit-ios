@@ -37,7 +37,7 @@ struct SubscriptionsView: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     @State private var selectedTab = Tab.overview
-    @State private var now = Date()
+    @State private var now = SubscriptionClock.subscriptionNow()
     private let showPayments: Bool
 
     init(showPayments: Bool = false) {
@@ -50,15 +50,15 @@ struct SubscriptionsView: View {
     }
 
     private var active: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isPayer && $0.isActive(at: now) }
+        subscriptionSections(subscriptions: paymentRequests.subscriptions, now: now).active
     }
 
     private var expired: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isExpiredVisible(at: now) }
+        subscriptionSections(subscriptions: paymentRequests.subscriptions, now: now).expired
     }
 
     private var created: [PaykitSubscription] {
-        paymentRequests.subscriptions.filter { $0.isCreatedVisible(at: now) }
+        subscriptionSections(subscriptions: paymentRequests.subscriptions, now: now).created
     }
 
     private var hasVisibleSubscriptions: Bool {
@@ -103,7 +103,7 @@ struct SubscriptionsView: View {
             } catch {
                 return
             }
-            now = Date()
+            now = SubscriptionClock.subscriptionNow()
         }
     }
 
@@ -248,7 +248,7 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
         }
     }
     let maximum = NSDecimalNumber(value: Int.max)
-    return subscriptions.filter { $0.isPayer && $0.isActive(at: now) }.reduce(into: 0) { total, subscription in
+    return subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) }.reduce(into: 0) { total, subscription in
         var monthlyCost = Decimal(subscription.amountSats) * annualPeriods(subscription.recurrence.unit)
             / Decimal(subscription.recurrence.every) / 12
         var roundedMonthlyCost = Decimal()
@@ -258,10 +258,23 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
     }
 }
 
-/// When a subscription stopped running. An open-ended one has no end date of its own, so the last
-/// period it was paid for is when it lapsed.
+/// When a subscription stopped running. A canceled one ends with its last paid period; an open-ended
+/// one has no end date of its own, so the last period it was paid for is when it lapsed.
 func subscriptionEndDate(subscription: PaykitSubscription) -> Date? {
-    subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
+    subscription.canceledPaidThrough ?? subscription.recurrence.endsAt ?? subscription.paidPeriods.map(\.endsAt).max()
+}
+
+/// The ACTIVE, EXPIRED and CREATED sections: a canceled subscription stays under ACTIVE, or under CREATED
+/// when the user created it, until it is paid through.
+func subscriptionSections(
+    subscriptions: [PaykitSubscription],
+    now: Date
+) -> (active: [PaykitSubscription], expired: [PaykitSubscription], created: [PaykitSubscription]) {
+    (
+        active: subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) },
+        expired: subscriptions.filter { $0.isExpiredVisible(at: now) && $0.isLapsed(at: now) },
+        created: subscriptions.filter { $0.isCreatedVisible(at: now) }
+    )
 }
 
 func subscriptionNextTransitionDate(
@@ -273,6 +286,7 @@ func subscriptionNextTransitionDate(
         [$0.recurrence.startsAt, $0.proposalExpiresAt, $0.recurrence.endsAt].compactMap { $0 }
     }
     dates += activeSubscriptions.compactMap { $0.recurrence.nextPeriod(after: now)?.startsAt }
+    dates += subscriptions.compactMap { $0.canceledPaidThroughDate(at: now) }
     return dates.filter { $0 > now }.min()
 }
 
@@ -318,7 +332,7 @@ struct SubscriptionRow: View {
         .padding(16)
         .background(Color.gray6)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .opacity(subscription.isExpired(at: now) ? 0.5 : 1)
+        .opacity(subscription.isLapsed(at: now) ? 0.5 : 1)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("SubscriptionRow-\(subscription.paymentRequestId)")
@@ -367,7 +381,7 @@ struct SubscriptionDetailView: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     let id: PaykitSubscription.ID
-    @State private var now = Date()
+    @State private var now = SubscriptionClock.subscriptionNow()
 
     private var subscription: PaykitSubscription? {
         paymentRequests.subscriptions.first { $0.id == id }
@@ -401,7 +415,7 @@ struct SubscriptionDetailView: View {
                     }
                     .padding(.top, 24)
                     .padding(.bottom, 120)
-                    .opacity(subscription.isExpired(at: now) ? 0.5 : 1)
+                    .opacity(subscription.isLapsed(at: now) ? 0.5 : 1)
                 }
 
                 footer(subscription)
@@ -421,7 +435,7 @@ struct SubscriptionDetailView: View {
             } catch {
                 return
             }
-            now = Date()
+            now = SubscriptionClock.subscriptionNow()
         }
     }
 
@@ -438,9 +452,9 @@ struct SubscriptionDetailView: View {
                 value: subscription.statusLabel(at: now),
                 icon: "check-mark"
             )
-            if subscription.isActive(at: now) || subscription.isExpired(at: now) || subscription.recurrence.endsAt != nil {
+            if subscription.showsTiming(at: now) {
                 LabeledDetailCell(
-                    title: timingTitle(subscription),
+                    title: subscription.timingTitle(at: now),
                     value: renewalText(subscription),
                     icon: "calendar"
                 )
@@ -514,17 +528,13 @@ struct SubscriptionDetailView: View {
         return date.map(Self.dateFormatter.string) ?? t("subscriptions__ongoing")
     }
 
-    private func timingTitle(_ subscription: PaykitSubscription) -> String {
-        guard subscription.isActive(at: now) else { return t("subscriptions__expired") }
-        return subscription.recurrence.endsAt == nil ? t("subscriptions__renews") : t("subscriptions__expires")
-    }
-
     private var nextTransitionDate: Date? {
         guard let subscription else { return nil }
         return [
             subscription.recurrence.startsAt,
             subscription.recurrence.endsAt,
             subscription.isActive(at: now) ? subscription.recurrence.nextPeriod(after: now)?.startsAt : nil,
+            subscription.canceledPaidThroughDate(at: now),
         ]
         .compactMap { $0 }
         .filter { $0 > now }
@@ -549,7 +559,7 @@ struct SubscriptionSheet: View {
 
     @State private var route: SubscriptionSheetItem.Route
     @State private var previousRoute: SubscriptionSheetItem.Route?
-    @State private var now = Date()
+    @State private var now = SubscriptionClock.subscriptionNow()
     @State private var isAccepting = false
     @State private var creationDraft = PaykitSubscriptionDraft.empty
     @State private var selectedCreationTarget: PaykitPaymentRequestTarget?
@@ -601,13 +611,13 @@ struct SubscriptionSheet: View {
         }
         .task {
             if case let .review(subscription) = route {
-                now = Date()
+                now = SubscriptionClock.subscriptionNow()
                 paymentRequests.markSubscriptionProposalPresented(subscription)
             }
         }
         .onChange(of: route) { _, route in
             guard case let .review(subscription) = route else { return }
-            now = Date()
+            now = SubscriptionClock.subscriptionNow()
             paymentRequests.markSubscriptionProposalPresented(subscription)
         }
         .onChange(of: paymentRequests.subscriptions) {
@@ -615,7 +625,7 @@ struct SubscriptionSheet: View {
                   !paymentRequests.isProcessingSubscription,
                   case let .review(subscription) = route,
                   !paymentRequests.subscriptions.contains(where: {
-                      $0.id == subscription.id && $0.isProposalVisible(at: Date())
+                      $0.id == subscription.id && $0.isProposalVisible(at: SubscriptionClock.subscriptionNow())
                   })
             else { return }
             sheets.hideSheetIfActive(.subscription, reason: "Subscription proposal is no longer available")
@@ -623,17 +633,17 @@ struct SubscriptionSheet: View {
         .task(id: reviewTransitionDate) {
             guard let reviewTransitionDate else { return }
             do {
-                try await Task.sleep(for: .seconds(max(0, reviewTransitionDate.timeIntervalSinceNow)))
+                try await Task.sleep(for: .seconds(max(0, reviewTransitionDate.timeIntervalSince(SubscriptionClock.subscriptionNow()))))
             } catch {
                 return
             }
-            now = Date()
+            now = SubscriptionClock.subscriptionNow()
         }
         .interactiveDismissDisabled(isAccepting || paymentRequests.isCreatingRequest)
     }
 
     private func review(_ subscription: PaykitSubscription) -> some View {
-        let payOnAcceptance = subscription.paymentDueOnAcceptance(at: now) != nil
+        let payOnAcceptance = subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date()) != nil
         return VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
@@ -644,7 +654,7 @@ struct SubscriptionSheet: View {
             }
             .allowsHitTesting(!isAccepting)
 
-            if let period = subscription.paymentDueOnAcceptance(at: now)?.billingPeriod {
+            if let period = subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date())?.billingPeriod {
                 BodySText(
                     t("subscriptions__first_period_ends", variables: ["date": period.endsAt.formatted(date: .abbreviated, time: .shortened)]),
                     textColor: .white64
@@ -657,7 +667,7 @@ struct SubscriptionSheet: View {
                 BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 16)
-            } else if subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
+            } else if subscription.hasPaymentDeadline || subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
                 BodyMText(t("subscriptions__unsupported_payment_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 16)
@@ -806,7 +816,7 @@ struct SubscriptionSheet: View {
             subscription.recurrence.startsAt,
             subscription.proposalExpiresAt,
             subscription.recurrence.endsAt,
-            subscription.paymentDueOnAcceptance(at: now)?.billingPeriod?.endsAt,
+            subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date())?.billingPeriod?.endsAt,
         ]
         .compactMap { $0 }
         .filter { $0 > now }
@@ -1048,12 +1058,20 @@ extension PaykitSubscriptionRecurrence {
     }
 }
 
-private extension PaykitSubscription {
+extension PaykitSubscription {
     func statusLabel(at now: Date) -> String {
         if isProposalVisible(at: now) {
             return t("subscriptions__pending")
         }
-        return isActive(at: now) ? t("subscriptions__active") : t("subscriptions__expired")
+        return runsUntilPaidThrough(at: now) ? t("subscriptions__active") : t("subscriptions__expired")
+    }
+
+    /// A canceled subscription that still runs "Expires" on its paid-through date, like one with an end date.
+    func timingTitle(at now: Date) -> String {
+        if isActive(at: now) && recurrence.endsAt == nil {
+            return t("subscriptions__renews")
+        }
+        return runsUntilPaidThrough(at: now) ? t("subscriptions__expires") : t("subscriptions__expired")
     }
 
     func rowSubtitle(at now: Date) -> String {
@@ -1073,9 +1091,14 @@ private extension PaykitSubscription {
         if isProposalVisible(at: now) || !recurrence.unit.isSupported {
             return recurrence.subscriptionFrequencyLabel
         }
+        if let paidThrough = canceledPaidThroughDate(at: now) {
+            let date = paidThrough.formatted(.dateTime.month(.wide).day())
+            return t("subscriptions__expires_date", variables: ["date": date])
+        }
         if isExpired(at: now) {
             guard let endsAt = recurrence.endsAt else { return t("subscriptions__expired") }
-            return t("subscriptions__expires_date", variables: ["date": endsAt.formatted(.dateTime.month(.wide).day())])
+            let end = canceledPaidThrough ?? endsAt
+            return t("subscriptions__expires_date", variables: ["date": end.formatted(.dateTime.month(.wide).day())])
         }
         if let endsAt = recurrence.endsAt {
             return t("subscriptions__expires_date", variables: ["date": endsAt.formatted(.dateTime.month(.wide).day())])

@@ -5,6 +5,7 @@ import SwiftUI
 struct SpendingConfirm: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -172,16 +173,54 @@ struct SpendingConfirm: View {
         transfer.uiState.isConfirming = true
         defer { transfer.uiState.isConfirming = false }
 
+        let displayed = SpendingConfirmAmounts(networkFeeSat: transactionFee, totalSat: total)
+        let displayedOrderFeeSat = transfer.uiState.feeSat
+        let displayedFunding = FundingState(
+            transactionFee: transactionFee,
+            selectedUtxos: selectedUtxos,
+            satsPerVbyte: satsPerVbyte,
+            maxSendableAmount: maxSendableAmount,
+            shouldUseSendAll: shouldUseSendAll
+        )
+
         do {
-            guard let order = try await transfer.orderForConfirmation(createOrder: { clientBalance, lspBalance in
+            let order = try await transfer.orderForSwipe { clientBalance, lspBalance in
                 try await blocktank.createOrder(clientBalance: clientBalance, lspBalance: lspBalance)
-            }) else {
-                throw AppError(message: t("other__try_again"), debugMessage: "Order fee changed after confirmation")
             }
             guard let address = order.payment?.onchain?.address else {
                 throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
             }
-            try await calculateTransactionFee(address: address, amountSats: order.feeSat, feeRate: confirmedFeeRate)
+            do {
+                try await calculateTransactionFee(address: address, amountSats: order.feeSat, feeRate: confirmedFeeRate)
+                guard transactionFee > 0 else {
+                    throw AppError(message: t("other__try_again"), debugMessage: "Rebuilt network fee is zero")
+                }
+            } catch {
+                if let increase = transfer.unfundableFeeIncrease(order: order, displayedOrderFeeSat: displayedOrderFeeSat) {
+                    showFeesIncreasedToast(increase)
+                    throw SpendingFeesIncreasedError()
+                }
+                restore(displayedFunding)
+                throw error
+            }
+            let rebuilt = SpendingConfirmAmounts(
+                networkFeeSat: transactionFee,
+                totalSat: SpendingConfirmTotal.leavingAmount(
+                    orderFeeSat: order.feeSat,
+                    networkFeeSat: transactionFee,
+                    shouldUseSendAll: shouldUseSendAll,
+                    maxSendable: maxSendableAmount
+                )
+            )
+            if let increase = transfer.feeIncrease(
+                order: order,
+                displayedOrderFeeSat: displayedOrderFeeSat,
+                displayed: displayed,
+                rebuilt: rebuilt
+            ) {
+                showFeesIncreasedToast(increase)
+                throw SpendingFeesIncreasedError()
+            }
             guard let rate = satsPerVbyte else { return }
             try await transfer.payOrder(
                 order: order,
@@ -199,9 +238,35 @@ struct SpendingConfirm: View {
                 hideSwipeButton = true
             }
         } catch {
-            app.toast(error)
+            if !(error is SpendingFeesIncreasedError) {
+                app.toast(error)
+            }
             throw error
         }
+    }
+
+    private struct FundingState {
+        let transactionFee: UInt64
+        let selectedUtxos: [SpendableUtxo]?
+        let satsPerVbyte: UInt32?
+        let maxSendableAmount: UInt64?
+        let shouldUseSendAll: Bool
+    }
+
+    private func restore(_ funding: FundingState) {
+        transactionFee = funding.transactionFee
+        selectedUtxos = funding.selectedUtxos
+        satsPerVbyte = funding.satsPerVbyte
+        maxSendableAmount = funding.maxSendableAmount
+        shouldUseSendAll = funding.shouldUseSendAll
+    }
+
+    private func showFeesIncreasedToast(_ increase: SpendingFeeIncrease) {
+        app.toast(
+            type: .info,
+            title: t("lightning__spending_confirm__fees_changed_title"),
+            description: increase.toastDescription { currency.primaryAmountText(sats: $0) }
+        )
     }
 
     private func calculateTransactionFee(address: String, amountSats: UInt64, feeRate: UInt32? = nil) async throws {

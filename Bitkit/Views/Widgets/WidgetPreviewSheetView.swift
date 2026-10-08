@@ -17,7 +17,7 @@ struct WidgetPreviewSheetView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @State private var carouselPage: Int
     @State private var showDeleteAlert = false

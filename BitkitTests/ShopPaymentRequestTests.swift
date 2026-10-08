@@ -144,6 +144,9 @@ final class ShopPaymentRequestTests: XCTestCase {
         let previousEnabled = defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey)
         defer { defaults.set(previousEnabled, forKey: PaykitFeatureFlags.uiEnabledKey) }
         defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let previousAdopted = AdoptedPubkyReference.current
+        defer { AdoptedPubkyReference.current = previousAdopted }
+        AdoptedPubkyReference.current = nil
         XCTAssertFalse(try PubkyProfileManager.hasStoredIdentity())
 
         for url in [pubkySignupUrl, directPubkySignupUrl, directPubkySignupUrl.replacingOccurrences(of: "direct_signup", with: "signup")] {

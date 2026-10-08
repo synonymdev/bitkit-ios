@@ -81,6 +81,9 @@ class SheetViewModel: ObservableObject {
 
     func hideSheet(reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
         if let config = activeSheetConfiguration {
+            if !isReplacingSheet {
+                (config.data as? SendConfig)?.onDismiss?()
+            }
             let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
             let reasonText = " reason: \(reason ?? fallback)"
             Logger.debug("Hiding sheet \(config.id.rawValue)\(reasonText)", context: "SheetViewModel")
@@ -437,11 +440,15 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .send else { return nil }
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
-            return SendSheetItem(initialRoute: initialRoute, hardwareWalletId: sendConfig?.hardwareWalletId)
+            return SendSheetItem(
+                initialRoute: initialRoute,
+                hardwareWalletId: sendConfig?.hardwareWalletId,
+                preparation: sendConfig?.preparation
+            )
         }
         set {
             if newValue == nil {
-                activeSheetConfiguration = nil
+                hideSheet(reason: "Send sheet dismissed")
             }
         }
     }

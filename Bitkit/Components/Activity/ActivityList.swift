@@ -2,7 +2,7 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityList: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var contactsManager: ContactsManager

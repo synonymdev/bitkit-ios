@@ -19,8 +19,13 @@ final class MockHwFunding: HwTransferFunding {
     var signErrors: [Error] = []
     var signDelay: Double = 0
     var cancellationIgnoringSignDelay: Double = 0
+    /// Holds every sign until opened, so a test can act while the device is signing.
+    var signGate: AsyncGate?
     var broadcastError: Error?
     var broadcastDelay: Double = 0
+    var broadcastNow: () -> Date = Date.init
+    /// Holds every broadcast until opened, so a test can act while its outcome is unknown.
+    var broadcastGate: AsyncGate?
     var funding = HwFundingTransaction(psbt: "psbt", miningFeeSats: 141, feeRate: 1, totalSpent: 43186, satsPerVByte: 1)
     var signedTx = HwFundingSignedTx(serializedTx: "rawtx", miningFeeSats: 141, feeRate: 1, totalSpent: 43186)
     var broadcastTxId = "txid"
@@ -88,6 +93,9 @@ final class MockHwFunding: HwTransferFunding {
 
     func signFunding(walletId _: String, funding _: HwFundingTransaction) async throws -> HwFundingSignedTx {
         signCalls += 1
+        if let signGate {
+            await signGate.wait()
+        }
         if signDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(signDelay * 1_000_000_000))
         }
@@ -107,9 +115,13 @@ final class MockHwFunding: HwTransferFunding {
         return signedTx
     }
 
-    func broadcastFunding(serializedTx: String) async throws -> String {
+    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
+        try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: broadcastNow())
         broadcastCalls += 1
         broadcastTransactions.append(serializedTx)
+        if let broadcastGate {
+            await broadcastGate.wait()
+        }
         if broadcastDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(broadcastDelay * 1_000_000_000))
         }
@@ -123,6 +135,10 @@ final class MockHwFunding: HwTransferFunding {
 @MainActor
 final class MockHwConnecting: HwTransferConnecting {
     var connectError: Error?
+    var connectDelay: Double = 0
+    /// Holds every connect until opened, ignoring cancellation the way a device waiting for its PIN does.
+    var connectGate: AsyncGate?
+    var reconnectTimeoutSeconds: Double = 5
     var isBluetooth = false
     /// Wallets whose passphrase the device no longer holds, so signing has to ask for it again.
     var walletsNeedingPassphrase: Set<String> = []
@@ -134,9 +150,19 @@ final class MockHwConnecting: HwTransferConnecting {
 
     func ensureConnected(walletId _: String) async throws {
         ensureCalls += 1
+        if let connectGate {
+            await connectGate.wait()
+        }
+        if connectDelay > 0 {
+            try await Task.sleep(nanoseconds: UInt64(connectDelay * 1_000_000_000))
+        }
         if let connectError {
             throw connectError
         }
+    }
+
+    func reconnectTimeout(walletId _: String) -> Double {
+        reconnectTimeoutSeconds
     }
 
     func needsPassphrase(walletId: String) -> Bool {

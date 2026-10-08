@@ -160,6 +160,7 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.contactPaymentFailureMessageKey, "slashtags__error_pay_empty_msg")
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.contactPaymentFailureMessageKey, "slashtags__error_pay_not_opened_msg")
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.privateLinkPending.contactPaymentFailureMessageKey, "slashtags__error_pay_empty_msg")
         XCTAssertEqual(
             PublicPaykitPaymentLaunchResult.waitingForUpdatedPaymentList.contactPaymentFailureMessageKey,
             "slashtags__error_pay_empty_msg"
@@ -175,6 +176,7 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.incomingPaymentRequestFailureReason, .noSupportedEndpoint)
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.incomingPaymentRequestFailureReason, .endpointNotPayable)
+        XCTAssertEqual(PublicPaykitPaymentLaunchResult.privateLinkPending.incomingPaymentRequestFailureReason, .paymentDetailsPending)
         XCTAssertEqual(
             PublicPaykitPaymentLaunchResult.waitingForUpdatedPaymentList.incomingPaymentRequestFailureReason,
             .paymentDetailsPending
@@ -203,6 +205,27 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(feedback.toast?.titleKey, "wallet__payment_request")
         XCTAssertEqual(feedback.toast?.descriptionKey, "wallet__payment_request_expired")
         XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestExpiredToast")
+        XCTAssertEqual(feedback.toast?.isInformational, false)
+    }
+
+    func testAppSceneFeedbackMapsRequestedPrivateLinkRecoveryToInformationalToast() {
+        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(paymentDetailsPendingWasRequested: true)
+
+        XCTAssertEqual(feedback.diagnosticReason, .paymentDetailsPending)
+        XCTAssertFalse(feedback.isTerminal)
+        XCTAssertTrue(feedback.shouldLogDiagnostic)
+        XCTAssertEqual(feedback.toast?.titleKey, "wallet__payment_request")
+        XCTAssertEqual(feedback.toast?.descriptionKey, "wallet__payment_request_waiting_for_details")
+        XCTAssertEqual(feedback.toast?.accessibilityIdentifier, "PaymentRequestWaitingForDetailsToast")
+        XCTAssertEqual(feedback.toast?.isInformational, true)
+    }
+
+    func testAutomaticPrivateLinkRecoveryFeedbackDoesNotShowToast() {
+        let feedback = IncomingPaykitPaymentRequestPresentationFeedback(paymentDetailsPendingWasRequested: false)
+
+        XCTAssertEqual(feedback.diagnosticReason, .paymentDetailsPending)
+        XCTAssertTrue(feedback.shouldLogDiagnostic)
+        XCTAssertNil(feedback.toast)
     }
 
     func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
@@ -242,6 +265,51 @@ final class PublicPaykitServiceTests: XCTestCase {
                 XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), expected.mode)
             }
         }
+    }
+
+    @MainActor
+    func testPublicationSyncsAppBeforeApplyingPreparedEndpoints() async throws {
+        let desiredEndpoints = [endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")]
+        var calls: [String] = []
+
+        try await PublicPaykitService.syncPublishedEndpoints(
+            publish: true,
+            buildEndpoints: {
+                calls.append("build")
+                return desiredEndpoints
+            },
+            syncApp: { calls.append("app") },
+            applyEndpoints: {
+                calls.append("apply")
+                XCTAssertEqual($0, desiredEndpoints)
+            }
+        )
+
+        XCTAssertEqual(calls, ["build", "app", "apply"])
+    }
+
+    @MainActor
+    func testPublicationSyncsAppWhenEndpointBuildFails() async {
+        var calls: [String] = []
+
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(
+                publish: true,
+                buildEndpoints: {
+                    calls.append("build")
+                    throw PublicPaykitError.walletNotReady
+                },
+                syncApp: { calls.append("app") },
+                applyEndpoints: { _ in XCTFail("Failed endpoint construction must not publish endpoints") }
+            )
+            XCTFail("Expected endpoint construction to fail")
+        } catch {
+            guard case PublicPaykitError.walletNotReady = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        XCTAssertEqual(calls, ["build", "app"])
     }
 
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {

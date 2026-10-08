@@ -9,7 +9,7 @@ private let approvalTestXpub =
 private let approvalTestClientPublicKey = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
 private func approvalTestAuthUrl(secret: String = "e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s") -> String {
-    "pubkyauth://signin_grant?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+    "pubkyauth://signin_grant?caps=\(PubkyAuthClaim.requiredCapabilities)" +
         "&relay=https://httprelay.pubky.app/inbox/&secret=\(secret)" +
         "&cid=paykit.test&cpk=\(approvalTestClientPublicKey)" +
         "&x-bitkit-claim=watch-only-account-v1"
@@ -48,6 +48,79 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     }
 
     @MainActor
+    func testPaykitOnlyApprovalDoesNotCreateOrTrackAnAccount() async throws {
+        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let node = ApprovalFakeWatchOnlyAccountNode()
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+        let authUrl = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: "paykit-access-v1")
+        let request = try PubkyAuthRequest.parse(url: authUrl)
+        XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
+        var approved = false
+        try await PubkyService.approveAuthRequest(
+            request: request, authUrl: authUrl, accountName: "", secretKeyHex: "secret",
+            accountManager: manager,
+            ordinaryApproval: { _, _, _, _ in XCTFail("Paykit access requires explicit companion approval") },
+            companionApproval: { _, _, claim, payload, _ in
+                XCTAssertEqual(claim, .paykitAccessV1)
+                XCTAssertNil(payload)
+                approved = true
+            }
+        )
+        XCTAssertTrue(approved)
+        XCTAssertTrue(manager.accounts.isEmpty)
+        XCTAssertTrue(node.trackingChanges.isEmpty)
+        XCTAssertTrue(try Bitkit.WatchOnlyAccountStore.load(defaults: defaults).isEmpty)
+    }
+
+    @MainActor
+    func testPaykitOnlyReconnectPreservesAccountThroughFailureAndRetry() async throws {
+        let suiteName = "PubkyAuthApprovalSheetTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let node = ApprovalFakeWatchOnlyAccountNode()
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: node)
+        let firstUrl = approvalTestAuthUrl()
+        try await PubkyService.approveAuthRequest(
+            request: PubkyAuthRequest.parse(url: firstUrl), authUrl: firstUrl,
+            accountName: "Original server", secretKeyHex: "secret", accountManager: manager,
+            companionApproval: { _, _, _, _, _ in }
+        )
+        let original = try XCTUnwrap(manager.accounts.first)
+        let snapshot = try Bitkit.WatchOnlyAccountStore.backupSnapshot(defaults: defaults)
+        let reconnectUrl = approvalTestAuthUrl(secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            .replacingOccurrences(of: "watch-only-account-v1", with: "paykit-access-v1")
+        let reconnectRequest = try PubkyAuthRequest.parse(url: reconnectUrl)
+        for failure in [ApprovalFakeError.deliveryFailed as Error, CancellationError()] {
+            await XCTAssertThrowsErrorAsync {
+                try await PubkyService.approveAuthRequest(
+                    request: reconnectRequest, authUrl: reconnectUrl,
+                    accountName: "Untrusted request name", secretKeyHex: "secret",
+                    accountManager: manager,
+                    companionApproval: { _, _, claim, payload, _ in
+                        XCTAssertTrue(claim.includesPaykitAccess)
+                        XCTAssertFalse(claim.includesWatchOnlyAccount)
+                        XCTAssertNil(payload)
+                        throw failure
+                    }
+                )
+            }
+            XCTAssertEqual(manager.accounts, [original])
+            XCTAssertEqual(try Bitkit.WatchOnlyAccountStore.load(defaults: defaults), [original])
+        }
+        try await PubkyService.approveAuthRequest(
+            request: reconnectRequest, authUrl: reconnectUrl,
+            accountName: "Untrusted request name", secretKeyHex: "secret",
+            accountManager: manager,
+            companionApproval: { _, _, _, _, _ in }
+        )
+        XCTAssertEqual(manager.accounts, [original])
+        XCTAssertEqual(node.trackingChanges, [true])
+        XCTAssertEqual(try Bitkit.WatchOnlyAccountStore.backupSnapshot(defaults: defaults).allocationState, snapshot.allocationState)
+    }
+
+    @MainActor
     func testOrdinaryRequestUsesOrdinaryApproval() async throws {
         let authUrl = ordinaryApprovalTestAuthUrl()
         let request = try PubkyAuthRequest.parse(url: authUrl)
@@ -63,7 +136,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 approvedCapabilities = capabilities
                 approvedClientID = clientID
             },
-            companionApproval: { _, _, _, _ in XCTFail("Ordinary auth must not deliver a companion claim") }
+            companionApproval: { _, _, _, _, _ in XCTFail("Ordinary auth must not deliver a companion claim") }
         )
 
         XCTAssertEqual(approvedCapabilities, "/pub/example/:rw")
@@ -131,7 +204,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 secretKeyHex: "secret",
                 accountManager: manager,
                 ordinaryApproval: { _, _, _, _ in ordinaryApprovalCount += 1 },
-                companionApproval: { _, _, _, _ in
+                companionApproval: { _, _, _, _, _ in
                     companionApprovalCount += 1
                     throw ApprovalFakeError.deliveryFailed
                 }
@@ -164,7 +237,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
             accountName: "Creator store",
             secretKeyHex: "secret",
             accountManager: manager,
-            companionApproval: { _, _, _, _ in }
+            companionApproval: { _, _, _, _, _ in }
         )
 
         XCTAssertEqual(manager.accounts.first?.setupState, .active)
@@ -210,7 +283,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "First account",
                 secretKeyHex: "secret",
                 accountManager: manager,
-                companionApproval: { _, _, _, _ in await companionApprovalGate.approve() }
+                companionApproval: { _, _, _, _, _ in await companionApprovalGate.approve() }
             )
         }
         try await companionApprovalGate.waitUntilFirstApprovalStarts()
@@ -223,7 +296,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                     accountName: "Replacement account",
                     secretKeyHex: "secret",
                     accountManager: manager,
-                    companionApproval: { _, _, _, _ in XCTFail("Concurrent companion approval must not start") }
+                    companionApproval: { _, _, _, _, _ in XCTFail("Concurrent companion approval must not start") }
                 )
                 XCTFail("Expected concurrent authorization to be rejected")
             } catch {
@@ -244,7 +317,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
             accountName: "Second account",
             secretKeyHex: "secret",
             accountManager: manager,
-            companionApproval: { _, _, _, _ in }
+            companionApproval: { _, _, _, _, _ in }
         )
 
         XCTAssertEqual(manager.accounts.map(\.setupState), [.active, .active])
@@ -269,7 +342,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "Creator store",
                 secretKeyHex: "secret",
                 accountManager: manager,
-                companionApproval: { _, _, _, _ in
+                companionApproval: { _, _, _, _, _ in
                     throw Paykit.PubkyAuthCompanionClaimApprovalError.AuthorizationFailure(reason: "normal auth failed")
                 }
             )
@@ -298,7 +371,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "Creator store",
                 secretKeyHex: "secret",
                 accountManager: manager,
-                companionApproval: { _, _, _, _ in
+                companionApproval: { _, _, _, _, _ in
                     throw Paykit.PubkyAuthCompanionClaimApprovalError.AuthorizationFailure(reason: "normal auth failed")
                 }
             )
@@ -311,7 +384,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "Creator store",
                 secretKeyHex: "secret",
                 accountManager: manager,
-                companionApproval: { _, _, _, _ in throw ApprovalFakeError.deliveryFailed }
+                companionApproval: { _, _, _, _, _ in throw ApprovalFakeError.deliveryFailed }
             )
         }
 
@@ -339,8 +412,8 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "Creator store",
                 secretKeyHex: "secret",
                 accountManager: initialManager,
-                companionApproval: { _, _, payload, _ in
-                    deliveredPayloads.append(payload)
+                companionApproval: { _, _, _, payload, _ in
+                    try deliveredPayloads.append(XCTUnwrap(payload))
                     throw Paykit.PubkyAuthCompanionClaimApprovalError.AuthorizationFailure(reason: "normal auth failed")
                 }
             )
@@ -357,7 +430,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
             accountName: "Creator store",
             secretKeyHex: "secret",
             accountManager: restartedManager,
-            companionApproval: { _, _, payload, _ in deliveredPayloads.append(payload) }
+            companionApproval: { _, _, _, payload, _ in try deliveredPayloads.append(XCTUnwrap(payload)) }
         )
 
         let activeAccount = try XCTUnwrap(restartedManager.accounts.first)
@@ -391,7 +464,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "Creator store",
                 secretKeyHex: "secret",
                 accountManager: manager,
-                companionApproval: { _, _, _, _ in companionApprovalCount += 1 }
+                companionApproval: { _, _, _, _, _ in companionApprovalCount += 1 }
             )
         }
 
@@ -421,7 +494,7 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
                 accountName: "Creator store",
                 secretKeyHex: "secret",
                 accountManager: manager,
-                companionApproval: { _, _, _, _ in
+                companionApproval: { _, _, _, _, _ in
                     await companionApprovalGate.approve()
                     try Task.checkCancellation()
                 }

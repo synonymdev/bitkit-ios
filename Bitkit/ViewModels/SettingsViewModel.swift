@@ -221,7 +221,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false
         enableNotificationsAmount = false
-        UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(PaykitFeatureFlags.uiEnabledByDefault, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.cleanupPendingKey)
@@ -907,7 +907,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            blocktankRefundAddress: refundAddress
+            blocktankRefundAddress: refundAddress,
+            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
         )
     }
 
@@ -936,5 +937,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         } else {
             refundAddressStore.clear()
         }
+        CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
     }
 }

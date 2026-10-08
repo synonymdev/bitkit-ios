@@ -216,11 +216,11 @@ struct AddContactView: View {
             canRetryError = false
             isLoading = false
             if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
-                await contactsManager.refreshContactReceiverPaths(publicKey: normalizedKey, wallet: wallet)
+                await contactsManager.refreshContactLink(publicKey: normalizedKey, wallet: wallet)
             }
             return
         case let .valid(normalizedKey):
-            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true) {
+            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true, retryTransient: true) {
                 fetchedProfile = profile
                 hasPayableEndpoint = await (try? PublicPaykitService.hasPayablePublicEndpoint(publicKey: normalizedKey)) == true
             } else {
@@ -267,7 +267,7 @@ struct AddContactView: View {
             switch result {
             case let .opened(paymentRequest, _):
                 _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,
@@ -278,11 +278,9 @@ struct AddContactView: View {
             }
         } catch {
             Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
-            app.toast(
-                type: .error,
-                title: t("slashtags__error_pay_title"),
-                description: error.localizedDescription
-            )
+            if let description = PaymentNavigationHelper.contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
     }
 

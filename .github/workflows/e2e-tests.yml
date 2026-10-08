@@ -14,9 +14,6 @@ env:
   TERM: xterm-256color
   FORCE_COLOR: 1
   GIT_LFS_SKIP_SMUDGE: "1"
-  # Both e2e paths must cover the same tags. A matrix cannot read env, so this
-  # reaches them as detect-changes.outputs.shard_grep.
-  E2E_SHARD_GREP: '@transfer_2|@send|@lnurl|@lightning|@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security|@multi_address_1|@multi_address_3|@multi_address_4|@hardware_wallet'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,13 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
-      shard_grep: ${{ steps.shard.outputs.grep }}
     steps:
       - uses: actions/checkout@v7
-      - id: shard
-        run: |
-          test -n "$E2E_SHARD_GREP"
-          echo "grep=$E2E_SHARD_GREP" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v4
         if: github.event_name == 'pull_request'
         id: filter
@@ -43,8 +35,6 @@ jobs:
             code:
               - 'Bitkit/**'
               - 'BitkitNotification/**'
-              - 'BitkitTests/**'
-              - 'BitkitUITests/**'
               - 'Bitkit.xcodeproj/**'
               - 'Package.swift'
               - '.github/workflows/e2e-tests.yml'
@@ -160,7 +150,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: e2e, grep: "${{ needs.detect-changes.outputs.shard_grep }}" }
+          - { name: e2e, grep: '@ios_gate' }
 
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
@@ -442,7 +432,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - { name: e2e, grep: "${{ needs.detect-changes.outputs.shard_grep }}" }
+          - { name: e2e, grep: '@ios_gate' }
 
     name: e2e-tests-remote - ${{ matrix.shard.name }}
 

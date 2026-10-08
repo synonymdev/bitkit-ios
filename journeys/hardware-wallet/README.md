@@ -30,14 +30,19 @@ For the passphrase journeys, start it with passphrase protection instead:
 TREZOR_PASSPHRASE_PROTECTION=true ./scripts/trezor-emulator start
 ```
 
-Then build and run with the Bridge environment (mirrors the `xcodebuild` invocation in
-`Docs/AI_DEVICE_TESTS.md`):
+Then build and run with the Bridge settings, each passed as its own `--extra-args`:
 
 ```bash
-TEST_TREZOR_EMU=1 TREZOR_BRIDGE=true TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
 xcodebuildmcp simulator build-and-run \
-  --extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD TEST_TREZOR_EMU"
+  --extra-args "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\$(inherited) E2E_BUILD" \
+  --extra-args TREZOR_BRIDGE=true \
+  --extra-args TREZOR_BRIDGE_URL=http://127.0.0.1:21325
 ```
+
+Use the address the simulator reaches the emulator at in `TREZOR_BRIDGE_URL` when it is not
+`127.0.0.1`. Do not add the `TEST_TREZOR_EMU` compilation condition that `Docs/AI_DEVICE_TESTS.md`
+passes for the UI test suite: it replaces the wallet with the Trezor test dashboard, so no
+journey that starts on the wallet home screen can run.
 
 ## Order
 
@@ -46,7 +51,8 @@ Several journeys mutate pairing state. Run them in this order, or re-pair betwee
 1. `connect-home-tile.xml` — pairs the emulator; every other journey assumes it ran.
 2. `settings-hardware-wallets.xml`, `connect-flow.xml`, `suggestion-intro-sheet.xml` — each forgets
    and re-pairs the device, ending paired.
-3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`.
+3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`,
+   `send-onchain.xml`.
 4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-transfer-to-spending.xml` →
    `passphrase-settings-remove.xml`.
 5. `detail-overview.xml` **last** — its final step forgets the device.
@@ -58,6 +64,15 @@ The device blocks until each prompt is acknowledged, once per address type for a
 ```bash
 ../bitkit-docker/scripts/trezor-emulator send-json '{"type":"emulator-press-yes","id":1}'
 ```
+
+The isolated `trezor-emulator` profile of `bitkit-docker` takes the same command through its own
+container (`docker compose --profile trezor-emulator exec -T trezor-emulator
+/trezor-user-env/.venv/bin/python3 /opt/bitkit-trezor/trezor-controller.py send-json
+'{"type":"emulator-press-yes"}'`), which is how a stack that cannot use the host helper presses Yes.
+
+`send-onchain.xml` spends from the emulator's account, so it needs funds beyond what the transfer
+journeys leave; fund the account's receive address again from the regtest node before it, and send
+to an address of that node.
 
 ## Checking for passphrase leaks
 
@@ -132,3 +147,15 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   Tag button `ActivityTag` (labelled "Tag"), tag field `TagInput`, submit `ActivityTagsSubmit`,
   detail chip list `ActivityTags` (only rendered once a tag exists), All Activity tag filter
   `TagsPrompt` (not `ActivityTags` — that one is detail-screen only), explorer `ActivityTxDetails`.
+
+## Blockstream Jade
+
+There is no Jade emulator in `bitkit-docker`, and iOS reaches a Jade over Bluetooth only, which the
+simulator does not have. The Jade flows (Connect Hardware, receive-address verification and on-device
+signing) are therefore covered by unit tests (`JadeManagerTests.swift`, `JadeTransportTests.swift`,
+`JadeBLELinkStateTests.swift`, `HwWalletManagerVendorTests.swift`, `HwConnectViewModelTests.swift`,
+`HwFundingSignerTests.swift`, `HwEngagedSessionTests.swift`) and by manual runs against a physical Jade
+paired with a physical iPhone. The journeys in this folder stay Trezor-only.
+
+While a Jade waits for its PIN, the Found step shows `HwFoundUnlockHint`. The receive tab of a hardware
+wallet is labelled with its vendor: a Trezor wallet keeps `Tab-trezor` and a Jade reads `Tab-jade`.

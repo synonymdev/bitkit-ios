@@ -20,6 +20,7 @@
 		<string>$(AppIdentifierPrefix)to.bitkit.signet</string>
 		<string>$(AppIdentifierPrefix)to.bitkit.testnet</string>
 		<string>$(AppIdentifierPrefix)to.bitkit.regtest</string>
+		<string>$(AppIdentifierPrefix)pubky.shared</string>
 	</array>
 </dict>
 </plist>

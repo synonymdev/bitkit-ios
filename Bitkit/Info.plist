@@ -35,10 +35,6 @@
 	<string>$(TREZOR_BRIDGE_URL)</string>
 	<key>TREZOR_ELECTRUM_URL</key>
 	<string>$(TREZOR_ELECTRUM_URL)</string>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>pubkyring</string>
-	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -47,9 +43,9 @@
 		<true/>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Bitkit uses Bluetooth to connect to your Trezor hardware wallet for signing transactions.</string>
+	<string>Bitkit uses Bluetooth to connect to your hardware wallet for signing transactions.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Bitkit uses Bluetooth to connect to your Trezor hardware wallet for signing transactions.</string>
+	<string>Bitkit uses Bluetooth to connect to your hardware wallet for signing transactions.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Bitkit uses Face ID to securely authenticate access to your wallet and protect your Bitcoin.</string>
 	<key>UIAppFonts</key>

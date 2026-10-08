@@ -78,10 +78,19 @@ enum SendRoute: Hashable {
 struct SendConfig {
     let initialRoute: SendRoute
     let hardwareWalletId: String?
+    let preparation: IncomingPaykitPaymentRequestPreparation?
+    let onDismiss: (() -> Void)?
 
-    init(view: SendRoute = .options, hardwareWalletId: String? = nil) {
+    init(
+        view: SendRoute = .options,
+        hardwareWalletId: String? = nil,
+        preparation: IncomingPaykitPaymentRequestPreparation? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         initialRoute = view
         self.hardwareWalletId = hardwareWalletId
+        self.preparation = preparation
+        self.onDismiss = onDismiss
     }
 }
 
@@ -90,10 +99,12 @@ struct SendSheetItem: SheetItem {
     let size: SheetSize = .large
     let initialRoute: SendRoute
     let hardwareWalletId: String?
+    let preparation: IncomingPaykitPaymentRequestPreparation?
 
-    init(initialRoute: SendRoute = .options, hardwareWalletId: String? = nil) {
+    init(initialRoute: SendRoute = .options, hardwareWalletId: String? = nil, preparation: IncomingPaykitPaymentRequestPreparation? = nil) {
         self.initialRoute = initialRoute
         self.hardwareWalletId = hardwareWalletId
+        self.preparation = preparation
     }
 }
 
@@ -118,6 +129,7 @@ struct SendSheet: View {
     @State private var quickPaySession = 0
     @State private var hasValidatedAfterSync = false
     @State private var incomingPaymentRequest: PaykitPaymentRequest?
+    @State private var isSubmittingPayment = false
     @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
@@ -136,6 +148,31 @@ struct SendSheet: View {
         rootOverride ?? rootRoute
     }
 
+    private var isPreparingRequest: Bool {
+        config.preparation != nil && incomingPaymentRequest == nil
+    }
+
+    private var shouldDismissUnavailableRequest: Bool {
+        guard let request = incomingPaymentRequest else { return false }
+        return Self.shouldDismissUnavailableRequest(
+            root: currentRoot,
+            path: navigationPath,
+            isSubmittingPayment: isSubmittingPayment,
+            isAvailable: paykitPaymentRequestManager.pendingRequests.contains(where: { $0.id == request.id }) ||
+                paykitPaymentRequestManager.isApprovedForPayment(request)
+        )
+    }
+
+    static func shouldDismissUnavailableRequest(root: SendRoute, path: [SendRoute], isSubmittingPayment: Bool, isAvailable: Bool) -> Bool {
+        guard !isAvailable, !isSubmittingPayment else { return false }
+        switch path.last ?? root {
+        case .confirm, .lnurlPayConfirm, .amount, .utxoSelection, .feeRate, .feeCustom, .tag, .pin:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// How long the sync overlay may wait for channels to become usable before falling back
     private static let syncTimeoutSeconds: TimeInterval = 20
 
@@ -144,7 +181,7 @@ struct SendSheet: View {
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
-        if hwSend.isActive {
+        if isPreparingRequest || hwSend.isActive {
             return false
         }
 
@@ -197,80 +234,31 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
-        .interactiveDismissDisabled(hwSend.isSigning || hwSend.isBroadcastUnresolved)
+        .interactiveDismissDisabled(!hwSend.canLeave)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut)
+        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut, isEnabled: !isPreparingRequest)
+        .onChange(of: shouldDismissUnavailableRequest) { _, shouldDismiss in
+            guard shouldDismiss else { return }
+            sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
+        }
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
-        .onAppear {
-            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
-            if let walletId = config.hardwareWalletId {
-                let balance = hwWalletManager.fundingBalance(walletId: walletId)
-                let reserve = HwFundingSigner.feeReserve(
-                    balanceSats: balance,
-                    satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
-                )
-                hwSend.seedAvailable(
-                    walletId: walletId,
-                    availableSats: balance > reserve ? balance - reserve : 0
-                )
+        .task(id: config.preparation?.resolvedRoute) {
+            if let preparation = config.preparation {
+                guard let route = preparation.resolvedRoute, preparation.ownsSheet(sheets),
+                      let request = preparation.request,
+                      app.contactPaymentContext == preparation.paymentContext,
+                      app.contactPaymentContext?.incomingPaymentRequest?.id == request.id
+                else { return }
+                rootRoute = route
             }
-            if let request = app.contactPaymentContext?.incomingPaymentRequest {
-                incomingPaymentRequest = request
-                if !tagManager.consumePreservedTags(for: request.id) {
-                    tagManager.clearSelectedTags()
-                }
-                guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
-                    app.resetSendState()
-                    sheets.hideSheetIfActive(
-                        isEmbedded ? .subscription : .send,
-                        reason: "Incoming payment request is no longer available"
-                    )
-                    return
-                }
-                if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
-                    PaykitSubscriptionNotificationTargetStore.clear()
-                }
-                wallet.sendAmountSats = request.amountSats
-            } else {
-                tagManager.clearSelectedTags()
-            }
-            hasValidatedAfterSync = false
-            syncTimedOut = false
-
-            // A plain Send open (TabBar) must not inherit invoice state from an earlier scan,
-            // e.g. one abandoned behind the sync overlay. Invoice-carrying opens use other routes.
-            if currentRoot == .options {
-                app.resetSendState()
-            }
-
-            setupTask?.cancel()
-            setupTask = Task {
-                do {
-                    try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    Logger.error("Failed to set default fee rate: \(error)")
-                }
-
-                if let request = incomingPaymentRequest {
-                    guard isCurrentIncomingRequest(request.id) else { return }
-                    guard await selectHardwareFundingSourceIfNeeded(
-                        amountSats: request.amountSats,
-                        requestId: request.id
-                    ) else { return }
-                    guard isCurrentIncomingRequest(request.id) else { return }
-                    if !shouldShowSyncOverlay {
-                        validatePaymentAfterSync()
-                    }
-                }
-            }
+            setUpSend()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, state in
+            guard !isPreparingRequest else { return }
             // When the node becomes running and we have a scanned invoice, run deferred validation.
             // This covers:
             // - Pure onchain invoices (node was not running at scan time)
@@ -286,6 +274,7 @@ struct SendSheet: View {
             }
         }
         .onChange(of: wallet.hasUsableChannels) { _, hasUsable in
+            guard !isPreparingRequest else { return }
             // Only validate if channels just became usable and we have a scanned invoice
             // (Validation already happened in AppViewModel if channels were already usable)
             guard app.hasSendPaymentTarget else { return }
@@ -320,7 +309,9 @@ struct SendSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        if shouldShowSyncOverlay {
+        if isPreparingRequest, config.preparation?.request == nil {
+            Color.clear
+        } else if shouldShowSyncOverlay {
             SendSyncScreen()
                 .transition(.opacity)
         } else {
@@ -339,6 +330,9 @@ struct SendSheet: View {
         setupTask?.cancel()
         setupTask = nil
         hwSend.cancel()
+        if isPreparingRequest {
+            return
+        }
         if let request = incomingPaymentRequest ?? app.contactPaymentContext?.incomingPaymentRequest {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
         }
@@ -347,6 +341,58 @@ struct SendSheet: View {
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         app.resetQuickPay()
         QuickPayPaymentCoordinator.shared.detach()
+    }
+
+    private func setUpSend() {
+        wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+        if let walletId = config.hardwareWalletId {
+            let balance = hwWalletManager.fundingBalance(walletId: walletId)
+            let reserve = HwFundingSigner.feeReserve(
+                balanceSats: balance,
+                satsPerVByte: wallet.selectedFeeRateSatsPerVByte.map(UInt64.init)
+            )
+            hwSend.seedAvailable(walletId: walletId, availableSats: balance > reserve ? balance - reserve : 0)
+        }
+        if let request = app.contactPaymentContext?.incomingPaymentRequest {
+            if !tagManager.consumePreservedTags(for: request.id) {
+                tagManager.clearSelectedTags()
+            }
+            guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
+                app.resetSendState()
+                sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
+                return
+            }
+            if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
+                PaykitSubscriptionNotificationTargetStore.clear()
+            }
+            wallet.sendAmountSats = request.amountSats
+            incomingPaymentRequest = request
+        } else {
+            tagManager.clearSelectedTags()
+        }
+        hasValidatedAfterSync = false
+        syncTimedOut = false
+        if currentRoot == .options {
+            app.resetSendState()
+        }
+        setupTask?.cancel()
+        setupTask = Task {
+            do {
+                try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
+            } catch is CancellationError {
+                return
+            } catch {
+                Logger.error("Failed to set default fee rate: \(error)")
+            }
+            if let request = incomingPaymentRequest {
+                guard isCurrentIncomingRequest(request.id) else { return }
+                guard await selectHardwareFundingSourceIfNeeded(amountSats: request.amountSats, requestId: request.id) else { return }
+                guard isCurrentIncomingRequest(request.id) else { return }
+                if !shouldShowSyncOverlay {
+                    validatePaymentAfterSync()
+                }
+            }
+        }
     }
 
     /// Called when the sync overlay has been visible for `syncTimeoutSeconds` without channels becoming usable.
@@ -685,16 +731,19 @@ struct SendSheet: View {
         case .confirm:
             SendConfirmationView(
                 navigationPath: $navigationPath,
+                isSubmittingPayment: $isSubmittingPayment,
                 hwSend: hwSend,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
-                routingCacheResetAttempted: routingCacheResetAttempted
+                routingCacheResetAttempted: routingCacheResetAttempted,
+                preparingRequest: isPreparingRequest ? config.preparation?.request : nil
             )
         case .hardwareSign:
             HwSendSignView(
                 navigationPath: $navigationPath,
                 hwSend: hwSend,
                 prepareContactPayment: prepareHardwareContactPayment,
+                authorizeContactPayment: authorizeHardwareContactPayment,
                 completeContactPayment: completeHardwareContactPayment,
                 cancelContactPayment: cancelHardwareContactPayment
             )
@@ -753,6 +802,7 @@ struct SendSheet: View {
         case .lnurlPayConfirm:
             LnurlPayConfirm(
                 navigationPath: $navigationPath,
+                isSubmittingPayment: $isSubmittingPayment,
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted
@@ -771,59 +821,121 @@ struct SendSheet: View {
     }
 
     private func prepareIncomingPaymentRequest() async throws {
-        guard let context = app.contactPaymentContext,
+        try await prepareIncomingPaymentRequest(context: app.contactPaymentContext)
+    }
+
+    private func prepareIncomingPaymentRequest(context: ContactPaymentContext?) async throws {
+        guard let context,
               let request = context.incomingPaymentRequest
         else { return }
-        guard !paykitPaymentRequestManager.isApprovedForPayment(request) else { return }
 
         try await paykitPaymentRequestManager.prepareForPayment(request) {
             guard let privatePaymentContext = context.privatePaymentContext else { return }
             try await PrivatePaykitService.shared.consumePrivatePaymentList(
                 publicKey: context.publicKey,
-                context: privatePaymentContext
+                context: privatePaymentContext,
+                attemptId: context.id
             )
         }
     }
 
-    private func prepareHardwareContactPayment() async throws {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
+    private func prepareHardwareContactPayment(_ context: ContactPaymentContext?) async throws {
+        guard let request = context?.incomingPaymentRequest,
               let address = app.scannedOnchainInvoice?.address
         else {
-            try await prepareIncomingPaymentRequest()
+            try await prepareIncomingPaymentRequest(context: context)
             return
         }
 
         let endpointIdentifier = PublicPaykitService.onchainMethodId(for: address).rawValue
+        guard let privateContext = context?.privatePaymentContext, let walletId = hwSend.walletId else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
         try await PaykitPaymentProofService.shared.prepare(
             request: request,
+            paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
             paymentEndpointIdentifier: endpointIdentifier,
-            kind: .onchain
+            kind: .onchain,
+            walletId: walletId
         )
         do {
-            try await prepareIncomingPaymentRequest()
-            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
+            try await prepareIncomingPaymentRequest(context: context)
+            try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address, walletId: walletId)
         } catch {
-            await PaykitPaymentProofService.shared.cancelPreparation(request)
+            _ = await paykitPaymentRequestManager.paymentRequestForRetry(request.id)
+            await context?.resolvePrivatePaymentListConsumption(.definitePreBroadcastFailure)
+            await PaykitPaymentProofService.shared.cancelPreparation(request, walletId: walletId)
             throw error
         }
     }
 
-    private func completeHardwareContactPayment(txid: String) async {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest,
-              let address = app.scannedOnchainInvoice?.address
+    private func authorizeHardwareContactPayment(_ context: ContactPaymentContext?) async throws {
+        guard let request = context?.incomingPaymentRequest else { return }
+        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+    }
+
+    private func completeHardwareContactPayment(_ context: ContactPaymentContext?, txid: String) async {
+        guard let request = context?.incomingPaymentRequest,
+              let walletId = hwSend.walletId,
+              let address = app.scannedOnchainInvoice?.address,
+              let paymentAppId = try? context?.privatePaymentContext?.paymentAppId(
+                  for: PublicPaykitService.onchainMethodId(for: address).rawValue
+              )
         else { return }
 
+        await context?.resolvePrivatePaymentListConsumption(.succeeded)
         await PaykitPaymentProofService.shared.completeOnchainPayment(
             request,
             txid: txid,
-            paymentEndpointIdentifier: PublicPaykitService.onchainMethodId(for: address).rawValue
+            paymentAppId: paymentAppId,
+            paymentEndpointIdentifier: PublicPaykitService.onchainMethodId(for: address).rawValue,
+            walletId: walletId
         )
     }
 
-    private func cancelHardwareContactPayment() async {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return }
-        await PaykitPaymentProofService.shared.failOnchainPayment(request)
-        await PaykitPaymentProofService.shared.cancelPreparation(request)
+    private func cancelHardwareContactPayment(_ context: ContactPaymentContext?, outcome: PrivatePaymentListSendOutcome) async {
+        guard let walletId = hwSend.walletId else { return }
+        await Self.cancelHardwareContactPayment(context, outcome: outcome, app: app, manager: paykitPaymentRequestManager, walletId: walletId)
+    }
+
+    @MainActor
+    static func cancelHardwareContactPayment(
+        _ context: ContactPaymentContext?,
+        outcome: PrivatePaymentListSendOutcome,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager,
+        walletId: String = WalletScope.default,
+        privatePaykitService: PrivatePaykitService = .shared,
+        paymentProofService: PaykitPaymentProofService = .shared
+    ) async {
+        guard let request = context?.incomingPaymentRequest else { return }
+        await context?.resolvePrivatePaymentListConsumption(outcome, service: privatePaykitService)
+        guard outcome == .definitePreBroadcastFailure else { return }
+        await paymentProofService.failOnchainPayment(request, walletId: walletId)
+        await paymentProofService.cancelPreparation(request, walletId: walletId)
+        if let context {
+            await restoreHardwareContactPaymentForRetry(context, app: app, manager: manager)
+        }
+    }
+
+    @MainActor
+    static func restoreHardwareContactPaymentForRetry(
+        _ context: ContactPaymentContext,
+        app: AppViewModel,
+        manager: PaykitPaymentRequestManager
+    ) async {
+        guard let request = context.incomingPaymentRequest,
+              let retriedRequest = await manager.paymentRequestForRetry(request.id),
+              app.ownsContactPaymentContext(context)
+        else { return }
+
+        app.contactPaymentContext = ContactPaymentContext(
+            id: context.id,
+            publicKey: context.publicKey,
+            privatePaymentContext: context.privatePaymentContext,
+            incomingPaymentRequest: retriedRequest,
+            isInitialSubscriptionPayment: context.isInitialSubscriptionPayment
+        )
     }
 
     private func replaceQuickPay(with route: SendRoute) {
@@ -873,7 +985,7 @@ struct SendSheet: View {
         _ requestId: PaykitPaymentRequest.ID,
         isInitialSubscriptionPayment: Bool
     ) async {
-        guard let request = paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
+        guard let request = await paykitPaymentRequestManager.paymentRequestForRetry(requestId) else {
             app.toast(PaykitPaymentRequestError.requestUnavailable)
             return
         }

@@ -2,18 +2,18 @@ import SwiftUI
 import UIKit
 
 struct DevSettingsView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
-    @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedPublicPaykitEndpoints = false
-    @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
-    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var notificationManager: PushNotificationManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     @State private var showPaykitWarning = false
 
@@ -102,6 +102,10 @@ struct DevSettingsView: View {
                             ),
                             testIdentifier: "PaykitUiToggle"
                         )
+
+                        if SubscriptionClock.isAvailable {
+                            subscriptionClockOffsetMenu
+                        }
                     }
 
                     Button {
@@ -218,49 +222,46 @@ struct DevSettingsView: View {
         }
     }
 
+    private var subscriptionClockOffsetMenu: some View {
+        Menu {
+            ForEach(SubscriptionClock.offsetDaysPresets, id: \.self) { days in
+                Button(Self.subscriptionClockOffsetLabel(days)) {
+                    subscriptionClockOffsetDays = days
+                    Task { await paymentRequests.refreshAfterSubscriptionClockChange() }
+                }
+                .accessibilityIdentifier("SubscriptionClockOffset-\(days)")
+            }
+        } label: {
+            SettingsRow(
+                title: "Subscription clock offset (days)",
+                rightText: Self.subscriptionClockOffsetLabel(SubscriptionClock.clampedOffsetDays(subscriptionClockOffsetDays)),
+                rightIcon: nil
+            )
+        }
+        .accessibilityIdentifier("SubscriptionClockOffset")
+    }
+
+    private static func subscriptionClockOffsetLabel(_ days: Int) -> String {
+        days == 0 ? "Off" : "\(days)"
+    }
+
     @MainActor
     private func disablePaykitUI() async {
-        isPaykitUIEnabled = false
-        hasConfirmedPublicPaykitEndpoints = false
-        sharesPrivatePaykitEndpoints = false
-        sharesPublicPaykitEndpoints = false
-        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
-        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
-        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
-
-        var cleanupError: Error?
         do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
-            PublicPaykitService.setCleanupPending(false)
+            guard try await ContactPaymentsService.disablePaykitUI(pubkyProfile: pubkyProfile, operations: .live(wallet: wallet)) else { return }
+        } catch is CancellationError {
+            return
         } catch {
-            cleanupError = error
-            PublicPaykitService.setCleanupPending(true)
-            Logger.warn("Failed to remove public Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
-        }
-
-        do {
-            try await PrivatePaykitService.shared.removePublishedEndpoints()
-            PrivatePaykitService.setContactSharingCleanupPending(false)
-        } catch {
-            if cleanupError == nil {
-                cleanupError = error
-            }
-            PrivatePaykitService.setContactSharingCleanupPending(true)
-            Logger.warn("Failed to remove private Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
-        }
-
-        if let cleanupError {
+            Logger.warn("Failed to remove Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
             app.toast(
                 type: .error,
                 title: "Paykit UI disabled",
-                description: cleanupError.localizedDescription,
+                description: error.localizedDescription,
                 accessibilityIdentifier: "PaykitUiDisabledToast"
             )
             return
         }
 
-        PublicPaykitService.setCleanupPending(false)
-        PrivatePaykitService.setContactSharingCleanupPending(false)
         app.toast(type: .success, title: "Paykit UI disabled", accessibilityIdentifier: "PaykitUiDisabledToast")
     }
 }
@@ -268,10 +269,12 @@ struct DevSettingsView: View {
 #Preview {
     DevSettingsView()
         .environmentObject(AppViewModel())
+        .environmentObject(PubkyProfileManager())
         .environmentObject(ActivityListViewModel())
         .environmentObject(FeeEstimatesManager())
         .environmentObject(NavigationViewModel())
         .environmentObject(WalletViewModel())
         .environmentObject(WidgetsViewModel())
+        .environment(PaykitPaymentRequestManager())
         .preferredColorScheme(.dark)
 }
