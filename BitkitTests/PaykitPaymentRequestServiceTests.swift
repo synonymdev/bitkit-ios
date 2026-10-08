@@ -7378,6 +7378,48 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testReopenedRecoveryUsesDurableOriginalWithoutNewApproval() async throws {
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let onchainAddress = "bcrt1qoriginal"
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(counterparty: "pubky" + String(repeating: "y", count: 52), state: .accepted, endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amountSats
+        let service = PaykitPaymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts, logInfo: { _ in }, logWarning: { _ in }
+        )
+        try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
+        _ = try await attempts.send(
+            using: sender, address: onchainAddress, amountSats: request.amountSats, satsPerVbyte: 2,
+            utxosToSpend: nil, isMaxAmount: false, requestId: request.id, paymentIdentity: identity,
+            beforeBroadcastAttempt: {
+                try await service.markOnchainPaymentStarted(request, address: onchainAddress, paymentIdentity: identity)
+            }
+        )
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        let manager = PaykitPaymentRequestManager(service: PaykitPaymentRequestService(sdk: PaymentRequestSdkMock(records: [record])))
+        manager.activate(identity: identity)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        let beforeProofs = await store.snapshot()
+        let authorized = try await manager.ensureOnchainRecoveryAllowed(attempt, proofService: service)
+        XCTAssertEqual(authorized.id, request.id)
+        XCTAssertEqual(authorized.amountSats, attempt.amountSats)
+        let afterProofs = await store.snapshot()
+        XCTAssertEqual(afterProofs, beforeProofs)
+        XCTAssertFalse(manager.isApprovedForPayment(request), "Recovery must not grant approval for a new payment")
+        manager.activate(identity: "pubky" + String(repeating: "y", count: 52))
+        do {
+            _ = try await manager.ensureOnchainRecoveryAllowed(attempt, proofService: service)
+            XCTFail("Foreign payer must not recover the original payment")
+        } catch {}
+        XCTAssertEqual(sender.broadcasts, 1)
+        XCTAssertEqual(attemptsStore.snapshot().first, attempt)
+    }
+
     private func paymentRequestManager(
         sdk: PaymentRequestSdkMock,
         scheduleAcceptedRequestDelivery: @escaping @MainActor (String) async -> Void = { _ in },

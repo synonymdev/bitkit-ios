@@ -1744,6 +1744,23 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    func ensureOnchainRecoveryAllowed(
+        _ attempt: OnchainSendAttempt, proofService: PaykitPaymentProofService
+    ) async throws -> PaykitPaymentRequest {
+        let generation = stateGeneration
+        guard let identity = activeIdentity,
+              PubkyPublicKeyFormat.matches(identity, attempt.recoveryContext?.paymentIdentity)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        // Durable original-payment authorization replaces only the lost process-local approval.
+        let request = try await proofService.authorizeOnchainRecovery(attempt)
+        try await service.ensurePaymentAllowed(request)
+        guard generation == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity),
+              !request.isPaymentDeadlineExpired(at: now())
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        try await proofService.requireRecoveryPayer(identity)
+        return request
+    }
+
     func prepareForPayment(
         _ request: PaykitPaymentRequest,
         consumePrivatePaymentList: () async throws -> Void = {}
