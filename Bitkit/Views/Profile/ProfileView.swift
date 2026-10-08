@@ -42,6 +42,10 @@ struct ProfileView: View {
     @State private var copiedPublicKey: String?
     @State private var hideCopiedPopupTask: Task<Void, Never>?
 
+    private var canEditProfile: Bool {
+        pubkyProfile.currentSession != nil && pubkyProfile.profile != nil
+    }
+
     var body: some View {
         Group {
             if let profile = pubkyProfile.profileForDisplay {
@@ -131,7 +135,7 @@ struct ProfileView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 16)
 
-                if pubkyProfile.currentSession == nil {
+                if !canEditProfile {
                     signOutButton
                         .accessibilityIdentifier("ProfileSignOut")
                 }
@@ -153,7 +157,7 @@ struct ProfileView: View {
                 navigation.navigate(.editProfile)
             }
             .accessibilityIdentifier("ProfileEdit")
-            .disabled(pubkyProfile.currentSession == nil)
+            .disabled(!canEditProfile)
 
             GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKeyForDisplay {
@@ -238,7 +242,7 @@ struct ProfileView: View {
             if !profile.tags.isEmpty {
                 WrappingHStack(spacing: 8) {
                     ForEach(profile.tags, id: \.self) { tag in
-                        Tag(tag, icon: .close, onDelete: pubkyProfile.currentSession == nil ? nil : {
+                        Tag(tag, icon: .close, onDelete: !canEditProfile ? nil : {
                             updateTags(profile.tags.filter { $0 != tag }, profile: profile)
                         })
                     }
@@ -253,7 +257,7 @@ struct ProfileView: View {
                 showAddTagSheet = true
             }
         }
-        .disabled(isUpdatingTags || pubkyProfile.currentSession == nil)
+        .disabled(isUpdatingTags || !canEditProfile)
     }
 
     private func addTag(_ tag: String, to profile: PubkyProfile) {
@@ -262,7 +266,7 @@ struct ProfileView: View {
     }
 
     private func updateTags(_ tags: [String], profile: PubkyProfile) {
-        guard !isUpdatingTags else { return }
+        guard canEditProfile, !isUpdatingTags else { return }
         isUpdatingTags = true
 
         Task {
@@ -317,7 +321,7 @@ struct ProfileView: View {
                     retryButton
                 }
 
-                if pubkyProfile.currentSession == nil {
+                if !canEditProfile {
                     signOutButton
                         .padding(.top, 16)
                         .accessibilityIdentifier("ProfileSignOut")

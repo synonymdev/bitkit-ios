@@ -2044,6 +2044,53 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testRecoveryKeepsReadOnlyProfileWhenAuthenticatedFetchFails() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+            let stub = RemoteProfileStub(profiles: [publicKey: expected])
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            await manager.initialize { .restorationDeferred }
+            await manager.loadProfile()
+            await stub.setProfile(nil, for: publicKey)
+
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: publicKey) }
+            await stub.waitForRequests(2)
+            await waitUntil("the authenticated fetch fails") { !manager.isLoadingProfile }
+            XCTAssertEqual(manager.currentSession?.publicKey, publicKey)
+            XCTAssertNil(manager.profile, "A public display must not become an authenticated profile")
+            XCTAssertEqual(manager.profileForDisplay?.name, expected.name)
+            XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
+
+            try await manager.signOut(performSessionCleanup: {})
+            XCTAssertNil(manager.profileForDisplay)
+            XCTAssertNil(manager.publicKeyForDisplay)
+        }
+    }
+
+    @MainActor
+    func testRecoveryDiscardsReadOnlyProfileForDifferentIdentity() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            let stub = RemoteProfileStub(profiles: [publicKey: makeProfile(publicKey: publicKey, name: "Saved identity")])
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            await manager.initialize { .restorationDeferred }
+            await manager.loadProfile()
+            XCTAssertNotNil(manager.profileForDisplay)
+
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: ringKeyB) }
+            await stub.waitForRequests(2)
+            await waitUntil("the new identity fetch fails") { !manager.isLoadingProfile }
+            XCTAssertNil(manager.profileForDisplay)
+            XCTAssertEqual(manager.publicKeyForDisplay, ringKeyB)
+        }
+    }
+
+    @MainActor
     func testReadOnlyProfileRequiresValidCredentialsAndMatchingCacheOwner() async throws {
         try await withEmptyIdentityStorage {
             let defaults = UserDefaults.standard

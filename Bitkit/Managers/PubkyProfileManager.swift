@@ -333,7 +333,9 @@ class PubkyProfileManager: ObservableObject {
         case let .restored(pk):
             sessionRestorationDeferred = false
             invalidateProfileLoads()
-            readOnlyProfile = nil
+            if !hasReadOnlyProfileIdentity || !PubkyPublicKeyFormat.matches(readOnlyProfile?.publicKey, pk) {
+                readOnlyProfile = nil
+            }
             reloadCachedProfileMetadata()
             publicKey = pk
             authState = .authenticated
@@ -1115,6 +1117,7 @@ class PubkyProfileManager: ObservableObject {
             }.value
             if publicKey == pk, profileWriteGeneration == read.generation {
                 profile = loadedProfile
+                readOnlyProfile = nil
                 cacheProfileMetadata(loadedProfile)
             }
         } catch {

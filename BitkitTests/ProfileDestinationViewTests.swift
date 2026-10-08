@@ -244,18 +244,40 @@ final class ProfileDestinationViewTests: XCTestCase {
         let secret = String(repeating: "01", count: 32)
         let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
         try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
-        let profile = PubkyProfile(publicKey: publicKey, name: "Saved public profile", bio: "Public biography", imageUrl: nil, links: [], status: nil)
-        let manager = DeferredProfileManager(remoteProfileResolver: { _ in profile })
+        let profile = PubkyProfile(
+            publicKey: publicKey,
+            name: "Saved public profile",
+            bio: "Public biography",
+            imageUrl: nil,
+            links: [],
+            tags: ["public-tag"],
+            status: nil
+        )
+        let response = ProfileResponse(profile: profile)
+        let manager = DeferredProfileManager(remoteProfileResolver: { _ in try await response.resolve() })
         await manager.initialize { .restorationDeferred }
         await manager.loadProfile()
-        let window = hostProfile(manager)
-        defer { close(window) }
+        let navigation = NavigationViewModel()
+        let window = hostProfile(manager, navigation: navigation)
+        let pasteboard = UIPasteboard.general.string
+        defer {
+            close(window)
+            UIPasteboard.general.string = pasteboard
+        }
         try await Task.sleep(for: .milliseconds(150))
 
         let (_, labels) = try snapshot(window, name: "Public profile while private state reconnects")
         XCTAssertTrue(labels.joined(separator: " ").contains(profile.name.uppercased()), "\(labels)")
         XCTAssertTrue(labels.contains(profile.bio), "\(labels)")
         XCTAssertFalse(labels.contains(t("profile__empty_state")), "\(labels)")
+
+        try await assertReadOnlyControls(window, navigation: navigation)
+        for id in ["ProfileCopy", "ProfileQRCode"] {
+            UIPasteboard.general.string = nil
+            XCTAssertTrue(try element(id, in: window).accessibilityActivate())
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(UIPasteboard.general.string, publicKey, id)
+        }
 
         let scroll = try XCTUnwrap(scrollView(in: XCTUnwrap(window.rootViewController?.view)))
         scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentSize.height - scroll.bounds.height)), animated: false)
@@ -265,13 +287,73 @@ final class ProfileDestinationViewTests: XCTestCase {
         XCTAssertNil(manager.profile)
         XCTAssertNil(manager.publicKey)
         XCTAssertNil(manager.currentSession)
+
+        await response.setProfile(nil)
+        await manager.initialize { .restored(publicKey: publicKey) }
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNotNil(manager.currentSession)
+        XCTAssertNil(manager.profile)
+        XCTAssertEqual(manager.profileForDisplay?.name, profile.name)
+        try await assertReadOnlyControls(window, navigation: navigation)
+
+        await response.setProfile(profile)
+        await manager.loadProfile()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertNotNil(manager.profile)
+        XCTAssertFalse(try element("ProfileEdit", in: window).accessibilityTraits.contains(.notEnabled))
+        XCTAssertFalse(try element("ProfileAddTag", in: window).accessibilityTraits.contains(.notEnabled))
+        XCTAssertNotNil(try element("Tag-public-tag-delete", in: window))
+        XCTAssertTrue(try element("ProfileEdit", in: window).accessibilityActivate())
+        XCTAssertEqual(navigation.path, [.editProfile])
     }
 
-    private func hostProfile(_ manager: PubkyProfileManager) -> UIWindow {
+    private func assertReadOnlyControls(_ window: UIWindow, navigation: NavigationViewModel) async throws {
+        for id in ["ProfileEdit", "ProfileAddTag"] {
+            let control = try element(id, in: window)
+            XCTAssertTrue(control.accessibilityTraits.contains(.notEnabled), id)
+            _ = control.accessibilityActivate()
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(navigation.path.isEmpty)
+        XCTAssertNil(window.rootViewController?.presentedViewController)
+        XCTAssertFalse(accessibilityElements(in: window)
+            .contains { accessibilityIdentifier($0) == "Tag-public-tag-delete" })
+    }
+
+    private func element(_ id: String, in window: UIWindow) throws -> NSObject {
+        let elements = accessibilityElements(in: window)
+        return try XCTUnwrap(
+            elements.first { accessibilityIdentifier($0) == id },
+            "Missing \(id)"
+        )
+    }
+
+    private func accessibilityIdentifier(_ element: NSObject) -> String? {
+        guard element.responds(to: NSSelectorFromString("accessibilityIdentifier")) else { return nil }
+        return element.value(forKey: "accessibilityIdentifier") as? String
+    }
+
+    private func accessibilityElements(in root: NSObject) -> [NSObject] {
+        var visited = Set<ObjectIdentifier>()
+        func walk(_ node: NSObject) -> [NSObject] {
+            guard visited.insert(ObjectIdentifier(node)).inserted else { return [] }
+            var children = (node as? UIView)?.subviews.map { $0 as NSObject } ?? []
+            children += node.accessibilityElements?.compactMap { $0 as? NSObject } ?? []
+            children += node.automationElements?.compactMap { $0 as? NSObject } ?? []
+            let count = node.accessibilityElementCount()
+            if count > 0, count < 1000 {
+                children += (0 ..< count).compactMap { node.accessibilityElement(at: $0) as? NSObject }
+            }
+            return [node] + children.flatMap(walk)
+        }
+        return walk(root)
+    }
+
+    private func hostProfile(_ manager: PubkyProfileManager, navigation: NavigationViewModel? = nil) -> UIWindow {
         let view = ProfileDestinationView(hasSeenIntro: true)
             .environmentObject(manager)
             .environmentObject(AppViewModel())
-            .environmentObject(NavigationViewModel())
+            .environmentObject(navigation ?? NavigationViewModel())
             .environmentObject(ContactsManager())
             .preferredColorScheme(.dark)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
@@ -428,6 +510,23 @@ private struct ProfileOperationGate {
 
     func finish() {
         continuation.finish()
+    }
+}
+
+private actor ProfileResponse {
+    var profile: PubkyProfile?
+
+    init(profile: PubkyProfile) {
+        self.profile = profile
+    }
+
+    func setProfile(_ profile: PubkyProfile?) {
+        self.profile = profile
+    }
+
+    func resolve() throws -> PubkyProfile {
+        guard let profile else { throw URLError(.notConnectedToInternet) }
+        return profile
     }
 }
 
