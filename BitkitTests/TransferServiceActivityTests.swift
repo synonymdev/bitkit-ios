@@ -761,7 +761,7 @@ final class TransferServiceActivityTests: XCTestCase {
 
     @MainActor
     func testRestoredGoldenShopAttemptCompletesObservedOriginalCandidateWithoutNewPayment() async throws {
-        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: PaykitPaymentStateBackupTests.activeAttemptGolden)
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: PaykitPaymentStateBackupTests.completeAttemptGolden())
         let state = try XCTUnwrap(envelope.paykitPaymentState)
         let store = MemoryAttemptStore()
         let attempts = OnchainSendAttemptService(store: store)

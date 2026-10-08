@@ -292,8 +292,11 @@ struct PaykitPaymentStateBackup: Codable {
             guard rates?.keys.allSatisfy({ validTxid($0) && candidateTxids.contains($0) }) != false else {
                 throw invalidBackup("Candidate fee does not belong to this operation")
             }
-            if state == .accepted, txid != candidateTxids.first, txid.flatMap({ rates?[$0] }) == nil {
-                throw invalidBackup("Missing accepted candidate fee rate")
+            guard candidateTxids.dropFirst().allSatisfy({ rates?[$0] != nil }) else {
+                throw invalidBackup("Missing successor candidate fee rate")
+            }
+            if let original = candidateTxids.first, let originalRate = rates?[original], originalRate != rate {
+                throw invalidBackup("Conflicting original candidate fee rate")
             }
             let restoredRequest = try requestId.map { value in
                 let date = try value.billingPeriodStartsAt.map { try parseTimestamp($0).date }
@@ -321,7 +324,8 @@ struct PaykitPaymentStateBackup: Codable {
                                                       channelId: value.channelId)
             }
             let orderContext = try transfer.map { value -> OnchainSendTransferContext in
-                guard orderId != nil else { throw invalidBackup("Original transfer context mismatch") }
+                let originalFee: UInt64 = try number(value.originalOrderFeeSats)
+                guard orderId != nil, amount == originalFee else { throw invalidBackup("Original transfer context mismatch") }
                 return try OnchainSendTransferContext(clientBalanceSats: number(value.originalOrderClientBalanceSats),
                                                       txTotalSats: number(value.txTotalSats),
                                                       preTransferOnchainSats: number(value.preTransferOnchainSats),
