@@ -131,6 +131,7 @@ struct PaykitPaymentStateBackup: Codable {
             )
             if let hardwareSignedTransaction {
                 guard kind == .onchain, paymentStarted, let walletId = onchainWalletId, walletId != WalletScope.default,
+                      let hardwareMiningFeeSats, let hardwareFeeRate, let hardwareTotalSpent,
                       try SignedTransactionId.fromHex(hardwareSignedTransaction) == paymentIdentifier
                 else { throw invalidBackup("Invalid hardware payment receipt") }
                 proof.hardwareSignedTransaction = hardwareSignedTransaction

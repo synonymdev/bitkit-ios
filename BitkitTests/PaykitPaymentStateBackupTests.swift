@@ -152,6 +152,37 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertEqual(again.0, restored.0)
     }
 
+    func testHardwareBackupRequiresCompleteSignedReceipt() throws {
+        let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
+        let proof = try XCTUnwrap(envelope.paykitPaymentState?.pendingProofs.first)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(proof)) as? [String: Any])
+        let signed = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        object["hardwareSignedTransaction"] = signed
+        object["paymentIdentifier"] = try SignedTransactionId.fromHex(signed)
+        object["onchainWalletId"] = "trezor:backup-wallet"
+        object["hardwareMiningFeeSats"] = 141
+        object["hardwareFeeRate"] = 2
+        object["hardwareTotalSpent"] = 1375
+        let complete = try JSONDecoder().decode(PaykitPaymentStateBackup.Proof.self, from: JSONSerialization.data(withJSONObject: object))
+        let restored = try complete.restored()
+        XCTAssertEqual(restored.hardwareSignedTransaction, signed)
+        XCTAssertEqual(restored.hardwareMiningFeeSats, 141)
+        XCTAssertEqual(restored.hardwareFeeRate, 2)
+        XCTAssertEqual(restored.hardwareTotalSpent, 1375)
+        for field in ["hardwareMiningFeeSats", "hardwareFeeRate", "hardwareTotalSpent"] {
+            for missing in [true, false] {
+                var incomplete = object
+                if missing {
+                    incomplete.removeValue(forKey: field)
+                } else {
+                    incomplete[field] = NSNull()
+                }
+                let wire = try JSONDecoder().decode(PaykitPaymentStateBackup.Proof.self, from: JSONSerialization.data(withJSONObject: incomplete))
+                XCTAssertThrowsError(try wire.restored(), field)
+            }
+        }
+    }
+
     func testSharedGoldenRejectsWrongWalletNetworkPayerAndMalformedReceipt() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.activeAttemptGolden)
         let state = try XCTUnwrap(envelope.paykitPaymentState)
