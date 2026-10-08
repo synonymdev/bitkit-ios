@@ -8,10 +8,7 @@
     confirmation for the first payment.
     Run this on the payer instance immediately after the creator sends the proposal.
 
-    iOS shows more on the review sheet than Android does: the provider card carries the counterparty's
-    contact name and truncated pubky (id "SubscriptionCounterparty") under the cadence, which does not
-    appear on Android. The handoff's "Automatically pay this subscription" toggle is unbuilt on both
-    platforms.
+    The handoff's "Automatically pay this subscription" toggle is unbuilt on both platforms.
 
     The swipe knob is brand orange on both platforms, as the handoff draws it on all four subscription
     sheets.
