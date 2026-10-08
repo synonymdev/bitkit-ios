@@ -680,18 +680,39 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(store.snapshot().isEmpty)
     }
 
-    func testPendingWithoutTxidStillBlocksAfterServiceRestart() async throws {
-        let store = MemoryAttemptStore()
-        _ = try await admit(OnchainSendAttemptService(store: store))
-        let restarted = OnchainSendAttemptService(store: store)
-
-        do {
+    func testUnsignedOrdinaryAttemptDoesNotBlockAfterServiceRestart() async throws {
+        for orderId in [nil, "original-order"] {
+            let store = MemoryAttemptStore()
+            let originalService = OnchainSendAttemptService(store: store)
+            _ = try await originalService.admit(
+                walletId: WalletScope.default, requestId: nil, orderId: orderId,
+                address: "bcrt1qexample", amountSats: 1000, isMaxAmount: false
+            )
+            let live = try await originalService.unresolvedAttempt(walletId: WalletScope.default)
+            XCTAssertNotNil(live, "A live preparation must remain guarded")
+            let restarted = OnchainSendAttemptService(store: store)
+            let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+                kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+            )
+            let snapshot = try await restarted.backupSnapshot(wallet: wallet, proofs: [])
+            XCTAssertNil(snapshot, "An unsigned abandoned admission must not stall wallet backup")
+            let unresolved = try await restarted.unresolvedAttempt(walletId: WalletScope.default)
+            XCTAssertNil(unresolved, "No signed receipt means native dispatch could not have happened")
             _ = try await admit(restarted)
-            XCTFail("A crash gap without a txid admitted another send")
-        } catch let error as OnchainSendAttemptError {
-            guard case .unresolved = error else { return XCTFail("Expected an unresolved-attempt guard") }
         }
-        XCTAssertNil(store.snapshot().first?.txid)
+    }
+
+    func testUnsignedShopAttemptStillRequiresProofCleanupAfterRestart() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        _ = try await service.admit(
+            walletId: WalletScope.default,
+            requestId: .init(paymentRequestId: "original-request", counterparty: "payer", billingPeriodStartsAt: nil),
+            orderId: nil, address: "bcrt1qexample", amountSats: 1000, isMaxAmount: false
+        )
+        let restarted = OnchainSendAttemptService(store: store)
+        let pending = try await restarted.unresolvedAttempt(walletId: WalletScope.default)
+        XCTAssertNotNil(pending, "Shop proof cleanup must precede releasing its guard")
     }
 
     func testRejectedAndUnknownRetainTxidAndBlockAnotherSend() async throws {

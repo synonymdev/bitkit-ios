@@ -676,6 +676,12 @@ actor OnchainSendAttemptService {
         let attempts = try store.load()
         guard attempts.count <= 1 else { throw OnchainSendAttemptError.unresolved }
         guard let saved = attempts.first else { return nil }
+        if knownAttempt?.id != saved.id, nativeDispatchInProgress == nil,
+           saved.status == .pending, saved.txid == nil, saved.recoveryContext == nil, saved.requestId == nil
+        {
+            try store.save([])
+            return nil
+        }
         return knownAttempt?.id == saved.id ? knownAttempt : saved
     }
 
