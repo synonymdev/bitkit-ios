@@ -368,9 +368,12 @@ final class ProfileDestinationViewTests: XCTestCase {
 
     private func element(_ id: String, in window: UIWindow) throws -> NSObject {
         let elements = accessibilityElements(in: window)
+        let nodeTypes = Set(elements.map { String(reflecting: type(of: $0)) }).sorted()
+        let hosting = "scene=\(String(describing: window.windowScene?.activationState)), key=\(window.isKeyWindow), "
+            + "attached=\(window.rootViewController?.view.window === window), nodes=\(elements.count), types=\(nodeTypes)"
         return try XCTUnwrap(
             elements.first { accessibilityIdentifier($0) == id },
-            "Missing \(id); available: \(elements.compactMap(accessibilityIdentifier).sorted())"
+            "Missing \(id); available: \(elements.compactMap(accessibilityIdentifier).sorted()); host: \(hosting)"
         )
     }
 
