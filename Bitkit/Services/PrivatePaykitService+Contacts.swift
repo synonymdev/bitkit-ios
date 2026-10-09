@@ -59,6 +59,7 @@ extension PrivatePaykitService {
         var retryIndex = 0
         var foregroundUntil: Date?
         var expectedIdentity: String?
+        var isMissing = false
 
         func priority(at now: Date) -> PaykitSdkOperationLock.Priority {
             foregroundUntil.map { $0 > now } == true ? .interactive : .background
@@ -968,6 +969,7 @@ extension PrivatePaykitService {
         retry.expectedIdentity = identity
         retry.nextAttemptAt = now
         retry.retryIndex = -1
+        retry.isMissing = false
         unavailableLinkRetryAt[publicKey] = nil
         pendingMessageDrainRetries[publicKey] = retry
         startPendingPrivateMessageDrainRetries(reason: "contact link")
@@ -1028,12 +1030,16 @@ extension PrivatePaykitService {
         guard let retry = pendingMessageDrainRetries[publicKey] else { return }
         let generation = preparationGeneration
         var identityInspectionFailed = false
+        var linkUnavailable = retry.isMissing
         var inspectedSchedulingGeneration: Int?
         defer {
-            if identityInspectionFailed, isMessageRetryCurrent(publicKey: publicKey, id: retry.id, generation: generation),
+            if isMessageRetryCurrent(publicKey: publicKey, id: retry.id, generation: generation),
                pendingMessageDrainRetries[publicKey]?.foregroundUntil == retry.foregroundUntil
             {
-                pendingMessageDrainRetries[publicKey]?.completeAttempt(at: messageRetryOperations.now())
+                pendingMessageDrainRetries[publicKey]?.isMissing = linkUnavailable
+                if identityInspectionFailed {
+                    pendingMessageDrainRetries[publicKey]?.completeAttempt(at: messageRetryOperations.now())
+                }
             }
         }
         let isCurrent: () async -> Bool = {
@@ -1073,7 +1079,6 @@ extension PrivatePaykitService {
             linkPreparationWaiters[publicKey]?[id] = nil
             guard await isCurrent() else { return }
         }
-        var linkUnavailable = false
         // Another identity operation can run while any SDK call, including a read, is suspended.
         let operations = PrivateMessageDrainOperations(
             ensureLink: {
@@ -1129,9 +1134,13 @@ extension PrivatePaykitService {
             priority: .background, operations: operations, isCurrent: isCurrent
         )
         schedulingSnapshot?.expectedIdentity = retry.expectedIdentity
-        let remainingKeys = schedulingSnapshot?.drainKeys(
-            [publicKey], retryMissingPeers: retry.expectedIdentity != nil && !linkUnavailable
-        ) ?? [publicKey]
+        let remainingKeys: Set<String> = if let schedulingSnapshot, linkUnavailable, !schedulingSnapshot.pendingOutbound.contains(publicKey) {
+            []
+        } else {
+            schedulingSnapshot?.drainKeys(
+                [publicKey], retryMissingPeers: retry.expectedIdentity != nil && !linkUnavailable
+            ) ?? [publicKey]
+        }
         guard await isCurrent() else { return }
         guard pendingMessageDrainRetries[publicKey]?.foregroundUntil == retry.foregroundUntil else { return }
         let needsForegroundIntake = !linkUnavailable && retry.priority(at: messageRetryOperations.now()) == .interactive && !received

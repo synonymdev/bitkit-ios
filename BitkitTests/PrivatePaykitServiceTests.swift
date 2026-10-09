@@ -93,6 +93,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
     func testExplicitRetryRetiresMissingPeerDuringCooldown() async {
         PrivatePaykitService.setContactSharingCleanupPending(false)
         let key = "pubky" + String(repeating: "y", count: 52)
+        let otherKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         for hasPendingOutbound in [false, true] {
             var now = Date(timeIntervalSince1970: 100)
             var handshakes = 0
@@ -119,7 +120,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
                             handshakes += 1
                             throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
                         },
-                        pendingOutbound: { hasPendingOutbound ? [key] : [] }, linkedPeers: { [] },
+                        pendingOutbound: { hasPendingOutbound ? [key, otherKey] : [otherKey] },
+                        linkedPeers: { [self.drainPeer(key, state: .notLinked)] },
                         processPending: { _ in deliveries += 1 },
                         receive: { _ in XCTFail("No linked peer") }
                     )
@@ -139,6 +141,87 @@ final class PrivatePaykitServiceTests: XCTestCase {
             continuation.finish()
             await completion.value
         }
+    }
+
+    func testMissingPeerRetiresAfterQueuedDeliveryDrains() async {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let key = "pubky" + String(repeating: "y", count: 52)
+        var now = Date(timeIntervalSince1970: 100)
+        var handshakes = 0
+        var deliveries = 0
+        var sleeps = 0
+        var hasPendingOutbound = true
+        var readFailed = false
+        var confirmedEmpty = false
+        var failIdentityInspection = false
+        var identityInspectionFailed = false
+        let settled = expectation(description: "Queued delivery drains and retry retires")
+        settled.assertForOverFulfill = false
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let service = PrivatePaykitService(messageRetryOperations: .init(
+            now: { now },
+            sleep: { delay in
+                sleeps += 1
+                now = now.addingTimeInterval(TimeInterval(delay) / 1_000_000_000)
+                if sleeps == 6 {
+                    settled.fulfill()
+                    for await _ in resume {}
+                }
+            },
+            currentPublicKey: { _ in
+                if failIdentityInspection {
+                    failIdentityInspection = false
+                    identityInspectionFailed = true
+                    throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                }
+                return "identity"
+            },
+            drain: { _ in
+                .init(
+                    ensureLink: { _ in
+                        handshakes += 1
+                        failIdentityInspection = true
+                        throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
+                    },
+                    pendingOutbound: {
+                        if deliveries == 2, !readFailed {
+                            readFailed = true
+                            throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                        }
+                        if readFailed { confirmedEmpty = !hasPendingOutbound }
+                        return hasPendingOutbound ? [key] : []
+                    },
+                    linkedPeers: { [self.drainPeer(key, state: .notLinked)] },
+                    processPending: {
+                        XCTAssertEqual($0, key)
+                        deliveries += 1
+                        if deliveries == 1 {
+                            throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                        }
+                        hasPendingOutbound = false
+                    },
+                    receive: { _ in XCTFail("No linked peer") }
+                )
+            },
+            didLink: { _, _ in XCTFail("Missing peer cannot link") }
+        ))
+        _ = await service.rememberSavedContacts([key], replacing: true)
+        await service.scheduleExplicitContactLink(publicKey: key, identity: "identity")
+        let task = await service.pendingMessageDrainRetryTask
+        let completion = Task { await task?.value; settled.fulfill() }
+        await fulfillment(of: [settled], timeout: 2)
+        let retry = await service.pendingMessageDrainRetries[key]
+        XCTAssertNil(retry)
+        XCTAssertEqual(handshakes, 1)
+        XCTAssertEqual(deliveries, 2)
+        XCTAssertTrue(readFailed)
+        XCTAssertTrue(confirmedEmpty)
+        XCTAssertTrue(identityInspectionFailed)
+        XCTAssertFalse(hasPendingOutbound)
+        await service.invalidateContactPreparation()
+        continuation.finish()
+        await completion.value
     }
 
     func testExplicitRetrySurvivesTransportCooldown() async {
