@@ -639,6 +639,92 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
+    func testHardwareSubmissionRechecksDeadlineAfterAwaitedPreparation() async throws {
+        let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(1))
+        let gate = AsyncGate()
+        var callbackEnteredBeforeDeadline = false
+        var nativeCalls = 0
+        let task = Task { @MainActor in
+            do {
+                _ = try await OnChainHwService.broadcastAtBoundary(
+                    paymentDeadline: deadline,
+                    beforeDispatch: {
+                        callbackEnteredBeforeDeadline = Date() < deadline.date
+                        await gate.wait()
+                    },
+                    nativeBroadcast: { nativeCalls += 1; return "unexpected" }
+                )
+                XCTFail("Expiry during preparation must not enter native broadcast")
+            } catch {
+                XCTAssertEqual((error as? PreparedOnchainSendNotSubmitted)?.underlying as? PaykitPaymentRequestError, .requestExpired)
+            }
+        }
+        await waitUntil { callbackEnteredBeforeDeadline }
+        XCTAssertTrue(callbackEnteredBeforeDeadline, "The callback must start while authorization remains valid")
+        try await Task.sleep(nanoseconds: UInt64(max(0, deadline.date.timeIntervalSinceNow + 0.02) * 1_000_000_000))
+        gate.open()
+        await task.value
+        XCTAssertEqual(nativeCalls, 0)
+    }
+
+    func testHardwareSubmissionRechecksCancellationAfterAwaitedPreparation() async {
+        var prepared = false
+        var nativeCalls = 0
+        let task = Task { @MainActor in
+            do {
+                _ = try await OnChainHwService.broadcastAtBoundary(
+                    paymentDeadline: nil,
+                    beforeDispatch: { prepared = true; withUnsafeCurrentTask { $0?.cancel() } },
+                    nativeBroadcast: { nativeCalls += 1; return "unexpected" }
+                )
+                XCTFail("Cancellation during preparation must not enter native broadcast")
+            } catch {
+                XCTAssertTrue((error as? PreparedOnchainSendNotSubmitted)?.underlying is CancellationError)
+            }
+        }
+        await task.value
+        XCTAssertTrue(prepared)
+        XCTAssertEqual(nativeCalls, 0)
+    }
+
+    func testRefusedShopRetryExpiryDuringDispatchPreparationKeepsHintAndOriginalBytes() async {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        let receipt = funding.signedTx
+        var stored = RetainedHardwareOnchainPayment(signedTx: receipt, hasAttemptedBroadcast: true, isRefusedForNavigation: true)
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(60))
+        let gate = AsyncGate()
+        var preparing = false
+        let task = Task { @MainActor in
+            do {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                    paymentDeadline: deadline, paymentRequestId: requestId, loadSignedPayment: { stored },
+                    markSignedPaymentRefused: { _, refused in
+                        stored.isRefusedForNavigation = refused
+                        if !refused {
+                            preparing = true; await gate.wait()
+                        }
+                    }
+                )
+                XCTFail("An expiry after awaited preparation must not dispatch")
+            } catch { XCTAssertEqual(error as? PaykitPaymentRequestError, .requestExpired) }
+        }
+        await waitUntil { preparing }
+        XCTAssertTrue(preparing)
+        funding.broadcastNow = { deadline.date.addingTimeInterval(1) }
+        gate.open()
+        await task.value
+        XCTAssertEqual(funding.broadcastCalls, 0)
+        XCTAssertEqual(funding.signCalls, 0)
+        XCTAssertEqual(stored.signedTx, receipt)
+        XCTAssertTrue(stored.isRefusedForNavigation)
+        XCTAssertTrue(coordinator.hasPendingBroadcast)
+        XCTAssertTrue(coordinator.canLeave)
+    }
+
     func testHardwareSubmissionRejectsExpiredDeadlineBeforeCallingElectrum() async throws {
         do {
             _ = try await OnChainHwService.shared.broadcastRawTx(
@@ -647,7 +733,9 @@ final class HwFundingSignerTests: XCTestCase {
             )
             XCTFail("Expired payment must not reach Electrum")
         } catch {
-            XCTAssertEqual((error as? Bitkit.AppError)?.underlyingError as? PaykitPaymentRequestError, .requestExpired)
+            let underlying = (error as? Bitkit.AppError)?.underlyingError ?? error
+            let failure = (underlying as? PreparedOnchainSendNotSubmitted)?.underlying ?? underlying
+            XCTAssertEqual(failure as? PaykitPaymentRequestError, .requestExpired)
         }
     }
 

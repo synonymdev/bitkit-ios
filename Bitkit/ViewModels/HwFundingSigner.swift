@@ -638,25 +638,31 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
-                var enteredDispatch = false
                 do {
                     let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline) { [self] in
                         try Task.checkCancellation()
                         guard signingAttempt == attempt else { throw CancellationError() }
                         try await markSignedPaymentRefused(signed, false)
-                        enteredDispatch = true
+                        try Task.checkCancellation()
+                        guard signingAttempt == attempt else { throw CancellationError() }
                     }
                     await afterBroadcast(result)
                     return result
                 } catch {
                     // Navigation may unlock after a definite refusal; the receipt still guards funds.
-                    let refused = error.isHardwareBroadcastRefusal()
-                    if enteredDispatch, paymentRequestId != nil, refused {
+                    let underlying = (error as? AppError)?.underlyingError ?? error
+                    let notSubmitted = underlying as? PreparedOnchainSendNotSubmitted
+                    let failure = notSubmitted?.underlying ?? error
+                    let refused = failure.isHardwareBroadcastRefusal()
+                    if notSubmitted == nil, paymentRequestId != nil, refused {
                         try? await markSignedPaymentRefused(signed, true)
                     }
-                    let dispatchIsUncertain = enteredDispatch || (error as? HwTransferError) == .broadcastUncertain
+                    let dispatchIsUncertain = notSubmitted == nil
                     isBroadcastUnresolved = dispatchIsUncertain ? paymentRequestId != nil && !refused : priorBroadcastWasUnresolved
-                    if !enteredDispatch, (error as? HwTransferError) != .broadcastUncertain {
+                    if notSubmitted != nil {
+                        if hadPriorBroadcastAttempt, !priorBroadcastWasUnresolved, paymentRequestId != nil {
+                            try? await markSignedPaymentRefused(signed, true)
+                        }
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
                         let cleared: Bool
                         if hadPriorBroadcastAttempt {
@@ -671,13 +677,13 @@ final class HwSendCoordinator {
                         if !retainsBroadcastAttempt {
                             pendingPayment = nil
                         }
-                        throw error
+                        throw failure
                     }
-                    let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
-                    if paymentRequestId == nil, !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
+                    let outcomeIsUncertain = (failure as? HwTransferError) == .broadcastUncertain
+                    if paymentRequestId == nil, !outcomeIsUncertain, !failure.isBroadcastConnectivityFailure() {
                         pendingPayment = nil
                     }
-                    throw error
+                    throw failure
                 }
             } catch {
                 guard signingAttempt == attempt else { throw error }

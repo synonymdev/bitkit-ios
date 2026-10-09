@@ -120,8 +120,15 @@ final class MockHwFunding: HwTransferFunding {
         paymentDeadline: PaykitPreciseInstant? = nil,
         beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
     ) async throws -> String {
-        try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: broadcastNow())
-        try await beforeDispatch()
+        do {
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: broadcastNow())
+            try Task.checkCancellation()
+            try await beforeDispatch()
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: broadcastNow())
+            try Task.checkCancellation()
+        } catch {
+            throw PreparedOnchainSendNotSubmitted(underlying: error)
+        }
         broadcastCalls += 1
         broadcastTransactions.append(serializedTx)
         if let broadcastGate {

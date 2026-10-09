@@ -124,11 +124,28 @@ class OnChainHwService {
         beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
     ) async throws -> String {
         try await ServiceQueue.background(.core) {
+            try await Self.broadcastAtBoundary(paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch) {
+                try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
+            }
+        }
+    }
+
+    /// Recheck after awaited preparation; errors here prove the native call was not entered.
+    static func broadcastAtBoundary(
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void,
+        nativeBroadcast: () async throws -> String
+    ) async throws -> String {
+        do {
             try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
             try Task.checkCancellation()
             try await beforeDispatch()
-            return try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
+            try Task.checkCancellation()
+        } catch {
+            throw PreparedOnchainSendNotSubmitted(underlying: error)
         }
+        return try await nativeBroadcast()
     }
 
     // MARK: - Event Watcher (No Device Required)
