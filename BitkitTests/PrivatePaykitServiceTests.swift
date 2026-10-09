@@ -141,6 +141,72 @@ final class PrivatePaykitServiceTests: XCTestCase {
         }
     }
 
+    func testExplicitRetrySurvivesTransportCooldown() async {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let key = "pubky" + String(repeating: "y", count: 52)
+        var now = Date(timeIntervalSince1970: 100)
+        var handshakes = 0
+        var publicationHandshakes = 0
+        var sleeps = 0
+        var armCooldown: (() async -> Void)?
+        let settled = expectation(description: "Retry retires or reaches the expired cooldown")
+        settled.assertForOverFulfill = false
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let service = PrivatePaykitService(messageRetryOperations: .init(
+            now: { now },
+            sleep: { delay in
+                sleeps += 1
+                if sleeps == 1 { await armCooldown?() }
+                now = now.addingTimeInterval(TimeInterval(delay) / 1_000_000_000)
+                if handshakes >= 2 || sleeps == 12 {
+                    settled.fulfill()
+                    for await _ in resume {}
+                }
+            },
+            currentPublicKey: { _ in "identity" },
+            drain: { _ in
+                .init(
+                    ensureLink: { _ in
+                        handshakes += 1
+                        throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                    },
+                    pendingOutbound: { [] }, linkedPeers: { [] },
+                    processPending: { _ in XCTFail("No outbound messages") },
+                    receive: { _ in XCTFail("No linked peer") }
+                )
+            },
+            didLink: { _, _ in XCTFail("Unreachable peer cannot link") }
+        ))
+        _ = await service.rememberSavedContacts([key], replacing: true)
+        armCooldown = {
+            _ = await service.syncLocalEndpointPublication(
+                for: [key], reason: "test", requireImmediatePublication: false,
+                operations: .init(
+                    currentPublicKey: { "pubkylocal" },
+                    ensureLink: { _ in
+                        publicationHandshakes += 1
+                        throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                    },
+                    buildEndpoints: { _ in XCTFail("Failed links must not reserve addresses"); return [] },
+                    syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) },
+                    linkedPeers: { [] }
+                )
+            )
+        }
+        await service.scheduleExplicitContactLink(publicKey: key, identity: "identity")
+        let task = await service.pendingMessageDrainRetryTask
+        let completion = Task { await task?.value; settled.fulfill() }
+        await fulfillment(of: [settled], timeout: 2)
+        let retry = await service.pendingMessageDrainRetries[key]
+        XCTAssertEqual(publicationHandshakes, 1)
+        XCTAssertNotNil(retry)
+        XCTAssertEqual(handshakes, 2)
+        await service.invalidateContactPreparation()
+        continuation.finish()
+        await completion.value
+    }
+
     func testExplicitRetryCoalescesIdentityChecksWithoutReusingAcrossReads() async {
         PrivatePaykitService.setContactSharingCleanupPending(false)
         let key = "pubky" + String(repeating: "y", count: 52)

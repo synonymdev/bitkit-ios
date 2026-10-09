@@ -1073,11 +1073,17 @@ extension PrivatePaykitService {
             linkPreparationWaiters[publicKey]?[id] = nil
             guard await isCurrent() else { return }
         }
+        var linkUnavailable = false
         // Another identity operation can run while any SDK call, including a read, is suspended.
         let operations = PrivateMessageDrainOperations(
             ensureLink: {
                 defer { inspectedSchedulingGeneration = nil }
-                try await self.retryDrainOperations(for: publicKey).ensureLink($0)
+                do {
+                    try await self.retryDrainOperations(for: publicKey).ensureLink($0)
+                } catch {
+                    if case PaykitError.NotFound = error { linkUnavailable = true }
+                    throw error
+                }
             },
             pendingOutbound: {
                 defer { inspectedSchedulingGeneration = nil }
@@ -1123,7 +1129,6 @@ extension PrivatePaykitService {
             priority: .background, operations: operations, isCurrent: isCurrent
         )
         schedulingSnapshot?.expectedIdentity = retry.expectedIdentity
-        let linkUnavailable = unavailableLinkRetryAt[publicKey].map { $0 > messageRetryOperations.now() } == true
         let remainingKeys = schedulingSnapshot?.drainKeys(
             [publicKey], retryMissingPeers: retry.expectedIdentity != nil && !linkUnavailable
         ) ?? [publicKey]
