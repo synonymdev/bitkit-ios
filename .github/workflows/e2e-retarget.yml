@@ -1,0 +1,24 @@
+name: e2e-retarget
+
+# A stacked PR defers E2E (see e2e-tests.yml); retargeting it to the default branch emits no event e2e-tests listens to
+on:
+  pull_request:
+    types: [edited]
+
+permissions:
+  actions: write
+
+jobs:
+  run-e2e:
+    if: >-
+      github.event.changes.base != null &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start E2E on the retargeted PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: gh workflow run e2e-tests.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF"
