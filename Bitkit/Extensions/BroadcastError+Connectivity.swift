@@ -57,7 +57,17 @@ extension Error {
             return true
         }
         if let error = self as? BroadcastError, case let .ElectrumError(details) = error {
-            return details.lowercased().hasPrefix("broadcast failed:")
+            let prefix = "broadcast failed: "
+            let details = details.lowercased()
+            guard details.hasPrefix(prefix) else { return false }
+            let reason = String(details.dropFirst(prefix.count))
+            return [
+                "min relay fee not met",
+                "mempool min fee not met",
+                "bad-txns-inputs-missingorspent",
+                "txn-mempool-conflict",
+                "non-final",
+            ].contains(reason)
         }
         if let error = self as? AppError, let underlyingError = error.underlyingError {
             return underlyingError.isHardwareBroadcastRefusal()

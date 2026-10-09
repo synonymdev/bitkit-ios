@@ -844,7 +844,10 @@ final class HwFundingSignerTests: XCTestCase {
     }
 
     func testShopBroadcastFailurePreservesSignedPaymentAcrossCancel() async throws {
-        for details in ["offline", "unrecognized backend error"] {
+        for details in [
+            "offline", "unrecognized backend error",
+            "broadcast failed: disconnected", "broadcast failed: unknown refusal",
+        ] {
             let funding = MockHwFunding()
             let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
             let manager = HwWalletManager()
