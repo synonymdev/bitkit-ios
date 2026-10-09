@@ -168,6 +168,8 @@ the retry retires instead of polling indefinitely, whether its SDK record is abs
 An unrelated peer's pending outbound must not keep the missing peer's retry alive. Pending outbound
 for that same peer must remain scheduled through transient delivery failures and retire after it drains;
 failed scheduling reads must keep the retry until a fresh read confirms no delivery remains.
+If that peer becomes linked while delivery is pending, drain its queue and fail intake once within
+the foreground window: intake must retry and signal readiness only after success.
 A later explicit refresh can try linking again, and the existing unavailable-peer cooldown still applies. A transport failure during publication
 must not retire the explicit retry; it attempts linking again after the cooldown. Repeat identity changes during peer
 and outbound reads: no following operation or readiness notification may use the old identity.

@@ -1134,6 +1134,11 @@ extension PrivatePaykitService {
             priority: .background, operations: operations, isCurrent: isCurrent
         )
         schedulingSnapshot?.expectedIdentity = retry.expectedIdentity
+        if schedulingSnapshot?.peers.contains(where: {
+            $0.state == .linked && PubkyPublicKeyFormat.normalized($0.counterparty) == publicKey
+        }) == true {
+            linkUnavailable = false
+        }
         let remainingKeys: Set<String> = if let schedulingSnapshot, linkUnavailable, !schedulingSnapshot.pendingOutbound.contains(publicKey) {
             []
         } else {

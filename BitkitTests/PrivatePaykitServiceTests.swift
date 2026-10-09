@@ -502,6 +502,50 @@ final class PrivatePaykitServiceTests: XCTestCase {
         }
     }
 
+    func testRecoveredMissingPeerRetriesFailedIntake() async {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let key = "pubky" + String(repeating: "y", count: 52)
+        var now = Date(timeIntervalSince1970: 100)
+        var linked = false
+        var pending = true
+        var receives = 0
+        var completions = 0
+        let service = PrivatePaykitService(messageRetryOperations: .init(
+            now: { now },
+            sleep: { delay in
+                now = now.addingTimeInterval(TimeInterval(delay) / 1_000_000_000)
+                linked = true
+            },
+            currentPublicKey: { _ in "identity" },
+            drain: { _ in
+                .init(
+                    ensureLink: { _ in throw PaykitError.NotFound(code: "missing", context: "Peer unavailable") },
+                    pendingOutbound: { pending ? [key] : [] },
+                    linkedPeers: { [self.drainPeer(key, state: linked ? .linked : .notLinked)] },
+                    processPending: { _ in
+                        guard linked else { throw PaykitError.Transport(code: "offline", context: "Delivery unavailable") }
+                        pending = false
+                    },
+                    receive: { _ in
+                        receives += 1
+                        if receives == 1 { throw PaykitError.Transport(code: "offline", context: "Intake unavailable") }
+                    }
+                )
+            },
+            didLink: { _, _ in completions += 1 }
+        ))
+        _ = await service.rememberSavedContacts([key], replacing: true)
+        await service.scheduleExplicitContactLink(publicKey: key, identity: "identity")
+        let task = await service.pendingMessageDrainRetryTask
+        await task?.value
+        XCTAssertFalse(pending)
+        XCTAssertEqual(receives, 2)
+        XCTAssertEqual(completions, 1)
+        let remaining = await service.pendingMessageDrainRetries[key]
+        XCTAssertNil(remaining)
+        await service.invalidateContactPreparation()
+    }
+
     func testExplicitLinkWindowUsesExistingBackoffAndDoesNotExtendOnDuplicate() async throws {
         PrivatePaykitService.setContactSharingCleanupPending(false)
         let now = Date(timeIntervalSince1970: 100)
