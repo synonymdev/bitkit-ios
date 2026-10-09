@@ -18,7 +18,8 @@ struct UsdtWalletScreen: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 32) {
                     UsdtAmountHeader(
-                        amount: usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—", hideBalance: settings.hideBalance
+                        amount: usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—",
+                        displayAmount: usdt.balance.map { usdtOverviewAmount($0) }, hideBalance: settings.hideBalance
                     )
                     .balanceVisibilityToggle()
                     .accessibilityIdentifier("UsdtBalance")
@@ -107,6 +108,7 @@ struct UsdtCoinIllustration: View {
 
 struct UsdtAmountHeader: View {
     let amount: String
+    var displayAmount: String?
     var prefix = ""
     var hideBalance = false
 
@@ -121,7 +123,7 @@ struct UsdtAmountHeader: View {
                 CaptionMText("USDT", textColor: .textSecondary)
             }
             DisplayText(
-                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : amount),
+                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : displayAmount ?? amount),
                 accentColor: .textSecondary, accentFont: Fonts.extraBold
             )
             .lineLimit(1).minimumScaleFactor(0.5)
@@ -171,7 +173,9 @@ func usdtDisplaySats(amount: String, rate: PaykitExchangeRate?, now: Date = Date
     return NSDecimalNumber(decimal: rounded).intValue
 }
 
-func usdtOverviewAmount(_ amount: UInt64) -> String {
-    if amount > 0, amount < 10000 { return "<0.01" }
-    return (Decimal(amount) / 1_000_000).formatted(.number.precision(.fractionLength(0 ... 2)))
+func usdtOverviewAmount(_ amount: UInt64, locale: Locale = .current) -> String {
+    let format = Decimal.FormatStyle.number.precision(.fractionLength(0 ... 2))
+        .rounded(rule: .toNearestOrAwayFromZero).locale(locale)
+    if amount > 0, amount < 10000 { return "<" + (Decimal(1) / 100).formatted(format) }
+    return (Decimal(amount) / 1_000_000).formatted(format)
 }

@@ -360,7 +360,8 @@ struct UsdtSendView: View {
     private var submittedContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let quote {
-                UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount)).padding(.bottom, 32)
+                UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
+                    .padding(.bottom, 32)
             }
             if submittedStatus == .bridgeRefunded {
                 BodyMText(t("usdt__bridge_refunded_description"), textColor: .textSecondary)

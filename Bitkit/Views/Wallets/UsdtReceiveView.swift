@@ -55,7 +55,6 @@ struct UsdtReceiveView: View {
                     address: deposit?.address ?? usdt.address,
                     uri: deposit?.uri ?? receiveUri,
                     network: networkName,
-                    isDefaultNetwork: network == nil,
                     error: error ?? usdt.errorMessage,
                     onEdit: { page = .amount },
                     onNetwork: { page = .networks }
@@ -168,18 +167,26 @@ struct UsdtReceiveAddressContent: View {
     let address: String
     let uri: String
     let network: String
-    let isDefaultNetwork: Bool
     var error: String?
     let onEdit: () -> Void
     let onNetwork: () -> Void
     @State private var showDetails = false
+
+    private var networkTitle: String {
+        t("usdt__receive_network", variables: ["network": network])
+    }
+
+    private var shareText: String {
+        networkTitle + "\n" + uri
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             if !uri.isEmpty {
                 if showDetails {
                     CopyAddressCard(
-                        addresses: [CopyAddressPair(title: network + " " + t("wallet__activity_address"), address: address, type: .onchain)],
+                        addresses: [CopyAddressPair(title: network + " " + t("wallet__activity_address"), address: address, type: .onchain,
+                                                    shareText: shareText)],
                         navigationPath: .constant([]),
                         editRoute: nil,
                         accentColor: .usdtAccent
@@ -187,13 +194,13 @@ struct UsdtReceiveAddressContent: View {
                     .accessibilityIdentifier("UsdtReceiveAddress")
                 } else {
                     QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: address, onEdit: onEdit)
+                           copyValue: address, shareText: shareText, onEdit: onEdit)
                 }
             } else if let error { BodySText(error, textColor: .brandAccent) }
             else { ProgressView() }
         }
         CustomButton(
-            title: t("usdt__receive_network", variables: ["network": isDefaultNetwork ? t("common__default") : network]),
+            title: networkTitle,
             variant: .secondary,
             size: .small,
             icon: Image("usdt-network").resizable().frame(width: 16, height: 16),
