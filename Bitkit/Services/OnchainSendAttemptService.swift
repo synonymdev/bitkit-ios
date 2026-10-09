@@ -438,6 +438,9 @@ actor OnchainSendAttemptService {
                 }
                 attempt.amountSats = prepared.recipientAmountSats
                 attempt.txid = prepared.txid
+                if let miningFee = prepared.miningFeeSats {
+                    attempt.followupContext?.feeSats = miningFee
+                }
                 attempt.recoveryContext = OnchainSendRecoveryContext(
                     inputs: prepared.inputs, satsPerVbyte: satsPerVbyte, paymentIdentity: paymentIdentity,
                     candidateTxids: [prepared.txid], candidateFeeRates: [prepared.txid.lowercased(): satsPerVbyte]
@@ -720,7 +723,7 @@ actor OnchainSendAttemptService {
         guard attempts.count <= 1 else { throw OnchainSendAttemptError.unresolved }
         guard let saved = attempts.first else { return nil }
         if knownAttempt?.id != saved.id, nativeDispatchInProgress == nil,
-           saved.status == .pending, saved.txid == nil, saved.recoveryContext == nil, saved.requestId == nil
+           saved.status == .pending, saved.txid == nil, saved.recoveryContext == nil
         {
             try store.save([])
             return nil
@@ -792,7 +795,7 @@ actor OnchainSendAttemptService {
             throw OnchainSendAttemptError.localFollowupNotSaved
         }
         let isOriginal = recovery.candidateTxids.first?.caseInsensitiveCompare(txid) == .orderedSame
-        let observed = isOriginal ? context.feeSats : try await winningFee(original)
+        let observed = isOriginal && context.feeSats > 0 ? context.feeSats : try await winningFee(original)
         guard let fee = observed,
               !original.amountSats.addingReportingOverflow(fee).overflow,
               var attempt = try currentAttempt(), attempt.id == original.id,

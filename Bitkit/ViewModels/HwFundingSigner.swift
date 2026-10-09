@@ -586,6 +586,7 @@ final class HwSendCoordinator {
             }
 
             let hadPriorBroadcastAttempt = pendingPayment?.hasBroadcastAttempted == true
+            let priorBroadcastWasUnresolved = isBroadcastUnresolved
             var broadcastWasAttempted = hadPriorBroadcastAttempt
             isAuthorizingPayment = true
             defer { isAuthorizingPayment = false }
@@ -599,8 +600,6 @@ final class HwSendCoordinator {
                     guard signingAttempt == attempt else { throw error }
                     if !broadcastWasAttempted {
                         pendingPayment = nil
-                    } else if ((error as? AppError)?.underlyingError ?? error) as? PaykitPaymentRequestError == .requestExpired {
-                        isBroadcastUnresolved = true
                     }
                     throw error
                 }
@@ -645,11 +644,11 @@ final class HwSendCoordinator {
                         } else {
                             cleared = await clearSignedPaymentBeforeDispatch(signed)
                         }
-                        let unresolved = hadPriorBroadcastAttempt || !cleared
-                        isBroadcastUnresolved = unresolved
-                        broadcastWasAttempted = unresolved
-                        pendingPayment?.hasBroadcastAttempted = unresolved
-                        if !unresolved {
+                        let retainsBroadcastAttempt = hadPriorBroadcastAttempt || !cleared
+                        isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared
+                        broadcastWasAttempted = retainsBroadcastAttempt
+                        pendingPayment?.hasBroadcastAttempted = retainsBroadcastAttempt
+                        if !retainsBroadcastAttempt {
                             pendingPayment = nil
                         }
                         throw error

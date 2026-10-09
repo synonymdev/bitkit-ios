@@ -60,14 +60,25 @@ extension Error {
             let prefix = "broadcast failed: "
             let details = details.lowercased()
             guard details.hasPrefix(prefix) else { return false }
-            let reason = String(details.dropFirst(prefix.count))
+            var reason = String(details.dropFirst(prefix.count))
+            for envelope in ["electrum server error: ", "sendrawtransaction rpc error: "] where reason.hasPrefix(envelope) {
+                guard let data = String(reason.dropFirst(envelope.count)).data(using: .utf8),
+                      let response = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let message = response["message"] as? String
+                else { return false }
+                reason = message
+            }
+            let rejectionPrefix = "the transaction was rejected by network rules.\n\n"
+            if reason.hasPrefix(rejectionPrefix) {
+                reason = String(reason.dropFirst(rejectionPrefix.count).split(separator: "\n", maxSplits: 1).first ?? "")
+            }
             return [
                 "min relay fee not met",
                 "mempool min fee not met",
                 "bad-txns-inputs-missingorspent",
                 "txn-mempool-conflict",
                 "non-final",
-            ].contains(reason)
+            ].contains { reason == $0 || reason.hasPrefix($0 + ", ") }
         }
         if let error = self as? AppError, let underlyingError = error.underlyingError {
             return underlyingError.isHardwareBroadcastRefusal()

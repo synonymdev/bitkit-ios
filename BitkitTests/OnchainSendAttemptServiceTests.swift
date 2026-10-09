@@ -276,6 +276,48 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(retriedCalls, calls + 1, "A failed owner must allow a later retry")
     }
 
+    func testOriginalSignedFeeIsPersistedBeforeDispatchInsteadOfUnreadyEstimate() async throws {
+        for estimate in [UInt64(0), 143] {
+            let store = MemoryAttemptStore()
+            let service = OnchainSendAttemptService(store: store)
+            let sender = PreparedAttemptNodeMock()
+            sender.result = .accepted(txid: sender.txid)
+            _ = try await service.send(
+                using: sender, address: "original", amountSats: sender.amount, satsPerVbyte: 1,
+                utxosToSpend: nil, isMaxAmount: false,
+                followupContext: .init(feeSats: estimate, feeRate: 1, tags: [], contact: nil, createdAt: 123),
+                beforeBroadcastAttempt: {
+                    XCTAssertEqual(store.snapshot().first?.followupContext?.feeSats, sender.miningFee)
+                    XCTAssertEqual(sender.broadcasts, 0)
+                }
+            )
+            XCTAssertEqual(store.snapshot().first?.followupContext?.feeSats, sender.miningFee)
+        }
+    }
+
+    func testOriginalWinnerWithZeroStoredFeeUsesObservedFeeOrKeepsFollowupPending() async throws {
+        for observed in [UInt64(281), nil] as [UInt64?] {
+            let store = MemoryAttemptStore()
+            let followup = CapturingWinningFeeFollowup()
+            let service = OnchainSendAttemptService(store: store, localFollowup: followup, winningFee: { _ in observed })
+            let sender = PreparedAttemptNodeMock()
+            sender.miningFee = nil
+            sender.result = .accepted(txid: sender.txid)
+            _ = try await service.send(
+                using: sender, address: "original", amountSats: sender.amount, satsPerVbyte: 1,
+                utxosToSpend: nil, isMaxAmount: false,
+                followupContext: .init(feeSats: 0, feeRate: 1, tags: [], contact: nil, createdAt: 123)
+            )
+            do {
+                _ = try await service.resumeAcceptedOrdinarySend(walletId: try XCTUnwrap(store.snapshot().first).walletId)
+                XCTFail("The capturing local follow-up does not acknowledge completion")
+            } catch {}
+            XCTAssertEqual(followup.attempt?.followupContext?.feeSats, observed)
+            XCTAssertEqual(store.snapshot().first?.followupContext?.feeSats, observed ?? 0)
+            XCTAssertTrue(store.snapshot().first?.blocksNewSend == true)
+        }
+    }
+
     func testSuccessorFollowupRetainsWinningFeeInsteadOfOriginalFee() async throws {
         let store = MemoryAttemptStore()
         let followup = CapturingWinningFeeFollowup()
@@ -371,6 +413,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         let followup = CapturingWinningFeeFollowup()
         let service = OnchainSendAttemptService(store: store, localFollowup: followup, winningFee: { _ in 143 })
         let sender = PreparedAttemptNodeMock()
+        sender.miningFee = 143
         _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
                                    satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
                                    followupContext: .init(feeSats: 143, feeRate: 1, tags: [], contact: nil, createdAt: 123))
@@ -850,7 +893,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
-    func testUnsignedShopAttemptStillRequiresProofCleanupAfterRestart() async throws {
+    func testUnsignedShopAttemptDoesNotBlockAfterServiceRestart() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
         _ = try await service.admit(
@@ -858,9 +901,17 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             requestId: .init(paymentRequestId: "original-request", counterparty: "payer", billingPeriodStartsAt: nil),
             orderId: nil, address: "bcrt1qexample", amountSats: 1000, isMaxAmount: false
         )
+        let live = try await service.unresolvedAttempt(walletId: WalletScope.default)
+        XCTAssertNotNil(live, "Current-process Shop preparation must remain guarded")
         let restarted = OnchainSendAttemptService(store: store)
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        let backup = try await restarted.backupSnapshot(wallet: wallet, proofs: [])
+        XCTAssertNil(backup, "An unsigned abandoned Shop admission must not stall wallet backup")
         let pending = try await restarted.unresolvedAttempt(walletId: WalletScope.default)
-        XCTAssertNotNil(pending, "Shop proof cleanup must precede releasing its guard")
+        XCTAssertNil(pending, "Proof-start cannot precede persistence of the signed receipt")
+        _ = try await admit(restarted)
     }
 
     func testRejectedAndUnknownRetainTxidAndBlockAnotherSend() async throws {

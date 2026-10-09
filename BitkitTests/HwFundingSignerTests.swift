@@ -618,6 +618,7 @@ final class HwFundingSignerTests: XCTestCase {
                     }
                     funding.broadcastError = nil
                 }
+                let priorNavigationWasUnresolved = coordinator.isBroadcastUnresolved
                 let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(expiresInQueue ? 60 : -60))
                 funding.broadcastNow = { deadline.date.addingTimeInterval(1) }
                 var outcomes: [PrivatePaymentListSendOutcome] = []
@@ -633,7 +634,7 @@ final class HwFundingSignerTests: XCTestCase {
                 XCTAssertEqual(funding.broadcastCalls, hadPriorAttempt ? 1 : 0)
                 XCTAssertEqual(outcomes, [hadPriorAttempt ? .uncertain : .definitePreBroadcastFailure])
                 XCTAssertEqual(coordinator.hasPendingBroadcast, hadPriorAttempt)
-                XCTAssertEqual(coordinator.isBroadcastUnresolved, hadPriorAttempt)
+                XCTAssertEqual(coordinator.isBroadcastUnresolved, priorNavigationWasUnresolved)
             }
         }
     }
@@ -847,6 +848,10 @@ final class HwFundingSignerTests: XCTestCase {
         for details in [
             "offline", "unrecognized backend error",
             "broadcast failed: disconnected", "broadcast failed: unknown refusal",
+            "Broadcast failed: Electrum server error: {\"code\":-26,\"message\":\"unknown refusal\"}",
+            "Broadcast failed: Electrum server error: {\"code\":-26,\"message\":\"disconnected\",\"data\":\"non-final\"}",
+            "Broadcast failed: Electrum server error: {\"code\":1,\"message\":\"the transaction was rejected by network rules.\\n\\ndisconnected\\n[non-final]\"}",
+            "Broadcast failed: Electrum server error: {\"code\":2,\"message\":\"sendrawtransaction RPC error: {\\\"message\\\":\\\"unknown refusal\\\",\\\"data\\\":\\\"non-final\\\"}\"}",
         ] {
             let funding = MockHwFunding()
             let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
@@ -879,11 +884,22 @@ final class HwFundingSignerTests: XCTestCase {
     }
 
     func testShopDefiniteRefusalAllowsLeavingAndRetainsOriginalSignedPayment() async throws {
+        let messages = [
+            "min relay fee not met, 110 < 123",
+            "mempool min fee not met, 110 < 1000",
+            "bad-txns-inputs-missingorspent", "txn-mempool-conflict", "non-final",
+            "the transaction was rejected by network rules.\n\nmin relay fee not met, 100 < 110\n[0200000001...]",
+            "sendrawtransaction RPC error: {\"code\":-26,\"message\":\"bad-txns-inputs-missingorspent\"}",
+        ]
+        let serverErrors = try messages.map { message in
+            let json = try JSONSerialization.data(withJSONObject: ["code": 1, "message": message])
+            return BroadcastError.ElectrumError(errorDetails: "Broadcast failed: Electrum server error: " + String(decoding: json, as: UTF8.self))
+        }
         for error in [
             BroadcastError.InvalidHex(errorDetails: "invalid hex"),
             BroadcastError.InvalidTransaction(errorDetails: "invalid transaction"),
             BroadcastError.ElectrumError(errorDetails: "broadcast failed: min relay fee not met"),
-        ] {
+        ] + serverErrors {
             let funding = MockHwFunding()
             let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
             let manager = HwWalletManager()
@@ -911,6 +927,51 @@ final class HwFundingSignerTests: XCTestCase {
             )
             XCTAssertEqual(funding.signCalls, 1)
             XCTAssertEqual(funding.broadcastCalls, 2)
+        }
+    }
+
+    func testExpiredShopRetryPreservesPriorNavigationStateAndSignedPayment() async throws {
+        for details in ["broadcast failed: min relay fee not met", "offline"] {
+            for expiresInQueue in [false, true] {
+                let funding = MockHwFunding()
+                let manager = HwWalletManager()
+                let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+                let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+                funding.broadcastError = BroadcastError.ElectrumError(errorDetails: details)
+                await assertThrowsAsync {
+                    _ = try await coordinator.signAndBroadcast(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+                    )
+                }
+                let couldLeave = coordinator.canLeave
+                funding.broadcastError = nil
+                let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(60))
+                funding.broadcastNow = { deadline.date.addingTimeInterval(1) }
+                var outcomes: [PrivatePaymentListSendOutcome] = []
+                await assertThrowsAsync {
+                    _ = try await coordinator.signAndBroadcast(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                        paymentDeadline: deadline, paymentRequestId: requestId,
+                        beforeBroadcastAttempt: {
+                            if !expiresInQueue {
+                                throw PaykitPaymentRequestError.requestExpired
+                            }
+                        },
+                        afterFailure: { outcomes.append($0) }
+                    )
+                }
+                XCTAssertEqual(coordinator.canLeave, couldLeave, "A never-submitted retry must not change prior navigation uncertainty")
+                XCTAssertTrue(coordinator.hasPendingBroadcast)
+                XCTAssertEqual(funding.broadcastCalls, 1)
+                XCTAssertEqual(outcomes, [.uncertain], "The earlier submitted bytes remain guarded")
+                coordinator.cancel()
+                funding.broadcastNow = Date.init
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+                )
+                XCTAssertEqual(funding.signCalls, 1)
+                XCTAssertEqual(funding.broadcastTransactions, [funding.signedTx.serializedTx, funding.signedTx.serializedTx])
+            }
         }
     }
 
