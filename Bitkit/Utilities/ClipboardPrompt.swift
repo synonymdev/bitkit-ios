@@ -67,7 +67,6 @@ enum ClipboardPromptValidator {
         }
 
         let normalized = uri.removingLightningSchemes()
-        guard !Bip21Utils.isDuplicatedBip21(normalized) else { return false }
         // Only recognize these shapes here: fetching remote metadata must wait for the user's OK tap.
         if requiresNetworkResolution(normalized) {
             return true
