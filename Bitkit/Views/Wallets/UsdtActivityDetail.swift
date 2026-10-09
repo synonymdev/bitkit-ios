@@ -22,7 +22,7 @@ struct UsdtActivityRow: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     BodyMSBText(
                         "<accent>\(transfer.isIncoming ? "+" : "−")</accent> "
-                            + (hideBalance ? " • • • • •" : usdtFormatAmount(amount: transfer.activityAmount)),
+                            + (hideBalance ? " • • • • •" : usdtOverviewAmount(transfer.activityAmount)),
                         accentColor: .textSecondary
                     )
                     .lineLimit(1).minimumScaleFactor(0.7)

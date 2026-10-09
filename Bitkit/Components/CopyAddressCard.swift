@@ -9,6 +9,7 @@ struct CopyAddressPair {
     let title: String
     let address: String
     let type: AddressType
+    var shareText: String?
 }
 
 struct CopyAddressCard: View {
@@ -56,7 +57,7 @@ struct CopyAddressCard: View {
                             }
 
                             ShareLink(
-                                item: pair.address,
+                                item: pair.shareText ?? pair.address,
                                 preview: SharePreview(pair.address, image: Image("app-icon-orange"))
                             ) {
                                 CustomButton(

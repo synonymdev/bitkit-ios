@@ -6,6 +6,7 @@ struct QrArea: View {
     let imageAsset: String?
     let accentColor: Color
     var copyValue: String?
+    var shareText: String?
     var onEdit: (() -> Void)?
 
     @State private var showCopyTooltip = false
@@ -15,7 +16,7 @@ struct QrArea: View {
     private var shareItems: [Any] {
         // If image is not available, generate it on-demand
         let image = shareQRImage ?? generateShareQrImage()
-        return [uri, image ?? UIImage()]
+        return [shareText ?? uri, image ?? UIImage()]
     }
 
     var body: some View {
