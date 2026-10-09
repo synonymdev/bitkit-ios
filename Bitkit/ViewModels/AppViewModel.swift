@@ -87,6 +87,7 @@ struct ScanPaymentOperations {
 
 @MainActor
 class AppViewModel: ObservableObject {
+    private var isSyncingMigration = false
     // Send flow
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedOnchainInvoice: OnChainInvoice?
@@ -1609,11 +1610,17 @@ extension AppViewModel {
                 }
             }
 
-            if MigrationsService.shared.needsPostMigrationSync {
+            if !isSyncingMigration, MigrationsService.shared.needsPostMigrationSync || MigrationsService.shared.hasPendingMigrationRetries {
+                let completingMigration = MigrationsService.shared.needsPostMigrationSync
+                isSyncingMigration = true
                 Task { @MainActor in
+                    defer { self.isSyncingMigration = false }
                     try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? [])
-                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
-                    await MigrationsService.shared.reapplyMetadataAfterSync()
+                    if completingMigration {
+                        await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
+                    }
+                    await MigrationsService.shared.reapplyMetadataAfterSync(includeLocalMetadata: completingMigration)
+                    MigrationsService.shared.needsPostMigrationSync = false
 
                     if MigrationsService.shared.canCleanupAfterMigration {
                         if MigrationsService.shared.isShowingMigrationLoading {
@@ -1628,6 +1635,7 @@ extension AppViewModel {
                         Logger.info("Post-migration sync incomplete, will retry on next sync", context: "AppViewModel")
                     }
 
+                    MigrationsService.shared.isRestoringFromRNRemoteBackup = false
                     if MigrationsService.shared.isShowingMigrationLoading {
                         MigrationsService.shared.isShowingMigrationLoading = false
                     }

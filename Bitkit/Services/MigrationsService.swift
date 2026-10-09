@@ -400,8 +400,8 @@ class MigrationsService: ObservableObject {
 
     /// Tracks whether post-migration sync work is still pending (persists across app restarts)
     var needsPostMigrationSync: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.rnNeedsPostMigrationSyncKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnNeedsPostMigrationSyncKey) }
+        get { userDefaults.bool(forKey: Self.rnNeedsPostMigrationSyncKey) }
+        set { userDefaults.set(newValue, forKey: Self.rnNeedsPostMigrationSyncKey) }
     }
 
     /// Stored LDK channel data for migration (persisted)
@@ -429,14 +429,14 @@ class MigrationsService: ObservableObject {
 
     /// Stored transfer info from RN wallet backup for marking on-chain txs as transfers (persisted)
     var pendingRemoteTransfers: [String: String]? {
-        get { UserDefaults.standard.dictionary(forKey: Self.rnPendingRemoteTransfersKey) as? [String: String] }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingRemoteTransfersKey) }
+        get { userDefaults.dictionary(forKey: Self.rnPendingRemoteTransfersKey) as? [String: String] }
+        set { userDefaults.set(newValue, forKey: Self.rnPendingRemoteTransfersKey) }
     }
 
     /// Stored boost info from RN wallet backup for applying boostTxIds to activities (persisted)
     var pendingRemoteBoosts: [String: String]? {
-        get { UserDefaults.standard.dictionary(forKey: Self.rnPendingRemoteBoostsKey) as? [String: String] }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingRemoteBoostsKey) }
+        get { userDefaults.dictionary(forKey: Self.rnPendingRemoteBoostsKey) as? [String: String] }
+        set { userDefaults.set(newValue, forKey: Self.rnPendingRemoteBoostsKey) }
     }
 
     /// Stored metadata for reapplying after on-chain activities are synced (persisted)
@@ -447,47 +447,51 @@ class MigrationsService: ObservableObject {
 
     /// Stored paid orders from RN backup for creating transfers after wallet starts (persisted)
     var pendingRemotePaidOrders: [String: String]? {
-        get { UserDefaults.standard.dictionary(forKey: Self.rnPendingRemotePaidOrdersKey) as? [String: String] }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingRemotePaidOrdersKey) }
+        get { userDefaults.dictionary(forKey: Self.rnPendingRemotePaidOrdersKey) as? [String: String] }
+        set { userDefaults.set(newValue, forKey: Self.rnPendingRemotePaidOrdersKey) }
     }
 
     /// Stored Blocktank order IDs that couldn't be fetched during migration (offline) (persisted)
     var pendingBlocktankOrderIds: [String]? {
-        get { UserDefaults.standard.stringArray(forKey: Self.rnPendingBlocktankOrderIdsKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingBlocktankOrderIdsKey) }
+        get { userDefaults.stringArray(forKey: Self.rnPendingBlocktankOrderIdsKey) }
+        set { userDefaults.set(newValue, forKey: Self.rnPendingBlocktankOrderIdsKey) }
     }
 
     /// True after we've attempted once to fetch peers from remote backup (so we don't retry every node start).
     var didAttemptPeerRecovery: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.rnDidAttemptPeerRecoveryKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnDidAttemptPeerRecoveryKey) }
+        get { userDefaults.bool(forKey: Self.rnDidAttemptPeerRecoveryKey) }
+        set { userDefaults.set(newValue, forKey: Self.rnDidAttemptPeerRecoveryKey) }
     }
 
     /// True after we've checked for orphaned channel monitors (so we don't retry every node start if all succeeded).
     var isChannelRecoveryChecked: Bool {
-        get { UserDefaults.standard.bool(forKey: Self.rnChannelRecoveryCheckedKey) }
-        set { UserDefaults.standard.set(newValue, forKey: Self.rnChannelRecoveryCheckedKey) }
+        get { userDefaults.bool(forKey: Self.rnChannelRecoveryCheckedKey) }
+        set { userDefaults.set(newValue, forKey: Self.rnChannelRecoveryCheckedKey) }
     }
 
     /// True if the user completed RN migration (local or remote).
     var rnMigrationCompleted: Bool {
-        UserDefaults.standard.bool(forKey: Self.rnMigrationCompletedKey)
+        userDefaults.bool(forKey: Self.rnMigrationCompletedKey)
     }
 
-    private init() {}
+    private let userDefaults: UserDefaults
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
 
     // MARK: - UserDefaults Helpers
 
     private func getCodable<T: Codable>(forKey key: String) -> T? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        guard let data = userDefaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(T.self, from: data)
     }
 
     private func setCodable(_ value: (some Codable)?, forKey key: String) {
         if let value, let data = try? JSONEncoder().encode(value) {
-            UserDefaults.standard.set(data, forKey: key)
+            userDefaults.set(data, forKey: key)
         } else {
-            UserDefaults.standard.removeObject(forKey: key)
+            userDefaults.removeObject(forKey: key)
         }
     }
 
@@ -561,7 +565,7 @@ extension MigrationsService {
 
 extension MigrationsService {
     var isMigrationChecked: Bool {
-        UserDefaults.standard.bool(forKey: Self.rnMigrationCheckedKey)
+        userDefaults.bool(forKey: Self.rnMigrationCheckedKey)
     }
 
     func hasRNWalletData() -> Bool {
@@ -637,8 +641,8 @@ extension MigrationsService {
             Logger.warn("No MMKV data found, skipping settings/activities migration", context: "Migration")
         }
 
-        UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
-        UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+        userDefaults.set(true, forKey: Self.rnMigrationCompletedKey)
+        userDefaults.set(true, forKey: Self.rnMigrationCheckedKey)
 
         // Mark that post-migration sync work is needed (will run when node syncs)
         needsPostMigrationSync = true
@@ -687,12 +691,12 @@ extension MigrationsService {
     private func clearPinSettings() {
         try? Keychain.delete(key: .securityPin)
 
-        UserDefaults.standard.removeObject(forKey: "requirePinForPayments")
-        UserDefaults.standard.removeObject(forKey: "useBiometrics")
-        UserDefaults.standard.removeObject(forKey: "pinFailedAttempts")
-        UserDefaults.standard.removeObject(forKey: "pinOnLaunch")
-        UserDefaults.standard.removeObject(forKey: "pinOnIdle")
-        UserDefaults.standard.removeObject(forKey: "pin")
+        userDefaults.removeObject(forKey: "requirePinForPayments")
+        userDefaults.removeObject(forKey: "useBiometrics")
+        userDefaults.removeObject(forKey: "pinFailedAttempts")
+        userDefaults.removeObject(forKey: "pinOnLaunch")
+        userDefaults.removeObject(forKey: "pinOnIdle")
+        userDefaults.removeObject(forKey: "pin")
     }
 
     private func migrateLdkData() async throws {
@@ -726,7 +730,7 @@ extension MigrationsService {
     }
 
     func markMigrationChecked() {
-        UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+        userDefaults.set(true, forKey: Self.rnMigrationCheckedKey)
     }
 
     // MARK: - RN Data Cleanup
@@ -785,6 +789,11 @@ extension MigrationsService {
         Logger.info("RN cleanup completed", context: "Migration")
     }
 
+    var hasPendingMigrationRetries: Bool {
+        pendingMetadata != nil || pendingRemoteActivityData != nil || pendingRemoteTransfers != nil ||
+            pendingRemoteBoosts != nil || pendingBlocktankOrderIds != nil || pendingRemotePaidOrders != nil
+    }
+
     /// Returns true if all pending migration data has been processed and cleanup can proceed
     var canCleanupAfterMigration: Bool {
         // Don't cleanup if there's still pending Blocktank data that needs retry
@@ -802,14 +811,14 @@ extension MigrationsService {
     /// One-time cleanup for transfers created from unpaid/expired Blocktank orders during migration.
     /// The RN backup's paidOrders map could contain orders that were never actually paid.
     func cleanupInvalidMigrationTransfers() async {
-        guard !UserDefaults.standard.bool(forKey: Self.didCleanupInvalidTransfersKey) else { return }
+        guard !userDefaults.bool(forKey: Self.didCleanupInvalidTransfersKey) else { return }
         guard rnMigrationCompleted else { return }
 
         guard let transfers = try? TransferStorage.shared.getActiveTransfers() else { return }
         let orderTransfers = transfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
 
         guard !orderTransfers.isEmpty else {
-            UserDefaults.standard.set(true, forKey: Self.didCleanupInvalidTransfersKey)
+            userDefaults.set(true, forKey: Self.didCleanupInvalidTransfersKey)
             return
         }
 
@@ -836,7 +845,7 @@ extension MigrationsService {
             }
         }
 
-        UserDefaults.standard.set(true, forKey: Self.didCleanupInvalidTransfersKey)
+        userDefaults.set(true, forKey: Self.didCleanupInvalidTransfersKey)
         Logger.info("Migration transfer cleanup completed", context: "Migration")
     }
 
@@ -1230,7 +1239,7 @@ extension MigrationsService {
     }
 
     func applyRNSettings(_ settings: RNSettings) {
-        let defaults = UserDefaults.standard
+        let defaults = userDefaults
 
         if let currency = settings.selectedCurrency {
             defaults.set(currency, forKey: "selectedCurrency")
@@ -1313,7 +1322,7 @@ extension MigrationsService {
     }
 
     func applyRNAddressTypeSettings(selectedAddressType: String?, addressTypesToMonitor: [String]?) {
-        let defaults = UserDefaults.standard
+        let defaults = userDefaults
 
         if let selected = selectedAddressType {
             defaults.set(selected, forKey: "selectedAddressType")
@@ -1360,8 +1369,8 @@ extension MigrationsService {
             if !savedWidgets.isEmpty {
                 do {
                     let encodedData = try JSONEncoder().encode(savedWidgets)
-                    UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
-                    UserDefaults.standard.synchronize()
+                    userDefaults.set(encodedData, forKey: "savedWidgets")
+                    userDefaults.synchronize()
                     let withOptions = savedWidgets.filter { $0.optionsData != nil }.count
                     Logger.info("Migrated \(savedWidgets.count) widgets (\(withOptions) with options)", context: "Migration")
                 } catch {
@@ -1371,7 +1380,7 @@ extension MigrationsService {
         }
 
         if let onboarded = widgets.onboardedWidgets {
-            UserDefaults.standard.set(onboarded, forKey: "hasSeenWidgetsIntro")
+            userDefaults.set(onboarded, forKey: "hasSeenWidgetsIntro")
         }
     }
 
@@ -1399,9 +1408,9 @@ extension MigrationsService {
         }
 
         if !dismissedIds.isEmpty {
-            let existing = UserDefaults.standard.stringArray(forKey: "dismissedSuggestions") ?? []
+            let existing = userDefaults.stringArray(forKey: "dismissedSuggestions") ?? []
             let merged = Array(Set(existing + dismissedIds))
-            UserDefaults.standard.set(merged, forKey: "dismissedSuggestions")
+            userDefaults.set(merged, forKey: "dismissedSuggestions")
             Logger.info("Migrated \(dismissedIds.count) dismissed suggestions", context: "Migration")
         }
     }
@@ -1561,7 +1570,7 @@ extension MigrationsService {
             pendingMetadata = metadata
             // Apply lastUsedTags immediately (doesn't require activities)
             if let lastUsedTags = metadata.lastUsedTags {
-                UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
+                userDefaults.set(lastUsedTags, forKey: "lastUsedTags")
             }
         } else {
             Logger.debug("No metadata found in MMKV", context: "Migration")
@@ -1588,14 +1597,17 @@ extension MigrationsService {
             Logger.debug("No blocktank data found in MMKV", context: "Migration")
         }
 
-        UserDefaults.standard.set("", forKey: "onchainAddress")
+        userDefaults.set("", forKey: "onchainAddress")
 
         Logger.info("MMKV data migration completed", context: "Migration")
     }
 
-    func reapplyMetadataAfterSync() async {
+    func reapplyMetadataAfterSync(
+        includeLocalMetadata: Bool = true,
+        applyTags: (([String: [String]]) async -> Set<String>)? = nil
+    ) async {
         // Handle MMKV (local) migration data
-        if hasRNMmkvData(), let mmkvData = loadRNMmkvData() {
+        if includeLocalMetadata, hasRNMmkvData(), let mmkvData = loadRNMmkvData() {
             if let activities = extractRNActivities(from: mmkvData) {
                 await applyOnchainMetadata(activities)
             }
@@ -1610,11 +1622,6 @@ extension MigrationsService {
                     Logger.info("Applying \(walletBackup.boosts.count) local boost markers", context: "Migration")
                     await applyBoostTransactions(walletBackup.boosts)
                 }
-            }
-
-            if let metadata = extractRNMetadata(from: mmkvData) {
-                Logger.info("Re-applying MMKV metadata after sync", context: "Migration")
-                await applyAllMetadata(metadata)
             }
         }
 
@@ -1639,15 +1646,7 @@ extension MigrationsService {
             pendingRemoteBoosts = nil
         }
 
-        // Apply stored metadata (all tags after activities are imported)
-        if let metadata = pendingMetadata {
-            Logger.info("Applying stored metadata after sync", context: "Migration")
-            let unapplied = await applyPendingTags(metadata.tags ?? [:])
-            if let lastUsedTags = metadata.lastUsedTags {
-                UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
-            }
-            pendingMetadata = rnMetadataRetainingUnappliedTags(metadata, unappliedActivityIds: unapplied)
-        }
+        await retryPendingMetadata(applyTags: applyTags)
 
         // Handle pending Blocktank orders that couldn't be fetched during migration (offline)
         var blocktankFetchFailed = false
@@ -1763,49 +1762,50 @@ extension MigrationsService {
         Logger.info("Applied \(applied)/\(boosts.count) boost markers", context: "Migration")
     }
 
-    private func applyAllMetadata(_ metadata: RNMetadata) async {
-        if let tags = metadata.tags, !tags.isEmpty {
-            _ = await applyPendingTags(tags)
+    func retryPendingMetadata(applyTags: (([String: [String]]) async -> Set<String>)? = nil) async {
+        guard let metadata = pendingMetadata else { return }
+        let unapplied: Set<String> = if let applyTags {
+            await applyTags(metadata.tags ?? [:])
+        } else {
+            await applyPendingTags(metadata.tags ?? [:])
         }
-
         if let lastUsedTags = metadata.lastUsedTags {
-            UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
+            userDefaults.set(lastUsedTags, forKey: "lastUsedTags")
         }
+        pendingMetadata = rnMetadataRetainingUnappliedTags(metadata, unappliedActivityIds: unapplied)
     }
 
-    private func applyPendingTags(_ tags: [String: [String]]) async -> Set<String> {
+    func applyPendingTags(
+        _ tags: [String: [String]],
+        resolveActivityId: (String) async throws -> String? = { activityId in
+            if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
+                return onchain.id
+            }
+            guard let activity = try? await CoreService.shared.activity.getActivity(id: activityId) else { return nil }
+            switch activity {
+            case .lightning: return activityId
+            case let .onchain(onchain): return onchain.id
+            }
+        },
+        upsertTags: ([ActivityTags]) async throws -> Void = { tags in
+            try await CoreService.shared.activity.upsertTags(tags)
+        }
+    ) async -> Set<String> {
         var unapplied = Set<String>()
-        var applied = 0
         for (activityId, tagList) in tags {
             do {
-                if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
-                    try await CoreService.shared.activity.upsertTags([
-                        ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
-                    ])
-                    applied += 1
-                } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId) {
-                    switch activity {
-                    case .lightning:
-                        try await CoreService.shared.activity.upsertTags([
-                            ActivityTags(walletId: WalletScope.default, activityId: activityId, tags: tagList),
-                        ])
-                        applied += 1
-                    case let .onchain(onchain):
-                        try await CoreService.shared.activity.upsertTags([
-                            ActivityTags(walletId: WalletScope.default, activityId: onchain.id, tags: tagList),
-                        ])
-                        applied += 1
-                    }
-                } else {
-                    Logger.warn("Activity not found for tags: id=\(activityId)", context: "Migration")
+                guard let resolvedId = try await resolveActivityId(activityId) else {
                     unapplied.insert(activityId)
+                    continue
                 }
+                try await upsertTags([
+                    ActivityTags(walletId: WalletScope.default, activityId: resolvedId, tags: tagList),
+                ])
             } catch {
                 Logger.error("Failed to apply pending tag for \(activityId): \(error)", context: "Migration")
                 unapplied.insert(activityId)
             }
         }
-        Logger.info("Applied \(applied)/\(tags.count) pending tags", context: "Migration")
         return unapplied
     }
 
