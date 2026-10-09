@@ -55,6 +55,116 @@ final class BoostTxIdsCacheTests: XCTestCase {
         XCTAssertEqual(retried, ["retried"])
     }
 
+    func testFailedWarmRefreshKeepsLastSuccessfulValueForAllWaiters() async throws {
+        let cache = BoostTxIdsCache()
+        _ = await cache.get(walletId: "bitkit") { ["original"] }
+        let started = expectation(description: "refresh started")
+        let loader = ControlledBoostCacheLoader(started: started)
+        let refresh = try loadingTask(cache.read(walletId: "bitkit", forceRefresh: true) { await loader.load() })
+        let joined = try (0 ..< 16).map { _ in
+            try loadingTask(cache.read(walletId: "bitkit") { XCTFail("Readers must share the refresh"); return nil })
+        }
+        await fulfillment(of: [started], timeout: 5)
+        await loader.finish(call: 1, value: nil)
+        await assertLoaded(refresh.value, equals: ["original"])
+        for task in joined {
+            await assertLoaded(task.value, equals: ["original"])
+        }
+
+        let cached = await cache.get(walletId: "bitkit") { XCTFail("Failed refresh must retain the warm cache"); return nil }
+        XCTAssertEqual(cached, ["original"])
+        let calls = await loader.calls
+        XCTAssertEqual(calls, 1)
+
+        let retried = await cache.get(walletId: "bitkit", forceRefresh: true) { ["new"] }
+        XCTAssertEqual(retried, ["new"])
+    }
+
+    func testSuccessfulWarmRefreshReplacesOldValueIncludingEmptyResult() async {
+        let cache = BoostTxIdsCache()
+        _ = await cache.get(walletId: "bitkit") { ["old"] }
+        let replaced = await cache.get(walletId: "bitkit", forceRefresh: true) { ["new"] }
+        XCTAssertEqual(replaced, ["new"])
+        let emptied = await cache.get(walletId: "bitkit", forceRefresh: true) { [] }
+        XCTAssertTrue(emptied.isEmpty)
+        let cached = await cache.get(walletId: "bitkit") { XCTFail("An empty successful refresh must remain warm"); return nil }
+        XCTAssertTrue(cached.isEmpty)
+    }
+
+    func testFailedEmptyWarmRefreshStaysWarm() async {
+        let cache = BoostTxIdsCache()
+        _ = await cache.get(walletId: "bitkit") { [] }
+        let failed = await cache.get(walletId: "bitkit", forceRefresh: true) { nil }
+        XCTAssertTrue(failed.isEmpty)
+        let cached = await cache.get(walletId: "bitkit") { XCTFail("An empty previous value must not become cold on failure"); return nil }
+        XCTAssertTrue(cached.isEmpty)
+    }
+
+    func testWritesDuringWarmRefreshSurviveSuccessAndFailure() async throws {
+        for succeeds in [true, false] {
+            let cache = BoostTxIdsCache()
+            _ = await cache.get(walletId: "bitkit") { ["old"] }
+            let started = expectation(description: "refresh started")
+            let loader = ControlledBoostCacheLoader(started: started)
+            let refresh = try loadingTask(cache.read(walletId: "bitkit", forceRefresh: true) { await loader.load() })
+            await fulfillment(of: [started], timeout: 5)
+            cache.merge(["new-boost"], walletId: "bitkit")
+            await loader.finish(call: 1, value: succeeds ? ["snapshot"] : nil)
+            let expected: Set<String> = [succeeds ? "snapshot" : "old", "new-boost"]
+            await assertLoaded(refresh.value, equals: expected)
+            let cached = await cache.get(walletId: "bitkit") { XCTFail("Completed refresh should be warm"); return nil }
+            XCTAssertEqual(cached, expected)
+        }
+    }
+
+    func testInvalidationDuringWarmRefreshCannotRestoreFallback() async {
+        for wipe in [true, false] {
+            let cache = BoostTxIdsCache()
+            _ = await cache.get(walletId: "bitkit") { ["old"] }
+            _ = await cache.get(walletId: "hardware") { ["hardware"] }
+            let started = expectation(description: "both loads started")
+            started.expectedFulfillmentCount = 2
+            let firstStarted = expectation(description: "refresh started")
+            let loader = ControlledBoostCacheLoader(started: started, firstStarted: firstStarted)
+            let refresh = Task { await cache.get(walletId: "bitkit", forceRefresh: true) { await loader.load() } }
+            await fulfillment(of: [firstStarted], timeout: 5)
+            if wipe {
+                cache.invalidateAll()
+            } else {
+                cache.invalidate(walletId: "bitkit")
+            }
+            await loader.finish(call: 1, value: nil)
+            await fulfillment(of: [started], timeout: 5)
+            await loader.finish(call: 2, value: nil)
+            let result = await refresh.value
+            XCTAssertTrue(result.isEmpty)
+            let fresh = await cache.get(walletId: "bitkit") { ["fresh"] }
+            XCTAssertEqual(fresh, ["fresh"], "Strict invalidation must not retain the pre-invalidation value")
+            let other = await cache.get(walletId: "hardware") { ["after-wipe"] }
+            XCTAssertEqual(other, wipe ? ["after-wipe"] : ["hardware"])
+        }
+    }
+
+    func testNewerRefreshSupersedesOlderFlightWithoutLosingFallback() async throws {
+        let cache = BoostTxIdsCache()
+        _ = await cache.get(walletId: "bitkit") { ["old"] }
+        let firstStarted = expectation(description: "first refresh started")
+        let secondStarted = expectation(description: "second refresh started")
+        let firstLoader = ControlledBoostCacheLoader(started: firstStarted)
+        let secondLoader = ControlledBoostCacheLoader(started: secondStarted)
+        let first = try loadingTask(cache.read(walletId: "bitkit", forceRefresh: true) { await firstLoader.load() })
+        await fulfillment(of: [firstStarted], timeout: 5)
+        cache.merge(["added"], walletId: "bitkit")
+        let second = try loadingTask(cache.read(walletId: "bitkit", forceRefresh: true) { await secondLoader.load() })
+        await fulfillment(of: [secondStarted], timeout: 5)
+        await secondLoader.finish(call: 1, value: nil)
+        await assertLoaded(second.value, equals: ["old", "added"])
+        await firstLoader.finish(call: 1, value: ["stale"])
+        guard case .invalidated = await first.value else { return XCTFail("Superseded refresh must be discarded") }
+        let cached = await cache.get(walletId: "bitkit") { XCTFail("Late completion must not remove the retained value"); return nil }
+        XCTAssertEqual(cached, ["old", "added"])
+    }
+
     func testWalletsRebuildIndependently() async throws {
         let cache = BoostTxIdsCache()
         let firstStarted = expectation(description: "first wallet rebuild started")

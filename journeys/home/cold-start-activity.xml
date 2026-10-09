@@ -5,8 +5,9 @@
     and space for at least one recent activity row on Home. Use a wallet with an outgoing RBF boost
     if available, and note the replacement and original transactions before starting. This is an
     iOS-specific cache regression: the duplicate full-history scans are proved by
-    BoostTxIdsCacheTests.swift, not inferred from screen timing. No new transactions should arrive
-    during the comparison.
+    BoostTxIdsCacheTests.swift, not inferred from screen timing. Those tests also inject refresh
+    failures to verify the last successful value is retained, without allowing a wallet wipe or
+    invalidation to restore old data. No new transactions should arrive during the comparison.
   </description>
   <actions>
     <action>Launch Bitkit, unlock if required, and verify Home (id "HomeScrollView") shows at least one recent activity row (id "ActivityShort-0")</action>

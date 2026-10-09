@@ -126,8 +126,9 @@ class ActivityService {
     }
 
     private func refreshBoostTxIdsCache(walletId: String = WalletScope.default) async {
-        boostTxIdsCache.invalidate(walletId: walletId)
-        _ = await getTxIdsInBoostTxIds(walletId: walletId)
+        _ = await boostTxIdsCache.get(walletId: walletId, forceRefresh: true) { [self] in
+            await loadBoostTxIds(walletId: walletId)
+        }
     }
 
     private func loadBoostTxIds(walletId: String) async -> Set<String>? {
@@ -1850,27 +1851,30 @@ final class BoostTxIdsCache: @unchecked Sendable {
 
     private let entries = OSAllocatedUnfairLock(initialState: [String: Entry]())
 
-    func get(walletId: String, load: @escaping @Sendable () async -> Set<String>?) async -> Set<String> {
+    func get(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) async -> Set<String> {
+        var nextRead = read(walletId: walletId, forceRefresh: forceRefresh, load: load)
         while true {
-            switch read(walletId: walletId, load: load) {
+            switch nextRead {
             case let .cached(value):
                 return value
             case let .loading(task):
                 switch await task.value {
                 case let .loaded(value): return value
-                case .invalidated: continue
+                case .invalidated: nextRead = read(walletId: walletId, load: load)
                 }
             }
         }
     }
 
-    func read(walletId: String, load: @escaping @Sendable () async -> Set<String>?) -> Read {
+    func read(walletId: String, forceRefresh: Bool = false, load: @escaping @Sendable () async -> Set<String>?) -> Read {
         entries.withLock { entries in
-            if let value = entries[walletId]?.value {
-                return .cached(value)
-            }
-            if let flight = entries[walletId]?.flight {
-                return .loading(flight.task)
+            if !forceRefresh {
+                if let flight = entries[walletId]?.flight {
+                    return .loading(flight.task)
+                }
+                if let value = entries[walletId]?.value {
+                    return .cached(value)
+                }
             }
 
             let id = UUID()
@@ -1878,7 +1882,8 @@ final class BoostTxIdsCache: @unchecked Sendable {
                 let value = await load()
                 return self.complete(value, walletId: walletId, flightId: id)
             }
-            entries[walletId] = Entry(flight: Flight(id: id, task: task))
+            // Preserve the last successful value only for refresh failures; invalidation removes it entirely.
+            entries[walletId] = Entry(value: entries[walletId]?.value, flight: Flight(id: id, task: task))
             return .loading(task)
         }
     }
@@ -1889,7 +1894,8 @@ final class BoostTxIdsCache: @unchecked Sendable {
             guard var entry = entries[walletId] else { return }
             if entry.value != nil {
                 entry.value?.formUnion(txIds)
-            } else if entry.flight != nil {
+            }
+            if entry.flight != nil {
                 entry.pendingTxIds.formUnion(txIds)
             }
             entries[walletId] = entry
@@ -1908,8 +1914,8 @@ final class BoostTxIdsCache: @unchecked Sendable {
         entries.withLock { entries in
             guard let entry = entries[walletId], entry.flight?.id == flightId else { return .invalidated }
             guard let value else {
-                entries[walletId] = nil
-                return .loaded([])
+                entries[walletId] = entry.value.map { Entry(value: $0) }
+                return .loaded(entry.value ?? [])
             }
             let mergedValue = value.union(entry.pendingTxIds)
             entries[walletId] = Entry(value: mergedValue)
