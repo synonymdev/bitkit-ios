@@ -6,7 +6,7 @@ import XCTest
 /// Jade never shows Trezor art or wording.
 final class HwWalletVendorPresentationTests: XCTestCase {
     func testTheDeviceIllustrationsResolveInTheAppBundle() {
-        for name in ["jade-placeholder", "trezor-device", "trezor-card"] {
+        for name in ["jade-device", "jade-card", "trezor-device", "trezor-card"] {
             XCTAssertNotNil(UIImage(named: name), name)
         }
         for vendor in HwWalletVendor.allCases {
@@ -15,10 +15,16 @@ final class HwWalletVendorPresentationTests: XCTestCase {
         }
     }
 
-    func testTheJadePlaceholderKeepsItsVectorSize() throws {
-        let image = try XCTUnwrap(UIImage(named: "jade-placeholder"))
+    func testTheJadeArtworkMatchesTheTrezorArtworkSize() throws {
+        let pairs = [("jade-device", "trezor-device"), ("jade-card", "trezor-card")]
 
-        XCTAssertEqual(image.size, CGSize(width: 256, height: 256))
+        for (jadeName, trezorName) in pairs {
+            let jade = try XCTUnwrap(UIImage(named: jadeName))
+            let trezor = try XCTUnwrap(UIImage(named: trezorName))
+
+            XCTAssertEqual(jade.size.width, trezor.size.width, accuracy: 1, jadeName)
+            XCTAssertEqual(jade.size.height, trezor.size.height, accuracy: 1, jadeName)
+        }
     }
 
     func testTrezorKeepsItsArtAndCopy() {
@@ -37,8 +43,8 @@ final class HwWalletVendorPresentationTests: XCTestCase {
     func testJadeHasItsOwnArtAndCopy() {
         let vendor = HwWalletVendor.blockstream
 
-        XCTAssertEqual(vendor.deviceImageName, "jade-placeholder")
-        XCTAssertEqual(vendor.signImageName, "jade-placeholder")
+        XCTAssertEqual(vendor.deviceImageName, "jade-device")
+        XCTAssertEqual(vendor.signImageName, "jade-card")
         XCTAssertEqual(vendor.modelName, t("hardware__device_model_jade"))
         XCTAssertEqual(vendor.modelName, "Jade")
         XCTAssertEqual(vendor.foundHeader, t("hardware__found_header_jade"))
