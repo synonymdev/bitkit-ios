@@ -935,6 +935,14 @@ final class HwFundingSignerTests: XCTestCase {
     func testShopBroadcastFailurePreservesSignedPaymentAcrossCancel() async throws {
         for details in [
             "offline", "unrecognized backend error",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -25: disconnected\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -26: unknown refusal\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -25x: bad-txns-inputs-missingorspent\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -25: bad-txns-inputs-missingorspent-ish\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -26: insufficient fee, rejecting replacement-ish\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -26: insufficient fee, rejecting replacement disconnected\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -25: bad-txns-inputs-missingorspent",
+            "Broadcast failed: Electrum server error: [\"sendrawtransaction RPC error -25: bad-txns-inputs-missingorspent\"]",
             "broadcast failed: disconnected", "broadcast failed: unknown refusal",
             "Broadcast failed: Electrum server error: {\"code\":-26,\"message\":\"unknown refusal\"}",
             "Broadcast failed: Electrum server error: {\"code\":-26,\"message\":\"disconnected\",\"data\":\"non-final\"}",
@@ -983,11 +991,15 @@ final class HwFundingSignerTests: XCTestCase {
             let json = try JSONSerialization.data(withJSONObject: ["code": 1, "message": message])
             return BroadcastError.ElectrumError(errorDetails: "Broadcast failed: Electrum server error: " + String(decoding: json, as: UTF8.self))
         }
+        let stringErrors = [
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -25: bad-txns-inputs-missingorspent\"",
+            "Broadcast failed: Electrum server error: \"sendrawtransaction RPC error -26: insufficient fee, rejecting replacement b3f63e62aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; new feerate 0.00001000 BTC/kvB <= old feerate 0.00001018 BTC/kvB\"",
+        ].map { BroadcastError.ElectrumError(errorDetails: $0) }
         for error in [
             BroadcastError.InvalidHex(errorDetails: "invalid hex"),
             BroadcastError.InvalidTransaction(errorDetails: "invalid transaction"),
             BroadcastError.ElectrumError(errorDetails: "broadcast failed: min relay fee not met"),
-        ] + serverErrors {
+        ] + serverErrors + stringErrors {
             let funding = MockHwFunding()
             let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
             let manager = HwWalletManager()

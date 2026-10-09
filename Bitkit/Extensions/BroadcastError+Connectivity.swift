@@ -63,10 +63,23 @@ extension Error {
             var reason = String(details.dropFirst(prefix.count))
             for envelope in ["electrum server error: ", "sendrawtransaction rpc error: "] where reason.hasPrefix(envelope) {
                 guard let data = String(reason.dropFirst(envelope.count)).data(using: .utf8),
-                      let response = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let message = response["message"] as? String
+                      let response = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
                 else { return false }
-                reason = message
+                if let message = response as? String {
+                    reason = message
+                } else if let response = response as? [String: Any], let message = response["message"] as? String {
+                    reason = message
+                } else {
+                    return false
+                }
+            }
+            for prefix in ["sendrawtransaction rpc error -25: ", "sendrawtransaction rpc error -26: "] where reason.hasPrefix(prefix) {
+                reason = String(reason.dropFirst(prefix.count))
+            }
+            // This exact Bitcoin Core replacement refusal only releases navigation, never the receipt.
+            let replacementRefusal = "\\Ainsufficient fee, rejecting replacement [0-9a-f]{64}; new feerate [0-9]+\\.[0-9]{8} btc/kvb <= old feerate [0-9]+\\.[0-9]{8} btc/kvb\\z"
+            if reason.range(of: replacementRefusal, options: .regularExpression) != nil {
+                return true
             }
             let rejectionPrefix = "the transaction was rejected by network rules.\n\n"
             if reason.hasPrefix(rejectionPrefix) {
