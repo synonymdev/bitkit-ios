@@ -109,6 +109,10 @@ correctly prevents it from entering the presentation queue.
 
 `request-summary.xml` is ported alongside Android's matching journey.
 
+`success-dismissal.xml` matches Android's journey: after paying a Lightning request, closing success
+must leave no error toast or duplicate payment; closing a later unpaid request must not send it.
+Use two linked disposable regtest wallets and observe or record dismissal to catch short-lived toasts.
+
 ### Setup
 
 Use a second Bitkit instance as the requester instead of the fixture issuer: both instances are

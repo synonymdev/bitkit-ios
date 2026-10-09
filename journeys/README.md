@@ -193,6 +193,14 @@ after staging signup. Android also supports this signup flow, but this journey h
 `contacts/contacts-entry-points.xml` covers onboarding without an identity and the
 authenticated Contacts list. It has not yet been ported to Android.
 
+`payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
+actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
+iOS-only feature.
+
+`amount-limits/custom-fee-wallet-switch.xml` is iOS-only: applying a custom fee returns through
+the fee picker before confirmation. Android's `setTransactionSpeed` returns directly to confirmation,
+so the intermediate wait and deferred coin-preparation checks have no matching route there.
+
 `pubky-profile/contact-import-after-leaving.xml` and `pubky-profile/contacts-list-loading.xml` are
 new on both platforms at once. synonymdev/bitkit-android#1399 carries both journeys with the same file
 names, journey names and prose, changing only the identifiers and commands the platform forces, and

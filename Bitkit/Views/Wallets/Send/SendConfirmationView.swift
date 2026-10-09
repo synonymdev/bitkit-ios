@@ -34,6 +34,46 @@ struct SendConfirmationView: View {
     @State private var swipeProgress: CGFloat = 0
     @State private var hasStartedAutomaticPayment = false
     @State private var requiresPaymentConfirmation = false
+    @State private var walletSwitchContext: ConfirmationContext?
+    @State private var presentationID: UUID?
+
+    private struct ConfirmationContext: Equatable {
+        let presentationID: UUID
+        let walletType: WalletType
+        let address: String?
+        let amountSats: UInt64
+        let contactID: UUID?
+        let hardwareWalletID: String?
+    }
+
+    private var confirmationContext: ConfirmationContext? {
+        guard navigationPath.last == nil || navigationPath.last == .confirm else { return nil }
+        return sendContext
+    }
+
+    private var sendContext: ConfirmationContext? {
+        guard preparingRequest == nil, !isSubmittingPayment,
+              navigationPath.last == nil || navigationPath.last == .confirm || isEditingSendDetails,
+              let sheet = sheets.activeSheetConfiguration,
+              sheet.presentationID == presentationID,
+              sheet.id == .send || sheet.id == .subscription,
+              app.hasSendPaymentTarget,
+              let amount = wallet.sendAmountSats, amount > 0
+        else { return nil }
+
+        return ConfirmationContext(
+            presentationID: sheet.presentationID,
+            walletType: app.selectedWalletToPayFrom,
+            address: app.scannedOnchainInvoice?.address,
+            amountSats: amount,
+            contactID: app.contactPaymentContext?.id,
+            hardwareWalletID: hwSend.walletId
+        )
+    }
+
+    private var isEditingSendDetails: Bool {
+        navigationPath.last == .feeRate || navigationPath.last == .feeCustom || navigationPath.last == .tag
+    }
 
     var accentColor: Color {
         if hwSend.isActive {
@@ -93,15 +133,6 @@ struct SendConfirmationView: View {
 
     private var displayedTransactionFee: Int {
         transactionFee > 0 ? transactionFee : Int(hwSend.previewFeeSats)
-    }
-
-    /// `.instant` is only valid when paying from Lightning; align `selectedSpeed` with the current sat/vB on savings.
-    private func reconcileInstantSpeedWhenSwitchingToOnChain() async {
-        guard wallet.selectedSpeed == .instant else { return }
-
-        await MainActor.run {
-            wallet.selectedSpeed = settings.defaultTransactionSpeed
-        }
     }
 
     /// BIP21 flow can land on confirm with `sendAmountSats` unset; set it from the scanned invoices.
@@ -259,7 +290,7 @@ struct SendConfirmationView: View {
                     : t("wallet__send_swipe"),
                 accentColor: accentColor,
                 isDisabled: isSwipeDisabled,
-                isLoading: Self.isSwipeLoading(
+                isLoading: walletSwitchContext != nil || Self.isSwipeLoading(
                     hasStartedAutomaticPayment: hasStartedAutomaticPayment,
                     isFeeRateMissing: isFeeRateMissing,
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
@@ -278,6 +309,10 @@ struct SendConfirmationView: View {
         .accessibilityIdentifier(preparingRequest == nil && app.contactPaymentContext?
             .incomingPaymentRequest == nil ? "SendConfirm" : "PaymentRequestConfirm")
         .task(id: preparingRequest?.id) {
+            // A retiring confirmation must not adopt a replacement sheet's payment state.
+            if presentationID == nil {
+                presentationID = sheets.activeSheetConfiguration?.presentationID
+            }
             guard preparingRequest == nil else { return }
             ensureSendAmountFromScannedInvoicesIfNeeded()
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
@@ -302,14 +337,29 @@ struct SendConfirmationView: View {
             }
         }
         .onChange(of: app.selectedWalletToPayFrom) {
-            guard preparingRequest == nil else { return }
-            Task {
-                if app.selectedWalletToPayFrom == .lightning {
-                    await calculateTransactionFee()
-                } else {
-                    await onSwitchToOnchainWallet()
-                }
+            walletSwitchContext = sendContext
+        }
+        .onChange(of: sendContext) { _, context in
+            if context != walletSwitchContext {
+                walletSwitchContext = nil
             }
+        }
+        .task(id: confirmationContext == walletSwitchContext ? walletSwitchContext : nil) {
+            guard let context = walletSwitchContext, !Task.isCancelled, confirmationContext == context else { return }
+            if context.walletType == .lightning {
+                await calculateTransactionFee()
+            } else {
+                await onSwitchToOnchainWallet(context: context)
+            }
+            if !Task.isCancelled, walletSwitchContext == context {
+                walletSwitchContext = nil
+            }
+        }
+        .onDisappear {
+            if !isEditingSendDetails || sendContext != walletSwitchContext {
+                walletSwitchContext = nil
+            }
+            feeCalculationId += 1
         }
         .onChange(of: hwSend.walletId) {
             guard preparingRequest == nil else { return }
@@ -650,7 +700,7 @@ struct SendConfirmationView: View {
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
-        guard preparingRequest == nil else { throw CancellationError() }
+        guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
         }
@@ -811,9 +861,10 @@ struct SendConfirmationView: View {
         isHardwarePayment: Bool,
         isHardwareConfirmationUnavailable: Bool,
         feeRate: UInt32?,
-        isPreparingRequest: Bool = false
+        isPreparingRequest: Bool = false,
+        isPreparingWallet: Bool = false
     ) -> Bool {
-        isPreparingRequest || isHardwareConfirmationUnavailable
+        isPreparingRequest || isPreparingWallet || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
 
@@ -831,7 +882,8 @@ struct SendConfirmationView: View {
             isHardwarePayment: hwSend.isActive,
             isHardwareConfirmationUnavailable: isHardwareConfirmationUnavailable,
             feeRate: wallet.selectedFeeRateSatsPerVByte,
-            isPreparingRequest: preparingRequest != nil
+            isPreparingRequest: preparingRequest != nil,
+            isPreparingWallet: walletSwitchContext != nil
         )
     }
 
@@ -1319,12 +1371,19 @@ struct SendConfirmationView: View {
         return true
     }
 
-    private func shouldUseMaxOnchainSend(address: String, amountSats: UInt64, feeRate: UInt32? = nil) async -> Bool {
+    private func shouldUseMaxOnchainSend(
+        address: String,
+        amountSats: UInt64,
+        feeRate: UInt32? = nil,
+        isCurrentSend: () -> Bool = { true }
+    ) async -> Bool {
         guard wallet.isMaxAmountSend else { return false }
         guard let rate = feeRate ?? wallet.selectedFeeRateSatsPerVByte else { return false }
 
         do {
-            let currentMaxSendable = try await wallet.calculateMaxSendableAmount(address: address, satsPerVByte: rate)
+            let currentMaxSendable = try await wallet.calculateMaxSendableAmount(
+                address: address, satsPerVByte: rate, isCurrentSend: isCurrentSend
+            )
             let matchesCurrentMax = amountSats == currentMaxSendable
 
             if !matchesCurrentMax {
@@ -1335,6 +1394,8 @@ struct SendConfirmationView: View {
             }
 
             return matchesCurrentMax
+        } catch is CancellationError {
+            return false
         } catch {
             Logger.error("Failed to verify max on-chain send amount: \(error)", context: "SendConfirmationView")
             return false
@@ -1394,68 +1455,76 @@ struct SendConfirmationView: View {
         }
     }
 
-    /// After the user chooses savings, prepares on-chain send (amount, fee rate, UTXOs) and refreshes the shown fee.
-    private func onSwitchToOnchainWallet() async {
-        guard app.selectedWalletToPayFrom == .onchain else { return }
+    @MainActor
+    private func onSwitchToOnchainWallet(context: ConfirmationContext) async {
+        func isCurrentSend() -> Bool {
+            !Task.isCancelled && confirmationContext == context
+        }
+        guard isCurrentSend(), context.walletType == .onchain, context.address != nil, context.hardwareWalletID == nil else { return }
 
-        await reconcileInstantSpeedWhenSwitchingToOnChain()
+        if wallet.selectedSpeed == .instant {
+            wallet.selectedSpeed = settings.defaultTransactionSpeed
+        }
 
         if wallet.selectedFeeRateSatsPerVByte == nil {
             do {
-                try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+                try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed, isCurrentSend: isCurrentSend)
             } catch {
+                guard isCurrentSend(), !(error is CancellationError) else { return }
                 Logger.error("Failed to set fee rate when switching to on-chain: \(error)")
-                await MainActor.run {
+                app.selectedWalletToPayFrom = .lightning
+                app.toast(type: .error, title: t("other__try_again"))
+                return
+            }
+        }
+        guard isCurrentSend() else { return }
+
+        if settings.coinSelectionMethod == .manual {
+            if wallet.selectedUtxos == nil || wallet.selectedUtxos?.isEmpty == true {
+                do {
+                    try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
+                    guard isCurrentSend() else { return }
+                    navigationPath.append(.utxoSelection)
+                } catch {
+                    guard isCurrentSend(), !(error is CancellationError) else { return }
+                    Logger.error("Failed to load UTXOs when switching to on-chain: \(error)")
                     app.selectedWalletToPayFrom = .lightning
                     app.toast(type: .error, title: t("other__try_again"))
                 }
                 return
             }
-        }
-
-        if settings.coinSelectionMethod == .manual {
-            if wallet.selectedUtxos == nil || wallet.selectedUtxos?.isEmpty == true {
-                do {
-                    try await wallet.loadAvailableUtxos()
-                    await MainActor.run {
-                        navigationPath.append(.utxoSelection)
-                    }
-                } catch {
-                    Logger.error("Failed to load UTXOs when switching to on-chain: \(error)")
-                    await MainActor.run {
-                        app.selectedWalletToPayFrom = .lightning
-                        app.toast(type: .error, title: t("other__try_again"))
-                    }
-                }
-                return
-            }
         } else {
             do {
-                try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm)
+                try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm, isCurrentSend: isCurrentSend)
             } catch {
+                guard isCurrentSend(), !(error is CancellationError) else { return }
                 Logger.error("Failed to set UTXO selection when switching to on-chain: \(error)")
-                await MainActor.run {
-                    app.selectedWalletToPayFrom = .lightning
-                    app.toast(
-                        type: .error,
-                        title: t("other__try_again"),
-                        description: error.localizedDescription
-                    )
-                }
+                app.selectedWalletToPayFrom = .lightning
+                app.toast(
+                    type: .error,
+                    title: t("other__try_again"),
+                    description: error.localizedDescription
+                )
                 return
             }
         }
 
+        guard isCurrentSend() else { return }
         await calculateTransactionFee()
     }
 
     @MainActor
     private func calculateTransactionFee() async {
+        guard !Task.isCancelled, let context = confirmationContext else { return }
         feeCalculationId += 1
         let requestId = feeCalculationId
 
+        func isCurrentSend() -> Bool {
+            !Task.isCancelled && feeCalculationId == requestId && confirmationContext == context
+        }
+
         func apply(_ fee: UInt64) {
-            guard feeCalculationId == requestId else { return }
+            guard isCurrentSend() else { return }
             transactionFee = Int(fee)
         }
 
@@ -1503,7 +1572,11 @@ struct SendConfirmationView: View {
                 return
             }
 
-            if await shouldUseMaxOnchainSend(address: address, amountSats: amountSats, feeRate: feeRate) {
+            let useMaxAmount = await shouldUseMaxOnchainSend(
+                address: address, amountSats: amountSats, feeRate: feeRate, isCurrentSend: isCurrentSend
+            )
+            guard isCurrentSend() else { return }
+            if useMaxAmount {
                 let sendAllFee = try await wallet.estimateSendAllFee(
                     address: address,
                     satsPerVByte: feeRate
@@ -1521,7 +1594,7 @@ struct SendConfirmationView: View {
             )
             apply(normalFee)
         } catch {
-            guard feeCalculationId == requestId else { return }
+            guard isCurrentSend(), !(error is CancellationError) else { return }
             Logger.error("Failed to calculate actual fee: \(error)")
             transactionFee = 0
             app.toast(type: .error, title: t("other__try_again"))

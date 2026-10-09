@@ -638,11 +638,13 @@ class WalletViewModel: ObservableObject {
 
     /// Sets the fee rate for the send flow
     /// - Parameter speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
-    func setFeeRate(speed: TransactionSpeed) async throws {
+    func setFeeRate(speed: TransactionSpeed, isCurrentSend: () -> Bool = { true }) async throws {
         var feeEstimates = await feeEstimatesManager.getEstimates(refresh: true)
+        guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         if feeEstimates == nil {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
             feeEstimates = await feeEstimatesManager.getEstimates(refresh: false)
+            guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         }
 
         guard let feeEstimates else {
@@ -699,12 +701,14 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func loadAvailableUtxos() async throws {
-        availableUtxos = try await lightningService.listSpendableOutputs()
+    func loadAvailableUtxos(isCurrentSend: () -> Bool = { true }) async throws {
+        let utxos = try await lightningService.listSpendableOutputs()
+        guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        availableUtxos = utxos
     }
 
     /// Sets the UTXO selection for the send flow using the specified coin selection algorithm.based on chosen fee and target amount
-    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm) async throws {
+    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm, isCurrentSend: () -> Bool = { true }) async throws {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -717,12 +721,14 @@ class WalletViewModel: ObservableObject {
             "Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte"
         )
 
-        selectedUtxos = try await lightningService.selectUtxosWithAlgorithm(
+        let utxos = try await lightningService.selectUtxosWithAlgorithm(
             targetAmountSats: sendAmountSats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             coinSelectionAlgorythm: coinSelectionAlgorythm,
             utxos: nil
         )
+        guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        selectedUtxos = utxos
 
         Logger.info("Selected UTXOs: \(String(describing: selectedUtxos))")
     }
@@ -802,10 +808,11 @@ class WalletViewModel: ObservableObject {
     /// - Throws: Error if calculation fails
     func calculateMaxSendableAmount(
         address: String,
-        satsPerVByte: UInt32
+        satsPerVByte: UInt32,
+        isCurrentSend: () -> Bool = { true }
     ) async throws -> UInt64 {
         let spendableBalance = UInt64(spendableOnchainBalanceSats)
-        availableUtxos = try await lightningService.listSpendableOutputs()
+        try await loadAvailableUtxos(isCurrentSend: isCurrentSend)
 
         let fee = try await lightningService.estimateSendAllFee(
             address: address,
