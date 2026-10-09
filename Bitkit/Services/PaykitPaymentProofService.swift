@@ -62,6 +62,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var hardwareFeeRate: UInt64?
     var hardwareTotalSpent: UInt64?
     var hardwareDispatchAttempted: Bool?
+    /// Device-local navigation hint only; wallet backups intentionally omit it.
+    var hardwareRefusedForNavigation: Bool? = false
     var privatePaymentListVersion: UInt64?
     var previousPrivatePaymentListVersion: UInt64?
     var onchainMatchingTransactionIdsBeforeAttempt: Set<String>?
@@ -645,7 +647,8 @@ actor PaykitPaymentProofService {
             }
             return RetainedHardwareOnchainPayment(
                 signedTx: HwFundingSignedTx(serializedTx: raw, miningFeeSats: fee, feeRate: Float(rate), totalSpent: spent),
-                hasAttemptedBroadcast: proof.hardwareDispatchAttempted != false
+                hasAttemptedBroadcast: proof.hardwareDispatchAttempted != false,
+                isRefusedForNavigation: proof.hardwareRefusedForNavigation == true
             )
         }
     }
@@ -673,6 +676,31 @@ actor PaykitPaymentProofService {
             proofs[index].paymentIdentifier = txid
             proofs[index].hardwareSignedTransaction = serializedTx
             proofs[index].hardwareDispatchAttempted = true
+            try await persist(proofs)
+        }
+    }
+
+    func markHardwareCandidateRefused(
+        requestId: PaykitPaymentRequest.ID, paymentIdentity: String, walletId: String, serializedTx: String,
+        refused: Bool
+    ) async throws {
+        let identity = try await currentIdentity()
+        let txid = try SignedTransactionId.fromHex(serializedTx)
+        guard PubkyPublicKeyFormat.matches(identity, paymentIdentity), walletId != WalletScope.default,
+              hardwareTransactionLookup.hasWallet(walletId: walletId)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        try await mutationLock.withLock {
+            guard try await PubkyPublicKeyFormat.matches(currentIdentity(), identity) else {
+                throw PaykitPaymentRequestError.requestUnavailable
+            }
+            var proofs = try await loadProofs()
+            guard let index = proofs.firstIndex(where: {
+                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                    $0.onchainWalletId == walletId && $0.kind == .onchain && $0.paymentStarted &&
+                    $0.paymentIdentifier == txid && $0.hardwareSignedTransaction == serializedTx &&
+                    $0.hardwareDispatchAttempted == true && $0.proofData == nil && $0.onchainAcceptanceVerified != true
+            }) else { throw PaykitPaymentRequestError.operationInProgress }
+            proofs[index].hardwareRefusedForNavigation = refused
             try await persist(proofs)
         }
     }

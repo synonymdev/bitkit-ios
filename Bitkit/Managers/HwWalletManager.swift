@@ -1549,11 +1549,16 @@ final class HwWalletManager {
     }
 
     /// Broadcast a signed funding transaction and return its txid. Does not require a connected device.
-    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
+    ) async throws -> String {
         try await OnChainHwService.shared.broadcastRawTx(
             serializedTx: serializedTx,
             electrumUrl: electrumUrlProvider(),
-            paymentDeadline: paymentDeadline
+            paymentDeadline: paymentDeadline,
+            beforeDispatch: beforeDispatch
         )
     }
 

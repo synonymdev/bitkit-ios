@@ -548,6 +548,45 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             address: onchainAddress, amountSats: request.amountSats
         )
         XCTAssertEqual(attempted?.hasAttemptedBroadcast, true)
+        try await reopened.markHardwareCandidateRefused(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            serializedTx: serializedTx, refused: true
+        )
+        let localSnapshot = await store.snapshot()
+        let localProof = try XCTUnwrap(localSnapshot.first)
+        let localRoundtrip = try JSONDecoder().decode(PendingPaykitPaymentProof.self, from: JSONEncoder().encode(localProof))
+        XCTAssertEqual(localRoundtrip.hardwareRefusedForNavigation, true)
+        let localReopened = paymentProofService(sdk: sdk, store: store)
+        let refused = try await localReopened.retainedHardwareOnchainPayment(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats
+        )
+        XCTAssertEqual(refused?.isRefusedForNavigation, true)
+        XCTAssertEqual(refused?.signedTx, receipt)
+        try await localReopened.retainHardwareOnchainCandidate(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats, serializedTx: serializedTx
+        )
+        let retainedSnapshot = await store.snapshot()
+        XCTAssertEqual(retainedSnapshot.first?.hardwareRefusedForNavigation, true, "Retention is not dispatch")
+        let refusedBackup = try await localReopened.backupSnapshot()
+        let refusedEncoded = try JSONEncoder().encode(refusedBackup)
+        XCTAssertFalse(String(decoding: refusedEncoded, as: UTF8.self).contains("hardwareRefusedForNavigation"))
+        try await localReopened.markHardwareCandidateRefused(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            serializedTx: serializedTx, refused: false
+        )
+        let dispatchedSnapshot = await store.snapshot()
+        XCTAssertEqual(dispatchedSnapshot.first?.hardwareRefusedForNavigation, false)
+        await store.clear()
+        try await localReopened.restoreBackup(JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: refusedEncoded))
+        let conservative = try await localReopened.retainedHardwareOnchainPayment(
+            requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
+            address: onchainAddress, amountSats: request.amountSats
+        )
+        XCTAssertEqual(conservative?.hasAttemptedBroadcast, true)
+        XCTAssertEqual(conservative?.isRefusedForNavigation, false)
+
         await reopened.cancelHardwarePaymentBeforeDispatch(request, paymentIdentity: identity, walletId: hardwareWalletId)
         let guarded = await store.snapshot()
         XCTAssertEqual(guarded.count, 1)

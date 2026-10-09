@@ -189,6 +189,14 @@ struct HwSendSignView: View {
                                 address: invoice.address, amountSats: amount, serializedTx: signed.serializedTx
                             )
                         },
+                        markSignedPaymentRefused: { signed, refused in
+                            guard let requestId else { return }
+                            guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                            try await PaykitPaymentProofService.shared.markHardwareCandidateRefused(
+                                requestId: requestId, paymentIdentity: identity, walletId: walletId,
+                                serializedTx: signed.serializedTx, refused: refused
+                            )
+                        },
                         clearSignedPaymentBeforeDispatch: { signed in
                             guard let requestId else { return true }
                             guard let identity = contactPaymentIdentity else { return false }

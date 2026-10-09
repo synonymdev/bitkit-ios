@@ -4,6 +4,7 @@ import Observation
 struct RetainedHardwareOnchainPayment {
     let signedTx: HwFundingSignedTx
     let hasAttemptedBroadcast: Bool
+    var isRefusedForNavigation: Bool = false
 }
 
 /// Orchestrates an on-chain payment from a hardware wallet: reconnect the device, compose the exact
@@ -113,8 +114,12 @@ struct HwFundingSigner {
     }
 
     /// Broadcasts a signed funding transaction without requiring the hardware device.
-    func broadcastSignedFunding(_ signed: HwFundingSignedTx, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> HwFundingBroadcastResult {
-        let txId = try await broadcastStep(serializedTx: signed.serializedTx, paymentDeadline: paymentDeadline)
+    func broadcastSignedFunding(
+        _ signed: HwFundingSignedTx,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
+    ) async throws -> HwFundingBroadcastResult {
+        let txId = try await broadcastStep(serializedTx: signed.serializedTx, paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch)
         return HwFundingBroadcastResult(
             txId: txId,
             miningFeeSats: signed.miningFeeSats,
@@ -260,10 +265,14 @@ struct HwFundingSigner {
     /// already been handed to the network must never be reported as a signing timeout, so a timeout
     /// here surfaces `.broadcastUncertain` (the funding tx may still confirm) without tearing down the
     /// device session.
-    private func broadcastStep(serializedTx: String, paymentDeadline: PaykitPreciseInstant?) async throws -> String {
+    private func broadcastStep(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
+    ) async throws -> String {
         do {
             return try await withTimeout(timeouts.broadcast) {
-                try await funding.broadcastFunding(serializedTx: serializedTx, paymentDeadline: paymentDeadline)
+                try await funding.broadcastFunding(serializedTx: serializedTx, paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -518,6 +527,7 @@ final class HwSendCoordinator {
         beforeFirstBroadcast: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
         retainSignedPayment: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
+        markSignedPaymentRefused: @escaping (HwFundingSignedTx, Bool) async throws -> Void = { _, _ in },
         clearSignedPaymentBeforeDispatch: @escaping (HwFundingSignedTx) async -> Bool = { _ in true },
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
         afterFailure: @escaping (PrivatePaymentListSendOutcome) async -> Void = { _ in }
@@ -555,7 +565,7 @@ final class HwSendCoordinator {
                 pendingPayment = PendingPayment(request: request, signedTx: restored.signedTx, paymentRequestId: paymentRequestId)
                 pendingPayment?.isPreparedForBroadcast = true
                 pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
-                isBroadcastUnresolved = restored.hasAttemptedBroadcast
+                isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
             }
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
@@ -628,15 +638,25 @@ final class HwSendCoordinator {
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
+                var enteredDispatch = false
                 do {
-                    let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline)
+                    let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline) { [self] in
+                        try Task.checkCancellation()
+                        guard signingAttempt == attempt else { throw CancellationError() }
+                        try await markSignedPaymentRefused(signed, false)
+                        enteredDispatch = true
+                    }
                     await afterBroadcast(result)
                     return result
                 } catch {
                     // Navigation may unlock after a definite refusal; the receipt still guards funds.
-                    isBroadcastUnresolved = paymentRequestId != nil && !error.isHardwareBroadcastRefusal()
-                    let underlyingError = (error as? AppError)?.underlyingError ?? error
-                    if underlyingError as? PaykitPaymentRequestError == .requestExpired {
+                    let refused = error.isHardwareBroadcastRefusal()
+                    if enteredDispatch, paymentRequestId != nil, refused {
+                        try? await markSignedPaymentRefused(signed, true)
+                    }
+                    let dispatchIsUncertain = enteredDispatch || (error as? HwTransferError) == .broadcastUncertain
+                    isBroadcastUnresolved = dispatchIsUncertain ? paymentRequestId != nil && !refused : priorBroadcastWasUnresolved
+                    if !enteredDispatch, (error as? HwTransferError) != .broadcastUncertain {
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
                         let cleared: Bool
                         if hadPriorBroadcastAttempt {

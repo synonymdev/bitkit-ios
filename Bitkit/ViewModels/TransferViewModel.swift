@@ -107,7 +107,11 @@ protocol HwTransferFunding: Sendable {
         addressType: AddressScriptType
     ) async throws -> UInt64
     func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
-    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant?) async throws -> String
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
+    ) async throws -> String
 }
 
 /// The device-session capability the transfer flow needs for on-device signing, addressed by wallet

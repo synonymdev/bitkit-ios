@@ -930,6 +930,88 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
+    func testRefusedShopRestoreAndFeeRefreshRemainDismissibleBeforeRetryDispatch() async throws {
+        for relaunch in [false, true] {
+            for (denial, expiresInQueue) in [
+                (PaykitPaymentRequestError.requestExpired, false),
+                (.requestUnavailable, false),
+                (.operationInProgress, false),
+                (.requestExpired, true),
+            ] {
+                let funding = MockHwFunding()
+                let manager = HwWalletManager()
+                let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+                var stored: RetainedHardwareOnchainPayment?
+                let retain: (HwFundingSignedTx) async throws -> Void = {
+                    stored = RetainedHardwareOnchainPayment(
+                        signedTx: $0, hasAttemptedBroadcast: true, isRefusedForNavigation: stored?.isRefusedForNavigation == true
+                    )
+                }
+                let markRefused: (HwFundingSignedTx, Bool) async throws -> Void = { signed, refused in
+                    XCTAssertEqual(stored?.signedTx, signed)
+                    stored?.isRefusedForNavigation = refused
+                }
+                let original = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+                funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "broadcast failed: min relay fee not met")
+                await assertThrowsAsync {
+                    _ = try await original.signAndBroadcast(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                        paymentRequestId: requestId, retainSignedPayment: retain, markSignedPaymentRefused: markRefused
+                    )
+                }
+                XCTAssertTrue(original.canLeave)
+                let retry = relaunch ? makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting()) : original
+                if !relaunch {
+                    _ = try await retry.preparePreview(manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 3)
+                }
+                funding.broadcastError = nil
+                let deadline = PaykitPreciseInstant(date: Date().addingTimeInterval(60))
+                if expiresInQueue {
+                    funding.broadcastNow = { deadline.date.addingTimeInterval(1) }
+                }
+                await assertThrowsAsync {
+                    _ = try await retry.signAndBroadcast(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: relaunch ? 2 : 3,
+                        paymentDeadline: expiresInQueue ? deadline : nil, paymentRequestId: requestId, loadSignedPayment: { stored },
+                        beforeBroadcastAttempt: {
+                            if !expiresInQueue, denial != .operationInProgress {
+                                throw denial
+                            }
+                        },
+                        retainSignedPayment: {
+                            signed in if expiresInQueue {
+                                try await retain(signed)
+                            } else {
+                                throw denial
+                            }
+                        },
+                        markSignedPaymentRefused: markRefused
+                    )
+                }
+                XCTAssertEqual(funding.signCalls, 1)
+                XCTAssertEqual(funding.broadcastCalls, 1)
+                XCTAssertTrue(retry.hasPendingBroadcast)
+                XCTAssertTrue(retry.canLeave, "Restore must preserve refusal navigation before another dispatch")
+                retry.cancel()
+                XCTAssertTrue(retry.hasPendingBroadcast)
+                XCTAssertEqual(stored?.isRefusedForNavigation, true)
+                funding.broadcastNow = Date.init
+                funding.broadcastError = HwTransferError.broadcastUncertain
+                await assertThrowsAsync {
+                    _ = try await retry.signAndBroadcast(
+                        manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: relaunch ? 2 : 3,
+                        paymentRequestId: requestId, loadSignedPayment: { stored },
+                        retainSignedPayment: retain, markSignedPaymentRefused: markRefused
+                    )
+                }
+                XCTAssertEqual(stored?.isRefusedForNavigation, false, "A real new dispatch consumes the navigation hint")
+                XCTAssertFalse(retry.canLeave)
+                XCTAssertEqual(funding.signCalls, 1)
+                XCTAssertEqual(funding.broadcastTransactions, [funding.signedTx.serializedTx, funding.signedTx.serializedTx])
+            }
+        }
+    }
+
     func testExpiredShopRetryPreservesPriorNavigationStateAndSignedPayment() async throws {
         for details in ["broadcast failed: min relay fee not met", "offline"] {
             for expiresInQueue in [false, true] {

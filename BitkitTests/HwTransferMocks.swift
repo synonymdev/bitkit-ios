@@ -115,8 +115,13 @@ final class MockHwFunding: HwTransferFunding {
         return signedTx
     }
 
-    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
+    ) async throws -> String {
         try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline, at: broadcastNow())
+        try await beforeDispatch()
         broadcastCalls += 1
         broadcastTransactions.append(serializedTx)
         if let broadcastGate {
