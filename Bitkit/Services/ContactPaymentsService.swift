@@ -100,10 +100,14 @@ enum ContactPaymentsService {
 
         var currentOperations = operations
         currentOperations.preparePrivateEndpoints = { @MainActor _, immediate, isCurrent in
-            let snapshot = contactsManager.savedContactsSnapshot()
-            return await operations.preparePrivateEndpoints(snapshot.publicKeys, immediate) {
-                isCurrent() && snapshot.isCurrent()
+            while !Task.isCancelled, isCurrent() {
+                let snapshot = contactsManager.savedContactsSnapshot()
+                let error = await operations.preparePrivateEndpoints(snapshot.publicKeys, immediate) {
+                    isCurrent() && snapshot.isCurrent()
+                }
+                if snapshot.isCurrent() { return error }
             }
+            return Task.isCancelled && isCurrent() ? CancellationError() : nil
         }
 
         do {
