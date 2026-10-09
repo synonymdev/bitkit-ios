@@ -1,4 +1,5 @@
 @testable import Bitkit
+import enum Paykit.PaykitError
 import class Paykit.PubkySessionAccess
 import struct Paykit.PubkySessionBootstrapResult
 import UIKit
@@ -12,6 +13,11 @@ final class PubkyProfileManagerTests: XCTestCase {
 
     @MainActor
     func testNavigationLookupReadsStoredIdentityWithoutCachedMetadata() async throws {
+        let key = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
+        let request = try PubkyAuthRequest.parse(
+            url: "pubkyauth://signup_grant?caps=/pub/example/:rw&relay=https://relay.example/inbox/" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&cid=paykit.test&cpk=\(key)&hs=\(key)"
+        )
         try await withEmptyIdentityStorage {
             for source in ["none", "local", "session", "ring"] {
                 for key in [KeychainEntryType.paykitSession, .pubkySecretKey] {
@@ -26,9 +32,11 @@ final class PubkyProfileManagerTests: XCTestCase {
                 }
                 let manager = PubkyProfileManager()
                 XCTAssertNil(manager.cachedName)
+                XCTAssertNil(manager.publicKey)
                 let exists = await manager.hasExistingIdentityForNavigation()
                 XCTAssertEqual(exists, source != "none", source)
                 XCTAssertEqual(manager.hasExistingIdentity, exists, source)
+                XCTAssertEqual(PubkyAuthApprovalSheet.requiresIdentityCreation(for: request, profile: manager), source == "none", source)
             }
         }
     }
@@ -115,7 +123,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: "pubky_profile_name")
         let savedReference = AdoptedPubkyReference.current
-        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedValues = try keys.map { try Keychain.load(key: $0) }
         defer {
             AdoptedPubkyReference.current = savedReference
@@ -265,6 +273,89 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testDeferredRecoveryUsesBoundedShortRetriesBeforeBackingOff() async {
+        for multiplier in [0.8, 1.0, 1.2] {
+            let manager = RecoveryProfileManager()
+            let attempts = SessionRecoveryAttempts()
+            var delays: [Duration] = []
+            await manager.retrySessionRestoration(
+                jitter: { multiplier },
+                sleep: { delays.append($0) },
+                hasStoredIdentity: { true },
+                initializeSession: {
+                    guard await attempts.next() > 11 else { return .restorationDeferred }
+                    return .restored(publicKey: "existing-identity")
+                }
+            )
+
+            let expected = Array(repeating: 5.0, count: 8) + [10, 20, 40]
+            XCTAssertEqual(delays, expected.map { .seconds($0 * multiplier) })
+            XCTAssertEqual(manager.publicKey, "existing-identity")
+            XCTAssertFalse(manager.sessionRestorationFailed)
+        }
+    }
+
+    @MainActor
+    func testDeferredRecoveryKeepsNormalBackoffForInvalidCredentials() async {
+        let manager = RecoveryProfileManager()
+        let attempts = SessionRecoveryAttempts()
+        var delays: [Duration] = []
+        await manager.retrySessionRestoration(
+            jitter: { 1 },
+            sleep: { delays.append($0) },
+            hasStoredIdentity: { true },
+            initializeSession: {
+                switch await attempts.next() {
+                case 1: throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Locked")
+                case 2: throw PubkyServiceError.authFailed("Invalid credentials")
+                default: return .restored(publicKey: "existing-identity")
+                }
+            }
+        )
+        XCTAssertEqual(delays, [.seconds(5), .seconds(10)])
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+    }
+
+    @MainActor
+    func testDeferredRecoveryStopsAfterCancellationOrIdentityChange() async throws {
+        for changeIdentity in [false, true] {
+            let manager = RecoveryProfileManager()
+            let sleeping = expectation(description: "waiting before deferred retry")
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let attempts = SessionRecoveryAttempts()
+            let recovery = Task {
+                await manager.retrySessionRestoration(
+                    sleep: { _ in
+                        sleeping.fulfill()
+                        for await _ in stream {}
+                    },
+                    hasStoredIdentity: { true },
+                    initializeSession: {
+                        let attempt = await attempts.next()
+                        XCTAssertEqual(attempt, 1, "Invalidated recovery must not restore another session")
+                        return attempt == 1 ? .restorationDeferred : .restored(publicKey: "unexpected-identity")
+                    }
+                )
+            }
+            await fulfillment(of: [sleeping], timeout: 2)
+            if changeIdentity {
+                try await PubkyProfileManager.restoreSessionBackupState(
+                    nil,
+                    deleteKeychainValue: { _ in },
+                    removeOwnSharedRecords: {},
+                    forgetSessionAccess: {}
+                )
+            } else {
+                recovery.cancel()
+            }
+            continuation.finish()
+            await recovery.value
+            XCTAssertNil(manager.publicKey)
+        }
+    }
+
+    @MainActor
     func testCancelledRecoveryDoesNotRetryAfterPendingStartup() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")
@@ -333,7 +424,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testFailedRingAdoptionDoesNotRestoreIdentityAfterLocalReset() async throws {
         let savedReference = AdoptedPubkyReference.current
-        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedCredentials = try keys.map { try Keychain.load(key: $0) }
         let defaults = UserDefaults.standard
         let preferenceKeys = [
@@ -512,7 +603,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testRingAdoptionDropsLateProfileAfterSessionTeardown() async throws {
         let savedReference = AdoptedPubkyReference.current
-        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey, .paykitSdkState]
+        let keychainKeys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let savedCredentials = try keychainKeys.map { try Keychain.load(key: $0) }
         let defaults = UserDefaults.standard
         let preferenceKeys = [
@@ -647,6 +738,44 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(manager.publicKey, "existing-identity")
         XCTAssertEqual(manager.authState, .authenticated)
         XCTAssertNil(manager.initializationErrorMessage)
+    }
+
+    @MainActor
+    func testOverlappingRecoverySharesFailureAndAllowsLaterRetry() async {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "recovery started")
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let recovery = Task {
+            await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                started.fulfill()
+                for await _ in stream {}
+                throw PubkyServiceError.authFailed("offline")
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let waiting = expectation(description: "recovery callers waiting")
+        waiting.expectedFulfillmentCount = 2
+        let retries = (0 ..< 2).map { _ in
+            Task {
+                waiting.fulfill()
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    XCTFail("Waiting callers must share the completed recovery attempt")
+                    return .noSession
+                }
+            }
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        continuation.finish()
+        await recovery.value
+        for retry in retries {
+            await retry.value
+        }
+        XCTAssertNil(manager.publicKey)
+        XCTAssertFalse(manager.isRestoringSession)
+
+        await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: "existing-identity") }
+        XCTAssertEqual(manager.publicKey, "existing-identity")
+        XCTAssertEqual(manager.authState, .authenticated)
     }
 
     @MainActor
@@ -858,7 +987,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testSignupDoesNotRestoreProfileStateAfterWalletReset() async throws {
         snapshotAppDefaultsDomain()
-        let keys: [KeychainEntryType] = [.paykitSdkState, .paykitSession, .pubkySecretKey]
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
         let saved = try keys.map { try Keychain.load(key: $0) }
         let savedOverrides = ContactsManager.backupContactProfileOverrides()
         defer {
@@ -874,7 +1003,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         for resetStep in ["register", "authorize", "activate"] {
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             do {
@@ -926,7 +1057,9 @@ final class PubkyProfileManagerTests: XCTestCase {
             defaults.set(true, forKey: "pubky_profile_setup_pending")
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             var events: [String] = []
@@ -978,7 +1111,9 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         let manager = PubkyProfileManager()
         let session = PubkyRegisteredIdentity(
-            result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test"),
+            result: PubkySessionBootstrapResult(
+                sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_test", capability: .privateLinkCapable
+            ),
             walletGeneration: 0
         )
         var shouldFailActivation = true
@@ -1050,7 +1185,9 @@ final class PubkyProfileManagerTests: XCTestCase {
         for cancelSignup in [false, true] {
             let manager = PubkyProfileManager()
             let session = PubkyRegisteredIdentity(
-                result: PubkySessionBootstrapResult(sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first"),
+                result: PubkySessionBootstrapResult(
+                    sessionAccess: PubkySessionAccess(noPointer: .init()), publicKey: "pubky_first", capability: .privateLinkCapable
+                ),
                 walletGeneration: 0
             )
             let approvalStarted = expectation(description: "Approval started")
@@ -1588,6 +1725,269 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    /// The QA regression: after adopting a cached Ring row whose profile was removed remotely, the user saves an edit with a
+    /// new avatar while the follow-up refresh is held. The refresh found the profile missing while the avatar still
+    /// uploaded, before the edit's write dropped older reads, so it cleared the profile and started profile setup, and
+    /// MainNav opened Create Profile during Save.
+    @MainActor
+    func testProfileEditKeepsTheProfileWhenAnOlderRefreshFindsItMissingWhileItsAvatarUploads() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub()
+                let publications = ProfilePublications()
+                let uploads = AvatarUploads()
+                await uploads.hold()
+                let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                let avatar = makeAvatarImage()
+
+                let save = Task {
+                    try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                }
+                await uploads.waitUntilHeld(1)
+                await stub.release(request: 1)
+                await waitUntil("the refresh finds the profile missing") { !manager.isLoadingProfile }
+
+                XCTAssertFalse(manager.isProfileSetupPending, "A missing profile found while the avatar uploads starts no profile setup")
+                XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+                XCTAssertEqual(manager.profile?.tags, ["friend", "work"], "Nor does it clear the profile while the avatar uploads")
+                XCTAssertEqual(manager.cachedName, "Alice")
+
+                await uploads.release()
+                let isSaved = try await save.value
+
+                XCTAssertTrue(isSaved)
+                XCTAssertEqual(manager.profile?.tags, ["friend"], "The edited profile shows")
+                XCTAssertEqual(manager.profile?.imageUrl, uploadedAvatarUri)
+                XCTAssertFalse(manager.isProfileSetupPending, "So Create Profile is not prompted")
+                XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"))
+                let published = await publications.published
+                XCTAssertEqual(published.map(\.image), [uploadedAvatarUri])
+                let requests = await stub.requests
+                XCTAssertEqual(requests.count, 2, "A saved edit reads nothing again")
+            }
+        }
+    }
+
+    /// The edit dropped the refresh of the reused row profile when it started. When its avatar upload then fails while its
+    /// session is still signed in, the edit wrote nothing, so that refresh runs again rather than leaving the reused profile
+    /// unchecked: it finds the profile missing and starts profile setup, as it would have without the edit. The dropped
+    /// refresh itself decides nothing, whether it lands while the avatar uploads or only after the upload failed.
+    @MainActor
+    func testProfileEditWhoseAvatarUploadFailsRunsTheRefreshItDroppedAgain() async {
+        let avatar = makeAvatarImage()
+        for droppedRefreshLandsFirst in [true, false] {
+            let message = droppedRefreshLandsFirst ? "dropped refresh lands during the upload" : "dropped refresh lands after the upload failed"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(caseName: message)
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    await uploads.hold()
+                    let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+
+                    let save = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+                    if droppedRefreshLandsFirst {
+                        await stub.release(request: 1)
+                        await waitUntil("\(message): the dropped refresh finishes") { !manager.isLoadingProfile }
+                    }
+                    await uploads.release(failing: true)
+                    do {
+                        _ = try await save.value
+                        XCTFail("Expected the upload's error, \(message)")
+                    } catch {
+                        XCTAssertTrue(error is AvatarUploadError, "\(message): \(error)")
+                    }
+                    XCTAssertFalse(manager.isProfileSetupPending, "Nothing changes before the refresh that runs again answers, \(message)")
+                    XCTAssertEqual(manager.profile?.tags, ["friend", "work"], message)
+
+                    await stub.waitForRequests(3)
+                    if !droppedRefreshLandsFirst {
+                        await stub.release(request: 1)
+                    }
+                    await stub.release(request: 2)
+                    await waitUntil("\(message): the refresh that runs again starts profile setup") { manager.isProfileSetupPending }
+
+                    XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    XCTAssertNil(manager.profile, message)
+                    XCTAssertNil(manager.cachedName, message)
+                    XCTAssertEqual(manager.publicKey, ringKeyA, message)
+                    let requests = await stub.requests
+                    XCTAssertEqual(requests, [ringKeyA, ringKeyA, ringKeyA], "Only the dropped refresh runs again, \(message)")
+                    let publicationIdentities = await publications.expectedIdentities
+                    XCTAssertEqual(publicationIdentities, [], "Nothing is published, \(message)")
+                }
+            }
+        }
+    }
+
+    /// A failed edit whose session ended meanwhile reads nothing again: the refresh it dropped was for a session the user
+    /// has left, and the next session's state is not this edit's to touch.
+    @MainActor
+    func testProfileEditThatFailsAfterItsSessionEndedRunsNothingAgain() async throws {
+        try await withRestoredProfileDefaults {
+            try await withStoredSessionSecret {
+                let stub = RemoteProfileStub()
+                let publications = ProfilePublications()
+                let uploads = AvatarUploads()
+                await uploads.hold()
+                let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                let avatar = makeAvatarImage()
+
+                let save = Task {
+                    try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"], avatarImage: avatar)
+                }
+                await uploads.waitUntilHeld(1)
+                manager.clearAuthenticatedStateForTesting()
+                await uploads.release(failing: true)
+                let isSaved = try await save.value
+                await stub.release(request: 1)
+                await waitUntil("the dropped refresh finishes") { !manager.isLoadingProfile }
+
+                XCTAssertFalse(isSaved, "An edit whose session ended reports nothing")
+                let requests = await stub.requests
+                XCTAssertEqual(requests.count, 2, "Nothing is read again for a session that ended")
+                XCTAssertNil(manager.publicKey)
+                XCTAssertFalse(manager.isProfileSetupPending)
+            }
+        }
+    }
+
+    /// The QA regression: a tag change on Profile, saved while an avatar edit still uploads, fails. It used to run the
+    /// refresh it dropped again under the avatar edit's generation, so a refresh that found the profile missing cleared
+    /// the profile and started profile setup while the avatar edit was still saving, and that edit then published over
+    /// the cleared profile. Nothing runs again while a save is in flight, and a save that publishes makes the dropped
+    /// refresh moot, whichever of the two saves fails.
+    @MainActor
+    func testOverlappingProfileSavesRerunNoDroppedRefreshWhenOneOfThemSaves() async {
+        let avatar = makeAvatarImage()
+        for avatarEditSaves in [true, false] {
+            let message = avatarEditSaves ? "the tag save fails, then the avatar edit saves" : "the avatar edit fails, then the tag save saves"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(caseName: message)
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                    // The dropped refresh stays held; anything read later finds the profile missing at once.
+                    await stub.setHoldsRequests(false)
+
+                    await publications.hold()
+                    let tagSave = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+                    }
+                    await publications.waitUntilHeld(1)
+                    await uploads.hold()
+                    let avatarEdit = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend", "work"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+
+                    let failedSave = avatarEditSaves ? tagSave : avatarEdit
+                    if avatarEditSaves {
+                        await publications.release(failing: true)
+                    } else {
+                        await uploads.release(failing: true)
+                    }
+                    do {
+                        _ = try await failedSave.value
+                        XCTFail("Expected the first save to fail, \(message)")
+                    } catch {}
+                    await stub.release(request: 1)
+                    await waitUntil("\(message): the dropped refresh finishes") { !manager.isLoadingProfile }
+
+                    XCTAssertFalse(manager.isProfileSetupPending, "No profile setup starts while the other save runs, \(message)")
+                    XCTAssertEqual(manager.profile?.tags, ["friend", "work"], "Nor is the profile cleared under it, \(message)")
+                    XCTAssertEqual(manager.cachedName, "Alice", message)
+                    var requests = await stub.requests
+                    XCTAssertEqual(requests.count, 2, "Nothing is read again while a save is in flight, \(message)")
+
+                    if avatarEditSaves {
+                        await uploads.release()
+                        let isSaved = try await avatarEdit.value
+                        XCTAssertTrue(isSaved, message)
+                        XCTAssertEqual(manager.profile?.tags, ["friend", "work"], message)
+                        XCTAssertEqual(manager.profile?.imageUrl, uploadedAvatarUri, message)
+                    } else {
+                        await publications.release()
+                        let isSaved = try await tagSave.value
+                        XCTAssertTrue(isSaved, message)
+                        XCTAssertEqual(manager.profile?.tags, ["friend"], message)
+                    }
+                    XCTAssertFalse(manager.isProfileSetupPending, message)
+                    XCTAssertFalse(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    await waitUntil("\(message): no read runs") { !manager.isLoadingProfile }
+                    requests = await stub.requests
+                    XCTAssertEqual(requests.count, 2, "A published profile makes the dropped refresh moot, \(message)")
+                }
+            }
+        }
+    }
+
+    /// Two overlapping saves that both fail leave the reused profile unchecked unless the refresh the first one dropped
+    /// runs again. It runs once, after the last save in flight has failed, whichever save fails first.
+    @MainActor
+    func testOverlappingProfileSavesThatBothFailRerunTheDroppedRefreshOnceAfterTheLast() async {
+        let avatar = makeAvatarImage()
+        for tagSaveFailsFirst in [true, false] {
+            let message = tagSaveFailsFirst ? "the tag save fails first" : "the avatar edit fails first"
+            await withRestoredProfileDefaults(case: message) {
+                try await withStoredSessionSecret {
+                    let stub = RemoteProfileStub(caseName: message)
+                    let publications = ProfilePublications()
+                    let uploads = AvatarUploads()
+                    let manager = try await makeManagerAdoptingARemovedRingProfile(stub: stub, publications: publications, uploads: uploads)
+                    await stub.setHoldsRequests(false)
+
+                    await publications.hold()
+                    let tagSave = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend"])
+                    }
+                    await publications.waitUntilHeld(1)
+                    await uploads.hold()
+                    let avatarEdit = Task {
+                        try await manager.saveProfile(name: "Alice", bio: "bio", links: [], tags: ["friend", "work"], avatarImage: avatar)
+                    }
+                    await uploads.waitUntilHeld(1)
+
+                    let saves = tagSaveFailsFirst ? [tagSave, avatarEdit] : [avatarEdit, tagSave]
+                    let failFirst: () async -> Void = tagSaveFailsFirst
+                        ? { await publications.release(failing: true) }
+                        : { await uploads.release(failing: true) }
+                    let failLast: () async -> Void = tagSaveFailsFirst
+                        ? { await uploads.release(failing: true) }
+                        : { await publications.release(failing: true) }
+
+                    await failFirst()
+                    do {
+                        _ = try await saves[0].value
+                        XCTFail("Expected the first save to fail, \(message)")
+                    } catch {}
+                    await stub.release(request: 1)
+                    await waitUntil("\(message): the dropped refresh finishes") { !manager.isLoadingProfile }
+                    var requests = await stub.requests
+                    XCTAssertEqual(requests.count, 2, "Nothing is read again while the other save runs, \(message)")
+                    XCTAssertFalse(manager.isProfileSetupPending, message)
+
+                    await failLast()
+                    do {
+                        _ = try await saves[1].value
+                        XCTFail("Expected the last save to fail, \(message)")
+                    } catch {}
+                    await waitUntil("\(message): the refresh that runs again starts profile setup") { manager.isProfileSetupPending }
+                    await waitUntil("\(message): the refresh that runs again finishes") { !manager.isLoadingProfile }
+
+                    XCTAssertNil(manager.profile, message)
+                    XCTAssertTrue(UserDefaults.standard.bool(forKey: "pubky_profile_setup_pending"), message)
+                    requests = await stub.requests
+                    XCTAssertEqual(requests, [ringKeyA, ringKeyA, ringKeyA], "The dropped refresh runs again exactly once, \(message)")
+                }
+            }
+        }
+    }
+
     // MARK: - Avatar uploads
 
     /// Edit Contact uploads a new avatar for the identity Save was tapped in. The upload hands that identity to the SDK,
@@ -1831,7 +2231,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 manager.clearAuthenticatedStateForTesting()
             }),
             ("automatic recovery while signed out", true, { manager in
-                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed] {
+                for result in [PubkyProfileManager.SessionInitializationResult.noSession, .restorationFailed, .restorationDeferred] {
                     await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) { result }
                 }
             }),
@@ -2445,6 +2845,67 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(secretKeyHex)
     }
 
+    func testPrivatePaymentAccessRequiresAMatchingLocalOrAdoptedSecret() throws {
+        let secretKeyHex = String(repeating: "01", count: 32)
+        let publicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+        let otherSecretKeyHex = String(repeating: "02", count: 32)
+        let cases: [(local: String?, shared: String?, expected: Bool)] = [
+            (secretKeyHex, nil, true),
+            (nil, secretKeyHex, true),
+            ("", secretKeyHex, true),
+            (nil, nil, false),
+            (otherSecretKeyHex, secretKeyHex, false),
+            (nil, otherSecretKeyHex, false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(try PubkyProfileManager.hasPrivatePaymentAccess(
+                for: publicKey,
+                loadKeychainString: { _ in testCase.local },
+                adopted: (SharedPubkyKeychain.ringSourceApp, publicKey),
+                loadSharedSecret: { sourceApp, pubky in
+                    XCTAssertTrue(testCase.local == nil || testCase.local == "")
+                    XCTAssertEqual(sourceApp, SharedPubkyKeychain.ringSourceApp)
+                    XCTAssertEqual(pubky, publicKey)
+                    return testCase.shared
+                }
+            ), testCase.expected)
+        }
+        XCTAssertFalse(try PubkyProfileManager.hasPrivatePaymentAccess(
+            for: publicKey, loadKeychainString: { _ in nil }, adopted: nil,
+            loadSharedSecret: { _, _ in XCTFail("No adopted identity"); return nil }
+        ))
+    }
+
+    func testPrivatePaymentAccessPreservesKeyReadErrors() {
+        XCTAssertThrowsError(try PubkyProfileManager.hasPrivatePaymentAccess(
+            for: "pubky-current",
+            loadKeychainString: { _ in throw KeychainError.failedToLoad },
+            adopted: (SharedPubkyKeychain.ringSourceApp, "current"),
+            loadSharedSecret: { _, _ in XCTFail("An unreadable local key must not fall back"); return nil }
+        )) { XCTAssertTrue($0 is KeychainError) }
+
+        XCTAssertThrowsError(try PubkyProfileManager.hasPrivatePaymentAccess(
+            for: "pubky-current",
+            loadKeychainString: { _ in nil },
+            adopted: (SharedPubkyKeychain.ringSourceApp, "current"),
+            loadSharedSecret: { _, _ in throw KeychainError.failedToLoad }
+        )) { XCTAssertTrue($0 is KeychainError) }
+    }
+
+    @MainActor
+    func testPrivatePaymentAccessDoesNotTreatInvalidLocalKeysAsMissing() async throws {
+        try await withEmptyIdentityStorage {
+            let secretKeyHex = String(repeating: "01", count: 32)
+            let publicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+            for data in [Data("invalid-key".utf8), Data([0xFF])] {
+                try Keychain.upsert(key: .pubkySecretKey, data: data)
+                XCTAssertThrowsError(try PubkyProfileManager.hasPrivatePaymentAccess(for: publicKey))
+            }
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secretKeyHex.utf8))
+            XCTAssertTrue(try PubkyProfileManager.hasPrivatePaymentAccess(for: publicKey))
+        }
+    }
+
     func testResolveSessionInitializationRestoresSavedSessionWithoutReSigningIn() async {
         let result = await PubkyProfileManager.resolveSessionInitialization(
             savedSessionSecret: "saved-session",
@@ -2464,6 +2925,52 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(result, .restored(publicKey: "pubky_saved"))
+    }
+
+    @MainActor
+    func testResolveSessionInitializationKeepsSessionOnTemporaryFailure() async {
+        let errors: [Error] = [
+            PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "Locked"),
+            PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Pending write"),
+            PaykitError.Transport(code: "transport_error", context: "Offline"),
+            CancellationError(),
+        ]
+        for error in errors {
+            let result = await PubkyProfileManager.resolveSessionInitialization(
+                savedSessionSecret: "saved-session",
+                storedSecretKeyHex: "local-secret",
+                importSession: { _ in throw error },
+                signInWithSecretKey: { _ in
+                    XCTFail("Temporary failures should retry the saved session")
+                    return "unused-session"
+                }
+            )
+            XCTAssertEqual(result, .restorationDeferred)
+            let manager = RecoveryProfileManager()
+            await manager.initialize { result }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+            XCTAssertNil(manager.initializationErrorMessage)
+            XCTAssertEqual(manager.authState, .idle)
+
+            await manager.initialize { throw error }
+            XCTAssertTrue(manager.isInitialized)
+            XCTAssertFalse(manager.sessionRestorationFailed)
+            XCTAssertNil(manager.initializationErrorMessage)
+        }
+    }
+
+    func testResolveSessionInitializationDefersTemporarySignInFailure() async {
+        let result = await PubkyProfileManager.resolveSessionInitialization(
+            savedSessionSecret: nil,
+            storedSecretKeyHex: "local-secret",
+            importSession: { _ in
+                XCTFail("No saved session to import")
+                return "unused"
+            },
+            signInWithSecretKey: { _ in throw PaykitError.Transport(code: "transport_error", context: "Offline") }
+        )
+        XCTAssertEqual(result, .restorationDeferred)
     }
 
     func testResolveSessionInitializationSignsInWhenOnlySecretKeyExists() async {
@@ -2799,6 +3306,32 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    /// A manager that adopted `ringKeyA` by reusing its found Ring row, tagged "friend" and "work", whose profile was then
+    /// removed remotely. `stub` holds every remote read from then on, and this returns once the refresh of the reused
+    /// profile, request 1, is waiting.
+    @MainActor
+    private func makeManagerAdoptingARemovedRingProfile(
+        stub: RemoteProfileStub,
+        publications: ProfilePublications,
+        uploads: AvatarUploads
+    ) async throws -> PubkyProfileManager {
+        let tagged = PubkyProfile(publicKey: ringKeyA, name: "Alice", bio: "bio", imageUrl: nil, links: [], tags: ["friend", "work"], status: nil)
+        await stub.setProfile(tagged, for: ringKeyA)
+        let manager = PubkyProfileManager(
+            remoteProfileResolver: { try await stub.resolve($0) },
+            profilePublisher: { try await publications.publish($0, expectedIdentity: $1) },
+            avatarUploader: { try await uploads.upload($0, expectedIdentity: $1) }
+        )
+        await manager.loadRingIdentityProfiles([bareRingKeyA])
+        await stub.setProfile(nil, for: ringKeyA)
+        await stub.setHoldsRequests(true)
+
+        let adopted = try await manager.completeRingAdoptionForTesting(publicKey: ringKeyA)
+        XCTAssertEqual(adopted?.tags, ["friend", "work"], "Adoption reuses the found row")
+        await stub.waitForRequests(2)
+        return manager
+    }
+
     /// Profile commits and clears write these keys to the standard defaults.
     @MainActor
     private func withRestoredProfileDefaults(_ body: () async throws -> Void) async rethrows {
@@ -3005,6 +3538,8 @@ private let uploadedAvatarUri = "pubky://uploaded/avatar.jpg"
 
 private struct AvatarUploadError: Error {}
 
+private struct ProfilePublicationError: Error {}
+
 private struct NoLiveSessionUploadError: LocalizedError {
     var errorDescription: String? {
         "cannot publish Paykit blob without an active Pubky session"
@@ -3054,14 +3589,15 @@ private actor AvatarUploads {
 }
 
 /// Stands in for publishing the signed-in profile: records the identity each publication is for and each one published,
-/// and can hold them until released. Once told which identity is signed in, it refuses, like the SDK, a publication for
-/// another identity, checked together with the write. A wait for held publications that outlasts the deadline fails the
-/// test instead of hanging the suite.
+/// and can hold them until released, then let them succeed or fail. Once told which identity is signed in, it refuses,
+/// like the SDK, a publication for another identity, checked together with the write. A wait for held publications that
+/// outlasts the deadline fails the test instead of hanging the suite.
 private actor ProfilePublications {
     private(set) var published: [PubkyProfileData] = []
     private(set) var expectedIdentities: [String?] = []
     private var signedInIdentity: String?
     private var isHolding = false
+    private var failsReleasedPublications = false
     private var held: [CheckedContinuation<Void, Never>] = []
 
     func signIn(_ identity: String) {
@@ -3072,8 +3608,9 @@ private actor ProfilePublications {
         isHolding = true
     }
 
-    func release() {
+    func release(failing: Bool = false) {
         isHolding = false
+        failsReleasedPublications = failing
         held.forEach { $0.resume() }
         held.removeAll()
     }
@@ -3082,6 +3619,9 @@ private actor ProfilePublications {
         expectedIdentities.append(expectedIdentity)
         if isHolding {
             await withCheckedContinuation { held.append($0) }
+            if failsReleasedPublications {
+                throw ProfilePublicationError()
+            }
         }
         if let signedInIdentity, let expectedIdentity, expectedIdentity != signedInIdentity {
             throw PubkyServiceError.identityChanged

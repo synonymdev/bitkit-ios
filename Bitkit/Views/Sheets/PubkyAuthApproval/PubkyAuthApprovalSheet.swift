@@ -54,6 +54,10 @@ struct PubkyAuthApprovalSheet: View {
     @State private var state: ApprovalState
     @State private var isShowingAuthCheck = false
 
+    private var createsIdentity: Bool {
+        Self.requiresIdentityCreation(for: config.request, profile: pubkyProfile)
+    }
+
     enum ApprovalState: Equatable {
         case watchOnlyConsent
         case authorize
@@ -85,7 +89,11 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     static func initialState(for request: PubkyAuthRequest) -> ApprovalState {
-        request.bitkitClaim == .watchOnlyAccountV1 ? .watchOnlyConsent : .authorize
+        request.bitkitClaim?.includesWatchOnlyAccount == true ? .watchOnlyConsent : .authorize
+    }
+
+    static func requiresIdentityCreation(for request: PubkyAuthRequest, profile: PubkyProfileManager) -> Bool {
+        request.requiresIdentityCreation(hasIdentity: profile.hasExistingIdentity)
     }
 
     private var headerTitle: String {
@@ -231,7 +239,7 @@ struct PubkyAuthApprovalSheet: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if config.request.isSignup {
+                    if createsIdentity {
                         BodyMText(t("pubky_auth__signup_description"))
                             .padding(.bottom, 16)
                     }
@@ -259,12 +267,23 @@ struct PubkyAuthApprovalSheet: View {
                         permissionsSection
                     }
 
+                    if config.request.bitkitClaim?.includesPaykitAccess == true {
+                        VStack(alignment: .leading, spacing: 8) {
+                            CaptionMText(t("pubky_auth__paykit_access_title"), textColor: .white64)
+                            BodySText(t("pubky_auth__paykit_access_description"))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 24)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("PubkyAuthPaykitAccess")
+                    }
+
                     Spacer(minLength: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
 
-                    if let homeserver = config.request.homeserverPublicKey {
+                    if createsIdentity, let homeserver = config.request.homeserverPublicKey {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("pubky_auth__homeserver"), textColor: .white64)
                             BodyMSBText(homeserver)
@@ -434,7 +453,7 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
-            if config.request.isSignup {
+            if createsIdentity {
                 try await pubkyProfile.approveSignupAuth(request: config.request)
                 guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
                     return
@@ -490,7 +509,7 @@ struct PubkyAuthApprovalSheet: View {
 
     private func onBack() {
         guard state.canDismiss else { return }
-        if state == .authorize, config.request.bitkitClaim == .watchOnlyAccountV1 {
+        if state == .authorize, config.request.bitkitClaim?.includesWatchOnlyAccount == true {
             state = .watchOnlyConsent
         } else {
             sheets.hideSheet()

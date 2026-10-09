@@ -3,9 +3,6 @@ import UIKit
 
 struct DevSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
-    @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedPublicPaykitEndpoints = false
-    @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
-    @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
     @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
 
@@ -13,6 +10,7 @@ struct DevSettingsView: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var notificationManager: PushNotificationManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
@@ -249,56 +247,21 @@ struct DevSettingsView: View {
 
     @MainActor
     private func disablePaykitUI() async {
-        let hadPublicPaykitState = PaykitFeatureFlags.hasPublicPublishedState() ||
-            UserDefaults.standard.bool(forKey: PublicPaykitService.cleanupPendingKey)
-        let hadPrivatePaykitState = PaykitFeatureFlags.hasPrivatePublishedState() ||
-            UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
-
-        isPaykitUIEnabled = false
-        hasConfirmedPublicPaykitEndpoints = false
-        sharesPrivatePaykitEndpoints = false
-        sharesPublicPaykitEndpoints = false
-        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
-        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
-        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
-
-        var cleanupError: Error?
-        if hadPublicPaykitState {
-            do {
-                try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
-                PublicPaykitService.setCleanupPending(false)
-            } catch {
-                cleanupError = error
-                PublicPaykitService.setCleanupPending(true)
-                Logger.warn("Failed to remove public Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
-            }
-        }
-
-        if hadPrivatePaykitState {
-            do {
-                try await PrivatePaykitService.shared.removePublishedEndpoints()
-                PrivatePaykitService.setContactSharingCleanupPending(false)
-            } catch {
-                if cleanupError == nil {
-                    cleanupError = error
-                }
-                PrivatePaykitService.setContactSharingCleanupPending(true)
-                Logger.warn("Failed to remove private Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
-            }
-        }
-
-        if let cleanupError {
+        do {
+            guard try await ContactPaymentsService.disablePaykitUI(pubkyProfile: pubkyProfile, operations: .live(wallet: wallet)) else { return }
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.warn("Failed to remove Paykit endpoints after disabling Paykit UI: \(error)", context: "DevSettingsView")
             app.toast(
                 type: .error,
                 title: "Paykit UI disabled",
-                description: cleanupError.localizedDescription,
+                description: error.localizedDescription,
                 accessibilityIdentifier: "PaykitUiDisabledToast"
             )
             return
         }
 
-        PublicPaykitService.setCleanupPending(false)
-        PrivatePaykitService.setContactSharingCleanupPending(false)
         app.toast(type: .success, title: "Paykit UI disabled", accessibilityIdentifier: "PaykitUiDisabledToast")
     }
 }
@@ -306,6 +269,7 @@ struct DevSettingsView: View {
 #Preview {
     DevSettingsView()
         .environmentObject(AppViewModel())
+        .environmentObject(PubkyProfileManager())
         .environmentObject(ActivityListViewModel())
         .environmentObject(FeeEstimatesManager())
         .environmentObject(NavigationViewModel())

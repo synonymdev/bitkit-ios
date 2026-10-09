@@ -2,24 +2,67 @@ import BitkitCore
 import Foundation
 import Paykit
 
-enum PubkyAuthClaim: String, Equatable {
-    case watchOnlyAccountV1 = "watch-only-account-v1"
-
-    static let queryParameter = "x-bitkit-claim"
-    static let watchOnlyAccountCapabilities = "/pub/paykit/v0/bitkit/server/:rw,/pub/paykit/v0/private/bitkit/server/:rw"
-    private static let watchOnlyAccountCapabilitySet = Set(watchOnlyAccountCapabilities.split(separator: ",").map(String.init))
-
-    static func matchesWatchOnlyAccountCapabilities(_ capabilities: String) -> Bool {
-        guard let requestedCapabilitySet = capabilitySet(capabilities) else { return false }
-        return requestedCapabilitySet == watchOnlyAccountCapabilitySet
+struct PubkyAuthClaim: Equatable {
+    private enum Item: String {
+        case paykitAccessV1 = "paykit-access-v1"
+        case watchOnlyAccountV1 = "watch-only-account-v1"
     }
 
-    private static func capabilitySet(_ capabilities: String) -> Set<String>? {
-        let entries = capabilities
+    static let watchOnlyAccountV1 = Self(items: [.watchOnlyAccountV1])
+    static let paykitAccessV1 = Self(items: [.paykitAccessV1])
+
+    private let items: [Item]
+
+    private init(items: [Item]) {
+        self.items = items
+    }
+
+    init?(rawValue: String) {
+        let values = rawValue.split(separator: ".", omittingEmptySubsequences: false)
+        let items = values.compactMap { Item(rawValue: String($0)) }
+        guard !items.isEmpty, items.count == values.count, Set(items).count == items.count else { return nil }
+        self.items = items
+    }
+
+    var rawValue: String {
+        // Preserve the requested order because the SDK binds this value into the signature and relay channel.
+        items.map(\.rawValue).joined(separator: ".")
+    }
+
+    static let queryParameter = "x-bitkit-claim"
+    static let requiredCapabilities = Paykit.requiredSessionCapabilities()
+
+    var includesWatchOnlyAccount: Bool {
+        items.contains(.watchOnlyAccountV1)
+    }
+
+    var includesPaykitAccess: Bool {
+        items.contains(.paykitAccessV1)
+    }
+
+    func encode(accountPayload: Data?, paykitKey: PaykitIdentitySecretKey?) throws -> Data {
+        guard includesWatchOnlyAccount == (accountPayload != nil),
+              includesPaykitAccess == (paykitKey != nil)
+        else {
+            throw PubkyAuthRequestError.invalidUrl
+        }
+        if let accountPayload,
+           accountPayload.count != WatchOnlyAccountClaimCodec.payloadLength || accountPayload.first != 1
+        {
+            throw WatchOnlyAccountError.invalidExtendedPublicKey
+        }
+        var payload = accountPayload ?? Data([1])
+        if let paykitKey {
+            payload.append(contentsOf: withUnsafeBytes(of: paykitKey.keyGeneration().bigEndian, Array.init))
+            payload.append(paykitKey.exportBytes())
+        }
+        return payload
+    }
+
+    static func matchesRequiredCapabilities(_ capabilities: String) -> Bool {
+        capabilities
             .split(separator: ",", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-        guard !entries.contains(where: \.isEmpty) else { return nil }
-        return Set(entries)
+            .allSatisfy { $0.trimmingCharacters(in: .whitespaces) == requiredCapabilities }
     }
 }
 
@@ -75,6 +118,15 @@ struct PubkyAuthRequest {
 
     var isSignup: Bool {
         Self.isSignupURL(rawUrl)
+    }
+
+    var isGrantSignup: Bool {
+        guard let components = URLComponents(string: rawUrl) else { return false }
+        return components.scheme?.lowercased() == "pubkyauth" && components.host?.lowercased() == "signup_grant"
+    }
+
+    func requiresIdentityCreation(hasIdentity: Bool) -> Bool {
+        isSignup && (!isGrantSignup || !hasIdentity)
     }
 
     /// The network origin that receives the authorization. This is a delivery destination, not a service identity.
@@ -133,11 +185,19 @@ struct PubkyAuthRequest {
             _ = try parseBitkitClaim(url: normalizedURL, capabilities: capabilities, requiresBitkitClaim: true)
         }
 
-        if let components = URLComponents(string: normalizedURL), isSignupURL(components) {
+        if let components = URLComponents(string: normalizedURL), isSignupURL(components),
+           components.host?.lowercased() != "signup_grant"
+        {
             return try parseSignup(url: normalizedURL, components: components)
         }
 
         let details = try Paykit.parsePubkyAuthUrl(authUrl: normalizedURL)
+        var signupToken: String?
+        if details.kind == .signUp {
+            let values = Dictionary(grouping: URLComponents(string: normalizedURL)?.queryItems ?? [], by: \.name)
+            _ = try requiredQueryValue("hs", from: values)
+            signupToken = try optionalQueryValue("st", from: values)
+        }
         let capabilities = details.capabilities
         return try makeRequest(
             url: normalizedURL,
@@ -145,8 +205,8 @@ struct PubkyAuthRequest {
             clientID: details.clientId,
             relay: details.relayUrl,
             capabilities: capabilities,
-            homeserverPublicKey: nil,
-            signupToken: nil,
+            homeserverPublicKey: details.homeserverPublicKey,
+            signupToken: signupToken,
             authorizationUrl: normalizedURL,
             requiresBitkitClaim: requiresBitkitClaim
         )
@@ -162,7 +222,7 @@ struct PubkyAuthRequest {
         case "pubkyring":
             return components.host?.lowercased() == "signup"
         case "pubkyauth":
-            return ["direct_signup", "signup"].contains(components.host?.lowercased())
+            return ["direct_signup", "signup", "signup_grant"].contains(components.host?.lowercased())
         default:
             return false
         }
@@ -293,7 +353,7 @@ struct PubkyAuthRequest {
             throw PubkyAuthRequestError.duplicateBitkitClaim
         }
         guard let claimValue = claimValues.first else {
-            if requiresBitkitClaim || PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities) {
+            if requiresBitkitClaim {
                 throw PubkyAuthRequestError.missingBitkitClaim
             }
             return nil
@@ -301,7 +361,7 @@ struct PubkyAuthRequest {
         guard let claim = PubkyAuthClaim(rawValue: claimValue) else {
             throw PubkyAuthRequestError.unsupportedBitkitClaim(claimValue)
         }
-        guard PubkyAuthClaim.matchesWatchOnlyAccountCapabilities(capabilities) else {
+        guard PubkyAuthClaim.matchesRequiredCapabilities(capabilities) else {
             throw PubkyAuthRequestError.invalidBitkitClaimCapabilities
         }
 

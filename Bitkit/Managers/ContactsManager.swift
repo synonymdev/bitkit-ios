@@ -134,7 +134,9 @@ class ContactsManager: ObservableObject {
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
-    private var pendingProfileLookups: [String: Task<Void, Never>] = [:]
+    /// Each contact's lookup started by a screen, under an id its result is checked against, so the result of a lookup that
+    /// was ended never lands.
+    private var pendingProfileLookups: [String: (id: UUID, task: Task<Void, Never>)] = [:]
     /// The last tag change queued for each contact, which the next one for that contact waits for. Forgotten on a reset
     /// or owner change, so a change for the next session never waits behind one from the session before.
     private var tagChanges: [String: Task<Void, Error>] = [:]
@@ -148,6 +150,7 @@ class ContactsManager: ObservableObject {
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
     private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String, _ expectedIdentity: String) async throws -> Void
     private let removeContactRecord: @Sendable (_ publicKey: String) async throws -> Void
+    private let removeContactRecords: @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord]
     private let forgetRemovedContacts: @Sendable (_ publicKeys: [String]) async -> Void
     private let currentDate: @Sendable () -> Date
 
@@ -163,6 +166,9 @@ class ContactsManager: ObservableObject {
         removeContactRecord: @escaping @Sendable (_ publicKey: String) async throws -> Void = {
             _ = try await PubkyService.removeContact(publicKey: $0)
         },
+        removeContactRecords: @escaping @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord] = {
+            try await PubkyService.removeContacts(publicKeys: $0)
+        },
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
         },
@@ -173,6 +179,7 @@ class ContactsManager: ObservableObject {
         self.fetchRemoteProfile = fetchRemoteProfile
         self.saveContactLabel = saveContactLabel
         self.removeContactRecord = removeContactRecord
+        self.removeContactRecords = removeContactRecords
         self.forgetRemovedContacts = forgetRemovedContacts
         self.currentDate = currentDate
     }
@@ -287,6 +294,7 @@ class ContactsManager: ObservableObject {
         fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
         fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
     ) async throws {
+        guard !Task.isCancelled else { return }
         guard !isLoading else {
             Logger.debug("loadContacts skipped — already loading", context: "ContactsManager")
             return
@@ -306,7 +314,7 @@ class ContactsManager: ObservableObject {
         Logger.info("Loading contacts for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
 
         while generation == loadGeneration {
-            try Task.checkCancellation()
+            guard !Task.isCancelled else { return }
             let revision = contactsRevision
             do {
                 let records = try await fetchContactRecords()
@@ -433,15 +441,22 @@ class ContactsManager: ObservableObject {
         profileRefresh = nil
     }
 
-    /// Cancels the running refresh's lookups of removed contacts, so a lookup still waiting for a read slot never reads,
-    /// and drops whatever they found.
+    /// Cancels the lookups of removed contacts, the running refresh's and any a screen started, so a lookup still waiting
+    /// for a read slot never reads, and drops whatever they found. A removed contact can be added back with a newer profile
+    /// before such a lookup returns.
     private func stopProfileLookups(for publicKeys: [String]) {
         for publicKey in publicKeys {
             let key = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
             profileRefresh?.lookups[key]?.cancel()
             profileRefresh?.pendingKeys.remove(key)
             profileRefresh?.batchedProfiles[key] = nil
+            pendingProfileLookups.removeValue(forKey: key)?.task.cancel()
         }
+    }
+
+    private func stopPendingProfileLookups() {
+        pendingProfileLookups.values.forEach { $0.task.cancel() }
+        pendingProfileLookups = [:]
     }
 
     private func finishProfileRefresh(_ refreshID: Int) {
@@ -470,7 +485,7 @@ class ContactsManager: ObservableObject {
             applyBatchedProfiles(of: refresh.id)
         }
         if let lookup = pendingProfileLookups[key] {
-            return await lookup.value
+            return await lookup.task.value
         }
         guard let refresh = profileRefresh,
               refresh.pendingKeys.contains(key),
@@ -479,18 +494,20 @@ class ContactsManager: ObservableObject {
               Self.loadContactProfileOverrides()[key] == nil
         else { return }
 
-        let generation = resolvedProfilesGeneration
         profileRefresh?.pendingKeys.remove(key)
+        let lookupID = UUID()
         let lookup = Task { [weak self] in
             let profile = try? await Self.resolveContactProfile(publicKey: key, fetchRemoteProfile: fetchRemoteProfile)
-            self?.finishPendingProfileLookup(of: key, profile: profile?.withNameFallback(label), generation: generation)
+            self?.finishPendingProfileLookup(lookupID, of: key, profile: profile?.withNameFallback(label))
         }
-        pendingProfileLookups[key] = lookup
+        pendingProfileLookups[key] = (lookupID, lookup)
         await lookup.value
     }
 
-    private func finishPendingProfileLookup(of publicKey: String, profile: PubkyProfile?, generation: Int) {
-        guard generation == resolvedProfilesGeneration else { return }
+    /// Drops the result of a lookup that was ended, by removing the contact, a reset or another owner's load, before it
+    /// reaches the cache or the rows.
+    private func finishPendingProfileLookup(_ lookupID: UUID, of publicKey: String, profile: PubkyProfile?) {
+        guard pendingProfileLookups[publicKey]?.id == lookupID else { return }
         pendingProfileLookups[publicKey] = nil
         if let profile {
             rememberResolvedProfile(profile, for: publicKey)
@@ -535,8 +552,7 @@ class ContactsManager: ObservableObject {
         announcedSavedContactKeys = nil
         resolvedProfilesGeneration += 1
         stopProfileRefresh()
-        pendingProfileLookups.values.forEach { $0.cancel() }
-        pendingProfileLookups = [:]
+        stopPendingProfileLookups()
         tagChanges = [:]
         resolvedProfiles = [:]
         resolvedProfilesOwner = owner
@@ -587,11 +603,9 @@ class ContactsManager: ObservableObject {
             try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true, retryTransient: true)
         }
 
-        let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
         _ = try await PubkyService.saveContact(
             publicKey: prefixedKey,
             label: profile.name,
-            receiverPaths: receiverPaths,
             restorePrivateConnection: true
         )
 
@@ -603,25 +617,23 @@ class ContactsManager: ObservableObject {
         contacts.sort(by: Self.isOrderedByName)
     }
 
-    func refreshContactReceiverPaths(publicKey: String, wallet: WalletViewModel) async {
+    func refreshContactLink(publicKey: String, wallet: WalletViewModel) async {
         guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey),
               let contact = contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) })
         else { return }
 
         do {
-            let receiverPaths = try await Self.relevantReceiverPaths(for: prefixedKey)
-            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name, receiverPaths: receiverPaths)
-            await PrivatePaykitService.shared.startInitialLinkBurst(
+            _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name)
+            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                 for: [prefixedKey],
                 savedPublicKeys: contacts.map(\.publicKey),
-                wallet: wallet,
-                reason: "contact receiver refresh"
+                wallet: wallet
             )
         } catch is CancellationError {
             return
         } catch {
             Logger.warn(
-                "Failed to refresh contact receiver paths for \(PubkyPublicKeyFormat.redacted(prefixedKey)): \(error)",
+                "Failed to refresh contact link for \(PubkyPublicKeyFormat.redacted(prefixedKey)): \(error)",
                 context: "ContactsManager"
             )
         }
@@ -632,41 +644,33 @@ class ContactsManager: ObservableObject {
     /// Remembers the profiles it saves for this session, so the Contacts list shows them at once rather than only their
     /// saved labels. A placeholder for a follow whose lookup failed is not remembered, so that profile is still looked up.
     /// An import outlives its screens, so a reset or another identity's load while it runs, such as after a sign-out,
-    /// stops it quietly: it saves nothing more, adds nothing to the next session's list and reports no error.
+    /// drops its result quietly: it adds nothing to the next session's list and reports no error.
     func importContacts(
         contacts selected: [PubkyContact],
-        saveContact: (String, String) async throws -> Void = { publicKey, label in
-            _ = try await PubkyService.saveContact(publicKey: publicKey, label: label, restorePrivateConnection: true)
+        saveContacts: ([ContactUpdate], String?) async throws -> Void = { updates, expectedIdentity in
+            _ = try await PubkyService.saveContacts(updates: updates, expectedIdentity: expectedIdentity)
         }
     ) async throws {
         let profilesGeneration = resolvedProfilesGeneration
-        var imported: [PubkyContact] = []
+        let expectedIdentity = resolvedProfilesOwner
         var existingKeys = Set(contacts.map(\.publicKey))
-        var firstError: Error?
+        let imported = selected.filter { existingKeys.insert($0.publicKey).inserted }
+        try Task.checkCancellation()
+        guard !imported.isEmpty else { return }
 
-        for contact in selected {
+        do {
+            try await saveContacts(imported.map { ContactUpdate(publicKey: $0.publicKey, label: $0.displayName) }, expectedIdentity)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
             try Task.checkCancellation()
-            guard profilesGeneration == resolvedProfilesGeneration else { break }
-            guard !existingKeys.contains(contact.publicKey) else { continue }
-            do {
-                // The preview already resolved this profile. Receiver discovery runs during contact refresh.
-                try await saveContact(contact.publicKey, contact.displayName)
-                imported.append(contact)
-                existingKeys.insert(contact.publicKey)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                firstError = firstError ?? error
-                Logger.warn(
-                    "Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(contact.publicKey))': \(error)",
-                    context: "ContactsManager"
-                )
-            }
+            guard profilesGeneration == resolvedProfilesGeneration else { return }
+            throw error
         }
 
         try Task.checkCancellation()
         guard profilesGeneration == resolvedProfilesGeneration else {
-            Logger.info("Stopped a contact import that a reset overtook after \(imported.count) saves", context: "ContactsManager")
+            Logger.info("Discarded a contact import that a reset overtook", context: "ContactsManager")
             return
         }
         for contact in imported {
@@ -675,9 +679,6 @@ class ContactsManager: ObservableObject {
         let currentKeys = Set(contacts.map(\.publicKey))
         contacts = (contacts + imported.filter { !currentKeys.contains($0.publicKey) }).sorted(by: Self.isOrderedByName)
         Logger.info("Imported \(imported.count) new contacts", context: "ContactsManager")
-        if let firstError {
-            throw firstError
-        }
     }
 
     // MARK: - Update Contact
@@ -834,7 +835,7 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Delete Contact
 
-    /// Also stops the running profile refresh's lookup of the contact.
+    /// Also stops the profile lookups of the contact, the running refresh's and any a screen started.
     func removeContact(publicKey: String) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
         let removeContactRecord = removeContactRecord
@@ -850,12 +851,13 @@ class ContactsManager: ObservableObject {
         Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
     }
 
-    /// Stops the running profile refresh first: every contact is going, and its reads would only compete with the ones
-    /// removing them.
+    /// Stops the running profile refresh and every lookup a screen started first: every contact is going, their reads would
+    /// only compete with the ones removing them, and a contact can be added back with a newer profile before one returns.
     func deleteAllContacts() async throws {
         stopProfileRefresh()
+        stopPendingProfileLookups()
         let contactRecords = contactRecords
-        let removeContactRecord = removeContactRecord
+        let removeContactRecords = removeContactRecords
         let records: [ContactRecord]
         do {
             records = try await Task.detached {
@@ -873,35 +875,17 @@ class ContactsManager: ObservableObject {
             return
         }
 
-        var deletedKeys = Set<String>()
-        var firstError: Error?
-
-        for record in records {
-            guard let contactKey = PubkyPublicKeyFormat.normalized(record.publicKey) else { continue }
-            do {
-                try await Task.detached {
-                    try await removeContactRecord(contactKey)
-                }.value
-                deletedKeys.insert(contactKey)
-            } catch {
-                firstError = firstError ?? error
-                Logger.warn("Failed to delete contact '\(PubkyPublicKeyFormat.redacted(contactKey))': \(error)", context: "ContactsManager")
-            }
-        }
-
-        if let firstError {
-            if !deletedKeys.isEmpty {
-                await forgetRemovedContacts(Array(deletedKeys))
-                for publicKey in deletedKeys {
-                    Self.removeContactProfileOverride(publicKey: publicKey)
-                }
-                contacts.removeAll { deletedKeys.contains($0.publicKey) }
-            }
-            throw firstError
+        let keys = records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
+        let removed = try await Task.detached { try await removeContactRecords(keys) }.value
+        let deletedKeys = Set(removed.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
+        await forgetRemovedContacts(Array(deletedKeys))
+        Self.removeContactProfileOverrides(publicKeys: deletedKeys)
+        contacts.removeAll { deletedKeys.contains($0.publicKey) }
+        guard deletedKeys.isSuperset(of: keys) else {
+            throw PrivatePaykitError.privateUnavailable
         }
 
         // All remote deletes succeeded, so clear any local-only contacts too.
-        await forgetRemovedContacts(Array(deletedKeys))
         Self.clearContactProfileOverrides()
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
@@ -1148,20 +1132,6 @@ class ContactsManager: ObservableObject {
         return true
     }
 
-    private nonisolated static func relevantReceiverPaths(for publicKey: String) async throws -> [String] {
-        do {
-            return try await PubkyService.discoverRelevantReceiverPaths(publicKey: publicKey)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            Logger.warn(
-                "Failed to discover Paykit receivers for '\(PubkyPublicKeyFormat.redacted(publicKey))': \(error)",
-                context: "ContactsManager"
-            )
-            return [PaykitReceiverPath.wallet]
-        }
-    }
-
     private nonisolated static let contactProfileOverridesKey = "pubkyContactProfileOverrides"
 
     private nonisolated static func isOrderedByName(_ lhs: PubkyContact, _ rhs: PubkyContact) -> Bool {
@@ -1199,9 +1169,12 @@ class ContactsManager: ObservableObject {
 
     private nonisolated static func removeContactProfileOverride(publicKey: String) {
         guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        var overrides = loadContactProfileOverrides()
-        overrides.removeValue(forKey: prefixedKey)
-        saveContactProfileOverrides(overrides)
+        removeContactProfileOverrides(publicKeys: [prefixedKey])
+    }
+
+    private nonisolated static func removeContactProfileOverrides(publicKeys: Set<String>) {
+        guard !publicKeys.isEmpty else { return }
+        saveContactProfileOverrides(loadContactProfileOverrides().filter { !publicKeys.contains($0.key) })
     }
 
     private nonisolated static func clearContactProfileOverrides() {

@@ -678,11 +678,22 @@ class LightningService {
         }
     }
 
+    func listOnchainWalletAccounts() async throws -> [LDKNode.OnchainWalletAccount] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            node.listOnchainWalletAccounts()
+        }
+    }
+
     func addressInfosForType(
         _ addressType: LDKNode.AddressType,
         keychain: LDKNode.KeychainKind,
         startIndex: UInt32,
-        count: UInt32
+        count: UInt32,
+        accountIndex: UInt32 = 0
     ) async throws -> [AddressDerivationInfo] {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -690,7 +701,9 @@ class LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             try node.onchainPayment()
-                .addressInfosForType(addressType: addressType, keychain: keychain, startIndex: startIndex, count: count)
+                .addressInfosForAccount(
+                    addressType: addressType, accountIndex: accountIndex, keychain: keychain, startIndex: startIndex, count: count
+                )
                 .map { AddressDerivationInfo(address: $0.address, index: $0.index) }
         }
     }
@@ -775,7 +788,8 @@ class LightningService {
         sats: UInt64,
         satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        isMaxAmount: Bool = false
+        isMaxAmount: Bool = false,
+        beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -784,7 +798,7 @@ class LightningService {
         Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount))")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
                 if isMaxAmount {
                     // For max amount sends, use sendAllToAddress to send all available funds
                     try node.onchainPayment().sendAllToAddress(
@@ -808,7 +822,12 @@ class LightningService {
         }
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {
+    func send(
+        bolt11: String,
+        sats: UInt64? = nil,
+        params: RouteParametersConfig? = nil,
+        beforeSubmission: @escaping () throws -> Void = {}
+    ) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -816,7 +835,7 @@ class LightningService {
         Logger.info("Paying bolt11: \(bolt11)")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
                         invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, routeParameters: params
@@ -829,6 +848,17 @@ class LightningService {
             dumpLdkLogs()
             dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
+        }
+    }
+
+    static func submitPayment<Result>(
+        beforeSubmission: @escaping () throws -> Void,
+        send: @escaping () throws -> Result
+    ) async throws -> Result {
+        try await ServiceQueue.background(.ldk) {
+            // Authorization can precede a queue wait; only the actual submission time is relevant here.
+            try beforeSubmission()
+            return try send()
         }
     }
 

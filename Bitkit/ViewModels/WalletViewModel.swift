@@ -25,6 +25,8 @@ class WalletViewModel: ObservableObject {
     // Send flow
     @Published var sendAmountSats: UInt64?
     @Published var selectedFeeRateSatsPerVByte: UInt32?
+    /// True once the send flow gave up loading the fee rate, so the confirmation offers a retry instead of waiting forever.
+    @Published private(set) var feeRateLoadFailed = false
     @Published var selectedSpeed: TransactionSpeed = .normal
     @Published var selectedUtxos: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
@@ -328,7 +330,7 @@ class WalletViewModel: ObservableObject {
         }
 
         Task { @MainActor in
-            try await refreshBip21()
+            try await refreshBip21(syncPublicPaykit: false)
         }
 
         // Always sync on start but don't need to wait for this
@@ -603,6 +605,7 @@ class WalletViewModel: ObservableObject {
         address: String,
         sats: UInt64,
         isMaxAmount: Bool = false,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         beforeBroadcastAttempt: () async throws -> Void = {}
     ) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
@@ -621,7 +624,8 @@ class WalletViewModel: ObservableObject {
             sats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
         )
 
         Task {
@@ -634,11 +638,13 @@ class WalletViewModel: ObservableObject {
 
     /// Sets the fee rate for the send flow
     /// - Parameter speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
-    func setFeeRate(speed: TransactionSpeed) async throws {
+    func setFeeRate(speed: TransactionSpeed, isCurrentSend: () -> Bool = { true }) async throws {
         var feeEstimates = await feeEstimatesManager.getEstimates(refresh: true)
+        guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         if feeEstimates == nil {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
             feeEstimates = await feeEstimatesManager.getEstimates(refresh: false)
+            guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         }
 
         guard let feeEstimates else {
@@ -646,16 +652,63 @@ class WalletViewModel: ObservableObject {
         }
 
         selectedFeeRateSatsPerVByte = speed.getFeeRate(from: feeEstimates)
+        feeRateLoadFailed = false
 
         Logger.info("Selected fee rate: \(selectedFeeRateSatsPerVByte ?? 0) sats/vbyte for speed: \(speed)")
     }
 
-    func loadAvailableUtxos() async throws {
-        availableUtxos = try await lightningService.listSpendableOutputs()
+    static let feeRateLoadAttempts = 2
+    static let feeRateRetryDelay: Duration = .seconds(2)
+
+    /// Loads the send flow's fee rate, retrying a failed fetch once. Sets `feeRateLoadFailed` when it still fails.
+    func loadFeeRateWithRetry(
+        speed: TransactionSpeed,
+        retryDelay: Duration = WalletViewModel.feeRateRetryDelay,
+        fetch: ((TransactionSpeed) async throws -> Void)? = nil
+    ) async throws {
+        feeRateLoadFailed = false
+        do {
+            try await Self.retry(attempts: Self.feeRateLoadAttempts, delay: retryDelay) {
+                if let fetch {
+                    try await fetch(speed)
+                } else {
+                    try await setFeeRate(speed: speed)
+                }
+            }
+        } catch {
+            if !(error is CancellationError) {
+                feeRateLoadFailed = true
+            }
+            throw error
+        }
+    }
+
+    /// Runs `operation` up to `attempts` times, waiting `delay` between failures. Cancellation is never retried.
+    static func retry(attempts: Int, delay: Duration, operation: () async throws -> Void) async throws {
+        var attempt = 1
+        while true {
+            do {
+                try await operation()
+                return
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                guard attempt < attempts else { throw error }
+                Logger.warn("Fee rate load failed (attempt \(attempt) of \(attempts)): \(error)")
+                attempt += 1
+                try await Task.sleep(for: delay)
+            }
+        }
+    }
+
+    func loadAvailableUtxos(isCurrentSend: () -> Bool = { true }) async throws {
+        let utxos = try await lightningService.listSpendableOutputs()
+        guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        availableUtxos = utxos
     }
 
     /// Sets the UTXO selection for the send flow using the specified coin selection algorithm.based on chosen fee and target amount
-    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm) async throws {
+    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm, isCurrentSend: () -> Bool = { true }) async throws {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -668,12 +721,14 @@ class WalletViewModel: ObservableObject {
             "Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte"
         )
 
-        selectedUtxos = try await lightningService.selectUtxosWithAlgorithm(
+        let utxos = try await lightningService.selectUtxosWithAlgorithm(
             targetAmountSats: sendAmountSats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             coinSelectionAlgorythm: coinSelectionAlgorythm,
             utxos: nil
         )
+        guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        selectedUtxos = utxos
 
         Logger.info("Selected UTXOs: \(String(describing: selectedUtxos))")
     }
@@ -753,10 +808,11 @@ class WalletViewModel: ObservableObject {
     /// - Throws: Error if calculation fails
     func calculateMaxSendableAmount(
         address: String,
-        satsPerVByte: UInt32
+        satsPerVByte: UInt32,
+        isCurrentSend: () -> Bool = { true }
     ) async throws -> UInt64 {
         let spendableBalance = UInt64(spendableOnchainBalanceSats)
-        availableUtxos = try await lightningService.listSpendableOutputs()
+        try await loadAvailableUtxos(isCurrentSend: isCurrentSend)
 
         let fee = try await lightningService.estimateSendAllFee(
             address: address,
@@ -886,10 +942,14 @@ class WalletViewModel: ObservableObject {
         bolt11: String,
         sats: UInt64? = nil,
         timeoutSeconds: TimeInterval = 10,
+        paymentDeadline: PaykitPreciseInstant? = nil,
         afterListening: (@MainActor (String) -> Void)? = nil,
         onTimeout: (@MainActor (String) -> Void)? = nil
     ) async throws -> SettledLightningPayment {
-        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let hash = try await lightningService.send(
+            bolt11: bolt11, sats: sats,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
+        )
         let paymentHash = String(hash)
         afterListening?(paymentHash)
         return try await waitForLightningPayment(
@@ -1296,11 +1356,16 @@ class WalletViewModel: ObservableObject {
         return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
     }
 
-    func refreshPublicPaykitEndpointsOnForeground() async {
-        guard isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
-
+    func refreshPublicPaykitEndpointsOnForeground(isSessionCurrent: @escaping @MainActor () -> Bool) async {
+        guard !Task.isCancelled, isSessionCurrent(), isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
         do {
-            try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+            try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self, isSessionCurrent: {
+                isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints
+            })
+        } catch is CancellationError {
+            return
+        } catch PubkyServiceError.sessionNotActive {
+            return
         } catch {
             Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
         }
@@ -1318,7 +1383,7 @@ class WalletViewModel: ObservableObject {
 
     private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         await refreshAndSyncState()
-        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning)
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false)
 
         guard isPaykitUIActive else { return }
 
@@ -1382,7 +1447,7 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
         var tagsToMigrate: [String] = []
@@ -1436,7 +1501,7 @@ class WalletViewModel: ObservableObject {
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
 
-        if isPaykitUIActive, sharesPublicPaykitEndpoints {
+        if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
             do {
                 try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
             } catch {
@@ -1501,6 +1566,7 @@ class WalletViewModel: ObservableObject {
     func resetSendState(speed: TransactionSpeed) {
         sendAmountSats = nil
         selectedFeeRateSatsPerVByte = nil
+        feeRateLoadFailed = false
         selectedUtxos = nil
         availableUtxos = []
         selectedSpeed = speed

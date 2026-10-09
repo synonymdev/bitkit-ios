@@ -80,7 +80,9 @@ struct SendContactSelectView: View {
             }
         } catch {
             Logger.error("Failed to pay contact \(PubkyPublicKeyFormat.redacted(contact.publicKey)): \(error)", context: "SendContactSelectView")
-            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+            if let description = PaymentNavigationHelper.contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
     }
 

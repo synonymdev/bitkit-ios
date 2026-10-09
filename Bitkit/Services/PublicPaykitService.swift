@@ -27,8 +27,13 @@ enum PublicPaykitError: LocalizedError {
 }
 
 struct PrivatePaykitPaymentContext: Equatable {
-    let receiverPath: String
-    let paymentListVersion: UInt64
+    let paymentAppsByEndpoint: [String: String]
+    let paymentListVersion: UInt64?
+
+    func paymentAppId(for endpointIdentifier: String) throws -> String {
+        guard let appId = paymentAppsByEndpoint[endpointIdentifier] else { throw PaykitPaymentRequestError.requestUnavailable }
+        return appId
+    }
 }
 
 enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
@@ -238,6 +243,7 @@ enum PublicPaykitService {
         let min: String?
         let max: String?
         let rawPayload: String
+        var appId: String?
 
         var paymentRequest: String {
             value
@@ -247,20 +253,14 @@ enum PublicPaykitService {
     static func fetchPublicEndpoints(publicKey: String) async throws -> [Endpoint] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
         let resolution = try await PaykitSdkService.shared.resolvePublicContactPayment(
-            counterparty: normalizedKey,
-            receiverPath: PaykitReceiverPath.wallet
+            counterparty: normalizedKey
         )
-        var endpointsByMethodId: [MethodId: Endpoint] = [:]
-
-        for resolvedEndpoint in resolution.payableEndpoints {
-            guard let endpoint = parseEndpoint(identifier: resolvedEndpoint.identifier, payload: resolvedEndpoint.target.payload) else {
-                continue
-            }
-
-            endpointsByMethodId[endpoint.methodId] = endpoint
+        let endpoints = resolution.payableEndpoints.compactMap { resolvedEndpoint -> Endpoint? in
+            guard var endpoint = parseEndpoint(identifier: resolvedEndpoint.identifier, payload: resolvedEndpoint.target.payload) else { return nil }
+            endpoint.appId = resolvedEndpoint.appId
+            return endpoint
         }
-
-        return MethodId.payablePreferenceOrder.compactMap { endpointsByMethodId[$0] }
+        return MethodId.payablePreferenceOrder.flatMap { method in endpoints.filter { $0.methodId == method } }
     }
 
     static func parseEndpoint(
@@ -318,57 +318,80 @@ enum PublicPaykitService {
     static func syncPublishedEndpoints(
         wallet: WalletViewModel,
         publish: Bool,
-        isSessionCurrent: (@MainActor () -> Bool)? = nil
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        appSyncPriority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws {
-        guard publish else {
-            // The marker removal shares the lock with the endpoint removal, so a newer publish that checks under the lock
-            // lands wholly before or after both.
-            try await withEndpointLock(unlessSessionEnded: isSessionCurrent) {
+        try await syncPublishedEndpoints(
+            publish: publish,
+            isSessionCurrent: isSessionCurrent,
+            buildEndpoints: { try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true) },
+            syncApp: { try await syncPaykitApp(priority: appSyncPriority) },
+            applyEndpoints: applyPublishedEndpointsLocked
+        )
+    }
+
+    @MainActor
+    static func syncPublishedEndpoints(
+        publish: Bool,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        buildEndpoints: () async throws -> [Endpoint],
+        syncApp: () async throws -> Void,
+        applyEndpoints: ([Endpoint]) async throws -> Void
+    ) async throws {
+        let desiredEndpoints: Result<[Endpoint], Error>
+        do {
+            desiredEndpoints = try await .success(publish ? buildEndpoints() : [])
+        } catch {
+            desiredEndpoints = .failure(error)
+        }
+        try await withEndpointLock(unlessSessionEnded: isSessionCurrent) {
+            guard publish else {
                 var firstError: Error?
                 do {
-                    try await applyPublishedEndpointsLocked([])
+                    try await applyEndpoints([])
                 } catch {
-                    firstError = error
+                    firstError = firstError ?? error
                 }
                 do {
-                    try await syncLocalReceiverMarker(publicSharingEnabled: false)
+                    try await syncApp()
                 } catch {
                     firstError = firstError ?? error
                 }
                 if let firstError {
                     throw firstError
                 }
+                return
             }
-            return
-        }
 
-        let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
-        // Under the lock, so sign-out's marker removal, which follows its locked endpoint removal, comes after it.
-        try await applyPublishedEndpoints(desiredEndpoints, unlessSessionEnded: isSessionCurrent) {
-            try await syncLocalReceiverMarker(publicSharingEnabled: true)
+            try await syncApp()
+            if let isSessionCurrent, !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
+            // Keep the App Registry current even when wallet endpoints are unavailable.
+            try await applyEndpoints(desiredEndpoints.get())
         }
     }
 
     @MainActor
-    static func syncCurrentPublishedEndpoints(wallet: WalletViewModel) async throws {
+    static func syncCurrentPublishedEndpoints(wallet: WalletViewModel, isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
-        try await syncLocalReceiverMarker(publicSharingEnabled: true)
-        try await applyPublishedEndpoints(desiredEndpoints)
+        try await syncPublishedEndpoints(
+            publish: true,
+            isSessionCurrent: isSessionCurrent,
+            buildEndpoints: { desiredEndpoints },
+            syncApp: { try await syncPaykitApp() },
+            applyEndpoints: applyPublishedEndpointsLocked
+        )
     }
 
     static func removePublishedEndpoints() async throws {
         try await applyPublishedEndpoints([])
     }
 
-    static func syncLocalReceiverMarker(
-        publicSharingEnabled: Bool? = nil,
-        privateSharingEnabled: Bool? = nil
+    static func syncPaykitApp(
+        privateSharingEnabled: Bool? = nil,
+        priority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws {
-        let publicSharing = publicSharingEnabled ?? UserDefaults.standard.bool(forKey: publishingEnabledKey)
         let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
-        try await PaykitSdkService.shared.syncLocalReceiverMarker(
-            isDiscoverable: publicSharing || privateSharing
-        )
+        try await PaykitSdkService.shared.syncPaykitApp(privatePaymentsEnabled: privateSharing, priority: priority)
     }
 
     static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {

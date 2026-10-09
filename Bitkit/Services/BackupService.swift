@@ -103,7 +103,9 @@ class BackupService {
     private var isWiping = false
     private var lastNotificationTime: UInt64 = 0
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    private let backupData: ((BackupCategory) async throws -> Data)?
+    private let uploadBackup: (String, Data) async throws -> Void
     private let backupStatusesKey = "backupStatuses"
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
@@ -125,7 +127,16 @@ class BackupService {
             .eraseToAnyPublisher()
     }
 
-    private init() {
+    init(
+        defaults: UserDefaults = .standard,
+        backupData: ((BackupCategory) async throws -> Data)? = nil,
+        uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
+            _ = try await VssBackupClient.shared.putObject(key: key, data: data)
+        }
+    ) {
+        self.defaults = defaults
+        self.backupData = backupData
+        self.uploadBackup = uploadBackup
         let statuses = getAllBackupStatuses()
         var clearedStatuses = statuses
         for category in BackupCategory.allCases {
@@ -216,8 +227,12 @@ class BackupService {
             }
 
             do {
-                let data = try await getBackupDataBytes(category: category)
-                let _ = try await vssBackupClient.putObject(key: category.rawValue, data: data)
+                let data = if let backupData {
+                    try await backupData(category)
+                } else {
+                    try await getBackupDataBytes(category: category)
+                }
+                try await uploadBackup(category.rawValue, data)
 
                 updateBackupStatus(category: category) { status in
                     BackupItemStatus(
@@ -232,7 +247,7 @@ class BackupService {
                 updateBackupStatus(category: category) { status in
                     BackupItemStatus(
                         synced: status.synced,
-                        required: status.synced,
+                        required: category == .wallet ? status.required : status.synced,
                         running: false
                     )
                 }
@@ -251,7 +266,11 @@ class BackupService {
         }
 
         try? await ServiceQueue.background(.backup) { self.runningBackupTasks[category] = backupTask }
-        await backupTask.value
+        await withTaskCancellationHandler {
+            await backupTask.value
+        } onCancel: {
+            backupTask.cancel()
+        }
     }
 
     func hasPendingWalletRestore() -> Bool {
@@ -319,6 +338,8 @@ class BackupService {
                 if let paymentState = payload.paykitPaymentState {
                     try PaykitSubscriptionStateStore().restoreBackup(paymentState.subscriptions)
                     try await PaykitPaymentProofService.shared.restoreBackup(paymentState.pendingProofs)
+                    try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
+                        .restoreBackup(paymentState.acceptedOneTimeRequests ?? [:])
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
@@ -376,7 +397,7 @@ class BackupService {
 
                 // App-owned, so it takes no part in the core field migration above and never sets
                 // needsRewrite. Restored names wait as pending ones until each wallet is paired again.
-                TrezorKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
+                HwKnownDeviceStorage.restoreNames(payload.hwWalletNames ?? [:])
 
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -507,6 +528,7 @@ class BackupService {
             .store(in: &cancellables)
 
         PaykitSubscriptionStateStore.walletBackupDataChangedPublisher
+            .merge(with: PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher)
             .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -543,7 +565,7 @@ class BackupService {
 
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
-        TrezorKnownDeviceStorage.namesChangedPublisher
+        HwKnownDeviceStorage.namesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -879,7 +901,8 @@ class BackupService {
                 watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
                 paykitPaymentState: PaykitPaymentStateBackup(
                     subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
-                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot()
+                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot(),
+                    acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).backupSnapshot()
                 )
             )
             return try JSONEncoder().encode(payload)
@@ -910,7 +933,7 @@ class BackupService {
             // A UserDefaults read that cannot fail, so unlike the tags above there is no partial-read
             // case to guard against. Nil rather than an empty map when nothing is named, so an
             // envelope this app writes stays byte-comparable with one bitkit-android writes.
-            let hwWalletNames = TrezorKnownDeviceStorage.backupSnapshot()
+            let hwWalletNames = HwKnownDeviceStorage.backupSnapshot()
 
             let payload = MetadataBackupV1(
                 version: 1,

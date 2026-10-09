@@ -7,8 +7,9 @@ import Foundation
 /// iOS and Android produce identical ids for the same device.
 enum HwWalletId {
     /// Deterministic id derived from the device's account xpubs (transport-independent: the
-    /// same physical device shares its xpubs, hence its id). Throws if `xpubs` is empty.
-    static func derive(xpubs: [String: String], deviceType: String = "trezor") throws -> String {
-        try deriveWalletId(deviceType: deviceType, xpubs: Array(xpubs.values))
+    /// same physical device shares its xpubs, hence its id), in the vendor's namespace, so equal
+    /// xpubs on two vendors derive two ids. Throws if `xpubs` is empty.
+    static func derive(xpubs: [String: String], vendor: HwWalletVendor = .trezor) throws -> String {
+        try deriveWalletId(deviceType: vendor.deviceType, xpubs: Array(xpubs.values))
     }
 }

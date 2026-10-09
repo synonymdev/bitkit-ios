@@ -26,6 +26,8 @@ struct TransferValues {
 struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
+    /// Reaching the device before anything is on it to sign, which may be abandoned.
+    var isConnectingDevice = false
     var hasPendingBroadcast = false
     var isPassphraseRequired = false
     var isVerifyingPassphrase = false
@@ -61,12 +63,15 @@ enum HwTransferError: Error, Equatable {
     case broadcastUncertain
     /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
     case broadcastConnectivity
-    /// Trezor is locked or otherwise busy before signing can start.
-    case deviceBusy
+    /// The device is locked or otherwise busy before signing can start. Carries the vendor so the
+    /// toast can name the device.
+    case deviceBusy(HwWalletVendor)
     /// Firmware error (code 99) — user must reconnect the device.
     case firmwareReconnect
     /// The entered passphrase opened a different wallet than the one being spent from.
     case passphraseMismatch
+    /// The device holds another wallet than the one being spent from, so reconnecting cannot help.
+    case walletMismatch
     case funding(String?)
     case generic(String?)
 }
@@ -98,15 +103,17 @@ protocol HwTransferFunding: Sendable {
         addressType: AddressScriptType
     ) async throws -> UInt64
     func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
-    func broadcastFunding(serializedTx: String) async throws -> String
+    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant?) async throws -> String
 }
 
 /// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
 /// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
-/// reaching its transport. Implemented by `TrezorManager`.
+/// reaching its transport. Implemented by `HwWalletManager`.
 @MainActor
 protocol HwTransferConnecting: Sendable {
     func ensureConnected(walletId: String) async throws
+    /// How long `ensureConnected` may take for this wallet's device before the flow gives up.
+    func reconnectTimeout(walletId: String) -> Double
     func disconnectStaleSession(walletId: String) async
     func scheduleStaleSessionCleanup(walletId: String)
     /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
@@ -200,7 +207,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        hwTimeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 45, sign: 120, broadcast: 120),
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
@@ -258,7 +265,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting?,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        hwTimeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 45, sign: 120, broadcast: 120),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
@@ -312,6 +319,12 @@ class TransferViewModel: ObservableObject {
 
     var isSpendingBusy: Bool {
         uiState.isConfirming || hwSpending.isSigning || hwSpending.isCreatingOrder
+    }
+
+    /// Whether the hardware sign screen may be left. Reaching the device (a Jade may wait minutes for
+    /// its PIN) can be abandoned, and leaving cancels it; once the device is asked to sign it cannot.
+    var canLeaveHwSign: Bool {
+        !isSpendingBusy || hwSpending.isConnectingDevice
     }
 
     func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false) {
@@ -756,6 +769,7 @@ class TransferViewModel: ObservableObject {
             guard let self else { return }
             defer {
                 self.hwSpending.isSigning = false
+                self.hwSpending.isConnectingDevice = false
                 self.hwSignTask = nil
             }
 
@@ -771,6 +785,8 @@ class TransferViewModel: ObservableObject {
                         address: address
                     ) { [weak self] funding in
                         self?.hwSpending.miningFeeSats = funding.miningFeeSats
+                    } onConnectingDevice: { [weak self] isConnecting in
+                        self?.hwSpending.isConnectingDevice = isConnecting
                     }
                     pendingHwFundingBroadcast = PendingHwFundingBroadcast(
                         orderId: order.id,
@@ -800,7 +816,7 @@ class TransferViewModel: ObservableObject {
             } catch let error as HwTransferError {
                 self.handleHardwareTransferFailure(error, walletId: walletId)
             } catch {
-                if error.isTrezorUserCancellation() {
+                if error.isHwUserCancellation() {
                     Logger.info("Hardware transfer cancelled on device for '\(walletId)'", context: "TransferViewModel")
                     return
                 }
@@ -876,6 +892,7 @@ class TransferViewModel: ObservableObject {
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
+        hwSpending.isConnectingDevice = false
         activeHwTransferWalletId = nil
         if let walletId, let hwConnecting {
             Task {
@@ -904,11 +921,13 @@ class TransferViewModel: ObservableObject {
         case .broadcastConnectivity:
             Logger.warn("Hardware funding broadcast connectivity failure for '\(walletId)'", context: "TransferViewModel")
         case .deviceBusy:
-            Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(walletId)'", context: "TransferViewModel")
+            Logger.warn("Blocked hardware transfer for locked or busy device '\(walletId)'", context: "TransferViewModel")
         case .firmwareReconnect:
-            Logger.warn("Received Trezor firmware error for '\(walletId)'", context: "TransferViewModel")
+            Logger.warn("Received hardware firmware error for '\(walletId)'", context: "TransferViewModel")
         case .passphraseMismatch:
             Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+        case .walletMismatch:
+            Logger.warn("Rejected hardware device holding another wallet for '\(walletId)'", context: "TransferViewModel")
         case let .funding(message):
             Logger.warn("Failed to compose hardware funding for '\(walletId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:
@@ -929,11 +948,16 @@ class TransferViewModel: ObservableObject {
             hwTransferError = .passphraseMismatch
             return
         }
-        if error.isTrezorDeviceBusy() {
-            hwTransferError = .deviceBusy
+        if error is HwWalletMismatchError {
+            Logger.warn("Rejected hardware device holding another wallet for '\(walletId)'", context: "TransferViewModel")
+            hwTransferError = .walletMismatch
             return
         }
-        if error.isTrezorFirmwareError() {
+        if let vendor = error.hwBusyVendor {
+            hwTransferError = .deviceBusy(vendor)
+            return
+        }
+        if error.isHwFirmwareError() {
             hwTransferError = .firmwareReconnect
             return
         }
@@ -944,7 +968,7 @@ class TransferViewModel: ObservableObject {
             }
             clearPendingHwFundingBroadcast()
         }
-        hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+        hwTransferError = .generic(HwErrorPresenter.jadeMessage(from: error) ?? (error as? AppError)?.message ?? error.localizedDescription)
     }
 
     // MARK: - Balance Calculation
