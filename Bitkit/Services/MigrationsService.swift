@@ -801,6 +801,9 @@ extension MigrationsService {
             Logger.debug("Cannot cleanup: pending Blocktank data exists", context: "Migration")
             return false
         }
+        if pendingRemoteTransfers != nil || pendingRemoteBoosts != nil {
+            return false
+        }
         if let tags = pendingMetadata?.tags, !tags.isEmpty {
             Logger.debug("Cannot cleanup: pending metadata tags exist", context: "Migration")
             return false
@@ -1604,7 +1607,9 @@ extension MigrationsService {
 
     func reapplyMetadataAfterSync(
         includeLocalMetadata: Bool = true,
-        applyTags: (([String: [String]]) async -> Set<String>)? = nil
+        applyTags: (([String: [String]]) async -> Set<String>)? = nil,
+        applyTransfers: (([String: String]) async -> [String: String])? = nil,
+        applyBoosts: (([String: String]) async -> [String: String])? = nil
     ) async {
         // Handle MMKV (local) migration data
         if includeLocalMetadata, hasRNMmkvData(), let mmkvData = loadRNMmkvData() {
@@ -1616,11 +1621,11 @@ extension MigrationsService {
             if let walletBackup = extractRNWalletBackup(from: mmkvData) {
                 if !walletBackup.transfers.isEmpty {
                     Logger.info("Applying \(walletBackup.transfers.count) local transfer markers", context: "Migration")
-                    await applyRemoteTransfers(walletBackup.transfers)
+                    pendingRemoteTransfers = (pendingRemoteTransfers ?? [:]).merging(walletBackup.transfers) { _, local in local }
                 }
                 if !walletBackup.boosts.isEmpty {
                     Logger.info("Applying \(walletBackup.boosts.count) local boost markers", context: "Migration")
-                    await applyBoostTransactions(walletBackup.boosts)
+                    pendingRemoteBoosts = (pendingRemoteBoosts ?? [:]).merging(walletBackup.boosts) { _, local in local }
                 }
             }
         }
@@ -1635,15 +1640,23 @@ extension MigrationsService {
         // Handle remote backup transfers (mark on-chain txs as transfers)
         if let transfers = pendingRemoteTransfers {
             Logger.info("Applying \(transfers.count) remote transfer markers", context: "Migration")
-            await applyRemoteTransfers(transfers)
-            pendingRemoteTransfers = nil
+            let remaining = if let applyTransfers {
+                await applyTransfers(transfers)
+            } else {
+                await applyRemoteTransfers(transfers)
+            }
+            pendingRemoteTransfers = remaining.isEmpty ? nil : remaining
         }
 
         // Handle remote backup boosts (apply boostTxIds to activities)
         if let boosts = pendingRemoteBoosts {
             Logger.info("Applying \(boosts.count) remote boost markers", context: "Migration")
-            await applyBoostTransactions(boosts)
-            pendingRemoteBoosts = nil
+            let remaining = if let applyBoosts {
+                await applyBoosts(boosts)
+            } else {
+                await applyBoostTransactions(boosts)
+            }
+            pendingRemoteBoosts = remaining.isEmpty ? nil : remaining
         }
 
         await retryPendingMetadata(applyTags: applyTags)
@@ -1682,11 +1695,18 @@ extension MigrationsService {
         }
     }
 
-    private func applyRemoteTransfers(_ transfers: [String: String]) async {
+    func applyRemoteTransfers(
+        _ transfers: [String: String],
+        getActivity: (String) async -> OnchainActivity? = { try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: $0) },
+        updateActivity: (OnchainActivity) async throws -> Void = {
+            try await CoreService.shared.activity.update(id: $0.id, activity: .onchain($0))
+        }
+    ) async -> [String: String] {
+        var remaining = transfers
         var applied = 0
 
         for (txId, channelId) in transfers {
-            guard var onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId) else {
+            guard var onchain = await getActivity(txId) else {
                 continue
             }
 
@@ -1694,7 +1714,8 @@ extension MigrationsService {
             onchain.channelId = channelId
 
             do {
-                try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
+                try await updateActivity(onchain)
+                remaining.removeValue(forKey: txId)
                 applied += 1
             } catch {
                 Logger.error("Failed to mark tx \(txId) as transfer: \(error)", context: "Migration")
@@ -1702,6 +1723,7 @@ extension MigrationsService {
         }
 
         Logger.info("Applied \(applied)/\(transfers.count) transfer markers", context: "Migration")
+        return remaining
     }
 
     private func applyRemotePaidOrders(_ paidOrders: [String: String]) async {
@@ -1720,12 +1742,19 @@ extension MigrationsService {
         }
     }
 
-    private func applyBoostTransactions(_ boosts: [String: String]) async {
+    func applyBoostTransactions(
+        _ boosts: [String: String],
+        getActivity: (String) async -> OnchainActivity? = { try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: $0) },
+        updateActivity: (OnchainActivity) async throws -> Void = {
+            try await CoreService.shared.activity.update(id: $0.id, activity: .onchain($0))
+        }
+    ) async -> [String: String] {
+        var remaining = boosts
         var applied = 0
 
         for (oldTxId, newTxId) in boosts {
-            let oldOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: oldTxId)
-            let newOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: newTxId)
+            let oldOnchain = await getActivity(oldTxId)
+            let newOnchain = await getActivity(newTxId)
 
             if let oldOnchain, var newOnchain {
                 var parentOnchain = oldOnchain
@@ -1738,8 +1767,9 @@ extension MigrationsService {
                 newOnchain.boostTxIds.removeAll { $0 == oldTxId }
 
                 do {
-                    try await CoreService.shared.activity.update(id: parentOnchain.id, activity: .onchain(parentOnchain))
-                    try await CoreService.shared.activity.update(id: newOnchain.id, activity: .onchain(newOnchain))
+                    try await updateActivity(parentOnchain)
+                    try await updateActivity(newOnchain)
+                    remaining.removeValue(forKey: oldTxId)
                     applied += 1
                 } catch {
                     Logger.error("Failed to apply CPFP boost for parent \(oldTxId) / child \(newTxId): \(error)", context: "Migration")
@@ -1751,7 +1781,8 @@ extension MigrationsService {
                 newOnchain.isBoosted = true
 
                 do {
-                    try await CoreService.shared.activity.update(id: newOnchain.id, activity: .onchain(newOnchain))
+                    try await updateActivity(newOnchain)
+                    remaining.removeValue(forKey: oldTxId)
                     applied += 1
                 } catch {
                     Logger.error("Failed to apply RBF boost for tx \(newTxId): \(error)", context: "Migration")
@@ -1760,6 +1791,7 @@ extension MigrationsService {
         }
 
         Logger.info("Applied \(applied)/\(boosts.count) boost markers", context: "Migration")
+        return remaining
     }
 
     func retryPendingMetadata(applyTags: (([String: [String]]) async -> Set<String>)? = nil) async {
