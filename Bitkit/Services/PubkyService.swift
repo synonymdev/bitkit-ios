@@ -900,7 +900,7 @@ actor PaykitSdkService {
     }
 
     func clearPrivatePaymentLists(
-        to counterparties: [String]
+        to counterparties: [String], isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async throws -> PrivatePaymentListDeliveryReport? {
         guard !counterparties.isEmpty else { return nil }
         return try await withStateRevisionTracking { sdk in
@@ -930,6 +930,7 @@ actor PaykitSdkService {
                     )
                 }
             }
+            if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: false

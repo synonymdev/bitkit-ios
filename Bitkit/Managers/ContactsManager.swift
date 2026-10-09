@@ -205,6 +205,12 @@ class ContactsManager: ObservableObject {
         savedContactsChangedSubject.eraseToAnyPublisher()
     }
 
+    func savedContactsSnapshot() -> (publicKeys: [String], isCurrent: @MainActor () -> Bool) {
+        let keys = announcedSavedContactKeys
+        let generation = resolvedProfilesGeneration
+        return (contacts.map(\.publicKey), { self.announcedSavedContactKeys == keys && self.resolvedProfilesGeneration == generation })
+    }
+
     private func announceSavedContactsIfKeysChanged() {
         let keys = Set(contacts.map { PubkyPublicKeyFormat.normalized($0.publicKey) ?? $0.publicKey })
         guard keys != announcedSavedContactKeys else { return }
@@ -334,8 +340,10 @@ class ContactsManager: ObservableObject {
                     },
                     fetchRemoteProfile: fetchRemoteProfile
                 )
-                await PrivatePaykitService.shared
-                    .pruneUnsavedContactState(savedPublicKeys: records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) })
+                let snapshot = savedContactsSnapshot()
+                await PrivatePaykitService.shared.pruneUnsavedContactState(
+                    savedPublicKeys: snapshot.publicKeys, isSessionCurrent: snapshot.isCurrent
+                )
 
                 Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
                 return
@@ -346,7 +354,9 @@ class ContactsManager: ObservableObject {
                     contacts = []
                     hasLoaded = true
                     loadErrorMessage = nil
-                    await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
+                    await PrivatePaykitService.shared.pruneUnsavedContactState(
+                        savedPublicKeys: [], isSessionCurrent: savedContactsSnapshot().isCurrent
+                    )
                     Logger.info("Contacts storage missing, treating list as empty", context: "ContactsManager")
                     return
                 }

@@ -94,6 +94,54 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testEnablePreservesContactSavedWhilePublicPublicationIsPending() async throws {
+        snapshotAppDefaultsDomain()
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        try await withIsolatedDefaultsAsync { defaults in
+            let key = "pubky" + String(repeating: "y", count: 52)
+            let publicationStarted = expectation(description: "Public publication is pending")
+            let (resume, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let profile = signedInProfile(ownerKey: "owner")
+            let contacts = ContactsManager()
+            contacts.hasLoaded = true
+            let service = PrivatePaykitService()
+            await service.setBackgroundWorkPaused(true)
+            let operations = OperationsSpy()
+            operations.syncPublicEndpoints = { _, _ in
+                publicationStarted.fulfill()
+                for await _ in resume {}
+            }
+            operations.preparePrivateEndpoints = { keys, immediate, isCurrent in
+                await service.prepareSavedContacts(
+                    keys, wallet: WalletViewModel(), requireImmediatePublication: immediate, isSessionCurrent: isCurrent
+                )
+            }
+            let enable = Task {
+                try await ContactPaymentsService.setEnabled(
+                    true, pubkyProfile: profile, contactsManager: contacts,
+                    operations: operations.makeOperations(), defaults: defaults, privatePaymentAccess: { _ in true }
+                )
+            }
+            await fulfillment(of: [publicationStarted], timeout: 2)
+            contacts.contacts = [.init(publicKey: key, profile: PubkyProfile.placeholder(publicKey: key))]
+            _ = await service.rememberSavedContacts([key], replacing: false)
+            await service.scheduleExplicitContactLink(publicKey: key, identity: "owner")
+            let retry = await service.pendingMessageDrainRetries[key]
+            continuation.finish()
+            let applied = try await enable.value
+            XCTAssertTrue(applied)
+            let known = await service.knownSavedContactKeys
+            let retained = await service.pendingMessageDrainRetries[key]
+            XCTAssertEqual(known, [key])
+            XCTAssertNotNil(retry)
+            XCTAssertEqual(retained?.id, retry?.id)
+            XCTAssertEqual(retained?.foregroundUntil, retry?.foregroundUntil)
+            await service.invalidateContactPreparation()
+            await service.setBackgroundWorkPaused(false)
+        }
+    }
+
     func testEnablingContactPaymentsDefersUnavailablePrivatePublication() async throws {
         try await withIsolatedDefaultsAsync { defaults in
             let service = PrivatePaykitService()
@@ -122,6 +170,30 @@ final class ContactPaymentsServiceTests: XCTestCase {
             XCTAssertEqual(operations.privateRemovalCount, 0)
             let knownContacts = await service.knownSavedContactKeys
             XCTAssertEqual(knownContacts, [contactPublicKey])
+        }
+    }
+
+    func testEnableDoesNotRestoreContactDeletedWhilePublicPublicationIsPending() async throws {
+        snapshotAppDefaultsDomain()
+        try await withIsolatedDefaultsAsync { defaults in
+            let key = "pubky" + String(repeating: "y", count: 52)
+            let contacts = ContactsManager()
+            contacts.hasLoaded = true
+            contacts.contacts = [.init(publicKey: key, profile: PubkyProfile.placeholder(publicKey: key))]
+            let service = PrivatePaykitService()
+            let operations = OperationsSpy()
+            operations.syncPublicEndpoints = { _, _ in contacts.contacts = [] }
+            operations.preparePrivateEndpoints = { keys, _, isCurrent in
+                await service.prepareSavedContacts(keys, wallet: WalletViewModel(), isSessionCurrent: isCurrent)
+            }
+            let applied = try await ContactPaymentsService.setEnabled(
+                true, pubkyProfile: signedInProfile(ownerKey: "owner"), contactsManager: contacts,
+                operations: operations.makeOperations(), defaults: defaults, privatePaymentAccess: { _ in true }
+            )
+            let known = await service.knownSavedContactKeys
+            XCTAssertTrue(applied)
+            XCTAssertTrue(known.isEmpty)
+            await service.invalidateContactPreparation()
         }
     }
 

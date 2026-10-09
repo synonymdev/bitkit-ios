@@ -76,6 +76,7 @@ actor PrivatePaykitService {
 
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
+    var savedContactsRevision = 0
     var pendingPreparationKeys: Set<String> = []
     var activePreparationKeys: Set<String> = []
     var activeLinkPreparationKeys: Set<String> = []

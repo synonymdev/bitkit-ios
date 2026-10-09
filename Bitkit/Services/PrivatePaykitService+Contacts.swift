@@ -105,7 +105,10 @@ extension PrivatePaykitService {
         requireImmediatePublication: Bool = false,
         isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
+        let revision = savedContactsRevision
+        let generation = preparationGeneration
         if let isSessionCurrent, await !isSessionCurrent() { return nil }
+        guard revision == savedContactsRevision, generation == preparationGeneration else { return nil }
         if !requireImmediatePublication {
             let keys = rememberSavedContacts(publicKeys, replacing: true)
             scheduleContactPreparation(keys, wallet: wallet, isSessionCurrent: isSessionCurrent)
@@ -328,7 +331,7 @@ extension PrivatePaykitService {
     func removePublishedEndpoints(for publicKeys: [String]? = nil, isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
         try await removePublishedEndpoints(for: publicKeys, isSessionCurrent: isSessionCurrent, operations: EndpointCleanupOperations(
             linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
-            clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0) },
+            clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0, isSessionCurrent: isSessionCurrent) },
             drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
             pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
             syncApp: { try await PublicPaykitService.syncPaykitApp() }
@@ -340,23 +343,32 @@ extension PrivatePaykitService {
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
         operations: EndpointCleanupOperations
     ) async throws {
+        let revision = publicKeys != nil && isSessionCurrent != nil ? savedContactsRevision : nil
         if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
         let publicKeys = publicKeys.map { normalizedSavedContactKeys($0) }
         guard publicKeys?.isEmpty != true else { return }
         if publicKeys == nil { invalidateContactPreparation() }
+        let generation = preparationGeneration
 
         do {
             try await withPublicationLock {
                 if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
-                try await removePublishedEndpointsLocked(for: publicKeys, operations: operations)
+                try await removePublishedEndpointsLocked(
+                    for: publicKeys, isSessionCurrent: isSessionCurrent, revision: revision, generation: generation, operations: operations
+                )
             }
         } catch {
-            if await isSessionCurrent?() != false { PublicPaykitService.setCleanupPending(true) }
+            if await isSessionCurrent?() != false,
+               revision == nil || (revision == savedContactsRevision && generation == preparationGeneration)
+            { PublicPaykitService.setCleanupPending(true) }
             throw error
         }
     }
 
-    private func removePublishedEndpointsLocked(for publicKeys: [String]?, operations: EndpointCleanupOperations) async throws {
+    private func removePublishedEndpointsLocked(
+        for publicKeys: [String]?, isSessionCurrent: (@MainActor () -> Bool)?, revision: Int?, generation: Int,
+        operations: EndpointCleanupOperations
+    ) async throws {
         let peers = try await operations.linkedPeers()
         let linkedPublicKeys = Set(peers
             .filter { $0.state == .linked || $0.state == .linking || $0.state == .recoveryRequired }
@@ -377,6 +389,10 @@ extension PrivatePaykitService {
         var failedPublicKeys = Set<String>()
         var clearedRetryKeys = [String]()
         if !cleanupKeys.isEmpty {
+            if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
+            if let revision, revision != savedContactsRevision || generation != preparationGeneration {
+                throw PubkyServiceError.sessionNotActive
+            }
             do {
                 if let report = try await operations.clearPaymentLists(cleanupKeys) {
                     logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
@@ -387,6 +403,8 @@ extension PrivatePaykitService {
                     if !failedPublicKeys.isEmpty { firstError = PrivatePaykitError.privateUnavailable }
                 }
             } catch {
+                if let isSessionCurrent, await !isSessionCurrent() { throw error }
+                if let revision, revision != savedContactsRevision || generation != preparationGeneration { throw error }
                 Logger.warn(
                     "Failed to clear private Paykit endpoints: \(PaykitResolutionFailureDiagnostics.reason(for: error))",
                     context: "PrivatePaykit"
@@ -412,6 +430,10 @@ extension PrivatePaykitService {
             }
         }
 
+        if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
+        if let revision, revision != savedContactsRevision || generation != preparationGeneration {
+            throw PubkyServiceError.sessionNotActive
+        }
         for publicKey in publicKeySet.subtracting(failedPublicKeys) {
             guard publishedEndpointCleanupState(publicKey: publicKey) == cleanupStateSnapshots[publicKey] else {
                 failedPublicKeys.insert(publicKey)
@@ -446,6 +468,7 @@ extension PrivatePaykitService {
 
     func removeSavedContact(publicKey: String) async {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
+        savedContactsRevision += 1
         knownSavedContactKeys.remove(normalizedKey)
         pendingMessageDrainRetries[normalizedKey] = nil
         unavailableLinkRetryAt[normalizedKey] = nil
@@ -463,6 +486,7 @@ extension PrivatePaykitService {
 
     func removeSavedContacts(publicKeys: [String]) async {
         let normalizedKeys = normalizedSavedContactKeys(publicKeys)
+        savedContactsRevision += 1
         for publicKey in normalizedKeys {
             knownSavedContactKeys.remove(publicKey)
             pendingMessageDrainRetries[publicKey] = nil
@@ -481,8 +505,15 @@ extension PrivatePaykitService {
         }
     }
 
-    func pruneUnsavedContactState(savedPublicKeys publicKeys: [String]) async {
+    func pruneUnsavedContactState(
+        savedPublicKeys publicKeys: [String], isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) async {
+        let revision = savedContactsRevision
+        let generation = preparationGeneration
+        if let isSessionCurrent, await !isSessionCurrent() { return }
+        guard revision == savedContactsRevision, generation == preparationGeneration else { return }
         let savedKeys = Set(rememberSavedContacts(publicKeys, replacing: true))
+        let cleanupRevision = savedContactsRevision
 
         let staleKeys: Set<String> = Set(state.contacts.compactMap { publicKey, contactState in
             guard !savedKeys.contains(publicKey), contactState.hasContactOwnedCacheState else { return nil }
@@ -497,9 +528,15 @@ extension PrivatePaykitService {
         }
 
         do {
-            try await removePublishedEndpoints(for: Array(cleanupKeys))
-            await clearContactStates(publicKeys: Array(staleKeys))
+            try await removePublishedEndpoints(for: Array(cleanupKeys), isSessionCurrent: isSessionCurrent)
+            try await withPublicationLock {
+                if let isSessionCurrent, await !isSessionCurrent() { return }
+                guard cleanupRevision == savedContactsRevision, generation == preparationGeneration else { return }
+                await clearContactStates(publicKeys: Array(staleKeys))
+            }
         } catch {
+            if let isSessionCurrent, await !isSessionCurrent() { return }
+            guard cleanupRevision == savedContactsRevision, generation == preparationGeneration else { return }
             Logger.warn("Failed to prune private Paykit endpoints for unsaved contacts: \(error)", context: "PrivatePaykit")
         }
     }
@@ -1212,6 +1249,7 @@ extension PrivatePaykitService {
     }
 
     func rememberSavedContacts(_ publicKeys: [String], replacing: Bool) -> [String] {
+        let previousKeys = knownSavedContactKeys
         let normalizedKeys = normalizedSavedContactKeys(publicKeys)
         if replacing {
             knownSavedContactKeys = Set(normalizedKeys)
@@ -1219,6 +1257,7 @@ extension PrivatePaykitService {
         } else {
             knownSavedContactKeys.formUnion(normalizedKeys)
         }
+        if knownSavedContactKeys != previousKeys { savedContactsRevision += 1 }
         return normalizedKeys
     }
 

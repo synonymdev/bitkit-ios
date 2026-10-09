@@ -1666,6 +1666,138 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys(), [failedPublicKey])
     }
 
+    @MainActor
+    func testPrunePreservesContactReaddedWhileWaitingForPublication() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        PrivatePaykitService.clearDeletedContactCleanupPending()
+        let key = "pubky" + String(repeating: "y", count: 52)
+        let service = PrivatePaykitService()
+        let contacts = ContactsManager()
+        var state = PrivatePaykitService.ContactState()
+        state.hasPublishedPrivatePaymentList = true
+        await service.setTestContactState(state, publicKey: key)
+        await service.setBackgroundWorkPaused(true)
+        let locked = expectation(description: "Publication lock held")
+        let waiting = expectation(description: "Prune has selected its contacts")
+        let (release, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let publication = Task {
+            try await service.withPublicationLock {
+                locked.fulfill()
+                for await _ in release {}
+            }
+        }
+        await fulfillment(of: [locked], timeout: 2)
+        let snapshot = contacts.savedContactsSnapshot()
+        var checks = 0
+        let prune = Task {
+            await service.pruneUnsavedContactState(savedPublicKeys: snapshot.publicKeys, isSessionCurrent: {
+                checks += 1
+                if checks == 2 { waiting.fulfill() }
+                return snapshot.isCurrent()
+            })
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        contacts.contacts = [.init(publicKey: key, profile: Bitkit.PubkyProfile.placeholder(publicKey: key))]
+        _ = await service.rememberSavedContacts([key], replacing: false)
+        await service.scheduleExplicitContactLink(publicKey: key, identity: "owner")
+        let retry = await service.pendingMessageDrainRetries[key]
+        continuation.finish()
+        try await publication.value
+        await prune.value
+        let retained = await service.testContactState(publicKey: key)
+        let retainedRetry = await service.pendingMessageDrainRetries[key]
+        XCTAssertTrue(retained?.hasPublishedPrivatePaymentList == true)
+        XCTAssertNotNil(retry)
+        XCTAssertEqual(retainedRetry?.id, retry?.id)
+        await service.invalidateContactPreparation()
+        await service.setBackgroundWorkPaused(false)
+    }
+
+    func testGuardedCleanupChecksMembershipAndGenerationAfterAdmittedWithdrawal() async throws {
+        let key = "pubky" + String(repeating: "y", count: 52)
+        for change in ["none", "readd", "identity"] {
+            let service = PrivatePaykitService()
+            var state = PrivatePaykitService.ContactState()
+            state.hasPublishedPrivatePaymentList = true
+            await service.setTestContactState(state, publicKey: key)
+            let admitted = expectation(description: "Withdrawal admitted")
+            let (finish, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let operations = PrivatePaykitService.EndpointCleanupOperations(
+                linkedPeers: { [] }, clearPaymentLists: { _ in
+                    admitted.fulfill()
+                    for await _ in finish {}
+                    XCTAssertFalse(Task.isCancelled)
+                    return nil
+                }, drainMessages: { _ in }, pendingDrainKeys: { _ in [] }, syncApp: {}
+            )
+            let cleanup = Task {
+                try await service.removePublishedEndpoints(for: [key], isSessionCurrent: { true }, operations: operations)
+            }
+            await fulfillment(of: [admitted], timeout: 2)
+            if change == "readd" { _ = await service.rememberSavedContacts([key], replacing: false) }
+            if change == "identity" { await service.invalidateContactPreparation() }
+            continuation.finish()
+            let result = await cleanup.result
+            let retained = await service.testContactState(publicKey: key)
+            if change == "none" {
+                try result.get()
+                XCTAssertNil(retained)
+            } else {
+                if case .success = result { XCTFail("Superseded cleanup must not clear contact state") }
+                XCTAssertTrue(retained?.hasPublishedPrivatePaymentList == true)
+            }
+            try await service.removePublishedEndpoints(isSessionCurrent: { true }, operations: .init(
+                linkedPeers: { [] }, clearPaymentLists: { _ in nil },
+                drainMessages: { _ in }, pendingDrainKeys: { _ in [] }, syncApp: {}
+            ))
+            let afterSharingOff = await service.testContactState(publicKey: key)
+            XCTAssertNil(afterSharingOff)
+        }
+    }
+
+    @MainActor
+    func testGuardedCleanupPreservesCacheUpdatedDuringFinalSessionCheck() async throws {
+        let key = "pubky" + String(repeating: "y", count: 52)
+        let service = PrivatePaykitService()
+        var state = PrivatePaykitService.ContactState()
+        state.hasPublishedPrivatePaymentList = true
+        await service.setTestContactState(state, publicKey: key)
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .bitcoinLightningLnurl, value: "lnurl1updated", min: nil, max: nil,
+            rawPayload: #"{"value":"lnurl1updated"}"#
+        )
+        var withdrawalCompleted = false
+        var cacheUpdate: Task<Void, Never>?
+        let operations = PrivatePaykitService.EndpointCleanupOperations(
+            linkedPeers: { [] }, clearPaymentLists: { _ in
+                await MainActor.run { withdrawalCompleted = true }
+                return nil
+            }, drainMessages: { _ in }, pendingDrainKeys: { _ in [] }, syncApp: {}
+        )
+        do {
+            try await service.removePublishedEndpoints(for: [key], isSessionCurrent: {
+                if withdrawalCompleted, cacheUpdate == nil {
+                    let updated = self.expectation(description: "Endpoint cache updated during session check")
+                    cacheUpdate = Task.detached {
+                        await service.cacheResolvedEndpoints([endpoint], publicKey: key)
+                        updated.fulfill()
+                    }
+                    // Complete the actor write while cleanup is suspended on this synchronous MainActor predicate.
+                    XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 5), .completed)
+                }
+                return true
+            }, operations: operations)
+            XCTFail("Cleanup must defer when endpoint state changes during its final session check")
+        } catch PrivatePaykitError.privateUnavailable {}
+        await cacheUpdate?.value
+        XCTAssertNotNil(cacheUpdate)
+        let retained = await service.testContactState(publicKey: key)
+        XCTAssertEqual(retained?.cachedResolvedEndpoints.first?.endpointData, endpoint.rawPayload)
+        XCTAssertTrue(retained?.hasPublishedPrivatePaymentList == true)
+    }
+
     func testCleanupFailuresKeepRegistryReconciliationPending() async throws {
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
