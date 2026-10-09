@@ -156,6 +156,32 @@ final class PubkyAuthRequestTests: XCTestCase {
         }
     }
 
+    func testGrantSignupPreservesRegistrationAndAppAuthorization() throws {
+        let url = "pubkyauth://signup_grant?caps=/pub/pubky.app/:rw&relay=\(relay)&secret=\(secret)" +
+            "&hs=\(publicKey)&st=invite%20code&cid=shop.pubky.app&cpk=\(publicKey)"
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertTrue(request.isSignup)
+        XCTAssertTrue(request.isGrantSignup)
+        XCTAssertEqual(request.kind, .signUp)
+        XCTAssertTrue(request.requiresIdentityCreation(hasIdentity: false))
+        XCTAssertFalse(request.requiresIdentityCreation(hasIdentity: true))
+        XCTAssertEqual(request.homeserverPublicKey, "pubky" + publicKey)
+        XCTAssertEqual(request.signupToken, "invite code")
+        XCTAssertEqual(request.clientID, "shop.pubky.app")
+        XCTAssertEqual(request.authorizationUrl, url)
+        XCTAssertEqual(request.permissions.first?.path, "/pub/pubky.app/")
+        XCTAssertEqual(request.permissions.first?.accessLevel, "rw")
+    }
+
+    func testGrantSignupRejectsInvalidOrAmbiguousRegistrationDetails() {
+        let prefix = "pubkyauth://signup_grant?caps=/pub/pubky.app/:rw&relay=\(relay)&secret=\(secret)" +
+            "&cid=shop.pubky.app&cpk=\(publicKey)"
+        for registration in ["", "&hs=invalid", "&hs=\(publicKey)&hs=\(publicKey)", "&hs=\(publicKey)&st=one&st=two"] {
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: prefix + registration))
+        }
+    }
+
     func testParseRingSignupRejectsMissingOrDuplicateRequiredValues() {
         let invalidUrls = [
             ringSignupUrl().replacingOccurrences(of: "&secret=\(secret)", with: ""),

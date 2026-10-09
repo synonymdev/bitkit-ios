@@ -48,6 +48,11 @@ actor PrivatePaykitService {
     static let shared = PrivatePaykitService()
 
     private static let walletBackupDataChangedSubject = PassthroughSubject<Void, Never>()
+    static let contactLinkCompletedSubject = PassthroughSubject<(identity: String, publicKey: String), Never>()
+
+    nonisolated static var contactLinkCompletedPublisher: AnyPublisher<(identity: String, publicKey: String), Never> {
+        contactLinkCompletedSubject.eraseToAnyPublisher()
+    }
 
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         walletBackupDataChangedSubject.eraseToAnyPublisher()
@@ -71,28 +76,41 @@ actor PrivatePaykitService {
 
     var state: PrivatePaykitState
     var knownSavedContactKeys: Set<String> = []
+    var savedContactsRevision = 0
     var pendingPreparationKeys: Set<String> = []
     var activePreparationKeys: Set<String> = []
     var activeLinkPreparationKeys: Set<String> = []
+    var linkPreparationWaiters: [String: [UUID: AsyncStream<Void>.Continuation]] = [:]
     var preparationTask: Task<Void, Never>?
     var pendingPreparationOperation: (([String], Bool) async -> Void)?
     var preparationGeneration = 0
     var isBackgroundWorkPaused = false
+    var messageSchedulingGeneration = 0
     var backgroundWorkWaiters: [UUID: AsyncStream<Void>.Continuation] = [:]
     var isDeletingProfile = false
     var pendingForceRefreshLightning = false
     var unavailableLinkRetryAt: [String: Date] = [:]
     var pendingMessageDrainRetryTask: Task<Void, Never>?
-    var pendingMessageDrainRetryKeys: Set<String> = []
+    var pendingMessageDrainRetrySleep: Task<Void, Never>?
+    var pendingMessageDrainRetries: [String: PrivateMessageRetry] = [:]
+    var pendingMessageDrainRetryKeys: Set<String> {
+        Set(pendingMessageDrainRetries.keys)
+    }
+
     var pendingMessageDrainRetryGeneration = 0
+    let messageRetryOperations: PrivateMessageRetryOperations
     // A restart makes the send outcome uncertain, so only live attempts may release a consumed list.
     var privatePaymentListConsumptions: [PrivatePaymentListConsumptionKey: PrivatePaymentListConsumption] = [:]
     var prePaymentPublicationKeys: Set<String> = []
     private let publicationLock = PrivatePaykitPublicationLock()
     let publicationOperations: EndpointPublicationOperations?
 
-    init(publicationOperations: EndpointPublicationOperations? = nil) {
+    init(
+        publicationOperations: EndpointPublicationOperations? = nil,
+        messageRetryOperations: PrivateMessageRetryOperations = .init()
+    ) {
         self.publicationOperations = publicationOperations
+        self.messageRetryOperations = messageRetryOperations
         state = UserDefaults.standard.data(forKey: Self.cacheStateKey)
             .flatMap { try? JSONDecoder().decode(PrivatePaykitState.self, from: $0) } ?? PrivatePaykitState(contacts: [:])
     }

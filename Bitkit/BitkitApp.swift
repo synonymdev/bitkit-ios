@@ -186,6 +186,8 @@ struct BitkitApp: App {
             #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-contact-import-ui-test") {
                     ContactImportUITestFixture()
+                } else if ProcessInfo.processInfo.arguments.contains("-profile-recovery-ui-test") {
+                    ProfileRecoveryUITestFixture()
                 } else {
                     appContent
                 }

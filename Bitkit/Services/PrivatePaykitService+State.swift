@@ -6,10 +6,6 @@ extension PrivatePaykitService {
     func closeAndClear() async {
         invalidateContactPreparation()
         unavailableLinkRetryAt.removeAll()
-        pendingMessageDrainRetryTask?.cancel()
-        pendingMessageDrainRetryTask = nil
-        pendingMessageDrainRetryKeys.removeAll()
-        pendingMessageDrainRetryGeneration += 1
         privatePaymentListConsumptions.removeAll()
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()

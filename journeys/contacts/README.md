@@ -1,5 +1,11 @@
 # Contacts
 
+`link-contact-after-resume.xml` checks saving a new contact, leaving and reopening Bitkit, and
+reaching Request or Pay without re-adding the contact. It is mirrored on Android and requires two
+disposable, request-capable identities. Record readiness timing separately from a pass/fail result.
+A natural run may finish linking before backgrounding; the controlled pending-operation checks
+below are still needed to verify that pending work resumes.
+
 `delete-newly-saved-contact.xml` checks deletion directly from Contact Saved and adding that
 contact again. It is mirrored on Android. Deleted contact screens must not remain in Back history.
 
@@ -57,6 +63,26 @@ public endpoint or app-registry update failing.
 Hold withdrawal in progress and foreground the app. It must not start another cleanup. Request
 sharing on again before withdrawal finishes: publication must wait until the earlier cleanup ends,
 then leave sharing on. Repeat while a foreground cleanup is already running.
+
+## Contact synchronization overlap
+
+Hold contact synchronization before private preparation or cleanup, then save a new contact and
+start its explicit link retry. Release synchronization and verify that the contact stays saved,
+its retry retains the original priority deadline, and the older contact list does not withdraw
+its payment endpoints. On Android, hold the startup app-registry refresh; on iOS, hold public
+publication while enabling contact payments and leave Settings to save the contact.
+
+Repeat by removing and re-adding a contact while synchronization's cleanup is queued, then by changing identity.
+Obsolete cleanup must not cancel the new retry or remove its assignments. A deletion that stays
+current must still remove the contact. These checks require controlled operation blocking and
+retry-state inspection, which the standard journey runner does not provide; record timing
+separately from the correctness result.
+
+Repeat enabling contact payments with a pending private withdrawal. Change saved contacts while
+the cleanup flag update is held, release it, and run the removal retry. Sharing must stay enabled,
+the old withdrawal must not run, and current contacts must be prepared without resetting an
+existing explicit retry deadline. On iOS the cleanup flag is updated synchronously; hold the
+following private-preparation call instead.
 
 ## Background preparation
 
@@ -117,6 +143,33 @@ while app registration is held; the admitted write may
 finish, but the next endpoint publication must not start for the ended session or disabled sharing.
 
 ## Foreground wait isolation
+
+With one peer waiting at the ninety-second retry interval, explicitly add or refresh another
+contact. Its retry age must start independently and wake the sleeping worker. Repeat the action
+while its link operation is held: the operation is shared, and the twenty-second foreground
+admission window is not extended. After expiry, subsequent SDK calls use background priority;
+expiry and backgrounding must not cancel an admitted write. Resume after expiry, delete the
+contact, and switch identity while work is paused to check stale work is discarded. These checks
+need controlled clocks and SDK holds, outside the journey runner. On successful linked intake
+during the window, only that contact's request eligibility is refreshed. Linked alone does not
+prove that a usable incoming payment list exists. These checks establish scheduling behavior,
+not device latency or a guaranteed link-completion deadline.
+
+Fail identity inspection before linking and after an admitted write, then recover: the retry
+keeps its existing backoff and window, and no further SDK work starts while identity is unverified.
+For a linked peer with no outbound messages, failed intake keeps the explicit retry pending
+within that window. After expiry, normal background drain rules apply without signaling readiness.
+Target eligibility discovery remains owned by the existing request manager. It coalesces lookups
+but does not automatically retry a failed targeted refresh; a later full refresh or contact
+eligibility lookup can retry it. Successful intake does not guarantee successful discovery.
+
+Return NotFound from the explicit retry's link attempt for a peer with no SDK record or pending outbound work:
+the retry retires instead of polling indefinitely. Pending outbound work must remain scheduled,
+and the existing unavailable-peer cooldown still applies. A transport failure during publication
+must not retire the explicit retry; it attempts linking again after the cooldown. Repeat identity changes during peer
+and outbound reads: no following operation or readiness notification may use the old identity.
+Invalid peer-key or recovery metadata must not be presented as ordinary link recovery.
+These cases need controlled SDK responses, outside the journey runner.
 
 Hold an unrelated contact's background preparation in progress, then open a saved, linked contact
 and request or pay it. The selected contact must be eligible for its own lookup before the full

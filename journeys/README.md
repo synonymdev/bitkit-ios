@@ -195,14 +195,29 @@ When you port an Android feature, port its journeys too — see the Journeys sec
 
 Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
 spending maximum differently, `cjit-notifications` because the notification copy differs, and
-`pubky-marketplace` because the two-wallet payment runs on regtest here. `pubky-auth` is
-iOS-only — a Bitkit-specific OS handoff into watch-only consent, with no Android counterpart.
+`pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
+watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
+`grant-signup-existing-identity.xml` are shared with Android.
 
 `profile/signup-create-profile.xml` is currently iOS-only. It covers the iOS Profile Error regression
 after staging signup. Android also supports this signup flow, but this journey has not been ported there.
 
 `contacts/contacts-entry-points.xml` covers onboarding without an identity and the
 authenticated Contacts list. It has not yet been ported to Android.
+
+`payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
+actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
+iOS-only feature.
+
+`coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
+name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.
+The iOS picker has no accessibility identifiers, so assert its visible "Coin Selection" title.
+Android's `coin-selection/manual-coin-selection.xml` and `coin-selection/manual-coin-selection-load.xml`
+remain unported: the iOS picker lacks their identifiers and the inline load-error/retry state.
+
+`amount-limits/custom-fee-wallet-switch.xml` is iOS-only: applying a custom fee returns through
+the fee picker before confirmation. Android's `setTransactionSpeed` returns directly to confirmation,
+so the intermediate wait and deferred coin-preparation checks have no matching route there.
 
 `pubky-profile/contact-import-after-leaving.xml` and `pubky-profile/contacts-list-loading.xml` are
 new on both platforms at once. synonymdev/bitkit-android#1399 carries both journeys with the same file

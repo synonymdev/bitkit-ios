@@ -8,9 +8,26 @@ The resolution-failure journey is ported alongside Android's matching `requested
 
 ## Issuer interoperability
 
+`fixed-price-bitcoin.xml` verifies a USD-denominated request settled in BTC and an explicit
+same-asset rail price. The confirmation amount uses the issuer's fixed rate; the displayed fiat
+estimate uses Bitkit's own market rate. The flow stops before broadcasting. Differing rail prices,
+fractional-satoshi Lightning payments, and dynamic quotes remain unsupported.
+
 ### Setup
 
 Run Bitkit against regtest with Paykit UI enabled. Authenticate a Pubky identity, save and link the fixture issuer as a contact, and give the wallet enough on-chain balance to pay 100,000 sats. The fixture issuer must be able to publish a Paykit endpoint and send a one-time Payment Request to that linked peer. Its App ID is `paykit-server`; Bitkit uses `bitkit`.
+
+`fixed-price-bitcoin.xml` additionally requires an issuer built with Paykit rc71 or newer
+that can send `conversion.fixed` terms. The basic BTC request fixture and Bitkit's Request UI
+cannot create these quotes. Use the standalone `tools/paykit-fixture-sender` documented in
+[bitkit-e2e-tests #269](https://github.com/synonymdev/bitkit-e2e-tests/pull/269), or an equivalent
+conversion-capable issuer, and follow its setup and linking instructions.
+
+`unpayable-endpoint.xml` requires an issuer that can bind a new request to a one-time address
+already recorded as paid by this payer, then send another request with a fresh unused address.
+Prepare that paid-address fixture separately; the journey itself sends no additional payment.
+If the required issuer or paid-address state is unavailable, report the corresponding journey
+as blocked, not as an app failure or a pass.
 
 The accepted journey uses:
 
@@ -72,7 +89,11 @@ the request in history without a Pay action. The iOS controls use `GRAB`, `SendF
   endpoint payload.
 - Open-time rejection emits a warning with `category=resolution` or `category=presentation`, a
   stable reason code, and only the redacted counterparty.
-- An explicit Pay action tries immediately and fourteen more times at two-second intervals. After
+- An endpoint rejected as `endpoint_not_payable`, including an already-paid one-time address,
+  ends preparation immediately with `PaymentRequestUnavailableToast`. The request stays pending
+  for manual retry, but does not automatically reopen during the current identity's app session.
+  `unpayable-endpoint.xml` checks this using an address already recorded as paid by the payer.
+- Other resolution failures from an explicit Pay action are tried immediately and fourteen more times at two-second intervals. After
   the fifteenth failure, Bitkit shows an error toast with localized keys `wallet__payment_request`
   and `wallet__payment_request_unavailable`, then leaves the request available for another attempt.
 - If the request expires during an explicit presentation attempt, Bitkit logs
@@ -87,7 +108,7 @@ the request in history without a Pay action. The iOS controls use `GRAB`, `SendF
 The failure reason vocabulary is:
 
 - Parse: `missing_local_role`, `outgoing_request`, `unsupported_local_role`, `missing_terms`,
-  `recurring_request`, `unsupported_asset`, `unsupported_payment_deadline`, `invalid_amount`, `amount_out_of_range`,
+  `recurring_request`, `unsupported_asset`, `unsupported_pricing`, `unsupported_payment_deadline`, `invalid_amount`, `amount_out_of_range`,
   `no_supported_endpoint`, `invalid_expiration`, `expired`.
 - Resolution: `no_supported_endpoint`, `endpoint_not_payable`, `payment_details_pending`,
   `resolution_failed`.
@@ -108,6 +129,10 @@ correctly prevents it from entering the presentation queue.
 ## Request summary
 
 `request-summary.xml` is ported alongside Android's matching journey.
+
+`success-dismissal.xml` matches Android's journey: after paying a Lightning request, closing success
+must leave no error toast or duplicate payment; closing a later unpaid request must not send it.
+Use two linked disposable regtest wallets and observe or record dismissal to catch short-lived toasts.
 
 ### Setup
 

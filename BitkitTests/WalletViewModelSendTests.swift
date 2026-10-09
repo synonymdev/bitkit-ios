@@ -6,6 +6,60 @@ import XCTest
 final class WalletViewModelSendTests: XCTestCase {
     private struct FeeFetchError: Error {}
 
+    func testFeeRateDoesNotApplyToAnExpiredSendContext() async throws {
+        snapshotAppDefaultsDomain()
+        FeeEstimatesManager().devOverrideFeeEstimates = true
+        let wallet = WalletViewModel()
+
+        do {
+            try await wallet.setFeeRate(speed: .normal, isCurrentSend: { false })
+            XCTFail("Expected the expired send preparation to be cancelled")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+
+        XCTAssertNil(wallet.selectedFeeRateSatsPerVByte)
+        XCTAssertFalse(wallet.feeRateLoadFailed)
+    }
+
+    func testUtxoSelectionDoesNotOverwriteAnExpiredSendAfterAwait() async throws {
+        for isMax in [false, true] {
+            let wallet = WalletViewModel()
+            wallet.sendAmountSats = isMax ? 99819 : 10000
+            wallet.selectedFeeRateSatsPerVByte = 1
+            wallet.isMaxAmountSend = isMax
+            let original = SpendableUtxo(outpoint: OutPoint(txid: String(repeating: "a", count: 64), vout: 0), valueSats: 60000)
+            let replacement = SpendableUtxo(outpoint: OutPoint(txid: String(repeating: "b", count: 64), vout: 0), valueSats: 40000)
+            wallet.selectedUtxos = [original]
+            var isCurrent = true
+            var crossedSelection = false
+            let finishSelection = {
+                await Task.yield()
+                crossedSelection = true
+                isCurrent = false
+                return [replacement]
+            }
+            do {
+                try await wallet.setUtxoSelection(
+                    coinSelectionAlgorythm: .branchAndBound, isCurrentSend: { isCurrent },
+                    listSpendable: {
+                        XCTAssertTrue(isMax)
+                        return await finishSelection()
+                    },
+                    selectForAmount: { _, _, _ in
+                        XCTAssertFalse(isMax)
+                        return await finishSelection()
+                    }
+                )
+                XCTFail("An expired send must not apply the selection after its await")
+            } catch {
+                XCTAssertTrue(error is CancellationError)
+            }
+            XCTAssertTrue(crossedSelection)
+            XCTAssertEqual(wallet.selectedUtxos, [original])
+        }
+    }
+
     func testSoftwareMaxUsesSpendableOutputsInsteadOfFixedAmountSelection() async throws {
         let wallet = WalletViewModel()
         wallet.sendAmountSats = 99819

@@ -299,6 +299,30 @@ final class PaykitContactLifecycleTests: XCTestCase {
         XCTAssertEqual(sdk.events, eventsBeforeCleanup)
     }
 
+    func testWithdrawalRechecksContactSnapshotAfterSdkPreflight() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let inspected = expectation(description: "Withdrawal preflight is pending")
+        let (resume, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        sdk.beforeLinkedPeers = {
+            inspected.fulfill()
+            for await _ in resume {}
+        }
+        var current = true
+        let withdrawal = Task {
+            try await service.clearPrivatePaymentLists(to: [sdk.publicKey], isSessionCurrent: { current })
+        }
+        await fulfillment(of: [inspected], timeout: 2)
+        current = false
+        continuation.finish()
+        do {
+            _ = try await withdrawal.value
+            XCTFail("Superseded contact cleanup must not queue withdrawal")
+        } catch PubkyServiceError.sessionNotActive {}
+        XCTAssertTrue(sdk.withdrawals.isEmpty)
+    }
+
     func testDisabledPrivateCapabilityDoesNotQueueWithdrawal() async throws {
         let sdk = ContactLifecycleSdk(noPointer: .init())
         sdk.capabilities.privatePayments = false
@@ -387,6 +411,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var peerReads = 0
     var identityReads = 0
     var registryReads = 0
+    var beforeLinkedPeers: (() async -> Void)?
     var withdrawals = [[PrivatePaymentListReservationUpdateInput]]()
     var capabilities = PaykitAppCapabilities(privatePayments: true, paymentRequests: true, receipts: false, outgoingPayments: true)
     lazy var record: ContactRecord? = ContactRecord(
@@ -445,6 +470,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
+        await beforeLinkedPeers?()
         peerReads += 1
         return peers
     }

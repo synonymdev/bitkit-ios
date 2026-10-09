@@ -65,20 +65,30 @@ enum SharedPubkyKeychain {
 
     /// Reads one record's secret, returning it only when it really is the secret for `pubky`.
     static func loadSecret(sourceApp: String, pubky: String) -> String? {
+        try? readSecret(sourceApp: sourceApp, pubky: pubky)
+    }
+
+    static func readSecret(
+        sourceApp: String,
+        pubky: String,
+        copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching
+    ) throws -> String? {
         var query = baseQuery
         query[kSecAttrAccount as String] = account(sourceApp: sourceApp, pubky: pubky)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+        let status = copyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess,
               let data = result as? Data,
               let hex = String(data: data, encoding: .utf8),
-              isValidSecret(hex, pubky: pubky)
+              hex.count == 64, hex.allSatisfy({ $0.isHexDigit && !$0.isUppercase })
         else {
-            return nil
+            throw KeychainError.failedToLoad
         }
-        return hex
+        return try derivedPubky(fromSecretKeyHex: hex) == pubky ? hex : nil
     }
 
     /// True only when the record is provably gone; a read error means "unknown", not "removed".

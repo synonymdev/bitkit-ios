@@ -747,6 +747,34 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(changes.count, 6, "Another owner's first load announces even the same keys")
     }
 
+    func testSavedContactsSnapshotIgnoresRowUpdatesButChecksMembershipAndOwner() async throws {
+        let manager = ContactsManager()
+        let records = [contactRecord(key: contactProfileKey, name: "Saved")]
+        let load: @MainActor (String) async throws -> Void = { owner in
+            try await manager.loadContacts(for: owner, fetchContactRecords: { records }, fetchRemoteProfile: { _ in nil })
+        }
+        try await load("owner")
+        let snapshot = manager.savedContactsSnapshot()
+        manager.contacts = [makeContact(publicKey: contactProfileKey)]
+        XCTAssertTrue(snapshot.isCurrent(), "Editing a row must not discard its pending preparation")
+        try await load("owner")
+        XCTAssertTrue(snapshot.isCurrent(), "Reloading unchanged membership must not discard pending preparation")
+
+        manager.contacts.append(makeContact(publicKey: unresolvedFollowKey))
+        XCTAssertFalse(snapshot.isCurrent())
+        let beforeDeletion = manager.savedContactsSnapshot()
+        manager.contacts.removeAll { $0.publicKey == unresolvedFollowKey }
+        XCTAssertFalse(beforeDeletion.isCurrent())
+
+        let beforeReset = manager.savedContactsSnapshot()
+        manager.reset()
+        try await load("owner")
+        XCTAssertFalse(beforeReset.isCurrent(), "Reset invalidates the snapshot even when the same keys are restored")
+        let beforeOwnerChange = manager.savedContactsSnapshot()
+        try await load("another-owner")
+        XCTAssertFalse(beforeOwnerChange.isCurrent(), "The same keys under another owner belong to another snapshot")
+    }
+
     func testImportAnnouncesTheSavedContactsChangeOnce() async throws {
         let manager = ContactsManager()
         var changes: [Set<String>] = []

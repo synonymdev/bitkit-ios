@@ -2,11 +2,11 @@ import Foundation
 
 /// How each vendor's devices are shown and named across the hardware wallet screens.
 extension HwWalletVendor {
-    /// The upright device illustration; the Jade one is a placeholder until design supplies the asset.
+    /// The device illustration shown when pairing and viewing a hardware wallet.
     var deviceImageName: String {
         switch self {
         case .trezor: "trezor-device"
-        case .blockstream: "jade-placeholder"
+        case .blockstream: "jade-device"
         }
     }
 
@@ -14,7 +14,7 @@ extension HwWalletVendor {
     var signImageName: String {
         switch self {
         case .trezor: "trezor-card"
-        case .blockstream: "jade-placeholder"
+        case .blockstream: "jade-card"
         }
     }
 

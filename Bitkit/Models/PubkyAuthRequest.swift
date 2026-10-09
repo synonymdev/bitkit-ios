@@ -120,6 +120,15 @@ struct PubkyAuthRequest {
         Self.isSignupURL(rawUrl)
     }
 
+    var isGrantSignup: Bool {
+        guard let components = URLComponents(string: rawUrl) else { return false }
+        return components.scheme?.lowercased() == "pubkyauth" && components.host?.lowercased() == "signup_grant"
+    }
+
+    func requiresIdentityCreation(hasIdentity: Bool) -> Bool {
+        isSignup && (!isGrantSignup || !hasIdentity)
+    }
+
     /// The network origin that receives the authorization. This is a delivery destination, not a service identity.
     var relayOrigin: String? {
         guard let components = URLComponents(string: relay),
@@ -176,11 +185,19 @@ struct PubkyAuthRequest {
             _ = try parseBitkitClaim(url: normalizedURL, capabilities: capabilities, requiresBitkitClaim: true)
         }
 
-        if let components = URLComponents(string: normalizedURL), isSignupURL(components) {
+        if let components = URLComponents(string: normalizedURL), isSignupURL(components),
+           components.host?.lowercased() != "signup_grant"
+        {
             return try parseSignup(url: normalizedURL, components: components)
         }
 
         let details = try Paykit.parsePubkyAuthUrl(authUrl: normalizedURL)
+        var signupToken: String?
+        if details.kind == .signUp {
+            let values = Dictionary(grouping: URLComponents(string: normalizedURL)?.queryItems ?? [], by: \.name)
+            _ = try requiredQueryValue("hs", from: values)
+            signupToken = try optionalQueryValue("st", from: values)
+        }
         let capabilities = details.capabilities
         return try makeRequest(
             url: normalizedURL,
@@ -188,8 +205,8 @@ struct PubkyAuthRequest {
             clientID: details.clientId,
             relay: details.relayUrl,
             capabilities: capabilities,
-            homeserverPublicKey: nil,
-            signupToken: nil,
+            homeserverPublicKey: details.homeserverPublicKey,
+            signupToken: signupToken,
             authorizationUrl: normalizedURL,
             requiresBitkitClaim: requiresBitkitClaim
         )
@@ -205,7 +222,7 @@ struct PubkyAuthRequest {
         case "pubkyring":
             return components.host?.lowercased() == "signup"
         case "pubkyauth":
-            return ["direct_signup", "signup"].contains(components.host?.lowercased())
+            return ["direct_signup", "signup", "signup_grant"].contains(components.host?.lowercased())
         default:
             return false
         }

@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Security
 import XCTest
 
 final class SharedPubkyKeychainTests: XCTestCase {
@@ -34,5 +35,33 @@ final class SharedPubkyKeychainTests: XCTestCase {
         let otherSecretKeyHex = String(repeating: "01", count: 32)
         XCTAssertNotEqual(try SharedPubkyKeychain.derivedPubky(fromSecretKeyHex: otherSecretKeyHex), pubky)
         XCTAssertFalse(SharedPubkyKeychain.isValidSecret(otherSecretKeyHex, pubky: pubky))
+    }
+
+    func testReadSecretDistinguishesMissingAndUnreadableRecords() throws {
+        let (secretKeyHex, pubky) = try makeSecretAndPubky()
+        let cases: [(status: OSStatus, data: Data?, expected: String?, fails: Bool)] = [
+            (errSecItemNotFound, nil, nil, false),
+            (errSecInteractionNotAllowed, nil, nil, true),
+            (errSecSuccess, nil, nil, true),
+            (errSecSuccess, Data([0xFF]), nil, true),
+            (errSecSuccess, Data("invalid-key".utf8), nil, true),
+            (errSecSuccess, Data(secretKeyHex.utf8), secretKeyHex, false),
+            (errSecSuccess, Data(String(repeating: "01", count: 32).utf8), nil, false),
+        ]
+        for testCase in cases {
+            let read = {
+                try SharedPubkyKeychain.readSecret(sourceApp: SharedPubkyKeychain.ringSourceApp, pubky: pubky) { query, result in
+                    let query = query as NSDictionary
+                    XCTAssertEqual(query[kSecAttrAccount] as? String, "\(SharedPubkyKeychain.ringSourceApp):\(pubky)")
+                    result?.pointee = testCase.data as CFTypeRef?
+                    return testCase.status
+                }
+            }
+            if testCase.fails {
+                XCTAssertThrowsError(try read())
+            } else {
+                XCTAssertEqual(try read(), testCase.expected)
+            }
+        }
     }
 }
