@@ -1,8 +1,9 @@
 <journey name="cached profile header while loading">
   <description>
-    Verifies that opening Profile straight after a relaunch, while the signed-in profile is still
+    Verifies that opening Profile straight after a relaunch, while the public profile is still
     loading, shows the cached name read-only. The edit, copy, share, QR code and tag controls are
-    absent. The full profile then replaces the cached header in place.
+    absent. The full profile then replaces the cached header in place, even if private session
+    restoration is still pending. Editing remains disabled until restoration succeeds.
 
     Precondition: an onboarded E2E Bitkit build with Paykit UI enabled and a Bitkit-generated Pubky
     identity whose profile has a name. Profile must have loaded fully once on this build, so the
@@ -18,11 +19,11 @@
     <action>Run `xcrun simctl launch &lt;UDID&gt; to.bitkit`</action>
     <action>If the PIN screen appears, unlock the wallet</action>
     <action>As soon as the home screen shows, tap the header profile button (id "ProfileButton")</action>
-    <action>If a bare spinner with no "Profile" title shows first, wait for it to clear. That is the Pubky initialization wait, which has to finish before the cached header can show. A spinner under the "Profile" title with no name is not that wait: no cached header showed, so report it</action>
+    <action>If a bare spinner with no "Profile" title shows first, wait for it to clear. That is the initial Pubky initialization attempt, which has to finish before the cached header can show. Later private-session retries need not finish before the public profile loads. A spinner under the "Profile" title with no name is not that wait: no cached header showed, so report it</action>
     <action>Verify the cached profile header (id "ProfileCachedHeader") is visible and its name (id "ProfileCachedName") matches the name noted before the relaunch. If the full profile name (id "ProfileViewName") is already showing, the load finished first: report "already loaded" and repeat from the terminate step once rather than failing</action>
     <action>Verify the cached header is read-only: edit (id "ProfileEdit"), copy (id "ProfileCopy"), share (id "ProfileShare"), the QR code (id "ProfileQRCode") and add tag (id "ProfileAddTag") are all absent</action>
     <action>Wait for the full profile name (id "ProfileViewName", predicate exists)</action>
     <action>Verify the cached profile header (id "ProfileCachedHeader") is gone and the full profile name (id "ProfileViewName") matches the cached name</action>
-    <action>Verify edit (id "ProfileEdit") and the QR code (id "ProfileQRCode") are visible</action>
+    <action>Verify edit (id "ProfileEdit") and the QR code (id "ProfileQRCode") are visible. Edit may remain disabled while private session restoration is pending</action>
   </actions>
 </journey>

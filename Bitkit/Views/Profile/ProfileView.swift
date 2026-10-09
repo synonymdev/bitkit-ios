@@ -42,11 +42,15 @@ struct ProfileView: View {
     @State private var copiedPublicKey: String?
     @State private var hideCopiedPopupTask: Task<Void, Never>?
 
+    private var canEditProfile: Bool {
+        pubkyProfile.currentSession != nil && pubkyProfile.profile != nil
+    }
+
     var body: some View {
         Group {
-            if let profile = pubkyProfile.profile {
+            if let profile = pubkyProfile.profileForDisplay {
                 profileContent(profile)
-            } else if pubkyProfile.isLoadingProfile, let cachedProfile = pubkyProfile.cachedProfilePreview {
+            } else if pubkyProfile.isLoadingProfile || !pubkyProfile.isAuthenticated, let cachedProfile = pubkyProfile.cachedProfilePreview {
                 cachedProfileContent(cachedProfile)
             } else {
                 VStack(spacing: 0) {
@@ -130,6 +134,13 @@ struct ProfileView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 16)
+
+                if !canEditProfile {
+                    retryButton
+                        .padding(.bottom, 16)
+                    signOutButton
+                        .accessibilityIdentifier("ProfileSignOut")
+                }
             }
             .padding(.horizontal, 16)
         }
@@ -148,9 +159,10 @@ struct ProfileView: View {
                 navigation.navigate(.editProfile)
             }
             .accessibilityIdentifier("ProfileEdit")
+            .disabled(!canEditProfile)
 
             GradientCircleButton(icon: "copy-simple", accessibilityLabel: t("common__copy")) {
-                if let pk = pubkyProfile.publicKey {
+                if let pk = pubkyProfile.publicKeyForDisplay {
                     copyPublicKey(pk)
                 }
             }
@@ -232,7 +244,7 @@ struct ProfileView: View {
             if !profile.tags.isEmpty {
                 WrappingHStack(spacing: 8) {
                     ForEach(profile.tags, id: \.self) { tag in
-                        Tag(tag, icon: .close, onDelete: {
+                        Tag(tag, icon: .close, onDelete: !canEditProfile ? nil : {
                             updateTags(profile.tags.filter { $0 != tag }, profile: profile)
                         })
                     }
@@ -247,7 +259,7 @@ struct ProfileView: View {
                 showAddTagSheet = true
             }
         }
-        .disabled(isUpdatingTags)
+        .disabled(isUpdatingTags || !canEditProfile)
     }
 
     private func addTag(_ tag: String, to profile: PubkyProfile) {
@@ -256,7 +268,7 @@ struct ProfileView: View {
     }
 
     private func updateTags(_ tags: [String], profile: PubkyProfile) {
-        guard !isUpdatingTags else { return }
+        guard canEditProfile, !isUpdatingTags else { return }
         isUpdatingTags = true
 
         Task {
@@ -280,8 +292,12 @@ struct ProfileView: View {
         isRefreshing = true
         defer { isRefreshing = false }
         guard pubkyProfile.profile == nil else { return }
-        await pubkyProfile.restoreSessionIfNeeded()
+        async let restoration: Void = pubkyProfile.restoreSessionIfNeeded()
         await pubkyProfile.loadProfile()
+        await restoration
+        if pubkyProfile.profileForDisplay == nil {
+            await pubkyProfile.loadProfile()
+        }
     }
 
     // MARK: - Loading / Empty States
@@ -301,7 +317,17 @@ struct ProfileView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 16)
 
-                ActivityIndicator(size: 24)
+                if pubkyProfile.isLoadingProfile || pubkyProfile.isRestoringSession {
+                    ActivityIndicator(size: 24)
+                } else {
+                    retryButton
+                }
+
+                if !canEditProfile {
+                    signOutButton
+                        .padding(.top, 16)
+                        .accessibilityIdentifier("ProfileSignOut")
+                }
             }
             .padding(.horizontal, 16)
             .accessibilityElement(children: .contain)
@@ -323,24 +349,38 @@ struct ProfileView: View {
         VStack(spacing: 16) {
             Spacer()
             BodyMText(t("profile__empty_state"))
-            CustomButton(title: t("profile__retry_load"), variant: .secondary) {
-                await refreshProfile()
-            }
-            .accessibilityIdentifier("ProfileRetry")
-            Button(t("profile__sign_out")) {
-                showSignOutConfirmation = true
-            }
-            .font(Fonts.regular(size: 17))
-            .foregroundColor(.white64)
-            .accessibilityLabel(t("profile__sign_out"))
-            .accessibilityIdentifier("ProfileEmptySignOut")
+            retryButton
+            signOutButton
+                .accessibilityIdentifier("ProfileEmptySignOut")
             Spacer()
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var retryButton: some View {
+        CustomButton(
+            title: t("profile__retry_load"),
+            variant: .secondary,
+            isDisabled: isSigningOut,
+            isLoading: isRefreshing || pubkyProfile.isRestoringSession || pubkyProfile.isLoadingProfile
+        ) {
+            await refreshProfile()
+        }
+        .accessibilityIdentifier("ProfileRetry")
+    }
+
     // MARK: - Sign Out & Share
+
+    private var signOutButton: some View {
+        Button(t("profile__sign_out")) {
+            showSignOutConfirmation = true
+        }
+        .font(Fonts.regular(size: 17))
+        .foregroundColor(.white64)
+        .accessibilityLabel(t("profile__sign_out"))
+        .disabled(isSigningOut)
+    }
 
     private func performSignOut() async {
         isSigningOut = true
@@ -353,7 +393,7 @@ struct ProfileView: View {
     }
 
     private func shareProfile() {
-        guard let pk = pubkyProfile.publicKey else { return }
+        guard let pk = pubkyProfile.publicKeyForDisplay else { return }
         let activityVC = UIActivityViewController(
             activityItems: [pk],
             applicationActivities: nil

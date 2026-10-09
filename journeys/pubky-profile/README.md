@@ -5,9 +5,13 @@ still loading from the network, and a contact import that finishes after you lea
 contacts itself is covered by [`journeys/contacts`](../contacts/README.md). Where Android differs, see
 [iOS vs Android](#ios-vs-android).
 
-- `cached-profile-header.xml` opens Profile straight after a relaunch, while the signed-in profile is
+- `cached-profile-header.xml` opens Profile straight after a relaunch, while the public profile is
   still loading. Profile shows the name cached from the last load, read-only, then swaps in the full
   profile in place.
+- `profile-after-restart.xml` verifies the saved public profile and copied identity after relaunch.
+  Public profile reads can finish while private session restoration is deferred; edit and tag
+  changes remain unavailable until authentication succeeds. Controlled lock contention is a
+  separate manual fixture, not a precondition of this journey.
 - `ring-choice-rows.xml` opens the choice screen with Pubky Ring identities. The rows show straight
   away under truncated keys and fill in names as each lookup finishes. While a row's lookup runs, a
   spinner stands in for its avatar, so a row still looking up does not look like a row whose
@@ -70,20 +74,38 @@ import saves only to the device, so it can finish before you leave it; the journ
 
 Opening Profile in the first few seconds after launch can show a bare spinner, with no "Profile"
 title, before the cached header. That spinner is the Pubky initialization wait in `MainNavView`. The
-cached header needs initialization to finish, so wait for it to clear and do not report it as the
+cached header needs the initial attempt to finish, so wait for it to clear and do not report it as the
 header failing. A spinner under the "Profile" title with no name is different: it means no cached
 header showed.
 
-Contacts opened while the Pubky session is still restoring after a relaunch shows the Profile
-loading screen first (`ProfileLoading` under the "Profile" title) and moves on to the list by itself
-once the session is back. That is the session restore, not the contacts list, so wait for the list
-rather than reporting the spinner.
+After a temporary restoration failure, a saved credential can identify the public profile for a
+read-only fetch. Further private-session retries do not block that fetch. A full public profile
+shows its QR code, Copy and Share, but Edit and Add Tag stay disabled and tags have no remove action.
+Retry and Disconnect remain available below the read-only profile, with Retry disabled while loading
+and Disconnect using the usual confirmation. A failed authenticated profile fetch leaves Retry
+available, so recovery does not require leaving Profile. The cached header also offers Retry when
+idle and Disconnect. After Edit becomes enabled, the read-only footer disappears.
+Check and cancel the footer confirmation only while Edit is still disabled, and
+skip that check if restoration finishes first.
+The cache alone never authenticates an identity or enables writes.
+
+Contacts opened while the Pubky session is still restoring after a relaunch uses the Profile
+recovery destination: a loading screen (`ProfileLoading`) or the read-only public profile. Opening
+Contacts before the initial restoration finishes must still allow the public profile to load once
+that attempt defers, without waiting for a later private-session retry. It moves on to the contacts
+list by itself once the session is back. Public profile visibility does not unlock
+Contacts, so wait for the list before evaluating contact rows.
 
 ## iOS vs Android
 
 - **Profile while loading.** iOS shows the cached name and avatar read-only under
   `ProfileCachedHeader`, with no edit, copy, share, QR code or tag controls, and then the full
   profile under `ProfileViewName`.
+- **Contacts during session restoration.** With a saved identity, iOS renders Profile recovery
+  (`ProfileLoading` or the read-only public profile) inside the Contacts destination and moves to
+  the contacts list once the session returns. Android may show the contacts intro first; otherwise
+  it navigates to Profile recovery. On Android, reopen Contacts after recovery to reach the list.
+  Public profile visibility does not unlock Contacts on either platform.
 - **Contact import after leaving and Contacts list.** `contact-import-after-leaving.xml` and
   `contacts-list-loading.xml` are new on both platforms at once: synonymdev/bitkit-android#1399 adds
   both to Android with the same file names, journey names and prose, changing only identifiers and
@@ -109,7 +131,7 @@ rather than reporting the spinner.
   `ProfileIntro-button`.
 - Profile: cached header `ProfileCachedHeader` and its name `ProfileCachedName`; full profile name
   `ProfileViewName`; actions `ProfileEdit`, `ProfileCopy`, `ProfileShare`, `ProfileQRCode` and
-  `ProfileAddTag`.
+  `ProfileAddTag`; read-only recovery `ProfileRetry` and Disconnect `ProfileSignOut`.
 - Choice screen: Ring rows `PubkyChoiceRing_<pubky>`, a row's lookup spinner
   `PubkyChoiceRingLookup_<pubky>`, and the create option `PubkyChoiceCreate`.
 - After adopting: the contact import overview `ContactImportOverviewProfile`, or Pay Contacts

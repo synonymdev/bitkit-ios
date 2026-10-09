@@ -83,6 +83,7 @@ class PubkyProfileManager: ObservableObject {
     @Published var authState: PubkyAuthState = .idle
     @Published var profile: PubkyProfile?
     @Published var publicKey: String?
+    @Published private var readOnlyProfile: (publicKey: String, profile: PubkyProfile?, revision: UUID)?
     @Published var isLoadingProfile = false
     @Published private(set) var isRestoringSession = false
     @Published var isInitialized = false
@@ -107,6 +108,7 @@ class PubkyProfileManager: ObservableObject {
     private var initializationTask: Task<Void, Never>?
     private var completedRecoveryVersion = 0
     private var sessionRestorationDeferred = false
+    private var readOnlySignOutRevision: UUID?
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
@@ -286,7 +288,6 @@ class PubkyProfileManager: ObservableObject {
         initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
     ) async {
         let revision = Self.sessionRevision
-        sessionRestorationDeferred = false
         if case .userVisible = mode {
             isInitialized = false
             initializationErrorMessage = nil
@@ -308,6 +309,8 @@ class PubkyProfileManager: ObservableObject {
             } else {
                 Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
                 authState = .idle
+                sessionRestorationDeferred = false
+                readOnlyProfile = nil
                 if case .userVisible = mode {
                     initializationErrorMessage = error.localizedDescription
                 }
@@ -324,10 +327,16 @@ class PubkyProfileManager: ObservableObject {
 
         switch result {
         case .noSession:
+            sessionRestorationDeferred = false
             clearAuthenticatedState()
             sessionRestorationFailed = false
             Logger.debug("No saved paykit session found", context: "PubkyProfileManager")
         case let .restored(pk):
+            sessionRestorationDeferred = false
+            invalidateProfileLoads()
+            if !hasReadOnlyProfileIdentity || !PubkyPublicKeyFormat.matches(readOnlyProfile?.publicKey, pk) {
+                readOnlyProfile = nil
+            }
             reloadCachedProfileMetadata()
             publicKey = pk
             authState = .authenticated
@@ -335,12 +344,13 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed:
+            sessionRestorationDeferred = false
             clearAuthenticatedState(clearCachedProfile: false)
             if case .userVisible = mode {
                 sessionRestorationFailed = true
             }
         case .restorationDeferred:
-            clearAuthenticatedState(clearCachedProfile: false)
+            clearAuthenticatedState(clearCachedProfile: false, clearReadOnlyProfile: false)
             sessionRestorationFailed = false
             sessionRestorationDeferred = true
         }
@@ -1092,6 +1102,14 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Profile
 
     func loadProfile() async {
+        if !isInitialized, let initializationTask {
+            await initializationTask.value
+            guard !Task.isCancelled else { return }
+        }
+        guard publicKey != nil else {
+            await loadReadOnlyProfile()
+            return
+        }
         guard let pk = publicKey, let read = beginProfileRead(.load, publicKey: pk, generation: profileWriteGeneration) else { return }
         defer { endProfileRead(read) }
         let resolve = remoteProfileResolver
@@ -1102,10 +1120,43 @@ class PubkyProfileManager: ObservableObject {
             }.value
             if publicKey == pk, profileWriteGeneration == read.generation {
                 profile = loadedProfile
+                readOnlyProfile = nil
                 cacheProfileMetadata(loadedProfile)
             }
         } catch {
             Logger.error("Failed to load profile: \(error)", context: "PubkyProfileManager")
+        }
+    }
+
+    private func loadReadOnlyProfile() async {
+        guard sessionRestorationDeferred, Self.sessionMutationCount == 0 else { return }
+        let revision = Self.sessionRevision
+        let pk = await Task.detached {
+            Self.activeSecretKeyHex().flatMap { try? Self.publicKeyFromSecretKey($0) }
+        }.value
+        guard revision == Self.sessionRevision, Self.sessionMutationCount == 0,
+              sessionRestorationDeferred, publicKey == nil
+        else { return }
+        guard let pk else {
+            readOnlyProfile = nil
+            return
+        }
+        if readOnlyProfile?.publicKey != pk || readOnlyProfile?.revision != revision {
+            readOnlyProfile = (pk, nil, revision)
+        }
+        guard readOnlyProfile?.profile == nil,
+              let read = beginProfileRead(.load, publicKey: pk, generation: profileWriteGeneration)
+        else { return }
+        defer { endProfileRead(read) }
+        let resolve = remoteProfileResolver
+        do {
+            let loaded = try await Task.detached { try await resolve(pk) }.value
+            guard revision == Self.sessionRevision, Self.sessionMutationCount == 0,
+                  sessionRestorationDeferred, publicKey == nil, profileWriteGeneration == read.generation
+            else { return }
+            readOnlyProfile = (pk, loaded, revision)
+        } catch {
+            Logger.warn("Failed to load read-only Pubky profile: \(error)", context: "PubkyProfileManager")
         }
     }
 
@@ -1379,8 +1430,16 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
+        let retainedProfile = hasReadOnlyProfileIdentity ? readOnlyProfile : nil
         Self.beginSessionMutation()
-        defer { Self.endSessionMutation() }
+        if let retainedProfile {
+            readOnlySignOutRevision = Self.sessionRevision
+            readOnlyProfile = (retainedProfile.publicKey, retainedProfile.profile, Self.sessionRevision)
+        }
+        defer {
+            readOnlySignOutRevision = nil
+            Self.endSessionMutation()
+        }
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
 
@@ -1452,12 +1511,27 @@ class PubkyProfileManager: ObservableObject {
         profile?.imageUrl ?? cachedImageUri
     }
 
-    /// The cached name and avatar for the signed-in pubky, shown read-only while its profile loads. It has no bio, links
-    /// or tags, so it must never stand in for `profile`. Nil before initialization and when the cache belongs to
-    /// another pubky or has no recorded owner.
+    /// A saved credential proves display ownership only, never authentication or permission to write.
+    var profileForDisplay: PubkyProfile? {
+        profile ?? (hasReadOnlyProfileIdentity ? readOnlyProfile?.profile : nil)
+    }
+
+    var publicKeyForDisplay: String? {
+        publicKey ?? (hasReadOnlyProfileIdentity ? readOnlyProfile?.publicKey : nil)
+    }
+
+    private var hasReadOnlyProfileIdentity: Bool {
+        guard readOnlyProfile?.revision == Self.sessionRevision else { return false }
+        // Only this Disconnect may retain display ownership; any other identity mutation invalidates it.
+        return Self.sessionMutationCount == 0 ||
+            (Self.sessionMutationCount == 1 && readOnlySignOutRevision == Self.sessionRevision)
+    }
+
+    /// The cached name and avatar for the authenticated or credential-verified display identity. It has no bio, links
+    /// or tags, so it must never stand in for `profile`. Nil before initialization and when the cache has no matching owner.
     var cachedProfilePreview: PubkyProfile? {
         guard isInitialized,
-              let publicKey,
+              let publicKey = publicKeyForDisplay,
               let cachedName,
               PubkyPublicKeyFormat.matches(cachedProfileOwner, publicKey)
         else { return nil }
@@ -1513,13 +1587,18 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.set(pending, forKey: Self.profileSetupPendingKey)
     }
 
-    private func clearAuthenticatedState(clearCachedProfile: Bool = true) {
+    private func clearAuthenticatedState(clearCachedProfile: Bool = true, clearReadOnlyProfile: Bool = true) {
         // Automatic recovery also lands here while nothing is signed in, which must not discard the choice rows.
         let wasAuthenticated = isAuthenticated
-        invalidateProfileLoads()
+        if clearReadOnlyProfile || wasAuthenticated {
+            invalidateProfileLoads()
+        }
         publicKey = nil
         profile = nil
         authState = .idle
+        if clearReadOnlyProfile {
+            readOnlyProfile = nil
+        }
         if clearCachedProfile {
             clearCachedProfileMetadata()
         }
