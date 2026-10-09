@@ -47,8 +47,8 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
     }
 
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
-        XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd...w5xg")
-        XCTAssertEqual(pubkyAuthDisplayPublicKey("3rsd123456789w5xg"), "3rsd...w5xg")
+        XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd1...9w5xg")
+        XCTAssertEqual(pubkyAuthDisplayPublicKey("3rsd123456789w5xg"), "3rsd1...9w5xg")
         XCTAssertEqual(pubkyAuthDisplayPublicKey(nil), "")
     }
 

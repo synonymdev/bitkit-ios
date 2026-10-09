@@ -307,8 +307,8 @@ final class ContactsManagerTests: XCTestCase {
     func testPubkyPublicKeyFormatDisplaysRawTruncatedKey() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
-        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated(rawKey), "3rsd...w5xg")
-        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated("pubky\(rawKey)"), "3rsd...w5xg")
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated(rawKey), "3rsdu...yw5xg")
+        XCTAssertEqual(PubkyPublicKeyFormat.displayTruncated("pubky\(rawKey)"), "3rsdu...yw5xg")
     }
 
     func testActivityContactResolvesLightningContactKey() {
