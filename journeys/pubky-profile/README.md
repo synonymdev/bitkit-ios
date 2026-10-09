@@ -90,8 +90,10 @@ skip that check if restoration finishes first.
 The cache alone never authenticates an identity or enables writes.
 
 Contacts opened while the Pubky session is still restoring after a relaunch uses the Profile
-recovery destination: a loading screen (`ProfileLoading`) or the read-only public profile. It moves
-on to the contacts list by itself once the session is back. Public profile visibility does not unlock
+recovery destination: a loading screen (`ProfileLoading`) or the read-only public profile. Opening
+Contacts before the initial restoration finishes must still allow the public profile to load once
+that attempt defers, without waiting for a later private-session retry. It moves on to the contacts
+list by itself once the session is back. Public profile visibility does not unlock
 Contacts, so wait for the list before evaluating contact rows.
 
 ## iOS vs Android

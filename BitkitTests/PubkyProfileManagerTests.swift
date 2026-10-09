@@ -2002,6 +2002,68 @@ final class PubkyProfileManagerTests: XCTestCase {
     // MARK: - Cached profile preview
 
     @MainActor
+    func testProfileLoadDuringStartupDoesNotWaitForPrivateRecovery() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+            let expected = makeProfile(publicKey: publicKey, name: "Saved identity")
+            let manager = PubkyProfileManager(remoteProfileResolver: { key in
+                XCTAssertEqual(key, publicKey)
+                return expected
+            })
+            let startupStarted = expectation(description: "startup restoration started")
+            let recoveryRequested = expectation(description: "private recovery requested")
+            let recoveryStarted = expectation(description: "private recovery started")
+            let loadRequested = expectation(description: "profile load requested")
+            let loadFinished = expectation(description: "profile load finished")
+            let (startupGate, finishStartup) = AsyncStream<Void>.makeStream()
+            let (recoveryGate, finishRecovery) = AsyncStream<Void>.makeStream()
+            defer {
+                finishStartup.finish()
+                finishRecovery.finish()
+            }
+            let startup = Task {
+                await manager.initialize {
+                    startupStarted.fulfill()
+                    for await _ in startupGate {}
+                    return .restorationDeferred
+                }
+            }
+            await fulfillment(of: [startupStarted], timeout: 3)
+            let recovery = Task {
+                recoveryRequested.fulfill()
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    recoveryStarted.fulfill()
+                    for await _ in recoveryGate {}
+                    return .restorationDeferred
+                }
+            }
+            let load = Task {
+                loadRequested.fulfill()
+                await manager.loadProfile()
+                loadFinished.fulfill()
+            }
+            await fulfillment(of: [recoveryRequested, loadRequested], timeout: 3)
+            XCTAssertFalse(manager.isInitialized)
+            XCTAssertNil(manager.profileForDisplay)
+
+            finishStartup.finish()
+            await fulfillment(of: [recoveryStarted, loadFinished], timeout: 3)
+            XCTAssertTrue(manager.isRestoringSession)
+            XCTAssertEqual(manager.profileForDisplay?.name, expected.name)
+            XCTAssertEqual(manager.publicKeyForDisplay, publicKey)
+            XCTAssertNil(manager.profile)
+            XCTAssertNil(manager.currentSession)
+
+            finishRecovery.finish()
+            await startup.value
+            await recovery.value
+            await load.value
+        }
+    }
+
+    @MainActor
     func testSavedIdentityLoadsPublicProfileWhilePrivateStateIsBusy() async throws {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)

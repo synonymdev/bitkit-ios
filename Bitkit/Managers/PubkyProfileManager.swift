@@ -1104,6 +1104,10 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Profile
 
     func loadProfile() async {
+        if !isInitialized, let initializationTask {
+            await initializationTask.value
+            guard !Task.isCancelled else { return }
+        }
         guard publicKey != nil else {
             await loadReadOnlyProfile()
             return
