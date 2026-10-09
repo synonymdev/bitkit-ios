@@ -197,6 +197,12 @@ authenticated Contacts list. It has not yet been ported to Android.
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
 
+`coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
+name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.
+The iOS picker has no accessibility identifiers, so assert its visible "Coin Selection" title.
+Android's `coin-selection/manual-coin-selection.xml` and `coin-selection/manual-coin-selection-load.xml`
+remain unported: the iOS picker lacks their identifiers and the inline load-error/retry state.
+
 `amount-limits/custom-fee-wallet-switch.xml` is iOS-only: applying a custom fee returns through
 the fee picker before confirmation. Android's `setTransactionSpeed` returns directly to confirmation,
 so the intermediate wait and deferred coin-preparation checks have no matching route there.

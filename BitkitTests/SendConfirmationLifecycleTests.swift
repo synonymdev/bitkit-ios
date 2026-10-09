@@ -294,6 +294,60 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         }
     }
 
+    func testManualPickerBackReturnsToConfirmationAndAllowsSelectionAgain() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        FeeEstimatesManager().devOverrideFeeEstimates = true
+        SettingsViewModel.shared.coinSelectionMethod = .manual
+        let wallet = ControlledSendWallet(operation: .manualUtxos)
+        let app = AppViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.scannedOnchainInvoice = invoice
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 6007
+        wallet.selectedFeeRateSatsPerVByte = 2
+        let navigation = SendConfirmationTestNavigation()
+        let window = host(app: app, wallet: wallet, sheets: sheets,
+                          path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation)
+        defer { close(window) }
+        try await navigation.waitForAppearance(.confirm)
+        try await Task.sleep(for: .milliseconds(100))
+        app.selectedWalletToPayFrom = .onchain
+        await fulfillment(of: [wallet.started], timeout: 3)
+        wallet.resume()
+        await fulfillment(of: [wallet.finished], timeout: 3)
+        try await navigation.waitForAppearance(.utxoSelection)
+
+        for _ in 0 ..< 2 {
+            navigation.path.removeLast()
+            try await navigation.waitForAppearance(.confirm)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(navigation.path, [.confirm])
+            XCTAssertNil(wallet.selectedUtxos)
+            XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
+            do {
+                try await SendConfirmationView.requireManualCoinSelection(
+                    walletType: app.selectedWalletToPayFrom,
+                    isHardwarePayment: false,
+                    coinSelectionMethod: SettingsViewModel.shared.coinSelectionMethod,
+                    selectedUtxos: wallet.selectedUtxos
+                ) {
+                    try await wallet.loadAvailableUtxos()
+                    navigation.path.append(.utxoSelection)
+                }
+                XCTFail("Returning without coins must not continue to payment authorization")
+            } catch is CancellationError {}
+            try await navigation.waitForAppearance(.utxoSelection)
+            XCTAssertEqual(navigation.path, [.confirm, .utxoSelection])
+        }
+        XCTAssertEqual(wallet.preparationCount, 3)
+        sheets.activeSheetConfiguration = nil
+        app.resetSendState()
+        wallet.resetSendState(speed: .normal)
+        XCTAssertNil(wallet.selectedUtxos)
+    }
+
     func testSuccessResetDoesNotPrepareOnchainSendWhileConfirmationIsMounted() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -363,6 +417,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                                 case .feeRate: SendFeeRate(navigationPath: $navigation.path, hwSend: hwSend)
                                 case .feeCustom: SendFeeCustom(navigationPath: $navigation.path, hwSend: hwSend)
                                 case .tag: SendTagScreen(navigationPath: $navigation.path)
+                                case .utxoSelection: SendUtxoSelectionView(navigationPath: $navigation.path)
                                 default: Color.clear
                                 }
                             }
