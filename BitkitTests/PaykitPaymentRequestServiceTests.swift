@@ -3829,8 +3829,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         proof.hardwareTotalSpent = request.amountSats + 120
         proof.hardwareDispatchAttempted = true
         proof.hardwareRefusedForNavigation = true
+        let sdk = PaymentRequestSdkMock(records: [record])
         let manager = paymentRequestManager(
-            sdk: PaymentRequestSdkMock(records: [record]), inFlightPaymentRequestIds: [request.id],
+            sdk: sdk, inFlightPaymentRequestIds: [request.id],
             retainedHardwareRetries: [request.id: proof], acceptedRecords: [record]
         )
         await manager.refresh()
@@ -3840,6 +3841,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestPresentation(request), "Details Pay must reopen the original request")
         XCTAssertEqual(manager.requestsForPresentation(), [request])
         XCTAssertEqual(manager.retainedHardwareRetries[request.id]?.hardwareSignedTransaction, raw)
+        XCTAssertFalse(manager.canDismiss(request), "Cards/details must omit Dismiss for this retained payment")
+        var dismissError: Error?
+        do { try await manager.dismiss(request) } catch { dismissError = error }
+        let canceled = await sdk.canceledPaymentRequestIds()
+        XCTAssertTrue(canceled.isEmpty, "Dismiss must not cancel the retained signed transaction's request")
+        XCTAssertEqual(dismissError as? PaykitPaymentRequestError, .operationInProgress)
+        XCTAssertEqual(manager.pendingRequests, [request], "Original retry must remain reachable")
+        XCTAssertEqual(manager.retainedHardwareRetries[request.id]?.hardwareSignedTransaction, raw)
+        let unknownSdk = try PaymentRequestSdkMock(records: [record])
+        let unknown = paymentRequestManager(sdk: unknownSdk, inFlightPaymentRequestIds: [request.id], acceptedRecords: [record])
+        await unknown.refresh()
+        var unknownDismissError: Error?
+        do { try await unknown.dismiss(request) } catch { unknownDismissError = error }
+        let unknownCanceled = await unknownSdk.canceledPaymentRequestIds()
+        XCTAssertTrue(unknownCanceled.isEmpty, "An alternate/stale dismissal must not cancel a durable unresolved payment")
+        XCTAssertEqual(unknownDismissError as? PaykitPaymentRequestError, .operationInProgress)
         let preview = HwSendCoordinator(walletId: proof.onchainWalletId)
         preview.seedAvailable(walletId: "jade:wallet", availableSats: 0, retainedFeeSats: 120)
         XCTAssertEqual(preview.walletId, proof.onchainWalletId)
@@ -3907,6 +3924,113 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await revisedManager.refresh()
         XCTAssertTrue(revisedManager.pendingRequests.isEmpty, "Changed SDK terms cannot reopen the original receipt as a new payment")
         XCTAssertNil(PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: revisedRequest))
+    }
+
+    func testRefusedHardwareReceiptReopensOriginalUnpaidRecurringPeriodAfterRestart() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-16T08:00:00Z"))
+        let clock = PaymentRequestTestClock(date)
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "week", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+        )
+        let record = try paymentRequestRecord(
+            state: .activeRecurring, recurrence: recurrence, endpoints: [endpoint], acceptedEventId: "accepted"
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.requests(through: date, acceptedAt: PaykitPreciseInstant(date: date)).first)
+        let period = try XCTUnwrap(request.billingPeriod)
+        let raw = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        func receipt(_ invalid: String = "") throws -> PendingPaykitPaymentProof {
+            let alteredPeriod = invalid == "period" || invalid == "request"
+                ? PaykitBillingPeriod(sdkPeriod: BillingPeriod(startsAt: "2027-01-22T08:00:00Z", endsAt: "2027-01-29T08:00:00Z"))
+                : period
+            var proof = try PendingPaykitPaymentProof(
+                identity: "pubky" + String(repeating: invalid == "identity" ? "y" : "z", count: 52),
+                requestId: invalid == "request" ? .init(paymentRequestId: "other", counterparty: request.counterparty) : request.id,
+                paymentAppId: "bitkit", paymentEndpointIdentifier: invalid == "endpoint" ? "other" : endpoint,
+                kind: .onchain, billingPeriod: alteredPeriod, paymentStarted: true,
+                paymentIdentifier: SignedTransactionId.fromHex(raw), proofData: invalid == "completed" ? "proof" : nil,
+                onchainAddress: "original-recurring-address", onchainAmountSats: request.amountSats + (invalid == "amount" ? 1 : 0),
+                onchainWalletId: "jade:wallet"
+            )
+            proof.hardwareSignedTransaction = raw
+            proof.hardwareMiningFeeSats = 120
+            proof.hardwareFeeRate = 2
+            proof.hardwareTotalSpent = try XCTUnwrap(proof.onchainAmountSats) + 120
+            proof.hardwareDispatchAttempted = true
+            proof.hardwareRefusedForNavigation = invalid != "unknown"
+            return proof
+        }
+        func manager(_ record: PaymentRequestRecord, proof: PendingPaykitPaymentProof,
+                     completed: Bool = false) throws -> PaykitPaymentRequestManager
+        {
+            let store = PaymentRequestSubscriptionStateMemoryStore()
+            try store.save(PaykitSubscriptionState(acceptedAt: [subscription.id: PaykitPreciseInstant(date: date)]), identity: proof.identity)
+            return paymentRequestManager(
+                sdk: PaymentRequestSdkMock(records: [record]), clock: clock, subscriptionStateStore: store,
+                completedPaymentProofKinds: completed ? [request.id: .onchain] : [:],
+                inFlightPaymentRequestIds: [request.id], retainedHardwareRetries: [request.id: proof]
+            )
+        }
+        let proof = try receipt()
+        let restored = try manager(record, proof: proof)
+        await restored.refresh()
+        XCTAssertEqual(restored.pendingRequests, [request], "Original unpaid recurring period must remain reachable after restart")
+        XCTAssertEqual(restored.retainedHardwareRetries[request.id], proof)
+        XCTAssertTrue(restored.requestsForPresentation().isEmpty, "Retained recurring receipt must not auto-popup")
+        XCTAssertTrue(restored.requestPresentation(request), "Details Pay must reopen this exact period")
+        XCTAssertEqual(restored.requestsForPresentation(), [request])
+        XCTAssertFalse(restored.isApprovedForPayment(request), "Reopening does not authorize a new payment")
+        XCTAssertFalse(restored.canDismiss(request), "Recurring retained payment cannot expose Dismiss")
+        var recurringDismissError: Error?
+        do { try await restored.dismiss(request) } catch { recurringDismissError = error }
+        XCTAssertEqual(recurringDismissError as? PaykitPaymentRequestError, .operationInProgress)
+        XCTAssertFalse(restored.dismissSubscriptionPayment(request), "Alternate recurring dismissal must retain the original retry")
+        XCTAssertEqual(restored.pendingRequests, [request])
+        let launch = try XCTUnwrap(PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request))
+        guard case let .opened(target, context) = launch else { return XCTFail("Original retained receipt must reopen") }
+        XCTAssertEqual(target, "bitcoin:original-recurring-address")
+        XCTAssertEqual(try XCTUnwrap(context).paymentAppId(for: endpoint), proof.paymentAppId)
+        XCTAssertEqual(restored.retainedHardwareRetries[request.id]?.onchainWalletId, "jade:wallet")
+        XCTAssertEqual(restored.retainedHardwareRetries[request.id]?.hardwareSignedTransaction, raw)
+        XCTAssertEqual(restored.retainedHardwareRetries[request.id]?.billingPeriod, period)
+
+        for invalid in [
+            "request",
+            "period",
+            "amount",
+            "endpoint",
+            "identity",
+            "unknown",
+            "completed",
+            "local-paid",
+            "sdk-paid",
+            "changed-amount",
+            "changed-endpoint",
+            "inactive",
+        ] {
+            let changed = try receipt(invalid)
+            let revised: PaymentRequestRecord = switch invalid {
+            case "sdk-paid":
+                try paymentRequestRecord(
+                    state: .activeRecurring, recurrence: recurrence, endpoints: [endpoint], acceptedEventId: "accepted",
+                    paymentProofs: [paymentProofRecord(endpoint: endpoint, kind: .onchain, billingPeriod: period.sdkValue)]
+                )
+            case "changed-amount":
+                try paymentRequestRecord(state: .activeRecurring, amount: "0.002", recurrence: recurrence, endpoints: [endpoint])
+            case "changed-endpoint":
+                try paymentRequestRecord(state: .activeRecurring, recurrence: recurrence, endpoints: ["other"])
+            case "inactive":
+                try paymentRequestRecord(state: .canceled, recurrence: recurrence, endpoints: [endpoint])
+            default:
+                record
+            }
+            let guarded = try manager(revised, proof: changed, completed: invalid == "local-paid")
+            await guarded.refresh()
+            XCTAssertFalse(guarded.pendingRequests.contains { $0.id == request.id }, invalid)
+            XCTAssertNil(guarded.retainedHardwareRetries[request.id], invalid)
+            XCTAssertFalse(guarded.requestPresentation(request), invalid)
+        }
     }
 
     func testRecoveryRequiredIncomingRequestHonorsLocalPaymentProtection() async throws {
@@ -8093,12 +8217,19 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         return record
     }
 
+    private var canceledRequests: [String] = []
+
+    func canceledPaymentRequestIds() -> [String] {
+        canceledRequests
+    }
+
     func cancelPaymentRequest(
         counterparty: String,
         paymentRequestId: String,
         reason _: String?
     ) throws -> PaymentRequestRecord {
-        try removeRecord(
+        canceledRequests.append(paymentRequestId)
+        return try removeRecord(
             counterparty: counterparty,
             id: paymentRequestId
         )

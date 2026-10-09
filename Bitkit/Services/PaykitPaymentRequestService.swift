@@ -1847,7 +1847,21 @@ final class PaykitPaymentRequestManager {
         }
     }
 
+    func canDismiss(_ request: PaykitPaymentRequest) -> Bool {
+        retainedHardwareRetries[request.id] == nil
+    }
+
     func dismiss(_ request: PaykitPaymentRequest) async throws {
+        guard canDismiss(request) else { throw PaykitPaymentRequestError.operationInProgress }
+        guard let identity = activeIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+        let generation = stateGeneration
+        let inFlightIds = await inFlightPaymentRequestIds(identity)
+        guard generation == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        guard !inFlightIds.contains(request.id), canDismiss(request) else {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
         if request.billingPeriod != nil {
             guard dismissSubscriptionPayment(request) else {
                 throw PaykitPaymentRequestError.requestUnavailable
@@ -1910,7 +1924,7 @@ final class PaykitPaymentRequestManager {
 
     @discardableResult
     func dismissSubscriptionPayment(_ request: PaykitPaymentRequest) -> Bool {
-        guard request.billingPeriod != nil,
+        guard request.billingPeriod != nil, canDismiss(request),
               pendingRequests.contains(where: { $0.id == request.id })
         else { return false }
 
@@ -2335,18 +2349,6 @@ final class PaykitPaymentRequestManager {
             guard generation == refreshGeneration,
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return false }
-            retainedHardwareRetries = retainedRetries.filter { id, proof in
-                guard id == proof.requestId, PubkyPublicKeyFormat.matches(proof.identity, activeIdentity),
-                      proof.retainedHardwareRetry != nil,
-                      let request = (snapshot.incoming + snapshot.history).first(where: { $0.id == id }),
-                      request.direction == .incoming,
-                      [.accepted, .recoveryRequired].contains(request.lifecycleState),
-                      request.amountSats == proof.onchainAmountSats,
-                      request.billingPeriod == proof.billingPeriod,
-                      request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
-                else { return false }
-                return true
-            }
             pruneAcceptedRequestIds(snapshot.history, identity: activeIdentity)
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
@@ -2374,6 +2376,22 @@ final class PaykitPaymentRequestManager {
                     []
                 }
                 return (subscription, requests)
+            }
+            let retainedRetryRequests = snapshot.incoming + snapshot.history + recurringRequestsBySubscription
+                .filter { $0.0.lifecycleState == .activeRecurring && !$0.0.hasPaymentDeadline }
+                .flatMap { $0.1.filter { $0.lifecycleState == .activeRecurring } }
+            retainedHardwareRetries = retainedRetries.filter { id, proof in
+                guard id == proof.requestId, !locallyCompletedRequestIds.contains(id),
+                      PubkyPublicKeyFormat.matches(proof.identity, activeIdentity),
+                      proof.retainedHardwareRetry != nil,
+                      let request = retainedRetryRequests.first(where: { $0.id == id }),
+                      request.direction == .incoming,
+                      [.accepted, .recoveryRequired, .activeRecurring].contains(request.lifecycleState),
+                      request.amountSats == proof.onchainAmountSats,
+                      request.billingPeriod == proof.billingPeriod,
+                      request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
+                else { return false }
+                return true
             }
             let activeRecurringRequestIds = Set(recurringRequestsBySubscription
                 .filter { $0.0.lifecycleState == .activeRecurring }

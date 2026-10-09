@@ -115,21 +115,23 @@ struct PaymentRequestCard: View {
                 .padding(16)
             } else if onPay != nil || onReject != nil {
                 HStack(spacing: 16) {
-                    CustomButton(
-                        title: t("wallet__payment_request_dismiss"),
-                        variant: .secondary,
-                        size: .small,
-                        icon: Image("x-mark").resizable().frame(width: 16, height: 16),
-                        isDisabled: isActionDisabled,
-                        isLoading: isRejecting,
-                        shouldExpand: true
-                    ) {
-                        guard !isRejecting else { return }
-                        isRejecting = true
-                        await onReject?()
-                        isRejecting = false
+                    if let onReject {
+                        CustomButton(
+                            title: t("wallet__payment_request_dismiss"),
+                            variant: .secondary,
+                            size: .small,
+                            icon: Image("x-mark").resizable().frame(width: 16, height: 16),
+                            isDisabled: isActionDisabled,
+                            isLoading: isRejecting,
+                            shouldExpand: true
+                        ) {
+                            guard !isRejecting else { return }
+                            isRejecting = true
+                            await onReject()
+                            isRejecting = false
+                        }
+                        .accessibilityIdentifier("PaymentRequestDismiss-\(request.paymentRequestId)")
                     }
-                    .accessibilityIdentifier("PaymentRequestDismiss-\(request.paymentRequestId)")
 
                     CustomButton(
                         title: t("common__pay"),
@@ -300,9 +302,9 @@ struct PaymentRequestsSheet: View {
                     _ = paymentRequests.requestPresentation(request)
                 }
             },
-            onReject: {
+            onReject: paymentRequests.canDismiss(request) ? {
                 await dismiss(request)
-            }
+            } : nil
         )
     }
 
@@ -458,7 +460,7 @@ struct PaymentRequestsView: View {
                 isActionDisabled: paymentRequests.requestedPresentationId == request.id,
                 onOpen: { navigation.navigate(.paymentRequestDetail(request.id)) },
                 onPay: { _ = paymentRequests.requestPresentation(request) },
-                onReject: { await dismiss(request) }
+                onReject: paymentRequests.canDismiss(request) ? { await dismiss(request) } : nil
             )
         } else if request.direction == .outgoing {
             PaymentRequestCard(
@@ -668,17 +670,19 @@ struct PaymentRequestDetailView: View {
 
     private func actions(_ request: PaykitPaymentRequest) -> some View {
         HStack(spacing: 16) {
-            CustomButton(
-                title: t("wallet__payment_request_dismiss"),
-                variant: .secondary,
-                icon: Image("x-mark").resizable().frame(width: 16, height: 16),
-                isDisabled: paymentRequests.requestedPresentationId == request.id
-            ) {
-                do {
-                    try await paymentRequests.dismiss(request)
-                    navigation.navigateBack()
-                } catch {
-                    app.toast(error)
+            if paymentRequests.canDismiss(request) {
+                CustomButton(
+                    title: t("wallet__payment_request_dismiss"),
+                    variant: .secondary,
+                    icon: Image("x-mark").resizable().frame(width: 16, height: 16),
+                    isDisabled: paymentRequests.requestedPresentationId == request.id
+                ) {
+                    do {
+                        try await paymentRequests.dismiss(request)
+                        navigation.navigateBack()
+                    } catch {
+                        app.toast(error)
+                    }
                 }
             }
 
