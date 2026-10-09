@@ -65,7 +65,7 @@ struct CenteredProfileHeader: View {
 #Preview {
     VStack {
         CenteredProfileHeader(
-            truncatedKey: "3RSDU...YW5XG",
+            truncatedKey: "3RSD...W5XG",
             name: "Satoshi Nakamoto",
             bio: "Authored the Bitcoin white paper, developed Bitcoin, mined first block.",
             imageUrl: nil

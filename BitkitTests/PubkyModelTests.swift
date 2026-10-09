@@ -14,7 +14,7 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        XCTAssertEqual(profile.truncatedPublicKey, "z6Mkh...a2doK")
+        XCTAssertEqual(profile.truncatedPublicKey, "z6Mk...2doK")
     }
 
     func testTruncatedPublicKeyShortKey() {
@@ -27,13 +27,13 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        // Keys <= 10 chars are returned as-is
+        // Keys <= 8 chars are returned as-is
         XCTAssertEqual(profile.truncatedPublicKey, "abc")
     }
 
     func testTruncatedPublicKeyExactBoundary() {
         let profile = PubkyProfile(
-            publicKey: "1234567890",
+            publicKey: "12345678",
             name: "Test",
             bio: "",
             imageUrl: nil,
@@ -41,13 +41,13 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        // Exactly 10 chars should NOT be truncated
-        XCTAssertEqual(profile.truncatedPublicKey, "1234567890")
+        // Exactly 8 chars should NOT be truncated
+        XCTAssertEqual(profile.truncatedPublicKey, "12345678")
     }
 
-    func testTruncatedPublicKeyElevenChars() {
+    func testTruncatedPublicKeyNineChars() {
         let profile = PubkyProfile(
-            publicKey: "12345678901",
+            publicKey: "123456789",
             name: "Test",
             bio: "",
             imageUrl: nil,
@@ -55,8 +55,8 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        // 11 chars should be truncated
-        XCTAssertEqual(profile.truncatedPublicKey, "12345...78901")
+        // 9 chars should be truncated
+        XCTAssertEqual(profile.truncatedPublicKey, "1234...6789")
     }
 
     // MARK: - PubkyProfile Placeholder
@@ -65,7 +65,7 @@ final class PubkyModelTests: XCTestCase {
         let placeholder = PubkyProfile.placeholder(publicKey: "pubkyz6MkhaXgBZDvotDk")
 
         XCTAssertEqual(placeholder.publicKey, "pubkyz6MkhaXgBZDvotDk")
-        XCTAssertEqual(placeholder.name, "z6Mkh...votDk")
+        XCTAssertEqual(placeholder.name, "z6Mk...otDk")
         XCTAssertTrue(placeholder.bio.isEmpty)
         XCTAssertNil(placeholder.imageUrl)
         XCTAssertTrue(placeholder.links.isEmpty)
