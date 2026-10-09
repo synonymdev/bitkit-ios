@@ -3,24 +3,26 @@ import LDKNode
 import XCTest
 
 final class SendConfirmationViewTests: XCTestCase {
-    func testAutomaticPaymentRequiresManualConfirmationForNonLightningFunding() {
-        for walletType in [WalletType.lightning, .onchain] {
-            for isHardwarePayment in [false, true] {
-                XCTAssertEqual(
-                    SendConfirmationView.requiresManualConfirmation(
-                        isAutomatic: true,
-                        walletType: walletType,
-                        isHardwarePayment: isHardwarePayment
-                    ),
-                    walletType == .onchain || isHardwarePayment
-                )
-                XCTAssertFalse(SendConfirmationView.requiresManualConfirmation(
-                    isAutomatic: false,
-                    walletType: walletType,
+    func testAutomaticPaymentRequiresManualConfirmationOnlyForHardwareFunding() {
+        for isHardwarePayment in [false, true] {
+            XCTAssertEqual(
+                SendConfirmationView.requiresManualConfirmation(
+                    isAutomatic: true,
                     isHardwarePayment: isHardwarePayment
-                ))
-            }
+                ),
+                isHardwarePayment
+            )
+            XCTAssertFalse(SendConfirmationView.requiresManualConfirmation(
+                isAutomatic: false,
+                isHardwarePayment: isHardwarePayment
+            ))
         }
+    }
+
+    func testAutomaticPaymentLacksFeeOnlyForOnchainWithoutCalculatedFee() {
+        XCTAssertTrue(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 0))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 143))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .lightning, transactionFee: 0))
     }
 
     func testLightningFailureReleasesOnlyDefinitePreSubmissionAttempts() {

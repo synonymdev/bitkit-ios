@@ -22,6 +22,8 @@ struct SendConfirmationView: View {
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
     var preparingRequest: PaykitPaymentRequest?
+    /// True while the send sheet is still loading the fee rate and choosing the funding source.
+    var isSetupPending = false
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -190,7 +192,7 @@ struct SendConfirmationView: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app.selectedWalletToPayFrom == .lightning &&
+        preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
             !hwSend.isActive && !requiresPaymentConfirmation
     }
 
@@ -325,6 +327,16 @@ struct SendConfirmationView: View {
             // PIN navigation can cancel the view task while authorization is awaiting its result.
             Task { @MainActor in await startAutomaticPaymentIfNeeded() }
         }
+        .onChange(of: isSetupPending) { _, isPending in
+            guard !isPending, preparingRequest == nil else { return }
+            Task { @MainActor in
+                if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
+                    requiresPaymentConfirmation = true
+                    showDetails = true
+                }
+                await startAutomaticPaymentIfNeeded()
+            }
+        }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             guard preparingRequest == nil else { return }
             Task {
@@ -404,7 +416,7 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment
+        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment, !isSetupPending
         else { return }
         hasStartedAutomaticPayment = true
         do {
@@ -701,6 +713,10 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
+        if isAutomatic, isFeeRateMissing {
+            showManualConfirmation()
+            return
+        }
         try await Self.requireManualCoinSelection(
             walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive,
@@ -725,6 +741,14 @@ struct SendConfirmationView: View {
         }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+        }
+
+        if isAutomatic {
+            await settleTransactionFee()
+            if Self.automaticPaymentLacksFee(walletType: app.selectedWalletToPayFrom, transactionFee: transactionFee) {
+                showManualConfirmation()
+                return
+            }
         }
 
         // Validate payment and show warnings if needed
@@ -787,8 +811,13 @@ struct SendConfirmationView: View {
         }
     }
 
-    static func requiresManualConfirmation(isAutomatic: Bool, walletType: WalletType, isHardwarePayment: Bool) -> Bool {
-        isAutomatic && (walletType != .lightning || isHardwarePayment)
+    static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
+        isAutomatic && isHardwarePayment
+    }
+
+    /// An automatic on-chain payment must not be sent before its fee is known, because the fee warnings read it.
+    static func automaticPaymentLacksFee(walletType: WalletType, transactionFee: Int) -> Bool {
+        walletType == .onchain && transactionFee <= 0
     }
 
     static func privatePaymentListOutcomeForLightningFailure(
@@ -929,7 +958,6 @@ struct SendConfirmationView: View {
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
         Self.requiresManualConfirmation(
             isAutomatic: isAutomatic,
-            walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive
         )
     }
@@ -1550,6 +1578,16 @@ struct SendConfirmationView: View {
 
         guard isCurrentSend() else { return }
         await calculateTransactionFee()
+    }
+
+    /// Recalculates until the newest calculation is the one that finished, so a concurrent one cannot leave the fee unset.
+    @MainActor
+    private func settleTransactionFee() async {
+        for _ in 0 ..< 3 {
+            let startedFrom = feeCalculationId
+            await calculateTransactionFee()
+            if feeCalculationId == startedFrom + 1 { return }
+        }
     }
 
     @MainActor

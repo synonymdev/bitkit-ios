@@ -136,6 +136,7 @@ struct SendSheet: View {
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
+    @State private var isSetupPending = false
 
     init(config: SendSheetItem, isEmbedded: Bool = false) {
         self.config = config
@@ -376,7 +377,13 @@ struct SendSheet: View {
             app.resetSendState()
         }
         setupTask?.cancel()
+        isSetupPending = true
         setupTask = Task {
+            defer {
+                if !Task.isCancelled {
+                    isSetupPending = false
+                }
+            }
             do {
                 try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
             } catch is CancellationError {
@@ -736,7 +743,8 @@ struct SendSheet: View {
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                preparingRequest: isPreparingRequest ? config.preparation?.request : nil
+                preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
+                isSetupPending: isSetupPending
             )
         case .hardwareSign:
             HwSendSignView(

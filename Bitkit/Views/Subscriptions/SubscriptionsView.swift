@@ -643,62 +643,24 @@ struct SubscriptionSheet: View {
     }
 
     private func review(_ subscription: PaykitSubscription) -> some View {
-        let payOnAcceptance = subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date()) != nil
-        return VStack(spacing: 0) {
-            SheetHeader(title: t("subscriptions__review_and_subscribe"))
-            SubscriptionAmountHeader(subscription: subscription)
-            SubscriptionProviderCard(subscription: subscription, showsCounterparty: true) {
+        SubscriptionReviewContent(
+            subscription: subscription,
+            now: now,
+            isLoading: isAccepting || paymentRequests.isProcessingSubscription,
+            onDetails: {
                 guard !isAccepting else { return }
                 previousRoute = route
                 route = .details(subscription)
-            }
-            .allowsHitTesting(!isAccepting)
-
-            if let period = subscription.paymentDueOnAcceptance(at: now, acceptedAt: Date())?.billingPeriod {
-                BodySText(
-                    t("subscriptions__first_period_ends", variables: ["date": period.endsAt.formatted(date: .abbreviated, time: .shortened)]),
-                    textColor: .white64
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 16)
-            }
-
-            if !subscription.recurrence.unit.isSupported {
-                BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16)
-            } else if subscription.hasPaymentDeadline || subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
-                BodyMText(t("subscriptions__unsupported_payment_description"), textColor: .white64)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16)
-            }
-
-            Spacer()
-            Image("subscription-clock")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 256, height: 256)
-                .accessibilityHidden(true)
-            Spacer()
-
-            if subscription.isProposalActionable(at: now) {
-                SwipeButton(
-                    title: payOnAcceptance
-                        ? t("subscriptions__swipe_to_subscribe_and_pay")
-                        : t("subscriptions__swipe_to_subscribe"),
-                    accentColor: .brandAccent,
-                    isLoading: isAccepting || paymentRequests.isProcessingSubscription
-                ) {
-                    do {
-                        try await accept(subscription)
-                    } catch {
-                        app.toast(error)
-                        throw error
-                    }
+            },
+            onSubscribe: {
+                do {
+                    try await accept(subscription)
+                } catch {
+                    app.toast(error)
+                    throw error
                 }
             }
-        }
-        .padding(.horizontal, 16)
+        )
     }
 
     private func success() -> some View {
@@ -944,6 +906,62 @@ struct SubscriptionSuccessView: View {
     }
 }
 
+struct SubscriptionReviewContent: View {
+    /// Figma draws the review clock at 288pt inside its 256pt slot, rotated 15 degrees and shifted 7pt left.
+    private static let clockScale: CGFloat = 288.0 / 256.0
+    private static let clockRotation = Angle.degrees(15)
+    private static let clockOffsetX: CGFloat = -7
+
+    let subscription: PaykitSubscription
+    var now = SubscriptionClock.subscriptionNow()
+    var isLoading = false
+    /// Shows the swipe as already completed, for the first payment that follows acceptance.
+    var isPaying = false
+    var onDetails: () -> Void = {}
+    var onSubscribe: () async throws -> Void = {}
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetHeader(title: t("subscriptions__review_and_subscribe"))
+            SubscriptionAmountHeader(subscription: subscription)
+            SubscriptionProviderCard(subscription: subscription, action: onDetails)
+                .allowsHitTesting(!isLoading && !isPaying)
+
+            if !subscription.recurrence.unit.isSupported {
+                BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 16)
+            } else if subscription.hasPaymentDeadline || subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
+                BodyMText(t("subscriptions__unsupported_payment_description"), textColor: .white64)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 16)
+            }
+
+            Spacer()
+            Image("subscription-clock")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 256, height: 256)
+                .scaleEffect(Self.clockScale)
+                .rotationEffect(Self.clockRotation)
+                .offset(x: Self.clockOffsetX)
+                .accessibilityHidden(true)
+            Spacer()
+
+            if isLoading || isPaying || subscription.isProposalActionable(at: now) {
+                SwipeButton(
+                    title: t("subscriptions__swipe_to_subscribe"),
+                    accentColor: .brandAccent,
+                    isLoading: isLoading || isPaying,
+                    isConfirmed: isPaying,
+                    onComplete: onSubscribe
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
 private struct SubscriptionAmountHeader: View {
     let subscription: PaykitSubscription
 
@@ -954,16 +972,9 @@ private struct SubscriptionAmountHeader: View {
 }
 
 private struct SubscriptionProviderCard: View {
-    @EnvironmentObject private var contactsManager: ContactsManager
-
     let subscription: PaykitSubscription
-    var showsCounterparty = false
     var subtitle: String?
     var action: (() -> Void)?
-
-    private var contact: PubkyContact? {
-        contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, subscription.counterparty) }
-    }
 
     var body: some View {
         if let action {
@@ -984,15 +995,6 @@ private struct SubscriptionProviderCard: View {
                     .lineLimit(1)
                 CaptionText(subtitle ?? subscription.recurrence.subscriptionFrequencyLabel, textColor: .white64)
                     .lineLimit(1)
-                if showsCounterparty {
-                    if let contact {
-                        CaptionText(contact.displayName, textColor: .white64)
-                            .lineLimit(1)
-                    }
-                    CaptionText(PubkyPublicKeyFormat.displayTruncated(subscription.counterparty), textColor: .white64)
-                        .lineLimit(1)
-                        .accessibilityIdentifier("SubscriptionCounterparty")
-                }
             }
             Spacer()
             if showsChevron {
