@@ -7,6 +7,10 @@ on:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
+      pr:
+        description: "PR number to test as merged into master (set by e2e-retarget.yml)"
+        required: false
+        default: ""
   # PRs stacked on another branch run no E2E until they target master; e2e-retarget.yml starts it on retarget
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -18,7 +22,7 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,13 +30,15 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.code == 'true' }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
-        if: github.event_name == 'pull_request'
+        # a dispatch with a PR number filters the PR branch against master, as a pull_request run does
+        if: github.event_name == 'pull_request' || inputs.pr
         id: filter
         with:
+          base: master
           filters: |
             code:
               - 'Bitkit/**'
@@ -49,6 +55,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
