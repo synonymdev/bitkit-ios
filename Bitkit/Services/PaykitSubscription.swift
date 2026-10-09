@@ -560,6 +560,7 @@ struct PaykitSubscription: Identifiable, Hashable {
         }
 
         guard let terms = record.terms,
+              terms.conversion == nil,
               let recurrence = terms.recurrence.flatMap(PaykitSubscriptionRecurrence.init),
               terms.amount.asset == PaykitIssuerInterop.bitcoinAsset,
               let amountSats = PaykitPaymentRequest.sats(fromBitcoinAmount: terms.amount.value),

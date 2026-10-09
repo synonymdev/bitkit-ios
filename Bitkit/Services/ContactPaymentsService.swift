@@ -13,7 +13,7 @@ enum ContactPaymentsService {
 
     struct Operations {
         let syncPublicEndpoints: (_ publish: Bool, _ isChangeCurrent: @escaping ChangeCheck) async throws -> Void
-        let preparePrivateEndpoints: (
+        var preparePrivateEndpoints: (
             _ contactPublicKeys: [String],
             _ requireImmediatePublication: Bool,
             _ isChangeCurrent: @escaping ChangeCheck
@@ -98,12 +98,24 @@ enum ContactPaymentsService {
         }
         guard isChangeCurrent() else { return false }
 
+        var currentOperations = operations
+        currentOperations.preparePrivateEndpoints = { @MainActor _, immediate, isCurrent in
+            while !Task.isCancelled, isCurrent() {
+                let snapshot = contactsManager.savedContactsSnapshot()
+                let error = await operations.preparePrivateEndpoints(snapshot.publicKeys, immediate) {
+                    isCurrent() && snapshot.isCurrent()
+                }
+                if snapshot.isCurrent() { return error }
+            }
+            return Task.isCancelled && isCurrent() ? CancellationError() : nil
+        }
+
         do {
             try await setEnabled(
                 enabled,
                 contactPublicKeys: contactsManager.contacts.map(\.publicKey),
                 canUsePrivatePayments: canUsePrivatePayments,
-                operations: operations,
+                operations: currentOperations,
                 defaults: defaults,
                 isChangeCurrent: isChangeCurrent
             )

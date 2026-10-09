@@ -28,10 +28,6 @@ extension PrivatePaykitService {
             // Wallet restore must not rewind the identity's live state or Noise counters.
             try Keychain.upsert(key: .paykitRecoveryBackup, data: Data(decoded.sdkState.utf8))
         }
-        pendingMessageDrainRetryTask?.cancel()
-        pendingMessageDrainRetryTask = nil
-        pendingMessageDrainRetryKeys.removeAll()
-        pendingMessageDrainRetryGeneration += 1
         privatePaymentListConsumptions.removeAll()
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()
