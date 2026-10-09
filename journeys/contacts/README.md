@@ -163,6 +163,13 @@ Target eligibility discovery remains owned by the existing request manager. It c
 but does not automatically retry a failed targeted refresh; a later full refresh or contact
 eligibility lookup can retry it. Successful intake does not guarantee successful discovery.
 
+Return NotFound for an explicit link to a peer with no SDK record or pending outbound work:
+the retry retires instead of polling indefinitely. Pending outbound work must remain scheduled,
+and the existing unavailable-peer cooldown still applies. Repeat identity changes during peer
+and outbound reads: no following operation or readiness notification may use the old identity.
+Invalid peer-key or recovery metadata must not be presented as ordinary link recovery.
+These cases need controlled SDK responses, outside the journey runner.
+
 Hold an unrelated contact's background preparation in progress, then open a saved, linked contact
 and request or pay it. The selected contact must be eligible for its own lookup before the full
 contact scan finishes. Hold its public capability lookup separately: this public read must not

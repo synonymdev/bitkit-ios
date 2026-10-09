@@ -28,8 +28,6 @@ enum PaykitResolutionFailureDiagnostics {
         switch error {
         case .RecoveryRequired:
             return true
-        case let .Protocol(code, _):
-            return code == "link_observation_failed"
         default:
             return false
         }
