@@ -1235,6 +1235,7 @@ final class PaykitPaymentRequestManager {
     private static let recentEligibilityCheckInterval = TimeInterval(30)
 
     private(set) var pendingRequests: [PaykitPaymentRequest] = []
+    private(set) var retainedHardwareRetries: [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = [:]
     private(set) var historyRequests: [PaykitPaymentRequest] = []
     private(set) var subscriptions: [PaykitSubscription] = []
     private(set) var receivedPaymentContacts = PaykitReceivedPaymentContacts()
@@ -1253,6 +1254,7 @@ final class PaykitPaymentRequestManager {
     private let subscriptionStateStore: any PaykitSubscriptionStateStoring
     private let subscriptionNotificationScheduler: PaykitSubscriptionNotificationScheduler
     private let completedPaymentProofKinds: @Sendable (String) async -> [PaykitPaymentRequest.ID: PaykitPaymentProofKind]
+    private let retainedHardwarePaymentsForRetry: @Sendable (String) async -> [PaykitPaymentRequest.ID: PendingPaykitPaymentProof]
     private let inFlightPaymentRequestIds: @Sendable (String) async -> Set<PaykitPaymentRequest.ID>
     private let protectedRequestIdsForSubscriptionCancellation: @Sendable (
         String,
@@ -1324,6 +1326,9 @@ final class PaykitPaymentRequestManager {
         inFlightPaymentRequestIds: @escaping @Sendable (String) async -> Set<PaykitPaymentRequest.ID> = { identity in
             await PaykitPaymentProofService.shared.inFlightRequestIds(identity: identity)
         },
+        retainedHardwarePaymentsForRetry: @escaping @Sendable (String) async -> [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = { identity in
+            await PaykitPaymentProofService.shared.retainedHardwarePaymentsForRetry(identity: identity)
+        },
         protectedRequestIdsForSubscriptionCancellation: @escaping @Sendable (
             String,
             PaykitSubscription.ID
@@ -1349,6 +1354,7 @@ final class PaykitPaymentRequestManager {
         self.subscriptionNotificationScheduler = subscriptionNotificationScheduler
         self.completedPaymentProofKinds = completedPaymentProofKinds
         self.inFlightPaymentRequestIds = inFlightPaymentRequestIds
+        self.retainedHardwarePaymentsForRetry = retainedHardwarePaymentsForRetry
         self.protectedRequestIdsForSubscriptionCancellation = protectedRequestIdsForSubscriptionCancellation
         self.now = now
         self.subscriptionNow = subscriptionNow
@@ -2043,6 +2049,7 @@ final class PaykitPaymentRequestManager {
         presentationRetryTask?.cancel()
         presentationRetryTask = nil
         pendingRequests = []
+        retainedHardwareRetries = [:]
         historyRequests = []
         subscriptions = []
         receivedPaymentContacts = PaykitReceivedPaymentContacts()
@@ -2089,7 +2096,8 @@ final class PaykitPaymentRequestManager {
         }
 
         return pendingRequests.filter {
-            !presentedRequestIds.contains($0.id) &&
+            retainedHardwareRetries[$0.id] == nil &&
+                !presentedRequestIds.contains($0.id) &&
                 !dismissedPreparingRequestIds.contains($0.id) &&
                 !processingRequestIds.contains($0.id) &&
                 (presentationRetryDeadlines[$0.id].map { $0 <= date } ?? true)
@@ -2322,10 +2330,23 @@ final class PaykitPaymentRequestManager {
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
             let (locallyCompletedProofKinds, locallyInFlightRequestIds) = await (completedProofKinds, inFlightRequestIds)
+            let retainedRetries = await retainedHardwarePaymentsForRetry(activeIdentity)
             let locallyCompletedRequestIds = Set(locallyCompletedProofKinds.keys)
             guard generation == refreshGeneration,
                   PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity)
             else { return false }
+            retainedHardwareRetries = retainedRetries.filter { id, proof in
+                guard id == proof.requestId, PubkyPublicKeyFormat.matches(proof.identity, activeIdentity),
+                      proof.retainedHardwareRetry != nil,
+                      let request = (snapshot.incoming + snapshot.history).first(where: { $0.id == id }),
+                      request.direction == .incoming,
+                      [.accepted, .recoveryRequired].contains(request.lifecycleState),
+                      request.amountSats == proof.onchainAmountSats,
+                      request.billingPeriod == proof.billingPeriod,
+                      request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
+                else { return false }
+                return true
+            }
             pruneAcceptedRequestIds(snapshot.history, identity: activeIdentity)
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
@@ -2365,7 +2386,7 @@ final class PaykitPaymentRequestManager {
                     requests.filter {
                         $0.lifecycleState != .proofSubmitted &&
                             !locallyCompletedRequestIds.contains($0.id) &&
-                            !locallyInFlightRequestIds.contains($0.id) &&
+                            (!locallyInFlightRequestIds.contains($0.id) || retainedHardwareRetries[$0.id] != nil) &&
                             !dismissedSubscriptionPaymentIds.contains($0.id)
                     }
                 }
@@ -2385,7 +2406,7 @@ final class PaykitPaymentRequestManager {
             let oneTimePending = snapshot.incoming.filter {
                 ($0.requiresAcceptance || acceptedRequestIds.contains($0.id)) &&
                     !locallyCompletedRequestIds.contains($0.id) &&
-                    !locallyInFlightRequestIds.contains($0.id) &&
+                    (!locallyInFlightRequestIds.contains($0.id) || retainedHardwareRetries[$0.id] != nil) &&
                     !approvedPaymentRequestIds.contains($0.id)
             }
             let oneTimeHistory = snapshot.history.map { request in

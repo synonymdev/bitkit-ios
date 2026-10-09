@@ -538,6 +538,15 @@ struct SendSheet: View {
     }
 
     private func performPaymentValidationAfterSync(ignoreChannelWait: Bool) -> PaymentValidationResult {
+        if let request = incomingPaymentRequest,
+           let proof = paykitPaymentRequestManager.retainedHardwareRetries[request.id],
+           proof.retainedHardwareRetry != nil, proof.onchainWalletId == hwSend.walletId,
+           proof.onchainAddress == app.scannedOnchainInvoice?.address,
+           proof.onchainAmountSats == wallet.sendAmountSats
+        {
+            // Original signed bytes only; new-payment balance admission does not apply.
+            return .ready
+        }
         let requestedAmount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats
 
         if let lnurlPayData = app.lnurlPayData, let requestedAmount {
@@ -688,6 +697,21 @@ struct SendSheet: View {
               let invoice = app.scannedOnchainInvoice,
               let satsPerVByte = wallet.selectedFeeRateSatsPerVByte
         else { return true }
+
+        if let request = incomingPaymentRequest,
+           let proof = try? await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request),
+           let walletId = proof.onchainWalletId
+        {
+            guard isCurrentIncomingRequest(requestId), proof.onchainAddress == invoice.address,
+                  (try? hwWalletManager.getFundingAccount(walletId: walletId)) != nil
+            else { return false }
+            hwSend.selectWallet(walletId, initialAvailableSats: hwWalletManager.fundingBalance(walletId: walletId))
+            hwSend.seedAvailable(
+                walletId: walletId, availableSats: hwWalletManager.fundingBalance(walletId: walletId),
+                retainedFeeSats: proof.hardwareMiningFeeSats
+            )
+            return true
+        }
 
         let savingsAvailable: UInt64?
         do {
@@ -964,6 +988,12 @@ struct SendSheet: View {
         guard let request = context?.incomingPaymentRequest else { return }
         guard PubkyPublicKeyFormat.matches(pubkyProfile.publicKey, paymentIdentity)
         else { throw PaykitPaymentRequestError.requestUnavailable }
+        if try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request) != nil,
+           !paykitPaymentRequestManager.isApprovedForPayment(request)
+        {
+            // Fresh authorization for the original signed payment; its list version is already retained.
+            try await paykitPaymentRequestManager.prepareForPayment(request)
+        }
         try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
     }
 

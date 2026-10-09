@@ -174,6 +174,13 @@ struct HwSendSignView: View {
                         loadSignedPayment: {
                             guard let requestId else { return nil }
                             guard let identity = contactPaymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                            if let request = app.contactPaymentContext?.incomingPaymentRequest,
+                               let proof = try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request)
+                            {
+                                guard proof.onchainWalletId == walletId, proof.onchainAddress == invoice.address,
+                                      proof.onchainAmountSats == amount
+                                else { throw PaykitPaymentRequestError.requestUnavailable }
+                            }
                             return try await PaykitPaymentProofService.shared.retainedHardwareOnchainPayment(
                                 requestId: requestId, paymentIdentity: identity, walletId: walletId,
                                 address: invoice.address, amountSats: amount

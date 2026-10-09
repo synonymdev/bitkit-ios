@@ -415,9 +415,14 @@ final class HwSendCoordinator {
         self.signerFactory = signerFactory
     }
 
-    func seedAvailable(walletId: String, availableSats: UInt64) {
+    func seedAvailable(walletId: String, availableSats: UInt64, retainedFeeSats: UInt64? = nil) {
         guard self.walletId == walletId else { return }
         self.availableSats = availableSats
+        if let retainedFeeSats {
+            previewFeeSats = retainedFeeSats
+            isFundingSourceLoading = false
+            isPreviewLoading = false
+        }
     }
 
     func selectWallet(

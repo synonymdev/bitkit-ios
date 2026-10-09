@@ -3812,6 +3812,103 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(restoredManager.requestsForPresentation(), [restoredRequest])
     }
 
+    func testRefusedHardwareReceiptReopensAcceptedRequestFromListAfterRestart() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(state: .accepted, endpoints: [endpoint], acceptedEventId: "accepted")
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let raw = "02000000000101f7c5a048189164c6b05b07516b5dbb9c826c601d12dc4ed97f0069618b8b7c160100000000fdffffff024179010000000000160014f066a63663b0d464b31a7a88619beae011c3fb7be80300000000000016001483ea855bb508cb08ed9e8cf9152d8927871c19aa02473044022052c5a15ade616af16f314bcc2ae15bf4ef4996e0f2315794e647ba6c955745b602200f3095f4a7deb39a94716c0fd2001a2fbff1861a8ff0c2015739a40a62891c22012102cb13c86b55418d0e3bccf29115394e1fb6a9f209d3f59dc9bbb0805b253464cb724c0300"
+        var proof = try PendingPaykitPaymentProof(
+            identity: "pubky" + String(repeating: "z", count: 52), requestId: request.id,
+            paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain,
+            paymentStarted: true, paymentIdentifier: SignedTransactionId.fromHex(raw), proofData: nil,
+            onchainAddress: "original-address", onchainAmountSats: request.amountSats, onchainWalletId: "jade:wallet"
+        )
+        proof.hardwareSignedTransaction = raw
+        proof.hardwareMiningFeeSats = 120
+        proof.hardwareFeeRate = 2
+        proof.hardwareTotalSpent = request.amountSats + 120
+        proof.hardwareDispatchAttempted = true
+        proof.hardwareRefusedForNavigation = true
+        let manager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [record]), inFlightPaymentRequestIds: [request.id],
+            retainedHardwareRetries: [request.id: proof], acceptedRecords: [record]
+        )
+        await manager.refresh()
+        XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .accepted, "Accepted remains SDK lifecycle, not backend acceptance")
+        XCTAssertEqual(manager.pendingRequests, [request], "List/details must expose the original retained retry")
+        XCTAssertTrue(manager.requestsForPresentation().isEmpty, "Retained retry requires explicit reopening")
+        XCTAssertTrue(manager.requestPresentation(request), "Details Pay must reopen the original request")
+        XCTAssertEqual(manager.requestsForPresentation(), [request])
+        XCTAssertEqual(manager.retainedHardwareRetries[request.id]?.hardwareSignedTransaction, raw)
+        let preview = HwSendCoordinator(walletId: proof.onchainWalletId)
+        preview.seedAvailable(walletId: "jade:wallet", availableSats: 0, retainedFeeSats: 120)
+        XCTAssertEqual(preview.walletId, proof.onchainWalletId)
+        XCTAssertEqual(preview.availableSats, 0, "Spent balance stays zero; this is an original transaction route")
+        XCTAssertEqual(preview.previewFeeSats, 120)
+        XCTAssertFalse(preview.isFundingSourceLoading)
+        let app = AppViewModel()
+        let contact = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        XCTAssertTrue(app.claimContactPaymentContext(contact))
+        try app.handleRetainedHardwarePayment(proof, context: contact)
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, proof.onchainAddress)
+        XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, request.amountSats)
+        XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
+        let launch = try XCTUnwrap(PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request))
+        guard case let .opened(target, context) = launch else { return XCTFail("Original receipt must reopen") }
+        XCTAssertEqual(target, "bitcoin:original-address")
+        XCTAssertEqual(try XCTUnwrap(context).paymentAppId(for: endpoint), proof.paymentAppId)
+        try await manager.prepareForPayment(request)
+        try await manager.ensurePaymentAllowed(request)
+
+        for invalid in ["request", "amount", "billing", "endpoint", "identity", "unknown", "completed"] {
+            var changed = PendingPaykitPaymentProof(
+                identity: invalid == "identity" ? "pubky" + String(repeating: "y", count: 52) : proof.identity,
+                requestId: invalid == "request" ? .init(paymentRequestId: "another-request", counterparty: request.counterparty) : proof.requestId,
+                paymentAppId: proof.paymentAppId,
+                paymentEndpointIdentifier: invalid == "endpoint" ? "different-endpoint" : proof.paymentEndpointIdentifier,
+                kind: proof.kind,
+                billingPeriod: invalid == "billing" ? PaykitBillingPeriod(sdkPeriod: BillingPeriod(
+                    startsAt: "2027-01-01T00:00:00Z", endsAt: "2027-02-01T00:00:00Z"
+                )) : proof.billingPeriod,
+                paymentStarted: true, paymentIdentifier: proof.paymentIdentifier, proofData: nil,
+                onchainAddress: proof.onchainAddress, onchainAmountSats: proof.onchainAmountSats,
+                onchainWalletId: proof.onchainWalletId
+            )
+            changed.hardwareSignedTransaction = raw
+            changed.hardwareMiningFeeSats = 120
+            changed.hardwareFeeRate = 2
+            changed.hardwareTotalSpent = proof.hardwareTotalSpent
+            changed.hardwareDispatchAttempted = true
+            changed.hardwareRefusedForNavigation = true
+            if invalid == "amount" {
+                changed.onchainAmountSats = request.amountSats + 1
+                changed.hardwareTotalSpent = request.amountSats + 121
+            } else if invalid == "unknown" {
+                changed.hardwareRefusedForNavigation = false
+            } else if invalid == "completed" {
+                changed.proofData = changed.paymentIdentifier
+                changed.onchainAcceptanceVerified = true
+            }
+            let guarded = paymentRequestManager(
+                sdk: PaymentRequestSdkMock(records: [record]), inFlightPaymentRequestIds: [request.id],
+                retainedHardwareRetries: [request.id: changed], acceptedRecords: [record]
+            )
+            await guarded.refresh()
+            XCTAssertTrue(guarded.pendingRequests.isEmpty, invalid)
+            XCTAssertTrue(guarded.retainedHardwareRetries.isEmpty, invalid)
+            XCTAssertFalse(guarded.requestPresentation(request), invalid)
+        }
+        let revised = try paymentRequestRecord(state: .accepted, amount: "0.002", endpoints: [endpoint], acceptedEventId: "accepted")
+        let revisedRequest = try XCTUnwrap(PaykitPaymentRequest(record: revised, now: Date()))
+        let revisedManager = paymentRequestManager(
+            sdk: PaymentRequestSdkMock(records: [revised]), inFlightPaymentRequestIds: [request.id],
+            retainedHardwareRetries: [request.id: proof], acceptedRecords: [revised]
+        )
+        await revisedManager.refresh()
+        XCTAssertTrue(revisedManager.pendingRequests.isEmpty, "Changed SDK terms cannot reopen the original receipt as a new payment")
+        XCTAssertNil(PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: revisedRequest))
+    }
+
     func testRecoveryRequiredIncomingRequestHonorsLocalPaymentProtection() async throws {
         let record = try paymentRequestRecord(state: .recoveryRequired, acceptedEventId: "accepted")
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
@@ -7455,6 +7552,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         isPrivatePaymentPublishingEnabled: Bool = true,
         completedPaymentProofKinds: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:],
         inFlightPaymentRequestIds: Set<PaykitPaymentRequest.ID> = [],
+        retainedHardwareRetries: [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = [:],
         protectedRequestIdsForSubscriptionCancellation: Set<PaykitPaymentRequest.ID> = [],
         presentationStore: PaymentRequestPresentationMemoryStore = PaymentRequestPresentationMemoryStore(),
         acceptanceStore: PaymentRequestPresentationMemoryStore? = nil,
@@ -7481,6 +7579,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             subscriptionNotificationScheduler: subscriptionNotificationScheduler,
             completedPaymentProofKinds: { _ in completedPaymentProofKinds },
             inFlightPaymentRequestIds: { _ in inFlightPaymentRequestIds },
+            retainedHardwarePaymentsForRetry: { _ in retainedHardwareRetries },
             protectedRequestIdsForSubscriptionCancellation: { _, _ in protectedRequestIdsForSubscriptionCancellation },
             now: now,
             subscriptionNow: subscriptionNow,

@@ -563,6 +563,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         XCTAssertEqual(refused?.isRefusedForNavigation, true)
         XCTAssertEqual(refused?.signedTx, receipt)
+        let retryable = await localReopened.retainedHardwarePaymentsForRetry(identity: identity)
+        XCTAssertEqual(retryable[request.id]?.hardwareSignedTransaction, serializedTx)
+        let stillGuarded = await localReopened.inFlightRequestIds(identity: identity)
+        XCTAssertTrue(stillGuarded.contains(request.id), "Manual reopening must not release the in-flight guard")
+        let foreignRetries = await localReopened.retainedHardwarePaymentsForRetry(identity: "pubky" + String(repeating: "y", count: 52))
+        XCTAssertTrue(foreignRetries.isEmpty)
         try await localReopened.retainHardwareOnchainCandidate(
             requestId: request.id, paymentIdentity: identity, walletId: hardwareWalletId,
             address: onchainAddress, amountSats: request.amountSats, serializedTx: serializedTx
@@ -578,6 +584,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         let dispatchedSnapshot = await store.snapshot()
         XCTAssertEqual(dispatchedSnapshot.first?.hardwareRefusedForNavigation, false)
+        let dispatchedRetries = await localReopened.retainedHardwarePaymentsForRetry(identity: identity)
+        XCTAssertTrue(dispatchedRetries.isEmpty, "Unknown dispatch must not be offered as a refused retry")
         await store.clear()
         try await localReopened.restoreBackup(JSONDecoder().decode([PaykitPaymentStateBackup.Proof].self, from: refusedEncoded))
         let conservative = try await localReopened.retainedHardwareOnchainPayment(

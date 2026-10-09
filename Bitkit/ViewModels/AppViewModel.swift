@@ -901,6 +901,18 @@ extension AppViewModel {
         }
     }
 
+    func handleRetainedHardwarePayment(_ proof: PendingPaykitPaymentProof, context: ContactPaymentContext) throws {
+        guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
+              context.publicKey == request.counterparty,
+              PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
+              let address = proof.onchainAddress
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        // This route submits an existing transaction, so it never admits fresh inputs against a balance.
+        handleScannedOnchainInvoice(OnChainInvoice(
+            address: address, amountSatoshis: request.amountSats, label: nil, message: nil, params: nil
+        ))
+    }
+
     private func handleScannedOnchainInvoice(_ invoice: OnChainInvoice) {
         selectedWalletToPayFrom = .onchain
         scannedOnchainInvoice = invoice

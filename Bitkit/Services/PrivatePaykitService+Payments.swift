@@ -74,9 +74,33 @@ extension PrivatePaykitService {
             throw PrivatePaykitError.invalidPublicKey
         }
 
+        if let proof = try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request),
+           let result = Self.retainedHardwarePaymentLaunchResult(proof: proof, request: request)
+        {
+            return result
+        }
+
         return try await beginContactPayment(
             to: publicKey,
             paymentRequest: request
+        )
+    }
+
+    static func retainedHardwarePaymentLaunchResult(
+        proof: PendingPaykitPaymentProof, request: PaykitPaymentRequest
+    ) -> PublicPaykitPaymentLaunchResult? {
+        guard proof.requestId == request.id, proof.retainedHardwareRetry != nil,
+              proof.onchainAmountSats == request.amountSats, proof.billingPeriod == request.billingPeriod,
+              let address = proof.onchainAddress,
+              request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
+        else { return nil }
+        // Reopen the original receipt, never resolve or consume a replacement merchant endpoint.
+        return .opened(
+            paymentRequest: "bitcoin:" + address,
+            privatePaymentContext: PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: [proof.paymentEndpointIdentifier: proof.paymentAppId],
+                paymentListVersion: proof.privatePaymentListVersion
+            )
         )
     }
 

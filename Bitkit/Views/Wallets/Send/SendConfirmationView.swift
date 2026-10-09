@@ -66,8 +66,13 @@ struct SendConfirmationView: View {
         return app.selectedWalletToPayFrom == .lightning ? .spending : .savings
     }
 
+    private var retainedHardwareRetry: PendingPaykitPaymentProof? {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return nil }
+        return paykitPaymentRequestManager.retainedHardwareRetries[request.id]
+    }
+
     private var canSwitchFundingSource: Bool {
-        fundingSources.count > 1
+        retainedHardwareRetry == nil && fundingSources.count > 1
     }
 
     var canSwitchWallet: Bool {
@@ -159,7 +164,8 @@ struct SendConfirmationView: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app.selectedWalletToPayFrom == .lightning &&
+        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app
+            .selectedWalletToPayFrom == .lightning &&
             !hwSend.isActive && !requiresPaymentConfirmation
     }
 
@@ -1590,6 +1596,21 @@ struct SendConfirmationView: View {
             if hwSend.isActive {
                 if transactionFee == 0, hwSend.previewFeeSats > 0 {
                     apply(hwSend.previewFeeSats)
+                }
+                if let request = app.contactPaymentContext?.incomingPaymentRequest,
+                   let proof = try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request),
+                   let receipt = proof.retainedHardwareRetry
+                {
+                    guard proof.onchainWalletId == hwSend.walletId, proof.onchainAddress == address,
+                          proof.onchainAmountSats == amountSats
+                    else { throw PaykitPaymentRequestError.requestUnavailable }
+                    hwSend.seedAvailable(
+                        walletId: proof.onchainWalletId ?? "",
+                        availableSats: hwWalletManager.fundingBalance(walletId: proof.onchainWalletId ?? ""),
+                        retainedFeeSats: receipt.signedTx.miningFeeSats
+                    )
+                    apply(receipt.signedTx.miningFeeSats)
+                    return
                 }
                 guard let fee = try await hwSend.preparePreview(
                     manager: hwWalletManager,

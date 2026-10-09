@@ -1452,14 +1452,19 @@ struct AppScene: View {
                 } else {
                     preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: pubkyProfile.currentSession)
                     incomingPaymentRequestPreparation = preparation
-                    sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
-                        if preparation.resolvedRoute == nil, scenePhase == .active,
-                           preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
-                        {
-                            paykitPaymentRequestManager.dismissPreparingRequest(request)
+                    sheets.showSheet(.send, data: SendConfig(
+                        view: .confirm,
+                        hardwareWalletId: paykitPaymentRequestManager.retainedHardwareRetries[request.id]?.onchainWalletId,
+                        preparation: preparation,
+                        onDismiss: {
+                            if preparation.resolvedRoute == nil, scenePhase == .active,
+                               preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
+                            {
+                                paykitPaymentRequestManager.dismissPreparingRequest(request)
+                            }
+                            preparation.clear()
                         }
-                        preparation.clear()
-                    }))
+                    ))
                 }
                 defer {
                     if preparation.resolvedRoute == nil {
@@ -1510,11 +1515,15 @@ struct AppScene: View {
 
                     do {
                         try await preparation.whilePreparing {
-                            try await app.handleScannedData(
-                                paymentTarget,
-                                claimedContactPaymentContext: contactPaymentContext,
-                                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
-                            )
+                            if let proof = paykitPaymentRequestManager.retainedHardwareRetries[request.id] {
+                                try app.handleRetainedHardwarePayment(proof, context: contactPaymentContext)
+                            } else {
+                                try await app.handleScannedData(
+                                    paymentTarget,
+                                    claimedContactPaymentContext: contactPaymentContext,
+                                    alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                                )
+                            }
                         }
                         guard isCurrentIncomingPaymentRequestPreparation(preparation),
                               app.ownsContactPaymentContext(contactPaymentContext)

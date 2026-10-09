@@ -77,6 +77,22 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         kind == .onchain && onchainWalletId != nil && onchainWalletId != WalletScope.default
     }
 
+    var retainedHardwareRetry: RetainedHardwareOnchainPayment? {
+        guard kind == .onchain, paymentStarted, hasUnsupportedOnchainWallet,
+              hardwareRefusedForNavigation == true, hardwareDispatchAttempted == true,
+              proofData == nil, onchainAcceptanceVerified != true,
+              let raw = hardwareSignedTransaction, let txid = try? SignedTransactionId.fromHex(raw),
+              txid == paymentIdentifier, let address = onchainAddress, !address.isEmpty,
+              let amount = onchainAmountSats, amount > 0,
+              let fee = hardwareMiningFeeSats, let rate = hardwareFeeRate, let spent = hardwareTotalSpent,
+              spent >= amount, spent - amount == fee
+        else { return nil }
+        return RetainedHardwareOnchainPayment(
+            signedTx: HwFundingSignedTx(serializedTx: raw, miningFeeSats: fee, feeRate: Float(rate), totalSpent: spent),
+            hasAttemptedBroadcast: true, isRefusedForNavigation: true
+        )
+    }
+
     init(
         identity: String,
         requestId: PaykitPaymentRequest.ID,
@@ -1315,6 +1331,32 @@ actor PaykitPaymentProofService {
         } catch {
             logWarning("Failed to inspect in-flight Paykit payment proofs: \(error)")
             return []
+        }
+    }
+
+    func retainedHardwarePaymentForRetry(request: PaykitPaymentRequest) async throws -> PendingPaykitPaymentProof? {
+        let identity = try await currentIdentity()
+        let proof = await retainedHardwarePaymentsForRetry(identity: identity)[request.id]
+        guard let proof, proof.onchainAmountSats == request.amountSats, proof.billingPeriod == request.billingPeriod,
+              request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
+        else { return nil }
+        return proof
+    }
+
+    /// Presentation-only access to the original refused hardware payment; in-flight guards stay intact.
+    func retainedHardwarePaymentsForRetry(identity: String) async -> [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] {
+        do {
+            var result: [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = [:]
+            for proof in try await loadProofs() {
+                guard PubkyPublicKeyFormat.matches(proof.identity, identity), proof.retainedHardwareRetry != nil,
+                      let walletId = proof.onchainWalletId, hardwareTransactionLookup.hasWallet(walletId: walletId)
+                else { continue }
+                result[proof.requestId] = proof
+            }
+            return result
+        } catch {
+            logWarning("Failed to inspect retained hardware retries: \(error)")
+            return [:]
         }
     }
 
