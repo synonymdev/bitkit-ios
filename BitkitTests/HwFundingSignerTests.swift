@@ -844,33 +844,71 @@ final class HwFundingSignerTests: XCTestCase {
     }
 
     func testShopBroadcastFailurePreservesSignedPaymentAcrossCancel() async throws {
-        let funding = MockHwFunding()
-        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
-        let manager = HwWalletManager()
-        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
-        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "offline")
-        await assertThrowsAsync {
+        for details in ["offline", "unrecognized backend error"] {
+            let funding = MockHwFunding()
+            let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+            let manager = HwWalletManager()
+            let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+            funding.broadcastError = BroadcastError.ElectrumError(errorDetails: details)
+            await assertThrowsAsync {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+                )
+            }
+            XCTAssertTrue(coordinator.isBroadcastUnresolved)
+            XCTAssertFalse(coordinator.canLeave)
+            coordinator.cancel()
+            XCTAssertTrue(coordinator.hasPendingBroadcast)
+            await assertThrowsAsync {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                    paymentRequestId: .init(paymentRequestId: "other-request", counterparty: "original-merchant")
+                )
+            }
+            XCTAssertEqual(funding.broadcastCalls, 1)
+            funding.broadcastError = nil
             _ = try await coordinator.signAndBroadcast(
                 manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
             )
+            XCTAssertEqual(funding.signCalls, 1)
+            XCTAssertEqual(funding.broadcastCalls, 2)
         }
-        XCTAssertTrue(coordinator.isBroadcastUnresolved)
-        XCTAssertFalse(coordinator.canLeave)
-        coordinator.cancel()
-        XCTAssertTrue(coordinator.hasPendingBroadcast)
-        await assertThrowsAsync {
+    }
+
+    func testShopDefiniteRefusalAllowsLeavingAndRetainsOriginalSignedPayment() async throws {
+        for error in [
+            BroadcastError.InvalidHex(errorDetails: "invalid hex"),
+            BroadcastError.InvalidTransaction(errorDetails: "invalid transaction"),
+            BroadcastError.ElectrumError(errorDetails: "broadcast failed: min relay fee not met"),
+        ] {
+            let funding = MockHwFunding()
+            let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+            let manager = HwWalletManager()
+            let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+            funding.broadcastError = error
+            await assertThrowsAsync {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
+                )
+            }
+            XCTAssertFalse(coordinator.isBroadcastUnresolved)
+            XCTAssertTrue(coordinator.canLeave)
+            coordinator.cancel()
+            XCTAssertTrue(coordinator.hasPendingBroadcast)
+            await assertThrowsAsync {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
+                    paymentRequestId: .init(paymentRequestId: "other-request", counterparty: "original-merchant")
+                )
+            }
+            XCTAssertEqual(funding.broadcastCalls, 1)
+            funding.broadcastError = nil
             _ = try await coordinator.signAndBroadcast(
-                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2,
-                paymentRequestId: .init(paymentRequestId: "other-request", counterparty: "original-merchant")
+                manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
             )
+            XCTAssertEqual(funding.signCalls, 1)
+            XCTAssertEqual(funding.broadcastCalls, 2)
         }
-        XCTAssertEqual(funding.broadcastCalls, 1)
-        funding.broadcastError = nil
-        _ = try await coordinator.signAndBroadcast(
-            manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: 2, paymentRequestId: requestId
-        )
-        XCTAssertEqual(funding.signCalls, 1)
-        XCTAssertEqual(funding.broadcastCalls, 2)
     }
 
     func testRestoredShopReceiptRequiresAuthorizationAndNeverSignsAgain() async throws {

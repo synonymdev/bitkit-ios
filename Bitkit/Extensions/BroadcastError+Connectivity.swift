@@ -52,6 +52,19 @@ extension Error {
         return false
     }
 
+    func isHardwareBroadcastRefusal() -> Bool {
+        if isDefiniteHardwarePreBroadcastFailure() {
+            return true
+        }
+        if let error = self as? BroadcastError, case let .ElectrumError(details) = error {
+            return details.lowercased().hasPrefix("broadcast failed:")
+        }
+        if let error = self as? AppError, let underlyingError = error.underlyingError {
+            return underlyingError.isHardwareBroadcastRefusal()
+        }
+        return false
+    }
+
     func isBroadcastConnectivityFailure() -> Bool {
         if let broadcastError = self as? BroadcastError {
             return broadcastError.isConnectivityFailure

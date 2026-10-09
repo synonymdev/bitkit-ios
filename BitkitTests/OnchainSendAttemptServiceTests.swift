@@ -1143,12 +1143,23 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
         let node = AttemptNodeMock(result: .unknown(txid: txid))
-        node.onSend = {
-            XCTAssertEqual(store.snapshot().first?.status, .pending)
-            await Task.yield()
+        node.preparedMiningFeeSats = 100
+        let preparation = SuspendedOnchainPreparation()
+        node.onPrepare = { await preparation.suspend() }
+        node.onSend = { XCTAssertEqual(store.snapshot().first?.status, .pending) }
+        let first = Task {
+            try? await service.send(
+                using: node, address: "bcrt1qexample", amountSats: 1000, satsPerVbyte: 1,
+                utxosToSpend: nil, isMaxAmount: true, orderId: "order",
+                transferContext: OnchainSendTransferContext(
+                    clientBalanceSats: 900, txTotalSats: 1100,
+                    preTransferOnchainSats: 1100, originalOrderFeeSats: 1000
+                )
+            )
         }
-        let results = await withTaskGroup(of: Bool.self) { group in
-            for index in 0 ..< 20 {
+        await preparation.waitForStart()
+        let competingSends = await withTaskGroup(of: Bool.self) { group in
+            for index in 1 ..< 20 {
                 group.addTask {
                     do {
                         _ = try await service.send(
@@ -1164,14 +1175,16 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                 }
             }
             var count = 0
-            for await sent in group {
-                if sent {
-                    count += 1
-                }
+            for await sent in group where sent {
+                count += 1
             }
             return count
         }
-        XCTAssertEqual(results, 1)
+        XCTAssertEqual(competingSends, 0)
+        XCTAssertEqual(node.calls, 0, "Competing sends must be blocked before native dispatch")
+        await preparation.release()
+        let result = await first.value
+        XCTAssertEqual(result, .unknown(txid: txid))
         XCTAssertEqual(node.calls, 1)
         XCTAssertEqual(store.snapshot().count, 1)
     }
@@ -1467,4 +1480,29 @@ private actor SuspendedOrdinaryFollowup: OnchainSendLocalFollowupHandling {
     }
 
     func callCount() -> Int { calls }
+}
+
+private actor SuspendedOnchainPreparation {
+    private var hasStarted = false
+    private var started: CheckedContinuation<Void, Never>?
+    private var suspended: CheckedContinuation<Void, Never>?
+
+    func waitForStart() async {
+        if hasStarted {
+            return
+        }
+        await withCheckedContinuation { started = $0 }
+    }
+
+    func suspend() async {
+        hasStarted = true
+        started?.resume()
+        started = nil
+        await withCheckedContinuation { suspended = $0 }
+    }
+
+    func release() {
+        suspended?.resume()
+        suspended = nil
+    }
 }

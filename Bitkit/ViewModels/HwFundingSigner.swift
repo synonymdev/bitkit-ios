@@ -386,8 +386,8 @@ final class HwSendCoordinator {
     }
 
     /// Whether the sign screen may be left. Reaching the device (a Jade may wait minutes for its PIN)
-    /// can be abandoned, and leaving cancels it; once the device is asked to sign, or a broadcast may
-    /// have gone out, it cannot.
+    /// can be abandoned, and leaving cancels it. An uncertain broadcast keeps navigation locked;
+    /// a definite refusal permits leaving while the original signed Shop payment stays retained.
     var canLeave: Bool {
         (!isSigning || isConnectingDevice) && !isBroadcastUnresolved
     }
@@ -526,7 +526,9 @@ final class HwSendCoordinator {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
-        if isBroadcastUnresolved, let pendingPayment {
+        if let pendingPayment,
+           isBroadcastUnresolved || (pendingPayment.paymentRequestId != nil && pendingPayment.hasBroadcastAttempted)
+        {
             guard pendingPayment.request == request, pendingPayment.paymentRequestId == paymentRequestId else {
                 throw PaykitPaymentRequestError.operationInProgress
             }
@@ -632,7 +634,8 @@ final class HwSendCoordinator {
                     await afterBroadcast(result)
                     return result
                 } catch {
-                    isBroadcastUnresolved = paymentRequestId != nil
+                    // Navigation may unlock after a definite refusal; the receipt still guards funds.
+                    isBroadcastUnresolved = paymentRequestId != nil && !error.isHardwareBroadcastRefusal()
                     let underlyingError = (error as? AppError)?.underlyingError ?? error
                     if underlyingError as? PaykitPaymentRequestError == .requestExpired {
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
@@ -745,6 +748,7 @@ final class HwSendCoordinator {
         isVerifyingPassphrase = false
         isPassphraseRequired = false
         guard !isBroadcastUnresolved else { return }
+        let retainsSubmittedShopPayment = pendingPayment?.paymentRequestId != nil && pendingPayment?.hasBroadcastAttempted == true
         let abandonedSession = operationSession
         operationTask?.cancel()
         // Receipt persistence/cleanup is suspended work. Keep the cancelled operation registered
@@ -754,7 +758,9 @@ final class HwSendCoordinator {
         operationTask = nil
         operationRequest = nil
         operationSession = nil
-        pendingPayment = nil
+        if !retainsSubmittedShopPayment {
+            pendingPayment = nil
+        }
         isSigning = false
         isConnectingDevice = false
         // A Swift cancel never reaches the device, which would otherwise keep connecting (or wait for
