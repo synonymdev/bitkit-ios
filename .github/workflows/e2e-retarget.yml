@@ -1,9 +1,10 @@
 name: e2e-retarget
 
-# A stacked PR defers E2E (see e2e-tests.yml); retargeting it to the default branch emits no event e2e-tests listens to
+# e2e-tests runs only on PRs into master, and retargeting a stacked PR to master emits no event it listens to
 on:
   pull_request:
     types: [edited]
+    branches: [master]
 
 permissions:
   actions: write
@@ -12,7 +13,6 @@ jobs:
   run-e2e:
     if: >-
       github.event.changes.base != null &&
-      github.event.pull_request.base.ref == github.event.repository.default_branch &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
