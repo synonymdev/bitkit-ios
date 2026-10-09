@@ -747,7 +747,11 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Sets the UTXO selection for the send flow using the specified coin selection algorithm.based on chosen fee and target amount
-    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm) async throws {
+    func setUtxoSelection(
+        coinSelectionAlgorythm: CoinSelectionAlgorithm,
+        listSpendable: (() async throws -> [SpendableUtxo])? = nil,
+        selectForAmount: ((UInt64, UInt32, CoinSelectionAlgorithm) async throws -> [SpendableUtxo])? = nil
+    ) async throws {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -760,12 +764,18 @@ class WalletViewModel: ObservableObject {
             "Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte"
         )
 
-        selectedUtxos = try await lightningService.selectUtxosWithAlgorithm(
-            targetAmountSats: sendAmountSats,
-            satsPerVbyte: selectedFeeRateSatsPerVByte,
-            coinSelectionAlgorythm: coinSelectionAlgorythm,
-            utxos: nil
-        )
+        let select = selectForAmount ?? { amount, rate, algorithm in
+            try await self.lightningService.selectUtxosWithAlgorithm(
+                targetAmountSats: amount, satsPerVbyte: rate, coinSelectionAlgorythm: algorithm, utxos: nil
+            )
+        }
+        if isMaxAmountSend {
+            // A drain amount already accounts for its exact fee. The fixed-payment selector
+            // adds conservative recipient overhead and can reject an otherwise valid drain.
+            selectedUtxos = try await (listSpendable ?? { try await self.lightningService.listSpendableOutputs() })()
+        } else {
+            selectedUtxos = try await select(sendAmountSats, selectedFeeRateSatsPerVByte, coinSelectionAlgorythm)
+        }
 
         Logger.info("Selected UTXOs: \(String(describing: selectedUtxos))")
     }

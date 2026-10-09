@@ -979,6 +979,36 @@ final class HwFundingSignerTests: XCTestCase {
         }
     }
 
+    func testRetainedConfirmationRepeatSwipeIgnoresPresetAndKeepsOriginalBytes() async throws {
+        let funding = MockHwFunding()
+        let manager = HwWalletManager()
+        let coordinator = makeCoordinator(walletId: "jade:wallet", funding: funding, connecting: MockHwConnecting())
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "original-request", counterparty: "original-merchant")
+        let signed = funding.signedTx
+        funding.broadcastError = BroadcastError.ElectrumError(errorDetails: "broadcast failed: min relay fee not met")
+        var authorized = 0
+        for preset: UInt32 in [17, 99] {
+            let rate = try XCTUnwrap(SendConfirmationView.confirmationFeeRate(retained: signed, selected: preset))
+            await assertThrowsAsync {
+                _ = try await coordinator.signAndBroadcast(
+                    manager: manager, address: "bc1qtest", sats: 42000, satsPerVByte: UInt64(rate), paymentRequestId: requestId,
+                    loadSignedPayment: { RetainedHardwareOnchainPayment(signedTx: signed, hasAttemptedBroadcast: true, isRefusedForNavigation: true)
+                    },
+                    beforeFirstBroadcast: { _ in XCTFail("Must not prepare a new payment") },
+                    beforeBroadcastAttempt: { authorized += 1 }
+                )
+            } _: { error in
+                XCTAssertTrue(error is BroadcastError, "Expected the original native refusal, not another request: \(error)")
+            }
+            XCTAssertTrue(coordinator.canLeave)
+        }
+        XCTAssertEqual(authorized, 2)
+        XCTAssertEqual(funding.broadcastCalls, 2)
+        XCTAssertEqual(funding.broadcastTransactions, [signed.serializedTx, signed.serializedTx])
+        XCTAssertTrue(funding.composeCalls.isEmpty)
+        XCTAssertEqual(funding.signCalls, 0)
+    }
+
     func testShopDefiniteRefusalAllowsLeavingAndRetainsOriginalSignedPayment() async throws {
         let messages = [
             "min relay fee not met, 110 < 123",

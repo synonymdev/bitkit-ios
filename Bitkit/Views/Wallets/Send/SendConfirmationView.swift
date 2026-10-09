@@ -71,6 +71,30 @@ struct SendConfirmationView: View {
         return paykitPaymentRequestManager.retainedHardwareRetries[request.id]
     }
 
+    static func confirmationFeeRate(retained: HwFundingSignedTx?, selected: UInt32?) -> UInt32? {
+        guard let retained else { return selected }
+        return UInt32(exactly: retained.feeRate.rounded(.up))
+    }
+
+    static func canEditConfirmationFee(retained: HwFundingSignedTx?, isLoading: Bool) -> Bool {
+        retained == nil && !isLoading
+    }
+
+    private var confirmationFeeRate: UInt32? {
+        Self.confirmationFeeRate(retained: retainedHardwareRetry?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte)
+    }
+
+    private var confirmationSpeed: TransactionSpeed {
+        if retainedHardwareRetry != nil, let confirmationFeeRate {
+            return .custom(satsPerVByte: confirmationFeeRate)
+        }
+        return wallet.selectedSpeed
+    }
+
+    private var canEditFee: Bool {
+        Self.canEditConfirmationFee(retained: retainedHardwareRetry?.retainedHardwareRetry?.signedTx, isLoading: isHardwarePreparationLoading)
+    }
+
     private var canSwitchFundingSource: Bool {
         retainedHardwareRetry == nil && fundingSources.count > 1
     }
@@ -449,25 +473,26 @@ struct SendConfirmationView: View {
 
             HStack(alignment: .top, spacing: 16) {
                 Button(action: {
+                    guard canEditFee else { return }
                     navigationPath.append(.feeRate)
                 }) {
                     SendSectionView(t("wallet__send_fee_and_speed")) {
                         HStack(spacing: 0) {
                             Group {
                                 if hwSend.isPreviewLoading {
-                                    ActivityIndicator(size: 10, tint: wallet.selectedSpeed.iconColor)
+                                    ActivityIndicator(size: 10, tint: confirmationSpeed.iconColor)
                                 } else {
-                                    Image(wallet.selectedSpeed.iconName)
+                                    Image(confirmationSpeed.iconName)
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
-                                        .foregroundColor(wallet.selectedSpeed.iconColor)
+                                        .foregroundColor(confirmationSpeed.iconColor)
                                 }
                             }
                             .frame(width: 16, height: 16)
                             .padding(.trailing, 4)
 
                             HStack(spacing: 0) {
-                                BodySSBText(wallet.selectedSpeed.title)
+                                BodySSBText(confirmationSpeed.customSetSpeed ?? confirmationSpeed.title)
                                 if displayedTransactionFee > 0 {
                                     BodySSBText(" (")
                                     MoneyText(
@@ -480,14 +505,16 @@ struct SendConfirmationView: View {
                                 }
                             }
 
-                            Image("pencil")
-                                .foregroundColor(.textPrimary)
-                                .frame(width: 12, height: 12)
-                                .padding(.leading, 6)
+                            if canEditFee {
+                                Image("pencil")
+                                    .foregroundColor(.textPrimary)
+                                    .frame(width: 12, height: 12)
+                                    .padding(.leading, 6)
+                            }
                         }
                     }
                 }
-                .disabled(isHardwarePreparationLoading)
+                .disabled(!canEditFee)
 
                 SendSectionView(t("wallet__send_confirming_in")) {
                     HStack(spacing: 0) {
@@ -498,7 +525,7 @@ struct SendConfirmationView: View {
 
                         BodySSBText(
                             TransactionSpeed.getFeeTierLocalized(
-                                feeRate: UInt64(wallet.selectedFeeRateSatsPerVByte ?? 0),
+                                feeRate: UInt64(confirmationFeeRate ?? 0),
                                 feeEstimates: feeEstimatesManager.estimates,
                                 variant: .range
                             )
@@ -894,7 +921,9 @@ struct SendConfirmationView: View {
     }
 
     private var oneOffPaymentRequest: PaykitPaymentRequest? {
-        if let preparingRequest { return preparingRequest }
+        if let preparingRequest {
+            return preparingRequest
+        }
         guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.billingPeriod == nil else {
             return nil
         }
@@ -1232,7 +1261,9 @@ struct SendConfirmationView: View {
                         incomingPaymentRequest, paymentIdentity: originalPaymentIdentity
                     )
                     onchainPaymentStarted = !rolledBack
-                    if !rolledBack { privatePaymentListOutcome = .uncertain }
+                    if !rolledBack {
+                        privatePaymentListOutcome = .uncertain
+                    }
                 } else if onchainPaymentStarted {
                     shouldCancelPaymentProof = false
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
@@ -1249,7 +1280,8 @@ struct SendConfirmationView: View {
             }
             if let attemptError = error as? OnchainSendAttemptError {
                 switch attemptError {
-                case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable, .preDispatchCleanupFailed:
+                case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable,
+                     .preDispatchCleanupFailed:
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
                     shouldCancelPaymentProof = false
                     app.toast(attemptError)
@@ -1581,7 +1613,7 @@ struct SendConfirmationView: View {
             return
         }
 
-        guard let feeRate = wallet.selectedFeeRateSatsPerVByte else {
+        guard let feeRate = confirmationFeeRate else {
             if hwSend.isActive {
                 await hwSend.refreshAvailable(
                     manager: hwWalletManager,

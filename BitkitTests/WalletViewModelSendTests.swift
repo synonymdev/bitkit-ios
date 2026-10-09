@@ -1,9 +1,53 @@
 @testable import Bitkit
+import LDKNode
 import XCTest
 
 @MainActor
 final class WalletViewModelSendTests: XCTestCase {
     private struct FeeFetchError: Error {}
+
+    func testSoftwareMaxUsesSpendableOutputsInsteadOfFixedAmountSelection() async throws {
+        let wallet = WalletViewModel()
+        wallet.sendAmountSats = 99819
+        wallet.selectedFeeRateSatsPerVByte = 1
+        wallet.isMaxAmountSend = true
+        let coins = [60000, 40000].enumerated().map { index, value in
+            SpendableUtxo(outpoint: OutPoint(txid: String(repeating: index == 0 ? "a" : "b", count: 64), vout: 0), valueSats: UInt64(value))
+        }
+        var fixedSelections = 0
+        var listCalls = 0
+        do {
+            try await wallet.setUtxoSelection(
+                coinSelectionAlgorythm: .branchAndBound,
+                listSpendable: { listCalls += 1; return coins },
+                selectForAmount: { amount, rate, _ in
+                    fixedSelections += 1
+                    XCTAssertEqual(amount, 99819)
+                    XCTAssertEqual(rate, 1)
+                    throw FeeFetchError()
+                }
+            )
+        } catch {
+            XCTFail("Max must use the drain inputs without fixed-payment selection: \(error)")
+        }
+        XCTAssertEqual(wallet.selectedUtxos, coins)
+        XCTAssertEqual(fixedSelections, 0)
+        XCTAssertEqual(listCalls, 1)
+        wallet.isMaxAmountSend = false
+        wallet.sendAmountSats = 10000
+        try await wallet.setUtxoSelection(
+            coinSelectionAlgorythm: .branchAndBound,
+            listSpendable: { XCTFail("Fixed payment must retain its selected algorithm"); return coins },
+            selectForAmount: { amount, rate, _ in
+                fixedSelections += 1
+                XCTAssertEqual(amount, 10000)
+                XCTAssertEqual(rate, 1)
+                return [coins[0]]
+            }
+        )
+        XCTAssertEqual(wallet.selectedUtxos, [coins[0]])
+        XCTAssertEqual(fixedSelections, 1)
+    }
 
     func testFeeRateLoadRetriesAFailedFetchAndRecovers() async throws {
         let wallet = WalletViewModel()

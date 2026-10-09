@@ -151,7 +151,6 @@ struct HwSendSignView: View {
             }
             guard let invoice = app.scannedOnchainInvoice,
                   let amount = wallet.sendAmountSats,
-                  let feeRate = wallet.selectedFeeRateSatsPerVByte,
                   let walletId = hwSend.walletId
             else {
                 app.toast(type: .error, title: t("common__error"), description: t("other__try_again"))
@@ -162,6 +161,13 @@ struct HwSendSignView: View {
             let tags = tagManager.selectedTagsArray
 
             do {
+                var retained: PendingPaykitPaymentProof?
+                if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                    retained = try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request)
+                }
+                guard let feeRate = SendConfirmationView.confirmationFeeRate(
+                    retained: retained?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte
+                ) else { throw PaykitPaymentRequestError.requestUnavailable }
                 var proofVerified = requestId == nil
                 let result = try await PaykitPaymentProofService.shared.withHardwarePaymentOwnership(walletId: walletId) {
                     try await hwSend.signAndBroadcast(
