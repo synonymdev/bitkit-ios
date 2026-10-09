@@ -572,15 +572,6 @@ extension AppViewModel {
             else {
                 throw ScanHandlingError.unsupportedRequest
             }
-            if Bip21Utils.isDuplicatedBip21(uri) {
-                toast(
-                    type: .error,
-                    title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic"),
-                    accessibilityIdentifier: "InvalidAddressToast"
-                )
-                return
-            }
             let data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
             guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
@@ -599,17 +590,6 @@ extension AppViewModel {
 
         if scope == .unrestricted, SamRockSetupRequest.isProtocolURL(uri) {
             handleInvalidBTCPayConnection(uri)
-            return
-        }
-
-        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if scope == .unrestricted, Bip21Utils.isDuplicatedBip21(uri) {
-            toast(
-                type: .error,
-                title: t("other__scan_err_decoding"),
-                description: t("other__scan__error__generic"),
-                accessibilityIdentifier: "InvalidAddressToast"
-            )
             return
         }
 
@@ -1093,15 +1073,6 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
-            return
-        }
-
-        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
-        if Bip21Utils.isDuplicatedBip21(normalized) {
-            guard currentSequence == manualEntryValidationSequence else { return }
-            manualEntryValidationResult = .invalid
-            isManualEntryInputValid = false
-            showValidationErrorToast(for: .invalid)
             return
         }
 

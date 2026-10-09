@@ -89,13 +89,26 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         }
     }
 
-    func testDuplicateBip21IsRejectedBeforeCandidateRecognition() async {
-        let supported = await ClipboardPromptValidator.isSupportedURI(
-            "bitcoin:bitcoin:invalid?lightning=lnurl1qqqqqq", ownPublicKey: nil, contacts: []
-        ) { _ in
-            XCTFail("Duplicated BIP21 must be rejected before decoding")
-            return true
+    func testBip21ValidationUsesDecoderResult() async {
+        let uri = "bitcoin:mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn?message=bitcoin:donation"
+        for decoderResult in [false, true] {
+            var decodeCount = 0
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: []) {
+                decodeCount += 1
+                XCTAssertEqual($0, uri)
+                return decoderResult
+            }
+            XCTAssertEqual(decodeCount, 1)
+            XCTAssertEqual(supported, decoderResult)
         }
+    }
+
+    func testDuplicateBip21IsRejectedByCoreDecoder() async {
+        let first = "bitcoin:bcrt1qr289x0fhg62672e8urudfnxnsr8tcax64xk2vk?amount=0.0000002&message=Bitkit"
+        let second = "bitcoin:bcrt1qr289x0fhg62672e8urudfnxnsr8tcax64xk2vk?amount=0.0000003&message=Bitkit"
+        let supported = await ClipboardPromptValidator.isSupportedURI(
+            first + second, ownPublicKey: nil, contacts: []
+        )
         XCTAssertFalse(supported)
     }
 
