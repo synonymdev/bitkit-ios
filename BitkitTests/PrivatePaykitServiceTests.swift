@@ -1152,14 +1152,17 @@ final class PrivatePaykitServiceTests: XCTestCase {
     }
 
     func testRecoveryRequiredDiagnosticsRecognizePaykitErrors() {
-        let error = PaykitError.RecoveryRequired(code: "link_recovery_required", context: "do-not-log")
-
-        XCTAssertTrue(PaykitResolutionFailureDiagnostics.isRecoveryRequired(error))
-        XCTAssertFalse(
-            PaykitResolutionFailureDiagnostics.isRecoveryRequired(
-                PaykitError.Transport(code: "offline", context: "do-not-log")
-            )
-        )
+        let cases: [(PaykitError, Bool)] = [
+            (.RecoveryRequired(code: "link_recovery_required", context: "do-not-log"), true),
+            (.Protocol(code: "link_observation_failed", context: "do-not-log"), true),
+            (.Protocol(code: "protocol_error", context: "link_observation_failed"), false),
+            (.Transport(code: "offline", context: "do-not-log"), false),
+            (.Transport(code: "link_observation_failed", context: "do-not-log"), false),
+        ]
+        for (error, requiresRecovery) in cases {
+            XCTAssertEqual(PaykitResolutionFailureDiagnostics.isRecoveryRequired(error), requiresRecovery)
+        }
+        XCTAssertFalse(PaykitResolutionFailureDiagnostics.isRecoveryRequired(PrivatePaykitError.privateUnavailable))
     }
 
     func testPaymentRequestWaitsForPrivateLinkRecoveryStates() {
