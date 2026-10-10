@@ -1,61 +1,5 @@
 import SwiftUI
 
-func canRoutePubkyContactLink(
-    isPaykitUIActive: Bool,
-    isPubkyInitialized: Bool,
-    hasLoadedContacts: Bool
-) -> Bool {
-    !isPaykitUIActive || (isPubkyInitialized && hasLoadedContacts)
-}
-
-func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) throws -> String? {
-    guard isPaykitUIActive else { return nil }
-    guard let publicKey = PubkyContactLink.publicKey(from: url) else {
-        throw ContactsManagerError.invalidPublicKey
-    }
-    return publicKey
-}
-
-@MainActor
-func prepareAndRoutePendingDeepLink(
-    preparation: () async -> Void,
-    routing: () async -> Void
-) async {
-    await preparation()
-    guard !Task.isCancelled else { return }
-    await routing()
-}
-
-enum PendingProfileSetupResumeState {
-    case inactive
-    case waiting
-    case ready
-
-    func shouldResume(didResume: inout Bool) -> Bool {
-        if self == .inactive {
-            didResume = false
-        }
-        guard self == .ready, !didResume else { return false }
-        didResume = true
-        return true
-    }
-}
-
-func resolvePendingProfileSetupResumeState(
-    isProfileSetupPending: Bool,
-    isPaykitUIActive: Bool,
-    isAuthenticated: Bool,
-    hasActiveSheet: Bool,
-    isReplacingSheet: Bool,
-    currentRoute: Route?
-) -> PendingProfileSetupResumeState {
-    guard isProfileSetupPending else { return .inactive }
-    guard isPaykitUIActive, isAuthenticated, !hasActiveSheet, !isReplacingSheet, currentRoute != .createProfile else {
-        return .waiting
-    }
-    return .ready
-}
-
 struct MainNavView: View {
     private let canHandleDeepLinks: Bool
 
@@ -740,14 +684,34 @@ struct MainNavView: View {
     }
 
     private func handleClipboardIfEnabled() {
-        guard settings.readClipboard else { return }
+        guard settings.readClipboard, !showClipboardAlert else { return }
 
         Task { @MainActor in
-            guard let uri = UIPasteboard.general.string else {
+            let pasteboard = UIPasteboard.general
+            let history = ClipboardPromptHistory()
+            let changeCount = pasteboard.changeCount
+            guard history.shouldInspect(changeCount: changeCount) else { return }
+
+            let uri = pasteboard.string?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isSupported = if let uri, !uri.isEmpty {
+                await ClipboardPromptValidator.isSupportedURI(
+                    uri,
+                    ownPublicKey: pubkyProfile.publicKey,
+                    contacts: contactsManager.contacts
+                )
+            } else {
+                false
+            }
+
+            guard scenePhase == .active, settings.readClipboard, !showClipboardAlert else { return }
+            guard pasteboard.changeCount == changeCount else {
+                handleClipboardIfEnabled()
                 return
             }
 
-            // Store the URI and show alert
+            let shouldOffer = history.recordInspection(changeCount: changeCount, supportedValue: isSupported ? uri : nil)
+            guard shouldOffer, isSupported, let uri else { return }
+
             clipboardUri = uri
             showClipboardAlert = true
         }
