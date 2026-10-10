@@ -1,9 +1,14 @@
 <journey name="widgets intro">
-  <description>Precondition: onboarded dev wallet, widgets enabled, widgets intro unseen.</description>
+  <description>
+    Precondition: onboarded dev wallet, widgets enabled, widgets intro unseen, and Bitcoin Weather
+    NOT already in the widget set. A new wallet's default set already has it, and re-saving a widget
+    that is already there keeps its original position instead of appending, so the final assertion
+    fails for the wrong reason. Delete it from the widgets list first if present.
+  </description>
   <actions>
     <action>Tap the menu icon</action>
     <action>Tap "Widgets" (id "DrawerWidgets")</action>
-    <action>Verify the widgets intro screen (id "WidgetsOnboarding") is visible showing "Hello, Widgets", "View &amp; Organize", and "Add Widget"</action>
+    <action>Verify the widgets intro screen (id "WidgetsOnboarding") is visible showing "Hello, Widgets" (the heading renders in capitals), "View &amp; Organize", and "Add Widget"</action>
     <action>Tap "Add Widget" (id "WidgetsOnboardingAddWidget") — this also marks the intro as seen, so the journey cannot be repeated without resetting hasSeenWidgetsIntro</action>
     <action>Verify the "Add Widget" sheet is visible with "Bitcoin Price" and "Bitcoin Weather"</action>
     <action>Verify the widgets intro remains visible behind the sheet backdrop at the top</action>
