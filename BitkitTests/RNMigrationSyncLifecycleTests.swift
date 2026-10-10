@@ -5,6 +5,14 @@ import XCTest
 
 @MainActor
 final class RNMigrationSyncLifecycleTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // Keep the event caller from scheduling the host wallet's unrelated restore sweep/prune.
+        snapshotAppDefaults("pendingRestoreActivitySeenSince", "pendingRestoreAddressTypePrune")
+        SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
+        SettingsViewModel.shared.pendingRestoreAddressTypePrune = false
+    }
+
     private final class Gate {
         let entered = XCTestExpectation(description: "migration operation suspended")
         private var continuation: CheckedContinuation<Void, Never>?
@@ -98,9 +106,6 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
     }
 
     func testOverlappingSyncEventsCompleteOnceAndBackgroundRetryLeavesNewReceiveUnseen() async throws {
-        snapshotAppDefaults("pendingRestoreActivitySeenSince", "pendingRestoreAddressTypePrune")
-        SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
-        SettingsViewModel.shared.pendingRestoreAddressTypePrune = false
         let suite = "RNMigrationCompletion.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -127,7 +132,8 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
             },
             reapplyMetadata: { includeLocal in
                 localPasses.append(includeLocal)
-                await migrations.reapplyMetadataAfterSync(includeLocalMetadata: includeLocal, applyTags: { Set($0.keys) })
+                // Exercise retained tags only; never read the host simulator's RN files or activity DB.
+                await migrations.retryPendingMetadata { Set($0.keys) }
             }
         )
         let app = AppViewModel(
@@ -205,6 +211,61 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
         XCTAssertTrue(resetReturned)
         XCTAssertTrue(migrations.needsPostMigrationSync, "the cancelled pass must not alter completion state")
         XCTAssertEqual(reapplyCount, 1)
+    }
+
+    func testFailedWipeDrainsCancelledWorkThenResumesPendingRetries() async throws {
+        let suite = "RNMigrationFailedWipe.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let migrations = Bitkit.MigrationsService(userDefaults: defaults)
+        migrations.pendingMetadata = Bitkit.RNMetadata(tags: ["missing": ["retained"]])
+        let gate = Gate()
+        var syncCount = 0
+        var retryCount = 0
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel(),
+            migrations: migrations, postMigrationSyncOperations: PostMigrationSyncOperations(
+                syncPayments: {
+                    syncCount += 1
+                    if syncCount == 1 { await gate.suspend() }
+                },
+                markActivitiesSeen: { XCTFail("background retries must not sweep history") },
+                reapplyMetadata: { _ in
+                    retryCount += 1
+                    await migrations.retryPendingMetadata { Set($0.keys) }
+                }
+            )
+        )
+        let event = Event.syncCompleted(syncType: .onchainWallet, syncedBlockHeight: 1)
+        app.handleLdkNodeEvent(event)
+        await fulfillment(of: [gate.entered], timeout: 2)
+        let wipeEntered = expectation(description: "wipe started after cancelled task drained")
+        let reset = Task {
+            do {
+                try await app.withMigrationSyncPausedForWipe {
+                    XCTAssertNil(app.postMigrationSyncTask)
+                    wipeEntered.fulfill()
+                    throw NSError(domain: "wipe failed", code: 1)
+                }
+                XCTFail("wipe failure must propagate")
+            } catch {}
+        }
+        while app.postMigrationSyncTask?.isCancelled == false {
+            await Task.yield()
+        }
+        app.handleLdkNodeEvent(event)
+        XCTAssertEqual(syncCount, 1)
+        gate.resume()
+        await reset.value
+        await fulfillment(of: [wipeEntered], timeout: 2)
+        XCTAssertEqual(retryCount, 0)
+        XCTAssertEqual(migrations.pendingMetadata?.tags, ["missing": ["retained"]])
+        app.handleLdkNodeEvent(event)
+        let retry = try XCTUnwrap(app.postMigrationSyncTask)
+        await retry.value
+        XCTAssertEqual(syncCount, 2)
+        XCTAssertEqual(retryCount, 1)
+        XCTAssertEqual(migrations.pendingMetadata?.tags, ["missing": ["retained"]])
     }
 
     private func onchain(id: String) -> OnchainActivity {

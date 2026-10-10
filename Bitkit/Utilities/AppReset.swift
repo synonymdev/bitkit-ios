@@ -15,7 +15,9 @@ enum AppReset {
         toastType: Toast.ToastType = .success
     ) async throws {
         try await PaykitSdkService.shared.withWalletWipe {
-            try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
+            try await app.withMigrationSyncPausedForWipe {
+                try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
+            }
         }
     }
 
@@ -26,8 +28,6 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType
     ) async throws {
-        await app.cancelMigrationSyncForWipe()
-
         await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
         await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
 

@@ -1399,6 +1399,17 @@ extension AppViewModel {
         await postMigrationSyncTask?.value
     }
 
+    /// Keep the retiring app paused on success, but resume retained metadata if the wipe aborts.
+    func withMigrationSyncPausedForWipe(_ wipe: () async throws -> Void) async rethrows {
+        await cancelMigrationSyncForWipe()
+        do {
+            try await wipe()
+        } catch {
+            isResettingMigration = false
+            throw error
+        }
+    }
+
     private func beginPostMigrationSync() {
         guard !isResettingMigration, !isSyncingMigration,
               migrations.needsPostMigrationSync || migrations.hasPendingMigrationRetries
