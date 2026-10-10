@@ -86,7 +86,27 @@ struct ScanPaymentOperations {
 }
 
 @MainActor
+struct PostMigrationSyncOperations {
+    var syncPayments: () async -> Void
+    var markActivitiesSeen: () async -> Void
+    var reapplyMetadata: (Bool) async -> Void
+
+    static func live(migrations: MigrationsService) -> Self {
+        Self(
+            syncPayments: { try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? []) },
+            markActivitiesSeen: { _ = await CoreService.shared.activity.markAllUnseenActivitiesAsSeen() },
+            reapplyMetadata: { await migrations.reapplyMetadataAfterSync(includeLocalMetadata: $0) }
+        )
+    }
+}
+
+@MainActor
 class AppViewModel: ObservableObject {
+    private var isSyncingMigration = false
+    private var isResettingMigration = false
+    private(set) var postMigrationSyncTask: Task<Void, Never>?
+    private let migrations: MigrationsService
+    private let postMigrationSyncOperations: PostMigrationSyncOperations
     // Send flow
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedOnchainInvoice: OnChainInvoice?
@@ -239,8 +259,12 @@ class AppViewModel: ObservableObject {
         coreService: CoreService = .shared,
         sheetViewModel: SheetViewModel,
         navigationViewModel: NavigationViewModel,
-        scanPaymentOperations: ScanPaymentOperations? = nil
+        scanPaymentOperations: ScanPaymentOperations? = nil,
+        migrations: MigrationsService = .shared,
+        postMigrationSyncOperations: PostMigrationSyncOperations? = nil
     ) {
+        self.migrations = migrations
+        self.postMigrationSyncOperations = postMigrationSyncOperations ?? .live(migrations: migrations)
         self.lightningService = lightningService
         self.coreService = coreService
         self.sheetViewModel = sheetViewModel
@@ -1367,6 +1391,63 @@ extension AppViewModel {
         }
     }
 
+    /// Invalidates captured retries and drains queued activity writes before databases/defaults are wiped.
+    func cancelMigrationSyncForWipe() async {
+        isResettingMigration = true
+        migrations.invalidatePendingRetries()
+        postMigrationSyncTask?.cancel()
+        await postMigrationSyncTask?.value
+    }
+
+    /// Keep the retiring app paused on success, but resume retained metadata if the wipe aborts.
+    func withMigrationSyncPausedForWipe(_ wipe: () async throws -> Void) async rethrows {
+        await cancelMigrationSyncForWipe()
+        do {
+            try await wipe()
+        } catch {
+            isResettingMigration = false
+            throw error
+        }
+    }
+
+    private func beginPostMigrationSync() {
+        guard !isResettingMigration, !isSyncingMigration,
+              migrations.needsPostMigrationSync || migrations.hasPendingMigrationRetries
+        else { return }
+        let completingMigration = migrations.needsPostMigrationSync
+        let generation = migrations.retryGeneration
+        isSyncingMigration = true
+        postMigrationSyncTask = Task { @MainActor in
+            defer {
+                self.isSyncingMigration = false
+                self.postMigrationSyncTask = nil
+            }
+            guard migrations.isRetryCurrent(generation) else { return }
+            await postMigrationSyncOperations.syncPayments()
+            guard migrations.isRetryCurrent(generation) else { return }
+            if completingMigration {
+                await postMigrationSyncOperations.markActivitiesSeen()
+                guard migrations.isRetryCurrent(generation) else { return }
+            }
+            await postMigrationSyncOperations.reapplyMetadata(completingMigration)
+            guard migrations.isRetryCurrent(generation) else { return }
+            migrations.needsPostMigrationSync = false
+
+            if migrations.canCleanupAfterMigration {
+                if migrations.isShowingMigrationLoading {
+                    try? await LightningService.shared.restart()
+                    guard migrations.isRetryCurrent(generation) else { return }
+                }
+                SettingsViewModel.shared.updatePinEnabledState()
+                migrations.cleanupAfterMigration()
+            } else {
+                Logger.info("Post-migration sync incomplete, will retry on next sync", context: "AppViewModel")
+            }
+            migrations.isRestoringFromRNRemoteBackup = false
+            migrations.isShowingMigrationLoading = false
+        }
+    }
+
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case let .paymentReceived(paymentId, _, amountMsat, _):
@@ -1609,30 +1690,7 @@ extension AppViewModel {
                 }
             }
 
-            if MigrationsService.shared.needsPostMigrationSync {
-                Task { @MainActor in
-                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? [])
-                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
-                    await MigrationsService.shared.reapplyMetadataAfterSync()
-
-                    if MigrationsService.shared.canCleanupAfterMigration {
-                        if MigrationsService.shared.isShowingMigrationLoading {
-                            try? await LightningService.shared.restart()
-                        }
-
-                        SettingsViewModel.shared.updatePinEnabledState()
-                        MigrationsService.shared.cleanupAfterMigration()
-                        MigrationsService.shared.needsPostMigrationSync = false
-                        MigrationsService.shared.isRestoringFromRNRemoteBackup = false
-                    } else {
-                        Logger.info("Post-migration sync incomplete, will retry on next sync", context: "AppViewModel")
-                    }
-
-                    if MigrationsService.shared.isShowingMigrationLoading {
-                        MigrationsService.shared.isShowingMigrationLoading = false
-                    }
-                }
-            }
+            beginPostMigrationSync()
 
         // MARK: Balance Events
 
