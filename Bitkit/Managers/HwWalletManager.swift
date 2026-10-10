@@ -1235,6 +1235,14 @@ final class HwWalletManager {
         )
     }
 
+    nonisolated static func persistedFundingAccount(walletId: String) throws -> HwFundingAccount {
+        let entries = HwKnownDeviceStorage.loadAll(walletId: walletId)
+        guard let xpub = entries.compactMap({ $0.xpubs[hwFundingDefaultAddressType.stringValue] }).first else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        return HwFundingAccount(xpub: xpub, addressType: hwFundingDefaultAddressType, balanceSats: 0)
+    }
+
     func watcherReceiveAddress(
         walletId: String,
         addressType: AddressScriptType = hwFundingDefaultAddressType
@@ -1541,11 +1549,16 @@ final class HwWalletManager {
     }
 
     /// Broadcast a signed funding transaction and return its txid. Does not require a connected device.
-    func broadcastFunding(serializedTx: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
+    ) async throws -> String {
         try await OnChainHwService.shared.broadcastRawTx(
             serializedTx: serializedTx,
             electrumUrl: electrumUrlProvider(),
-            paymentDeadline: paymentDeadline
+            paymentDeadline: paymentDeadline,
+            beforeDispatch: beforeDispatch
         )
     }
 

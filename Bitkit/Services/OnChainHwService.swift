@@ -117,11 +117,35 @@ class OnChainHwService {
 
     /// Broadcast a signed raw transaction via Electrum.
     /// - Returns: The transaction ID (txid)
-    func broadcastRawTx(serializedTx: String, electrumUrl: String, paymentDeadline: PaykitPreciseInstant? = nil) async throws -> String {
+    func broadcastRawTx(
+        serializedTx: String,
+        electrumUrl: String,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
+    ) async throws -> String {
         try await ServiceQueue.background(.core) {
-            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
-            return try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
+            try await Self.broadcastAtBoundary(paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch) {
+                try await onchainBroadcastRawTx(serializedTx: serializedTx, electrumUrl: electrumUrl)
+            }
         }
+    }
+
+    /// Recheck after awaited preparation; errors here prove the native call was not entered.
+    static func broadcastAtBoundary(
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void,
+        nativeBroadcast: () async throws -> String
+    ) async throws -> String {
+        do {
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
+            try Task.checkCancellation()
+            try await beforeDispatch()
+            try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
+            try Task.checkCancellation()
+        } catch {
+            throw PreparedOnchainSendNotSubmitted(underlying: error)
+        }
+        return try await nativeBroadcast()
     }
 
     // MARK: - Event Watcher (No Device Required)

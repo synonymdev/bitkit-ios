@@ -503,6 +503,17 @@ extension AppViewModel {
         pendingContactPaymentContexts[hash] = context
     }
 
+    func prepareResolvedOnchainContactContext(_ resolution: PaykitOnchainPaymentResolution, isHardware: Bool) {
+        if isHardware {
+            // Verified hardware activity already owns its contact, including later user edits.
+            consumeContactPaymentContext(forPendingPaymentHash: resolution.transactionId)
+        } else {
+            addPendingContactPaymentContext(
+                resolution.transactionId, context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
+            )
+        }
+    }
+
     func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
         pendingContactPaymentContexts[hash]
     }
@@ -888,6 +899,18 @@ extension AppViewModel {
         } else {
             Logger.debug("No amount found in invoice, proceeding entering amount manually")
         }
+    }
+
+    func handleRetainedHardwarePayment(_ proof: PendingPaykitPaymentProof, context: ContactPaymentContext) throws {
+        guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
+              context.publicKey == request.counterparty,
+              PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
+              let address = proof.onchainAddress
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        // This route submits an existing transaction, so it never admits fresh inputs against a balance.
+        handleScannedOnchainInvoice(OnChainInvoice(
+            address: address, amountSatoshis: request.amountSats, label: nil, message: nil, params: nil
+        ))
     }
 
     private func handleScannedOnchainInvoice(_ invoice: OnChainInvoice) {

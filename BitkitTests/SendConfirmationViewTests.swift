@@ -3,6 +3,17 @@ import LDKNode
 import XCTest
 
 final class SendConfirmationViewTests: XCTestCase {
+    func testRetainedHardwareConfirmationLocksSignedFeeRateDespitePresetEdits() {
+        let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
+        for preset: UInt32? in [1, 17, 99, nil] {
+            XCTAssertEqual(SendConfirmationView.confirmationFeeRate(retained: signed, selected: preset), 3)
+            XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: signed, isLoading: false))
+        }
+        XCTAssertEqual(SendConfirmationView.confirmationFeeRate(retained: nil, selected: 17), 17)
+        XCTAssertTrue(SendConfirmationView.canEditConfirmationFee(retained: nil, isLoading: false))
+        XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: nil, isLoading: true))
+    }
+
     func testAutomaticPaymentRequiresManualConfirmationForNonLightningFunding() {
         for walletType in [WalletType.lightning, .onchain] {
             for isHardwarePayment in [false, true] {
@@ -76,7 +87,7 @@ final class SendConfirmationViewTests: XCTestCase {
                 currentOutcome: .uncertain,
                 walletType: .onchain,
                 onchainPaymentStarted: true,
-                error: NodeError.InsufficientFunds(message: "insufficient funds")
+                error: OnchainSendAttemptError.preDispatch(NodeError.InsufficientFunds(message: "insufficient funds"))
             ),
             .definitePreBroadcastFailure
         )

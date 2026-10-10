@@ -336,10 +336,9 @@ class BackupService {
                 try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 if let paymentState = payload.paykitPaymentState {
-                    try PaykitSubscriptionStateStore().restoreBackup(paymentState.subscriptions)
-                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState.pendingProofs)
-                    try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
-                        .restoreBackup(paymentState.acceptedOneTimeRequests ?? [:])
+                    // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
+                    let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
+                    try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
@@ -530,6 +529,7 @@ class BackupService {
         PaykitSubscriptionStateStore.walletBackupDataChangedPublisher
             .merge(with: PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher)
             .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
+            .merge(with: OnchainSendAttemptStore.walletBackupDataChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -899,10 +899,8 @@ class BackupService {
                 paykitSdkBackupState: paykitSdkBackupState,
                 watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
                 watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
-                paykitPaymentState: PaykitPaymentStateBackup(
-                    subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
-                    pendingProofs: PaykitPaymentProofService.shared.backupSnapshot(),
-                    acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).backupSnapshot()
+                paykitPaymentState: PaykitPaymentProofService.shared.backupSnapshot(
+                    wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
                 )
             )
             return try JSONEncoder().encode(payload)

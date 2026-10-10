@@ -1318,6 +1318,7 @@ class ActivityService {
     /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
     /// under that wallet's id, so the merged activity list shows one hardware-owned transfer row
     /// rather than a main-wallet row plus a hardware duplicate.
+    @discardableResult
     func createSentOnchainActivityFromSendResult(
         txid: String,
         address: String,
@@ -1326,17 +1327,25 @@ class ActivityService {
         feeRate: UInt32,
         isTransfer: Bool = false,
         contact: String? = nil,
-        walletId: String = WalletScope.default
-    ) async {
+        walletId: String = WalletScope.default,
+        feeIsExact: Bool = false,
+        preserveExistingContact: Bool = false
+    ) async -> Bool {
         let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
-            try await ServiceQueue.background(.core) {
+            return try await ServiceQueue.background(.core) {
                 if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
                     var updated = existing
+                    if feeIsExact {
+                        updated.fee = fee
+                        updated.feeRate = UInt64(feeRate)
+                    }
                     if isTransfer {
                         updated.isTransfer = true
                     }
-                    if let normalizedContact {
+                    let preserveContact = preserveExistingContact && existing.txType == .sent
+                        && (existing.contact != nil || self.isContactDetached(activityId: existing.id, walletId: existing.walletId))
+                    if let normalizedContact, !preserveContact {
                         updated.contact = normalizedContact
                     }
                     if updated != existing {
@@ -1344,7 +1353,7 @@ class ActivityService {
                         self.activitiesChangedSubject.send()
                     }
                     Logger.debug("Activity already exists for txid \(txid), skipping immediate creation", context: "ActivityService")
-                    return
+                    return true
                 }
                 let now = UInt64(Date().timeIntervalSince1970)
                 let onchain = OnchainActivity(
@@ -1374,9 +1383,11 @@ class ActivityService {
                 self.updateBoostTxIdsCache(for: .onchain(onchain))
                 self.activitiesChangedSubject.send()
                 Logger.info("Created sent onchain activity for txid \(txid) from send result", context: "ActivityService")
+                return true
             }
         } catch {
             Logger.error("Failed to create sent onchain activity for txid \(txid): \(error)", context: "ActivityService")
+            return false
         }
     }
 

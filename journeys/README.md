@@ -115,6 +115,18 @@ iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabula
 journey usually names the same string on both platforms. Where a container needs to be queryable,
 iOS pairs the identifier with `.accessibilityElement(children: .contain)`.
 
+### On-chain payment safety adaptations
+
+The shared names and action prose in `send/onchain-original-payment-retry.xml`,
+`send/onchain-accepted-result.xml` and `hardware-wallet/shop-onchain-proof.xml` follow Android.
+Their descriptions record extra iOS manual checks and necessary platform mechanics:
+
+| Journey | iOS adaptation |
+| --- | --- |
+| Original payment retry | Max retains its original rate; custom fees use `getFeeLimits()`. Additional channel funding, payer/wallet race and backup checks are in the description. |
+| Accepted result | `xcrun simctl openurl`; confirm change before the Max leg, use Manual coin selection and restore Autopilot afterward. The existing Autopilot Max limitation is not claimed fixed. |
+| Hardware Shop proof | iOS identifiers and Bridge setup; extra durable returning-payer and later tag-edit replay checks are in the description. |
+
 Known naming differences:
 
 | Concept | Android testTag | iOS accessibilityIdentifier |

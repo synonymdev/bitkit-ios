@@ -1357,7 +1357,19 @@ struct AppScene: View {
     }
 
     private func associateResolvedPaykitOnchainPayment(_ resolution: PaykitOnchainPaymentResolution) async {
-        if let identity = pubkyProfile.publicKey,
+        await Self.associateResolvedPaykitOnchainPayment(resolution, activeIdentity: pubkyProfile.publicKey, activity: activity)
+        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution, activeIdentity: pubkyProfile.publicKey)
+    }
+
+    static func associateResolvedPaykitOnchainPayment(
+        _ resolution: PaykitOnchainPaymentResolution,
+        activeIdentity: String?,
+        activity: ActivityListViewModel
+    ) async {
+        // Hardware proof reconciliation already saved contact/tags in the original wallet before publishing.
+        // Replaying the default-wallet association would overwrite unrelated Savings rows and later edits.
+        guard resolution.walletId == WalletScope.default else { return }
+        if let identity = activeIdentity,
            PubkyPublicKeyFormat.matches(resolution.identity, identity)
         {
             do {
@@ -1384,7 +1396,6 @@ struct AppScene: View {
                 )
             }
         }
-        await PaykitPaymentProofService.shared.consumeOnchainPaymentResolution(resolution)
     }
 
     private func pollIncomingPaykitPaymentRequests() async {
@@ -1460,14 +1471,19 @@ struct AppScene: View {
                 } else {
                     preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: pubkyProfile.currentSession)
                     incomingPaymentRequestPreparation = preparation
-                    sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
-                        if preparation.resolvedRoute == nil, scenePhase == .active,
-                           preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
-                        {
-                            paykitPaymentRequestManager.dismissPreparingRequest(request)
+                    sheets.showSheet(.send, data: SendConfig(
+                        view: .confirm,
+                        hardwareWalletId: paykitPaymentRequestManager.retainedHardwareRetries[request.id]?.onchainWalletId,
+                        preparation: preparation,
+                        onDismiss: {
+                            if preparation.resolvedRoute == nil, scenePhase == .active,
+                               preparation.matchesSession(pubkyProfile.currentSession), let request = preparation.request
+                            {
+                                paykitPaymentRequestManager.dismissPreparingRequest(request)
+                            }
+                            preparation.clear()
                         }
-                        preparation.clear()
-                    }))
+                    ))
                 }
                 defer {
                     if preparation.resolvedRoute == nil {
@@ -1518,11 +1534,15 @@ struct AppScene: View {
 
                     do {
                         try await preparation.whilePreparing {
-                            try await app.handleScannedData(
-                                paymentTarget,
-                                claimedContactPaymentContext: contactPaymentContext,
-                                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
-                            )
+                            if let proof = paykitPaymentRequestManager.retainedHardwareRetries[request.id] {
+                                try app.handleRetainedHardwarePayment(proof, context: contactPaymentContext)
+                            } else {
+                                try await app.handleScannedData(
+                                    paymentTarget,
+                                    claimedContactPaymentContext: contactPaymentContext,
+                                    alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                                )
+                            }
                         }
                         guard isCurrentIncomingPaymentRequestPreparation(preparation),
                               app.ownsContactPaymentContext(contactPaymentContext)

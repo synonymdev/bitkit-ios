@@ -514,7 +514,12 @@ private final class ControlledSendWallet: WalletViewModel {
         availableUtxos = []
     }
 
-    override func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm, isCurrentSend: () -> Bool = { true }) async throws {
+    override func setUtxoSelection(
+        coinSelectionAlgorythm: CoinSelectionAlgorithm,
+        isCurrentSend: () -> Bool = { true },
+        listSpendable: (() async throws -> [SpendableUtxo])? = nil,
+        selectForAmount: ((UInt64, UInt32, CoinSelectionAlgorithm) async throws -> [SpendableUtxo])? = nil
+    ) async throws {
         if operation == .selection { try await suspend() }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         selectedUtxos = []

@@ -103,7 +103,8 @@ class WalletViewModel: ObservableObject {
         rgsConfigService: RgsConfigService = RgsConfigService(),
         transferService: TransferService,
         sheetViewModel: SheetViewModel,
-        feeEstimatesManager: FeeEstimatesManager
+        feeEstimatesManager: FeeEstimatesManager,
+        onchainAttemptService: OnchainSendAttemptService = .shared
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
@@ -117,6 +118,28 @@ class WalletViewModel: ObservableObject {
             transferService: transferService,
             coreService: coreService
         )
+        Task {
+            do {
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(
+                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), using: transferService
+                )
+            } catch {
+                Logger.warn("Accepted order local follow-up remains guarded: \(error)", context: "WalletViewModel")
+            }
+        }
+        let onchainObservation: @Sendable (String, Bool) async -> Void = { txid, isConfirmed in
+            let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+            do {
+                guard try await onchainAttemptService.observeTransaction(txid: txid, walletId: walletId, isConfirmed: isConfirmed) else { return }
+                _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId, using: transferService)
+                await PaykitPaymentProofService.shared.reconcile()
+            } catch {
+                Logger.warn("Observed payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
+            }
+        }
+        lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
+        lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
     }
 
     /// Convenience initializer for previews and testing
@@ -599,15 +622,19 @@ class WalletViewModel: ObservableObject {
     ///   - address: The bitcoin address to send to
     ///   - sats: The amount in satoshis to send
     ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
-    /// - Returns: The transaction ID (txid) of the sent transaction
+    /// - Returns: The backend's broadcast result and the attempted transaction ID
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
     func send(
         address: String,
         sats: UInt64,
         isMaxAmount: Bool = false,
+        requestId: PaykitPaymentRequest.ID? = nil,
+        paymentIdentity: String? = nil,
+        followupContext: OnchainSendFollowupContext? = nil,
         paymentDeadline: PaykitPreciseInstant? = nil,
-        beforeBroadcastAttempt: () async throws -> Void = {}
-    ) async throws -> Txid {
+        beforeBroadcastAttempt: () async throws -> Void = {},
+        onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
+    ) async throws -> OnchainSendResult {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -618,22 +645,38 @@ class WalletViewModel: ObservableObject {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
-        try await beforeBroadcastAttempt()
-        let txid = try await lightningService.send(
+        let result = try await OnchainSendAttemptService.shared.send(
+            using: lightningService,
             address: address,
-            sats: sats,
+            amountSats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
             isMaxAmount: isMaxAmount,
-            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline) }
+            requestId: requestId,
+            paymentIdentity: paymentIdentity,
+            followupContext: followupContext,
+            paymentDeadline: paymentDeadline,
+            beforeBroadcastAttempt: beforeBroadcastAttempt,
+            onPreDispatchFailure: onPreDispatchFailure
         )
 
-        Task {
-            // Best to auto sync on chain so we have latest state
-            try await sync()
+        if case .accepted = result {
+            Task {
+                try await sync()
+            }
         }
 
-        return txid
+        return result
+    }
+
+    func resumeAcceptedOnchainTransfer(walletId: String, attempts: OnchainSendAttemptService) async throws -> Bool {
+        try await attempts.resumeAcceptedTransfer(walletId: walletId, using: transferService)
+    }
+
+    func resolvedAcceptedOnchainTransfer(context: OnchainSendPendingContext, attempts: OnchainSendAttemptService) async throws
+        -> OnchainSendLocalResolution?
+    {
+        try await attempts.resolvedAcceptedTransfer(context: context, using: transferService)
     }
 
     /// Sets the fee rate for the send flow
@@ -708,7 +751,12 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Sets the UTXO selection for the send flow using the specified coin selection algorithm.based on chosen fee and target amount
-    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm, isCurrentSend: () -> Bool = { true }) async throws {
+    func setUtxoSelection(
+        coinSelectionAlgorythm: CoinSelectionAlgorithm,
+        isCurrentSend: () -> Bool = { true },
+        listSpendable: (() async throws -> [SpendableUtxo])? = nil,
+        selectForAmount: ((UInt64, UInt32, CoinSelectionAlgorithm) async throws -> [SpendableUtxo])? = nil
+    ) async throws {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -721,12 +769,18 @@ class WalletViewModel: ObservableObject {
             "Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte"
         )
 
-        let utxos = try await lightningService.selectUtxosWithAlgorithm(
-            targetAmountSats: sendAmountSats,
-            satsPerVbyte: selectedFeeRateSatsPerVByte,
-            coinSelectionAlgorythm: coinSelectionAlgorythm,
-            utxos: nil
-        )
+        let select = selectForAmount ?? { amount, rate, algorithm in
+            try await self.lightningService.selectUtxosWithAlgorithm(
+                targetAmountSats: amount, satsPerVbyte: rate, coinSelectionAlgorythm: algorithm, utxos: nil
+            )
+        }
+        let utxos: [SpendableUtxo] = if isMaxAmountSend {
+            // A drain amount already accounts for its exact fee. The fixed-payment selector
+            // adds conservative recipient overhead and can reject an otherwise valid drain.
+            try await (listSpendable ?? { try await self.lightningService.listSpendableOutputs() })()
+        } else {
+            try await select(sendAmountSats, selectedFeeRateSatsPerVByte, coinSelectionAlgorythm)
+        }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         selectedUtxos = utxos
 

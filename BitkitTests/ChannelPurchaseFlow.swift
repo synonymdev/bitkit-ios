@@ -178,7 +178,11 @@ final class PaymentFlowTests: XCTestCase {
 
         // Pay the order
         Logger.test("Paying order with fee \(order.feeSat) sats to address \(order.payment?.onchain?.address ?? "")", context: "PaymentFlowTests")
-        let paymentTxId = try await lightning.send(address: order.payment?.onchain?.address ?? "", sats: order.feeSat, satsPerVbyte: 1)
+        let paymentResult = try await lightning.send(address: order.payment?.onchain?.address ?? "", sats: order.feeSat, satsPerVbyte: 1)
+        guard case let .accepted(paymentTxId) = paymentResult else {
+            XCTFail("Order funding broadcast was not accepted: \(paymentResult)")
+            return
+        }
         XCTAssertFalse(paymentTxId.isEmpty, "Payment transaction ID should not be empty")
         Logger.test("Payment sent with transaction ID: \(paymentTxId)", context: "PaymentFlowTests")
 

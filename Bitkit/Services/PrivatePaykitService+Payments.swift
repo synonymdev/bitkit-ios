@@ -74,9 +74,33 @@ extension PrivatePaykitService {
             throw PrivatePaykitError.invalidPublicKey
         }
 
+        if let proof = try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request),
+           let result = Self.retainedHardwarePaymentLaunchResult(proof: proof, request: request)
+        {
+            return result
+        }
+
         return try await beginContactPayment(
             to: publicKey,
             paymentRequest: request
+        )
+    }
+
+    static func retainedHardwarePaymentLaunchResult(
+        proof: PendingPaykitPaymentProof, request: PaykitPaymentRequest
+    ) -> PublicPaykitPaymentLaunchResult? {
+        guard proof.requestId == request.id, proof.retainedHardwareRetry != nil,
+              proof.onchainAmountSats == request.amountSats, proof.billingPeriod == request.billingPeriod,
+              let address = proof.onchainAddress,
+              request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
+        else { return nil }
+        // Reopen the original receipt, never resolve or consume a replacement merchant endpoint.
+        return .opened(
+            paymentRequest: "bitcoin:" + address,
+            privatePaymentContext: PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: [proof.paymentEndpointIdentifier: proof.paymentAppId],
+                paymentListVersion: proof.privatePaymentListVersion
+            )
         )
     }
 
@@ -316,6 +340,47 @@ extension PrivatePaykitService {
             "Released private Paykit payment list version \(paymentListVersion) for \(PubkyPublicKeyFormat.redacted(publicKey))",
             context: "PrivatePaykit"
         )
+    }
+
+    func consumedPaymentListVersion(publicKey: String, attemptId: UUID? = nil) -> UInt64? {
+        guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { return nil }
+        if let attemptId, let consumption = privatePaymentListConsumptions[PrivatePaymentListConsumptionKey(attemptId: attemptId, publicKey: key)] {
+            return consumption.previousPaymentListVersion
+        }
+        return state.contacts[key]?.consumedPrivatePaymentListVersion
+    }
+
+    /// Preserve the version captured by a retained signed receipt before it can be retried.
+    func retainOriginalPaymentListVersion(publicKey: String, version: UInt64) throws {
+        guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }
+        var contact = state.contacts[key, default: ContactState()]
+        if let consumed = contact.consumedPrivatePaymentListVersion, consumed >= version { return }
+        let previous = state.contacts[key]
+        contact.consumedPrivatePaymentListVersion = version
+        contact.cachedResolvedEndpoints.removeAll()
+        state.contacts[key] = contact
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[key] = previous
+            throw error
+        }
+    }
+
+    /// The caller must establish an exact receipt that definitely never reached native dispatch.
+    func releaseUnsentPaymentListVersion(publicKey: String, version: UInt64, previousVersion: UInt64? = nil) throws {
+        guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }
+        guard var contact = state.contacts[key], contact.consumedPrivatePaymentListVersion == version else { return }
+        let previous = contact
+        guard previousVersion.map({ $0 < version }) ?? true else { throw PaykitPaymentRequestError.requestUnavailable }
+        contact.consumedPrivatePaymentListVersion = previousVersion
+        state.contacts[key] = contact
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[key] = previous
+            throw error
+        }
     }
 
     private func currentLinkState(

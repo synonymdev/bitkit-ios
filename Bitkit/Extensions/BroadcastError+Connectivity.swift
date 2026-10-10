@@ -52,6 +52,53 @@ extension Error {
         return false
     }
 
+    func isHardwareBroadcastRefusal() -> Bool {
+        if isDefiniteHardwarePreBroadcastFailure() {
+            return true
+        }
+        if let error = self as? BroadcastError, case let .ElectrumError(details) = error {
+            let prefix = "broadcast failed: "
+            let details = details.lowercased()
+            guard details.hasPrefix(prefix) else { return false }
+            var reason = String(details.dropFirst(prefix.count))
+            for envelope in ["electrum server error: ", "sendrawtransaction rpc error: "] where reason.hasPrefix(envelope) {
+                guard let data = String(reason.dropFirst(envelope.count)).data(using: .utf8),
+                      let response = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
+                else { return false }
+                if let message = response as? String {
+                    reason = message
+                } else if let response = response as? [String: Any], let message = response["message"] as? String {
+                    reason = message
+                } else {
+                    return false
+                }
+            }
+            for prefix in ["sendrawtransaction rpc error -25: ", "sendrawtransaction rpc error -26: "] where reason.hasPrefix(prefix) {
+                reason = String(reason.dropFirst(prefix.count))
+            }
+            // This exact Bitcoin Core replacement refusal only releases navigation, never the receipt.
+            let replacementRefusal = "\\Ainsufficient fee, rejecting replacement [0-9a-f]{64}; new feerate [0-9]+\\.[0-9]{8} btc/kvb <= old feerate [0-9]+\\.[0-9]{8} btc/kvb\\z"
+            if reason.range(of: replacementRefusal, options: .regularExpression) != nil {
+                return true
+            }
+            let rejectionPrefix = "the transaction was rejected by network rules.\n\n"
+            if reason.hasPrefix(rejectionPrefix) {
+                reason = String(reason.dropFirst(rejectionPrefix.count).split(separator: "\n", maxSplits: 1).first ?? "")
+            }
+            return [
+                "min relay fee not met",
+                "mempool min fee not met",
+                "bad-txns-inputs-missingorspent",
+                "txn-mempool-conflict",
+                "non-final",
+            ].contains { reason == $0 || reason.hasPrefix($0 + ", ") }
+        }
+        if let error = self as? AppError, let underlyingError = error.underlyingError {
+            return underlyingError.isHardwareBroadcastRefusal()
+        }
+        return false
+    }
+
     func isBroadcastConnectivityFailure() -> Bool {
         if let broadcastError = self as? BroadcastError {
             return broadcastError.isConnectivityFailure
