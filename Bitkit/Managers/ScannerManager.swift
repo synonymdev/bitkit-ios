@@ -232,8 +232,12 @@ class ScannerManager: ObservableObject {
 
     private func handleElectrumScan(_ uri: String) async {
         guard let settings else { return }
+        let generation = settings.serverConnectionGeneration
+        guard settings.isCurrentServerConnection(generation) else { return }
+        let result = await settings.onElectrumScan(uri)
+        guard settings.isCurrentServerConnection(generation) else { return }
 
-        if let result = await settings.onElectrumScan(uri) {
+        if let result {
             if result.success {
                 app?.toast(
                     type: .success,
