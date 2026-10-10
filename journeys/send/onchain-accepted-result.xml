@@ -7,6 +7,10 @@
     The receiving wallet and backend must be test fixtures.
     Rejected or missing-result cases need a controlled broadcast-refusal/response-loss fixture,
     which the Capabilities table does not provide, and belong in Manual Tests.
+    A failed local-follow-up acknowledgement also needs a controlled persistence-failure fixture:
+    after Sent activity is saved, remove or reassign its original contact in Details, restart and
+    resume the original send, and verify the edited contact survives without another dispatch.
+    This failure-window case belongs in Manual Tests and focused persistence regression tests.
       iOS adaptations: accept an Open payment-link prompt if it appears. After the fixed send, mine one block and wait for that exact transaction to confirm. Before the Max leg, choose Settings > Advanced > Coin Selection > Manual. After Continue on Send Amount, select all spendable fixture outputs on Coin Selection and Continue before Confirm. Restore Autopilot afterward. The Manual route is necessary because the amount-less link plus Max currently fails Autopilot Branch and Bound selection with CoinSelectionFailed before native dispatch; this journey does not claim that limitation is fixed. Independently query both exact transaction IDs to verify their recipient amounts and actual input sets.
   </description>
   <actions>

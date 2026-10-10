@@ -1328,7 +1328,8 @@ class ActivityService {
         isTransfer: Bool = false,
         contact: String? = nil,
         walletId: String = WalletScope.default,
-        feeIsExact: Bool = false
+        feeIsExact: Bool = false,
+        preserveExistingContact: Bool = false
     ) async -> Bool {
         let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
@@ -1342,7 +1343,7 @@ class ActivityService {
                     if isTransfer {
                         updated.isTransfer = true
                     }
-                    if let normalizedContact {
+                    if let normalizedContact, !(preserveExistingContact && existing.txType == .sent) {
                         updated.contact = normalizedContact
                     }
                     if updated != existing {

@@ -1132,63 +1132,81 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     func testAcceptedOrdinaryRestartResumesStoredContextAndDurablyAcknowledgesActivity() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .accepted(txid: txid))
-        let original = OnchainSendAttemptService(store: store)
-        let context = OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: ["saved-tag"], contact: nil, createdAt: 100)
-        _ = try await original.send(
-            using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
-            utxosToSpend: nil, isMaxAmount: true, followupContext: context
-        )
-        let walletId = OnchainSendAttemptService.walletId(index: 0)
-        let restarted = OnchainSendAttemptService(store: store)
-        let unrelatedTxid = String(repeating: "cd", count: 32)
-        let unrelatedSaved = await activity.createSentOnchainActivityFromSendResult(
-            txid: unrelatedTxid, address: "bcrt1qoriginal", amount: 4321, fee: 999, feeRate: 99
-        )
-        XCTAssertTrue(unrelatedSaved)
-        store.failSave = true
-        do {
-            _ = try await restarted.resumeAcceptedOrdinarySend(walletId: walletId)
-            XCTFail("Failed acknowledgement released the accepted guard")
-        } catch {}
-        XCTAssertEqual(store.snapshot().first?.status, .accepted)
-        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
-        let exactSaved = try await activity.getOnchainActivityByTxId(txid: txid)
-        XCTAssertEqual(exactSaved?.value, 4321)
-        XCTAssertEqual(exactSaved?.address, "bcrt1qoriginal")
-        XCTAssertEqual(exactSaved?.fee, 123)
-        store.failSave = false
-        let restartedAgain = OnchainSendAttemptService(store: store)
-        do {
+        let originalContact = "pubky" + String(repeating: "y", count: 52)
+        let reassigned = "pubky" + String(repeating: "x", count: 52)
+        for (index, editedContact) in [String?.none, Optional(reassigned)].enumerated() {
+            let store = MemoryAttemptStore()
+            let txid = String(repeating: index == 0 ? "ab" : "ef", count: 32)
+            let node = AttemptNodeMock(result: .accepted(txid: txid))
+            let original = OnchainSendAttemptService(store: store)
+            let context = OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: ["saved-tag"], contact: originalContact, createdAt: 100)
+            _ = try await original.send(
+                using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
+                utxosToSpend: nil, isMaxAmount: true, followupContext: context
+            )
+            var expectedAttempt = try XCTUnwrap(store.snapshot().first)
+            let walletId = OnchainSendAttemptService.walletId(index: 0)
+            let restarted = OnchainSendAttemptService(store: store)
+            let unrelatedTxid = String(repeating: index == 0 ? "cd" : "ac", count: 32)
+            let unrelatedSaved = await activity.createSentOnchainActivityFromSendResult(
+                txid: unrelatedTxid, address: "bcrt1qoriginal", amount: 4321, fee: 999, feeRate: 99
+            )
+            XCTAssertTrue(unrelatedSaved)
+            store.failSave = true
+            do {
+                _ = try await restarted.resumeAcceptedOrdinarySend(walletId: walletId)
+                XCTFail("Failed acknowledgement released the accepted guard")
+            } catch {}
+            XCTAssertEqual(store.snapshot().first?.status, .accepted)
+            XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+            let exactSaved = try await activity.getOnchainActivityByTxId(txid: txid)
+            XCTAssertEqual(exactSaved?.value, 4321)
+            XCTAssertEqual(exactSaved?.address, "bcrt1qoriginal")
+            XCTAssertEqual(exactSaved?.fee, 123)
+            XCTAssertEqual(exactSaved?.contact, PubkyPublicKeyFormat.normalized(originalContact))
+            try await activity.setContact(editedContact, forActivity: txid)
+            store.failSave = false
+            let restartedAgain = OnchainSendAttemptService(store: store)
+            do {
+                _ = try await restartedAgain.send(
+                    using: node,
+                    address: "bcrt1qfresh-ui",
+                    amountSats: 9999,
+                    satsPerVbyte: 99,
+                    utxosToSpend: nil,
+                    isMaxAmount: false
+                )
+                XCTFail("Fresh UI dispatched before the original local follow-up was acknowledged")
+            } catch {}
+            let firstResolution = try await restartedAgain.resumeAcceptedOrdinarySend(walletId: walletId)
+            let repeatedResolution = try await restartedAgain.resumeAcceptedOrdinarySend(walletId: walletId)
+            XCTAssertEqual(firstResolution?.txid, txid)
+            XCTAssertEqual(firstResolution?.amountSats, 4321)
+            XCTAssertEqual(firstResolution?.contact, editedContact.flatMap(PubkyPublicKeyFormat.normalized))
+            XCTAssertEqual(repeatedResolution?.contact, editedContact.flatMap(PubkyPublicKeyFormat.normalized))
+            XCTAssertEqual(repeatedResolution?.txid, txid)
+            XCTAssertEqual(node.calls, 1, "Local resume invoked node dispatch")
+            let durableActivity = try await activity.getOnchainActivityByTxId(txid: txid)
+            let durableTags = try await activity.tags(forActivity: txid)
+            XCTAssertEqual(durableActivity?.address, "bcrt1qoriginal")
+            XCTAssertEqual(durableActivity?.contact, editedContact.flatMap(PubkyPublicKeyFormat.normalized))
+            XCTAssertEqual(durableTags, ["saved-tag"])
+            XCTAssertEqual(durableActivity?.feeRate, 2)
+            let activities = try await activity.get(filter: .onchain, limit: 50, sortDirection: .desc)
+            XCTAssertEqual(activities.count, (index + 1) * 2, "Repeated follow-up duplicated a durable activity")
+            expectedAttempt.localFollowupComplete = true
+            XCTAssertEqual(store.snapshot().first, expectedAttempt, "Recovery changed the original accepted payment context")
             _ = try await restartedAgain.send(
                 using: node,
-                address: "bcrt1qfresh-ui",
-                amountSats: 9999,
-                satsPerVbyte: 99,
+                address: "bcrt1qnew",
+                amountSats: 1000,
+                satsPerVbyte: 1,
                 utxosToSpend: nil,
                 isMaxAmount: false
             )
-            XCTFail("Fresh UI dispatched before the original local follow-up was acknowledged")
-        } catch {}
-        let firstResolution = try await restartedAgain.resumeAcceptedOrdinarySend(walletId: walletId)
-        let repeatedResolution = try await restartedAgain.resumeAcceptedOrdinarySend(walletId: walletId)
-        XCTAssertEqual(firstResolution?.txid, txid)
-        XCTAssertEqual(firstResolution?.amountSats, 4321)
-        XCTAssertEqual(repeatedResolution?.txid, txid)
-        XCTAssertEqual(node.calls, 1, "Local resume invoked node dispatch")
-        let durableActivity = try await activity.getOnchainActivityByTxId(txid: txid)
-        let durableTags = try await activity.tags(forActivity: txid)
-        XCTAssertEqual(durableActivity?.address, "bcrt1qoriginal")
-        XCTAssertEqual(durableTags, ["saved-tag"])
-        XCTAssertEqual(durableActivity?.feeRate, 2)
-        let activities = try await activity.get(filter: .onchain, limit: 50, sortDirection: .desc)
-        XCTAssertEqual(activities.count, 2, "Repeated follow-up duplicated a durable activity")
-        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
-        _ = try await restartedAgain.send(using: node, address: "bcrt1qnew", amountSats: 1000, satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
-        XCTAssertEqual(node.calls, 2)
-        XCTAssertEqual(store.snapshot().count, 1)
+            XCTAssertEqual(node.calls, 2)
+            XCTAssertEqual(store.snapshot().count, 1)
+        }
     }
 
     func testExactConfirmationCanFinishAcceptedIncompleteOrdinaryFollowup() async throws {

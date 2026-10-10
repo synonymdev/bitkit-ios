@@ -265,7 +265,9 @@ struct OnchainSendLocalFollowup: OnchainSendLocalFollowupHandling {
             guard await activity.createSentOnchainActivityFromSendResult(
                 txid: txid, address: attempt.address, amount: attempt.amountSats,
                 fee: context.feeSats, feeRate: context.feeRate, contact: context.contact,
-                feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false
+                feeIsExact: attempt.recoveryContext.map { $0.candidateTxids.first?.caseInsensitiveCompare(txid) != .orderedSame } ?? false,
+                // Retrying an unacknowledged save must preserve later contact edits, including removal.
+                preserveExistingContact: true
             ) else { throw OnchainSendAttemptError.localFollowupNotSaved }
         } else {
             guard let metadata = try await activity.getPreActivityMetadata(searchKey: txid),
