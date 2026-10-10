@@ -26,6 +26,8 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType
     ) async throws {
+        await app.cancelMigrationSyncForWipe()
+
         await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
         await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
 

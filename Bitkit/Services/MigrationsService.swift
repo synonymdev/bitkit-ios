@@ -317,6 +317,19 @@ struct BackupPeerEntry: Codable {
 class MigrationsService: ObservableObject {
     static var shared = MigrationsService()
 
+    @MainActor private(set) var retryGeneration = UUID()
+
+    /// A reset invalidates snapshots held across activity lookups and queued writes.
+    @MainActor
+    func invalidatePendingRetries() {
+        retryGeneration = UUID()
+    }
+
+    @MainActor
+    func isRetryCurrent(_ generation: UUID) -> Bool {
+        retryGeneration == generation && !Task.isCancelled
+    }
+
     private let fileManager = FileManager.default
 
     private static let appGroupSuiteName = "group.bitkit"
@@ -1605,16 +1618,20 @@ extension MigrationsService {
         Logger.info("MMKV data migration completed", context: "Migration")
     }
 
+    @MainActor
     func reapplyMetadataAfterSync(
         includeLocalMetadata: Bool = true,
         applyTags: (([String: [String]]) async -> Set<String>)? = nil,
         applyTransfers: (([String: String]) async -> [String: String])? = nil,
         applyBoosts: (([String: String]) async -> [String: String])? = nil
     ) async {
+        let generation = retryGeneration
+        guard isRetryCurrent(generation) else { return }
         // Handle MMKV (local) migration data
         if includeLocalMetadata, hasRNMmkvData(), let mmkvData = loadRNMmkvData() {
             if let activities = extractRNActivities(from: mmkvData) {
                 await applyOnchainMetadata(activities)
+                guard isRetryCurrent(generation) else { return }
             }
 
             // Extract and apply wallet backup data (transfers and boosts)
@@ -1634,6 +1651,7 @@ extension MigrationsService {
         if let remoteActivities = pendingRemoteActivityData {
             Logger.info("Re-applying remote backup metadata after sync", context: "Migration")
             await applyOnchainMetadata(remoteActivities)
+            guard isRetryCurrent(generation) else { return }
             pendingRemoteActivityData = nil
         }
 
@@ -1645,6 +1663,7 @@ extension MigrationsService {
             } else {
                 await applyRemoteTransfers(transfers)
             }
+            guard isRetryCurrent(generation) else { return }
             pendingRemoteTransfers = remaining.isEmpty ? nil : remaining
         }
 
@@ -1656,10 +1675,12 @@ extension MigrationsService {
             } else {
                 await applyBoostTransactions(boosts)
             }
+            guard isRetryCurrent(generation) else { return }
             pendingRemoteBoosts = remaining.isEmpty ? nil : remaining
         }
 
         await retryPendingMetadata(applyTags: applyTags)
+        guard isRetryCurrent(generation) else { return }
 
         // Handle pending Blocktank orders that couldn't be fetched during migration (offline)
         var blocktankFetchFailed = false
@@ -1667,14 +1688,17 @@ extension MigrationsService {
             Logger.info("Retrying \(orderIds.count) pending Blocktank orders", context: "Migration")
             do {
                 let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true)
+                guard isRetryCurrent(generation) else { return }
                 if !fetchedOrders.isEmpty {
                     try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
+                    guard isRetryCurrent(generation) else { return }
                     Logger.info("Upserted \(fetchedOrders.count) Blocktank orders after retry", context: "Migration")
 
                     // Also create transfers for paid orders using the fetched orders
                     if let paidOrders = pendingRemotePaidOrders, !paidOrders.isEmpty {
                         Logger.info("Creating transfers for \(paidOrders.count) paid orders", context: "Migration")
                         await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
+                        guard isRetryCurrent(generation) else { return }
                         pendingRemotePaidOrders = nil
                     }
                 }
@@ -1691,10 +1715,12 @@ extension MigrationsService {
         if !blocktankFetchFailed, let paidOrders = pendingRemotePaidOrders {
             Logger.info("Applying \(paidOrders.count) remote paid orders", context: "Migration")
             await applyRemotePaidOrders(paidOrders)
+            guard isRetryCurrent(generation) else { return }
             pendingRemotePaidOrders = nil
         }
     }
 
+    @MainActor
     func applyRemoteTransfers(
         _ transfers: [String: String],
         getActivity: (String) async -> OnchainActivity? = { try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: $0) },
@@ -1702,19 +1728,22 @@ extension MigrationsService {
             try await CoreService.shared.activity.update(id: $0.id, activity: .onchain($0))
         }
     ) async -> [String: String] {
+        let generation = retryGeneration
         var remaining = transfers
         var applied = 0
 
         for (txId, channelId) in transfers {
-            guard var onchain = await getActivity(txId) else {
-                continue
-            }
+            guard isRetryCurrent(generation) else { return remaining }
+            let activity = await getActivity(txId)
+            guard isRetryCurrent(generation) else { return remaining }
+            guard var onchain = activity else { continue }
 
             onchain.isTransfer = true
             onchain.channelId = channelId
 
             do {
                 try await updateActivity(onchain)
+                guard isRetryCurrent(generation) else { return remaining }
                 remaining.removeValue(forKey: txId)
                 applied += 1
             } catch {
@@ -1742,6 +1771,7 @@ extension MigrationsService {
         }
     }
 
+    @MainActor
     func applyBoostTransactions(
         _ boosts: [String: String],
         getActivity: (String) async -> OnchainActivity? = { try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: $0) },
@@ -1749,12 +1779,16 @@ extension MigrationsService {
             try await CoreService.shared.activity.update(id: $0.id, activity: .onchain($0))
         }
     ) async -> [String: String] {
+        let generation = retryGeneration
         var remaining = boosts
         var applied = 0
 
         for (oldTxId, newTxId) in boosts {
+            guard isRetryCurrent(generation) else { return remaining }
             let oldOnchain = await getActivity(oldTxId)
+            guard isRetryCurrent(generation) else { return remaining }
             let newOnchain = await getActivity(newTxId)
+            guard isRetryCurrent(generation) else { return remaining }
 
             if let oldOnchain, var newOnchain {
                 var parentOnchain = oldOnchain
@@ -1768,7 +1802,9 @@ extension MigrationsService {
 
                 do {
                     try await updateActivity(parentOnchain)
+                    guard isRetryCurrent(generation) else { return remaining }
                     try await updateActivity(newOnchain)
+                    guard isRetryCurrent(generation) else { return remaining }
                     remaining.removeValue(forKey: oldTxId)
                     applied += 1
                 } catch {
@@ -1782,6 +1818,7 @@ extension MigrationsService {
 
                 do {
                     try await updateActivity(newOnchain)
+                    guard isRetryCurrent(generation) else { return remaining }
                     remaining.removeValue(forKey: oldTxId)
                     applied += 1
                 } catch {
@@ -1794,19 +1831,23 @@ extension MigrationsService {
         return remaining
     }
 
+    @MainActor
     func retryPendingMetadata(applyTags: (([String: [String]]) async -> Set<String>)? = nil) async {
-        guard let metadata = pendingMetadata else { return }
+        let generation = retryGeneration
+        guard isRetryCurrent(generation), let metadata = pendingMetadata else { return }
         let unapplied: Set<String> = if let applyTags {
             await applyTags(metadata.tags ?? [:])
         } else {
             await applyPendingTags(metadata.tags ?? [:])
         }
+        guard isRetryCurrent(generation) else { return }
         if let lastUsedTags = metadata.lastUsedTags {
             userDefaults.set(lastUsedTags, forKey: "lastUsedTags")
         }
         pendingMetadata = rnMetadataRetainingUnappliedTags(metadata, unappliedActivityIds: unapplied)
     }
 
+    @MainActor
     func applyPendingTags(
         _ tags: [String: [String]],
         resolveActivityId: (String) async throws -> String? = { activityId in
@@ -1823,10 +1864,14 @@ extension MigrationsService {
             try await CoreService.shared.activity.upsertTags(tags)
         }
     ) async -> Set<String> {
+        let generation = retryGeneration
         var unapplied = Set<String>()
         for (activityId, tagList) in tags {
+            guard isRetryCurrent(generation) else { return Set(tags.keys) }
             do {
-                guard let resolvedId = try await resolveActivityId(activityId) else {
+                let resolved = try await resolveActivityId(activityId)
+                guard isRetryCurrent(generation) else { return Set(tags.keys) }
+                guard let resolvedId = resolved else {
                     unapplied.insert(activityId)
                     continue
                 }
