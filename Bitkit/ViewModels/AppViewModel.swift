@@ -400,6 +400,8 @@ extension AppViewModel {
         visibilityTime: Double = 4.0,
         accessibilityIdentifier: String? = nil
     ) {
+        guard !ToastWindowManager.areToastsDisabled() else { return }
+
         switch type {
         case .error:
             Haptics.notify(.error)
