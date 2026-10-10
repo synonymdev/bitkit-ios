@@ -163,9 +163,14 @@ Target eligibility discovery remains owned by the existing request manager. It c
 but does not automatically retry a failed targeted refresh; a later full refresh or contact
 eligibility lookup can retry it. Successful intake does not guarantee successful discovery.
 
-Return NotFound from the explicit retry's link attempt for a peer with no SDK record or pending outbound work:
-the retry retires instead of polling indefinitely. Pending outbound work must remain scheduled,
-and the existing unavailable-peer cooldown still applies. A transport failure during publication
+Return NotFound from the explicit retry's link attempt for a peer with no pending outbound work:
+the retry retires instead of polling indefinitely, whether its SDK record is absent or still unlinked.
+An unrelated peer's pending outbound must not keep the missing peer's retry alive. Pending outbound
+for that same peer must remain scheduled through transient delivery failures and retire after it drains;
+failed scheduling reads must keep the retry until a fresh read confirms no delivery remains.
+If that peer becomes linked while delivery is pending, drain its queue and fail intake once within
+the foreground window: intake must retry and signal readiness only after success.
+A later explicit refresh can try linking again, and the existing unavailable-peer cooldown still applies. A transport failure during publication
 must not retire the explicit retry; it attempts linking again after the cooldown. Repeat identity changes during peer
 and outbound reads: no following operation or readiness notification may use the old identity.
 Invalid peer-key or recovery metadata must not be presented as ordinary link recovery.
