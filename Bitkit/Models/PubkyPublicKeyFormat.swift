@@ -45,11 +45,25 @@ enum PubkyPublicKeyFormat {
         return "\(value.prefix(12))..."
     }
 
+    /// Shortens a pubky for display as `dead...oxyo`: the first and last 4 characters of the key with any
+    /// `pubky` or `pk:` prefix removed, so the prefix never appears in the truncated form.
     static func displayTruncated(_ input: String) -> String {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawKey = trimmed.lowercased().hasPrefix(prefix) ? String(trimmed.dropFirst(prefix.count)) : trimmed
-        guard rawKey.count > 10 else { return rawKey }
+        let rawKey = strippingDisplayPrefix(input)
+        guard rawKey.count > displayEdgeLength * 2 else { return rawKey }
 
-        return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
+        return "\(rawKey.prefix(displayEdgeLength))...\(rawKey.suffix(displayEdgeLength))"
+    }
+
+    private static let displayEdgeLength = 4
+    private static let displayPrefixes = [prefix, "pk:"]
+
+    private static func strippingDisplayPrefix(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        guard let matchedPrefix = displayPrefixes.first(where: { lowercased.hasPrefix($0) }) else {
+            return trimmed
+        }
+
+        return String(trimmed.dropFirst(matchedPrefix.count))
     }
 }

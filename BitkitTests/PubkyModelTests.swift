@@ -27,13 +27,13 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        // Keys <= 10 chars are returned as-is
+        // Keys <= 8 chars are returned as-is
         XCTAssertEqual(profile.truncatedPublicKey, "abc")
     }
 
     func testTruncatedPublicKeyExactBoundary() {
         let profile = PubkyProfile(
-            publicKey: "1234567890",
+            publicKey: "12345678",
             name: "Test",
             bio: "",
             imageUrl: nil,
@@ -41,13 +41,13 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        // Exactly 10 chars should NOT be truncated
-        XCTAssertEqual(profile.truncatedPublicKey, "1234567890")
+        // Exactly 8 chars should NOT be truncated
+        XCTAssertEqual(profile.truncatedPublicKey, "12345678")
     }
 
-    func testTruncatedPublicKeyElevenChars() {
+    func testTruncatedPublicKeyNineChars() {
         let profile = PubkyProfile(
-            publicKey: "12345678901",
+            publicKey: "123456789",
             name: "Test",
             bio: "",
             imageUrl: nil,
@@ -55,8 +55,8 @@ final class PubkyModelTests: XCTestCase {
             status: nil
         )
 
-        // 11 chars should be truncated
-        XCTAssertEqual(profile.truncatedPublicKey, "1234...8901")
+        // 9 chars should be truncated
+        XCTAssertEqual(profile.truncatedPublicKey, "1234...6789")
     }
 
     // MARK: - PubkyProfile Placeholder

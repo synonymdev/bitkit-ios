@@ -26,9 +26,7 @@ func resolvePubkyApprovalLocalAuthMode(
 
 func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
     guard let publicKey else { return "" }
-    let rawKey = publicKey.hasPrefix("pubky") ? String(publicKey.dropFirst("pubky".count)) : publicKey
-    guard rawKey.count > 8 else { return rawKey }
-    return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
+    return PubkyPublicKeyFormat.displayTruncated(publicKey)
 }
 
 struct PubkyAuthApprovalConfig {
