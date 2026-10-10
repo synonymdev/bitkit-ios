@@ -27,6 +27,7 @@ final class TransferServiceActivityTests: XCTestCase {
         try await super.setUp()
         transferDefaults = try makeIsolatedDefaults()
         guardAppDefaults("transfers")
+        snapshotAppDefaults("activityDetachedContacts")
         await drainCoreServiceQueue()
         try FileManager.default.createDirectory(atPath: testDbPath, withIntermediateDirectories: true)
         _ = try initDb(basePath: testDbPath)
@@ -1131,6 +1132,47 @@ final class TransferServiceActivityTests: XCTestCase {
         withExtendedLifetime(wallet) {}
     }
 
+    func testAcceptedOrdinaryRecoveryAssociatesSyncCreatedSentRowWithoutDetachedContact() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "19", count: 32)
+        let contact = "pubky" + String(repeating: "y", count: 52)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let original = OnchainSendAttemptService(store: store)
+        _ = try await original.send(
+            using: node, address: "bcrt1qoriginal", amountSats: 4321, satsPerVbyte: 2,
+            utxosToSpend: nil, isMaxAmount: false,
+            followupContext: OnchainSendFollowupContext(feeSats: 123, feeRate: 2, tags: [], contact: contact, createdAt: 100)
+        )
+        var expectedAttempt = try XCTUnwrap(store.snapshot().first)
+        let walletId = expectedAttempt.walletId
+        let inserted = await activity.createSentOnchainActivityFromSendResult(
+            txid: txid, address: "bcrt1qoriginal", amount: 4321, fee: 123, feeRate: 2
+        )
+        XCTAssertTrue(inserted)
+        let syncedRow = try await activity.getOnchainActivityByTxId(txid: txid)
+        let synced = try XCTUnwrap(syncedRow)
+        let activityWalletId = synced.walletId
+        XCTAssertEqual(activityWalletId, Bitkit.WalletScope.default)
+        XCTAssertNil(synced.contact)
+        XCTAssertFalse(activity.isContactDetached(activityId: synced.id, walletId: activityWalletId))
+        // An unrelated wallet's removal must not suppress the original wallet's attribution.
+        activity.setContactDetached(true, activityId: synced.id, walletId: "trezor:other-wallet")
+        activity.setContactDetached(true, activityId: "other-activity", walletId: activityWalletId)
+        let restarted = OnchainSendAttemptService(store: store)
+        let resolution = try await restarted.resumeAcceptedOrdinarySend(walletId: walletId)
+        let repeated = try await restarted.resumeAcceptedOrdinarySend(walletId: walletId)
+        let saved = try await activity.getOnchainActivityByTxId(txid: txid)
+        XCTAssertEqual(saved?.contact, PubkyPublicKeyFormat.normalized(contact))
+        XCTAssertEqual(resolution?.contact, PubkyPublicKeyFormat.normalized(contact))
+        XCTAssertEqual(repeated?.contact, PubkyPublicKeyFormat.normalized(contact))
+        XCTAssertEqual(saved?.id, synced.id)
+        XCTAssertFalse(activity.isContactDetached(activityId: synced.id, walletId: activityWalletId))
+        XCTAssertTrue(activity.isContactDetached(activityId: synced.id, walletId: "trezor:other-wallet"))
+        expectedAttempt.localFollowupComplete = true
+        XCTAssertEqual(store.snapshot().first, expectedAttempt)
+        XCTAssertEqual(node.calls, 1, "Restoring contact attribution dispatched another payment")
+    }
+
     func testAcceptedOrdinaryRestartResumesStoredContextAndDurablyAcknowledgesActivity() async throws {
         let originalContact = "pubky" + String(repeating: "y", count: 52)
         let reassigned = "pubky" + String(repeating: "x", count: 52)
@@ -1165,6 +1207,8 @@ final class TransferServiceActivityTests: XCTestCase {
             XCTAssertEqual(exactSaved?.fee, 123)
             XCTAssertEqual(exactSaved?.contact, PubkyPublicKeyFormat.normalized(originalContact))
             try await activity.setContact(editedContact, forActivity: txid)
+            XCTAssertEqual(try activity.isContactDetached(activityId: XCTUnwrap(exactSaved).id,
+                                                          walletId: XCTUnwrap(exactSaved).walletId), editedContact == nil)
             store.failSave = false
             let restartedAgain = OnchainSendAttemptService(store: store)
             do {

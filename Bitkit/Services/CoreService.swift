@@ -1343,7 +1343,9 @@ class ActivityService {
                     if isTransfer {
                         updated.isTransfer = true
                     }
-                    if let normalizedContact, !(preserveExistingContact && existing.txType == .sent) {
+                    let preserveContact = preserveExistingContact && existing.txType == .sent
+                        && (existing.contact != nil || self.isContactDetached(activityId: existing.id, walletId: existing.walletId))
+                    if let normalizedContact, !preserveContact {
                         updated.contact = normalizedContact
                     }
                     if updated != existing {
