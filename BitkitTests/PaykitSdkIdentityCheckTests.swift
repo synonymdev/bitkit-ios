@@ -5,6 +5,44 @@ import XCTest
 /// Writes made for one identity check, in the same locked SDK operation as the write, that the identity is still signed
 /// in, so a sign-out and another identity's sign-in that land while the write waits make it write nothing.
 final class PaykitSdkIdentityCheckTests: XCTestCase {
+    func testObservationIsBoundToTheRequestedIdentity() async throws {
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let observation = try await service.observeState(priority: .background, expectedIdentity: bareIdentityA)
+        XCTAssertEqual(observation.publicKey, identityA)
+        XCTAssertEqual(observation.keyGeneration, 1)
+        do {
+            _ = try await service.observeState(priority: .background, expectedIdentity: identityB)
+            XCTFail("Another identity's observation must not reach the display")
+        } catch PubkyServiceError.identityChanged {}
+        let reads = await sdk.observationStarted.count
+        let contactReads = await sdk.contactRecordsStarted.count
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(contactReads, 0)
+        XCTAssertTrue(sdk.writes.isEmpty)
+    }
+
+    func testCancelledObservationRetainsNativeOwnershipUntilCompletion() async throws {
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        await sdk.observationGate.close()
+        let observation = Task { try await service.observeState(priority: .background, expectedIdentity: identityA) }
+        try await sdk.observationStarted.waitForEntries(count: 1)
+        observation.cancel()
+        let contacts = Task { try await service.contactRecords() }
+        try await Task.sleep(for: .milliseconds(50))
+        let overlappingReads = await sdk.contactRecordsStarted.count
+        await sdk.observationGate.open()
+        let result = await observation.result
+        _ = try await contacts.value
+        XCTAssertEqual(overlappingReads, 0)
+        XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+        let completedReads = await sdk.contactRecordsStarted.count
+        XCTAssertEqual(completedReads, 1)
+    }
+
     func testContactSaveForAnIdentityThatIsNoLongerSignedInWritesNothing() async throws {
         for signedIn in [identityB, nil] {
             for restorePrivateConnection in [false, true] {
@@ -355,6 +393,8 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var recordedContactReads = 0
     let contactRecordsGate = IdentityCheckGate()
     let contactRecordsStarted = IdentityCheckCallLog()
+    let observationGate = IdentityCheckGate()
+    let observationStarted = IdentityCheckCallLog()
     let restoreGate = IdentityCheckGate()
     let restoreStarted = IdentityCheckCallLog()
 
@@ -390,6 +430,16 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     override func identityStatus() async throws -> IdentityStatus? {
         IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? .publicOnly : .signedOut)
+    }
+
+    override func observeState() async throws -> PaykitStateObservation {
+        guard let identity else { throw noLiveSessionError }
+        await observationStarted.record()
+        await observationGate.wait()
+        return PaykitStateObservation(
+            publicKey: identity, keyGeneration: 1, observedAt: "2027-01-15T08:00:00Z",
+            contacts: [], linkedPeers: [], paymentRequests: [], receipts: []
+        )
     }
 
     override func backupStateRevision() async throws -> String {

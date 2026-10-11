@@ -825,11 +825,6 @@ actor PaykitPaymentProofService {
                 completed = followedUp
                 didCompleteLocalFollowup = true
             }
-            if deliverInBackground {
-                submitInBackground(completed)
-            } else {
-                _ = await submit(completed)
-            }
             if didCompleteLocalFollowup || completed.onchainResolutionAwaitingConsumption == true {
                 let resolution = PaykitOnchainPaymentResolution(
                     identity: completed.identity, requestId: requestId, transactionId: txid.lowercased(), walletId: walletId
@@ -837,6 +832,11 @@ actor PaykitPaymentProofService {
                 if didCompleteLocalFollowup || Self.onchainPaymentResolutionSubject.value != resolution {
                     Self.onchainPaymentResolutionSubject.send(resolution)
                 }
+            }
+            if deliverInBackground {
+                submitInBackground(completed)
+            } else {
+                _ = await submit(completed)
             }
             return true
         } catch {

@@ -319,6 +319,10 @@ enum PubkyService {
         try await PaykitSdkService.shared.contactRecords()
     }
 
+    static func observedContactRecords(expectedIdentity: String) async throws -> [Paykit.ContactRecord] {
+        try await PaykitSdkService.shared.observeState(priority: .background, expectedIdentity: expectedIdentity).contacts
+    }
+
     static func saveContact(publicKey: String, label: String?,
                             restorePrivateConnection: Bool = false, expectedIdentity: String? = nil) async throws -> Paykit.ContactRecord
     {
@@ -747,6 +751,23 @@ actor PaykitSdkService {
     func contactRecords() async throws -> [Paykit.ContactRecord] {
         try await withSdk { sdk in
             try await sdk.contactRecords()
+        }
+    }
+
+    /// Refreshes display data under the native operation lock; views keep using their current projections.
+    func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String? = nil) async throws -> Paykit.PaykitStateObservation {
+        try await withSdk(priority: priority) { sdk in
+            let observation = try await sdk.observeState()
+            try Task.checkCancellation()
+            if let expectedIdentity {
+                guard PubkyPublicKeyFormat.matches(observation.publicKey, expectedIdentity) else { throw PubkyServiceError.identityChanged }
+            }
+            if let cachedPaykitKey {
+                guard PubkyPublicKeyFormat.matches(observation.publicKey, cachedPaykitKey.publicKey),
+                      observation.keyGeneration == cachedPaykitKey.generation
+                else { throw PubkyServiceError.identityChanged }
+            }
+            return observation
         }
     }
 

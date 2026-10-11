@@ -118,7 +118,7 @@ private final class SuspendedContactsListManager: ContactsManager {
         continuation.finish()
     }
 
-    override func loadContacts(for publicKey: String) async throws {
+    override func loadObservedContacts(for publicKey: String) async throws {
         started.fulfill()
         defer { finished.fulfill() }
         for await _ in stream {}

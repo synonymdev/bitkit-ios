@@ -142,8 +142,8 @@ final class ContactsManagerTests: XCTestCase {
             let second = contactRecord(key: "pubky" + String(repeating: "z", count: 52), name: "Second")
             let added = contactRecord(key: "pubky" + String(repeating: "r", count: 52), name: "Added")
             let source = SuspendedContactRecords(records: [first, second])
-            let manager = ContactsManager(contactRecords: { await source.load() })
-            let load = Task { try await manager.loadContacts(for: "owner") }
+            let manager = ContactsManager(observedContactRecords: { _ in await source.load() })
+            let load = Task { try await manager.loadObservedContacts(for: "owner") }
             while await !(source.isPaused) {
                 await Task.yield()
             }
@@ -163,11 +163,65 @@ final class ContactsManagerTests: XCTestCase {
         }
     }
 
+    func testDisplayObservationDoesNotReplaceAuthoritativeContactReads() async throws {
+        let owner = "pubky" + String(repeating: "r", count: 52)
+        let displayed = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Displayed")
+        let addedRemotely = contactRecord(key: "pubky" + String(repeating: "z", count: 52), name: "Added")
+        let observed = expectation(description: "Display observation")
+        let authoritative = expectation(description: "Authoritative contact reads")
+        authoritative.expectedFulfillmentCount = 2
+        let manager = ContactsManager(
+            contactRecords: {
+                authoritative.fulfill()
+                return [displayed, addedRemotely]
+            },
+            observedContactRecords: { expectedIdentity in
+                XCTAssertEqual(expectedIdentity, owner)
+                observed.fulfill()
+                return [displayed]
+            },
+            removeContactRecords: { keys in
+                XCTAssertEqual(Set(keys), Set([displayed.publicKey, addedRemotely.publicKey]))
+                return [displayed, addedRemotely]
+            },
+            forgetRemovedContacts: { _ in }
+        )
+        try await manager.loadObservedContacts(for: owner)
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [displayed.publicKey])
+        manager.reset()
+        try await manager.loadContactsIfNeeded(for: owner)
+        XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), Set([displayed.publicKey, addedRemotely.publicKey]))
+        try await manager.deleteAllContacts()
+        await fulfillment(of: [observed, authoritative], timeout: 1)
+        XCTAssertTrue(manager.contacts.isEmpty)
+    }
+
+    func testFailedObservationRetainsPreviouslyLoadedContacts() async throws {
+        let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Saved")
+        let failures: [Error] = [
+            PubkyServiceError.profileNotFound,
+            PubkyServiceError.identityChanged,
+            AppError(message: "App Error", debugMessage: "Fetch failed: 404 Not Found"),
+            PaykitError.Storage(code: "invalid_data", context: "Invalid observation"),
+        ]
+        for failure in failures {
+            let manager = ContactsManager(observedContactRecords: { _ in throw failure })
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { [record] }, fetchRemoteProfile: { _ in nil })
+            do {
+                try await manager.loadObservedContacts(for: "owner")
+                XCTFail("Observation failure must not become an empty contact list")
+            } catch {}
+            XCTAssertEqual(manager.contacts.map(\.publicKey), [record.publicKey])
+            XCTAssertTrue(manager.hasLoaded)
+            XCTAssertNil(manager.loadErrorMessage)
+        }
+    }
+
     func testResetStopsAnInvalidatedContactLoad() async throws {
         let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
         let source = SuspendedContactRecords(records: [record])
-        let manager = ContactsManager(contactRecords: { await source.load() })
-        let load = Task { try await manager.loadContacts(for: "owner") }
+        let manager = ContactsManager(observedContactRecords: { _ in await source.load() })
+        let load = Task { try await manager.loadObservedContacts(for: "owner") }
         while await !(source.isPaused) {
             await Task.yield()
         }
@@ -191,20 +245,21 @@ final class ContactsManagerTests: XCTestCase {
             cancelledLoad: @MainActor (ContactsManager) async throws -> Void
         )] = [
             ("another loadContactsIfNeeded", true, false, { try await $0.loadContactsIfNeeded(for: "owner") }),
-            ("the Contacts screen's loadContacts", false, false, { try await $0.loadContacts(for: "owner") }),
-            ("the Contacts screen's loadContacts, record read throws", false, true, { try await $0.loadContacts(for: "owner") }),
+            ("the Contacts screen's loadContacts", false, false, { try await $0.loadObservedContacts(for: "owner") }),
+            ("the Contacts screen's loadContacts, record read throws", false, true, { try await $0.loadObservedContacts(for: "owner") }),
         ]
         for testCase in cases {
             let record = contactRecord(key: "pubky" + String(repeating: "y", count: 52), name: "Contact")
             let source = SuspendedContactRecords(records: [record])
             let recordReadThrowsOnceCancelled = testCase.recordReadThrowsOnceCancelled
-            let manager = ContactsManager(contactRecords: {
+            let readRecords: @Sendable () async throws -> [ContactRecord] = {
                 let records = await source.load()
                 if recordReadThrowsOnceCancelled {
                     try Task.checkCancellation()
                 }
                 return records
-            })
+            }
+            let manager = ContactsManager(contactRecords: readRecords, observedContactRecords: { _ in try await readRecords() })
             let cancelledLoad = Task { try await testCase.cancelledLoad(manager) }
             while await !(source.isPaused) {
                 await Task.yield()
@@ -1783,6 +1838,7 @@ final class ContactsManagerTests: XCTestCase {
         let records = [unprofiledRecord(key: contactProfileKey, label: "Label only")]
         let manager = ContactsManager(
             contactRecords: { records },
+            observedContactRecords: { _ in records },
             fetchFollows: { _ in [contactProfileKey, unresolvedFollowKey] },
             fetchRemoteProfile: { try await lanes.fetch($0, priority: $1) }
         )
@@ -1793,7 +1849,7 @@ final class ContactsManagerTests: XCTestCase {
         let importLanes = await lanes.priorities
         XCTAssertEqual(importLanes, [.interactive, .interactive], "The user waits on the choice screen while the import is prepared")
 
-        try await manager.loadContacts(for: "owner")
+        try await manager.loadObservedContacts(for: "owner")
         await manager.waitForProfileRefreshForTesting()
         let allLanes = await lanes.priorities
         XCTAssertEqual(Array(allLanes.dropFirst(importLanes.count)), [.bulk], "The Contacts list still refreshes its profiles in the background")

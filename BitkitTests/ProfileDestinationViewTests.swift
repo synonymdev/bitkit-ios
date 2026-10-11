@@ -417,7 +417,7 @@ final class ProfileDestinationViewTests: XCTestCase {
 
 @MainActor
 private final class ContactsViewTestManager: ContactsManager {
-    override func loadContacts(for publicKey: String) async throws {}
+    override func loadObservedContacts(for publicKey: String) async throws {}
 }
 
 @MainActor

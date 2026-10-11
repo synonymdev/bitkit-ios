@@ -146,6 +146,7 @@ class ContactsManager: ObservableObject {
     private var resolvedProfilesOwner: String?
     private var resolvedProfilesGeneration = 0
     private let contactRecords: @Sendable () async throws -> [ContactRecord]
+    private let observedContactRecords: @Sendable (String) async throws -> [ContactRecord]
     private let fetchFollows: @Sendable (String) async throws -> [String]
     private let fetchRemoteProfile: @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile?
     private let saveContactLabel: @Sendable (_ publicKey: String, _ label: String, _ expectedIdentity: String) async throws -> Void
@@ -156,6 +157,9 @@ class ContactsManager: ObservableObject {
 
     init(
         contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords,
+        observedContactRecords: @escaping @Sendable (String) async throws -> [ContactRecord] = {
+            try await PubkyService.observedContactRecords(expectedIdentity: $0)
+        },
         fetchFollows: @escaping @Sendable (String) async throws -> [String] = { try await PubkyService.getContacts(publicKey: $0) },
         fetchRemoteProfile: @escaping @Sendable (_ publicKey: String, _ priority: PaykitPublicReadPriority) async throws -> PubkyProfile? = {
             try await ContactsManager.remoteContactProfile(publicKey: $0, priority: $1)
@@ -175,6 +179,7 @@ class ContactsManager: ObservableObject {
         currentDate: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.contactRecords = contactRecords
+        self.observedContactRecords = observedContactRecords
         self.fetchFollows = fetchFollows
         self.fetchRemoteProfile = fetchRemoteProfile
         self.saveContactLabel = saveContactLabel
@@ -289,6 +294,16 @@ class ContactsManager: ObservableObject {
         )
     }
 
+    func loadObservedContacts(for publicKey: String) async throws {
+        let observedContactRecords = observedContactRecords
+        try await loadContacts(
+            for: publicKey,
+            fetchContactRecords: { try await observedContactRecords(publicKey) },
+            fetchRemoteProfile: remoteProfileLookup(on: .bulk),
+            missingDataIsEmpty: false
+        )
+    }
+
     /// Publishes the saved records straight away, each with the best profile already known, then looks the remaining
     /// profiles up in the background on the bulk read lane and updates rows as they resolve. A profile resolved in this
     /// session less than `contactProfileFreshness` ago is not looked up again, so coming back to Contacts does not look
@@ -298,7 +313,8 @@ class ContactsManager: ObservableObject {
     func loadContacts(
         for publicKey: String,
         fetchContactRecords: @escaping @Sendable () async throws -> [Paykit.ContactRecord],
-        fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?
+        fetchRemoteProfile: @escaping @Sendable (String) async throws -> PubkyProfile?,
+        missingDataIsEmpty: Bool = true
     ) async throws {
         guard !Task.isCancelled else { return }
         guard !isLoading else {
@@ -350,7 +366,8 @@ class ContactsManager: ObservableObject {
             } catch {
                 guard !Task.isCancelled, generation == loadGeneration else { return }
                 guard contactsRevision == revision else { continue }
-                if Self.isMissingContactsDataError(error) {
+                // A failed consolidated observation is not evidence that contacts were deleted.
+                if missingDataIsEmpty, Self.isMissingContactsDataError(error) {
                     contacts = []
                     hasLoaded = true
                     loadErrorMessage = nil
