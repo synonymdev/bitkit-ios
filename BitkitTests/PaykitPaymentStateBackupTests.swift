@@ -455,6 +455,27 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertEqual(store.snapshot(), [existing])
         do { try await service.restoreBackup(nil); XCTFail("Absent backup guard erased unresolved local operation") } catch {}
         XCTAssertEqual(store.snapshot(), [existing])
+
+        var local = restored
+        let candidate = try XCTUnwrap(local.recoveryContext?.candidateTxids.last)
+        local.recoveryContext?.candidateFeeSats = [candidate: 281]
+        try store.save([local])
+        let replay = OnchainSendAttemptService(store: store)
+        try await replay.restoreBackup(restored)
+        XCTAssertEqual(store.snapshot(), [local], "Identical backup replay must retain local fee evidence")
+        var incoming = restored
+        incoming.recoveryContext?.candidateFeeSats = [candidate: 999]
+        try await replay.restoreBackup(incoming)
+        XCTAssertEqual(store.snapshot(), [local], "Backup replay must not import fee metadata")
+
+        var differentCandidates = restored
+        differentCandidates.recoveryContext?.candidateTxids.append(String(repeating: "ef", count: 32))
+        var differentProgress = restored
+        differentProgress.localFollowupComplete.toggle()
+        for changed in [differentCandidates, differentProgress] {
+            do { try await replay.restoreBackup(changed); XCTFail("Restore replaced different candidate or progress state") } catch {}
+            XCTAssertEqual(store.snapshot(), [local])
+        }
     }
 
     func testWalletEnvelopeRetainsActiveAttemptWireAcrossDecodeAndEncode() throws {
