@@ -490,12 +490,15 @@ final class TransferServiceActivityTests: XCTestCase {
             profile.publicKey = context.0
             var path: [SendRoute] = []
             var navigatedOnMainThread = true
+            let navigation = expectation(description: "Hardware resolution navigates only its original context")
+            navigation.isInverted = !isOriginalContext
             let view = SendPendingScreen(
                 paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
                 routingCacheResetAttempted: false, hardwareWalletId: context.1, hardwareTransactionId: context.2,
                 hardwarePaymentIdentity: identity, proofService: service, navigationPath: Binding(get: { path }, set: {
                     navigatedOnMainThread = Thread.isMainThread
                     path = $0
+                    navigation.fulfill()
                 })
             )
             .environment(PaykitPaymentRequestManager())
@@ -507,12 +510,10 @@ final class TransferServiceActivityTests: XCTestCase {
             window.rootViewController = UIHostingController(rootView: view)
             window.isHidden = false
             if isOriginalContext {
-                try? await Task.sleep(for: .milliseconds(50))
-                XCTAssertTrue(path.isEmpty)
                 let completed = await service.completeHardwareOnchainPayment(request, paymentIdentity: identity, walletId: walletId, txid: txid)
                 XCTAssertTrue(completed)
             }
-            try? await Task.sleep(for: .milliseconds(250))
+            await fulfillment(of: [navigation], timeout: 2)
             XCTAssertEqual(path, isOriginalContext ? [.success(paymentId: txid, walletId: walletId)] : [])
             XCTAssertTrue(navigatedOnMainThread)
             window.isHidden = true
@@ -520,8 +521,22 @@ final class TransferServiceActivityTests: XCTestCase {
         }
         let beforeAcknowledgement = await store.snapshot()
         XCTAssertEqual(beforeAcknowledgement, [proof])
+        func hasPendingAcknowledgement() -> Bool {
+            var pending = false
+            let observation = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink {
+                if $0.requestId == requestId, $0.identity == identity, $0.walletId == walletId, $0.transactionId == txid {
+                    pending = true
+                }
+            }
+            observation.cancel()
+            return pending
+        }
+        XCTAssertTrue(hasPendingAcknowledgement())
         await sdk.resumeIdentityStatus()
-        try? await Task.sleep(for: .milliseconds(50))
+        let acknowledgementFinished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !hasPendingAcknowledgement()
+        }, object: nil)
+        await fulfillment(of: [acknowledgementFinished], timeout: 2)
         let afterFailedAcknowledgement = await store.snapshot()
         XCTAssertEqual(afterFailedAcknowledgement, [proof], "Unavailable SDK identity must retain the durable proof and acknowledgement")
     }
