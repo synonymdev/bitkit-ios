@@ -1554,7 +1554,7 @@ struct AppScene: View {
                             return
                         }
                         guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
-                            if app.didRejectScannedPaymentForInsufficientBalance {
+                            if app.didRejectScannedPayment {
                                 PaykitPaymentRequestPresentationCoordinator.handleUnavailablePaymentRoute(
                                     request,
                                     app: app,
