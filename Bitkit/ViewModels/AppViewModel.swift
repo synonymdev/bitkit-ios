@@ -240,7 +240,7 @@ class AppViewModel: ObservableObject {
         if SamRockSetupRequest.isProtocolURL(url.absoluteString) {
             return false
         }
-        if url.scheme?.lowercased() == "bitcoin" {
+        if let scheme = url.scheme?.lowercased(), scheme == "bitcoin" || scheme == "ethereum" {
             return false
         }
         if isBolt11Invoice(url) {

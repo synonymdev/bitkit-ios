@@ -21,6 +21,7 @@
 			<array>
 				<string>bitkit</string>
 				<string>bitcoin</string>
+				<string>ethereum</string>
 				<string>BITCOIN</string>
 				<string>lightning</string>
 				<string>LIGHTNING</string>

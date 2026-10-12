@@ -11,6 +11,7 @@ enum Route: Hashable {
     case spendingWallet
     case hardwareWallet(walletId: String)
     case usdtWallet
+    case usdtPayment(recipient: String, amount: String)
     case usdtActivity(transferId: String)
     case activityList
     case activityDetail(Activity)
@@ -147,6 +148,13 @@ extension Route {
             return false
         }
     }
+
+    var isUsdtWalletRoute: Bool {
+        switch self {
+        case .usdtWallet, .usdtPayment: true
+        default: false
+        }
+    }
 }
 
 func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bool {
@@ -183,6 +191,14 @@ func resolvePubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyCon
 
 func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
     resolvePubkyRoute(input: input, ownPublicKey: ownPublicKey, contacts: contacts)
+}
+
+func resolveUsdtPaymentRoute(input: String, isEnabled: Bool = Env.isUsdtEnabled) throws -> Route? {
+    let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard input.lowercased().hasPrefix("ethereum:") else { return nil }
+    guard isEnabled else { throw ScanHandlingError.unsupportedRequest }
+    let request = try usdtParsePaymentRequest(value: input)
+    return .usdtPayment(recipient: request.recipient, amount: request.amount.map { usdtFormatAmount(amount: $0) } ?? "")
 }
 
 @MainActor

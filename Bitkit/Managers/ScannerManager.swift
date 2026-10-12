@@ -91,6 +91,14 @@ class ScannerManager: ObservableObject {
         guard let app else { return }
 
         do {
+            if let route = try resolveUsdtPaymentRoute(input: uri) {
+                let path = navigation?.path
+                sheets?.hideSheetBeforePerforming(reason: "Scanner routed USDT payment") { [weak self] in
+                    guard let self, wallet?.usdtWallet.isSendPresented == false, navigation?.path == path else { return }
+                    navigation?.navigate(route)
+                }
+                return
+            }
             if handlePubkyRouteIfNeeded(uri) {
                 return
             }
@@ -180,6 +188,15 @@ class ScannerManager: ObservableObject {
         }
 
         do {
+            if scope == .unrestricted, let route = try resolveUsdtPaymentRoute(input: uri) {
+                let path = navigation?.path
+                sheets?.hideSheetBeforePerforming(reason: "Send scanner routed USDT payment") { [weak self] in
+                    guard let self, wallet?.usdtWallet.isSendPresented == false, navigation?.path == path else { return }
+                    navigation?.navigate(route)
+                }
+                completion(nil)
+                return
+            }
             if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
                 completion(nil)
                 return

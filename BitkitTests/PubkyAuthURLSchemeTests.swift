@@ -163,6 +163,18 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 
+        let usdtURL =
+            try XCTUnwrap(URL(string: "ethereum:\(PaykitUsdt.token)@42161/transfer?address=0x18503bD685aF84E6A7bC289898bAa1C3f5d8527E&uint256=10001"))
+        app.retainDeepLink(usdtURL)
+        await app.routePendingDeepLinkIfReady(false, nodeIsRunning: false) { _ in
+            XCTFail("USDT links must respect wallet startup gates")
+        }
+        XCTAssertEqual(app.pendingDeepLinkURL, usdtURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, usdtURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
         app.retainDeepLink(bolt11URL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
             XCTAssertEqual(routedURL, bolt11URL)

@@ -103,12 +103,14 @@ struct UsdtSendView: View {
             if embedded { content }
             else { NavigationStack { content } }
         }
+        .onAppear { usdt.isSendPresented = true }
+        .onDisappear { usdt.isSendPresented = false }
         .task {
             if !embedded {
                 do { destinations = try await usdt.sendDestinations() }
                 catch { Logger.warn("Could not load USDT bridge destinations", context: "UsdtSendView") }
             }
-            guard !initialRecipient.isEmpty, quote == nil else { return }
+            guard !initialRecipient.isEmpty, !initialAmount.isEmpty, quote == nil else { return }
             busy = true
             defer { busy = false }
             do { quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination) }
@@ -154,8 +156,6 @@ struct UsdtSendView: View {
             }
             await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
         }
-        .onAppear { usdt.isSendPresented = true }
-        .onDisappear { usdt.isSendPresented = false }
         .interactiveDismissDisabled(busy || pin)
         .alert(t("common__are_you_sure"), isPresented: Binding(
             get: { warning != nil },

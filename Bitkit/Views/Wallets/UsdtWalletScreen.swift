@@ -7,6 +7,14 @@ struct UsdtWalletScreen: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @State private var showSend = false
     @State private var selectedTransferId: String?
+    @State private var sendRecipient: String
+    @State private var sendAmount: String
+
+    init(initialRecipient: String = "", initialAmount: String = "") {
+        _sendRecipient = State(initialValue: initialRecipient)
+        _sendAmount = State(initialValue: initialAmount)
+        _showSend = State(initialValue: !initialRecipient.isEmpty)
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -44,8 +52,12 @@ struct UsdtWalletScreen: View {
             VStack {
                 Spacer()
                 HStack(spacing: 0) {
-                    TabBarButton(title: t("wallet__send"), icon: "arrow-up", variant: .left) { showSend = true }
-                        .accessibilityIdentifier("UsdtSend")
+                    TabBarButton(title: t("wallet__send"), icon: "arrow-up", variant: .left) {
+                        sendRecipient = ""
+                        sendAmount = ""
+                        showSend = true
+                    }
+                    .accessibilityIdentifier("UsdtSend")
                     TabBarButton(title: t("wallet__receive"), icon: "arrow-down", variant: .right) {
                         sheets.showSheet(.receive, data: ReceiveConfig(view: .usdt))
                     }
@@ -64,10 +76,10 @@ struct UsdtWalletScreen: View {
         }
         .sheet(isPresented: $showSend) {
             Sheet(id: .send, data: SendSheetItem()) {
-                UsdtSendView { id in
+                UsdtSendView(onDetails: { id in
                     showSend = false
                     selectedTransferId = id
-                }
+                }, initialRecipient: sendRecipient, initialAmount: sendAmount)
             }
         }
         .navigationDestination(isPresented: Binding(

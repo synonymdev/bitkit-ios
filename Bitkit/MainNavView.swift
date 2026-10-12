@@ -296,7 +296,8 @@ struct MainNavView: View {
             }
         }
         .onReceive(usdt.receivedTxPublisher) { tx in
-            guard navigation.currentRoute != .usdtWallet, !wallet.isRestoringWallet, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
+            guard navigation.currentRoute?.isUsdtWalletRoute != true,
+                  !wallet.isRestoringWallet, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
             sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
         }
         .onReceive(hwWalletManager.receivedTxPublisher) { tx in
@@ -463,6 +464,7 @@ struct MainNavView: View {
                 case .spendingWallet: SpendingWalletScreen()
                 case let .hardwareWallet(walletId): HardwareWalletScreen(walletId: walletId)
                 case .usdtWallet: UsdtWalletScreen()
+                case let .usdtPayment(recipient, amount): UsdtWalletScreen(initialRecipient: recipient, initialAmount: amount)
                 case let .usdtActivity(transferId): UsdtActivityDetail(transferId: transferId)
                 case .scanner: ScannerScreen()
 
@@ -742,6 +744,16 @@ struct MainNavView: View {
 
         Task { @MainActor in
             do {
+                if let route = try resolveUsdtPaymentRoute(input: uri) {
+                    guard !usdt.isSendPresented else { return }
+                    let path = navigation.path
+                    sheets.hideSheetBeforePerforming(reason: "Clipboard routed USDT payment") {
+                        guard !usdt.isSendPresented, navigation.path == path else { return }
+                        navigation.navigate(route)
+                    }
+                    clipboardUri = nil
+                    return
+                }
                 if let route = resolvePastedPubkyRoute(
                     input: uri,
                     ownPublicKey: pubkyProfile.publicKey,
@@ -835,6 +847,15 @@ struct MainNavView: View {
         }
 
         do {
+            if let route = try resolveUsdtPaymentRoute(input: url.absoluteString) {
+                guard !usdt.isSendPresented else { return }
+                let path = navigation.path
+                sheets.hideSheetBeforePerforming(reason: "Deeplink routed USDT payment") {
+                    guard !usdt.isSendPresented, navigation.path == path else { return }
+                    navigation.navigate(route)
+                }
+                return
+            }
             if PubkyContactLink.matches(url) {
                 guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
                 guard pubkyProfile.initializationErrorMessage == nil,
