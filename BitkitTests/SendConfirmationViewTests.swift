@@ -36,6 +36,27 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .lightning, transactionFee: 0))
     }
 
+    func testManualCoinSelectionIsNeededOnlyForOnchainSavingsWithoutSelectedCoins() {
+        func needs(_ walletType: WalletType, hardware: Bool = false, method: CoinSelectionMethod = .manual) -> Bool {
+            SendConfirmationView.needsManualCoinSelection(
+                walletType: walletType,
+                isHardwarePayment: hardware,
+                coinSelectionMethod: method,
+                selectedUtxos: nil
+            )
+        }
+        XCTAssertTrue(needs(.onchain))
+        XCTAssertFalse(needs(.lightning))
+        XCTAssertFalse(needs(.onchain, hardware: true))
+        XCTAssertFalse(needs(.onchain, method: .autopilot))
+        XCTAssertTrue(SendConfirmationView.needsManualCoinSelection(
+            walletType: .onchain,
+            isHardwarePayment: false,
+            coinSelectionMethod: .manual,
+            selectedUtxos: []
+        ))
+    }
+
     func testLightningFailureReleasesOnlyDefinitePreSubmissionAttempts() {
         XCTAssertEqual(
             SendConfirmationView.privatePaymentListOutcomeForLightningFailure(

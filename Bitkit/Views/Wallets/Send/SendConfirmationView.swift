@@ -773,27 +773,23 @@ struct SendConfirmationView: View {
             showManualConfirmation()
             return
         }
+        if isAutomatic, Self.needsManualCoinSelection(
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive,
+            coinSelectionMethod: settings.coinSelectionMethod,
+            selectedUtxos: wallet.selectedUtxos
+        ) {
+            showManualConfirmation()
+            try? await openManualCoinSelection()
+            return
+        }
         try await Self.requireManualCoinSelection(
             walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive,
             coinSelectionMethod: settings.coinSelectionMethod,
             selectedUtxos: wallet.selectedUtxos
         ) {
-            guard let context = confirmationContext else { return }
-            func isCurrentSend() -> Bool {
-                !Task.isCancelled && confirmationContext == context
-            }
-            guard isCurrentSend() else { throw CancellationError() }
-            do {
-                try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
-                guard isCurrentSend() else { throw CancellationError() }
-                navigationPath.append(.utxoSelection)
-            } catch {
-                guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
-                Logger.error("Failed to reload UTXOs for manual selection: \(error)")
-                showManualCoinSelectionError()
-                throw error
-            }
+            try await openManualCoinSelection()
         }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
@@ -948,6 +944,24 @@ struct SendConfirmationView: View {
         isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
     }
 
+    private func openManualCoinSelection() async throws {
+        guard let context = confirmationContext else { return }
+        func isCurrentSend() -> Bool {
+            !Task.isCancelled && confirmationContext == context
+        }
+        guard isCurrentSend() else { throw CancellationError() }
+        do {
+            try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
+            guard isCurrentSend() else { throw CancellationError() }
+            navigationPath.append(.utxoSelection)
+        } catch {
+            guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
+            Logger.error("Failed to reload UTXOs for manual selection: \(error)")
+            showManualCoinSelectionError()
+            throw error
+        }
+    }
+
     private func showManualCoinSelectionError() {
         app.toast(type: .error, title: t("other__try_again"))
     }
@@ -977,10 +991,23 @@ struct SendConfirmationView: View {
         selectedUtxos: [SpendableUtxo]?,
         prepareSelection: () async throws -> Void
     ) async throws {
-        guard walletType == .onchain, !isHardwarePayment, coinSelectionMethod == .manual,
-              selectedUtxos?.isEmpty != false else { return }
+        guard needsManualCoinSelection(
+            walletType: walletType,
+            isHardwarePayment: isHardwarePayment,
+            coinSelectionMethod: coinSelectionMethod,
+            selectedUtxos: selectedUtxos
+        ) else { return }
         try await prepareSelection()
         throw CancellationError()
+    }
+
+    static func needsManualCoinSelection(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?
+    ) -> Bool {
+        walletType == .onchain && !isHardwarePayment && coinSelectionMethod == .manual && selectedUtxos?.isEmpty != false
     }
 
     static func isSwipeDisabled(
