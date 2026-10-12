@@ -9,7 +9,8 @@ final class OnchainActivitySyncTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-        snapshotAppDefaults("activityDetachedContacts")
+        snapshotAppDefaults("activityDetachedContacts", "onchainAddress")
+        _ = Bitkit.CoreService.shared
         await drainCoreServiceQueue()
         try FileManager.default.createDirectory(at: database, withIntermediateDirectories: true)
         _ = try initDb(basePath: database.path)
@@ -20,6 +21,58 @@ final class OnchainActivitySyncTests: XCTestCase {
         await repointCoreToAppStorage()
         try? FileManager.default.removeItem(at: database)
         try await super.tearDown()
+    }
+
+    func testSyncPreservesContactRemovalDuringLookup() async throws {
+        let txid = String(repeating: "12", count: 32)
+        let address = "bcrt1qfn50lqawrce0evh66qrnlt8j447lwmeyqp5gmd"
+        let contact = "pubky" + String(repeating: "y", count: 52)
+        let lookupStarted = expectation(description: "Contact lookup started")
+        let gate = LookupGate()
+        let activity = Bitkit.ActivityService(coreService: .shared, channelLookup: { _, _, _ in nil })
+        activity.setPrivatePaykitContactResolvers(invoice: nil, onchainAddresses: { _, _ in
+            lookupStarted.fulfill()
+            await gate.wait()
+            return contact
+        })
+        UserDefaults.standard.set(address, forKey: "onchainAddress")
+        let timestamp = UInt64(Date().timeIntervalSince1970) + 10
+        try await activity.insert(.onchain(OnchainActivity(
+            walletId: WalletScope.default, id: txid, txType: .received, txId: txid, value: 5000,
+            fee: 0, feeRate: 1, address: address, confirmed: false, timestamp: timestamp,
+            isBoosted: false, boostTxIds: [], isTransfer: false, doesExist: true, confirmTimestamp: nil,
+            channelId: nil, transferTxId: nil, contact: nil, createdAt: timestamp, updatedAt: timestamp, seenAt: nil
+        )))
+        let details = BitkitCore.TransactionDetails(
+            walletId: WalletScope.default, txId: txid, amountSats: 5000, inputs: [],
+            outputs: [TxOutput(scriptpubkey: "", scriptpubkeyType: "v0_p2wpkh", scriptpubkeyAddress: address, value: 5000, n: 0)]
+        )
+        try await Bitkit.ServiceQueue.background(.core) { try upsertTransactionDetails(detailsList: [details]) }
+        let payment = LDKNode.PaymentDetails(
+            id: String(repeating: "34", count: 32), kind: .onchain(txid: txid, status: .unconfirmed),
+            amountMsat: 5_000_000, feePaidMsat: 0, direction: .inbound, status: .succeeded,
+            latestUpdateTimestamp: timestamp
+        )
+        let syncing = Task { try await activity.syncLdkNodePayments([payment]) }
+        await fulfillment(of: [lookupStarted], timeout: 5)
+        do {
+            try await activity.setContact(contact, forActivity: txid)
+            try await activity.setContact(nil, forActivity: txid)
+        } catch {
+            await gate.release()
+            _ = try? await syncing.value
+            throw error
+        }
+        await gate.release()
+        try await syncing.value
+
+        let rows = try await activity.get(filter: .onchain, walletId: WalletScope.default)
+        XCTAssertEqual(rows.count, 1)
+        guard case let .onchain(row) = try XCTUnwrap(rows.first) else { return XCTFail("Expected onchain activity") }
+        XCTAssertEqual(row.id, txid)
+        XCTAssertEqual(row.txId, txid)
+        XCTAssertNil(row.contact)
+        XCTAssertTrue(activity.isContactDetached(activityId: txid, walletId: WalletScope.default))
     }
 
     func testSyncOverlappingSendKeepsOneAttributedActivityThroughConfirmation() async throws {
