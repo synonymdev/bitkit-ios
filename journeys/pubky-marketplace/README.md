@@ -1,9 +1,9 @@
 # Pubky marketplace wallet leg
 
 This suite covers the two-wallet Bitkit leg of a Pubky marketplace purchase: a seller grants
-Paykit access and a watch-only account, a linked buyer receives the Payment Request, and the buyer pays
-the request on regtest through confirmation. It does not cover marketplace browsing, Locks content
-delivery, fiat payment, or Hypercolor.
+Paykit access, a watch-only account and a marketplace write grant, a linked buyer receives the
+Payment Request, and the buyer pays the request on regtest through confirmation. It does not cover
+marketplace browsing, Locks content delivery, fiat payment, or Hypercolor.
 
 ## Required integration fixture
 
@@ -20,6 +20,9 @@ the fixture state and must provide:
   retaining a taller foreign regtest tip.
 - A clean seller wallet, a separate clean funded buyer wallet, and an identity-wide Paykit link
   between them. The seller's Bitkit and Paykit Server share that identity's state.
+- A marketplace grant request for the seller wallet: a Pubky grant auth URL from requester `locks.app` for
+  `/pub/app.locks/` with READ, WRITE access, and a report of the approved grant and the setup completion time
+  for the identity that approved both requests.
 - A driver that creates exactly one purchase for the buyer, reports the Payment Request id and
   delivery state, returns the derived address and expected amount, mines exactly one authorized
   block, and reports signed Paykit and marketplace completion state.
@@ -27,8 +30,22 @@ the fixture state and must provide:
 The request and endpoint must satisfy the
 [issuer contract](../../Docs/paykit-issuer-interoperability.md): lowercase `btc`, a network-correct
 `btc-regtest-*` endpoint identifier, and a JSON endpoint payload with a non-empty string `value`.
-The fixture must keep watch-only account material and spending authority separate. Evidence records
-the claimed account xpub and account index while omitting wallet seed material and tokens.
+The fixture must keep watch-only account material and spending authority separate. Paykit Server
+keeps the claimed account xpub to itself, so the fixture cannot report it; evidence records the setup
+completion and the marketplace grant instead, and omits wallet seed material and tokens.
+
+The [bitkit-docker](https://github.com/synonymdev/bitkit-docker) `marketplace` profile provides this fixture
+([`docs/pubky-marketplace.md`](https://github.com/synonymdev/bitkit-docker/blob/main/docs/pubky-marketplace.md)):
+
+- `./pubky-marketplace setup-url` prints the setup request with its `ios_url`, which opens through
+  `xcrun simctl openurl <simulator-id> '<ios_url>'`; `setup-wait <flow>` waits for the setup to complete.
+- `./pubky-marketplace seller-auth` prints the marketplace grant request as its first JSON line and waits for the
+  approval. iOS has no deep link for this request: put its `auth_url` on the simulator clipboard with
+  `printf %s '<auth_url>' | xcrun simctl pbcopy <simulator-id>`, then in the seller wallet use Scan QR Code
+  and Paste QR Code (E2E builds also offer Enter QRCode String). The request goes through the testnet relay on
+  `localhost:15412` and expires after about five minutes, so start it at that step.
+- `./pubky-marketplace info` reports `bitkit_seller.marketplace_grant` and `bitkit_seller.setup_completed_at`,
+  which stays null until `setup-wait` has seen the setup complete.
 
 Build and run each clean simulator against that endpoint before its first launch:
 
@@ -80,7 +97,8 @@ artifacts at each boundary:
 
 | Boundary | Bitkit evidence | Integration evidence |
 | --- | --- | --- |
-| Combined claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthPaykitAccess`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion and the claimed xpub/account index, with no spending key |
+| Combined claim | `PubkyAuthWatchOnlyConsent`, `PubkyAuthWatchOnlyApprove`, `PubkyAuthPaykitAccess`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | Setup completion for the seller identity, with no spending key |
+| Marketplace grant | Authorization screen with the single `/pub/app.locks` row from `locks.app`, `PubkyAuthAuthorize`, and `PubkyAuthOK` snapshots | `bitkit_seller.marketplace_grant` and a non-null `bitkit_seller.setup_completed_at` |
 | Linked buyer | Enabled `ContactPaymentsToggle`, `Contact_<seller-public-key>`, and `Contact_<buyer-public-key>` snapshots | Seller and buyer peer-link state |
 | Incoming request | `ReviewAmount`, `PaymentRequestsBell`, `PaymentRequestsSheet`, and `PaymentRequestRow-<payment-request-id>-one-time` snapshots showing the automatic review, seller, amount, and note when present | Delivery record and exact Payment Request id |
 | Payment approval | `PaymentRequestPay-<payment-request-id>`, `ReviewAmount`, and `ReviewContactRecipient` snapshots | Derived regtest address and expected amount |
