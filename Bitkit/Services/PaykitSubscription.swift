@@ -433,6 +433,7 @@ struct PaykitSubscription: Identifiable, Hashable {
 
     let paymentRequestId: String
     let counterparty: String
+    let proposalStreamItemId: UInt64?
     let amountValue: String
     let amountSats: UInt64
     let note: String?
@@ -573,6 +574,7 @@ struct PaykitSubscription: Identifiable, Hashable {
         }
 
         paymentRequestId = record.paymentRequestId
+        proposalStreamItemId = record.proposalStreamItemId
         counterparty = record.counterparty
         amountValue = terms.amount.value
         self.amountSats = amountSats

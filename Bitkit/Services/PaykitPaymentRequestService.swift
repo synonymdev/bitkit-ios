@@ -56,6 +56,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
 
     let paymentRequestId: String
     let counterparty: String
+    let proposalStreamItemId: UInt64?
     let amountValue: String
     let amountSats: UInt64
     let note: String?
@@ -189,6 +190,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         return .success(PaykitPaymentRequest(
             paymentRequestId: record.paymentRequestId,
             counterparty: record.counterparty,
+            proposalStreamItemId: record.proposalStreamItemId,
             amountValue: terms.amount.value,
             amountSats: amountSats,
             note: Self.note(from: terms.metadata),
@@ -233,6 +235,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         paymentRequestId = createdRecord.paymentRequestId
         counterparty = target.publicKey
+        proposalStreamItemId = createdRecord.proposalStreamItemId
         amountValue = WalletViewModel.formatBitcoinAmount(sats: draft.amountSats)
         amountSats = draft.amountSats
         let trimmedNote = draft.note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -255,6 +258,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         PaykitPaymentRequest(
             paymentRequestId: paymentRequestId,
             counterparty: counterparty,
+            proposalStreamItemId: proposalStreamItemId,
             amountValue: amountValue,
             amountSats: amountSats,
             note: note,
@@ -279,6 +283,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         paymentRequestId = subscription.paymentRequestId
         counterparty = subscription.counterparty
+        proposalStreamItemId = subscription.proposalStreamItemId
         amountValue = subscription.amountValue
         amountSats = subscription.amountSats
         note = subscription.note
@@ -296,6 +301,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     private init(
         paymentRequestId: String,
         counterparty: String,
+        proposalStreamItemId: UInt64?,
         amountValue: String,
         amountSats: UInt64,
         note: String?,
@@ -311,6 +317,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     ) {
         self.paymentRequestId = paymentRequestId
         self.counterparty = counterparty
+        self.proposalStreamItemId = proposalStreamItemId
         self.amountValue = amountValue
         self.amountSats = amountSats
         self.note = note
@@ -555,7 +562,8 @@ protocol PaykitPaymentRequestSdkHandling: Sendable {
     func uploadProfileAvatar(bytes: Data, contentType: String, expectedIdentity: String?) async throws -> String
     func acceptPaymentRequest(
         counterparty: String,
-        paymentRequestId: String
+        paymentRequestId: String,
+        expectedProposalStreamItemId: UInt64
     ) async throws -> Paykit.PaymentRequestRecord
     func claimPaymentRequestForExecution(counterparty: String, paymentRequestId: String) async throws -> Paykit.PaymentRequestRecord
     func rejectPaymentRequest(
@@ -939,9 +947,13 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestExpired
         }
 
+        guard let proposalStreamItemId = request.proposalStreamItemId else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
         _ = try await sdk.acceptPaymentRequest(
             counterparty: request.counterparty,
-            paymentRequestId: request.paymentRequestId
+            paymentRequestId: request.paymentRequestId,
+            expectedProposalStreamItemId: proposalStreamItemId
         )
     }
 
@@ -981,9 +993,13 @@ struct PaykitPaymentRequestService {
             throw PaykitPaymentRequestError.requestExpired
         }
 
+        guard let proposalStreamItemId = subscription.proposalStreamItemId else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
         let record = try await sdk.acceptPaymentRequest(
             counterparty: subscription.counterparty,
-            paymentRequestId: subscription.paymentRequestId
+            paymentRequestId: subscription.paymentRequestId,
+            expectedProposalStreamItemId: proposalStreamItemId
         )
         guard let subscription = PaykitSubscription(record: record) else {
             throw PaykitPaymentRequestError.requestUnavailable

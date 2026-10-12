@@ -127,7 +127,11 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 let payment = Task {
                     do {
                         if accepting {
-                            _ = try await service.acceptPaymentRequest(counterparty: "peer", paymentRequestId: "request")
+                            _ = try await service.acceptPaymentRequest(
+                                counterparty: "peer",
+                                paymentRequestId: "request",
+                                expectedProposalStreamItemId: 1
+                            )
                         } else {
                             _ = try await service.claimPaymentRequestForExecution(counterparty: "peer", paymentRequestId: "request")
                         }
@@ -641,7 +645,9 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
         throw PaymentMutationReached.reached
     }
 
-    override func claimAndAcceptPaymentRequest(counterparty _: String, paymentRequestId _: String) async throws -> PaymentRequestRecord {
+    override func claimAndAcceptPaymentRequest(counterparty _: String, paymentRequestId _: String,
+                                               expectedProposalStreamItemId _: UInt64) async throws -> PaymentRequestRecord
+    {
         await paymentMutation("claimAndAccept")
         throw PaymentMutationReached.reached
     }
