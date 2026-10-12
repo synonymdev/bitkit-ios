@@ -176,11 +176,11 @@ final class UsdtWalletUITests: XCTestCase {
             )
         app.buttons["UsdtRecipientContinue"].tap()
         XCTAssertTrue(app.buttons["N1"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["1.23"].exists)
+        XCTAssertTrue(app.staticTexts["$ 1.23"].exists)
         for digit in 4 ... 8 {
             app.buttons["N\(digit)"].tap()
         }
-        XCTAssertTrue(app.staticTexts["1.234567"].exists)
+        XCTAssertTrue(app.staticTexts["$ 1.234567"].exists)
         XCTAssertFalse(app.otherElements["UsdtConfirm"].exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.lifetime = .keepAlways

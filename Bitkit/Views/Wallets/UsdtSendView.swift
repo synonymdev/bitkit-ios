@@ -344,6 +344,14 @@ struct UsdtSendView: View {
                 CaptionText(t(quote.bridgeProvider == .orchestra ? "usdt__bridge_estimate_note" : "usdt__fee_note"))
                     .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
             }
+            if quote.destination != .arbitrum {
+                SendSectionView(t("usdt__maximum_total")) {
+                    BodySSBText(usdtOverviewAmount(quote.amount + quote.maximumFee) + " USDT")
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("UsdtMaximumTotal")
+                .padding(.bottom, 16)
+            }
             SwipeButton(
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
                 isLoading: busy, isComplete: paymentComplete, swipeProgress: $swipeProgress
@@ -395,7 +403,6 @@ struct UsdtSendView: View {
                     BodySSBText(usdtOverviewAmount(quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
                 }
             }
-            SendSectionView(t("usdt__maximum_total")) { BodySSBText(usdtOverviewAmount(quote.amount + quote.maximumFee) + " USDT") }
         }
     }
 
