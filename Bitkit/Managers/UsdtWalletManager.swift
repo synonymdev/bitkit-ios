@@ -153,17 +153,22 @@ final class UsdtWalletManager {
         try beginOperation()
         defer { finishOperation() }
         let wallet = try await wallet()
-        let transfer = try await ServiceQueue.background(.core, wrapErrors: false) {
-            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
-            let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
-            try await beforeSubmission()
-            return try await wallet.sendWithDeadline(
-                quoteId: quote.id, mnemonic: mnemonic, passphrase: passphrase,
-                submissionDeadline: submissionDeadline?.timestamp
-            )
+        do {
+            let transfer = try await ServiceQueue.background(.core, wrapErrors: false) {
+                guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
+                let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
+                try await beforeSubmission()
+                return try await wallet.sendWithDeadline(
+                    quoteId: quote.id, mnemonic: mnemonic, passphrase: passphrase,
+                    submissionDeadline: submissionDeadline?.timestamp
+                )
+            }
+            transfers.removeAll { $0.id == transfer.id }
+            transfers.insert(transfer, at: 0)
+        } catch {
+            if let saved = try? await ServiceQueue.background(.core, wrapErrors: false, { try wallet.history() }) { transfers = saved }
+            throw error
         }
-        transfers.removeAll { $0.id == transfer.id }
-        transfers.insert(transfer, at: 0)
     }
 
     func paymentProof(quoteId: String, binding: UsdtPaymentProofBinding) async throws -> UsdtPaymentProof? {

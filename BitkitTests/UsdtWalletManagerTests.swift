@@ -86,7 +86,6 @@ final class UsdtWalletManagerTests: XCTestCase {
             let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 100, sourceTx: "tx", status: status,
                                       code: code, refundTx: nil)
             let order = UsdtDepositOrder(status: status, amountIn: 100, amountOut: 90, destinationTx: nil, refundTx: nil, code: code)
-            XCTAssertEqual(deposit.statusText, t(key), status)
             for linkedOrder in [nil, order] {
                 let detail = UsdtDepositDetail(deposit: deposit, order: linkedOrder)
                 XCTAssertEqual(detail.statusText, t(key), status)

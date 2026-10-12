@@ -539,8 +539,12 @@ struct UsdtSendView: View {
             submitted = true
             Task { await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt) }
         } catch is CancellationError {} catch {
-            self.error = UsdtWalletManager.message(for: error)
-            self.quote = nil
+            if usdt.transfers.contains(where: { $0.id == quote.id }) {
+                submitted = true
+            } else {
+                self.error = UsdtWalletManager.message(for: error)
+                self.quote = nil
+            }
             Logger.warn("Failed to send USDT: \(UsdtWalletManager.message(for: error))", context: "UsdtSendView")
         }
     }

@@ -29,14 +29,13 @@ struct UsdtDepositHistoryView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         if let selected { detail(selected) }
                         else {
-                            BodySText(t("usdt__deposit_status_note"), textColor: .textSecondary)
                             if deposits.isEmpty { BodySText(t("usdt__deposit_empty"), textColor: .textSecondary) }
                             ForEach(deposits, id: \.id) { deposit in
                                 Button {
                                     Task { await loadDetail(deposit.id) }
                                 } label: {
                                     ActivityRowContainer {
-                                        ActivityRowContent(title: deposit.network.uppercased(), subtitle: deposit.statusText) {
+                                        ActivityRowContent(title: deposit.network.uppercased(), subtitle: t("wallet__send_details")) {
                                             CircularIcon(
                                                 icon: "arrow-down",
                                                 iconColor: .usdtAccent,
@@ -237,12 +236,6 @@ private struct RefundApproval {
     let deposit: UsdtDeposit
     let offset: UInt32
     let address: String
-}
-
-extension UsdtDeposit {
-    var statusText: String {
-        depositStatusText(status, code: code)
-    }
 }
 
 extension UsdtDepositDetail {
