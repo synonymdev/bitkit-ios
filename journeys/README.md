@@ -124,6 +124,7 @@ Their descriptions record extra iOS manual checks and necessary platform mechani
 | Journey | iOS adaptation |
 | --- | --- |
 | Original payment retry | Max retains its original rate; custom fees use `getFeeLimits()`. Additional channel funding, payer/wallet race and backup checks are in the description. |
+| `send/prepared-fee-recovery.md` | Same four manual fault cases and file on both platforms; the recipe records original-send versus replacement fee retention and iOS Max/identity-flow adaptations. These faults are not journey capabilities. |
 | Accepted result | `xcrun simctl openurl`; confirm change before the Max leg, use Manual coin selection and restore Autopilot afterward. The existing Autopilot Max limitation is not claimed fixed. |
 | Hardware Shop proof | iOS identifiers and Bridge setup; extra durable returning-payer and later tag-edit replay checks are in the description. |
 
