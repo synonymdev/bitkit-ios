@@ -131,8 +131,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 let priorities = await sdk.operationPriorities
                 XCTAssertEqual(priorities["pending"] ?? [], mode == .full ? [priority] : [], context)
                 XCTAssertEqual(priorities["receive"] ?? [], mode >= .inbox ? [priority] : [], context)
-                XCTAssertEqual(priorities["requests"], [.background], context)
-                XCTAssertEqual(priorities["peers"], [.background], context)
+                XCTAssertEqual(priorities["observation"], [.background], context)
+                XCTAssertNil(priorities["requests"], context)
+                XCTAssertNil(priorities["peers"], context)
             }
         }
     }
@@ -574,6 +575,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sdk = PaymentRequestSdkMock(records: [])
         let manager = paymentRequestManager(sdk: sdk)
         manager.activate(identity: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg")
+        await sdk.setActiveIdentity("pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg")
         await manager.refresh()
         XCTAssertTrue(manager.receivedPaymentContacts.isEmpty)
         await sdk.setRecords([record])
@@ -3755,19 +3757,76 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(priorities["receive"], [.background])
     }
 
-    func testFailedRefreshKeepsPreviouslyLoadedRequests() async throws {
+    func testStoredRequestsRemainObservableWhileRefreshIsHeld() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
-        await manager.refresh()
+        await manager.refresh(mode: .stored)
+        let pending = manager.pendingRequests
+        let history = manager.historyRequests
+        let request = try XCTUnwrap(pending.first)
         await sdk.setRecords([])
-        await sdk.setReceiveError(.receive)
+        await sdk.pauseNextPaymentRequestList()
+        let refresh = Task { await manager.refresh(mode: .stored) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        try await Task.sleep(for: .milliseconds(250))
 
-        await manager.refresh()
+        let started = ContinuousClock.now
+        XCTAssertEqual(manager.pendingRequests, pending)
+        XCTAssertEqual(manager.historyRequests, history)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        let delay = started.duration(to: .now)
+        let timing = XCTAttachment(string: "synthetic_refresh_hold_seconds=0.25\nobservation_delay=\(delay)")
+        timing.lifetime = .keepAlways
+        add(timing)
 
-        XCTAssertEqual(manager.pendingRequests.count, 1)
-        await sdk.setReceiveError(nil)
-        await manager.refresh()
+        await sdk.resumePaymentRequestList()
+        let refreshed = await refresh.value
+        XCTAssertTrue(refreshed)
         XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+    }
+
+    func testRefreshRejectsAnotherIdentityObservation() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh(mode: .stored)
+        let pending = manager.pendingRequests
+        let history = manager.historyRequests
+        await sdk.setActiveIdentity("pubky" + String(repeating: "r", count: 52))
+        await sdk.setRecords([])
+
+        let refreshed = await manager.refresh(mode: .stored)
+
+        XCTAssertFalse(refreshed)
+        XCTAssertEqual(manager.pendingRequests, pending)
+        XCTAssertEqual(manager.historyRequests, history)
+    }
+
+    func testFailedRefreshKeepsPreviouslyLoadedRequests() async throws {
+        for failsObservation in [false, true] {
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refresh()
+            let pending = manager.pendingRequests
+            let history = manager.historyRequests
+            await sdk.setRecords([])
+            if failsObservation {
+                await sdk.setLinkedPeersError(.linkedPeers)
+            } else {
+                await sdk.setReceiveError(.receive)
+            }
+
+            let refreshed = await manager.refresh()
+
+            XCTAssertFalse(refreshed)
+            XCTAssertEqual(manager.pendingRequests, pending)
+            XCTAssertEqual(manager.historyRequests, history)
+            await sdk.setReceiveError(nil)
+            await sdk.setLinkedPeersError(nil)
+            await manager.refresh()
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            XCTAssertTrue(manager.historyRequests.isEmpty)
+        }
     }
 
     func testPeerIntakeFailureDoesNotDropReceivedRequests() async throws {
@@ -3886,6 +3945,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let identity = "pubky\(String(repeating: "y", count: 52))"
         let record = try paymentRequestRecord(state: .accepted, acceptedEventId: "accepted")
         let sdk = PaymentRequestSdkMock(records: [record])
+        await sdk.setActiveIdentity(identity)
         let presentationStore = PaymentRequestPresentationMemoryStore()
         let acceptanceStore = PaymentRequestPresentationMemoryStore()
         try acceptanceStore.save(
@@ -6632,6 +6692,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testPresentedRequestStaysQueuedWithoutAutoPresentingAfterManagerRecreation() async throws {
         let identity = "pubky\(String(repeating: "y", count: 52))"
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        await sdk.setActiveIdentity(identity)
         let store = PaymentRequestPresentationMemoryStore()
         let subscriptionStore = PaymentRequestSubscriptionStateMemoryStore()
         let firstManager = PaykitPaymentRequestManager(
@@ -6674,6 +6735,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             endsAt: nil
         )
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(id: "subscription", recurrence: recurrence)])
+        await sdk.setActiveIdentity(identity)
         let presentationStore = PaymentRequestPresentationMemoryStore()
         let subscriptionStore = PaymentRequestSubscriptionStateMemoryStore()
         let firstManager = PaykitPaymentRequestManager(
@@ -7933,17 +7995,20 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
 
         manager.activate(identity: identityA)
+        await sdk.setActiveIdentity(identityA)
         await manager.refresh()
         let requestForIdentityA = try XCTUnwrap(manager.pendingRequests.first)
         XCTAssertTrue(manager.markPresentedIfPending(requestForIdentityA))
 
         manager.activate(identity: identityB)
+        await sdk.setActiveIdentity(identityB)
         await manager.refresh()
         XCTAssertEqual(manager.requestsForPresentation().count, 1)
         let requestForIdentityB = try XCTUnwrap(manager.pendingRequests.first)
         XCTAssertTrue(manager.markPresentedIfPending(requestForIdentityB))
 
         manager.activate(identity: identityA)
+        await sdk.setActiveIdentity(identityA)
         await manager.refresh()
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
@@ -8333,6 +8398,21 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func paymentRequests() async -> [PaymentRequestRecord] {
         await sharedPaymentRequests().filter(PaykitSdkService.isBitkitPaymentRequest)
+    }
+
+    func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?) async throws -> PaykitStateObservation {
+        operationPriorities["observation", default: []].append(priority)
+        let identity = activeIdentity
+        if let expectedIdentity {
+            guard PubkyPublicKeyFormat.matches(identity, expectedIdentity) else { throw PubkyServiceError.identityChanged }
+        }
+        let peers = peerRecords
+        if let linkedPeersError { throw linkedPeersError }
+        let requests = await sharedPaymentRequests()
+        return PaykitStateObservation(
+            publicKey: identity, keyGeneration: 1, observedAt: "2027-01-15T08:00:00Z",
+            contacts: [], linkedPeers: peers, paymentRequests: requests, receipts: []
+        )
     }
 
     func sharedPaymentRequests() async -> [PaymentRequestRecord] {

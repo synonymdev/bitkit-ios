@@ -441,6 +441,107 @@ final class TransferServiceActivityTests: XCTestCase {
     }
 
     @MainActor
+    func testHardwarePendingNavigatesBeforeAcknowledgementAndRejectsOtherContexts() async throws {
+        let identity = "pubky" + String(repeating: "z", count: 52)
+        let requestId = PaykitPaymentRequest.ID(
+            paymentRequestId: UUID().uuidString, counterparty: "pubky" + String(repeating: "y", count: 52), billingPeriodStartsAt: nil
+        )
+        let walletId = "trezor:original-ios-wallet"
+        let txid = String(repeating: "ab", count: 32)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(
+            endpoints: [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue], paymentRequestId: requestId.paymentRequestId
+        ), now: Date()))
+        var proof = PendingPaykitPaymentProof(
+            identity: identity, requestId: requestId, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: txid,
+            onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId,
+            onchainAcceptanceVerified: true, onchainLocalFollowupComplete: true
+        )
+        proof.onchainResolutionAwaitingConsumption = true
+        let store = PaymentProofMemoryStore()
+        await store.seed([proof])
+        let sdk = PaymentProofSdkMock(identity: identity, records: [])
+        let service = PaykitPaymentProofService(
+            sdk: sdk, store: store, hardwareTransactionLookup: PaymentProofHardwareLookup(result: .failure(CancellationError())),
+            attemptService: OnchainSendAttemptService(store: MemoryAttemptStore()), logInfo: { _ in }, logWarning: { _ in }
+        )
+        await service.reconcile()
+        await sdk.suspendIdentityStatus()
+        await sdk.setIdentityAvailable(false)
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: MemoryAttemptStore()))
+        let otherIdentity = "pubky" + String(repeating: "x", count: 52)
+        let contexts = [(otherIdentity, walletId, txid), (identity, "trezor:other", txid),
+                        (identity, walletId, String(repeating: "cd", count: 32)), (identity, walletId, txid)]
+        for (index, context) in contexts.enumerated() {
+            let isOriginalContext = index == contexts.count - 1
+            if isOriginalContext {
+                await service.consumeOnchainPaymentResolution(
+                    .init(identity: identity, requestId: requestId, transactionId: txid, walletId: walletId), activeIdentity: nil
+                )
+            }
+            let profile = PubkyProfileManager()
+            profile.publicKey = context.0
+            var path: [SendRoute] = []
+            var navigatedOnMainThread = true
+            let navigation = expectation(description: "Hardware resolution navigates only its original context")
+            navigation.isInverted = !isOriginalContext
+            let view = SendPendingScreen(
+                paymentHash: nil, retryRoute: .confirm, paymentRequest: nil, paykitPaymentRequestId: requestId,
+                routingCacheResetAttempted: false, hardwareWalletId: context.1, hardwareTransactionId: context.2,
+                hardwarePaymentIdentity: identity, proofService: service, navigationPath: Binding(get: { path }, set: {
+                    navigatedOnMainThread = Thread.isMainThread
+                    path = $0
+                    navigation.fulfill()
+                })
+            )
+            .environment(PaykitPaymentRequestManager())
+            .environmentObject(CurrencyViewModel()).environmentObject(SettingsViewModel.shared)
+            .environmentObject(ActivityListViewModel()).environmentObject(AppViewModel())
+            .environmentObject(NavigationViewModel()).environmentObject(profile)
+            .environmentObject(SheetViewModel()).environmentObject(wallet)
+            let window = UIWindow(frame: UIScreen.main.bounds)
+            window.rootViewController = UIHostingController(rootView: view)
+            window.isHidden = false
+            if isOriginalContext {
+                let completed = await service.completeHardwareOnchainPayment(request, paymentIdentity: identity, walletId: walletId, txid: txid)
+                XCTAssertTrue(completed)
+            }
+            await fulfillment(of: [navigation], timeout: 2)
+            XCTAssertEqual(path, isOriginalContext ? [.success(paymentId: txid, walletId: walletId)] : [])
+            XCTAssertTrue(navigatedOnMainThread)
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        let beforeAcknowledgement = await store.snapshot()
+        XCTAssertEqual(beforeAcknowledgement, [proof])
+        func hasPendingAcknowledgement() -> Bool {
+            var pending = false
+            let observation = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink {
+                if $0.requestId == requestId, $0.identity == identity, $0.walletId == walletId, $0.transactionId == txid {
+                    pending = true
+                }
+            }
+            observation.cancel()
+            return pending
+        }
+        XCTAssertTrue(hasPendingAcknowledgement())
+        await sdk.resumeIdentityStatus()
+        let acknowledgementFinished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !hasPendingAcknowledgement()
+        }, object: nil)
+        await fulfillment(of: [acknowledgementFinished], timeout: 2)
+        let afterFailedAcknowledgement = await store.snapshot()
+        XCTAssertEqual(afterFailedAcknowledgement, [proof], "Unavailable SDK identity must retain the durable proof and acknowledgement")
+    }
+
+    @MainActor
     func testHardwareProofSubmissionRetryPreservesContactEdits() async throws {
         let identity = "pubky" + String(repeating: "z", count: 52)
         let original = "pubky" + String(repeating: "y", count: 52)

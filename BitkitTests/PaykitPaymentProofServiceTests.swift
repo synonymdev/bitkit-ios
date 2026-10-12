@@ -299,6 +299,63 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(lookups.count, 1, "Already verified original follow-up must not repeat payment or observation")
     }
 
+    func testHardwareReconciliationPublishesDurableResolutionBeforeProofDelivery() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint], paymentRequestId: UUID().uuidString)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let txid = String(repeating: "ab", count: 32)
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        await sdk.setSubmissionFailure(true)
+        await sdk.suspendSubmission()
+        await store.seed([PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint,
+            kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
+            onchainAddress: onchainAddress, onchainAmountSats: 1000, onchainWalletId: hardwareWalletId
+        )])
+        let lookup = PaymentProofHardwareLookup(result: .success(hardwareTransaction(txid: txid)))
+        let service = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
+        let resolution = PaykitOnchainPaymentResolution(identity: identity, requestId: request.id, transactionId: txid, walletId: hardwareWalletId)
+        var resolutions: [PaykitOnchainPaymentResolution] = []
+        let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink {
+            if $0.requestId == request.id { resolutions.append($0) }
+        }
+        defer { subscription.cancel() }
+        let reconciliation = Task { await service.reconcile() }
+        for _ in 0 ..< 100 {
+            if await sdk.submissionCount() > 0 { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        let startedSubmissions = await sdk.submissionCount()
+        XCTAssertEqual(startedSubmissions, 1)
+        try? await Task.sleep(for: .milliseconds(250))
+        let saved = await store.snapshot().first
+        XCTAssertEqual(saved?.proofData, txid)
+        XCTAssertEqual(saved?.onchainAcceptanceVerified, true)
+        XCTAssertEqual(saved?.onchainLocalFollowupComplete, true)
+        XCTAssertEqual(saved?.onchainResolutionAwaitingConsumption, true)
+        XCTAssertEqual(resolutions, [resolution], "Durable local completion must not await remote proof delivery")
+        await sdk.resumeSubmission()
+        await reconciliation.value
+        let retained = await store.snapshot().first
+        XCTAssertEqual(retained, saved, "Failed delivery must retain the exact durable proof")
+
+        await service.consumeOnchainPaymentResolution(resolution, activeIdentity: nil)
+        let restarted = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
+        await sdk.setSubmissionFailure(false)
+        await restarted.reconcile()
+        XCTAssertEqual(resolutions, [resolution, resolution], "Unacknowledged completion must survive restart")
+        await restarted.consumeOnchainPaymentResolution(resolution, activeIdentity: identity)
+        await restarted.reconcile()
+        let remaining = await store.snapshot()
+        let observations = await lookup.calls()
+        let submissions = await sdk.submissionCount()
+        XCTAssertTrue(remaining.isEmpty)
+        XCTAssertEqual(observations.count, 1)
+        XCTAssertEqual(submissions, 2, "Restart retries proof delivery, not the payment")
+        XCTAssertEqual(resolutions.count, 2)
+    }
+
     func testOverlappingHardwareReconciliationCompletesFollowupAndPublishesOnce() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -2840,6 +2897,8 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var privateMessageProcessCallCount = 0
     private var identityStatusCalls = 0
     private var isIdentityAvailable = true
+    private var shouldSuspendIdentityStatus = false
+    private var identityStatusContinuations: [CheckedContinuation<Void, Never>] = []
     private var shouldSuspendSubmission = false
     private var submissionContinuation: CheckedContinuation<Void, Never>?
     private var submissionStartContinuations: [CheckedContinuation<Void, Never>] = []
@@ -2853,10 +2912,23 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         self.records = records
     }
 
-    func identityStatus() -> IdentityStatus? {
+    func identityStatus() async -> IdentityStatus? {
         identityStatusCalls += 1
+        if shouldSuspendIdentityStatus {
+            await withCheckedContinuation { identityStatusContinuations.append($0) }
+        }
         guard isIdentityAvailable else { return nil }
         return IdentityStatus(publicKey: identity, capability: .privateLinkCapable)
+    }
+
+    func suspendIdentityStatus() {
+        shouldSuspendIdentityStatus = true
+    }
+
+    func resumeIdentityStatus() {
+        shouldSuspendIdentityStatus = false
+        identityStatusContinuations.forEach { $0.resume() }
+        identityStatusContinuations.removeAll()
     }
 
     func setIdentity(_ identity: String) {

@@ -7,6 +7,9 @@
     If Core fails after payment has started and returns no transaction ID, dismissing and reopening
     must keep that original request pending; this journey cannot inject that response-loss condition.
     This journey does not inject native broadcast faults or prove physical USB/BLE behavior.
+    Once the exact outgoing payment, proof, and local activity are durable, Pending may finish while
+    remote proof delivery is unavailable. This is local completion only, not issuer acknowledgement.
+    Held-delivery and restart ordering are covered by unit fixtures, not by the live steps below.
       iOS adaptations: identifiers replace Android testTags; use the issuer fixture and Bridge emulator described in the iOS hardware-wallet README. Reopening after consumed local verification must use the durable original completion; repeat proof reconciliation after editing activity tags and verify the later edits are preserved. Switch the active payer, complete the original payment, restart, then return to the original payer and verify only that payer receives the saved original result. These are additional manual checks on the common hardware journey. For an explicit backend broadcast refusal or InvalidHex/InvalidTransaction refusal, leaving the sign sheet retains the original signed payment and the durable wallet guard; reopening may retry only that payment without signing again. An uncertain transport failure remains non-dismissible. Native faults and physical USB/BLE acceptance remain unrun.
   </description>
   <actions>
@@ -15,7 +18,7 @@
     <action>Have the issuer send a new proposed one-time Payment Request for amount "0.001", asset "btc", and accepted identifier "btc-regtest-p2wpkh"; record its exact request ID and payer identity for the backend proof check</action>
     <action>Verify Payment Request confirmation (id "PaymentRequestConfirm") shows 100,000 sats and the saved issuer contact under Show details (id "SendConfirmToggleDetails")</action>
     <action>Tap the funding-source button (id "SendConfirmAssetButton"), waiting for balance loading between taps, until FROM shows the paired hardware wallet</action>
-    <action>Swipe to confirm; verify hardware sign shows the original issuer destination (id "HardwareSendAddress") and 100,000 sats (id "HardwareSendAmount")</action>
+    <action>Swipe to confirm; verify the hardware sign screen (id "HardwareSendSign") shows the original issuer destination under "To address (confirm on device)" and 100,000 sats (id "HardwareSendSignAmount")</action>
     <action>Tap Open Trezor Connect (id "HardwareSendOpenTrezorConnect") once and approve the Bridge emulator's transaction prompts</action>
     <action>While signing or local proof observation is running, verify another tap cannot start another payment; wait for Success (id "SendSuccess") or the existing Payment Pending screen</action>
     <action>If Pending is shown, verify there is no resend action or Sent activity from the returned Core transaction ID alone; close the sheet and reopen the same request from Payment Requests and verify it cannot start a fresh hardware payment</action>

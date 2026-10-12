@@ -531,6 +531,7 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
 }
 
 protocol PaykitPaymentRequestSdkHandling: Sendable {
+    func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?) async throws -> Paykit.PaykitStateObservation
     func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport
     func processOutboundPrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> Paykit
         .OutboundPrivateSendReport
@@ -606,7 +607,8 @@ struct PaykitPaymentRequestService {
     func synchronize(
         mode: PaykitPaymentRequestRefreshMode = .full,
         priority: PaykitSdkOperationLock.Priority = .ordered,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        expectedIdentity: String? = nil
     ) async throws -> PaykitPaymentRequestSnapshot {
         if mode == .full {
             try await processPendingMessages(priority: messagePriority)
@@ -616,9 +618,10 @@ struct PaykitPaymentRequestService {
             logIntakeFailures(intakeReports)
         }
         let synchronizationDate = now()
-        let sharedRecords = try await sdk.sharedPaymentRequests(priority: priority)
+        let observation = try await sdk.observeState(priority: priority, expectedIdentity: expectedIdentity)
+        let sharedRecords = observation.paymentRequests
         let records = sharedRecords.filter(PaykitSdkService.isBitkitPaymentRequest)
-        let blockedPeers = try await sdk.linkedPeers(priority: priority).filter { $0.state == .blocked }
+        let blockedPeers = observation.linkedPeers.filter { $0.state == .blocked }
         let availableRecords = records.filter { record in
             !blockedPeers.contains {
                 PubkyPublicKeyFormat.matches($0.counterparty, record.counterparty)
@@ -2349,8 +2352,11 @@ final class PaykitPaymentRequestManager {
         messagePriority: PaykitSdkOperationLock.Priority
     ) async -> Bool {
         do {
-            let snapshot = try await service.synchronize(mode: mode, priority: .background, messagePriority: messagePriority)
-            guard generation == refreshGeneration, let activeIdentity else { return false }
+            guard let activeIdentity else { return false }
+            let snapshot = try await service.synchronize(
+                mode: mode, priority: .background, messagePriority: messagePriority, expectedIdentity: activeIdentity
+            )
+            guard generation == refreshGeneration, PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity) else { return false }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
             async let inFlightRequestIds = inFlightPaymentRequestIds(activeIdentity)
             let (locallyCompletedProofKinds, locallyInFlightRequestIds) = await (completedProofKinds, inFlightRequestIds)

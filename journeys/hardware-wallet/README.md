@@ -148,6 +148,12 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   detail chip list `ActivityTags` (only rendered once a tag exists), All Activity tag filter
   `TagsPrompt` (not `ActivityTags` — that one is detail-screen only), explorer `ActivityTxDetails`.
 
+## Local Payment Completion
+
+The iOS `shop-onchain-proof.xml` recovery contract permits local Success after exact transaction,
+proof, and activity persistence without waiting for remote proof delivery. Unit fixtures cover
+held delivery, acknowledgement failure, and restart; the live journey does not inject these faults.
+
 ## Blockstream Jade
 
 There is no Jade emulator in `bitkit-docker`, and iOS reaches a Jade over Bluetooth only, which the

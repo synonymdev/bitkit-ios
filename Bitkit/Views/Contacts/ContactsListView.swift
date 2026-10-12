@@ -290,7 +290,7 @@ struct ContactsListView: View {
         guard let pk = pubkyProfile.publicKey else { return }
 
         do {
-            try await contactsManager.loadContacts(for: pk)
+            try await contactsManager.loadObservedContacts(for: pk)
             guard !Task.isCancelled else { return }
             if !contactsManager.contacts.isEmpty {
                 app.hasSeenContactsIntro = true
