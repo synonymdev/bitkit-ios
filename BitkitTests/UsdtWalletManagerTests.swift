@@ -4,6 +4,14 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testFeeCollectionFailureIsActionableWithoutMisclassifyingOtherRejections() {
+        XCTAssertEqual(UsdtWalletManager.message(for: UsdtError.TransactionRejected(reason: "Paymaster fee collection failed")),
+                       t("usdt__error_fee_collection"))
+        XCTAssertEqual(UsdtWalletManager.message(for: UsdtError.TransactionRejected(reason: "Provider rejected the request")),
+                       t("usdt__error_rejected"))
+        XCTAssertEqual(UsdtWalletManager.message(for: UsdtError.InsufficientBalance), t("usdt__error_balance"))
+    }
+
     func testOnlyNewConfirmedReceiptsCelebrateAfterInitialSync() {
         let old = transfer("old")
         let incoming = transfer("new")

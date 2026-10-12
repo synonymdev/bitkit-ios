@@ -43,7 +43,7 @@ enum PaymentRequestDisplay {
         case .canceled:
             return "wallet__payment_request_status_canceled"
         case .proofSubmitted:
-            return "wallet__payment_request_status_paid"
+            return "wallet__payment_request_status_proof_submitted"
         case .recoveryRequired:
             return "wallet__payment_request_status_action_required"
         case .invalidConflict, .activeRecurring, .unknown:

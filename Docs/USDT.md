@@ -45,3 +45,7 @@ Orchestra routing costs are deducted from the entered USDT principal. Review sho
 ## Validation
 
 UI journeys cover unfunded wallet navigation, immutable request review and receiving-detail consent. [Manual integration checks](USDT-QA.md) cover funded settlement, provider behavior, restore faults and billing-clock changes that the journey environment does not supply.
+
+Direct contact sends retain the contact on the sending wallet. A direct incoming transfer to the shared USDT address has no authenticated Paykit contact identity and is displayed without a contact. Incoming request payments gain attribution only after the request-bound proof and on-chain transfer are verified; the address or an unverified sender claim is not sufficient.
+
+“Proof submitted” describes Paykit proof delivery, not independent payment verification. A matching verified USDT receipt supplies the received, underpaid or late-payment status.

@@ -649,6 +649,27 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testUsdtOnlyPrivateContactRetainsItsEndpointAndListVersion() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        var resolution = try boundResolution(publicKey: publicKey, method: .usdtArbitrum, payload: endpoint.rawPayload)
+        resolution.privatePaymentListVersion = 7
+        let result = await service.privatePaymentResult(
+            publicKey: publicKey, paymentRequest: nil, resolution: resolution,
+            validateEndpoints: { endpoints, _ in
+                XCTAssertEqual(endpoints.map(\.methodId), [.usdtArbitrum])
+                return endpoints
+            }
+        )
+        guard case let .opened(target, context, endpoints) = result else { return XCTFail("Expected the private USDT endpoint") }
+        XCTAssertEqual(target, PaykitUsdt.paymentURI(address: endpoint.value))
+        XCTAssertEqual(context?.paymentListVersion, 7)
+        XCTAssertEqual(endpoints.map(\.value), [endpoint.value])
+    }
+
     func testRequestEndpointUsesOnlyPayableResolvedCandidates() async throws {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
@@ -4436,7 +4457,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(PaymentRequestDisplay.paymentDirection(for: paidRequest), .incoming)
         XCTAssertEqual(
             PaymentRequestDisplay.statusKey(for: paidRequest, isActionable: false),
-            "wallet__payment_request_status_paid"
+            "wallet__payment_request_status_proof_submitted"
         )
     }
 

@@ -369,7 +369,8 @@ final class UsdtWalletManager {
         case .RateLimited: return t("usdt__error_rate_limit")
         case .LogRangeTooLarge: return t("usdt__error_response")
         case .InvalidPaymentProof, .InvalidResponse: return t("usdt__error_response")
-        case .TransactionRejected: return t("usdt__error_rejected")
+        case let .TransactionRejected(reason):
+            return t(reason == "Paymaster fee collection failed" ? "usdt__error_fee_collection" : "usdt__error_rejected")
         case .NetworkUnavailable: return t("usdt__error_network")
         }
     }
