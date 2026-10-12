@@ -108,6 +108,13 @@ final class UsdtWalletManager {
         return try await wallet.quoteTransfer(recipient: recipient, amount: value, destination: destination)
     }
 
+    func quoteMaximum(recipient: String, destination: UsdtDestination) async throws -> UsdtQuote {
+        try beginOperation()
+        defer { finishOperation() }
+        let wallet = try await wallet()
+        return try await wallet.quoteMaxTransfer(recipient: recipient, destination: destination)
+    }
+
     func backupSnapshot() async throws -> String? {
         guard isConfigured else {
             if FileManager.default.fileExists(atPath: storageDirectory.path) {

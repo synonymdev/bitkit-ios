@@ -6,6 +6,7 @@ import XCTest
 final class UsdtSupportDetailsTests: XCTestCase {
     func testTransferSupportIncludesProviderReferencesAndTransactions() {
         var transfer = UsdtTransfer(
+            sender: nil,
             id: "local-id", txHash: "source-tx", userOperationHash: nil, bridgeGuid: "message-id", orchestra: nil,
             recipient: "recipient-address", destination: .polygon, amount: 100, receivedAmount: 90,
             fee: 10, isIncoming: false, status: .bridgeNeedsAttention, timestamp: 1

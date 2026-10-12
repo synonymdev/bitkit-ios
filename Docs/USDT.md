@@ -1,6 +1,6 @@
 # USDT configuration
 
-Normal builds use published bitkit-core `0.8.0-rc3`, including its matching native libraries and generated bindings.
+Normal builds use published bitkit-core `0.8.0-rc4`, including its matching native libraries and generated bindings. MAX requires the USDT gateway to allow Core's pinned balance override during gas estimation; it never applies to signing or submission.
 
 USDT uses Arbitrum One regardless of the Bitcoin network setting. Builds use the credential-free Bitkit gateway by default:
 

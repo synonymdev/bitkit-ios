@@ -97,6 +97,7 @@ final class UsdtWalletManagerTests: XCTestCase {
 
     private func transfer(_ id: String, incoming: Bool = true, status: UsdtTransferStatus = .confirmed, amount: UInt64 = 1_000_000) -> UsdtTransfer {
         UsdtTransfer(
+            sender: nil,
             id: id,
             txHash: status == .pending ? nil : id,
             userOperationHash: nil,

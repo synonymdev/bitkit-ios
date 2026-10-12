@@ -22,12 +22,15 @@ struct UsdtSendView: View {
     @State private var destination: UsdtDestination = .arbitrum
     @State private var destinations = Env.usdtDestinations
     @State private var quote: UsdtQuote?
+    @State private var maximumQuote: UsdtQuote?
+    @State private var preparingMaximum = false
     @State private var editingRecipient = false
     @State private var editingAmount = false
     @State private var busy = false
     @State private var error: String?
     @State private var pin = false
     @State private var submitted = false
+    @State private var paymentComplete = false
     @State private var showDetails = false
     @State private var warning: String?
     @State private var confirmedWarnings: Set<String> = []
@@ -148,6 +151,10 @@ struct UsdtSendView: View {
             guard scenePhase == .active, submitted else { return }
             if busy, let quote {
                 if quote.destination == .arbitrum { await usdt.waitForTransfer(quote.id) }
+                if submittedStatus == .confirmed {
+                    paymentComplete = true
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
                 busy = false
             }
             while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
@@ -173,29 +180,35 @@ struct UsdtSendView: View {
     }
 
     private var networkSelector: some View {
-        SendSectionView(t("usdt__destination")) {
-            if !embedded, destinations.count > 1 {
-                Menu {
-                    ForEach(destinations, id: \.self) { item in
-                        Button(item.label) {
-                            guard destination != item else { return }
-                            destination = item
-                            recipient = ""
-                            amount = ""
-                            quote = nil
-                            error = nil
-                        }
+        SendSectionView(t("usdt__network")) { networkButton }
+    }
+
+    private var networkButton: some View {
+        Menu {
+            ForEach(destinations, id: \.self) { item in
+                Button(item.label) {
+                    guard destination != item else { return }
+                    destination = item
+                    maximumQuote = nil
+                    quote = nil
+                    error = nil
+                    if !recipient.isEmpty, (try? usdtValidateRecipient(value: recipient, destination: item)) == nil {
+                        editingAmount = false
+                        editingRecipient = true
                     }
-                } label: {
-                    NumberPadActionButton(text: destination.label, color: .usdtAccent, variant: .secondary) {}
                 }
-                .accessibilityIdentifier("UsdtNetwork")
-            } else {
-                BodySSBText(destination.label)
-                    .frame(minHeight: 28)
-                    .accessibilityIdentifier("UsdtNetwork")
             }
+        } label: {
+            HStack(spacing: 4) {
+                Image("usdt-network").resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
+                CaptionBText(destination.label).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 8).frame(height: 28)
+            .background(Color.white06, in: Capsule())
+            .overlay(Capsule().stroke(Color.white10, lineWidth: 1))
         }
+        .disabled(embedded || destinations.count < 2 || busy)
+        .accessibilityIdentifier("UsdtNetwork")
     }
 
     private var recipientContent: some View {
@@ -240,8 +253,7 @@ struct UsdtSendView: View {
 
     private var amountContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CaptionMText("USDT · " + destination.label).padding(.bottom, 8)
-            NumberPadAmountText(value: amount.isEmpty ? "0" : amount, symbol: "$")
+            UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount)
                 .accessibilityIdentifier("UsdtAmount")
                 .padding(.bottom, 32)
             if let error {
@@ -249,23 +261,40 @@ struct UsdtSendView: View {
             }
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("usdt__balance"))
-                    BodySSBText((settings.hideBalance ? " • • • • •" : usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—") + " USDT")
+                    CaptionMText(t("wallet__send_available"))
+                    BodySSBText(settings.hideBalance ? " • • • • •" : "$ " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"))
                 }
                 Spacer()
                 NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
+                if !embedded {
+                    NumberPadActionButton(text: t("common__max"), color: .usdtAccent, disabled: busy,
+                                          isLoading: preparingMaximum)
+                    {
+                        Task { await useMaximum() }
+                    }
+                    .accessibilityIdentifier("UsdtMax")
+                    networkButton
+                }
             }
             .padding(.bottom, 16)
             CustomDivider()
-            NumberPad(type: .decimal, isDisabled: busy || embedded, onDeleteLongPress: { amount = "" }, onPress: enterAmount)
+            NumberPad(type: .decimal, isDisabled: busy || embedded, onDeleteLongPress: { amount = ""; maximumQuote = nil }, onPress: enterAmount)
                 .frame(maxHeight: .infinity)
-            CustomButton(title: t("common__continue"), isDisabled: busy || amount.isEmpty, isLoading: busy) {
+            CustomButton(title: t("common__continue"), isDisabled: busy || amount.isEmpty, isLoading: busy && !preparingMaximum) {
                 guard !busy, quote == nil else { return }
                 busy = true
                 error = nil
                 defer { busy = false }
                 do {
-                    quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+                    if let maximumQuote {
+                        let fresh = maximumQuote.expiresAt > UInt64(Date().timeIntervalSince1970) + 5
+                        let prepared: UsdtQuote = if fresh { maximumQuote }
+                        else { try await usdt.quoteMaximum(recipient: recipient, destination: destination) }
+                        quote = prepared
+                        amount = usdtFormatAmount(amount: prepared.amount)
+                    } else {
+                        quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+                    }
                     showDetails = false
                     confirmedWarnings = []
                 } catch is CancellationError {
@@ -280,80 +309,93 @@ struct UsdtSendView: View {
 
     private func confirmation(_ quote: UsdtQuote) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount))
-                        .contentShape(Rectangle()).onTapGesture { if !busy { goBack() } }
-                        .padding(.bottom, paymentRequest == nil ? 44 : 24)
-                    if showDetails {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack(alignment: .top, spacing: 16) {
-                                SendSectionView(t("wallet__send_from")) {
-                                    NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
-                                }
-                                if paymentContext != nil {
-                                    SendSectionView(t("wallet__payment_request_contact")) {
-                                        HStack(spacing: 4) {
-                                            if let contact { PubkyContactAvatar(contact: contact, size: 20) }
-                                            BodySSBText(contactName).lineLimit(1)
-                                        }.frame(height: 28)
-                                    }
-                                } else {
-                                    SendSectionView(t("usdt__destination")) { BodySSBText(quote.destination.label).frame(height: 28) }
-                                }
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
+                            .contentShape(Rectangle()).onTapGesture { if !busy { goBack() } }
+                            .padding(.bottom, 32)
+                        if showDetails {
+                            quoteDetails(quote)
+                            if let requestNote { PaymentRequestInvoiceNote(note: requestNote).padding(.top, 16) }
+                        } else {
+                            if paymentRequest != nil {
+                                PaymentRequestSummary(contactName: contactName, note: requestNote).padding(.bottom, 16)
                             }
-                            SendSectionView(t("wallet__send_to")) { BodySSBText(quote.recipient).textSelection(.enabled) }
-                            if let provider = quote.bridgeProvider {
-                                SendSectionView(t("usdt__bridge_provider")) { BodySSBText(provider == .orchestra ? "Orchestra" : "USDT0") }
-                            }
+                            Spacer(minLength: 0)
+                            PaymentReviewIllustration(swipeProgress: swipeProgress, maximumHeight: 192)
+                                .padding(.top, 16).frame(height: 256)
                         }
-                        if let requestNote { PaymentRequestInvoiceNote(note: requestNote).padding(.top, 16) }
-                    } else {
-                        if paymentRequest != nil {
-                            PaymentRequestSummary(contactName: contactName, note: requestNote).padding(.bottom, 16)
-                        }
-                        PaymentReviewIllustration(swipeProgress: swipeProgress, maximumHeight: 220)
+                        if quote.destination != .arbitrum { bridgeCosts(quote).padding(.top, 16) }
+                        if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError") }
+                        CustomButton(
+                            title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
+                            icon: Image(showDetails ? "eye-slash" : "speed-normal").resizable().frame(width: 16, height: 16)
+                                .foregroundColor(.usdtAccent), background: Color.white06
+                        ) { showDetails.toggle() }
+                            .frame(maxWidth: .infinity).padding(.vertical, 24)
+                            .accessibilityIdentifier("UsdtReviewDetails")
+                        if showDetails { Spacer(minLength: 0) }
                     }
-                    if quote.destination != .arbitrum {
-                        SendSectionView(t(quote.bridgeProvider == .orchestra ? "usdt__expected_amount" : "usdt__recipient_gets")) {
-                            BodySSBText(usdtFormatAmount(amount: quote.receivedAmount) + " USDT")
-                        }.padding(.top, 16)
-                        if quote.bridgeProvider == .orchestra {
-                            SendSectionView(t("usdt__bridge_deducted_fee")) {
-                                BodySSBText(usdtFormatAmount(amount: quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
-                            }.padding(.top, 16)
-                        }
-                    }
-                    SendSectionView(t("usdt__maximum_fee")) {
-                        BodySSBText(usdtFormatAmount(amount: quote.maximumFee) + " USDT")
-                    }
-                    .padding(.top, 16)
-                    if quote.destination != .arbitrum {
-                        SendSectionView(t("usdt__maximum_total")) { BodySSBText(usdtFormatAmount(amount: quote.amount + quote.maximumFee) + " USDT") }
-                            .padding(.top, 16)
-                    }
-                    BodySText(t(quote.bridgeProvider == .orchestra ? "usdt__bridge_estimate_note" : "usdt__fee_note"), textColor: .textSecondary)
-                        .padding(
-                            .top,
-                            12
-                        )
-                    if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError") }
+                    .frame(minHeight: geometry.size.height, alignment: .top)
                 }
             }
-            CustomButton(
-                title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
-                icon: Image(showDetails ? "eye-slash" : "coins").foregroundColor(.usdtAccent), background: Color(hex: 0x151515)
-            ) { showDetails.toggle() }
-                .frame(maxWidth: .infinity).padding(.vertical, 24)
-                .accessibilityIdentifier("UsdtReviewDetails")
+            if showDetails {
+                CaptionText(t(quote.bridgeProvider == .orchestra ? "usdt__bridge_estimate_note" : "usdt__fee_note"))
+                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
+            }
             SwipeButton(
-                title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy, isLoading: busy, swipeProgress: $swipeProgress
+                title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
+                isLoading: busy, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
                 await confirmPayment()
                 if !submitted { throw CancellationError() }
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("UsdtConfirm")
+        }
+    }
+
+    private func quoteDetails(_ quote: UsdtQuote) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("usdt__pay_from")) {
+                    NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
+                }
+                UsdtDetailCell(title: t("usdt__network"), value: quote.destination.label, icon: "usdt-network")
+            }
+            HStack(alignment: .top, spacing: 16) {
+                UsdtDetailCell(title: t("wallet__activity_payment"), value: usdtOverviewAmount(quote.amount), icon: "user")
+                UsdtDetailCell(title: t("wallet__activity_fee"), value: usdtOverviewAmount(quote.maximumFee), icon: "speed-normal")
+            }
+            if paymentContext != nil {
+                SendSectionView(t("wallet__payment_request_contact")) {
+                    HStack(spacing: 4) {
+                        if let contact { PubkyContactAvatar(contact: contact, size: 20) }
+                        BodySSBText(contactName).lineLimit(1)
+                    }
+                }
+            }
+            SendSectionView(t("wallet__activity_address")) {
+                BodySSBText(quote.recipient).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            }
+            if let provider = quote.bridgeProvider {
+                SendSectionView(t("usdt__bridge_provider")) { BodySSBText(provider == .orchestra ? "Orchestra" : "USDT0") }
+            }
+        }
+    }
+
+    private func bridgeCosts(_ quote: UsdtQuote) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SendSectionView(t(quote.bridgeProvider == .orchestra ? "usdt__expected_amount" : "usdt__recipient_gets")) {
+                BodySSBText(usdtFormatAmount(amount: quote.receivedAmount) + " USDT")
+            }
+            if quote.bridgeProvider == .orchestra {
+                SendSectionView(t("usdt__bridge_deducted_fee")) {
+                    BodySSBText(usdtFormatAmount(amount: quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
+                }
+            }
+            SendSectionView(t("usdt__maximum_total")) { BodySSBText(usdtFormatAmount(amount: quote.amount + quote.maximumFee) + " USDT") }
         }
     }
 
@@ -396,10 +438,11 @@ struct UsdtSendView: View {
         do {
             let request: UsdtPaymentRequest = if value.contains(":") { try usdtParsePaymentRequest(value: value) }
             else { try UsdtPaymentRequest(recipient: usdtValidateRecipient(value: value, destination: destination), amount: nil, chainId: nil) }
-            guard request.chainId == nil || destination == .arbitrum else { throw UsdtError.WrongNetwork }
+            if request.chainId != nil { destination = .arbitrum }
             recipient = request.recipient
-            amount = request.amount.map { usdtFormatAmount(amount: $0) } ?? ""
+            if let requestedAmount = request.amount { amount = usdtFormatAmount(amount: requestedAmount) }
         } catch { self.error = UsdtWalletManager.message(for: error); return }
+        maximumQuote = nil
         recipientFocused = false
         editingAmount = true
         error = nil
@@ -429,8 +472,23 @@ struct UsdtSendView: View {
         error = nil
     }
 
+    private func useMaximum() async {
+        guard !busy, !embedded else { return }
+        busy = true
+        preparingMaximum = true
+        error = nil
+        defer { busy = false; preparingMaximum = false }
+        do {
+            let prepared = try await usdt.quoteMaximum(recipient: recipient, destination: destination)
+            maximumQuote = prepared
+            amount = usdtFormatAmount(amount: prepared.amount)
+        } catch is CancellationError {
+        } catch { self.error = UsdtWalletManager.message(for: error) }
+    }
+
     private func enterAmount(_ key: String) {
         guard !busy else { return }
+        maximumQuote = nil
         amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
     }
 

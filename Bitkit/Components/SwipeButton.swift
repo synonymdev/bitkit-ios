@@ -7,6 +7,7 @@ struct SwipeButton: View {
     var isDisabled = false
     /// Blocks interaction and shows the knob spinner while an operation is running.
     var isLoading = false
+    var isComplete = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
     let onComplete: () async throws -> Void
@@ -15,11 +16,15 @@ struct SwipeButton: View {
     @State private var isSubmitting = false
 
     private var isBusy: Bool {
-        isDisabled || isLoading || isSubmitting
+        isDisabled || isLoading || isSubmitting || isComplete
     }
 
     private var showsSpinner: Bool {
-        isLoading || isSubmitting
+        !isComplete && (isLoading || isSubmitting)
+    }
+
+    private var contentOpacity: Double {
+        isDisabled && !isLoading && !isSubmitting && !isComplete ? 0.5 : 1
     }
 
     private let buttonHeight: CGFloat = 76
@@ -49,12 +54,12 @@ struct SwipeButton: View {
                             .frame(height: buttonHeight - innerPadding)
                             .padding(.horizontal, innerPadding / 2)
                     }
-                    .opacity(isDisabled ? 0.5 : 1)
+                    .opacity(contentOpacity)
 
                 // Track text
                 BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .opacity(Double(1.0 - textProgress) * (isDisabled ? 0.5 : 1))
+                    .opacity(Double(1.0 - textProgress) * contentOpacity)
 
                 // Knob
                 Circle()
@@ -69,20 +74,20 @@ struct SwipeButton: View {
                                     .resizable()
                                     .frame(width: 24, height: 24)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(1.0 - (offset / halfWidth)))
+                                    .opacity(isComplete ? 0 : Double(1.0 - (offset / halfWidth)))
 
                                 Image("check-mark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(max(0, (offset - halfWidth) / halfWidth)))
+                                    .opacity(isComplete ? 1 : Double(max(0, (offset - halfWidth) / halfWidth)))
                             }
                         }
                     )
                     .accessibilityIdentifier("GRAB")
                     .offset(x: clampedOffset)
                     .padding(.horizontal, innerPadding / 2)
-                    .opacity(isDisabled ? 0.5 : 1)
+                    .opacity(contentOpacity)
                     .gesture(
                         DragGesture()
                             .onChanged { value in

@@ -1809,7 +1809,7 @@
 // USDT
 "usdt__activity" = "Activity";
 "usdt__address" = "Recipient address";
-"usdt__amount" = "Amount (USDT)";
+"usdt__amount" = "Amount";
 "usdt__bridge_attention" = "Bridge needs attention";
 "usdt__bridging" = "Delivering to destination";
 "usdt__confirmed" = "Confirmed";
@@ -1834,7 +1834,7 @@
 "usdt__error_route" = "This network is currently unavailable.";
 "usdt__expected_amount" = "Expected amount";
 "usdt__failed" = "Failed";
-"usdt__fee_note" = "All fees are paid in USDT. The final network fee may be lower than this maximum.";
+"usdt__fee_note" = "All fees are paid in USDT. Final fee may be lower.";
 "usdt__history_sync" = "Older activity is still syncing. Your balance is up to date when the connection is available.";
 "usdt__maximum_fee" = "Maximum fee";
 "usdt__network_warning" = "Select the network used by the recipient. Sending to an address on the wrong network can lose funds.";
@@ -1943,3 +1943,14 @@
 "wallet__payment_request_requested_amount" = "Requested amount";
 
 "profile__auth_approval_services_separator" = " and ";
+
+"usdt__network" = "Network";
+"usdt__sender_network" = "Sender network";
+"usdt__sent_title" = "Sent USDT";
+"usdt__pay_from" = "Pay from";
+
+"usdt__to_network" = "To network {network}";
+
+"usdt__from_address" = "From address";
+
+"usdt__to_address" = "To address";

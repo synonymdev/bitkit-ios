@@ -25,6 +25,7 @@ struct SendAmountView: View {
     @State private var isContinuing = false
     @State private var usdtAmount = ""
     @State private var conversionError: String?
+    @State private var showingFundingSources = false
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -67,25 +68,11 @@ struct SendAmountView: View {
     }
 
     private var selectedSourceLabel: String {
-        return switch selectedFundingSource {
-        case .spending:
-            t("wallet__spending__title")
-        case .savings:
-            t("wallet__savings__title")
-        case .usdt: "USDT"
-        case let .hardware(walletId):
-            hwWalletManager.wallets.first(where: { $0.id == walletId })?.name
-                ?? hwWalletManager.vendor(walletId: walletId).modelName
-        }
+        fundingSourceLabel(selectedFundingSource)
     }
 
     private var selectedSourceColor: Color {
-        switch selectedFundingSource {
-        case .spending: .purpleAccent
-        case .savings: .brandAccent
-        case .usdt: .usdtAccent
-        case .hardware: .blueAccent
-        }
+        fundingSourceColor(selectedFundingSource)
     }
 
     private var assetButtonTestIdentifier: String {
@@ -140,7 +127,7 @@ struct SendAmountView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if app.paykitUsesUsdt {
-                    NumberPadAmountText(value: usdtAmount.isEmpty ? "0" : usdtAmount, symbol: "$")
+                    UsdtAmountHeader(amount: usdtAmount.isEmpty ? "0" : usdtAmount)
                         .accessibilityIdentifier("SendNumberField")
                 } else {
                     NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
@@ -148,15 +135,14 @@ struct SendAmountView: View {
                 }
                 if let conversionError { BodySText(conversionError, textColor: .brandAccent).padding(.top, 12) }
 
-                Spacer()
+                if app.paykitUsesUsdt { Spacer().frame(height: 32) } else { Spacer() }
 
                 // Available balance section
                 HStack(alignment: .bottom) {
                     if app.paykitUsesUsdt {
                         VStack(alignment: .leading, spacing: 4) {
                             CaptionMText(t("wallet__send_available"))
-                            BodySSBText((settings.hideBalance ? "•••••" : usdt.balance.map { PaykitAmount(asset: .usdt, atomic: $0).value } ?? "—") +
-                                " USDT")
+                            BodySSBText(settings.hideBalance ? "•••••" : "$ " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"))
                         }
                     } else {
                         AvailableAmount(
@@ -184,12 +170,17 @@ struct SendAmountView: View {
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
                         color: selectedSourceColor,
                         variant: canSwitchFundingSource ? .primary : .secondary,
-                        disabled: !canSwitchFundingSource || isContinuing,
+                        disabled: isContinuing,
                         isLoading: hwSend.isFundingSourceLoading
                     ) {
-                        selectNextFundingSource()
+                        showingFundingSources = true
                     }
                     .accessibilityIdentifier("AssetButton-\(assetButtonTestIdentifier)")
+                    .popover(isPresented: $showingFundingSources, arrowEdge: .bottom) {
+                        fundingSourceMenu
+                            .presentationCompactAdaptation(.popover)
+                            .presentationBackground(Color.gray6)
+                    }
 
                     if !app.paykitUsesUsdt {
                         NumberPadActionButton(
@@ -410,13 +401,98 @@ struct SendAmountView: View {
         amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
     }
 
-    private func selectNextFundingSource() {
-        guard canSwitchFundingSource else { return }
-        let currentIndex = fundingSources.firstIndex(of: selectedFundingSource) ?? -1
-        selectFundingSource(fundingSources[(currentIndex + 1) % fundingSources.count])
+    private var fundingSourceMenu: some View {
+        let sources: [SendFundingSource] = [.savings, .spending] + hwWalletManager.wallets.map {
+            .hardware(walletId: $0.walletId)
+        } + [.usdt]
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(sources.indices, id: \.self) { index in
+                let source = sources[index]
+                let enabled = fundingSources.contains(source)
+                Button {
+                    showingFundingSources = false
+                    selectFundingSource(source)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            CaptionMText(fundingSourceLabel(source)).lineLimit(1)
+                            if case let .hardware(walletId) = source,
+                               let hardwareWallet = hwWalletManager.wallets.first(where: { $0.walletId == walletId })
+                            {
+                                HwWalletConnectionIcon(isConnected: hardwareWallet.isConnected)
+                                    .frame(width: 16, height: 16)
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            Image(fundingSourceIcon(source)).resizable().scaledToFit().frame(width: 24, height: 24)
+                            if source == .usdt {
+                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—")
+                            } else {
+                                MoneyText(sats: Int(fundingSourceBalance(source)), forceUnit: .bitcoin, size: .bodyMSB,
+                                          symbol: false, enableHide: true, fillsWidth: false)
+                            }
+                            Spacer(minLength: 0)
+                            if source == selectedFundingSource {
+                                Image("check").resizable().scaledToFit().frame(width: 16, height: 16)
+                                    .foregroundStyle(fundingSourceColor(source))
+                            }
+                        }
+                    }
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!enabled || hwSend.isFundingSourceLoading)
+                .opacity(enabled ? 1 : 0.30)
+                .accessibilityIdentifier("SendFundingSource-\(index)")
+                if index < sources.count - 1 { CustomDivider() }
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 12)
+        .frame(width: 250)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SendFundingSources")
+    }
+
+    private func fundingSourceLabel(_ source: SendFundingSource) -> String {
+        switch source {
+        case .savings: t("wallet__savings__title")
+        case .spending: t("wallet__spending__title")
+        case .usdt: "USDT"
+        case let .hardware(walletId):
+            hwWalletManager.wallets.first { $0.walletId == walletId }?.name ?? hwWalletManager.vendor(walletId: walletId).modelName
+        }
+    }
+
+    private func fundingSourceColor(_ source: SendFundingSource) -> Color {
+        switch source {
+        case .savings: .brandAccent
+        case .spending: .purpleAccent
+        case .usdt: .usdtAccent
+        case .hardware: .blueAccent
+        }
+    }
+
+    private func fundingSourceIcon(_ source: SendFundingSource) -> String {
+        switch source {
+        case .savings: "btc"
+        case .spending: "ln"
+        case .usdt: "tether-circle"
+        case .hardware: "btc-circle-blue"
+        }
+    }
+
+    private func fundingSourceBalance(_ source: SendFundingSource) -> UInt64 {
+        switch source {
+        case .savings: UInt64(wallet.spendableOnchainBalanceSats)
+        case .spending: UInt64(wallet.maxSendLightningSats)
+        case let .hardware(walletId): hwWalletManager.fundingBalance(walletId: walletId)
+        case .usdt: 0
+        }
     }
 
     private func selectFundingSource(_ source: SendFundingSource) {
+        guard source != selectedFundingSource, fundingSources.contains(source) else { return }
         let target: PaykitAsset = source == .usdt ? .usdt : .btc
         let selectsFixedLightning = source == .spending && (app.scannedLightningInvoice?.amountSatoshis ?? 0) > 0
         if app.contactPaymentContext?.incomingPaymentRequest != nil || (!selectsFixedLightning && app.paykitUsesUsdt != (source == .usdt)) {

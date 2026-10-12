@@ -17,7 +17,7 @@ final class UsdtDisplayTests: XCTestCase {
     func testOverviewAmountsRoundToCentsWithoutHidingSmallBalances() {
         let locale = Locale(identifier: "en_US")
         for (amount, expected): (UInt64, String) in [
-            (0, "0"), (1, "<0.01"), (9999, "<0.01"), (10000, "0.01"),
+            (0, "0.00"), (1, "<0.01"), (9999, "<0.01"), (10000, "0.01"), (10_000_000, "10.00"),
             (123_456_789, "123.46"), (1_025_000, "1.03"), (1_234_567_890, "1,234.57"),
         ] {
             XCTAssertEqual(usdtOverviewAmount(amount, locale: locale), expected, "amount: \(amount)")

@@ -187,7 +187,7 @@ func usdtDisplaySats(amount: String, rate: PaykitExchangeRate?, now: Date = Date
 }
 
 func usdtOverviewAmount(_ amount: UInt64, locale: Locale = .current) -> String {
-    let format = Decimal.FormatStyle.number.precision(.fractionLength(0 ... 2))
+    let format = Decimal.FormatStyle.number.precision(.fractionLength(2))
         .rounded(rule: .toNearestOrAwayFromZero).locale(locale)
     if amount > 0, amount < 10000 { return "<" + (Decimal(1) / 100).formatted(format) }
     return (Decimal(amount) / 1_000_000).formatted(format)
