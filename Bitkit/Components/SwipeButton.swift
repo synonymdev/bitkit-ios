@@ -33,9 +33,9 @@ struct SwipeButton: View {
     var body: some View {
         GeometryReader { geometry in
             let maxOffset = max(1, geometry.size.width - buttonHeight)
-            let clampedOffset = max(0, min(offset, geometry.size.width - buttonHeight))
+            let clampedOffset = isLoading || isComplete ? maxOffset : max(0, min(offset, maxOffset))
             let trailWidth = max(0, min(clampedOffset + (buttonHeight - innerPadding), geometry.size.width - innerPadding))
-            let textProgress = offset / maxOffset
+            let textProgress = clampedOffset / maxOffset
             let halfWidth = geometry.size.width / 2
 
             ZStack(alignment: .leading) {
@@ -74,13 +74,13 @@ struct SwipeButton: View {
                                     .resizable()
                                     .frame(width: 24, height: 24)
                                     .foregroundColor(.gray7)
-                                    .opacity(isComplete ? 0 : Double(1.0 - (offset / halfWidth)))
+                                    .opacity(isComplete ? 0 : Double(1.0 - (clampedOffset / halfWidth)))
 
                                 Image("check-mark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.gray7)
-                                    .opacity(isComplete ? 1 : Double(max(0, (offset - halfWidth) / halfWidth)))
+                                    .opacity(isComplete ? 1 : Double(max(0, (clampedOffset - halfWidth) / halfWidth)))
                             }
                         }
                     )

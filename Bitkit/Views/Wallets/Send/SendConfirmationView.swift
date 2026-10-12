@@ -308,7 +308,8 @@ struct SendConfirmationView: View {
                 if let request = oneOffPaymentRequest {
                     PaymentRequestSummary(
                         contactName: contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
-                        note: oneOffPaymentRequestNote
+                        note: oneOffPaymentRequestNote,
+                        accentColor: accentColor
                     )
                     .padding(.bottom, 16)
                 }

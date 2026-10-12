@@ -735,6 +735,6 @@ private extension PaykitUsdtPaymentService.Receipt {
         let key = !verified ? "wallet__payment_request_status_pending" :
             underpaid ? "wallet__payment_request_underpaid" :
             afterExpiry ? "wallet__payment_request_after_expiry" : "wallet__payment_request_payment_verified"
-        return t(key) + " · " + amount.value + " USDT"
+        return t(key) + " · " + usdtOverviewAmount(amount.atomic) + " USDT"
     }
 }

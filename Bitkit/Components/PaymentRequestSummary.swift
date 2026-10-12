@@ -3,6 +3,7 @@ import SwiftUI
 struct PaymentRequestSummary: View {
     let contactName: String
     let note: String?
+    let accentColor: Color
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -35,7 +36,7 @@ struct PaymentRequestSummary: View {
             Image(icon)
                 .resizable()
                 .scaledToFit()
-                .foregroundColor(.white)
+                .foregroundColor(accentColor)
                 .frame(width: 16, height: 16)
 
             BodySSBText(text, textColor: textColor)

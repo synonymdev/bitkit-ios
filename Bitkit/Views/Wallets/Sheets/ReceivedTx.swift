@@ -45,16 +45,16 @@ struct ReceivedTx: View {
                     if let amount = config.details.usdtAmount {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: amount), displayAmount: usdtOverviewAmount(amount))
                             .accessibilityIdentifier("ReceivedTransaction")
+                            .contentShape(Rectangle())
+                            .onTapGesture { showUsdtDetails() }
                     } else {
                         MoneyStack(sats: Int(config.details.sats), showSymbol: true, testIdPrefix: "ReceivedTransaction")
                     }
                     Spacer()
                     HStack(spacing: 16) {
-                        if let transferId = config.details.usdtTransferId {
-                            CustomButton(title: t("wallet__send_details"), variant: .secondary) {
-                                sheets.hideSheet()
-                                navigation.navigate(.usdtActivity(transferId: transferId))
-                            }.accessibilityIdentifier("ReceivedTransactionDetails")
+                        if config.details.usdtTransferId != nil {
+                            CustomButton(title: t("wallet__send_details"), variant: .secondary, action: showUsdtDetails)
+                                .accessibilityIdentifier("ReceivedTransactionDetails")
                         }
                         CustomButton(title: buttonText) { sheets.hideSheet() }
                             .accessibilityIdentifier("ReceivedTransactionButton")
@@ -63,6 +63,12 @@ struct ReceivedTx: View {
                 .padding(.horizontal, 16)
             }
         }
+    }
+
+    private func showUsdtDetails() {
+        guard let transferId = config.details.usdtTransferId else { return }
+        sheets.hideSheet()
+        navigation.navigate(.usdtActivity(transferId: transferId))
     }
 }
 

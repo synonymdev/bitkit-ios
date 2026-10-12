@@ -320,10 +320,10 @@ struct UsdtSendView: View {
                             if let requestNote { PaymentRequestInvoiceNote(note: requestNote).padding(.top, 16) }
                         } else {
                             if paymentRequest != nil {
-                                PaymentRequestSummary(contactName: contactName, note: requestNote).padding(.bottom, 16)
+                                PaymentRequestSummary(contactName: contactName, note: requestNote, accentColor: .usdtAccent).padding(.bottom, 16)
                             }
                             Spacer(minLength: 0)
-                            PaymentReviewIllustration(swipeProgress: swipeProgress, maximumHeight: 192)
+                            PaymentReviewIllustration(swipeProgress: busy || paymentComplete ? 1 : swipeProgress, maximumHeight: 192)
                                 .padding(.top, 16).frame(height: 256)
                         }
                         if quote.destination != .arbitrum { bridgeCosts(quote).padding(.top, 16) }
@@ -388,14 +388,14 @@ struct UsdtSendView: View {
     private func bridgeCosts(_ quote: UsdtQuote) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             SendSectionView(t(quote.bridgeProvider == .orchestra ? "usdt__expected_amount" : "usdt__recipient_gets")) {
-                BodySSBText(usdtFormatAmount(amount: quote.receivedAmount) + " USDT")
+                BodySSBText(usdtOverviewAmount(quote.receivedAmount) + " USDT")
             }
             if quote.bridgeProvider == .orchestra {
                 SendSectionView(t("usdt__bridge_deducted_fee")) {
-                    BodySSBText(usdtFormatAmount(amount: quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
+                    BodySSBText(usdtOverviewAmount(quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
                 }
             }
-            SendSectionView(t("usdt__maximum_total")) { BodySSBText(usdtFormatAmount(amount: quote.amount + quote.maximumFee) + " USDT") }
+            SendSectionView(t("usdt__maximum_total")) { BodySSBText(usdtOverviewAmount(quote.amount + quote.maximumFee) + " USDT") }
         }
     }
 

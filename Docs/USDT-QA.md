@@ -92,3 +92,7 @@ Reference: [USDT designs](https://www.figma.com/design/ltqvnKiejWj0JQiqtDf2JJ/Bi
 - [ ] Back out of an unprepared network and verify the displayed network always matches the QR. Return to Arbitrum and verify its original wallet address.
 - [ ] With a controlled Bitcoin invoice-refresh failure, open USDT Receive and select Savings or Spending. Verify the error offers Try Again instead of remaining on a spinner. Restore the backend and retry; verify the fresh Bitcoin QR appears without the previous amount or note.
 - [ ] With an authorized incoming transfer or an explicitly identified fixture, verify teal receive confetti, Details and OK; Details opens that transfer.
+- [ ] With an authorized send or an explicitly identified fixture, check the swipe after warning and PIN prompts: loading and the completed checkmark stay at the right end, the swipe label is hidden, and confirmation keeps its side spacing until the success screen appears.
+- [ ] Verify bridge review, estimated fees and deposit history round displayed amounts to cents without changing the exact payment, QR or support-export values. Check a nonzero sub-cent value displays <0.01.
+- [ ] Open a payment-request review and verify From and For icons use the selected payment method’s color: orange for Savings, purple for Spending and teal for USDT.
+- [ ] On a received USDT celebration with available details, tap the amount and verify it opens the same activity as Details.

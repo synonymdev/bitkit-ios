@@ -113,7 +113,7 @@ struct UsdtReceiveView: View {
             page = item == nil || deposit != nil ? .address : .amount
         } label: {
             HStack(spacing: 16) {
-                Image("tether").resizable().frame(width: 40, height: 40)
+                Image("tether-circle").resizable().scaledToFit().frame(width: 40, height: 40)
                 BodyMSBText(item?.label ?? "Arbitrum One")
                 if item == nil { BodySText(t("common__default"), textColor: .textSecondary) }
                 Spacer()
@@ -144,7 +144,7 @@ struct UsdtReceiveView: View {
 
     private func feeEstimate(_ deposit: UsdtDepositAddress) -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            UsdtAmountHeader(amount: usdtFormatAmount(amount: deposit.amount))
+            UsdtAmountHeader(amount: usdtFormatAmount(amount: deposit.amount), displayAmount: usdtOverviewAmount(deposit.amount))
             BodyMText(t("usdt__deposit_fee_note"), textColor: .textSecondary)
             VStack(alignment: .leading, spacing: 24) {
                 feeRow(
@@ -161,7 +161,7 @@ struct UsdtReceiveView: View {
 
     private func feeRow(_ title: String, amount: UInt64?) -> some View {
         SendSectionView(title.uppercased(), dividerSpacing: 24) {
-            BodyMSBText("<accent>± $</accent> " + (amount.map { usdtFormatAmount(amount: $0) } ?? "—"), accentColor: .textSecondary)
+            BodyMSBText("<accent>± $</accent> " + (amount.map { usdtOverviewAmount($0) } ?? "—"), accentColor: .textSecondary)
         }
     }
 }

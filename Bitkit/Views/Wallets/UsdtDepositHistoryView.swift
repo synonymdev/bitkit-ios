@@ -113,7 +113,10 @@ struct UsdtDepositHistoryView: View {
     private func detail(_ detail: UsdtDepositDetail) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if detail.deposit.asset == "USDT" {
-                UsdtAmountHeader(amount: detail.deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—", hideBalance: settings.hideBalance)
+                UsdtAmountHeader(
+                    amount: detail.deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—",
+                    displayAmount: detail.deposit.amount.map { usdtOverviewAmount($0) }, hideBalance: settings.hideBalance
+                )
             } else {
                 BodySSBText(detail.deposit.asset + " · " + detail.deposit.network.uppercased())
             }
@@ -148,7 +151,7 @@ struct UsdtDepositHistoryView: View {
     }
 
     private func amount(_ value: UInt64?) -> String {
-        (settings.hideBalance ? " • • • • •" : value.map { usdtFormatAmount(amount: $0) } ?? "—") + " USDT"
+        (settings.hideBalance ? " • • • • •" : value.map { usdtOverviewAmount($0) } ?? "—") + " USDT"
     }
 
     private func loadPage(_ offset: UInt32) async {
