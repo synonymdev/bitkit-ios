@@ -4,6 +4,30 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testNativeSubmissionRejectsAnExpiredPreciseDeadlineWithoutCreatingATransfer() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let wallet = try UsdtWallet(
+            address: "0x1111111111111111111111111111111111111111",
+            storagePath: directory.appendingPathComponent("usdt.sqlite").path,
+            rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", bridgeUrl: nil,
+            backup: UnavailableUsdtBackup()
+        )
+        let deadline = try XCTUnwrap(PaykitPreciseInstant(timestamp: "2020-01-01T00:00:00.123456789Z"))
+        do {
+            _ = try await wallet.sendWithDeadline(
+                quoteId: "expired-request", mnemonic: "test test test test test test test test test test test junk",
+                passphrase: nil, submissionDeadline: deadline.timestamp
+            )
+            XCTFail("An expired payment must not be submitted")
+        } catch {
+            guard let error = error as? UsdtError, case .SubmissionDeadlineExpired = error else { throw error }
+            XCTAssertEqual(UsdtWalletManager.message(for: error), t("wallet__payment_request_expired"))
+        }
+        XCTAssertTrue(try wallet.history().isEmpty)
+    }
+
     func testFeeCollectionFailureIsActionableWithoutMisclassifyingOtherRejections() {
         XCTAssertEqual(UsdtWalletManager.message(for: UsdtError.TransactionRejected(reason: "Paymaster fee collection failed")),
                        t("usdt__error_fee_collection"))
@@ -92,5 +116,11 @@ final class UsdtWalletManagerTests: XCTestCase {
             _ = try await manager.quote(recipient: "0x1111111111111111111111111111111111111111", amount: "1", destination: .arbitrum)
             XCTFail("A wiped session must not reopen its wallet")
         } catch is CancellationError {}
+    }
+}
+
+private final class UnavailableUsdtBackup: UsdtBackup {
+    func persist(snapshot _: String) async throws {
+        throw UsdtError.BackupUnavailable
     }
 }

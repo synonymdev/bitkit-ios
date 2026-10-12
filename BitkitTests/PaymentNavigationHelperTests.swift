@@ -190,6 +190,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
     }
 
+    func testContactWithUsdtLocksOnlyFixedLightningFunding() {
+        let app = appWithInvoice(paymentHash: "fixed", amountSatoshis: 10000)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [
+            .init(methodId: .usdtArbitrum, value: "0x1111111111111111111111111111111111111111", min: nil, max: nil, rawPayload: ""),
+        ])
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 10000)
+        app.paykitUsesUsdt = true
+        XCTAssertNil(app.fixedLightningAmountSats)
+        app.paykitUsesUsdt = false
+        app.selectedWalletToPayFrom = .onchain
+        XCTAssertNil(app.fixedLightningAmountSats)
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 10000)
+        app.scannedLightningInvoice = appWithInvoice(paymentHash: "amountless", amountSatoshis: 0).scannedLightningInvoice
+        XCTAssertNil(app.fixedLightningAmountSats)
+    }
+
     func testReserveRaceFallsBackToConfirm() {
         XCTAssertEqual(
             PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: appWithEligibleInvoice),

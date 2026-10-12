@@ -66,7 +66,6 @@ struct PaymentRequestCard: View {
     var status: String?
     var isHighlighted = true
     var isActionDisabled = false
-    var showsAmountSymbol = true
     var paymentDirection: PaykitPaymentRequest.Direction?
     var amountStatus: String?
     var onOpen: (() -> Void)?

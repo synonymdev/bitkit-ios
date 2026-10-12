@@ -745,10 +745,10 @@ struct MainNavView: View {
         Task { @MainActor in
             do {
                 if let route = try resolveUsdtPaymentRoute(input: uri) {
-                    guard !usdt.isSendPresented else { return }
+                    guard !usdt.isSendPresented, app.contactPaymentContext == nil else { return }
                     let path = navigation.path
                     sheets.hideSheetBeforePerforming(reason: "Clipboard routed USDT payment") {
-                        guard !usdt.isSendPresented, navigation.path == path else { return }
+                        guard !usdt.isSendPresented, app.contactPaymentContext == nil, navigation.path == path else { return }
                         navigation.navigate(route)
                     }
                     clipboardUri = nil
@@ -848,10 +848,10 @@ struct MainNavView: View {
 
         do {
             if let route = try resolveUsdtPaymentRoute(input: url.absoluteString) {
-                guard !usdt.isSendPresented else { return }
+                guard !usdt.isSendPresented, app.contactPaymentContext == nil else { return }
                 let path = navigation.path
                 sheets.hideSheetBeforePerforming(reason: "Deeplink routed USDT payment") {
-                    guard !usdt.isSendPresented, navigation.path == path else { return }
+                    guard !usdt.isSendPresented, app.contactPaymentContext == nil, navigation.path == path else { return }
                     navigation.navigate(route)
                 }
                 return

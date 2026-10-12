@@ -13,6 +13,7 @@ struct UsdtReceiveView: View {
     @State private var page = Page.address
     @State private var historyBlocking = false
     @State private var amount = ""
+    @State private var draftAmount = ""
     @State private var deposit: UsdtDepositAddress?
     @State private var busy = false
     @State private var error: String?
@@ -42,6 +43,7 @@ struct UsdtReceiveView: View {
         VStack(spacing: 0) {
             SheetHeader(title: title, showBackButton: page != .address, action: page == .address ? contactAction : nil,
                         onBack: {
+                            if page == .amount { draftAmount = amount; error = nil }
                             if page == .fees { page = .amount }
                             else if page == .amount, network != nil, deposit == nil { page = .networks }
                             else { if deposit == nil { network = nil }; page = .address }
@@ -56,7 +58,7 @@ struct UsdtReceiveView: View {
                     uri: deposit?.uri ?? receiveUri,
                     network: networkName,
                     error: error ?? usdt.errorMessage,
-                    onEdit: { page = .amount },
+                    onEdit: { draftAmount = amount; page = .amount },
                     onNetwork: { page = .networks }
                 )
             case .networks:
@@ -106,7 +108,7 @@ struct UsdtReceiveView: View {
 
     private func networkRow(_ item: UsdtDepositNetwork?) -> some View {
         Button {
-            if network != item { deposit = nil; amount = ""; error = nil }
+            if network != item { deposit = nil; amount = ""; draftAmount = ""; error = nil }
             network = item
             page = item == nil || deposit != nil ? .address : .amount
         } label: {
@@ -124,19 +126,20 @@ struct UsdtReceiveView: View {
     }
 
     private var amountEntry: some View {
-        UsdtReceiveAmountView(amount: $amount, busy: busy, error: error, allowEmpty: network == nil) {
-            guard let network else { page = .address; return }
+        UsdtReceiveAmountView(amount: $draftAmount, busy: busy, error: error, allowEmpty: network == nil) {
+            guard let network else { amount = draftAmount; page = .address; return }
             busy = true
             error = nil
             defer { busy = false }
             do {
-                deposit = try await usdt.prepareDeposit(network: network, amount: amount)
+                deposit = try await usdt.prepareDeposit(network: network, amount: draftAmount)
+                amount = draftAmount
                 page = .fees
             } catch {
-                self.error = usdtDepositAmountMessage(error, amount: amount)
+                self.error = usdtDepositAmountMessage(error, amount: draftAmount)
             }
         }
-        .onChange(of: amount) { error = nil }
+        .onChange(of: draftAmount) { error = nil }
     }
 
     private func feeEstimate(_ deposit: UsdtDepositAddress) -> some View {
@@ -191,6 +194,7 @@ struct UsdtReceiveAddressContent: View {
                         editRoute: nil,
                         accentColor: .usdtAccent
                     )
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtReceiveAddress")
                 } else {
                     QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,

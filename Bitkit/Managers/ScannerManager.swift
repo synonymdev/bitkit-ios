@@ -92,9 +92,11 @@ class ScannerManager: ObservableObject {
 
         do {
             if let route = try resolveUsdtPaymentRoute(input: uri) {
+                guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else { return }
                 let path = navigation?.path
                 sheets?.hideSheetBeforePerforming(reason: "Scanner routed USDT payment") { [weak self] in
-                    guard let self, wallet?.usdtWallet.isSendPresented == false, navigation?.path == path else { return }
+                    guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
+                          navigation?.path == path else { return }
                     navigation?.navigate(route)
                 }
                 return
@@ -189,9 +191,14 @@ class ScannerManager: ObservableObject {
 
         do {
             if scope == .unrestricted, let route = try resolveUsdtPaymentRoute(input: uri) {
+                guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else {
+                    completion(nil)
+                    return
+                }
                 let path = navigation?.path
                 sheets?.hideSheetBeforePerforming(reason: "Send scanner routed USDT payment") { [weak self] in
-                    guard let self, wallet?.usdtWallet.isSendPresented == false, navigation?.path == path else { return }
+                    guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
+                          navigation?.path == path else { return }
                     navigation?.navigate(route)
                 }
                 completion(nil)

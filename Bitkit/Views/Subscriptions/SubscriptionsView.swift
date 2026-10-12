@@ -502,7 +502,6 @@ struct SubscriptionDetailView: View {
                         titleOverride: subscription.note ?? t("subscriptions__subscription"),
                         subtitleOverride: payment.createdAt.map(Self.dateFormatter.string),
                         isHighlighted: false,
-                        showsAmountSymbol: false,
                         paymentDirection: payment.direction
                     )
                 }

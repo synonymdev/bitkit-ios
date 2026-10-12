@@ -30,6 +30,10 @@ struct SendAmountView: View {
         amountViewModel.amountSats
     }
 
+    private var canEditAmount: Bool {
+        app.contactPaymentContext?.incomingPaymentRequest == nil && app.fixedLightningAmountSats == nil
+    }
+
     private var fundingSources: [SendFundingSource] {
         if let request = app.contactPaymentContext?.incomingPaymentRequest,
            PaykitUsdtPaymentService.shared.hasBinding(for: request.id) { return [.usdt] }
@@ -161,7 +165,7 @@ struct SendAmountView: View {
                             testIdentifier: "AvailableAmount"
                         )
                         .onTapGesture {
-                            guard app.contactPaymentContext?.incomingPaymentRequest == nil else { return }
+                            guard canEditAmount else { return }
                             amountViewModel.updateFromSats(availableAmount, currency: currency)
 
                             if app.selectedWalletToPayFrom == .lightning {
@@ -207,7 +211,7 @@ struct SendAmountView: View {
                 NumberPad(
                     type: app.paykitUsesUsdt ? .decimal : amountViewModel.getNumberPadType(currency: currency),
                     errorKey: amountViewModel.errorKey,
-                    isDisabled: app.contactPaymentContext?.incomingPaymentRequest != nil
+                    isDisabled: !canEditAmount
                 ) { key in
                     if app.paykitUsesUsdt { usdtAmount = NumberPadInputHandler.handleInput(
                         key: key,
@@ -252,6 +256,7 @@ struct SendAmountView: View {
             }
 
             updateRequestAmount()
+            updateFixedLightningAmount()
 
             // Calculate max sendable amount for onchain transactions
             if hwSend.isActive || app.selectedWalletToPayFrom == .onchain {
@@ -413,7 +418,8 @@ struct SendAmountView: View {
 
     private func selectFundingSource(_ source: SendFundingSource) {
         let target: PaykitAsset = source == .usdt ? .usdt : .btc
-        if app.contactPaymentContext?.incomingPaymentRequest != nil || app.paykitUsesUsdt != (source == .usdt) {
+        let selectsFixedLightning = source == .spending && (app.scannedLightningInvoice?.amountSatoshis ?? 0) > 0
+        if app.contactPaymentContext?.incomingPaymentRequest != nil || (!selectsFixedLightning && app.paykitUsesUsdt != (source == .usdt)) {
             do {
                 let value = app.contactPaymentContext?.incomingPaymentRequest?.amount ??
                     (app.paykitUsesUsdt ? (try? PaykitAmount(asset: .usdt, value: usdtAmount)) : PaykitAmount(asset: .btc, atomic: amountSats))
@@ -428,9 +434,9 @@ struct SendAmountView: View {
                     if target == .usdt { usdtAmount = converted.value }
                     else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
                 }
-                conversionError = nil
             } catch { conversionError = t("wallet__payment_request_rate_unavailable"); return }
         }
+        conversionError = nil
         app.paykitUsesUsdt = source == .usdt
         switch source {
         case .usdt:
@@ -454,6 +460,13 @@ struct SendAmountView: View {
             )
             app.selectedWalletToPayFrom = .onchain
         }
+        updateFixedLightningAmount()
+    }
+
+    private func updateFixedLightningAmount() {
+        guard app.contactPaymentContext?.incomingPaymentRequest == nil, let amount = app.fixedLightningAmountSats else { return }
+        amountViewModel.updateFromSats(amount, currency: currency)
+        wallet.sendAmountSats = amount
     }
 
     private func updateRequestAmount() {

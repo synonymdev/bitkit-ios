@@ -1,6 +1,6 @@
 # USDT configuration
 
-Normal builds use published bitkit-core `0.8.0-rc2`, including its matching native libraries and generated bindings.
+Normal builds use published bitkit-core `0.8.0-rc3`, including its matching native libraries and generated bindings.
 
 USDT uses Arbitrum One regardless of the Bitcoin network setting. Builds use the credential-free Bitkit gateway by default:
 
@@ -24,6 +24,8 @@ Protocol and recovery behavior belong to bitkit-core's USDT module documentation
 History catch-up is deferred while the USDT send sheet is open. Balance and pending-payment recovery continue; a history scan already in progress is allowed to finish. Unknown deposit-provider statuses require attention instead of appearing as ordinary pending deposits. Cross-network payment details label the recipient amount as expected until delivery is confirmed.
 
 ## Paykit
+
+USDT request sends pass the earlier of the approved conversion quote expiry and request payment deadline to Core as the original precise timestamp. Core persists that cutoff with the signed operation and enforces it before the initial submission and recovery retries. Expired pending operations remain tracked for settlement evidence. Operations created before deadline support have no stored cutoff and retain their existing recovery behavior.
 
 Paykit uses a direct Arbitrum USDT0 endpoint (`usdt-arbitrum-address`). Existing public/private sharing settings control publication. The payload binds the address, chain 42161 and pinned token; bridge routes are excluded from Paykit choices.
 

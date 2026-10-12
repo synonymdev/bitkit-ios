@@ -132,7 +132,9 @@ final class UsdtWalletManager {
         return try PaykitUsdt.endpoint(address: wallet.receiveAddress())
     }
 
-    func send(_ quote: UsdtQuote, beforeSubmission: @escaping @MainActor () async throws -> Void = {}) async throws {
+    func send(_ quote: UsdtQuote, submissionDeadline: PaykitPreciseInstant? = nil,
+              beforeSubmission: @escaping @MainActor () async throws -> Void = {}) async throws
+    {
         try beginOperation()
         defer { finishOperation() }
         let wallet = try await wallet()
@@ -140,7 +142,10 @@ final class UsdtWalletManager {
             guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
             let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
             try await beforeSubmission()
-            return try await wallet.send(quoteId: quote.id, mnemonic: mnemonic, passphrase: passphrase)
+            return try await wallet.sendWithDeadline(
+                quoteId: quote.id, mnemonic: mnemonic, passphrase: passphrase,
+                submissionDeadline: submissionDeadline?.timestamp
+            )
         }
         transfers.removeAll { $0.id == transfer.id }
         transfers.insert(transfer, at: 0)
@@ -350,6 +355,8 @@ final class UsdtWalletManager {
         case .InvalidAddress, .WrongNetwork: return t("usdt__error_address")
         case .InsufficientBalance: return t("usdt__error_balance")
         case .QuoteExpired: return t("usdt__error_expired")
+        case .SubmissionDeadlineExpired: return t("wallet__payment_request_expired")
+        case .InvalidSubmissionDeadline: return t("wallet__payment_request_unavailable")
         case .PendingTransfer: return t("usdt__error_pending")
         case .DepositNeedsAttention: return t("usdt__deposit_attention")
         case .DepositNotFound: return t("usdt__deposit_not_found")

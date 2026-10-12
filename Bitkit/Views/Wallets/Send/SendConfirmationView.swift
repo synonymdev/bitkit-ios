@@ -164,9 +164,12 @@ struct SendConfirmationView: View {
         transactionFee > 0 ? transactionFee : Int(hwSend.previewFeeSats)
     }
 
-    /// BIP21 flow can land on confirm with `sendAmountSats` unset; set it from the scanned invoices.
     @MainActor
     private func ensureSendAmountFromScannedInvoicesIfNeeded() {
+        if app.contactPaymentContext?.incomingPaymentRequest == nil, let amount = app.fixedLightningAmountSats {
+            wallet.sendAmountSats = amount
+            return
+        }
         guard wallet.sendAmountSats == nil || wallet.sendAmountSats == 0 else { return }
         if let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0 {
             wallet.sendAmountSats = invoice.amountSatoshis
@@ -396,6 +399,7 @@ struct SendConfirmationView: View {
         }
         .onChange(of: app.selectedWalletToPayFrom) {
             guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
+            ensureSendAmountFromScannedInvoicesIfNeeded()
             walletSwitchContext = sendContext
         }
         .onChange(of: sendContext) { _, context in
@@ -877,18 +881,21 @@ struct SendConfirmationView: View {
     }
 
     static func sendLightningPayment<Result>(
+        invoiceAmountSats: UInt64,
+        reviewedAmountSats: UInt64,
         request: PaykitPaymentRequest?,
         authorize: (PaykitPaymentRequest) async throws -> Void,
         onAuthorizationFailure: (Error) async -> Void,
         send: () async throws -> Result
     ) async throws -> Result {
-        if let request {
-            do {
-                try await authorize(request)
-            } catch {
-                await onAuthorizationFailure(error)
-                throw error
+        do {
+            guard invoiceAmountSats == 0 || invoiceAmountSats == reviewedAmountSats else {
+                throw PaykitPaymentRequestError.amountMismatch
             }
+            if let request { try await authorize(request) }
+        } catch {
+            await onAuthorizationFailure(error)
+            throw error
         }
         return try await send()
     }
@@ -1111,6 +1118,8 @@ struct SendConfirmationView: View {
                 // native millisatoshi precision instead of our truncated satoshi value.
                 let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
                 try await Self.sendLightningPayment(
+                    invoiceAmountSats: invoice.amountSatoshis,
+                    reviewedAmountSats: amount,
                     request: incomingPaymentRequest,
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in

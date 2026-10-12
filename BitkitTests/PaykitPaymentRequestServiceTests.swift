@@ -1369,6 +1369,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         var authorizationFailureCalls = 0
         do {
             try await SendConfirmationView.sendLightningPayment(
+                invoiceAmountSats: 1000,
+                reviewedAmountSats: 1000,
                 request: request,
                 authorize: { try await manager.ensurePaymentAllowed($0) },
                 onAuthorizationFailure: { _ in authorizationFailureCalls += 1 }
@@ -1669,6 +1671,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                     switch route {
                     case "lightning":
                         try await SendConfirmationView.sendLightningPayment(
+                            invoiceAmountSats: 1000, reviewedAmountSats: 1000,
                             request: request, authorize: authorize, onAuthorizationFailure: onFailure
                         ) { sent = true }
                     case "lnurl":

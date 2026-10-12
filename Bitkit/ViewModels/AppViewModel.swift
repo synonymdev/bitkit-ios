@@ -134,6 +134,13 @@ class AppViewModel: ObservableObject {
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
+    var fixedLightningAmountSats: UInt64? {
+        guard !paykitUsesUsdt, selectedWalletToPayFrom == .lightning,
+              let amount = scannedLightningInvoice?.amountSatoshis, amount > 0
+        else { return nil }
+        return amount
+    }
+
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?

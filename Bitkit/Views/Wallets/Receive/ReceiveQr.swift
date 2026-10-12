@@ -15,6 +15,7 @@ struct ReceiveQr: View {
     let hardwareWalletId: String?
 
     @State private var needsInvoiceRefresh: Bool
+    @State private var invoiceRefreshFailed = false
     @State private var selectedTab: ReceiveTab
     @State private var showDetails = false
     @State private var hasAppliedDefaultTab = false
@@ -324,7 +325,19 @@ struct ReceiveQr: View {
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
             if needsInvoiceRefresh && tab != .hardware {
-                ProgressView()
+                if invoiceRefreshFailed {
+                    VStack(spacing: 16) {
+                        BodyMText(t("wallet__refresh_error_msg"), textColor: .textSecondary)
+                            .multilineTextAlignment(.center)
+                        CustomButton(title: t("common__try_again"), variant: .tertiary) {
+                            await refreshBip21()
+                        }
+                        .accessibilityIdentifier("ReceiveInvoiceRetry")
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ProgressView()
+                }
             } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
                 cjitOnboarding
             } else if showDetails {
@@ -547,6 +560,7 @@ struct ReceiveQr: View {
 
     func refreshBip21() async {
         guard wallet.nodeLifecycleState == .running else { return }
+        invoiceRefreshFailed = false
         do {
             if needsInvoiceRefresh, let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
                 try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
@@ -554,6 +568,7 @@ struct ReceiveQr: View {
             try await wallet.refreshBip21(forceRefreshBolt11: needsInvoiceRefresh)
             needsInvoiceRefresh = false
         } catch {
+            invoiceRefreshFailed = true
             app.toast(error)
         }
     }

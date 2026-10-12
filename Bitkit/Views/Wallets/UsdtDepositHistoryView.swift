@@ -85,8 +85,11 @@ struct UsdtDepositHistoryView: View {
                     }
                 }
             } message: {
-                Text((selected?.deposit.network.uppercased() ?? "") + "\n" + (selected?.deposit.id ?? "") + "\n" + amount(selected?.deposit.amount) +
-                    "\n" + refundAddress + "\n\n" + t("usdt__deposit_refund_note"))
+                let network: String = selected?.deposit.network.uppercased() ?? ""
+                let depositId: String = selected?.deposit.id ?? ""
+                let refundAmount: String = amount(selected?.deposit.amount)
+                let note: String = t("usdt__deposit_refund_note")
+                Text("\(network)\n\(depositId)\n\(refundAmount)\n\(refundAddress)\n\n\(note)")
             }
         }
         .task { await loadPage(0) }

@@ -30,6 +30,7 @@ struct UsdtWalletScreen: View {
                         displayAmount: usdt.balance.map { usdtOverviewAmount($0) }, hideBalance: settings.hideBalance
                     )
                     .balanceVisibilityToggle()
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtBalance")
                     if let error = usdt.errorMessage { BodySText(error, textColor: .brandAccent) }
                     activityList

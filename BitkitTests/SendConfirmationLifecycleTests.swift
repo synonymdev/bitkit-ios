@@ -7,6 +7,27 @@ import XCTest
 
 @MainActor
 final class SendConfirmationLifecycleTests: XCTestCase {
+    func testFixedLightningReviewUsesInvoiceAmountAfterEditingAnotherFundingSource() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 10000,
+            timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+            description: nil, networkType: .regtest, payeeNodeId: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 1000
+        let window = host(app: app, wallet: wallet, sheets: sheets, path: .constant([]))
+        defer { close(window) }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(wallet.sendAmountSats, 10000)
+    }
+
     func testSuspendedPreparationCannotChangeClosedOrReplacementSend() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")

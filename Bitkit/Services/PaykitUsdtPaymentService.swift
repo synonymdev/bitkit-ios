@@ -115,9 +115,10 @@ final class PaykitUsdtPaymentService {
     func send(_ quote: UsdtQuote, context: ContactPaymentContext, paymentTerms: PaykitRequestPricing.Payment?,
               wallet: UsdtWalletManager, authorize: @escaping @MainActor () async throws -> Void) async throws
     {
+        let submissionDeadline = try context.incomingPaymentRequest?.submissionDeadline(quoteId: paymentTerms?.quoteId)
         try setPaymentStarted(quoteId: quote.id, started: true)
         do {
-            try await wallet.send(quote) {
+            try await wallet.send(quote, submissionDeadline: submissionDeadline) {
                 do {
                     try await authorize()
                     try Task.checkCancellation()
