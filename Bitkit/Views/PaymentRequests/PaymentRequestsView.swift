@@ -624,12 +624,14 @@ struct PaymentRequestDetailView: View {
             LabeledDetailCell(
                 title: t("wallet__payment_request_date"),
                 value: request.createdAt.map(Self.dateFormatter.string) ?? "–",
-                icon: "calendar"
+                icon: "calendar",
+                iconColor: request.paymentProofKind == .usdt ? .usdtAccent : .purpleAccent
             )
             LabeledDetailCell(
                 title: t("wallet__payment_request_time"),
                 value: request.createdAt.map(Self.timeFormatter.string) ?? "–",
-                icon: "clock"
+                icon: "clock",
+                iconColor: request.paymentProofKind == .usdt ? .usdtAccent : .purpleAccent
             )
         }
     }
@@ -721,9 +723,11 @@ struct PaymentRequestDetailView: View {
 
 private extension PaykitPaymentRequest {
     var paymentRailColors: (icon: Color, background: Color) {
-        paymentProofKind == .lightning
-            ? (.purpleAccent, .purple16)
-            : (.brandAccent, .brand16)
+        switch paymentProofKind {
+        case .usdt: (.usdtAccent, .usdtAccent.opacity(0.16))
+        case .lightning: (.purpleAccent, .purple16)
+        default: (.brandAccent, .brand16)
+        }
     }
 }
 
