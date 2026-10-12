@@ -189,6 +189,7 @@ the SDK and can push the Pay step well past the budget.
 - Request or Pay sheet: `RequestOrPaySheet` (its Pay and Request buttons carry no identifier; find them by label).
 - Payment Request amount screen: `PaymentRequestAmount`.
 - Terminal feedback: `PaymentRequestUnavailableToast`.
+- Minimum-amount feedback: `PaymentRequestAmountTooLowToast`.
 - Expiration feedback: `PaymentRequestExpiredToast`.
 - Private-link recovery feedback: `PaymentRequestWaitingForDetailsToast`.
 - Send failure: `SendFailure` and retry action `Retry`.
@@ -252,3 +253,9 @@ are opened from Overview. The journeys therefore record each fixture's payment r
 its full row identifier, and include the required back and tab transitions. The accepted
 subscription must have no end date so cancellation is available. The proposal review
 must explain that its payment details are unsupported and offer no Subscribe control.
+
+## Minimum on-chain request amount
+
+`minimum-onchain-amount.xml` checks requests below the on-chain minimum, including
+manual retry and a subsequent request at the 547-sat minimum. It uses the same fixture
+setup and actions on iOS and Android, and stops before sending funds.

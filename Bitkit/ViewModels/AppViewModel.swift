@@ -95,7 +95,7 @@ class AppViewModel: ObservableObject {
     @Published var isManualEntryInputValid: Bool = false
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
     @Published var contactPaymentContext: ContactPaymentContext?
-    private(set) var didRejectScannedPaymentForInsufficientBalance = false
+    private(set) var didRejectScannedPayment = false
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -271,7 +271,7 @@ class AppViewModel: ObservableObject {
 
     /// Shows insufficient spending balance toast with amount-specific or generic description
     private func showInsufficientSpendingToast(invoiceAmount: UInt64, spendingBalance: UInt64) {
-        didRejectScannedPaymentForInsufficientBalance = true
+        didRejectScannedPayment = true
         let amountNeeded = invoiceAmount > spendingBalance ? invoiceAmount - spendingBalance : 0
         let description = amountNeeded > 0
             ? t(
@@ -288,11 +288,27 @@ class AppViewModel: ObservableObject {
         )
     }
 
-    /// Validates onchain balance and shows toast if insufficient. Returns true if sufficient.
+    private func validateIncomingOnchainPaymentRequestAmount() -> Bool {
+        guard let amount = contactPaymentContext?.incomingPaymentRequest?.amountSats, amount < Env.dustLimit else { return true }
+        didRejectScannedPayment = true
+        toast(
+            type: .error,
+            title: t("wallet__lnurl_pay__error_min__title"),
+            description: t(
+                "wallet__lnurl_pay__error_min__description",
+                variables: ["amount": CurrencyFormatter.formatSats(UInt64(Env.dustLimit))]
+            ),
+            accessibilityIdentifier: "PaymentRequestAmountTooLowToast"
+        )
+        return false
+    }
+
+    /// Validates the onchain request amount and balance, showing feedback when invalid.
     private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
+        guard validateIncomingOnchainPaymentRequestAmount() else { return false }
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
-                didRejectScannedPaymentForInsufficientBalance = true
+                didRejectScannedPayment = true
                 let amountNeeded = invoiceAmount - onchainBalance
                 toast(
                     type: .error,
@@ -308,7 +324,7 @@ class AppViewModel: ObservableObject {
         } else {
             // Zero-amount invoice: user must have some balance to proceed
             guard onchainBalance > 0 else {
-                didRejectScannedPaymentForInsufficientBalance = true
+                didRejectScannedPayment = true
                 toast(
                     type: .error,
                     title: t("other__pay_insufficient_savings"),
@@ -571,7 +587,7 @@ extension AppViewModel {
             }
         }
         scannedDataHandlingId = handlingId
-        didRejectScannedPaymentForInsufficientBalance = false
+        didRejectScannedPayment = false
         defer {
             if scannedDataHandlingId == handlingId {
                 scannedDataHandlingId = nil
@@ -750,6 +766,7 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty else { return }
+            guard validateIncomingOnchainPaymentRequestAmount() else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {

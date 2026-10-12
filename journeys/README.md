@@ -232,3 +232,7 @@ the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `
 checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreement is worth writing
 down — as an intentional platform difference, or as something to look into — but it is not by itself
 a bug report. `AGENTS.md` has the commands.
+
+`payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
+feedback, preparation cleanup, and manual retry use the same actions and
+`PaymentRequestAmountTooLowToast` identifier on both platforms.

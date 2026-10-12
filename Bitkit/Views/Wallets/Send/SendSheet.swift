@@ -438,9 +438,19 @@ struct SendSheet: View {
         }
     }
 
-    /// Validates onchain balance and shows toast + dismisses sheet if insufficient.
-    /// Returns true if sufficient, false if insufficient.
+    /// Validates the onchain request amount and balance, showing setup failure feedback when invalid.
     private func validateOnchainBalanceAndDismissIfInsufficient(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
+        if let amount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats, amount < Env.dustLimit {
+            showPaymentSetupFailure(
+                title: t("wallet__lnurl_pay__error_min__title"),
+                description: t(
+                    "wallet__lnurl_pay__error_min__description",
+                    variables: ["amount": CurrencyFormatter.formatSats(UInt64(Env.dustLimit))]
+                ),
+                accessibilityIdentifier: "PaymentRequestAmountTooLowToast"
+            )
+            return false
+        }
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
                 let amountNeeded = invoiceAmount - onchainBalance

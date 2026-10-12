@@ -1184,10 +1184,10 @@ enum PaykitPaymentRequestPresentationCoordinator {
         manager: PaykitPaymentRequestManager,
         resetWalletSendState: () -> Void
     ) {
-        let insufficientBalance = app.didRejectScannedPaymentForInsufficientBalance
+        let paymentRejected = app.didRejectScannedPayment
         app.resetSendState()
         resetWalletSendState()
-        manager.handleUnavailablePaymentRoute(request, insufficientBalance: insufficientBalance)
+        manager.handleUnavailablePaymentRoute(request, paymentRejected: paymentRejected)
     }
 }
 
@@ -2334,8 +2334,8 @@ final class PaykitPaymentRequestManager {
         return true
     }
 
-    func handleUnavailablePaymentRoute(_ request: PaykitPaymentRequest, insufficientBalance: Bool) {
-        if insufficientBalance {
+    func handleUnavailablePaymentRoute(_ request: PaykitPaymentRequest, paymentRejected: Bool) {
+        if paymentRejected {
             _ = markPresentedIfPending(request)
         } else {
             deferPresentation(request)
