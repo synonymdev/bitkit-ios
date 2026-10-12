@@ -5786,7 +5786,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testPreparingSheetRequiresCurrentPresentationSessionAndContext() async throws {
-        let expiresAt = Date().addingTimeInterval(60)
+        let expiresAt = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.up) + 60)
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
             expiresAt: PaykitSubscriptionTimestamp.string(from: expiresAt)
         )])

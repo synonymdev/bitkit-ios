@@ -89,6 +89,43 @@ final class UsdtWalletManagerTests: XCTestCase {
         )
     }
 
+    func testWalletReadsCredentialsOncePerSessionAndUsesFreshCredentialsAfterWipe() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mnemonic = "test test test test test test test test test test test junk"
+        var credentialReads = 0
+        let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+            credentialReads += 1
+            return (mnemonic, nil)
+        })
+        async let first = manager.paymentEndpoint()
+        async let second = manager.paymentEndpoint()
+        let (firstEndpoint, secondEndpoint) = try await (first, second)
+        XCTAssertEqual(firstEndpoint, secondEndpoint)
+        _ = try await manager.storedTransfer("missing")
+        let snapshot = try await manager.backupSnapshot()
+        let backup = try XCTUnwrap(snapshot)
+        try await manager.restoreBackup(backup)
+        XCTAssertEqual(credentialReads, 1)
+
+        try await manager.wipe()
+        do {
+            _ = try await manager.paymentEndpoint()
+            XCTFail("A wiped session must not read credentials or reopen its wallet")
+        } catch is CancellationError {}
+        XCTAssertEqual(credentialReads, 1)
+
+        let restored = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+            credentialReads += 1
+            return (mnemonic, "restored passphrase")
+        })
+        let restoredEndpoint = try await restored.paymentEndpoint()
+        XCTAssertNotEqual(restoredEndpoint, firstEndpoint)
+        XCTAssertEqual(credentialReads, 2)
+        try await restored.wipe()
+    }
+
     func testWipeRemovesUsdtPersistenceAndStopsSession() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -101,14 +138,35 @@ final class UsdtWalletManagerTests: XCTestCase {
             try Data("private payment data".utf8).write(to: file)
         }
 
-        let manager = UsdtWalletManager(storageDirectory: directory)
-        async let first: Void = manager.wipe()
-        async let second: Void = manager.wipe()
-        _ = try await (first, second)
+        let initializationStarted = expectation(description: "credential read started")
+        var resumeInitialization: CheckedContinuation<Void, Never>?
+        let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+            await withCheckedContinuation { continuation in
+                resumeInitialization = continuation
+                initializationStarted.fulfill()
+            }
+            return ("test test test test test test test test test test test junk", nil)
+        })
+        let endpoint = Task { try await manager.paymentEndpoint() }
+        await fulfillment(of: [initializationStarted], timeout: 2)
+        let wipeStarted = expectation(description: "wipe started during initialization")
+        let first = Task {
+            wipeStarted.fulfill()
+            try await manager.wipe()
+        }
+        await fulfillment(of: [wipeStarted], timeout: 2)
+        do {
+            _ = try await manager.paymentEndpoint()
+            XCTFail("A wipe must block further wallet operations")
+        } catch is CancellationError {}
+        let second = Task { try await manager.wipe() }
+        resumeInitialization?.resume()
+        _ = try await endpoint.value
+        _ = try await (first.value, second.value)
         for file in usdtFiles {
             XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
         }
-        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), [unrelated.lastPathComponent])
         XCTAssertTrue(manager.address.isEmpty)
         XCTAssertTrue(manager.transfers.isEmpty)
         XCTAssertNil(manager.balance)

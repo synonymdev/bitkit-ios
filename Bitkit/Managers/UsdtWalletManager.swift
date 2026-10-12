@@ -1,6 +1,5 @@
 import BitkitCore
 import Combine
-import CryptoKit
 import Foundation
 import Observation
 
@@ -24,8 +23,8 @@ final class UsdtWalletManager {
     var errorMessage: String?
     var isSendPresented = false
     private var core: UsdtWallet?
-    private var credentialFingerprint: SHA256.Digest?
     private let storageDirectory: URL
+    private let loadCredentials: @MainActor () async throws -> (String, String?)
     private var wiping = false
     private var activeOperations = 0
     private var initialization: Task<UsdtWallet, Error>?
@@ -42,8 +41,17 @@ final class UsdtWalletManager {
         "Arbitrum One"
     }
 
-    init(storageDirectory: URL = Env.bitkitCoreStorage(walletIndex: 0)) {
+    init(
+        storageDirectory: URL = Env.bitkitCoreStorage(walletIndex: 0),
+        loadCredentials: @escaping @MainActor () async throws -> (String, String?) = {
+            try await ServiceQueue.background(.core, wrapErrors: false) {
+                guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
+                return try (mnemonic, Keychain.loadString(key: .bip39Passphrase(index: 0)))
+            }
+        }
+    ) {
         self.storageDirectory = storageDirectory
+        self.loadCredentials = loadCredentials
     }
 
     func refresh(includeHistory: Bool = false) async {
@@ -276,7 +284,6 @@ final class UsdtWalletManager {
             await withCheckedContinuation { idleWaiter = $0 }
         }
         core = nil
-        credentialFingerprint = nil
         balance = nil
         address = ""
         receiveUri = ""
@@ -310,6 +317,7 @@ final class UsdtWalletManager {
 
     private func wallet() async throws -> UsdtWallet {
         guard isConfigured, let bundlerUrl = Env.usdtBundlerUrl, let rpcUrl = Env.usdtRpcUrl else { throw UsdtError.NotConfigured }
+        if let core { return core }
         if let initialization { return try await initialization.value }
         let task = Task { try await initializeWallet(bundlerUrl: bundlerUrl, rpcUrl: rpcUrl) }
         initialization = task
@@ -318,14 +326,7 @@ final class UsdtWalletManager {
     }
 
     private func initializeWallet(bundlerUrl: String, rpcUrl: String) async throws -> UsdtWallet {
-        let credentials = try await ServiceQueue.background(.core, wrapErrors: false) {
-            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
-            let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
-            return (mnemonic, passphrase)
-        }
-        let fingerprint = try SHA256.hash(data: JSONEncoder().encode([credentials.0, credentials.1 ?? ""]))
-        if credentialFingerprint != fingerprint { core = nil; balance = nil; transfers = []; historyComplete = false }
-        if let core { return core }
+        let credentials = try await loadCredentials()
         let address = try await ServiceQueue.background(.core, wrapErrors: false) {
             try usdtAddress(mnemonic: credentials.0, passphrase: credentials.1)
         }
@@ -340,7 +341,6 @@ final class UsdtWalletManager {
                 backup: UsdtVssBackup()
             )
         }
-        credentialFingerprint = fingerprint
         self.address = wallet.receiveAddress()
         receiveUri = wallet.receiveUri()
         core = wallet
