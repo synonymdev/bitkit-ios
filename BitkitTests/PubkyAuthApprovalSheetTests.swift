@@ -537,6 +537,32 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         XCTAssertEqual(manager.accounts.first?.isTrackingEnabled, false)
         XCTAssertEqual(node.trackingChanges, [true, false])
     }
+
+    func testRequestTextLosesAccentMarkupEvenWhenTagsAreNested() {
+        XCTAssertEqual(pubkyAuthLiteralText("<accent>evil</accent>.app"), "evil.app")
+        XCTAssertEqual(pubkyAuthLiteralText("<acc<accent>ent>evil</acc</accent>ent>.app"), "evil.app")
+        XCTAssertEqual(pubkyAuthLiteralText("app.paykit.server"), "app.paykit.server")
+    }
+
+    func testRequestTextLosesLineBreaksAndBidiControls() {
+        XCTAssertEqual(pubkyAuthLiteralText("bank.com\nBitkit is safe."), "bank.comBitkit is safe.")
+        XCTAssertEqual(pubkyAuthLiteralText("\u{202E}moc.knab\u{202C}"), "moc.knab")
+        XCTAssertEqual(pubkyAuthLiteralText("a\u{2028}b\u{2066}c\u{200B}d"), "abcd")
+        XCTAssertEqual(pubkyAuthLiteralText("<acc\u{200B}ent>evil</accent>"), "evil")
+    }
+
+    func testFilledTextKeepsPlaceholdersInsideRequestData() {
+        let template = "<accent>{clientId}</accent> wants <accent>{service}</accent> for {pubky}"
+        XCTAssertEqual(
+            pubkyAuthFilledText(template, variables: ["clientId": "{service}", "service": "{clientId}", "pubky": "{pubky}"]),
+            "<accent>{service}</accent> wants <accent>{clientId}</accent> for {pubky}"
+        )
+        XCTAssertEqual(
+            pubkyAuthFilledText(template, variables: ["clientId": "bank.com", "service": "paykit"]),
+            "<accent>bank.com</accent> wants <accent>paykit</accent> for {pubky}"
+        )
+        XCTAssertEqual(pubkyAuthFilledText("no placeholders { here", variables: ["here": "x"]), "no placeholders { here")
+    }
 }
 
 private enum ApprovalFakeError: Error {
@@ -621,10 +647,4 @@ private func XCTAssertThrowsErrorAsync(
         _ = try await expression()
         XCTFail("Expected expression to throw", file: file, line: line)
     } catch {}
-
-    func testRequestTextLosesAccentMarkupEvenWhenTagsAreNested() {
-        XCTAssertEqual(pubkyAuthLiteralText("<accent>evil</accent>.app"), "evil.app")
-        XCTAssertEqual(pubkyAuthLiteralText("<acc<accent>ent>evil</acc</accent>ent>.app"), "evil.app")
-        XCTAssertEqual(pubkyAuthLiteralText("app.paykit.server"), "app.paykit.server")
-    }
 }

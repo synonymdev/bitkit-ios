@@ -31,14 +31,29 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
     return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
 }
 
-/// Request data is shown literally: accent tags inside it must not be read as markup by the text components.
+/// Request data is shown literally: control and bidi characters are dropped so it cannot add lines or reorder the
+/// sentence, and accent tags inside it must not be read as markup by the text components.
 func pubkyAuthLiteralText(_ value: String) -> String {
-    var text = value
+    let hidden: Set<Unicode.GeneralCategory> = [.control, .format, .lineSeparator, .paragraphSeparator]
+    var text = String(String.UnicodeScalarView(value.unicodeScalars.filter { !hidden.contains($0.properties.generalCategory) }))
     while true {
         let stripped = text.replacingOccurrences(of: "<accent>", with: "").replacingOccurrences(of: "</accent>", with: "")
         if stripped == text { return text }
         text = stripped
     }
+}
+
+/// Fills each `{placeholder}` from the template only, so request data that itself contains a placeholder stays as it is.
+func pubkyAuthFilledText(_ template: String, variables: [String: String]) -> String {
+    var result = ""
+    var rest = Substring(template)
+    while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
+        let key = String(rest[rest.index(after: open) ..< close])
+        result += rest[..<open]
+        result += variables[key] ?? String(rest[open ... close])
+        rest = rest[rest.index(after: close)...]
+    }
+    return result + rest
 }
 
 struct PubkyAuthApprovalConfig {
@@ -330,7 +345,7 @@ struct PubkyAuthApprovalSheet: View {
         BodyMText(
             requesterText.isEmpty
                 ? t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix")
-                : t("pubky_auth__description_named", variables: ["clientId": requesterText, "service": serviceText]),
+                : pubkyAuthFilledText(t("pubky_auth__description_named"), variables: ["clientId": requesterText, "service": serviceText]),
             accentColor: .textPrimary,
             accentFont: Fonts.bold
         )
@@ -362,8 +377,8 @@ struct PubkyAuthApprovalSheet: View {
                 ? t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
                 + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
                 + t("pubky_auth__success_suffix")
-                : t(
-                    "pubky_auth__success_named",
+                : pubkyAuthFilledText(
+                    t("pubky_auth__success_named"),
                     variables: ["pubky": truncatedPublicKey, "clientId": requesterText, "service": serviceText]
                 ),
             accentColor: .textPrimary,
