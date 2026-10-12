@@ -255,7 +255,7 @@ private func depositStatusText(_ status: String, code: String?) -> String {
     case "refunded": t("usdt__deposit_refunded")
     case "refunding", "refund_requested":
         code == nil || code == "standing_refund_pending" ? t("usdt__deposit_refunding") : t("usdt__deposit_needs_attention")
-    case "pending", "processing":
+    case "pending", "processing", "funded", "confirming", "swapping", "bridging", "delivering":
         code == nil ? t("usdt__pending") : t("usdt__deposit_needs_attention")
     default: t("usdt__deposit_needs_attention")
     }

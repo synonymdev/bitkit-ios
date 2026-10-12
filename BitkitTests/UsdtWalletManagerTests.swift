@@ -112,6 +112,12 @@ final class UsdtWalletManagerTests: XCTestCase {
             ("refunding", "standing_refund_pending", "usdt__deposit_refunding"),
             ("refund_requested", "standing_tron_refund_requires_operator", "usdt__deposit_needs_attention"),
             ("refunding", "refund_error", "usdt__deposit_needs_attention"),
+            ("funded", nil, "usdt__pending"),
+            ("confirming", nil, "usdt__pending"),
+            ("swapping", nil, "usdt__pending"),
+            ("bridging", nil, "usdt__pending"),
+            ("delivering", nil, "usdt__pending"),
+            ("swapping", "order_error", "usdt__deposit_needs_attention"),
             ("pending", "standing_route_unavailable", "usdt__deposit_needs_attention"),
             ("below_minimum", "xchain_amount_too_small", "usdt__deposit_needs_attention"),
         ]
