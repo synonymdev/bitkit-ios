@@ -149,8 +149,11 @@ jobs:
 
   e2e-tests-local:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
-    runs-on: [self-hosted, macOS]
+    runs-on: namespace-profile-mac
     needs: [detect-changes, build-local, e2e-branch]
+    env:
+      SIMULATOR_NAME: "iPhone 17"
+      SIMULATOR_OS_VERSION: "26.2"
 
     strategy:
       fail-fast: false
@@ -165,6 +168,11 @@ jobs:
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
     steps:
+      - name: Checkout stack scripts
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
       - name: Resolve E2E tests ref
         id: e2e-ref
         uses: synonymdev/bitkit-e2e-tests/.github/actions/resolve-e2e-ref@main
@@ -205,35 +213,30 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Docker info
-        run: |
-          docker --version
-          docker info
-          docker ps
-          docker compose version
-
-      - name: Reset regtest environment
-        working-directory: bitkit-e2e-tests
-        continue-on-error: true
-        run: |
-          cd docker && docker compose --verbose down -v -t 300
-
       - name: Run regtest setup
-        working-directory: bitkit-e2e-tests
         run: |
-          cd docker
-          mkdir -p lnd && chmod 777 lnd
-          docker compose --verbose up --force-recreate -d
+          .github/scripts/namespace-stack.sh up bitkit-e2e-tests/docker
+          (cd bitkit-e2e-tests/docker && docker compose up --force-recreate -d)
+          .github/scripts/namespace-stack.sh forward 43782 39388 60001 8080 9735 10009 3003 30001
 
       - name: Wait for electrum server
-        working-directory: bitkit-e2e-tests
         run: |
-          echo "Waiting for Electrum server..."
-          while ! nc -z '127.0.0.1' 60001; do
-            echo "Electrum server not ready, waiting..."
+          for _ in $(seq 1 60); do
+            python3 -c 'import socket; s = socket.create_connection(("127.0.0.1", 60001), 10); s.sendall(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"blockchain.headers.subscribe\",\"params\":[]}\n"); assert b"height" in s.recv(4096)' && exit 0
             sleep 5
           done
-          echo "Electrum server is ready!"
+          exit 1
+
+      - name: Copy LND credentials
+        working-directory: bitkit-e2e-tests/docker
+        run: |
+          mkdir -p lnd/data/chain/bitcoin/regtest
+          for _ in $(seq 1 60); do
+            docker cp lnd:/home/lnd/.lnd/data/chain/bitcoin/regtest/admin.macaroon lnd/data/chain/bitcoin/regtest/ 2>/dev/null && break
+            sleep 5
+          done
+          docker cp lnd:/home/lnd/.lnd/tls.cert lnd/tls.cert
+          test -s lnd/data/chain/bitcoin/regtest/admin.macaroon
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
@@ -243,11 +246,16 @@ jobs:
 
       - name: Clear iOS Simulator environment
         run: |
-          echo "🔧 Shutting down all running iOS simulators..."
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["SIMULATOR_OS_VERSION"].replace(".", "-")
+          devices = json.load(sys.stdin)["devices"].get(runtime, [])
+          print(next(d["udid"] for d in devices if d["name"] == os.environ["SIMULATOR_NAME"]))
+          ')
           xcrun simctl shutdown all || true
-          echo "🔧 Erasing target simulator: iPhone 17..."
-          xcrun simctl erase "iPhone 17" || true
-          echo "🔧 Disabling iOS Simulator notifications..."
+          xcrun simctl erase "$udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
 
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
@@ -285,11 +293,9 @@ jobs:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
 
-      - name: Cleanup Docker containers
+      - name: Tear down regtest stack
         if: always()
-        working-directory: bitkit-e2e-tests
-        run: |
-          cd docker && docker compose down -v || true
+        run: .github/scripts/namespace-stack.sh down
 
   e2e-status:
     if: always() && github.event.pull_request.draft == false
