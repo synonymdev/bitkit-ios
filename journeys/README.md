@@ -125,7 +125,7 @@ Their descriptions record extra iOS manual checks and necessary platform mechani
 | --- | --- |
 | Original payment retry | Max retains its original rate; custom fees use `getFeeLimits()`. Additional channel funding, payer/wallet race and backup checks are in the description. |
 | Accepted result | `xcrun simctl openurl`; confirm change before the Max leg, use Manual coin selection and restore Autopilot afterward. The existing Autopilot Max limitation is not claimed fixed. |
-| Hardware Shop proof | iOS identifiers and Bridge setup; extra durable returning-payer and later tag-edit replay checks are in the description. |
+| Hardware Shop proof | The sign screen uses `HardwareSendSign` and `HardwareSendSignAmount`; verify the original issuer destination under "To address (confirm on device)". iOS Bridge setup and extra durable returning-payer and later tag-edit replay checks are in the description. |
 
 Known naming differences:
 
@@ -137,6 +137,8 @@ Known naming differences:
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
 | Hardware wallet receive tab | `Tab-hardware` (after bitkit-android#1231) | `Tab-trezor` for a Trezor wallet, `Tab-jade` for a Jade |
+| Hardware sign amount | `HardwareSendAmount` | `HardwareSendSignAmount` |
+| Hardware sign destination | `HardwareSendAddress` | *(no address identifier; read the destination under "To address (confirm on device)" inside `HardwareSendSign`)* |
 | Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row; tell rows apart by their key caption) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
 | Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` (the same tag on every row) | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
 | Contact import overview profile and friend count | — *(no tag; read the "Import" title and the "N friends" text)* | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
