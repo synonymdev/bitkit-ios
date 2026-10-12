@@ -174,6 +174,52 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit])
     }
 
+    func testResetToDefaultsReloadsServerStateAfterPreferencesAreCleared() async {
+        let oldServer = ElectrumServer(host: "old.example.com", port: 50001, protocolType: .tcp)
+        settings.electrumConfigService.saveServerConfig(oldServer)
+        settings.electrumCurrentServer = oldServer
+        settings.electrumHost = "unsaved.example.com"
+        settings.electrumPort = "50002"
+        settings.electrumSelectedProtocol = .ssl
+        settings.electrumIsConnected = true
+        settings.electrumIsLoading = true
+
+        settings.rgsConfigService.saveServerUrl("https://old.example.com")
+        settings.rgsServerUrl = "https://unsaved.example.com"
+        settings.rgsIsLoading = true
+        settings.rgsUrlIsValid = true
+
+        UserDefaults.standard.removeObject(forKey: "electrumServer")
+        UserDefaults.standard.removeObject(forKey: "rapidGossipSyncUrl")
+        settings.resetToDefaults()
+
+        let defaultServer = settings.electrumConfigService.getDefaultServer()
+        XCTAssertNil(settings.electrumConfigService.getStoredServer())
+        XCTAssertEqual(settings.electrumCurrentServer, defaultServer)
+        XCTAssertEqual(settings.electrumHost, defaultServer.host)
+        XCTAssertEqual(settings.electrumPort, defaultServer.portString)
+        XCTAssertEqual(settings.electrumSelectedProtocol, defaultServer.protocolType)
+        XCTAssertFalse(settings.electrumIsConnected)
+        XCTAssertFalse(settings.electrumIsLoading)
+
+        XCTAssertEqual(settings.rgsConfigService.getCurrentServerUrl(), settings.rgsConfigService.getDefaultServerUrl())
+        XCTAssertEqual(settings.rgsServerUrl, settings.rgsConfigService.getDefaultServerUrl())
+        XCTAssertFalse(settings.rgsIsLoading)
+        XCTAssertFalse(settings.rgsUrlIsValid, "Discard the previous URL's validation until the default is checked")
+
+        let expectedValidity = settings.isValidRgsUrl(settings.rgsServerUrl)
+        let defaultUrlValidated = expectation(description: "Validate the default RGS URL after reset")
+        let cancellable = settings.$rgsUrlIsValid
+            .dropFirst()
+            .first()
+            .sink { _ in defaultUrlValidated.fulfill() }
+        defer { cancellable.cancel() }
+
+        await fulfillment(of: [defaultUrlValidated], timeout: 3)
+
+        XCTAssertEqual(settings.rgsUrlIsValid, expectedValidity)
+    }
+
     // MARK: - Backup/Restore
 
     func testGetSettingsDictionaryIncludesAddressTypes() {

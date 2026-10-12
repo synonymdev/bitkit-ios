@@ -73,15 +73,19 @@ struct RgsSettingsScreen: View {
     }
 
     private func onConnect() {
+        let generation = settings.serverConnectionGeneration
         Task {
-            let result = await settings.connectToRgsServer()
+            guard settings.isCurrentServerConnection(generation) else { return }
+            guard let result = await settings.connectToRgsServer(), settings.isCurrentServerConnection(generation) else { return }
             showToast(result.success, result.url, result.errorMessage)
         }
     }
 
     private func onReset() {
+        let generation = settings.serverConnectionGeneration
         Task {
-            let result = await settings.resetRgsToDefault()
+            guard settings.isCurrentServerConnection(generation) else { return }
+            guard let result = await settings.resetRgsToDefault(), settings.isCurrentServerConnection(generation) else { return }
             showToast(result.success, result.url, result.errorMessage)
         }
     }
