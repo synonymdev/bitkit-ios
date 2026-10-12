@@ -312,6 +312,20 @@ struct BackupPeerEntry: Codable {
     let port: UInt16
 }
 
+struct RNMigrationRetrySchedule: Codable {
+    let attemptedAt: Date
+    let delay: TimeInterval
+
+    init(previous: Self?, attemptedAt: Date) {
+        self.attemptedAt = attemptedAt
+        delay = min(max((previous?.delay ?? 0) * 2, 60), 3600)
+    }
+
+    func isDue(at now: Date) -> Bool {
+        now < attemptedAt || now.timeIntervalSince(attemptedAt) >= delay
+    }
+}
+
 // MARK: - MigrationsService
 
 class MigrationsService: ObservableObject {
@@ -362,6 +376,7 @@ class MigrationsService: ObservableObject {
     private static let rnPendingRemoteTransfersKey = "rnPendingRemoteTransfers"
     private static let rnPendingRemoteBoostsKey = "rnPendingRemoteBoosts"
     private static let rnPendingMetadataKey = "rnPendingMetadata"
+    private static let rnRetryScheduleKey = "rnMigrationRetrySchedule"
     private static let rnPendingRemotePaidOrdersKey = "rnPendingRemotePaidOrders"
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
@@ -488,9 +503,11 @@ class MigrationsService: ObservableObject {
     }
 
     private let userDefaults: UserDefaults
+    private let now: () -> Date
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard, now: @escaping () -> Date = Date.init) {
         self.userDefaults = userDefaults
+        self.now = now
     }
 
     // MARK: - UserDefaults Helpers
@@ -807,6 +824,21 @@ extension MigrationsService {
             pendingRemoteBoosts != nil || pendingBlocktankOrderIds != nil || pendingRemotePaidOrders != nil
     }
 
+    private var retrySchedule: RNMigrationRetrySchedule? {
+        get { getCodable(forKey: Self.rnRetryScheduleKey) }
+        set { setCodable(newValue, forKey: Self.rnRetryScheduleKey) }
+    }
+
+    var shouldRetryPendingMigrationData: Bool {
+        hasPendingMigrationRetries && (retrySchedule?.isDue(at: now()) ?? true)
+    }
+
+    func recordPendingMigrationRetry() {
+        retrySchedule = hasPendingMigrationRetries
+            ? RNMigrationRetrySchedule(previous: retrySchedule, attemptedAt: now())
+            : nil
+    }
+
     /// Returns true if all pending migration data has been processed and cleanup can proceed
     var canCleanupAfterMigration: Bool {
         // Don't cleanup if there's still pending Blocktank data that needs retry
@@ -867,6 +899,7 @@ extension MigrationsService {
 
     /// Clears all persisted pending migration data from UserDefaults
     private func clearPendingMigrationData() {
+        retrySchedule = nil
         pendingChannelMigration = nil
         pendingRemoteActivityData = nil
         pendingRemoteTransfers = nil

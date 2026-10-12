@@ -1412,7 +1412,7 @@ extension AppViewModel {
 
     private func beginPostMigrationSync() {
         guard !isResettingMigration, !isSyncingMigration,
-              migrations.needsPostMigrationSync || migrations.hasPendingMigrationRetries
+              migrations.needsPostMigrationSync || migrations.shouldRetryPendingMigrationData
         else { return }
         let completingMigration = migrations.needsPostMigrationSync
         let generation = migrations.retryGeneration
@@ -1423,15 +1423,16 @@ extension AppViewModel {
                 self.postMigrationSyncTask = nil
             }
             guard migrations.isRetryCurrent(generation) else { return }
-            await postMigrationSyncOperations.syncPayments()
-            guard migrations.isRetryCurrent(generation) else { return }
             if completingMigration {
+                await postMigrationSyncOperations.syncPayments()
+                guard migrations.isRetryCurrent(generation) else { return }
                 await postMigrationSyncOperations.markActivitiesSeen()
                 guard migrations.isRetryCurrent(generation) else { return }
             }
             await postMigrationSyncOperations.reapplyMetadata(completingMigration)
             guard migrations.isRetryCurrent(generation) else { return }
             migrations.needsPostMigrationSync = false
+            migrations.recordPendingMigrationRetry()
 
             if migrations.canCleanupAfterMigration {
                 if migrations.isShowingMigrationLoading {
@@ -1441,7 +1442,7 @@ extension AppViewModel {
                 SettingsViewModel.shared.updatePinEnabledState()
                 migrations.cleanupAfterMigration()
             } else {
-                Logger.info("Post-migration sync incomplete, will retry on next sync", context: "AppViewModel")
+                Logger.info("Post-migration sync incomplete, pending data will retry with backoff", context: "AppViewModel")
             }
             migrations.isRestoringFromRNRemoteBackup = false
             migrations.isShowingMigrationLoading = false

@@ -106,14 +106,17 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
     }
 
     func testOverlappingSyncEventsCompleteOnceAndBackgroundRetryLeavesNewReceiveUnseen() async throws {
+        var now = Date(timeIntervalSince1970: 1000)
         let suite = "RNMigrationCompletion.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let migrations = Bitkit.MigrationsService(userDefaults: defaults)
+        let migrations = Bitkit.MigrationsService(userDefaults: defaults, now: { now })
         migrations.needsPostMigrationSync = true
         migrations.isShowingMigrationLoading = true
         migrations.isRestoringFromRNRemoteBackup = true
         migrations.pendingMetadata = Bitkit.RNMetadata(tags: ["missing": ["retained"]])
+        migrations.recordPendingMigrationRetry()
+        XCTAssertFalse(migrations.shouldRetryPendingMigrationData)
         let gate = Gate()
         var syncCount = 0
         var sweepCount = 0
@@ -165,9 +168,12 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
 
         seen["new-receive"] = false
         app.handleLdkNodeEvent(event)
+        XCTAssertNil(app.postMigrationSyncTask, "sync events during backoff must not start a pass")
+        now.addTimeInterval(120)
+        app.handleLdkNodeEvent(event)
         let retry = try XCTUnwrap(app.postMigrationSyncTask)
         await retry.value
-        XCTAssertEqual(syncCount, 2)
+        XCTAssertEqual(syncCount, 1, "metadata retries must not rebuild payment history or trigger its backup")
         XCTAssertEqual(sweepCount, 1)
         XCTAssertEqual(localPasses, [true, false])
         XCTAssertEqual(seen["new-receive"], false)
@@ -218,6 +224,7 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let migrations = Bitkit.MigrationsService(userDefaults: defaults)
+        migrations.needsPostMigrationSync = true
         migrations.pendingMetadata = Bitkit.RNMetadata(tags: ["missing": ["retained"]])
         let gate = Gate()
         var syncCount = 0
@@ -229,7 +236,7 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
                     syncCount += 1
                     if syncCount == 1 { await gate.suspend() }
                 },
-                markActivitiesSeen: { XCTFail("background retries must not sweep history") },
+                markActivitiesSeen: {},
                 reapplyMetadata: { _ in
                     retryCount += 1
                     await migrations.retryPendingMetadata { Set($0.keys) }
