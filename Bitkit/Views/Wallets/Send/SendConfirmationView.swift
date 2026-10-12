@@ -371,8 +371,7 @@ struct SendConfirmationView: View {
             guard preparingRequest == nil else { return }
             ensureSendAmountFromScannedInvoicesIfNeeded()
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
-                requiresPaymentConfirmation = true
-                showDetails = true
+                showManualConfirmation(reason: "not automatic when opened")
             }
             await calculateTransactionFee()
             await calculateRoutingFee()
@@ -384,8 +383,7 @@ struct SendConfirmationView: View {
             guard !isPending, preparingRequest == nil else { return }
             Task { @MainActor in
                 if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
-                    requiresPaymentConfirmation = true
-                    showDetails = true
+                    showManualConfirmation(reason: "not automatic after setup")
                 }
                 await startAutomaticPaymentIfNeeded()
             }
@@ -770,7 +768,7 @@ struct SendConfirmationView: View {
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
-            showManualConfirmation()
+            showManualConfirmation(reason: "fee rate missing")
             return
         }
         if isAutomatic, Self.needsManualCoinSelection(
@@ -779,7 +777,7 @@ struct SendConfirmationView: View {
             coinSelectionMethod: settings.coinSelectionMethod,
             selectedUtxos: wallet.selectedUtxos
         ) {
-            showManualConfirmation()
+            showManualConfirmation(reason: "manual coin selection")
             try? await openManualCoinSelection()
             return
         }
@@ -798,7 +796,7 @@ struct SendConfirmationView: View {
         if isAutomatic {
             await settleTransactionFee()
             if Self.automaticPaymentLacksFee(walletType: app.selectedWalletToPayFrom, transactionFee: transactionFee) {
-                showManualConfirmation()
+                showManualConfirmation(reason: "onchain fee unknown")
                 return
             }
         }
@@ -852,7 +850,7 @@ struct SendConfirmationView: View {
         }
 
         if requiresManualConfirmation(isAutomatic: isAutomatic) {
-            showManualConfirmation()
+            showManualConfirmation(reason: "hardware wallet")
             return
         }
 
@@ -1048,7 +1046,8 @@ struct SendConfirmationView: View {
         )
     }
 
-    private func showManualConfirmation() {
+    private func showManualConfirmation(reason: String) {
+        Logger.info("Opening manual confirmation for first subscription payment: \(reason)")
         hasStartedAutomaticPayment = false
         requiresPaymentConfirmation = true
         showDetails = true
@@ -1191,7 +1190,7 @@ struct SendConfirmationView: View {
                 if shouldCancelPaymentProof, let incomingPaymentRequest {
                     await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
                 }
-                showManualConfirmation()
+                showManualConfirmation(reason: "hardware wallet")
                 return
             }
 
