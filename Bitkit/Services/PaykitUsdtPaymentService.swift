@@ -348,7 +348,7 @@ final class PaykitUsdtPaymentService {
                                                         kind: .usdt, billingPeriod: attempt.billingPeriod,
                                                         paymentIdentifier: attempt.quoteId, proofData: data,
                                                         conversionQuoteId: binding.conversionQuoteId.isEmpty ? nil : binding.conversionQuoteId)
-                if await PaykitPaymentProofService.shared.submit(pending) {
+                if await PaykitPaymentProofService.shared.submitUsdtProof(pending) {
                     var current = try load()
                     if let index = current.attempts.firstIndex(where: { $0.quoteId == attempt.quoteId && $0.wallet == owner }) {
                         current.attempts[index].proofQueued = true

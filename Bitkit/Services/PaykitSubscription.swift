@@ -576,7 +576,6 @@ struct PaykitSubscription: Identifiable, Hashable {
         }
 
         guard let terms = record.terms,
-              terms.conversion == nil,
               let recurrence = terms.recurrence.flatMap(PaykitSubscriptionRecurrence.init),
               let asset = PaykitAsset(rawValue: terms.amount.asset),
               let amount = try? PaykitAmount(asset: asset, value: terms.amount.value),

@@ -161,23 +161,14 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         } else {
             paymentDeadline = nil
         }
-        var acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
+        guard let asset = PaykitAsset(rawValue: terms.amount.asset) else { return .failure(.unsupportedAsset) }
+        guard let amount = try? PaykitAmount(asset: asset, value: terms.amount.value) else { return .failure(.invalidAmount) }
+        guard asset != .btc || amount.atomic <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
+
+        let acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
             terms.acceptedPaymentEndpointIdentifiers,
             network: network
         )
-        let amountSats: UInt64
-        if terms.conversion != nil {
-            guard let payment = PaykitBitcoinRequestPricing.bitcoinPayment(terms: terms, endpoints: acceptedPaymentEndpointIdentifiers) else {
-                return .failure(.unsupportedPricing)
-            }
-            amountSats = payment.amountSats
-            acceptedPaymentEndpointIdentifiers = payment.endpointIdentifiers
-        } else {
-            guard terms.amount.asset == PaykitIssuerInterop.bitcoinAsset else { return .failure(.unsupportedAsset) }
-            guard let sats = Self.sats(fromBitcoinAmount: terms.amount.value) else { return .failure(.invalidAmount) }
-            guard sats <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
-            amountSats = sats
-        }
         if requiresActionableRequest, acceptedPaymentEndpointIdentifiers.isEmpty {
             return .failure(.noSupportedEndpoint)
         }
@@ -366,6 +357,15 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
 
     func payment(using method: PublicPaykitService.MethodId, at date: Date = Date(), quoteId: String? = nil) throws -> PaykitRequestPricing.Payment {
         try pricing.payment(requested: amount, endpoint: method.rawValue, period: billingPeriod, at: date, quoteId: quoteId)
+    }
+
+    func matchesOnchainPayment(_ proof: PendingPaykitPaymentProof, amountSats: UInt64? = nil) -> Bool {
+        guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier),
+              let amount = amountSats ?? proof.onchainAmountSats,
+              let payment = try? payment(using: method, quoteId: proof.conversionQuoteId),
+              payment.amount.asset == .btc, payment.isValid(at: Date())
+        else { return false }
+        return payment.amount.atomic == amount
     }
 
     func acceptsLightningInvoiceAmount(milliSatoshis: UInt64?, paymentTerms: PaykitRequestPricing.Payment? = nil, at date: Date = Date()) -> Bool {
@@ -2495,7 +2495,7 @@ final class PaykitPaymentRequestManager {
                 return (subscription, requests)
             }
             let retainedRetryRequests = snapshot.incoming + snapshot.history + recurringRequestsBySubscription
-                .filter { $0.0.lifecycleState == .activeRecurring && !$0.0.hasPaymentDeadline }
+                .filter { $0.0.lifecycleState == .activeRecurring }
                 .flatMap { $0.1.filter { $0.lifecycleState == .activeRecurring } }
             retainedHardwareRetries = retainedRetries.filter { id, proof in
                 guard id == proof.requestId, !locallyCompletedRequestIds.contains(id),
@@ -2504,7 +2504,7 @@ final class PaykitPaymentRequestManager {
                       let request = retainedRetryRequests.first(where: { $0.id == id }),
                       request.direction == .incoming,
                       [.accepted, .recoveryRequired, .activeRecurring].contains(request.lifecycleState),
-                      request.amountSats == proof.onchainAmountSats,
+                      request.matchesOnchainPayment(proof),
                       request.billingPeriod == proof.billingPeriod,
                       request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
                 else { return false }

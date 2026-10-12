@@ -360,6 +360,7 @@ class BackupService {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
                     try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
+                    if let usdt = paymentState.usdt { try await PaykitUsdtPaymentService.shared.restoreBackup(usdt) }
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
@@ -551,6 +552,8 @@ class BackupService {
             .merge(with: PaykitPaymentRequestIdStore.walletBackupDataChangedPublisher)
             .merge(with: PaykitPaymentProofService.proofStateChangedPublisher)
             .merge(with: OnchainSendAttemptStore.walletBackupDataChangedPublisher)
+            .merge(with: UsdtWalletManager.walletBackupDataChangedPublisher)
+            .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -922,7 +925,11 @@ class BackupService {
                 guard !Env.isUsdtEnabled else { throw UsdtError.BackupUnavailable }
                 usdtSnapshot = nil
             }
-            let payload = try await WalletBackupV1(
+            var paymentState = try await PaykitPaymentProofService.shared.backupSnapshot(
+                wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
+            )
+            paymentState.usdt = try await PaykitUsdtPaymentService.shared.backupSnapshot()
+            let payload = WalletBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers,
@@ -930,9 +937,8 @@ class BackupService {
                 paykitSdkBackupState: paykitSdkBackupState,
                 watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
                 watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
-                paykitPaymentState: PaykitPaymentProofService.shared.backupSnapshot(
-                    wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
-                )
+                usdtWallet: usdtSnapshot,
+                paykitPaymentState: paymentState
             )
             return try JSONEncoder().encode(payload)
 

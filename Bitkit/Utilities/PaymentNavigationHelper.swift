@@ -113,7 +113,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true { return .amount }
+        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil { return .amount }
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             if lnurlWithdrawData.isFixedAmount {
                 return .lnurlWithdrawConfirm
@@ -202,7 +202,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true { return .amount }
+        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil { return .amount }
         guard let route = appropriateSendRoute(
             app: app,
             currency: currency,

@@ -34,7 +34,7 @@ struct PaykitRequestPricing: Hashable {
         var selected: Paykit.PaymentConversionQuoteRecord?
         switch conversion {
         case let .fixed(values):
-            guard quoteId == nil else { throw PaykitAmountError.invalidAmount }
+            guard quoteId == nil, !values.isEmpty, Set(values.map(\.asset)).count == values.count else { throw PaykitAmountError.invalidAmount }
             rates = values
         case .perPeriod:
             if requested.asset != asset || quoteId != nil {

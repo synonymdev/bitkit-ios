@@ -188,7 +188,9 @@ struct SendSheet: View {
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
-        if isPreparingRequest || hwSend.isActive || isResumingAcceptedOrdinarySend {
+        if isPreparingRequest || hwSend.isActive || isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
+            (app.contactPaymentContext?.requiresAssetSelection == true && navigationPath.isEmpty)
+        {
             return false
         }
 
@@ -245,7 +247,14 @@ struct SendSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut, isEnabled: !isPreparingRequest && !isResumingAcceptedOrdinarySend)
+        .sheet(isPresented: Binding(get: { usdtDetails != nil }, set: { if !$0 { usdtDetails = nil } })) {
+            if let id = usdtDetails { UsdtActivityDetail(transferId: id) }
+        }
+        .offlineSheetOverlay(
+            title: t("wallet__send_bitcoin"),
+            forceShow: syncTimedOut,
+            isEnabled: !isPreparingRequest && !isResumingAcceptedOrdinarySend
+        )
         .onChange(of: shouldDismissUnavailableRequest) { _, shouldDismiss in
             guard shouldDismiss else { return }
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
@@ -372,7 +381,10 @@ struct SendSheet: View {
             if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }
-            wallet.sendAmountSats = try? request.payment(using: app.paykitPaymentMethod).amount.atomic
+            wallet.sendAmountSats = try? request.payment(
+                using: app.paykitPaymentMethod,
+                quoteId: app.paykitPaymentTerms?.quoteId
+            ).amount.atomic
             incomingPaymentRequest = request
         } else {
             tagManager.clearSelectedTags()
@@ -384,29 +396,29 @@ struct SendSheet: View {
         }
         setupTask?.cancel()
         setupTask = Task {
-                if incomingPaymentRequest == nil, config.hardwareWalletId == nil,
-                   currentRoot == .options || app.selectedWalletToPayFrom == .onchain
-                {
-                    do {
-                        if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
-                            walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
-                        ) {
-                            let context = OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
-                            if attempt.requestId != nil || attempt.orderId != nil || attempt.status != .accepted {
-                                hasValidatedAfterSync = true
-                                replaceRootRoute(with: .onchainOperationPending(context, requestId: attempt.requestId))
-                                return
-                            }
-                            isResumingAcceptedOrdinarySend = true
+            if incomingPaymentRequest == nil, config.hardwareWalletId == nil,
+               currentRoot == .options || app.selectedWalletToPayFrom == .onchain
+            {
+                do {
+                    if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
+                        walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
+                    ) {
+                        let context = OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
+                        if attempt.requestId != nil || attempt.orderId != nil || attempt.status != .accepted {
                             hasValidatedAfterSync = true
-                            app.selectedWalletToPayFrom = .onchain
-                            replaceRootRoute(with: Self.acceptedOrdinaryStartupRoute(attempt: attempt))
+                            replaceRootRoute(with: .onchainOperationPending(context, requestId: attempt.requestId))
                             return
                         }
-                    } catch {
-                        Logger.warn("Could not inspect retained on-chain follow-up", context: "SendSheet")
+                        isResumingAcceptedOrdinarySend = true
+                        hasValidatedAfterSync = true
+                        app.selectedWalletToPayFrom = .onchain
+                        replaceRootRoute(with: Self.acceptedOrdinaryStartupRoute(attempt: attempt))
+                        return
                     }
+                } catch {
+                    Logger.warn("Could not inspect retained on-chain follow-up", context: "SendSheet")
                 }
+            }
             do {
                 try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
             } catch is CancellationError {
@@ -414,9 +426,9 @@ struct SendSheet: View {
             } catch {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
-            if let request = incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true {
+            if let request = incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true || app.paykitPaymentTerms != nil {
                 guard isCurrentIncomingRequest(request.id) else { return }
-                guard let amount = try? request.payment(using: app.paykitPaymentMethod).amount.atomic,
+                guard let amount = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId).amount.atomic,
                       await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id) else { return }
                 guard isCurrentIncomingRequest(request.id) else { return }
                 if !shouldShowSyncOverlay {
@@ -1011,14 +1023,20 @@ struct SendSheet: View {
             request: request,
             paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
             paymentEndpointIdentifier: endpointIdentifier,
-            kind: .onchain
+            kind: .onchain,
+            paymentTerms: paymentTerms
         )
         let previousVersion = await PrivatePaykitService.shared.consumedPaymentListVersion(publicKey: request.counterparty, attemptId: context?.id)
         do {
             try await prepareIncomingPaymentRequest(context: context)
             guard context.map(app.ownsContactPaymentContext) == true, !request.isExpired(at: Date()),
+                  signedTx.totalSpent >= signedTx.miningFeeSats,
                   paymentTerms != nil || request.amount.asset == .btc,
-                  request.acceptsPaymentAmount(signedTx.totalSpentSats - signedTx.miningFeeSats, method: PublicPaykitService.onchainMethodId(for: address), paymentTerms: paymentTerms)
+                  request.acceptsPaymentAmount(
+                      signedTx.totalSpent - signedTx.miningFeeSats,
+                      method: PublicPaykitService.onchainMethodId(for: address),
+                      paymentTerms: paymentTerms
+                  )
             else { throw PaykitPaymentRequestError.amountMismatch }
             try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(
                 request, address: address, hardwareWalletId: walletId, paymentIdentity: paymentIdentity,

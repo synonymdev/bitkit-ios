@@ -1272,7 +1272,7 @@ struct SendConfirmationView: View {
                 }
 
                 // The accepted attempt owns the original amount and metadata during local resume.
-                wallet.sendAmountSats = savedActivity?.value ?? incomingPaymentRequest?.amountSats ?? amount
+                wallet.sendAmountSats = savedActivity?.value ?? amount
 
                 Logger.info("Onchain send result txid: \(txid)")
 

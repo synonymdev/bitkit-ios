@@ -1000,11 +1000,16 @@ extension AppViewModel {
         guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
               context.publicKey == request.counterparty,
               PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
-              let address = proof.onchainAddress
+              let address = proof.onchainAddress, let amount = proof.onchainAmountSats
         else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        paykitPaymentTerms = try request.payment(using: method, quoteId: proof.conversionQuoteId)
+        paykitReviewedAmount = paykitPaymentTerms?.amount
         // This route submits an existing transaction, so it never admits fresh inputs against a balance.
         handleScannedOnchainInvoice(OnChainInvoice(
-            address: address, amountSatoshis: request.amountSats, label: nil, message: nil, params: nil
+            address: address, amountSatoshis: amount, label: nil, message: nil, params: nil
         ))
     }
 
