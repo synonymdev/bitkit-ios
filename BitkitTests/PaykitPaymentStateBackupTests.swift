@@ -347,7 +347,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         for status in ["pending", "unknown", "rejected", "accepted"] {
             object["status"] = status
             for rates: [String: String]? in [nil, [:], [successor: "4"], [later: "5"],
-                                           [original: "3", successor: "4", later: "5"]] {
+                                             [original: "3", successor: "4", later: "5"]]
+            {
                 object["candidateFeeRates"] = rates
                 XCTAssertThrowsError(try restored(object))
             }
@@ -370,7 +371,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         object["amountSats"] = "1000"
         var understated = object
         understated["transfer"] = ["txTotalSats": "1", "preTransferOnchainSats": "3000",
-                                    "originalOrderClientBalanceSats": "900", "originalOrderFeeSats": "1000"]
+                                   "originalOrderClientBalanceSats": "900", "originalOrderFeeSats": "1000"]
         XCTAssertThrowsError(try restored(understated))
         let attempt = try restored(object)
         XCTAssertEqual(attempt.amountSats, 1000)

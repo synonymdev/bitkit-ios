@@ -332,7 +332,7 @@ struct LnurlPayConfirm: View {
                 try await wallet.sendWithTimeout(
                     bolt11: bolt11,
                     sats: nil,
-                    paymentDeadline: incomingPaymentRequest?.paymentDeadline,
+                    paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                     afterListening: { _ in lightningPaymentSubmitted = true },
                     onTimeout: { timedOutHash in
                         app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)

@@ -121,7 +121,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             let sdk = PaymentProofSdkMock(identity: invalid % 4 == 1 ? counterparty : identity, records: invalid % 4 == 3 ? [] : [record])
             let service = paymentProofService(sdk: sdk, store: store, attemptService: attempts)
             do {
-                let authorized = try await service.authorizeOnchainRecovery(original, restoreStartedProof: false)
+                let authorized = try await service.authorizeOnchainRecovery(original, restoreStartedProof: false).request
                 XCTAssertEqual(invalid % 4, 0)
                 XCTAssertEqual(authorized.id, request.id)
                 XCTAssertEqual(authorized.amount.atomic, request.amount.atomic)
@@ -140,7 +140,14 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
             anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
         )
-        let record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        var record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        let quoteExpiry = PaykitPreciseInstant(date: Date().addingTimeInterval(3600))
+        record.terms?.conversion = .perPeriod
+        record.conversionQuotes = [PaymentConversionQuoteRecord(
+            eventId: "original", billingPeriod: BillingPeriod(startsAt: recurrence.startsAt, endsAt: "2026-11-01T08:00:00.123456789Z"),
+            rates: [ConversionRate(asset: "usdt", value: "100000")], validFrom: recurrence.startsAt,
+            expiresAt: quoteExpiry.timestamp, outboundStatus: nil
+        )]
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).first)
         let period = try XCTUnwrap(request.billingPeriod)
@@ -152,16 +159,19 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                                     satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
                                     requestId: request.id, paymentIdentity: identity)
         let original = try XCTUnwrap(attemptsStore.snapshot().first)
-        let proof = PendingPaykitPaymentProof(
+        var proof = PendingPaykitPaymentProof(
             identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint,
             kind: .onchain, billingPeriod: period, paymentStarted: true,
             paymentIdentifier: original.txid, proofData: nil, onchainAddress: onchainAddress, onchainAmountSats: request.amount.atomic
         )
+        proof.conversionQuoteId = "original"
         let store = PaymentProofMemoryStore()
         await store.seed([proof])
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store, attemptService: attempts)
-        let authorized = try await service.authorizeOnchainRecovery(original, restoreStartedProof: false)
+        let authorization = try await service.authorizeOnchainRecovery(original, restoreStartedProof: false)
+        XCTAssertEqual(authorization.paymentDeadline, quoteExpiry)
+        let authorized = authorization.request
         XCTAssertEqual(authorized.id, request.id)
         XCTAssertEqual(authorized.billingPeriod, period)
         XCTAssertEqual(authorized.amount.atomic, original.amountSats)
@@ -287,7 +297,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             identity: identity, requestId: request.id, transactionId: txid, walletId: hardwareWalletId
         )
         XCTAssertEqual(resolutions, [originalResolution])
-        await service.consumeOnchainPaymentResolution(originalResolution, activeIdentity: (try? sdk.identityStatus())?.publicKey)
+        await service.consumeOnchainPaymentResolution(originalResolution, activeIdentity: sdk.identityStatus()?.publicKey)
         // Recreate the service to discard every process-local replay marker.
         let reopened = paymentProofService(sdk: sdk, store: store, hardwareLookup: lookup)
         await sdk.setIdentity(identity)
@@ -301,7 +311,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let awaitingConsumption = await store.snapshot().first { PubkyPublicKeyFormat.matches($0.identity, identity) }
         XCTAssertEqual(awaitingConsumption?.onchainResolutionAwaitingConsumption, true,
                        "Proof delivery must retain the original local result until its payer consumes it")
-        await reopened.consumeOnchainPaymentResolution(originalResolution, activeIdentity: (try? sdk.identityStatus())?.publicKey)
+        await reopened.consumeOnchainPaymentResolution(originalResolution, activeIdentity: sdk.identityStatus()?.publicKey)
         await reopened.reconcile()
         XCTAssertEqual(resolutions, [originalResolution, originalResolution], "Returning-payer replay occurs once")
         let lookups = await lookup.calls()

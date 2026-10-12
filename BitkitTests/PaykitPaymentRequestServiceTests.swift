@@ -1450,6 +1450,39 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(accepted.requiresAcceptance)
     }
 
+    func testSubmissionDeadlineUsesTheSelectedQuoteAndRequestLimits() throws {
+        let start = "2027-01-01T08:00:00.123456789Z"
+        let now = try XCTUnwrap(PaykitPaymentRequest.parseDate(start))
+        let period = try XCTUnwrap(PaykitBillingPeriod(sdkPeriod: BillingPeriod(
+            startsAt: start, endsAt: "2027-02-01T08:00:00.123456789Z"
+        )))
+        let quoteExpiry = try XCTUnwrap(PaykitPreciseInstant(timestamp: "2027-01-01T08:01:00.123456789Z"))
+        let quote = PaymentConversionQuoteRecord(
+            eventId: "original", billingPeriod: period.sdkValue, rates: [.init(asset: "btc", value: "0.00002")],
+            validFrom: start, expiresAt: quoteExpiry.timestamp, outboundStatus: nil
+        )
+        var later = quote
+        later.eventId = "later"
+        later.expiresAt = "2027-01-01T08:02:00Z"
+        for seconds in [UInt64(30), 120] {
+            var record = try paymentRequestRecord(
+                state: .activeRecurring, amount: "1", asset: "usd", conversion: .perPeriod,
+                paymentDeadline: .periodStart(seconds: seconds),
+                recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: start, anchor: start, endsAt: nil)
+            )
+            record.conversionQuotes = [quote, later]
+            let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+            let request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+            let deadline = try XCTUnwrap(request.submissionDeadline(quoteId: quote.eventId))
+            XCTAssertEqual(deadline, try min(XCTUnwrap(request.paymentDeadline), quoteExpiry))
+            XCTAssertEqual(deadline.nanoseconds, 123_456_789)
+            XCTAssertEqual(try request.submissionDeadline(quoteId: nil), request.paymentDeadline)
+            XCTAssertNoThrow(try PaykitPaymentRequest.checkPaymentDeadline(deadline, at: now))
+            XCTAssertThrowsError(try PaykitPaymentRequest.checkPaymentDeadline(deadline, at: deadline.date.addingTimeInterval(1)))
+            XCTAssertThrowsError(try request.submissionDeadline(quoteId: "unknown"))
+        }
+    }
+
     func testRecoveryRequiredIncomingRequestRejectsTerminalOrExpiredEvidence() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cases: [(PaymentRequestRecord, PaykitPaymentRequest.ParseFailure)] = try [
@@ -8184,7 +8217,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         manager.activate(identity: identity)
         XCTAssertFalse(manager.isApprovedForPayment(request))
         let beforeProofs = await store.snapshot()
-        let authorized = try await manager.ensureOnchainRecoveryAllowed(attempt, proofService: service)
+        let authorized = try await manager.ensureOnchainRecoveryAllowed(attempt, proofService: service).request
         XCTAssertEqual(authorized.id, request.id)
         XCTAssertEqual(authorized.amount.atomic, attempt.amountSats)
         let afterProofs = await store.snapshot()

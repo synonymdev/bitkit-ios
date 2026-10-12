@@ -359,6 +359,15 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         try pricing.payment(requested: amount, endpoint: method.rawValue, period: billingPeriod, at: date, quoteId: quoteId)
     }
 
+    func submissionDeadline(quoteId: String?) throws -> PaykitPreciseInstant? {
+        guard let quoteId else { return paymentDeadline }
+        guard let quote = pricing.quotes.first(where: { $0.eventId == quoteId }),
+              let period = PaykitBillingPeriod(sdkPeriod: quote.billingPeriod), period == billingPeriod,
+              let quoteExpiry = PaykitPreciseInstant(timestamp: quote.expiresAt)
+        else { throw PaykitPaymentRequestError.requestUnavailable }
+        return min(paymentDeadline ?? quoteExpiry, quoteExpiry)
+    }
+
     func matchesOnchainPayment(_ proof: PendingPaykitPaymentProof, amountSats: UInt64? = nil) -> Bool {
         guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier),
               let amount = amountSats ?? proof.onchainAmountSats,
@@ -1863,19 +1872,21 @@ final class PaykitPaymentRequestManager {
 
     func ensureOnchainRecoveryAllowed(
         _ attempt: OnchainSendAttempt, proofService: PaykitPaymentProofService
-    ) async throws -> PaykitPaymentRequest {
+    ) async throws -> (request: PaykitPaymentRequest, paymentDeadline: PaykitPreciseInstant?) {
         let generation = stateGeneration
         guard let identity = activeIdentity,
               PubkyPublicKeyFormat.matches(identity, attempt.recoveryContext?.paymentIdentity)
         else { throw PaykitPaymentRequestError.requestUnavailable }
         // Durable original-payment authorization replaces only the lost process-local approval.
-        let request = try await proofService.authorizeOnchainRecovery(attempt)
+        let authorization = try await proofService.authorizeOnchainRecovery(attempt)
+        let request = authorization.request
         try await service.ensurePaymentAllowed(request)
         guard generation == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity),
               !request.isPaymentDeadlineExpired(at: now())
         else { throw PaykitPaymentRequestError.requestUnavailable }
         try await proofService.requireRecoveryPayer(identity)
-        return request
+        try PaykitPaymentRequest.checkPaymentDeadline(authorization.paymentDeadline, at: now())
+        return authorization
     }
 
     func prepareForPayment(

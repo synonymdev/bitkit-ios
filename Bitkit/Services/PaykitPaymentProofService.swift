@@ -481,7 +481,9 @@ actor PaykitPaymentProofService {
         return identity
     }
 
-    func authorizeOnchainRecovery(_ attempt: OnchainSendAttempt, restoreStartedProof: Bool = true) async throws -> PaykitPaymentRequest {
+    func authorizeOnchainRecovery(
+        _ attempt: OnchainSendAttempt, restoreStartedProof: Bool = true
+    ) async throws -> (request: PaykitPaymentRequest, paymentDeadline: PaykitPreciseInstant?) {
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
@@ -532,7 +534,7 @@ actor PaykitPaymentProofService {
                 try await persist(proofs)
             }
         }
-        return request
+        return try (request, request.submissionDeadline(quoteId: proof.conversionQuoteId))
     }
 
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
