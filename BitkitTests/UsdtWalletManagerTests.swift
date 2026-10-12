@@ -71,6 +71,30 @@ final class UsdtWalletManagerTests: XCTestCase {
         }
     }
 
+    func testDepositStatusDistinguishesRefundProgressFromActionableErrors() {
+        let cases: [(String, String?, String)] = [
+            ("completed", "standing_route_unavailable", "usdt__confirmed"),
+            ("refunded", "xchain_amount_too_small", "usdt__deposit_refunded"),
+            ("refund_requested", "standing_refund_pending", "usdt__deposit_refunding"),
+            ("refunding", "standing_refund_pending", "usdt__deposit_refunding"),
+            ("refund_requested", "standing_tron_refund_requires_operator", "usdt__deposit_needs_attention"),
+            ("refunding", "refund_error", "usdt__deposit_needs_attention"),
+            ("pending", "standing_route_unavailable", "usdt__deposit_needs_attention"),
+            ("below_minimum", "xchain_amount_too_small", "usdt__deposit_needs_attention"),
+        ]
+        for (status, code, key) in cases {
+            let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 100, sourceTx: "tx", status: status,
+                                      code: code, refundTx: nil)
+            let order = UsdtDepositOrder(status: status, amountIn: 100, amountOut: 90, destinationTx: nil, refundTx: nil, code: code)
+            XCTAssertEqual(deposit.statusText, t(key), status)
+            for linkedOrder in [nil, order] {
+                let detail = UsdtDepositDetail(deposit: deposit, order: linkedOrder)
+                XCTAssertEqual(detail.statusText, t(key), status)
+                XCTAssertEqual(detail.statusCode, code, status)
+            }
+        }
+    }
+
     private func transfer(_ id: String, incoming: Bool = true, status: UsdtTransferStatus = .confirmed, amount: UInt64 = 1_000_000) -> UsdtTransfer {
         UsdtTransfer(
             id: id,
@@ -102,7 +126,7 @@ final class UsdtWalletManagerTests: XCTestCase {
         async let first = manager.paymentEndpoint()
         async let second = manager.paymentEndpoint()
         let (firstEndpoint, secondEndpoint) = try await (first, second)
-        XCTAssertEqual(firstEndpoint, secondEndpoint)
+        XCTAssertEqual(firstEndpoint.value, secondEndpoint.value)
         _ = try await manager.storedTransfer("missing")
         let snapshot = try await manager.backupSnapshot()
         let backup = try XCTUnwrap(snapshot)
@@ -121,7 +145,7 @@ final class UsdtWalletManagerTests: XCTestCase {
             return (mnemonic, "restored passphrase")
         })
         let restoredEndpoint = try await restored.paymentEndpoint()
-        XCTAssertNotEqual(restoredEndpoint, firstEndpoint)
+        XCTAssertNotEqual(restoredEndpoint.value, firstEndpoint.value)
         XCTAssertEqual(credentialReads, 2)
         try await restored.wipe()
     }

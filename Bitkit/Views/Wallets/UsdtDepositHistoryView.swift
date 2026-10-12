@@ -131,7 +131,7 @@ struct UsdtDepositHistoryView: View {
             if let tx = detail.order?
                 .destinationTx { SendSectionView(t("wallet__activity_tx_id") + " · Arbitrum One") { BodySText(tx).textSelection(.enabled) } }
             if let tx = detail.order?.refundTx ?? detail.deposit.refundTx {
-                SendSectionView(t("usdt__deposit_refund")) { BodySText(tx).textSelection(.enabled) }
+                SendSectionView(t("usdt__refund_tx")) { BodySText(tx).textSelection(.enabled) }
             }
             if detail.deposit.asset != "USDT" || UsdtDepositNetwork.named(detail.deposit.network) == nil {
                 BodySText(t("usdt__deposit_wrong_asset"), textColor: .textSecondary)
@@ -181,6 +181,9 @@ struct UsdtDepositHistoryView: View {
             if selected?.deposit.id != id {
                 refundAddress = ""
                 approved = nil
+                message = nil
+            }
+            if ["completed", "refunded"].contains(detail.order?.status ?? detail.deposit.status) {
                 message = nil
             }
             selected = detail
@@ -235,7 +238,7 @@ private struct RefundApproval {
 
 extension UsdtDeposit {
     var statusText: String {
-        code == nil ? depositStatusText(status) : t("usdt__deposit_needs_attention")
+        depositStatusText(status, code: code)
     }
 }
 
@@ -246,16 +249,18 @@ extension UsdtDepositDetail {
     }
 
     var statusText: String {
-        statusCode == nil ? depositStatusText(order?.status ?? deposit.status) : t("usdt__deposit_needs_attention")
+        depositStatusText(order?.status ?? deposit.status, code: statusCode)
     }
 }
 
-private func depositStatusText(_ status: String) -> String {
+private func depositStatusText(_ status: String, code: String?) -> String {
     switch status {
     case "completed": t("usdt__confirmed")
     case "refunded": t("usdt__deposit_refunded")
-    case "refunding", "refund_requested": t("usdt__deposit_refunding")
-    case "pending", "processing": t("usdt__pending")
+    case "refunding", "refund_requested":
+        code == nil || code == "standing_refund_pending" ? t("usdt__deposit_refunding") : t("usdt__deposit_needs_attention")
+    case "pending", "processing":
+        code == nil ? t("usdt__pending") : t("usdt__deposit_needs_attention")
     default: t("usdt__deposit_needs_attention")
     }
 }
