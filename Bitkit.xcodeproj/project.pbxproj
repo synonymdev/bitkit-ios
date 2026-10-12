@@ -990,6 +990,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				USDT_BRIDGES_URL = "https://bitkit.to/v1/usdt/bridges";
+				USDT_BUNDLER_URL = "https://bitkit.to/v1/usdt/rpc";
+				USDT_DEPOSITS_URL = "https://bitkit.to/v1/usdt/deposits";
+				USDT_RPC_URL = "https://bitkit.to/v1/usdt/chain-rpc";
 			};
 			name = Debug;
 		};
@@ -1039,6 +1043,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				USDT_BRIDGES_URL = "https://bitkit.to/v1/usdt/bridges";
+				USDT_BUNDLER_URL = "https://bitkit.to/v1/usdt/rpc";
+				USDT_DEPOSITS_URL = "https://bitkit.to/v1/usdt/deposits";
+				USDT_RPC_URL = "https://bitkit.to/v1/usdt/chain-rpc";
 			};
 			name = Release;
 		};
