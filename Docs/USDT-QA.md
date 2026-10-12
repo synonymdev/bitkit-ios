@@ -54,6 +54,7 @@ Use disposable wallets and a controlled RPC, bundler and encrypted VSS test envi
 - [ ] Restore that backup into a disposable wallet on the other platform using the same test seed.
 - [ ] Refresh the restored wallet. Verify it reconciles or retries the same signed operation and does not create a second payment.
 - [ ] Mine the test operation and refresh. Verify a single activity entry, the original request attribution, and successful proof delivery.
+- [ ] Make VSS unavailable before approving one payment. Verify no bundler submission. If core has recorded the operation, the send screen must track that payment without offering another Continue or approval. Otherwise it must show the backup error. Restore VSS and verify only the original approved operation continues, with one activity entry.
 - [ ] Repeat restore with an unavailable local storage dependency. Verify restore remains incomplete and no replacement wallet backup is uploaded.
 
 ## Paykit quoted reviews and history
