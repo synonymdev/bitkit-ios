@@ -222,7 +222,22 @@ struct SendConfirmationView: View {
 
     private var shouldAutomaticallyPay: Bool {
         retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
-            !hwSend.isActive && !requiresPaymentConfirmation
+            !hwSend.isActive && !requiresPaymentConfirmation && !Self.hasManuallyChosenCoins(
+                walletType: app.selectedWalletToPayFrom,
+                isHardwarePayment: hwSend.isActive,
+                coinSelectionMethod: settings.coinSelectionMethod,
+                selectedUtxos: wallet.selectedUtxos
+            )
+    }
+
+    /// The coin picker opens a new confirmation, which must wait for a swipe instead of paying by itself.
+    static func hasManuallyChosenCoins(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?
+    ) -> Bool {
+        walletType == .onchain && !isHardwarePayment && coinSelectionMethod == .manual && selectedUtxos?.isEmpty == false
     }
 
     static func acceptedOnchainRoute(

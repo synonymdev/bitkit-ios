@@ -57,6 +57,27 @@ final class SendConfirmationViewTests: XCTestCase {
         ))
     }
 
+    func testManuallyChosenCoinsAreDetectedOnlyForOnchainSavingsWithManualSelection() {
+        func hasChosen(
+            _ walletType: WalletType = .onchain, hardware: Bool = false, method: CoinSelectionMethod = .manual,
+            utxos: [SpendableUtxo]?
+        ) -> Bool {
+            SendConfirmationView.hasManuallyChosenCoins(
+                walletType: walletType,
+                isHardwarePayment: hardware,
+                coinSelectionMethod: method,
+                selectedUtxos: utxos
+            )
+        }
+        let utxo = SpendableUtxo(outpoint: OutPoint(txid: "00", vout: 0), valueSats: 1000)
+        XCTAssertTrue(hasChosen(utxos: [utxo]))
+        XCTAssertFalse(hasChosen(utxos: nil))
+        XCTAssertFalse(hasChosen(utxos: []))
+        XCTAssertFalse(hasChosen(.lightning, utxos: [utxo]))
+        XCTAssertFalse(hasChosen(hardware: true, utxos: [utxo]))
+        XCTAssertFalse(hasChosen(method: .autopilot, utxos: [utxo]))
+    }
+
     func testLightningFailureReleasesOnlyDefinitePreSubmissionAttempts() {
         XCTAssertEqual(
             SendConfirmationView.privatePaymentListOutcomeForLightningFailure(
