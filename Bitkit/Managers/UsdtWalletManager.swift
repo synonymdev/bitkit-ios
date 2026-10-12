@@ -375,6 +375,7 @@ final class UsdtWalletManager {
         switch error {
         case .NotConfigured: return t("usdt__error_configuration")
         case .InvalidAmount: return t("usdt__error_amount")
+        case .BridgeAmountTooSmall: return t("usdt__error_bridge_amount")
         case .InvalidAddress, .WrongNetwork: return t("usdt__error_address")
         case .InsufficientBalance: return t("usdt__error_balance")
         case .QuoteExpired: return t("usdt__error_expired")

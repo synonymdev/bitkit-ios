@@ -4,6 +4,14 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testBridgeCostErrorsAskForALargerAmountWithoutInventingAMinimum() {
+        let error = UsdtError.BridgeAmountTooSmall
+        XCTAssertEqual(UsdtWalletManager.message(for: error), t("usdt__error_bridge_amount"))
+        XCTAssertEqual(usdtDepositAmountMessage(error, amount: "3.5"), t("usdt__error_bridge_amount"))
+        XCTAssertEqual(usdtDepositAmountMessage(UsdtError.DepositAmountOutOfRange(minUsdCents: "200", maxUsdCents: nil), amount: "1"),
+                       t("usdt__deposit_minimum", variables: ["amount": "200".usdCents]))
+    }
+
     func testOwnAddressHasSpecificErrorForExactAndMaximumSends() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
