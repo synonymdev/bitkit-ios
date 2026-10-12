@@ -1829,6 +1829,7 @@
 "usdt__error_rate_limit" = "Too many requests. Please try again shortly.";
 "usdt__error_rejected" = "The USDT network rejected the request. Please try again.";
 "usdt__error_response" = "The USDT service returned an invalid response. Please try again later.";
+"usdt__error_self_send" = "You can’t send USDT to your own address.";
 "usdt__error_storage" = "Could not access USDT wallet data. Please try again.";
 "usdt__error_wallet" = "Could not access your USDT wallet. Reopen Bitkit and try again.";
 "usdt__error_route" = "This network is currently unavailable.";

@@ -9,6 +9,7 @@ struct SendEnterManuallyView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var scanner: ScannerManager
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
@@ -78,6 +79,13 @@ struct SendEnterManuallyView: View {
             return
         }
 
+        if uri.lowercased().hasPrefix("ethereum:") {
+            await scanner.handleSendScan(uri, scope: hwSend.isActive ? .onchainPayments : .unrestricted) { route in
+                if let route { navigationPath.append(route) }
+            }
+            return
+        }
+
         do {
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
 
@@ -117,6 +125,7 @@ struct SendEnterManuallyView: View {
         .environmentObject(NavigationViewModel())
         .environmentObject(PubkyProfileManager())
         .environmentObject(SheetViewModel())
+        .environmentObject(ScannerManager())
         .environment(HwWalletManager())
         .preferredColorScheme(.dark)
 }

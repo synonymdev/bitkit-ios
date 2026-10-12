@@ -198,7 +198,7 @@ struct UsdtReceiveAddressContent: View {
                     .accessibilityIdentifier("UsdtReceiveAddress")
                 } else {
                     QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: address, shareText: shareText, onEdit: onEdit)
+                           copyValue: uri, shareText: shareText, onEdit: onEdit)
                 }
             } else if let error { BodySText(error, textColor: .brandAccent) }
             else { ProgressView() }

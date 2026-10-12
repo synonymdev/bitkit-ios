@@ -1270,6 +1270,14 @@ extension AppViewModel {
             return
         }
 
+        if normalized.lowercased().hasPrefix("ethereum:") {
+            let valid = (try? resolveUsdtPaymentRoute(input: normalized)) != nil
+            manualEntryValidationResult = valid ? .valid : .invalid
+            isManualEntryInputValid = valid
+            if !valid { showValidationErrorToast(for: .invalid) }
+            return
+        }
+
         // Try to decode the invoice
         guard let decodedData = try? await decode(invoice: normalized) else {
             guard currentSequence == manualEntryValidationSequence else { return }

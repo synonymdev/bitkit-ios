@@ -3,6 +3,10 @@ import Combine
 import Foundation
 import Observation
 
+enum UsdtWalletError: Error {
+    case selfSend
+}
+
 @Observable @MainActor
 final class UsdtWalletManager {
     private nonisolated(unsafe) static let backupStateChanged = PassthroughSubject<Void, Never>()
@@ -105,6 +109,9 @@ final class UsdtWalletManager {
         defer { finishOperation() }
         let value = try usdtParseAmount(value: amount.replacingOccurrences(of: Locale.current.decimalSeparator ?? ".", with: "."))
         let wallet = try await wallet()
+        if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
+            throw UsdtWalletError.selfSend
+        }
         return try await wallet.quoteTransfer(recipient: recipient, amount: value, destination: destination)
     }
 
@@ -112,6 +119,9 @@ final class UsdtWalletManager {
         try beginOperation()
         defer { finishOperation() }
         let wallet = try await wallet()
+        if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
+            throw UsdtWalletError.selfSend
+        }
         return try await wallet.quoteMaxTransfer(recipient: recipient, destination: destination)
     }
 
@@ -360,6 +370,7 @@ final class UsdtWalletManager {
     }
 
     static func message(for error: Error) -> String {
+        if error is UsdtWalletError { return t("usdt__error_self_send") }
         guard let error = error as? UsdtError else { return t("usdt__error_network") }
         switch error {
         case .NotConfigured: return t("usdt__error_configuration")

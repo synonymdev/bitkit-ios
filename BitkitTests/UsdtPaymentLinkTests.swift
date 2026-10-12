@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Combine
 import XCTest
 
 final class UsdtPaymentLinkTests: XCTestCase {
@@ -26,6 +27,21 @@ final class UsdtPaymentLinkTests: XCTestCase {
             XCTAssertThrowsError(try resolveUsdtPaymentRoute(input: input, isEnabled: true), input)
         }
         XCTAssertThrowsError(try resolveUsdtPaymentRoute(input: uri, isEnabled: false))
+    }
+
+    @MainActor
+    func testManualEntryAcceptsUsdtUriAndRejectsWrongChain() async {
+        let app = AppViewModel()
+        for (input, valid) in [(uri + "&uint256=10001", true), (uri.replacingOccurrences(of: "@42161", with: "@1"), false)] {
+            let validated = expectation(description: "Manual entry validated")
+            let observation = app.$isManualEntryInputValid.dropFirst().sink { actual in
+                XCTAssertEqual(actual, valid)
+                validated.fulfill()
+            }
+            app.validateManualEntryInput(input, savingsBalanceSats: 0, spendingBalanceSats: 0)
+            await fulfillment(of: [validated], timeout: 5)
+            observation.cancel()
+        }
     }
 
     func testOtherInputsRemainWithTheirExistingScanner() throws {

@@ -4,6 +4,31 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testOwnAddressHasSpecificErrorForExactAndMaximumSends() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+            ("test test test test test test test test test test test junk", nil)
+        })
+        _ = try await manager.paymentEndpoint()
+        let recipient = " \(manager.address.lowercased()) "
+        do {
+            _ = try await manager.quote(recipient: recipient, amount: "1", destination: .arbitrum)
+            XCTFail("Self-send must be rejected before requesting a quote")
+        } catch {
+            XCTAssertEqual(error as? UsdtWalletError, .selfSend)
+            XCTAssertEqual(UsdtWalletManager.message(for: error), t("usdt__error_self_send"))
+        }
+        do {
+            _ = try await manager.quoteMaximum(recipient: recipient, destination: .arbitrum)
+            XCTFail("Maximum self-send must be rejected before requesting a quote")
+        } catch {
+            XCTAssertEqual(error as? UsdtWalletError, .selfSend)
+        }
+        XCTAssertEqual(UsdtWalletManager.message(for: UsdtError.InvalidAddress), t("usdt__error_address"))
+    }
+
     func testNativeSubmissionRejectsAnExpiredPreciseDeadlineWithoutCreatingATransfer() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
