@@ -238,13 +238,16 @@ struct UsdtDetailCell: View {
     let value: String
     let icon: String
     var valueColor: Color = .textPrimary
+    var minimumValueHeight: CGFloat = 20
 
     var body: some View {
         SendSectionView(title) {
             HStack(spacing: 4) {
                 Image(icon).resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
                 BodySSBText(value, textColor: valueColor)
-            }.frame(minHeight: 20, alignment: .leading)
+            }
+            .frame(minHeight: 20, alignment: .leading)
+            .frame(minHeight: minimumValueHeight, alignment: .topLeading)
         }
     }
 }

@@ -446,7 +446,7 @@ struct UsdtSendView: View {
                 SendSectionView(t("usdt__pay_from")) {
                     NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
                 }
-                UsdtDetailCell(title: t("usdt__network"), value: quote.destination.label, icon: "usdt-network")
+                UsdtDetailCell(title: t("usdt__network"), value: quote.destination.label, icon: "usdt-network", minimumValueHeight: 28)
             }
             HStack(alignment: .top, spacing: 16) {
                 UsdtDetailCell(title: t(quote.destination == .arbitrum ? "wallet__activity_payment" : "usdt__you_send"),
