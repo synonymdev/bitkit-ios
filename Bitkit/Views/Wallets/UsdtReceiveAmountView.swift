@@ -25,13 +25,13 @@ struct UsdtReceiveAmountView: View {
             .frame(minHeight: 146, alignment: .top)
             .fixedSize(horizontal: false, vertical: true)
             Divider()
+            Spacer(minLength: 34)
             NumberPad(type: .decimal, decimalSeparator: Locale.current.decimalSeparator ?? ".", isDisabled: busy,
                       onDeleteLongPress: { amount = "" })
             { key in
                 amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
             }
-            .padding(.top, 34)
-            Spacer(minLength: 24)
+            .padding(.bottom, 36)
             CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy, action: onContinue)
                 .accessibilityIdentifier("UsdtDepositCreate")
         }
