@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "f5972d655a9f9a3807df03899f79339ddc68ae83",
-        "version" : "0.8.0-rc5"
+        "revision" : "e2c768f5dcae6f81c99a97aa01c0494bb0a05284",
+        "version" : "0.8.0-rc6"
       }
     },
     {

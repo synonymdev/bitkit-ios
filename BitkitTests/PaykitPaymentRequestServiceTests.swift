@@ -11,6 +11,19 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testMonthlyCostCombinesAssetsUsingTheWalletRate() {
+        let now = Date()
+        let amounts = [
+            PaykitAmount(asset: .btc, atomic: 100_000),
+            PaykitAmount(asset: .usd, atomic: 200),
+            PaykitAmount(asset: .usdt, atomic: 3_000_000),
+        ]
+        let rate = PaykitExchangeRate(price: "100000", timestamp: now)
+        XCTAssertEqual(subscriptionMonthlyCostSats(amounts: amounts, rate: rate, now: now), 105_000)
+        XCTAssertNil(subscriptionMonthlyCostSats(amounts: amounts, rate: nil, now: now))
+        XCTAssertEqual(subscriptionMonthlyCostSats(amounts: Array(amounts.prefix(1)), rate: nil, now: now), 100_000)
+    }
+
     func testFixedBitcoinPricingUsesRailRatesBeforeAssetRatesAndParity() throws {
         let cases: [(String, String, [ConversionRate], [String], UInt64)] = [
             ("usd", "1000", [.init(asset: "btc", value: "0.001")], ["btc-lightning-bolt11"], 100_000_000),

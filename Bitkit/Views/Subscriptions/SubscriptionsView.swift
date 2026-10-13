@@ -32,6 +32,7 @@ struct SubscriptionsView: View {
         }
     }
 
+    @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
@@ -180,10 +181,12 @@ struct SubscriptionsView: View {
     private var metrics: some View {
         HStack(spacing: 16) {
             SubscriptionMetric(title: t("subscriptions__monthly_cost"), icon: "calendar") {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(subscriptionMonthlyCosts(subscriptions: paymentRequests.subscriptions, now: now), id: \.asset) { amount in
-                        PaykitAmountText(amount: amount).lineLimit(1).minimumScaleFactor(0.5)
-                    }
+                let costs = subscriptionMonthlyCosts(subscriptions: paymentRequests.subscriptions, now: now)
+                if let sats = subscriptionMonthlyCostSats(amounts: costs, rate: currency.paykitRate) {
+                    MoneyText(sats: sats, size: .bodyMSB, symbol: true, fillsWidth: false)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                } else {
+                    BodyMSBText("—")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,6 +228,22 @@ struct SubscriptionsView: View {
             }
         }
     }
+}
+
+func subscriptionMonthlyCostSats(amounts: [PaykitAmount], rate: PaykitExchangeRate?, now: Date = Date()) -> Int? {
+    var total = 0
+    for amount in amounts {
+        let sats: Int? = switch amount.asset {
+        case _ where amount.atomic == 0: 0
+        case .btc: Int(exactly: amount.atomic)
+        case .usd, .usdt: usdtDisplaySats(amount: amount.value, rate: rate, now: now)
+        }
+        guard let sats else { return nil }
+        let addition = total.addingReportingOverflow(sats)
+        guard !addition.overflow else { return nil }
+        total = addition.partialValue
+    }
+    return total
 }
 
 func subscriptionMonthlyCosts(subscriptions: [PaykitSubscription], now: Date) -> [PaykitAmount] {
