@@ -783,6 +783,11 @@ struct SendConfirmationView: View {
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
+            guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
+                // The rate is still loading; the automatic start runs again when send setup finishes.
+                hasStartedAutomaticPayment = false
+                return
+            }
             showManualConfirmation(reason: "fee rate missing")
             return
         }
@@ -878,6 +883,11 @@ struct SendConfirmationView: View {
 
     static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
         isAutomatic && isHardwarePayment
+    }
+
+    /// A missing rate that has not failed is still loading, so the automatic payment waits instead of asking for a swipe.
+    static func automaticPaymentAwaitsFeeRate(isFeeRateMissing: Bool, feeRateLoadFailed: Bool) -> Bool {
+        isFeeRateMissing && !feeRateLoadFailed
     }
 
     /// An automatic on-chain payment must not be sent before its fee is known, because the fee warnings read it.

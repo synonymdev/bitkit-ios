@@ -30,6 +30,12 @@ final class SendConfirmationViewTests: XCTestCase {
         }
     }
 
+    func testAutomaticPaymentAwaitsFeeRateOnlyWhileItIsLoading() {
+        XCTAssertTrue(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: false))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: true))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: false, feeRateLoadFailed: false))
+    }
+
     func testAutomaticPaymentLacksFeeOnlyForOnchainWithoutCalculatedFee() {
         XCTAssertTrue(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 0))
         XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 143))
