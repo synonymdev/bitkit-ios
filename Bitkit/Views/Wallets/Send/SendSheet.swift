@@ -455,7 +455,7 @@ struct SendSheet: View {
 
     /// Validates the onchain request amount and balance, showing setup failure feedback when invalid.
     private func validateOnchainBalanceAndDismissIfInsufficient(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
-        if let amount = app.contactPaymentContext?.incomingPaymentRequest?.amountSats, amount < Env.dustLimit {
+        if app.contactPaymentContext?.incomingPaymentRequest != nil, invoiceAmount < Env.dustLimit {
             showPaymentSetupFailure(
                 title: t("wallet__lnurl_pay__error_min__title"),
                 description: t(

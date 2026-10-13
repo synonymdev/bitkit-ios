@@ -4575,7 +4575,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             window.rootViewController = nil
             ToastWindowManager.shared.hideToast()
         }
-        try await waitUntil { wallet.sendAmountSats == request.amountSats }
+        try await waitUntil { wallet.sendAmountSats == request.amount.atomic }
 
         wallet.nodeLifecycleState = .running
         try await waitUntil { sheets.activeSheetConfiguration == nil }

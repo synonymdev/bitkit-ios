@@ -56,15 +56,10 @@ struct HomeWalletView: View {
             .frame(height: 50)
             .padding(.bottom, usdt.isConfigured && hwWalletManager.wallets.isEmpty ? 24 : 32)
 
-            if !hwWalletManager.wallets.isEmpty {
-                HardwareWalletsGrid(wallets: hwWalletManager.wallets) { hwWallet in
+            if !hwWalletManager.wallets.isEmpty || usdt.isConfigured {
+                HardwareWalletsGrid(wallets: hwWalletManager.wallets, showAdditionalWallet: usdt.isConfigured) { hwWallet in
                     navigation.navigate(.hardwareWallet(walletId: hwWallet.id))
-                }
-                .padding(.bottom, usdt.isConfigured ? 24 : 32)
-            }
-
-            if usdt.isConfigured {
-                HStack(spacing: 16) {
+                } additionalWallet: {
                     Button { navigation.navigate(.usdtWallet) } label: {
                         WalletBalanceContent {
                             CaptionMText("USDT")
@@ -77,10 +72,7 @@ struct HomeWalletView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("UsdtWallet")
-                    CustomDivider(color: .gray4, type: .vertical)
-                    Color.clear.frame(maxWidth: .infinity)
                 }
-                .frame(height: 50)
                 .padding(.bottom, 32)
             }
 

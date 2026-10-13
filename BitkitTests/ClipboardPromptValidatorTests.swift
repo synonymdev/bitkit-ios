@@ -5,6 +5,27 @@ import os
 import XCTest
 
 final class ClipboardPromptValidatorTests: XCTestCase {
+    func testUsdtLinksAreValidatedLocallyWhenEnabled() async {
+        let uri = "ethereum:\(PaykitUsdt.token)@42161/transfer?address=0x1111111111111111111111111111111111111111"
+        for (input, enabled, expected) in [
+            (uri, true, true),
+            (" \(uri)&uint256=10001\n", true, true),
+            (uri.replacingOccurrences(of: "ethereum:", with: "ETHEREUM:"), true, true),
+            (uri, false, false),
+            (uri.replacingOccurrences(of: "@42161", with: "@1"), true, false),
+            (uri.replacingOccurrences(of: PaykitUsdt.token, with: "0x2222222222222222222222222222222222222222"), true, false),
+            ("ethereum:invalid", true, false),
+        ] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(
+                input, ownPublicKey: nil, contacts: [], isUsdtEnabled: enabled
+            ) { _ in
+                XCTFail("USDT clipboard links must be validated locally: '\(input)'")
+                return false
+            }
+            XCTAssertEqual(supported, expected, "\(input), enabled: \(enabled)")
+        }
+    }
+
     func testLightningAddressCandidatesDoNotInvokeNetworkDecoder() async {
         for uri in [
             "alice@corp.example",

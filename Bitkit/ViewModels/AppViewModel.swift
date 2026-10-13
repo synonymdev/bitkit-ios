@@ -337,8 +337,8 @@ class AppViewModel: ObservableObject {
         )
     }
 
-    private func validateIncomingOnchainPaymentRequestAmount() -> Bool {
-        guard let amount = contactPaymentContext?.incomingPaymentRequest?.amountSats, amount < Env.dustLimit else { return true }
+    private func validateIncomingOnchainPaymentRequestAmount(_ amount: UInt64) -> Bool {
+        guard contactPaymentContext?.incomingPaymentRequest != nil, amount < Env.dustLimit else { return true }
         didRejectScannedPayment = true
         toast(
             type: .error,
@@ -354,7 +354,7 @@ class AppViewModel: ObservableObject {
 
     /// Validates the onchain request amount and balance, showing feedback when invalid.
     private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
-        guard validateIncomingOnchainPaymentRequestAmount() else { return false }
+        guard validateIncomingOnchainPaymentRequestAmount(invoiceAmount) else { return false }
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
                 didRejectScannedPayment = true
@@ -858,7 +858,7 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty else { return }
-            guard validateIncomingOnchainPaymentRequestAmount() else { return }
+            guard validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {

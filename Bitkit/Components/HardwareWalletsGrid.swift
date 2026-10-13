@@ -1,38 +1,41 @@
 import SwiftUI
 
-/// Two-column grid of paired hardware wallets shown on Home, under the Savings/Spending tiles.
-/// Mirrors bitkit-android's `HwDevices` (rows chunked in pairs, divided like the on-chain tiles).
-struct HardwareWalletsGrid: View {
+struct HardwareWalletsGrid<AdditionalWallet: View>: View {
     let wallets: [HwWallet]
+    let showAdditionalWallet: Bool
     let onTap: (HwWallet) -> Void
+    let additionalWallet: AdditionalWallet
 
-    private var rows: [[HwWallet]] {
-        chunked(wallets, into: 2)
-    }
-
-    private func chunked(_ wallets: [HwWallet], into size: Int) -> [[HwWallet]] {
-        stride(from: 0, to: wallets.count, by: size).map { start in
-            let end = min(start + size, wallets.count)
-            return Array(wallets[start ..< end])
-        }
+    init(wallets: [HwWallet], showAdditionalWallet: Bool = false, onTap: @escaping (HwWallet) -> Void,
+         @ViewBuilder additionalWallet: () -> AdditionalWallet = { EmptyView() })
+    {
+        self.wallets = wallets
+        self.showAdditionalWallet = showAdditionalWallet
+        self.onTap = onTap
+        self.additionalWallet = additionalWallet()
     }
 
     var body: some View {
         VStack(spacing: 16) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+            ForEach(Array(stride(from: 0, to: wallets.count + (showAdditionalWallet ? 1 : 0), by: 2)), id: \.self) { rowStart in
                 HStack(spacing: 16) {
-                    HardwareWalletCell(wallet: row[0], onTap: onTap)
-
+                    cell(at: rowStart)
                     CustomDivider(color: .gray4, type: .vertical)
-
-                    if row.count > 1 {
-                        HardwareWalletCell(wallet: row[1], onTap: onTap)
-                    } else {
-                        Color.clear.frame(maxWidth: .infinity)
-                    }
+                    cell(at: rowStart + 1)
                 }
                 .frame(height: 50)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func cell(at index: Int) -> some View {
+        if index < wallets.count {
+            HardwareWalletCell(wallet: wallets[index], onTap: onTap)
+        } else if showAdditionalWallet, index == wallets.count {
+            additionalWallet
+        } else {
+            Color.clear.frame(maxWidth: .infinity)
         }
     }
 }
