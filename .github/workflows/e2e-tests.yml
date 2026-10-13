@@ -217,7 +217,7 @@ jobs:
         run: |
           .github/scripts/namespace-stack.sh up bitkit-e2e-tests/docker
           (cd bitkit-e2e-tests/docker && docker compose up --force-recreate -d)
-          .github/scripts/namespace-stack.sh forward 43782 39388 60001 8080 9735 10009 3003 30001
+          .github/scripts/namespace-stack.sh forward 43782 39388 60001 8080 9735 10009 3003 9001 9002 21325 21328
 
       - name: Wait for electrum server
         run: |
