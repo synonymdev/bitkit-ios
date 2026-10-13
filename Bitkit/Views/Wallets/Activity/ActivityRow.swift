@@ -118,22 +118,29 @@ enum WalletActivity: Hashable {
         }
     }
 
-    var groupTitle: String {
-        DateFormatterHelpers.getActivityGroupHeader(for: Date(timeIntervalSince1970: TimeInterval(timestamp)))
-    }
-
     static func merged(_ bitcoin: [Activity], _ usdt: [UsdtTransfer]) -> [WalletActivity] {
         (bitcoin.map(Self.bitcoin) + usdt.map(Self.usdt)).sorted { $0.timestamp > $1.timestamp }
     }
 
     static func grouped(_ activities: [WalletActivity]) -> [GroupItem] {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let boundaries = [
+            today,
+            calendar.date(byAdding: .day, value: -1, to: today) ?? today,
+            calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? today,
+            calendar.dateInterval(of: .month, for: now)?.start ?? today,
+            calendar.dateInterval(of: .year, for: now)?.start ?? today,
+        ]
         var result: [GroupItem] = []
-        var previousTitle: String?
+        var groupStart = Date.distantFuture
         for activity in activities {
-            let title = activity.groupTitle
-            if title != previousTitle {
-                result.append(.header(title))
-                previousTitle = title
+            let date = Date(timeIntervalSince1970: TimeInterval(activity.timestamp))
+            if result.isEmpty || date < groupStart {
+                groupStart = boundaries.first { date >= $0 }
+                    ?? calendar.dateInterval(of: .year, for: date)?.start ?? date
+                result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: min(date, now))))
             }
             result.append(.activity(activity))
         }

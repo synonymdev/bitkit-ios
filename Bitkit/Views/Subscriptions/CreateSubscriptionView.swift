@@ -30,7 +30,7 @@ struct CreateSubscriptionView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 24) {
                             amount
-                            acceptedMethods
+                            SubscriptionPaymentMethods(title: t("wallet__payment_request_accepted_methods"), endpoints: acceptedEndpoints)
                             frequency
                             name
                             description
@@ -113,28 +113,6 @@ struct CreateSubscriptionView: View {
             requested: draft.amount.asset,
             available: PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
         )
-    }
-
-    private var acceptedMethods: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
-            HStack(spacing: 16) {
-                if acceptedEndpoints.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue) {
-                    BodyMSBText("USDT", textColor: .usdtAccent)
-                }
-                if acceptedEndpoints.contains(where: { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }) {
-                    BodyMSBText(t("lightning__savings"), textColor: .brandAccent)
-                }
-                if acceptedEndpoints.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue) {
-                    BodyMSBText(t("lightning__spending"), textColor: .purpleAccent)
-                }
-                if acceptedEndpoints.isEmpty {
-                    BodySText(t("wallet__payment_request_status_unavailable"), textColor: .white64)
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("SubscriptionAcceptedMethods")
     }
 
     private var frequency: some View {
@@ -403,5 +381,34 @@ private enum SubscriptionFrequencyOption: String, CaseIterable, CustomStringConv
         case .month: t("subscriptions__monthly")
         case .year: t("subscriptions__yearly")
         }
+    }
+}
+
+struct SubscriptionPaymentMethods: View {
+    let title: String
+    let endpoints: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(title, textColor: .white64)
+            HStack(spacing: 16) {
+                if endpoints.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue) {
+                    BodyMSBText("USDT", textColor: .usdtAccent)
+                }
+                if endpoints.contains(where: { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }) {
+                    BodyMSBText(t("lightning__savings"), textColor: .brandAccent)
+                }
+                if endpoints.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue) ||
+                    endpoints.contains(PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue)
+                {
+                    BodyMSBText(t("lightning__spending"), textColor: .purpleAccent)
+                }
+                if endpoints.isEmpty {
+                    BodySText(t("wallet__payment_request_status_unavailable"), textColor: .white64)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SubscriptionAcceptedMethods")
     }
 }

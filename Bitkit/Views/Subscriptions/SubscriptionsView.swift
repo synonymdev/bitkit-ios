@@ -636,6 +636,9 @@ struct SubscriptionSheet: View {
         return VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
+            SubscriptionPaymentMethods(title: t("subscriptions__payment_methods"), endpoints: subscription.acceptedPaymentEndpointIdentifiers)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 24)
             SubscriptionProviderCard(subscription: subscription, showsCounterparty: true) {
                 guard !isAccepting else { return }
                 previousRoute = route
@@ -666,7 +669,7 @@ struct SubscriptionSheet: View {
             Image("subscription-clock")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 256, height: 256)
+                .frame(maxWidth: 256, maxHeight: 256)
                 .accessibilityHidden(true)
             Spacer()
 
@@ -675,7 +678,8 @@ struct SubscriptionSheet: View {
                     title: payOnAcceptance
                         ? t("subscriptions__swipe_to_subscribe_and_pay")
                         : t("subscriptions__swipe_to_subscribe"),
-                    accentColor: .brandAccent,
+                    accentColor: subscription.acceptedPaymentEndpointIdentifiers == [PublicPaykitService.MethodId.usdtArbitrum.rawValue]
+                        ? .usdtAccent : .brandAccent,
                     isLoading: isAccepting || paymentRequests.isProcessingSubscription
                 ) {
                     do {

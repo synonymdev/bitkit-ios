@@ -1631,6 +1631,7 @@
 "subscriptions__renews" = "Renews";
 "subscriptions__retry_payment" = "Retry Payment";
 "subscriptions__renews_date" = "Renews {date}";
+"subscriptions__payment_methods" = "Payment methods";
 "subscriptions__review_and_subscribe" = "Review & Subscribe";
 "subscriptions__status" = "Status";
 "subscriptions__subscribed" = "Subscribed";

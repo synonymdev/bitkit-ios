@@ -21,14 +21,32 @@ final class WalletActivityTests: XCTestCase {
         earlier.id = "earlier"
         earlier.timestamp = UInt64(yesterday.timeIntervalSince1970)
 
-        let grouped = WalletActivity.grouped(WalletActivity.merged([sent], [earlier, received]))
+        var future = received
+        future.id = "future"
+        future.timestamp = timestamp + 2 * 24 * 60 * 60
+        var historical = received
+        historical.id = "historical"
+        let priorYear = try XCTUnwrap(Calendar.current.date(byAdding: .year, value: -1, to: today))
+        historical.timestamp = UInt64(priorYear.timeIntervalSince1970)
+        var older = historical
+        older.id = "older"
+        let olderYear = try XCTUnwrap(Calendar.current.date(byAdding: .year, value: -2, to: today))
+        older.timestamp = UInt64(olderYear.timeIntervalSince1970)
+
+        let grouped = WalletActivity.grouped(WalletActivity.merged([sent], [earlier, received, future, historical, older]))
         XCTAssertEqual(grouped, [
             .header(DateFormatterHelpers.getActivityGroupHeader(for: today)),
+            .activity(.usdt(future)),
             .activity(.bitcoin(sent)),
             .activity(.usdt(received)),
             .header(DateFormatterHelpers.getActivityGroupHeader(for: yesterday)),
             .activity(.usdt(earlier)),
+            .header(DateFormatterHelpers.getActivityGroupHeader(for: priorYear)),
+            .activity(.usdt(historical)),
+            .header(DateFormatterHelpers.getActivityGroupHeader(for: olderYear)),
+            .activity(.usdt(older)),
         ])
+        XCTAssertEqual(grouped.count, Set(grouped).count)
         XCTAssertTrue(WalletActivity.grouped([]).isEmpty)
     }
 }
