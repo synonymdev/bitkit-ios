@@ -141,7 +141,8 @@ struct SendSheet: View {
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
-    @State private var isSetupPending = false
+    /// Starts pending so a confirmation rendered before `setUpSend` runs does not read setup as finished.
+    @State private var isSetupPending = true
     @State private var isFallbackFundingPending = false
 
     init(config: SendSheetItem, isEmbedded: Bool = false) {
