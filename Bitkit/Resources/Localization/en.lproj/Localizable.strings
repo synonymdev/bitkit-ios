@@ -1959,3 +1959,5 @@
 "usdt__from_address" = "From address";
 
 "usdt__to_address" = "To address";
+
+"usdt__you_send" = "You send";

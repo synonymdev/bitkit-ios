@@ -312,9 +312,20 @@ struct UsdtSendView: View {
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
+                        if quote.destination != .arbitrum {
+                            CaptionMText(t("usdt__you_send")).padding(.bottom, 8)
+                        }
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
                             .contentShape(Rectangle()).onTapGesture { if !busy { goBack() } }
-                            .padding(.bottom, 32)
+                        if quote.destination != .arbitrum {
+                            SendSectionView(t("usdt__recipient_gets")) {
+                                BodySSBText((quote.bridgeProvider == .orchestra ? "≈ " : "") + usdtOverviewAmount(quote.receivedAmount) + " USDT")
+                            }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("UsdtRecipientAmount")
+                            .padding(.top, 16)
+                        }
+                        Spacer().frame(height: 32)
                         if showDetails {
                             quoteDetails(quote)
                             if let requestNote { PaymentRequestInvoiceNote(note: requestNote).padding(.top, 16) }
@@ -326,7 +337,13 @@ struct UsdtSendView: View {
                             PaymentReviewIllustration(swipeProgress: busy || paymentComplete ? 1 : swipeProgress, maximumHeight: 192)
                                 .padding(.top, 16).frame(height: 256)
                         }
-                        if quote.destination != .arbitrum { bridgeCosts(quote).padding(.top, 16) }
+                        if showDetails {
+                            if quote.bridgeProvider == .orchestra {
+                                bridgeCost(quote).padding(.top, 16)
+                            }
+                            CaptionText(t(quote.bridgeProvider == .orchestra ? "usdt__bridge_estimate_note" : "usdt__fee_note"))
+                                .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 16)
+                        }
                         if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError") }
                         CustomButton(
                             title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
@@ -339,10 +356,7 @@ struct UsdtSendView: View {
                     }
                     .frame(minHeight: geometry.size.height, alignment: .top)
                 }
-            }
-            if showDetails {
-                CaptionText(t(quote.bridgeProvider == .orchestra ? "usdt__bridge_estimate_note" : "usdt__fee_note"))
-                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
+                .id(showDetails)
             }
             if quote.destination != .arbitrum {
                 SendSectionView(t("usdt__maximum_total")) {
@@ -350,7 +364,7 @@ struct UsdtSendView: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("UsdtMaximumTotal")
-                .padding(.bottom, 16)
+                .padding(.vertical, 16)
             }
             SwipeButton(
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
@@ -373,7 +387,8 @@ struct UsdtSendView: View {
                 UsdtDetailCell(title: t("usdt__network"), value: quote.destination.label, icon: "usdt-network")
             }
             HStack(alignment: .top, spacing: 16) {
-                UsdtDetailCell(title: t("wallet__activity_payment"), value: usdtOverviewAmount(quote.amount), icon: "user")
+                UsdtDetailCell(title: t(quote.destination == .arbitrum ? "wallet__activity_payment" : "usdt__you_send"),
+                               value: usdtOverviewAmount(quote.amount), icon: "user")
                 UsdtDetailCell(title: t("wallet__activity_fee"), value: usdtOverviewAmount(quote.maximumFee), icon: "speed-normal")
             }
             if paymentContext != nil {
@@ -393,16 +408,9 @@ struct UsdtSendView: View {
         }
     }
 
-    private func bridgeCosts(_ quote: UsdtQuote) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SendSectionView(t(quote.bridgeProvider == .orchestra ? "usdt__expected_amount" : "usdt__recipient_gets")) {
-                BodySSBText(usdtOverviewAmount(quote.receivedAmount) + " USDT")
-            }
-            if quote.bridgeProvider == .orchestra {
-                SendSectionView(t("usdt__bridge_deducted_fee")) {
-                    BodySSBText(usdtOverviewAmount(quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
-                }
-            }
+    private func bridgeCost(_ quote: UsdtQuote) -> some View {
+        SendSectionView(t("usdt__bridge_deducted_fee")) {
+            BodySSBText(usdtOverviewAmount(quote.amount - min(quote.amount, quote.receivedAmount)) + " USDT")
         }
     }
 
