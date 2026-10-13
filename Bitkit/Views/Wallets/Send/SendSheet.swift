@@ -381,10 +381,11 @@ struct SendSheet: View {
             if PaykitSubscriptionNotificationTargetStore.load()?.matches(request) == true {
                 PaykitSubscriptionNotificationTargetStore.clear()
             }
-            wallet.sendAmountSats = try? request.payment(
+            let payment = try? request.payment(
                 using: app.paykitPaymentMethod,
                 quoteId: app.paykitPaymentTerms?.quoteId
-            ).amount.atomic
+            )
+            wallet.sendAmountSats = payment?.amount.asset == .btc ? payment?.amount.atomic : nil
             incomingPaymentRequest = request
         } else {
             tagManager.clearSelectedTags()

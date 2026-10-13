@@ -2676,6 +2676,81 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testInitialUsdtSubscriptionPaymentPreservesContextInsideSubscriptionSheet() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let originalPreference = settings.usdtPreference
+        settings.usdtPreference = .enabled
+        defer { settings.usdtPreference = originalPreference }
+        let now = Date()
+        let start = timestamp(now.addingTimeInterval(-60))
+        let recurrence = PaymentRequestRecurrence(every: 1, unit: "month", startsAt: start, anchor: start, endsAt: nil)
+        let endpoint = PublicPaykitService.Endpoint(
+            methodId: .usdtArbitrum, value: "0x1111111111111111111111111111111111111111",
+            min: nil, max: nil, rawPayload: ""
+        )
+        let record = try paymentRequestRecord(
+            amount: "2", asset: "usd", conversion: .fixed(rates: [.init(asset: "usdt", value: "1")]),
+            recurrence: recurrence, endpoints: [endpoint.methodId.rawValue]
+        )
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk, clock: PaymentRequestTestClock(now))
+        await manager.refresh()
+        let dueRequest = try await manager.accept(XCTUnwrap(manager.subscriptions.first))
+        let request = try XCTUnwrap(dueRequest)
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .subscription, data: nil)
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        let context = ContactPaymentContext(
+            publicKey: request.counterparty, incomingPaymentRequest: request,
+            isInitialSubscriptionPayment: true, endpoints: [endpoint]
+        )
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        app.paykitUsesUsdt = true
+        let wallet = PaymentRequestSendWallet()
+        wallet.nodeLifecycleState = .running
+        let view = SubscriptionSheet(config: SubscriptionSheetItem(route: .payment(.amount)))
+            .environment(manager)
+            .environment(UsdtWalletManager(loadCredentials: { throw CancellationError() }))
+            .environment(HwWalletManager())
+            .environment(TrezorManager())
+            .environmentObject(app)
+            .environmentObject(wallet as WalletViewModel)
+            .environmentObject(sheets)
+            .environmentObject(NetworkMonitor())
+            .environmentObject(settings)
+            .environmentObject(TagManager())
+            .environmentObject(PubkyProfileManager())
+            .environmentObject(ActivityListViewModel())
+            .environmentObject(ContactsManager())
+            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+            .environmentObject(FeeEstimatesManager())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        window.rootViewController?.view.layoutIfNeeded()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            ToastWindowManager.shared.hideToast()
+        }
+        try await waitUntil { wallet.selectedFeeRateSatsPerVByte != nil }
+        try await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(app.contactPaymentContext, context)
+        XCTAssertTrue(app.paykitUsesUsdt)
+        XCTAssertNil(wallet.sendAmountSats)
+        XCTAssertEqual(try request.payment(using: app.paykitPaymentMethod).amount, PaykitAmount(asset: .usdt, atomic: 2_000_000))
+        XCTAssertEqual(manager.subscriptions.first?.lifecycleState, .activeRecurring)
+        XCTAssertTrue(manager.pendingRequests.contains(where: { $0.id == request.id }))
+
+        window.rootViewController = UIHostingController(rootView: Color.clear)
+        try await waitUntil { app.contactPaymentContext == nil }
+        XCTAssertFalse(app.paykitUsesUsdt)
+        XCTAssertNil(wallet.sendAmountSats)
+    }
+
     func testSubscriptionPaymentCanBeReopenedForManualRetry() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
