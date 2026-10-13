@@ -1080,12 +1080,14 @@ actor PaykitSdkService {
 
     func acceptPaymentRequest(
         counterparty: String,
-        paymentRequestId: String
+        paymentRequestId: String,
+        expectedProposalStreamItemId: UInt64
     ) async throws -> Paykit.PaymentRequestRecord {
         try await withStateRevisionTracking(priority: .interactive) { sdk in
             try await sdk.claimAndAcceptPaymentRequest(
                 counterparty: counterparty,
-                paymentRequestId: paymentRequestId
+                paymentRequestId: paymentRequestId,
+                expectedProposalStreamItemId: expectedProposalStreamItemId
             )
         }
     }

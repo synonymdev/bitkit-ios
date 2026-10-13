@@ -2648,6 +2648,94 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(dueRequest.counterparty, "second")
     }
 
+    func testOneTimeAcceptanceRequiresTheReviewedProposalStreamItem() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var record = try paymentRequestRecord()
+        record.proposalStreamItemId = 41
+        let reviewed = try XCTUnwrap(PaykitPaymentRequest(record: record, now: now))
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let service = PaykitPaymentRequestService(sdk: sdk, now: { now })
+
+        record.proposalStreamItemId = 42
+        await sdk.setRecords([record])
+        do {
+            try await service.accept(reviewed)
+            XCTFail("A replacement proposal must not receive the previous approval")
+        } catch {}
+        let rejected = await sdk.snapshot()
+        XCTAssertTrue(rejected.acceptedRequests.isEmpty)
+
+        let replacement = try XCTUnwrap(PaykitPaymentRequest(record: record, now: now))
+        try await service.accept(replacement)
+        let accepted = await sdk.snapshot()
+        XCTAssertEqual(accepted.acceptedRequests.count, 1)
+    }
+
+    func testMissingOneTimeProposalCannotBeAccepted() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var record = try paymentRequestRecord()
+        record.proposalStreamItemId = nil
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: now))
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let service = PaykitPaymentRequestService(sdk: sdk, now: { now })
+
+        do {
+            try await service.accept(request)
+            XCTFail("Acceptance requires the reviewed proposal")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+    }
+
+    func testSubscriptionAcceptanceRequiresTheReviewedProposalStreamItem() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+        )
+        var record = try paymentRequestRecord(recurrence: recurrence)
+        record.proposalStreamItemId = 41
+        let reviewed = try XCTUnwrap(PaykitSubscription(record: record))
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let service = PaykitPaymentRequestService(sdk: sdk, now: { now })
+
+        record.proposalStreamItemId = 42
+        await sdk.setRecords([record])
+        do {
+            _ = try await service.accept(reviewed)
+            XCTFail("A replacement subscription must require a new approval")
+        } catch {}
+        let rejected = await sdk.snapshot()
+        XCTAssertTrue(rejected.acceptedRequests.isEmpty)
+
+        let replacement = try XCTUnwrap(PaykitSubscription(record: record))
+        _ = try await service.accept(replacement)
+        let accepted = await sdk.snapshot()
+        XCTAssertEqual(accepted.acceptedRequests.count, 1)
+    }
+
+    func testMissingSubscriptionProposalCannotBeAccepted() async throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z", anchor: "2027-01-01T08:00:00Z", endsAt: nil
+        )
+        var record = try paymentRequestRecord(recurrence: recurrence)
+        record.proposalStreamItemId = nil
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let service = PaykitPaymentRequestService(sdk: sdk, now: { now })
+
+        do {
+            _ = try await service.accept(subscription)
+            XCTFail("Acceptance requires the reviewed proposal")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+    }
+
     func testAcceptingSubscriptionRejectsTermsChangedAfterReview() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let recurrence = PaymentRequestRecurrence(
@@ -5298,7 +5386,6 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(newerVersion, 8, "Cleanup of the original receipt cannot release a newer version")
     }
 
-
     func testHardwareFailureCleanupPreservesConsumptionProofAndRetryOwnership() async throws {
         snapshotAppDefaultsDomain()
         let counterparty = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
@@ -6581,8 +6668,6 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let snapshot = await sdk.snapshot()
         XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
     }
-
-
 
     func testAcceptanceDefersScopedDeliveryWithoutDrainingMessagesAndDropsWorkAfterIdentityChanges() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
@@ -8025,7 +8110,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sender = PreparedAttemptNodeMock()
         sender.amount = request.amountSats
         let service = PaykitPaymentProofService(
-            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts, logInfo: { _ in }, logWarning: { _ in }
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts, logInfo: { _ in },
+            logWarning: { _ in }
         )
         try await service.prepare(request: request, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain)
         _ = try await attempts.send(
@@ -8565,7 +8651,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func acceptPaymentRequest(
         counterparty: String,
-        paymentRequestId: String
+        paymentRequestId: String,
+        expectedProposalStreamItemId: UInt64
     ) async throws -> PaymentRequestRecord {
         if shouldPauseNextAccept {
             shouldPauseNextAccept = false
@@ -8576,7 +8663,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
         let record: PaymentRequestRecord
         guard records.contains(where: {
-            $0.counterparty == counterparty && $0.paymentRequestId == paymentRequestId && $0.state == .proposed
+            $0.counterparty == counterparty && $0.paymentRequestId == paymentRequestId &&
+                $0.proposalStreamItemId == expectedProposalStreamItemId && $0.state == .proposed
         }) else { throw PaymentRequestSdkMockError.requestMissing }
         if let index = records.firstIndex(where: {
             $0.counterparty == counterparty &&
