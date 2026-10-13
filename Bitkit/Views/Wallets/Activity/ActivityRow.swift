@@ -105,6 +105,11 @@ enum WalletActivity: Hashable {
     case bitcoin(Activity)
     case usdt(UsdtTransfer)
 
+    enum GroupItem: Hashable {
+        case header(String)
+        case activity(WalletActivity)
+    }
+
     var timestamp: UInt64 {
         switch self {
         case let .bitcoin(.lightning(item)): item.timestamp
@@ -119,6 +124,20 @@ enum WalletActivity: Hashable {
 
     static func merged(_ bitcoin: [Activity], _ usdt: [UsdtTransfer]) -> [WalletActivity] {
         (bitcoin.map(Self.bitcoin) + usdt.map(Self.usdt)).sorted { $0.timestamp > $1.timestamp }
+    }
+
+    static func grouped(_ activities: [WalletActivity]) -> [GroupItem] {
+        var result: [GroupItem] = []
+        var previousTitle: String?
+        for activity in activities {
+            let title = activity.groupTitle
+            if title != previousTitle {
+                result.append(.header(title))
+                previousTitle = title
+            }
+            result.append(.activity(activity))
+        }
+        return result
     }
 }
 

@@ -15,14 +15,16 @@ struct ActivityList: View {
 
     var body: some View {
         let activities = getActivities()
-        let rows = WalletActivity.merged(activities, filteredUsdt)
+        let rows = WalletActivity.grouped(WalletActivity.merged(activities, filteredUsdt))
         if !rows.isEmpty {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(Array(rows.enumerated()), id: \.element) { index, item in
-                    if index == 0 || rows[index - 1].groupTitle != item.groupTitle {
-                        CaptionMText(item.groupTitle).frame(height: 34, alignment: .bottom)
+                    switch item {
+                    case let .header(title):
+                        CaptionMText(title).frame(height: 34, alignment: .bottom)
+                    case let .activity(activity):
+                        WalletActivityRow(item: activity).accessibilityIdentifier("Activity-\(index)")
                     }
-                    WalletActivityRow(item: item).accessibilityIdentifier("Activity-\(index)")
                 }
             }
         } else {
