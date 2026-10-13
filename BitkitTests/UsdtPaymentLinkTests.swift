@@ -30,17 +30,28 @@ final class UsdtPaymentLinkTests: XCTestCase {
     }
 
     @MainActor
-    func testManualEntryAcceptsUsdtUriAndRejectsWrongChain() async {
+    func testManualEntryValidatesUsdtNetworkAndWalletScope() async {
         let app = AppViewModel()
-        for (input, valid) in [(uri + "&uint256=10001", true), (uri.replacingOccurrences(of: "@42161", with: "@1"), false)] {
+        defer { ToastWindowManager.shared.hideToast() }
+        let cases: [(String, ScanHandlingScope, ManualEntryValidationResult)] = [
+            (uri + "&uint256=10001", .unrestricted, .valid),
+            (uri + "&uint256=10001", .onchainPayments, .onchainOnly),
+            (uri.replacingOccurrences(of: "@42161", with: "@1"), .unrestricted, .invalid),
+            (uri, .unrestricted, .valid),
+        ]
+        for (input, scope, result) in cases {
             let validated = expectation(description: "Manual entry validated")
             let observation = app.$isManualEntryInputValid.dropFirst().sink { actual in
-                XCTAssertEqual(actual, valid)
+                XCTAssertEqual(actual, result == .valid)
                 validated.fulfill()
             }
-            app.validateManualEntryInput(input, savingsBalanceSats: 0, spendingBalanceSats: 0)
+            app.validateManualEntryInput(input, savingsBalanceSats: 0, spendingBalanceSats: 0, scope: scope)
             await fulfillment(of: [validated], timeout: 5)
             observation.cancel()
+            XCTAssertEqual(app.manualEntryValidationResult, result)
+            if result == .onchainOnly {
+                XCTAssertEqual(ToastWindowManager.shared.currentToast?.accessibilityIdentifier, "HardwareOnchainOnlyToast")
+            }
         }
     }
 

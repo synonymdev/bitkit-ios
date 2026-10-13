@@ -1568,7 +1568,8 @@ struct SendConfirmationView: View {
         app.validateManualEntryInput(
             value,
             savingsBalanceSats: wallet.spendableOnchainBalanceSats,
-            spendingBalanceSats: wallet.maxSendLightningSats
+            spendingBalanceSats: wallet.maxSendLightningSats,
+            scope: hwSend.isActive ? .onchainPayments : .unrestricted
         )
 
         if let manualIndex = navigationPath.firstIndex(of: .manual) {

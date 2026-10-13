@@ -97,6 +97,8 @@
 "hardware__send_broadcast_failed_text" = "Check your connection and try again.";
 "hardware__send_broadcast_failed_title" = "Payment not confirmed";
 "hardware__send_confirm_address" = "To address (confirm on device)";
+"hardware__send_onchain_only_title" = "Bitcoin address required";
+"hardware__send_onchain_only_text" = "This hardware wallet can only send to a Bitcoin address.";
 "hardware__send_open_connect" = "Open Trezor Connect";
 "hardware__send_open_connect_jade" = "Sign With Jade";
 "hardware__send_sign_title" = "Sign With Device";

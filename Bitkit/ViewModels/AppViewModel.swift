@@ -64,6 +64,7 @@ enum ManualEntryValidationResult: Equatable {
     case valid
     case empty
     case invalid
+    case onchainOnly
     case insufficientSavings
     case insufficientSpending
     case expiredLightningOnly
@@ -393,6 +394,13 @@ class AppViewModel: ObservableObject {
                 title: t("other__scan_err_decoding"),
                 description: t("other__scan__error__generic"),
                 accessibilityIdentifier: "InvalidAddressToast"
+            )
+        case .onchainOnly:
+            toast(
+                type: .error,
+                title: t("hardware__send_onchain_only_title"),
+                description: t("hardware__send_onchain_only_text"),
+                accessibilityIdentifier: "HardwareOnchainOnlyToast"
             )
         case .insufficientSavings:
             toast(
@@ -1218,7 +1226,12 @@ extension AppViewModel {
     }
 
     /// Queue validation with debounce
-    func validateManualEntryInput(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) {
+    func validateManualEntryInput(
+        _ rawValue: String,
+        savingsBalanceSats: Int,
+        spendingBalanceSats: Int,
+        scope: ScanHandlingScope = .unrestricted
+    ) {
         // Increment sequence first so any pending debounced requests become stale
         manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
@@ -1229,6 +1242,13 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
+            return
+        }
+
+        if scope == .onchainPayments, normalized.removingLightningSchemes().lowercased().hasPrefix("ethereum:") {
+            manualEntryValidationResult = .onchainOnly
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .onchainOnly)
             return
         }
 
