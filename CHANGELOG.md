@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-10-13
+
 ### Fixed
 - Updated LDK Node to 0.7.0-rc.66.1 for the upstream Lightning security fixes. #924
 
@@ -147,7 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.1...HEAD
+[2.5.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.2...v2.4.0
