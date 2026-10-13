@@ -42,6 +42,7 @@ struct UsdtReceiveView: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: title, showBackButton: page != .address, action: page == .address ? contactAction : nil,
+                        topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8,
                         onBack: {
                             if page == .amount { draftAmount = amount; error = nil }
                             if page == .fees { page = .amount }
@@ -72,6 +73,8 @@ struct UsdtReceiveView: View {
             }
         }
         .padding(.horizontal, 16)
+        .background(Color.gray7)
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onReceive(usdt.receivedTxPublisher) { transfer in
             guard !historyBlocking, sheets.activeSheetConfiguration?.id == .receive else { return }
             sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: transfer.amount, usdtTransferId: transfer.id))
@@ -90,39 +93,27 @@ struct UsdtReceiveView: View {
     }
 
     private var networkList: some View {
-        ScrollView {
-            VStack(spacing: 8) {
+        VStack(spacing: 16) {
+            UsdtNetworkPicker(note: t("usdt__receive_network_note")) {
                 networkRow(nil)
                 ForEach(networks, id: \.self) { networkRow($0) }
-                BodySText(t("usdt__receive_network_note"), textColor: .textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 16)
-                UsdtCoinIllustration()
-                if usdt.depositsConfigured {
-                    CustomButton(title: t("usdt__deposit_history"), variant: .tertiary) { page = .history }
-                        .accessibilityIdentifier("UsdtDepositHistory")
-                }
-                if let error { BodySText(error, textColor: .textSecondary) }
             }
+            if usdt.depositsConfigured {
+                CustomButton(title: t("usdt__deposit_history"), variant: .tertiary) { page = .history }
+                    .accessibilityIdentifier("UsdtDepositHistory")
+            }
+            if let error { BodySText(error, textColor: .textSecondary) }
         }
     }
 
     private func networkRow(_ item: UsdtDepositNetwork?) -> some View {
-        Button {
+        UsdtNetworkRow(title: item?.label ?? "Arbitrum One", selected: network == item,
+                       identifier: "UsdtNetwork-\(item?.label ?? "Arbitrum")")
+        {
             if network != item { deposit = nil; amount = ""; draftAmount = ""; error = nil }
             network = item
             page = item == nil || deposit != nil ? .address : .amount
-        } label: {
-            HStack(spacing: 16) {
-                Image("tether-circle").resizable().scaledToFit().frame(width: 40, height: 40)
-                BodyMSBText(item?.label ?? "Arbitrum One")
-                if item == nil { BodySText(t("common__default"), textColor: .textSecondary) }
-                Spacer()
-                if network == item { Image("check-mark").resizable().frame(width: 24, height: 24).foregroundColor(.usdtAccent) }
-            }
-            .padding(16).background(Color.gray6).clipShape(RoundedRectangle(cornerRadius: 16))
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("UsdtNetwork-\(item?.label ?? "Arbitrum")")
     }
 
     private var amountEntry: some View {

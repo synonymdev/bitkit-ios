@@ -8,6 +8,7 @@ enum SendFundingSource: Equatable {
 }
 
 struct SendAmountView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -51,7 +52,8 @@ struct SendAmountView: View {
                 return .hardware(walletId: hardwareWallet.walletId)
             })
         }
-        if app.contactPaymentContext?.endpoints.contains(where: { $0.methodId == .usdtArbitrum }) == true { sources.append(.usdt) }
+        if settings.isUsdtEnabled,
+           app.contactPaymentContext?.endpoints.contains(where: { $0.methodId == .usdtArbitrum }) == true { sources.append(.usdt) }
         return sources
     }
 
@@ -118,11 +120,23 @@ struct SendAmountView: View {
     }
 
     var body: some View {
+        if app.paykitUsesUsdt, !settings.isUsdtEnabled {
+            UsdtIntroContent(isEnablePrompt: true, onDecline: { dismiss() },
+                             onEnable: { settings.usdtPreference = .enabled })
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             SheetHeader(
                 title: t("wallet__send_amount"),
                 showBackButton: true,
-                action: AnyView(SendContactHeaderAvatar())
+                action: AnyView(SendContactHeaderAvatar()),
+                topPadding: app.paykitUsesUsdt ? 28 : 32,
+                bottomPadding: app.paykitUsesUsdt ? 22 : 24,
+                dragIndicatorTopPadding: app.paykitUsesUsdt ? 8 : nil
             )
 
             VStack(alignment: .leading, spacing: 0) {
@@ -226,7 +240,8 @@ struct SendAmountView: View {
         .accessibilityIdentifier("SendAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: app.paykitUsesUsdt ? .gray7 : .black, applyGradient: !app.paykitUsesUsdt))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: app.paykitUsesUsdt ? .gray7 : nil)
         .onAppear {
             if !fundingSources.contains(selectedFundingSource), let firstSource = fundingSources.first {
                 selectFundingSource(firstSource)
@@ -404,7 +419,7 @@ struct SendAmountView: View {
     private var fundingSourceMenu: some View {
         let sources: [SendFundingSource] = [.savings, .spending] + hwWalletManager.wallets.map {
             .hardware(walletId: $0.walletId)
-        } + [.usdt]
+        } + (settings.isUsdtEnabled || app.paykitUsesUsdt ? [.usdt] : [])
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(sources.indices, id: \.self) { index in
                 let source = sources[index]

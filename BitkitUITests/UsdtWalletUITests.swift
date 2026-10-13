@@ -21,6 +21,8 @@ final class UsdtWalletUITests: XCTestCase {
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
+        XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
+        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) { app.buttons["UsdtIntroEnable"].tap() }
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 90))
         capture(app, "USDT home")
         app.buttons["UsdtWallet"].tap()
@@ -125,6 +127,8 @@ final class UsdtWalletUITests: XCTestCase {
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
+        XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
+        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) { app.buttons["UsdtIntroEnable"].tap() }
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 90), app.debugDescription)
         app.buttons["UsdtWallet"].tap()
         XCTAssertTrue(app.buttons["UsdtReceive"].waitForExistence(timeout: 5))

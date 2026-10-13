@@ -57,9 +57,18 @@ struct ReceiveSheet: View {
     let config: ReceiveSheetItem
 
     @State private var navigationPath: [ReceiveRoute] = []
+    @State private var isUsdtSelected: Bool?
+
+    private var usesUsdtHeader: Bool {
+        switch navigationPath.last ?? config.initialRoute {
+        case .usdt: isUsdtSelected ?? true
+        case let .qr(_, tab): isUsdtSelected ?? (tab == .usdt)
+        default: false
+        }
+    }
 
     var body: some View {
-        Sheet(id: .receive, data: config) {
+        Sheet(id: .receive, data: config, dragIndicatorInset: usesUsdtHeader ? 8 : 12) {
             NavigationStack(path: $navigationPath) {
                 viewForRoute(config.initialRoute)
                     .navigationDestination(for: ReceiveRoute.self) { route in
@@ -102,13 +111,16 @@ struct ReceiveSheet: View {
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
-        case .usdt: ReceiveQr(navigationPath: $navigationPath, tab: .usdt, hardwareWalletId: config.hardwareWalletId)
+        case .usdt:
+            ReceiveQr(navigationPath: $navigationPath, tab: .usdt, hardwareWalletId: config.hardwareWalletId,
+                      onUsdtSelectionChange: { isUsdtSelected = $0 })
         case let .qr(cjitInvoice, tab):
             ReceiveQr(
                 navigationPath: $navigationPath,
                 cjitInvoice: cjitInvoice,
                 tab: tab,
-                hardwareWalletId: config.hardwareWalletId
+                hardwareWalletId: config.hardwareWalletId,
+                onUsdtSelectionChange: { isUsdtSelected = $0 }
             )
         case let .edit(tab, onchainOnly, replacesCurrentQr):
             ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab, onchainOnly: onchainOnly, replacesCurrentQr: replacesCurrentQr) { draft in

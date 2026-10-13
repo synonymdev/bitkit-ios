@@ -11,15 +11,20 @@ struct HomeWalletView: View {
     @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
 
+    private var showsUsdt: Bool {
+        usdt.isConfigured && (settings.isUsdtEnabled || usdt.hasProtectedFunds)
+    }
+
     var hasActivity: Bool {
-        return activity.latestActivities?.isEmpty == false || !usdt.transfers.isEmpty
+        return activity.latestActivities?.isEmpty == false || (showsUsdt && !usdt.transfers.isEmpty)
     }
 
     /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
     private var headlineSats: Int {
         let hw = Int(clamping: hwWalletManager.totalSats)
-        let usdtSats = usdt.balance.flatMap { usdtDisplaySats(amount: usdtFormatAmount(amount: $0), rate: currency.paykitRate) } ?? 0
+        let usdtSats = (showsUsdt ? usdt.balance : nil)
+            .flatMap { usdtDisplaySats(amount: usdtFormatAmount(amount: $0), rate: currency.paykitRate) } ?? 0
         return wallet.totalBalanceSats.saturatingAdd(hw).saturatingAdd(usdtSats)
     }
 
@@ -54,10 +59,10 @@ struct HomeWalletView: View {
                 }
             }
             .frame(height: 50)
-            .padding(.bottom, usdt.isConfigured && hwWalletManager.wallets.isEmpty ? 24 : 32)
+            .padding(.bottom, showsUsdt && hwWalletManager.wallets.isEmpty ? 24 : 32)
 
-            if !hwWalletManager.wallets.isEmpty || usdt.isConfigured {
-                HardwareWalletsGrid(wallets: hwWalletManager.wallets, showAdditionalWallet: usdt.isConfigured) { hwWallet in
+            if !hwWalletManager.wallets.isEmpty || showsUsdt {
+                HardwareWalletsGrid(wallets: hwWalletManager.wallets, showAdditionalWallet: showsUsdt) { hwWallet in
                     navigation.navigate(.hardwareWallet(walletId: hwWallet.id))
                 } additionalWallet: {
                     Button { navigation.navigate(.usdtWallet) } label: {

@@ -22,13 +22,13 @@ struct UsdtReceiveAmountView: View {
                         .padding(.bottom, 16)
                 }
             }
-            .frame(minHeight: 156, alignment: .top)
+            .frame(minHeight: 146, alignment: .top)
             .fixedSize(horizontal: false, vertical: true)
             Divider()
             NumberPad(type: .decimal, isDisabled: busy, onDeleteLongPress: { amount = "" }) { key in
                 amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
             }
-            .padding(.top, 24)
+            .padding(.top, 34)
             Spacer(minLength: 24)
             CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy, action: onContinue)
                 .accessibilityIdentifier("UsdtDepositCreate")

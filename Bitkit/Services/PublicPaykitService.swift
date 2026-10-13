@@ -472,7 +472,7 @@ enum PublicPaykitService {
     }
 
     static func isUsdtPaymentOptionEnabled(defaults: UserDefaults = .standard) -> Bool {
-        Env.isUsdtEnabled && (defaults.object(forKey: usdtPaymentOptionEnabledKey) as? Bool ?? true)
+        Env.isUsdtEnabled && UsdtPreference.isEnabled(defaults: defaults) && (defaults.object(forKey: usdtPaymentOptionEnabledKey) as? Bool ?? true)
     }
 
     static func hasLightningRouteHints(bolt11: String) -> Bool {

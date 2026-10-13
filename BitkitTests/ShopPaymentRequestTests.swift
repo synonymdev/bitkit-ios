@@ -182,6 +182,8 @@ final class ShopPaymentRequestTests: XCTestCase {
         XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 100_000))
         XCTAssertTrue(both.prefersUsdt(onchainBalanceSats: 0))
         XCTAssertFalse(btcOnly.prefersUsdt(onchainBalanceSats: 0))
+        XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 0, isUsdtEnabled: false))
+        XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 0, isUsdtEnabled: false))
     }
 
     func testUsdtContactPaymentCanBePreparedAndCleared() async throws {

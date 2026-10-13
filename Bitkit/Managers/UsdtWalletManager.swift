@@ -5,6 +5,7 @@ import Observation
 
 enum UsdtWalletError: Error {
     case selfSend
+    case cannotDisable
 }
 
 @Observable @MainActor
@@ -39,6 +40,34 @@ final class UsdtWalletManager {
 
     var isConfigured: Bool {
         Env.isUsdtEnabled
+    }
+
+    var hasProtectedFunds: Bool {
+        UsdtPreference.protectsFunds(balance: balance, transfers: transfers)
+    }
+
+    func checkCanDisable() async throws {
+        try beginOperation()
+        defer { finishOperation() }
+        guard !isSendPresented else { throw UsdtWalletError.cannotDisable }
+        let wallet = try await wallet()
+        balance = try await wallet.balance()
+        transfers = try await wallet.refreshTransfers()
+        guard !hasProtectedFunds else { throw UsdtWalletError.cannotDisable }
+        if depositsConfigured {
+            var offset: UInt32 = 0
+            repeat {
+                let page = try await depositHistory(offset: offset)
+                for deposit in page.deposits where UsdtPreference.hasPendingDeposit(deposit.status) {
+                    let detail = try await depositDetail(id: deposit.id, offset: offset)
+                    guard !UsdtPreference.hasPendingDeposit(detail.order?.status ?? detail.deposit.status) else {
+                        throw UsdtWalletError.cannotDisable
+                    }
+                }
+                guard let next = page.nextOffset, next > offset else { break }
+                offset = next
+            } while true
+        }
     }
 
     var networkName: String {
@@ -370,7 +399,9 @@ final class UsdtWalletManager {
     }
 
     static func message(for error: Error) -> String {
-        if error is UsdtWalletError { return t("usdt__error_self_send") }
+        if let error = error as? UsdtWalletError {
+            return t(error == .selfSend ? "usdt__error_self_send" : "usdt__disable_unavailable")
+        }
         guard let error = error as? UsdtError else { return t("usdt__error_network") }
         switch error {
         case .NotConfigured: return t("usdt__error_configuration")

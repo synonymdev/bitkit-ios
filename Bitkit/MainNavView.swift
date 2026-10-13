@@ -215,6 +215,11 @@ struct MainNavView: View {
         ) {
             config in SecuritySheet(config: config)
         }
+        .sheet(item: $sheets.usdtIntroSheetItem, onDismiss: {
+            sheets.hideSheetIfActive(.usdtIntro, reason: "USDT intro dismissed")
+        }) { config in
+            UsdtIntroSheet(config: config)
+        }
         .sheet(
             item: $sheets.quickpaySheetItem,
             onDismiss: {

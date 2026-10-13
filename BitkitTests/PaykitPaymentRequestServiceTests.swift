@@ -2268,6 +2268,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testDollarSubscriptionRequiresUsdtReceivingAndFixesParityForFuturePayments() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
+        let originalPreference = UserDefaults.standard.object(forKey: UsdtPreference.key)
+        UserDefaults.standard.set(UsdtPreference.enabled.rawValue, forKey: UsdtPreference.key)
+        defer { UserDefaults.standard.set(originalPreference, forKey: UsdtPreference.key) }
         let key = PublicPaykitService.usdtPaymentOptionEnabledKey
         let original = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(original, forKey: key) }
@@ -8310,6 +8313,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testProposalDefaultsToAvailableMethodsAndHonorsRestrictions() async throws {
+        let originalPreference = UserDefaults.standard.object(forKey: UsdtPreference.key)
+        UserDefaults.standard.set(UsdtPreference.enabled.rawValue, forKey: UsdtPreference.key)
+        defer { UserDefaults.standard.set(originalPreference, forKey: UsdtPreference.key) }
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let onchain = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh).rawValue
         let lightning = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue

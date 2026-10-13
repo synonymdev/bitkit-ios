@@ -4,6 +4,8 @@ The journey environment does not provide funded Arbitrum or cross-network accoun
 
 The repository has a local Arbitrum fork payment fixture at `bitkit-core/tests/usdt-fork`, exercised by `UsdtWalletUITests.testPaymentUsesUsdtOnLocalArbitrumFork`. It does not provide the VSS outage, cross-platform restore, bridge-provider, or billing-clock controls below.
 
+Enable USDT through its introduction or Settings before starting payment checks. The opt-in, disable safeguards and disabled-link paths are covered by `journeys/usdt-opt-in.xml`.
+
 ## usdt bridge quotes
 
 A funded Arbitrum wallet uses the real gateway with USDT0 and Orchestra enabled. This journey obtains quotes only; do not swipe to pay or create any funded order.

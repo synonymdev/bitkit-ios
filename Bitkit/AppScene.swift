@@ -659,6 +659,14 @@ struct AppScene: View {
 
     private var appEventContent: some View {
         paykitEventContent
+            .onChange(of: settings.usdtPreference) { _, _ in
+                PublicPaykitService.setCleanupPending(true)
+                Task {
+                    await retryPendingPaykitEndpointRemoval()
+                    let keys = contactsManager.contacts.map(\.publicKey)
+                    await PrivatePaykitService.shared.refreshSavedContactEndpoints(for: keys, savedPublicKeys: keys, wallet: wallet)
+                }
+            }
             .onChange(of: sheets.activeSheetConfiguration?.id) { _, activeSheetId in
                 guard activeSheetId == nil, !sheets.isReplacingSheet else { return }
                 scheduleNextIncomingPaykitItemPresentation()

@@ -3,6 +3,7 @@ import SwiftUI
 struct ReceiveQr: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
@@ -13,6 +14,7 @@ struct ReceiveQr: View {
     let cjitInvoice: String?
     let tab: ReceiveTab?
     let hardwareWalletId: String?
+    let onUsdtSelectionChange: ((Bool) -> Void)?
 
     @State private var needsInvoiceRefresh: Bool
     @State private var invoiceRefreshFailed = false
@@ -34,12 +36,14 @@ struct ReceiveQr: View {
         navigationPath: Binding<[ReceiveRoute]>,
         cjitInvoice: String? = nil,
         tab: ReceiveTab? = nil,
-        hardwareWalletId: String? = nil
+        hardwareWalletId: String? = nil,
+        onUsdtSelectionChange: ((Bool) -> Void)? = nil
     ) {
         _navigationPath = navigationPath
         self.cjitInvoice = cjitInvoice
         self.tab = tab
         self.hardwareWalletId = hardwareWalletId
+        self.onUsdtSelectionChange = onUsdtSelectionChange
 
         // Default to unified tab if available, otherwise use provided tab or savings
         let defaultTab: ReceiveTab = if tab != nil {
@@ -85,7 +89,7 @@ struct ReceiveQr: View {
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
         }
-        if usdt.isConfigured, cjitInvoice == nil { items.append(TabItem(.usdt)) }
+        if settings.isUsdtEnabled, cjitInvoice == nil { items.append(TabItem(.usdt)) }
         return items
     }
 
@@ -118,6 +122,7 @@ struct ReceiveQr: View {
                 selectedTab = newTab
                 hasUserSelectedTab = true
                 hasAppliedDefaultTab = true
+                onUsdtSelectionChange?(newTab == .usdt)
             }
         )
     }
@@ -127,10 +132,15 @@ struct ReceiveQr: View {
     }
 
     var body: some View {
-        if selectedTab == .usdt {
-            UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
-        } else {
-            bitcoinContent
+        Group {
+            if selectedTab == .usdt, !settings.isUsdtEnabled {
+                UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
+                                 onEnable: { settings.usdtPreference = .enabled })
+            } else if selectedTab == .usdt {
+                UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
+            } else {
+                bitcoinContent
+            }
         }
     }
 
@@ -157,7 +167,7 @@ struct ReceiveQr: View {
                     }
 
                     tabContent(for: .spending)
-                    if usdt.isConfigured, cjitInvoice == nil { Color.clear.tag(ReceiveTab.usdt) }
+                    if settings.isUsdtEnabled, cjitInvoice == nil { Color.clear.tag(ReceiveTab.usdt) }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))

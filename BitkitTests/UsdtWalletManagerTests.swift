@@ -4,6 +4,35 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testUsdtOptInDoesNotImplicitlyPublishOrHideExistingFunds() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        XCTAssertFalse(UsdtPreference.isEnabled(defaults: defaults))
+        XCTAssertFalse(PublicPaykitService.isUsdtPaymentOptionEnabled(defaults: defaults))
+        defaults.set(UsdtPreference.disabled.rawValue, forKey: UsdtPreference.key)
+        XCTAssertFalse(UsdtPreference.isEnabled(defaults: defaults))
+        XCTAssertTrue(UsdtPreference.protectsFunds(balance: 1, transfers: []))
+        for status: UsdtTransferStatus in [.pending, .bridging, .bridgeNeedsAttention, .bridgeFailed] {
+            XCTAssertTrue(UsdtPreference.protectsFunds(balance: 0, transfers: [transfer("pending", status: status)]))
+        }
+        XCTAssertFalse(UsdtPreference.protectsFunds(balance: 0, transfers: [transfer("completed")]))
+        XCTAssertTrue(UsdtPreference.protectsFunds(balance: nil, transfers: [transfer("completed")]))
+        XCTAssertFalse(UsdtPreference.isEnabled(defaults: defaults))
+        defaults.set(UsdtPreference.enabled.rawValue, forKey: UsdtPreference.key)
+        XCTAssertTrue(UsdtPreference.isEnabled(defaults: defaults))
+        XCTAssertEqual(PublicPaykitService.isUsdtPaymentOptionEnabled(defaults: defaults), Env.isUsdtEnabled)
+        defaults.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        XCTAssertFalse(PublicPaykitService.isUsdtPaymentOptionEnabled(defaults: defaults))
+    }
+
+    func testUnresolvedBridgeDepositsPreventDisablingUsdt() {
+        for status in ["held", "processing", "refunding", "refund_requested", "failed", "unknown"] {
+            XCTAssertTrue(UsdtPreference.hasPendingDeposit(status), status)
+        }
+        for status in ["completed", "refunded", "waiting", "awaiting_deposit", "expired"] {
+            XCTAssertFalse(UsdtPreference.hasPendingDeposit(status), status)
+        }
+    }
+
     func testBridgeCostErrorsAskForALargerAmountWithoutInventingAMinimum() {
         let error = UsdtError.BridgeAmountTooSmall
         XCTAssertEqual(UsdtWalletManager.message(for: error), t("usdt__error_bridge_amount"))

@@ -37,10 +37,10 @@ struct ContactPaymentContext: Equatable {
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
-    func prefersUsdt(onchainBalanceSats: UInt64) -> Bool {
-        endpoints.contains { $0.methodId == .usdtArbitrum } &&
-            (incomingPaymentRequest.map { $0.amount.asset != .btc } == true ||
-                !endpoints.contains { $0.methodId != .usdtArbitrum } || onchainBalanceSats == 0)
+    func prefersUsdt(onchainBalanceSats: UInt64, isUsdtEnabled: Bool = true) -> Bool {
+        guard endpoints.contains(where: { $0.methodId == .usdtArbitrum }) else { return false }
+        if !endpoints.contains(where: { $0.methodId != .usdtArbitrum }) { return true }
+        return isUsdtEnabled && (incomingPaymentRequest.map { $0.amount.asset != .btc } == true || onchainBalanceSats == 0)
     }
 
     init(
@@ -675,7 +675,8 @@ extension AppViewModel {
                 }
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
             }
-            paykitUsesUsdt = context.prefersUsdt(onchainBalanceSats: lightningService.balances?.spendableOnchainBalanceSats ?? 0) ||
+            paykitUsesUsdt = context.prefersUsdt(onchainBalanceSats: lightningService.balances?.spendableOnchainBalanceSats ?? 0,
+                                                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled) ||
                 context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = scannedLightningInvoice != nil || lnurlPayData != nil ? .lightning : .onchain
             return

@@ -1,5 +1,21 @@
 import SwiftUI
 
+struct SheetBackgroundPreferenceKey: PreferenceKey {
+    static let defaultValue: Color? = nil
+
+    static func reduce(value: inout Color?, nextValue: () -> Color?) {
+        value = nextValue() ?? value
+    }
+}
+
+struct SheetDragIndicatorInsetPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat? = nil
+
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        value = nextValue() ?? value
+    }
+}
+
 extension View {
     /// Applies the standard sheet gradient over the given base color. Default base is black;
     func sheetBackground(base: Color = .black) -> some View {

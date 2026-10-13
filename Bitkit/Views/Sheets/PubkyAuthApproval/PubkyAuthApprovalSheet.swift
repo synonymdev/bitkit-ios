@@ -82,7 +82,8 @@ struct PubkyAuthApprovalSheet: View {
     @State private var usdtAddress: String?
     @State private var usdtUnavailable = false
     @State private var showsUsdtAddress = false
-    @State private var shareUsdt = true
+    @State private var shareUsdt = false
+    @State private var showsUsdtEnablePrompt = false
 
     private var createsIdentity: Bool {
         Self.requiresIdentityCreation(for: config.request, profile: pubkyProfile)
@@ -143,13 +144,36 @@ struct PubkyAuthApprovalSheet: View {
 
     var body: some View {
         Sheet(id: .pubkyAuthApproval, data: config) {
-            if state == .watchOnlyConsent {
+            if showsUsdtEnablePrompt {
+                UsdtIntroContent(
+                    isEnablePrompt: true,
+                    onDecline: { showsUsdtEnablePrompt = false },
+                    onEnable: {
+                        settings.usdtPreference = .enabled
+                        shareUsdt = true
+                        showsUsdtEnablePrompt = false
+                        Task { await loadUsdtAddress() }
+                    }
+                )
+            } else if state == .watchOnlyConsent {
                 watchOnlyConsentContent
             } else {
                 authorizationFlowContent
             }
         }
-        .task { await loadUsdtAddress() }
+        .task {
+            shareUsdt = settings.isUsdtEnabled
+            showsUsdtEnablePrompt = config.request.bitkitClaim?.sharesUsdt == true
+                && config.request.bitkitClaim?.sharesBitcoin != true
+                && !settings.isUsdtEnabled
+            await loadUsdtAddress()
+        }
+        .onChange(of: settings.isUsdtEnabled) { _, enabled in
+            if !enabled {
+                shareUsdt = false
+                usdtAddress = nil
+            }
+        }
         .interactiveDismissDisabled(!state.canDismiss)
         .fullScreenCover(isPresented: $isShowingAuthCheck) {
             AuthCheck(
@@ -397,13 +421,22 @@ struct PubkyAuthApprovalSheet: View {
             }
             if config.request.bitkitClaim?.sharesUsdt == true {
                 VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $shareUsdt) {
+                    Toggle(isOn: Binding(
+                        get: { shareUsdt },
+                        set: { share in
+                            if share, !settings.isUsdtEnabled {
+                                showsUsdtEnablePrompt = true
+                            } else {
+                                shareUsdt = share
+                            }
+                        }
+                    )) {
                         BodySSBText(t("pubky_auth__share_usdt_optional"), textColor: .usdtAccent)
                     }
                     .tint(.usdtAccent)
                     .disabled(state == .authorizing)
                     .accessibilityIdentifier("PubkyAuthShareUsdt")
-                    if let usdtAddress {
+                    if settings.isUsdtEnabled, let usdtAddress {
                         Button { showsUsdtAddress.toggle() } label: {
                             BodySText(showsUsdtAddress ? usdtAddress : String(usdtAddress.prefix(8)) + "…" + String(usdtAddress.suffix(6)))
                                 .multilineTextAlignment(.leading)
@@ -414,11 +447,11 @@ struct PubkyAuthApprovalSheet: View {
                                 .tint(.usdtAccent)
                                 .accessibilityIdentifier("PubkyAuthCopyUsdtAddress")
                         }
-                    } else if usdtUnavailable {
+                    } else if settings.isUsdtEnabled, usdtUnavailable {
                         BodySText(t("pubky_auth__usdt_unavailable"), textColor: .white64)
                         Button(t("common__retry")) { Task { await loadUsdtAddress() } }
                             .tint(.usdtAccent)
-                    } else {
+                    } else if settings.isUsdtEnabled {
                         ProgressView()
                     }
                     BodySText(t("pubky_auth__usdt_privacy"), textColor: .white64)
@@ -431,11 +464,13 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private func loadUsdtAddress() async {
-        guard config.request.bitkitClaim?.sharesUsdt == true else { return }
+        guard config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled else { return }
         usdtAddress = nil
         usdtUnavailable = false
         do {
-            usdtAddress = try await usdt.paymentEndpoint().value
+            let address = try await usdt.paymentEndpoint().value
+            guard settings.isUsdtEnabled else { return }
+            usdtAddress = address
         } catch {
             usdtAddress = nil
             usdtUnavailable = true
@@ -612,7 +647,7 @@ struct PubkyAuthApprovalSheet: View {
                 authUrl: config.request.rawUrl,
                 accountName: watchOnlyAccountName,
                 secretKeyHex: secretKey,
-                approvedUsdtAddress: shareUsdt ? usdtAddress : nil,
+                approvedUsdtAddress: shareUsdt && settings.isUsdtEnabled ? usdtAddress : nil,
                 usdtEndpoint: { try await usdt.paymentEndpoint() }
             )
 

@@ -13,6 +13,7 @@ struct DisplayText: View {
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
     var fillsWidth: Bool
+    var kerning: CGFloat
 
     private let fontSize: CGFloat = 44
 
@@ -22,7 +23,8 @@ struct DisplayText: View {
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
         accentAction: (() -> Void)? = nil,
-        fillsWidth: Bool = true
+        fillsWidth: Bool = true,
+        kerning: CGFloat = -1
     ) {
         self.text = text
         self.textColor = textColor
@@ -30,6 +32,7 @@ struct DisplayText: View {
         self.accentFont = accentFont
         self.accentAction = accentAction
         self.fillsWidth = fillsWidth
+        self.kerning = kerning
     }
 
     var body: some View {
@@ -41,7 +44,7 @@ struct DisplayText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(-1)
+        .kerning(kerning)
         .environment(\._lineHeightMultiple, 0.83)
         .textCase(.uppercase)
         .padding(.bottom, -9)

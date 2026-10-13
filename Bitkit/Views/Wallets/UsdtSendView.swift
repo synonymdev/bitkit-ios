@@ -17,6 +17,7 @@ struct UsdtSendView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showingNetworks = false
     @State private var recipient = ""
     @State private var amount = ""
     @State private var destination: UsdtDestination = .arbitrum
@@ -91,6 +92,7 @@ struct UsdtSendView: View {
     }
 
     private var title: String {
+        if showingNetworks { return t("usdt__receive_network_title") }
         if submitted, !busy {
             if submittedStatus == .confirmed { return t("usdt__payment_sent") }
             if submittedStatus == .bridgeRefunded { return t("usdt__deposit_refunded") }
@@ -103,17 +105,22 @@ struct UsdtSendView: View {
 
     var body: some View {
         Group {
-            if embedded { content }
+            if !settings.isUsdtEnabled, !submitted {
+                UsdtIntroContent(isEnablePrompt: true, onDecline: {
+                    if let onClose { onClose() } else { dismiss() }
+                }, onEnable: { settings.usdtPreference = .enabled })
+            } else if embedded { content }
             else { NavigationStack { content } }
         }
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onAppear { usdt.isSendPresented = true }
         .onDisappear { usdt.isSendPresented = false }
-        .task {
+        .task(id: settings.isUsdtEnabled) {
             if !embedded {
                 do { destinations = try await usdt.sendDestinations() }
                 catch { Logger.warn("Could not load USDT bridge destinations", context: "UsdtSendView") }
             }
-            guard !initialRecipient.isEmpty, !initialAmount.isEmpty, quote == nil else { return }
+            guard settings.isUsdtEnabled, !initialRecipient.isEmpty, !initialAmount.isEmpty, quote == nil else { return }
             busy = true
             defer { busy = false }
             do { quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination) }
@@ -124,9 +131,11 @@ struct UsdtSendView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: title, showBackButton: !submitted,
-                        action: paymentContext == nil ? nil : AnyView(SendContactHeaderAvatar(publicKey: paymentContext?.publicKey)), onBack: goBack)
+                        action: paymentContext == nil ? nil : AnyView(SendContactHeaderAvatar(publicKey: paymentContext?.publicKey)),
+                        topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8, onBack: goBack)
                 .disabled(busy)
-            if submitted, !busy { submittedContent }
+            if showingNetworks { networkPicker }
+            else if submitted, !busy { submittedContent }
             else if let quote { confirmation(quote) }
             else if editingAmount { amountContent }
             else if editingRecipient { manualContent }
@@ -139,7 +148,7 @@ struct UsdtSendView: View {
                 PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent)
             }
         }
-        .sheetBackground()
+        .background(Color.gray7)
         .navigationBarHidden(true)
         .navigationDestination(isPresented: $pin) {
             SendPinScreen(onCancel: { pin = false }, onPinVerified: {
@@ -184,9 +193,24 @@ struct UsdtSendView: View {
     }
 
     private var networkButton: some View {
-        Menu {
+        Button { recipientFocused = false; showingNetworks = true } label: {
+            HStack(spacing: 4) {
+                Image("usdt-network").resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
+                CaptionBText(destination.label).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 8).frame(height: 28)
+            .background(Color.white06, in: Capsule())
+            .overlay(Capsule().stroke(Color.white10, lineWidth: 1))
+        }
+        .disabled(embedded || destinations.count < 2 || busy)
+        .accessibilityIdentifier("UsdtNetwork")
+    }
+
+    private var networkPicker: some View {
+        UsdtNetworkPicker(note: t("usdt__send_network_note")) {
             ForEach(destinations, id: \.self) { item in
-                Button(item.label) {
+                UsdtNetworkRow(title: item.label, selected: destination == item, identifier: "UsdtNetwork-\(item.label)") {
+                    showingNetworks = false
                     guard destination != item else { return }
                     destination = item
                     maximumQuote = nil
@@ -198,17 +222,7 @@ struct UsdtSendView: View {
                     }
                 }
             }
-        } label: {
-            HStack(spacing: 4) {
-                Image("usdt-network").resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
-                CaptionBText(destination.label).lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .padding(.horizontal, 8).frame(height: 28)
-            .background(Color.white06, in: Capsule())
-            .overlay(Capsule().stroke(Color.white10, lineWidth: 1))
         }
-        .disabled(embedded || destinations.count < 2 || busy)
-        .accessibilityIdentifier("UsdtNetwork")
     }
 
     private var recipientContent: some View {
@@ -479,6 +493,7 @@ struct UsdtSendView: View {
 
     private func goBack() {
         guard !busy else { return }
+        if showingNetworks { showingNetworks = false; return }
         if let onBack { onBack(); return }
         if quote != nil { quote = nil }
         else if editingAmount { editingAmount = false; editingRecipient = true }

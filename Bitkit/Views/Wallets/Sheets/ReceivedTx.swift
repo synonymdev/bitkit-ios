@@ -33,7 +33,9 @@ struct ReceivedTx: View {
         let title = config.details.usdtAmount != nil ? t("usdt__payment_received")
             : isOnchain ? t("wallet__payment_received") : t("wallet__instant_payment_received")
 
-        Sheet(id: .receivedTx, data: config) {
+        Sheet(id: .receivedTx, data: config, backgroundColor: config.details.usdtAmount != nil ? .gray7 : .black,
+              applyGradient: config.details.usdtAmount == nil)
+        {
             ZStack {
                 PaymentCelebration(
                     isOnchain: isOnchain, isReceived: true,
@@ -41,7 +43,9 @@ struct ReceivedTx: View {
                 )
 
                 VStack(alignment: .leading, spacing: 0) {
-                    SheetHeader(title: title)
+                    SheetHeader(title: title, topPadding: config.details.usdtAmount != nil ? 28 : 32,
+                                bottomPadding: config.details.usdtAmount != nil ? 22 : 24,
+                                dragIndicatorTopPadding: config.details.usdtAmount != nil ? 8 : nil)
                     if let amount = config.details.usdtAmount {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: amount), displayAmount: usdtOverviewAmount(amount))
                             .accessibilityIdentifier("ReceivedTransaction")

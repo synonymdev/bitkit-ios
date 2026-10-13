@@ -6,6 +6,9 @@ struct GeneralSettingsView: View {
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
 
+    @Environment(UsdtWalletManager.self) private var usdt
+    @State private var isUpdatingUsdt = false
+
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @EnvironmentObject var app: AppViewModel
@@ -101,17 +104,6 @@ struct GeneralSettingsView: View {
                 }
                 .accessibilityIdentifier("TransactionSpeedSettings")
 
-                if isPaykitUIActive, pubkyProfile.isAuthenticated {
-                    SettingsRow(
-                        title: t("profile__pay_contacts_toggle"),
-                        iconName: "list-dashes",
-                        rightIcon: nil,
-                        toggle: contactPaymentsToggle,
-                        disabled: isUpdatingContactPayments,
-                        testIdentifier: "ContactPaymentsToggle"
-                    )
-                }
-
                 NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                     SettingsRow(
                         title: t("settings__quickpay__nav_title"),
@@ -138,6 +130,28 @@ struct GeneralSettingsView: View {
                     )
                 }
                 .accessibilityIdentifier("HardwareWalletsSettings")
+
+                if isPaykitUIActive, pubkyProfile.isAuthenticated {
+                    SettingsRow(
+                        title: t("profile__pay_contacts_toggle"),
+                        iconName: "list-dashes",
+                        rightIcon: nil,
+                        toggle: contactPaymentsToggle,
+                        disabled: isUpdatingContactPayments,
+                        testIdentifier: "ContactPaymentsToggle"
+                    )
+                }
+
+                if usdt.isConfigured {
+                    SettingsRow(
+                        title: t("usdt__settings_title"),
+                        iconName: "usdt-settings",
+                        rightIcon: nil,
+                        toggle: Binding(get: { settings.isUsdtEnabled }, set: { enabled in Task { await updateUsdt(enabled) } }),
+                        disabled: isUpdatingUsdt,
+                        testIdentifier: "UsdtSettingsToggle"
+                    )
+                }
             }
             .padding(.top, 16)
             .padding(.horizontal, 16)
@@ -153,6 +167,19 @@ struct GeneralSettingsView: View {
             // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish
             // unless the Pubky session ends or a newer contact payments change starts first.
             Task { await updateContactPayments(true) }
+        }
+    }
+
+    private func updateUsdt(_ enabled: Bool) async {
+        guard !isUpdatingUsdt else { return }
+        isUpdatingUsdt = true
+        defer { isUpdatingUsdt = false }
+        do {
+            if !enabled { try await usdt.checkCanDisable() }
+            settings.usdtPreference = enabled ? .enabled : .disabled
+        } catch is CancellationError {
+        } catch {
+            app.toast(type: .warning, title: t("usdt__settings_title"), description: t("usdt__disable_unavailable"))
         }
     }
 
@@ -192,6 +219,7 @@ struct GeneralSettingsView: View {
             .environmentObject(AppViewModel())
             .environmentObject(WalletViewModel())
             .environment(HwWalletManager())
+            .environment(UsdtWalletManager())
     }
     .preferredColorScheme(.dark)
 }
