@@ -156,7 +156,8 @@ struct SendAmountView: View {
                     if app.paykitUsesUsdt {
                         VStack(alignment: .leading, spacing: 4) {
                             CaptionMText(t("wallet__send_available"))
-                            BodySSBText(settings.hideBalance ? "•••••" : "$ " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"))
+                            BodySSBText(settings.hideBalance ? "•••••" : "<accent>$</accent> " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"),
+                                        accentColor: .textSecondary)
                         }
                     } else {
                         AvailableAmount(
@@ -209,7 +210,7 @@ struct SendAmountView: View {
                         .accessibilityIdentifier("SendNumberPadUnit")
                     }
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, app.paykitUsesUsdt ? 16 : 12)
 
                 Divider()
 
@@ -448,7 +449,7 @@ struct SendAmountView: View {
                             }
                             Spacer(minLength: 0)
                             if source == selectedFundingSource {
-                                Image("check").resizable().scaledToFit().frame(width: 16, height: 16)
+                                Image("check-mark").resizable().scaledToFit().frame(width: 16, height: 16)
                                     .foregroundStyle(fundingSourceColor(source))
                             }
                         }

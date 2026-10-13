@@ -134,6 +134,7 @@ struct SubtitleText: View {
     var accentColor: Color = .brandAccent
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
+    var kerning: CGFloat
 
     private let fontSize: CGFloat = 17
 
@@ -142,13 +143,15 @@ struct SubtitleText: View {
         textColor: Color = .textPrimary,
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.4
     ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.accentAction = accentAction
+        self.kerning = kerning
     }
 
     var body: some View {
@@ -160,16 +163,19 @@ struct SubtitleText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.4)
+        .kerning(kerning)
     }
 }
 
 struct BodyMText: View {
+    @Environment(\._lineHeightMultiple) private var inheritedLineHeightMultiple
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .white
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
+    var kerning: CGFloat
+    var lineHeight: CGFloat?
 
     private let fontSize: CGFloat = 17
 
@@ -178,13 +184,17 @@ struct BodyMText: View {
         textColor: Color = .textSecondary,
         accentColor: Color = .white,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.4,
+        lineHeight: CGFloat? = nil
     ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.accentAction = accentAction
+        self.kerning = kerning
+        self.lineHeight = lineHeight
     }
 
     var body: some View {
@@ -196,7 +206,10 @@ struct BodyMText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.4)
+        .kerning(kerning)
+        .environment(\._lineHeightMultiple, lineHeight.map {
+            $0 / (UIFont(name: Fonts.regular, size: fontSize)?.lineHeight ?? fontSize)
+        } ?? inheritedLineHeightMultiple)
     }
 }
 
@@ -206,6 +219,7 @@ struct BodyMSBText: View {
     var accentColor: Color = .brandAccent
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
+    var kerning: CGFloat
 
     private let fontSize: CGFloat = 17
 
@@ -214,13 +228,15 @@ struct BodyMSBText: View {
         textColor: Color = .textPrimary,
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.4
     ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.accentAction = accentAction
+        self.kerning = kerning
     }
 
     var body: some View {
@@ -232,7 +248,7 @@ struct BodyMSBText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.4)
+        .kerning(kerning)
     }
 }
 
@@ -273,11 +289,14 @@ struct BodyMBoldText: View {
 }
 
 struct BodySText: View {
+    @Environment(\._lineHeightMultiple) private var inheritedLineHeightMultiple
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
+    var kerning: CGFloat
+    var lineHeight: CGFloat?
 
     private let fontSize: CGFloat = 15
 
@@ -286,13 +305,17 @@ struct BodySText: View {
         textColor: Color = .textSecondary,
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.4,
+        lineHeight: CGFloat? = nil
     ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.accentAction = accentAction
+        self.kerning = kerning
+        self.lineHeight = lineHeight
     }
 
     var body: some View {
@@ -304,7 +327,10 @@ struct BodySText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.4)
+        .kerning(kerning)
+        .environment(\._lineHeightMultiple, lineHeight.map {
+            $0 / (UIFont(name: Fonts.regular, size: fontSize)?.lineHeight ?? fontSize)
+        } ?? inheritedLineHeightMultiple)
     }
 }
 
@@ -386,6 +412,7 @@ struct CaptionBText: View {
     var accentColor: Color = .brandAccent
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
+    var kerning: CGFloat
 
     private let fontSize: CGFloat = 13
 
@@ -394,13 +421,15 @@ struct CaptionBText: View {
         textColor: Color = .textSecondary,
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.4
     ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.accentAction = accentAction
+        self.kerning = kerning
     }
 
     var body: some View {
@@ -412,7 +441,7 @@ struct CaptionBText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.4)
+        .kerning(kerning)
     }
 }
 

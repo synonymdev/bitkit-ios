@@ -10,7 +10,7 @@ struct UsdtNetworkRow: View {
         Button(action: onSelect) {
             HStack(spacing: 16) {
                 Image("tether-circle").resizable().scaledToFit().frame(width: 40, height: 40)
-                BodyMSBText(title)
+                BodyMSBText(title, kerning: 0)
                 Spacer(minLength: 0)
                 if selected {
                     Image("check-mark").resizable().scaledToFit().frame(width: 20, height: 20).foregroundColor(.usdtAccent)
@@ -32,7 +32,7 @@ struct UsdtNetworkPicker<Rows: View>: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 8) {
                 rows()
-                BodySText(note, textColor: .textSecondary)
+                BodySText(note, textColor: .textSecondary, kerning: 0, lineHeight: 20)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 16)
                 UsdtCoinIllustration()
             }

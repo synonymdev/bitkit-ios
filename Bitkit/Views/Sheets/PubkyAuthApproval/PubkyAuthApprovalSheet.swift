@@ -143,7 +143,7 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     var body: some View {
-        Sheet(id: .pubkyAuthApproval, data: config) {
+        Sheet(id: .pubkyAuthApproval, data: config, backgroundColor: .gray7, applyGradient: false) {
             if showsUsdtEnablePrompt {
                 UsdtIntroContent(
                     isEnablePrompt: true,
@@ -217,6 +217,7 @@ struct PubkyAuthApprovalSheet: View {
             SheetHeader(
                 title: headerTitle,
                 showBackButton: showsBackButton,
+                topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8,
                 onBack: onBack
             )
 
@@ -335,16 +336,14 @@ struct PubkyAuthApprovalSheet: View {
 
                     if config.request.bitkitClaim?.includesPaykitAccess == true {
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionMText(t("pubky_auth__details"), textColor: .white64)
-                            BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary)
+                            CaptionMText(t("pubky_auth__details"), textColor: .white64).frame(minHeight: 18)
+                            BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary, kerning: 0, lineHeight: 20)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.top, 32)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
-
-                    Spacer().frame(height: 32)
 
                     trustWarning
                         .padding(.bottom, 16)
@@ -387,9 +386,9 @@ struct PubkyAuthApprovalSheet: View {
                 ? t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix")
                 : pubkyAuthFilledText(t("pubky_auth__description_named"), variables: ["clientId": requesterText, "service": serviceText]),
             accentColor: .textPrimary,
-            accentFont: Fonts.bold
+            accentFont: Fonts.bold,
+            kerning: 0, lineHeight: 22
         )
-        .lineSpacing(4)
     }
 
     private var introTitleKey: String {
@@ -508,14 +507,14 @@ struct PubkyAuthApprovalSheet: View {
                     variables: ["pubky": truncatedPublicKey, "clientId": requesterText, "service": serviceText]
                 ),
             accentColor: .textPrimary,
-            accentFont: Fonts.bold
+            accentFont: Fonts.bold,
+            kerning: 0, lineHeight: 22
         )
-        .lineSpacing(4)
     }
 
     private var permissionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("pubky_auth__requested_permissions"), textColor: .white64)
+            CaptionMText(t("pubky_auth__requested_permissions"), textColor: .white64).frame(minHeight: 18)
 
             ForEach(Array(config.request.permissions.enumerated()), id: \.offset) { _, permission in
                 permissionRow(permission)
@@ -525,8 +524,11 @@ struct PubkyAuthApprovalSheet: View {
 
     private func permissionRow(_ permission: PubkyAuthPermission) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "folder")
-                .font(.system(size: 16))
+            Image("permission-folder")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 13, height: 11)
+                .frame(width: 16, height: 16)
                 .foregroundColor(.white)
 
             BodySSBText(permission.displayPath)
@@ -535,13 +537,13 @@ struct PubkyAuthApprovalSheet: View {
             Spacer()
 
             CaptionMText(permission.displayAccess, textColor: .gray1)
-        }
+        }.frame(minHeight: 20)
     }
 
     private var trustWarning: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("pubky_auth__before_you_continue"), textColor: .white64)
-            BodySText(t("pubky_auth__trust_warning"))
+            CaptionMText(t("pubky_auth__before_you_continue"), textColor: .white64).frame(minHeight: 18)
+            BodySText(t("pubky_auth__trust_warning"), kerning: 0, lineHeight: 20)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -570,7 +572,7 @@ struct PubkyAuthApprovalSheet: View {
                 )
                 .lineLimit(1)
 
-                BodyMSBText(pubkyProfile.displayName ?? "")
+                BodyMSBText(pubkyProfile.displayName ?? "", kerning: 0)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }

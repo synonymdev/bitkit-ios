@@ -31,14 +31,14 @@ struct UsdtIntroContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t(isEnablePrompt ? "usdt__enable" : "usdt__intro_title"), topPadding: 28, bottomPadding: 22,
-                        dragIndicatorTopPadding: 8)
+                        dragIndicatorTopPadding: 8, titleKerning: 0)
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 32) {
                         UsdtCoinIllustration().frame(maxWidth: .infinity)
                         VStack(alignment: .leading, spacing: 8) {
                             DisplayText(t("usdt__intro_headline"), accentColor: .usdtAccent, kerning: -2)
-                            BodyMText(t("usdt__intro_description"), textColor: .textSecondary)
+                            BodyMText(t("usdt__intro_description"), textColor: .textSecondary, kerning: 0, lineHeight: 22)
                         }
                     }
                     .frame(minHeight: geometry.size.height, alignment: .bottom)

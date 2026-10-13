@@ -8488,6 +8488,93 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )))
     }
 
+    func testUsdtProofFailureDoesNotBlockLaterProofsOrReceiptVerification() async throws {
+        defer { try? Keychain.delete(key: .paykitUsdtPayments) }
+        let identity = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let endpoint = PublicPaykitService.MethodId.usdtArbitrum.rawValue
+        let proof = UsdtPaymentProof(chainId: "42161", transactionHash: "transaction", receiptLogIndex: "0", signature: "signature")
+        let attempts = try (0 ... 1).map { index in
+            let record = try paymentRequestRecord(id: "550e8400-e29b-41d4-a716-44665544000\(index)", counterparty: contact,
+                                                  amount: "0.05", asset: "usdt", endpoints: [endpoint])
+            let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: Date()))
+            let binding = try PaykitUsdtPaymentService.binding(request: request, identity: identity, paymentAppId: "bitkit",
+                                                               quoteId: nil, period: nil)
+            return PaykitUsdtPaymentService.Attempt(quoteId: "quote-\(index)", wallet: "wallet", identity: identity,
+                                                    contact: contact, requestId: request.id, binding: binding, billingPeriod: nil)
+        }
+        let receivedProof = try PaymentProofRecord(
+            eventId: "750e8400-e29b-41d4-a716-446655440000", outboundMessageId: nil, outboundStatus: nil, streamItemId: 2,
+            paymentReference: PaymentReference(text: "invoice-123"), billingPeriod: nil, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: endpoint, allowanceId: nil, conversionQuoteId: nil,
+            proof: PrivateJsonObject(text: String(decoding: JSONEncoder().encode(PaykitUsdtPaymentService.Proof(proof)), as: UTF8.self)),
+            recordedAt: "2027-01-15T08:01:00Z"
+        )
+        let received = try paymentRequestRecord(id: "550e8400-e29b-41d4-a716-446655440002", counterparty: contact,
+                                                state: .proofSubmitted, role: .payee, amount: "0.05", asset: "usdt",
+                                                endpoints: [endpoint], paymentProofs: [receivedProof])
+        for generationFails in [true, false] {
+            try Keychain.delete(key: .paykitUsdtPayments)
+            let service = PaykitUsdtPaymentService()
+            try service.restoreBackup(PaykitUsdtStateBackup(attempts: attempts.map(PaykitUsdtStateBackup.Attempt.init), receipts: []))
+            var verified = 0
+            for _ in 0 ... 1 {
+                await service.reconcile(
+                    context: { ("wallet", identity) },
+                    storedTransfer: { id in self.usdtTransfer(id, status: .confirmed) },
+                    paymentProof: { id, _ in
+                        if generationFails, id == "quote-0" { throw UsdtError.InvalidCredentials }
+                        return proof
+                    },
+                    submitProof: { $0.paymentIdentifier != "quote-0" },
+                    paymentRequests: { [received] },
+                    verifyPayment: { _, _ in
+                        verified += 1
+                        return UsdtVerifiedPayment(paymentId: "42161:transaction:0", transferId: "transaction:0", sender: contact,
+                                                   recipient: "wallet", amount: 50000, timestamp: 1_800_000_000)
+                    }
+                )
+                XCTAssertFalse(try XCTUnwrap(service.attempts.first { $0.quoteId == "quote-0" }).proofQueued)
+                XCTAssertTrue(try XCTUnwrap(service.attempts.first { $0.quoteId == "quote-1" }).proofQueued)
+                XCTAssertEqual(service.receipts.count, 1)
+                XCTAssertTrue(try XCTUnwrap(service.receipts.first).satisfied)
+            }
+            XCTAssertEqual(verified, 2)
+        }
+    }
+
+    func testUsdtProofCancellationStopsLaterAttemptsAndReceiptVerification() async throws {
+        defer { try? Keychain.delete(key: .paykitUsdtPayments) }
+        let identity = "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let record = try paymentRequestRecord(counterparty: contact, amount: "0.05", asset: "usdt",
+                                              endpoints: [PublicPaykitService.MethodId.usdtArbitrum.rawValue])
+        let request = try XCTUnwrap(PaykitPaymentRequest(historyRecord: record, now: Date()))
+        let binding = try PaykitUsdtPaymentService.binding(request: request, identity: identity, paymentAppId: "bitkit", quoteId: nil, period: nil)
+        let attempt = PaykitUsdtPaymentService.Attempt(quoteId: "quote", wallet: "wallet", identity: identity, contact: contact,
+                                                       requestId: request.id, binding: binding, billingPeriod: nil)
+        let service = PaykitUsdtPaymentService()
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
+        var submitted = false
+        var loadedReceipts = false
+        await service.reconcile(
+            context: { ("wallet", identity) }, storedTransfer: { id in self.usdtTransfer(id, status: .confirmed) },
+            paymentProof: { _, _ in throw CancellationError() },
+            submitProof: { _ in submitted = true; return true },
+            paymentRequests: { loadedReceipts = true; return [] }, verifyPayment: { _, _ in nil }
+        )
+        XCTAssertFalse(submitted)
+        XCTAssertFalse(loadedReceipts)
+        XCTAssertFalse(try XCTUnwrap(service.attempts.first).proofQueued)
+        XCTAssertTrue(service.hasBinding(for: request.id))
+    }
+
+    private func usdtTransfer(_ id: String, status: UsdtTransferStatus) -> UsdtTransfer {
+        UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                     recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                     fee: nil, isIncoming: false, status: status, timestamp: 1)
+    }
+
     private func paymentRequestRecord(
         id: String = "550e8400-e29b-41d4-a716-446655440000",
         counterparty: String = "pubkypayee",

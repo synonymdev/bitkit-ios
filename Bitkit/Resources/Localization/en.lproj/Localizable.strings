@@ -1970,3 +1970,5 @@
 "usdt__no_thanks" = "No Thanks";
 "usdt__send_network_note" = "Choose the network your recipient uses.";
 "usdt__settings_title" = "USDT (Tether)";
+
+"usdt__camera_permission" = "Allow camera access to scan USDT payment requests and pay more quickly.";

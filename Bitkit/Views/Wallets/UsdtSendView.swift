@@ -145,7 +145,7 @@ struct UsdtSendView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             if submitted, !busy, submittedStatus == .confirmed {
-                PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent)
+                PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent, isUsdt: true)
             }
         }
         .background(Color.gray7)
@@ -194,13 +194,13 @@ struct UsdtSendView: View {
 
     private var networkButton: some View {
         Button { recipientFocused = false; showingNetworks = true } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Image("usdt-network").resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
-                CaptionBText(destination.label).lineLimit(1).minimumScaleFactor(0.8)
+                CaptionBText(destination.label, kerning: 0).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .padding(.horizontal, 8).frame(height: 28)
-            .background(Color.white06, in: Capsule())
-            .overlay(Capsule().stroke(Color.white10, lineWidth: 1))
+            .padding(.horizontal, 12).frame(height: 28)
+            .background(Color.white01, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white16, lineWidth: 1))
         }
         .disabled(embedded || destinations.count < 2 || busy)
         .accessibilityIdentifier("UsdtNetwork")
@@ -228,8 +228,13 @@ struct UsdtSendView: View {
     private var recipientContent: some View {
         VStack(spacing: 8) {
             networkSelector.padding(.bottom, 8)
-            Scanner(onScan: { payload in if let value = payload.string { useRecipient(value) } }, onImageSelection: readImage)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Scanner(
+                accentColor: .usdtAccent,
+                permissionDescription: t("usdt__camera_permission"),
+                onScan: { payload in if let value = payload.string { useRecipient(value) } },
+                onImageSelection: readImage
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             RectangleButton(
                 icon: "clipboard", iconColor: .usdtAccent, title: t("common__paste"), testID: "UsdtPaste"
             ) {
@@ -273,21 +278,18 @@ struct UsdtSendView: View {
             if let error {
                 BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError").padding(.bottom, 16)
             }
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("wallet__send_available"))
-                    BodySSBText(settings.hideBalance ? " • • • • •" : "$ " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"))
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .bottom) {
+                    availableBalance
+                    Spacer(minLength: 8)
+                    amountActions
                 }
-                Spacer()
-                NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
-                if !embedded {
-                    NumberPadActionButton(text: t("common__max"), color: .usdtAccent, disabled: busy,
-                                          isLoading: preparingMaximum)
-                    {
-                        Task { await useMaximum() }
+                VStack(alignment: .leading, spacing: 16) {
+                    availableBalance
+                    HStack {
+                        Spacer(minLength: 0)
+                        amountActions
                     }
-                    .accessibilityIdentifier("UsdtMax")
-                    networkButton
                 }
             }
             .padding(.bottom, 16)
@@ -319,6 +321,41 @@ struct UsdtSendView: View {
             }
             .accessibilityIdentifier("UsdtReview")
         }
+    }
+
+    private var availableBalance: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            CaptionMText(t("wallet__send_available"))
+            BodySSBText(settings.hideBalance ? " • • • • •" : "<accent>$</accent> " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"),
+                        accentColor: .textSecondary)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var amountActions: some View {
+        HStack(spacing: 8) {
+            NumberPadActionButton(text: "USDT", color: .usdtAccent, variant: .secondary, disabled: true) {}
+            if !embedded {
+                NumberPadActionButton(text: t("common__max"), color: .usdtAccent, disabled: busy,
+                                      isLoading: preparingMaximum)
+                {
+                    Task { await useMaximum() }
+                }
+                .accessibilityIdentifier("UsdtMax")
+                networkButton
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var reviewDetailsButton: some View {
+        CustomButton(
+            title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
+            icon: Image(showDetails ? "eye-slash" : "speed-normal").resizable().frame(width: 16, height: 16)
+                .foregroundColor(.usdtAccent), background: Color.white06
+        ) { showDetails.toggle() }
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("UsdtReviewDetails")
     }
 
     private func confirmation(_ quote: UsdtQuote) -> some View {
@@ -359,13 +396,9 @@ struct UsdtSendView: View {
                                 .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 16)
                         }
                         if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError") }
-                        CustomButton(
-                            title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
-                            icon: Image(showDetails ? "eye-slash" : "speed-normal").resizable().frame(width: 16, height: 16)
-                                .foregroundColor(.usdtAccent), background: Color.white06
-                        ) { showDetails.toggle() }
-                            .frame(maxWidth: .infinity).padding(.vertical, 24)
-                            .accessibilityIdentifier("UsdtReviewDetails")
+                        if quote.destination == .arbitrum {
+                            reviewDetailsButton.padding(.vertical, 24)
+                        }
                         if showDetails { Spacer(minLength: 0) }
                     }
                     .frame(minHeight: geometry.size.height, alignment: .top)
@@ -373,6 +406,7 @@ struct UsdtSendView: View {
                 .id(showDetails)
             }
             if quote.destination != .arbitrum {
+                reviewDetailsButton.padding(.top, 12)
                 SendSectionView(t("usdt__maximum_total")) {
                     BodySSBText(usdtOverviewAmount(quote.amount + quote.maximumFee) + " USDT")
                 }

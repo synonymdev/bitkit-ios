@@ -39,7 +39,8 @@ struct ReceivedTx: View {
             ZStack {
                 PaymentCelebration(
                     isOnchain: isOnchain, isReceived: true,
-                    confettiColor: config.details.usdtAmount != nil ? .usdtAccent : nil
+                    confettiColor: config.details.usdtAmount != nil ? .usdtAccent : nil,
+                    isUsdt: config.details.usdtAmount != nil
                 )
 
                 VStack(alignment: .leading, spacing: 0) {

@@ -53,6 +53,7 @@ struct SheetHeader: View {
     let topPadding: CGFloat
     let bottomPadding: CGFloat
     let dragIndicatorTopPadding: CGFloat?
+    let titleKerning: CGFloat
     let onBack: (() -> Void)?
 
     init(
@@ -62,6 +63,7 @@ struct SheetHeader: View {
         topPadding: CGFloat = 32,
         bottomPadding: CGFloat = 24,
         dragIndicatorTopPadding: CGFloat? = nil,
+        titleKerning: CGFloat = 0.4,
         onBack: (() -> Void)? = nil
     ) {
         self.title = title
@@ -70,6 +72,7 @@ struct SheetHeader: View {
         self.topPadding = topPadding
         self.bottomPadding = bottomPadding
         self.dragIndicatorTopPadding = dragIndicatorTopPadding
+        self.titleKerning = titleKerning
         self.onBack = onBack
     }
 
@@ -95,7 +98,7 @@ struct SheetHeader: View {
                     .frame(width: 24, height: 24)
             }
 
-            SubtitleText(title)
+            SubtitleText(title, kerning: titleKerning)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             if let action {
