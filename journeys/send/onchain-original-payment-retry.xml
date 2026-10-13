@@ -8,7 +8,8 @@
     as state injection, never as proof of a native fault. Manual Tests must verify the exact backend
     winning transaction retains the complete original input set and recipient amount, and any original
     Shop request or Blocktank order completes once without a new request or order. Local activity alone
-    cannot prove these checks. The funded native fault journey remains unrun.
+    cannot prove these checks. See prepared-fee-recovery.md in this directory for the four shared
+    manual fee-recovery cases and platform adaptations. Record native fault coverage separately.
       iOS adaptations: Max recovery keeps the original fee rate without an editable field because the original drain has no higher-fee headroom. The UI also checks wallet.getFeeLimits().maxFee (at most 999). For channel funding, manually verify reopening the original Pending after expiry or failed local completion creates no new order or broadcast, and that accepted original funding resumes its own order watcher. During retry preparation/authentication, check original-winner races and wallet/payer changes; backup must retain the original guarded amount, inputs and candidates. These extra channel-funding and backup checks extend the common actions rather than replace their wording.
   </description>
   <actions>

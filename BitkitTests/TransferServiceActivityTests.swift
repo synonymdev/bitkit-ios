@@ -799,11 +799,13 @@ final class TransferServiceActivityTests: XCTestCase {
         let store = MemoryAttemptStore()
         let attempts = OnchainSendAttemptService(store: store, winningFee: { _ in 281 })
         let sender = PreparedAttemptNodeMock()
+        sender.miningFee = 143
         _ = try await attempts.send(using: sender, address: "bcrt1qoriginal", amountSats: sender.amount,
                                     satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
                                     followupContext: .init(feeSats: 143, feeRate: 1, tags: ["original"], contact: nil, createdAt: 100))
         let original = try XCTUnwrap(store.snapshot().first)
         sender.txid = String(repeating: "da", count: 32)
+        sender.miningFee = 281
         sender.result = .accepted(txid: sender.txid)
         _ = try await attempts.retrySamePayment(using: sender,
                                                 context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),

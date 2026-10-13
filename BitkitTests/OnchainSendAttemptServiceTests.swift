@@ -328,6 +328,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                                    followupContext: .init(feeSats: 143, feeRate: 1, tags: [], contact: nil, createdAt: 123))
         let original = try XCTUnwrap(store.snapshot().first)
         sender.txid = String(repeating: "cd", count: 32)
+        sender.miningFee = nil
         sender.result = .accepted(txid: sender.txid)
         _ = try await service.retrySamePayment(using: sender,
                                                context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
@@ -337,6 +338,32 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(followup.attempt?.followupContext?.feeSats, 281)
         XCTAssertEqual(followup.attempt?.txid, sender.txid)
         XCTAssertEqual(store.snapshot().first?.localFollowupComplete, false)
+    }
+
+    func testAcceptedSuccessorUsesPreparedFeeAfterRestartWithoutWalletHistory() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.miningFee = 143
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false,
+                                   followupContext: .init(feeSats: 0, feeRate: 1, tags: [], contact: nil, createdAt: 123))
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.txid = String(repeating: "cd", count: 32)
+        sender.miningFee = 281
+        sender.result = .accepted(txid: sender.txid)
+        _ = try await service.retrySamePayment(using: sender,
+                                               context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                                               satsPerVbyte: 2, authorize: { _, _ in })
+        let restored = MemoryAttemptStore()
+        try restored.save(JSONDecoder().decode([OnchainSendAttempt].self, from: JSONEncoder().encode(store.snapshot())))
+        let followup = CapturingWinningFeeFollowup()
+        let restarted = OnchainSendAttemptService(store: restored, localFollowup: followup, winningFee: { _ in nil })
+        do { _ = try await restarted.resumeAcceptedOrdinarySend(walletId: original.walletId) } catch {}
+        XCTAssertEqual(followup.attempt?.txid, sender.txid)
+        XCTAssertEqual(followup.attempt?.followupContext?.feeSats, 281)
+        XCTAssertEqual(followup.attempt?.followupContext?.feeRate, 2)
+        XCTAssertEqual(restored.snapshot().first?.blocksNewSend, true, "Failed activity persistence must remain guarded")
     }
 
     func testWinningFeeCalculationUsesExactPreviousOutputAndRejectsMissingOrInvalidDetails() throws {
@@ -420,6 +447,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         let original = try XCTUnwrap(store.snapshot().first)
         let originalTxid = try XCTUnwrap(original.txid)
         sender.txid = String(repeating: "cd", count: 32)
+        sender.miningFee = 281
         _ = try await service.retrySamePayment(using: sender,
                                                context: .init(attemptId: original.id, walletId: original.walletId, txid: originalTxid),
                                                satsPerVbyte: 2, authorize: { _, _ in })
@@ -441,6 +469,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                                    followupContext: .init(feeSats: 143, feeRate: 1, tags: [], contact: nil, createdAt: 123))
         let original = try XCTUnwrap(store.snapshot().first)
         sender.txid = String(repeating: "cd", count: 32)
+        sender.miningFee = nil
         sender.result = .accepted(txid: sender.txid)
         _ = try await service.retrySamePayment(using: sender,
                                                context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
@@ -469,12 +498,33 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                 XCTAssertEqual(prepared.recipientAmountSats, original.amountSats)
                 XCTAssertEqual(prepared.txid, sender.txid)
                 XCTAssertEqual(sender.broadcasts, 1)
+                XCTAssertEqual(store.snapshot().first?.recoveryContext?.candidateFeeSats?[prepared.txid], 800)
                 approved = true
             }, authorize: { _, _ in XCTAssertTrue(approved) }
         )
         XCTAssertEqual(sender.preparations, 2)
         XCTAssertEqual(sender.broadcasts, 2)
         XCTAssertEqual(store.snapshot().first?.txid, sender.txid)
+        XCTAssertEqual(store.snapshot().first?.status, .unknown)
+        XCTAssertEqual(store.snapshot().first?.blocksNewSend, true)
+    }
+
+    func testRetainedCandidateRejectsConflictingPreparedFee() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        _ = try await service.send(using: sender, address: "original", amountSats: sender.amount,
+                                   satsPerVbyte: 1, utxosToSpend: nil, isMaxAmount: false)
+        let original = try XCTUnwrap(store.snapshot().first)
+        sender.miningFee = 700
+        do {
+            _ = try await service.retrySamePayment(using: sender,
+                                                   context: .init(attemptId: original.id, walletId: original.walletId, txid: original.txid),
+                                                   authorize: { _, _ in XCTFail("Conflicting receipt must not reach authorization") })
+            XCTFail("A transaction ID cannot acquire another mining fee")
+        } catch OnchainSendAttemptError.unresolved {}
+        XCTAssertEqual(sender.broadcasts, 1)
+        XCTAssertEqual(store.snapshot(), [original])
     }
 
     func testCancelledFeeApprovalDoesNotSubmitOrRetainNewCandidate() async throws {
@@ -710,6 +760,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             XCTAssertEqual(retained.recoveryContext?.inputs, original.recoveryContext?.inputs)
             XCTAssertEqual(retained.recoveryContext?.candidateTxids, [originalTxid])
             XCTAssertNil(retained.recoveryContext?.candidateFeeRates?[sender.txid])
+            XCTAssertNil(retained.recoveryContext?.candidateFeeSats?[sender.txid])
             XCTAssertEqual(sender.broadcasts, 1)
             XCTAssertTrue(retained.blocksNewSend)
             let restarted = OnchainSendAttemptService(store: store)

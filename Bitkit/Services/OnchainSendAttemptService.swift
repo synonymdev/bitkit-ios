@@ -85,6 +85,7 @@ struct OnchainSendRecoveryContext: Codable, Equatable {
     let paymentIdentity: String?
     var candidateTxids: [String]
     var candidateFeeRates: [String: UInt32]? = nil
+    var candidateFeeSats: [String: UInt64]? = nil
 
     func feeRate(for txid: String) -> UInt32? {
         if let rate = candidateFeeRates?[txid.lowercased()] {
@@ -367,9 +368,13 @@ actor OnchainSendAttemptService {
 
     func restoreBackup(_ attempt: OnchainSendAttempt?) throws {
         guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
-        if let previous = try currentAttempt(), previous.blocksNewSend {
+        if var previous = try currentAttempt(), previous.blocksNewSend {
             // A restore must not erase a newer unresolved candidate or another original operation.
-            guard let attempt, previous == attempt else { throw OnchainSendAttemptError.unresolved }
+            guard var incoming = attempt else { throw OnchainSendAttemptError.unresolved }
+            // Exact fee evidence is local and absent from the shared backup record.
+            previous.recoveryContext?.candidateFeeSats = nil
+            incoming.recoveryContext?.candidateFeeSats = nil
+            guard previous == incoming else { throw OnchainSendAttemptError.unresolved }
             return
         }
         try store.save(attempt.map { [$0] } ?? [])
@@ -445,7 +450,8 @@ actor OnchainSendAttemptService {
                 }
                 attempt.recoveryContext = OnchainSendRecoveryContext(
                     inputs: prepared.inputs, satsPerVbyte: satsPerVbyte, paymentIdentity: paymentIdentity,
-                    candidateTxids: [prepared.txid], candidateFeeRates: [prepared.txid.lowercased(): satsPerVbyte]
+                    candidateTxids: [prepared.txid], candidateFeeRates: [prepared.txid.lowercased(): satsPerVbyte],
+                    candidateFeeSats: prepared.miningFeeSats.map { [prepared.txid.lowercased(): $0] }
                 )
                 try store.save([attempt])
                 knownAttempt = attempt
@@ -556,6 +562,15 @@ actor OnchainSendAttemptService {
             }
         }
         attempt.recoveryContext?.candidateFeeRates?[prepared.txid.lowercased()] = authorizedFeeRate
+        if let fee = prepared.miningFeeSats {
+            if let retained = attempt.recoveryContext?.candidateFeeSats?[prepared.txid.lowercased()], retained != fee {
+                throw OnchainSendAttemptError.unresolved
+            }
+            if attempt.recoveryContext?.candidateFeeSats == nil {
+                attempt.recoveryContext?.candidateFeeSats = [:]
+            }
+            attempt.recoveryContext?.candidateFeeSats?[prepared.txid.lowercased()] = fee
+        }
         // Keep the original rejected/unknown state until a real new outcome arrives.
         // A crash here still recognizes both possible payments and cannot unlock the wallet.
         try store.save([attempt])
@@ -614,6 +629,7 @@ actor OnchainSendAttemptService {
         else { return }
         recovery.candidateTxids.removeAll { $0.caseInsensitiveCompare(txid) == .orderedSame }
         recovery.candidateFeeRates?.removeValue(forKey: txid.lowercased())
+        recovery.candidateFeeSats?.removeValue(forKey: txid.lowercased())
         current.recoveryContext = recovery
         try store.save([current])
         knownAttempt = current
@@ -797,7 +813,8 @@ actor OnchainSendAttemptService {
             throw OnchainSendAttemptError.localFollowupNotSaved
         }
         let isOriginal = recovery.candidateTxids.first?.caseInsensitiveCompare(txid) == .orderedSame
-        let observed = isOriginal && context.feeSats > 0 ? context.feeSats : try await winningFee(original)
+        let retainedFee = recovery.candidateFeeSats?[txid.lowercased()] ?? (isOriginal && context.feeSats > 0 ? context.feeSats : nil)
+        let observed: UInt64? = if let retainedFee { retainedFee } else { try await winningFee(original) }
         guard let fee = observed,
               !original.amountSats.addingReportingOverflow(fee).overflow,
               var attempt = try currentAttempt(), attempt.id == original.id,
