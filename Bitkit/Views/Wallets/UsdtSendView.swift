@@ -268,6 +268,7 @@ struct UsdtSendView: View {
             .accessibilityIdentifier("UsdtRecipientContinue")
         }
         .task { recipientFocused = true }
+        .onChange(of: recipient) { _, _ in error = nil }
     }
 
     private var amountContent: some View {
@@ -294,8 +295,14 @@ struct UsdtSendView: View {
             }
             .padding(.bottom, 16)
             CustomDivider()
-            NumberPad(type: .decimal, isDisabled: busy || embedded, onDeleteLongPress: { amount = ""; maximumQuote = nil }, onPress: enterAmount)
-                .frame(maxHeight: .infinity)
+            NumberPad(
+                type: .decimal,
+                decimalSeparator: Locale.current.decimalSeparator ?? ".",
+                isDisabled: busy || embedded,
+                onDeleteLongPress: { amount = ""; maximumQuote = nil },
+                onPress: enterAmount
+            )
+            .frame(maxHeight: .infinity)
             CustomButton(title: t("common__continue"), isDisabled: busy || amount.isEmpty, isLoading: busy && !preparingMaximum) {
                 guard !busy, quote == nil else { return }
                 busy = true
@@ -385,10 +392,14 @@ struct UsdtSendView: View {
                                 PaymentRequestSummary(contactName: contactName, note: requestNote, accentColor: .usdtAccent).padding(.bottom, 16)
                             }
                             Spacer(minLength: 0)
-                            PaymentReviewIllustration(swipeProgress: busy || paymentComplete ? 1 : swipeProgress, maximumHeight: 192)
-                                .padding(.top, 16).frame(height: 256)
+                            PaymentReviewIllustration(
+                                swipeProgress: busy || paymentComplete ? 1 : swipeProgress,
+                                maximumHeight: quote.destination == .arbitrum ? nil : 192,
+                                imageSize: quote.destination == .arbitrum ? 329 : nil
+                            )
+                            .padding(.top, 16).frame(height: 256)
                         }
-                        if showDetails {
+                        if showDetails, quote.destination != .arbitrum {
                             if quote.bridgeProvider == .orchestra {
                                 bridgeCost(quote).padding(.top, 16)
                             }
@@ -413,6 +424,9 @@ struct UsdtSendView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("UsdtMaximumTotal")
                 .padding(.vertical, 16)
+            } else if showDetails {
+                CaptionText(t("usdt__fee_note"))
+                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 16)
             }
             SwipeButton(
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,

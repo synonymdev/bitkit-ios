@@ -51,9 +51,12 @@ enum ClipboardPromptValidator {
         _ uri: String,
         ownPublicKey: String?,
         contacts: [PubkyContact],
-        isUsdtEnabled: Bool = Env.isUsdtEnabled,
+        isUsdtEnabled: Bool = Env.isUsdtEnabled && UsdtPreference.isEnabled(),
         decodeURI: (String) async -> Bool = { await (try? decode(invoice: $0)) != nil }
     ) async -> Bool {
+        if !isUsdtEnabled, (try? usdtParsePaymentRequest(value: uri.trimmingCharacters(in: .whitespacesAndNewlines))) != nil {
+            return false
+        }
         do {
             if try resolveUsdtPaymentRoute(input: uri, isEnabled: isUsdtEnabled) != nil {
                 return true

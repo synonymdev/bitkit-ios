@@ -4,6 +4,59 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testChangingUsdtPreferencePublishesForOpenPaymentAndAuthorizationViews() {
+        let settings = SettingsViewModel.shared
+        let original = settings.usdtPreference
+        defer { settings.usdtPreference = original }
+        settings.usdtPreference = .disabled
+        var changes = 0
+        let observation = settings.objectWillChange.sink { changes += 1 }
+        defer { observation.cancel() }
+        settings.usdtPreference = .enabled
+        XCTAssertGreaterThan(changes, 0)
+        XCTAssertTrue(settings.isUsdtEnabled)
+    }
+
+    func testRestoredFundsAndPendingTransfersKeepUsdtEnabledAcrossFeatures() {
+        let settings = SettingsViewModel.shared
+        let original = settings.usdtPreference
+        defer { settings.usdtPreference = original }
+        for preference: UsdtPreference in [.undecided, .disabled] {
+            settings.usdtPreference = preference
+            settings.protectUsdtFunds(UsdtPreference.protectsFunds(balance: 0, transfers: []))
+            XCTAssertEqual(settings.usdtPreference, preference)
+            for (balance, transfers): (UInt64, [UsdtTransfer]) in [
+                (1, []), (0, [transfer("pending", status: .pending)]), (0, [transfer("bridge", status: .bridging)]),
+            ] {
+                settings.usdtPreference = preference
+                settings.protectUsdtFunds(UsdtPreference.protectsFunds(balance: balance, transfers: transfers))
+                XCTAssertTrue(settings.isUsdtEnabled)
+                XCTAssertTrue(UsdtPreference.isEnabled())
+                settings.protectUsdtFunds(false)
+                XCTAssertTrue(settings.isUsdtEnabled, "Draining funds must not silently turn off an enabled wallet")
+            }
+        }
+    }
+
+    func testKnownInboundPaymentsProtectTheWalletUntilEachSettles() {
+        let manager = UsdtWalletManager(loadCredentials: { throw CancellationError() })
+        let settings = SettingsViewModel.shared
+        let original = settings.usdtPreference
+        defer { settings.usdtPreference = original }
+        settings.usdtPreference = .disabled
+        manager.recordDepositStatus(id: "waiting", status: "awaiting_deposit")
+        XCTAssertFalse(manager.hasProtectedFunds)
+        manager.recordDepositStatus(id: "first", status: "funded")
+        settings.protectUsdtFunds(manager.hasProtectedFunds)
+        XCTAssertTrue(settings.isUsdtEnabled)
+        manager.recordDepositStatus(id: "second", status: "refunding")
+        manager.recordDepositStatus(id: "first", status: "completed")
+        XCTAssertTrue(manager.hasProtectedFunds)
+        manager.recordDepositStatus(id: "second", status: "refunded")
+        XCTAssertFalse(manager.hasProtectedFunds)
+        XCTAssertTrue(settings.isUsdtEnabled)
+    }
+
     func testUsdtOptInDoesNotImplicitlyPublishOrHideExistingFunds() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         XCTAssertFalse(UsdtPreference.isEnabled(defaults: defaults))
@@ -198,10 +251,16 @@ final class UsdtWalletManagerTests: XCTestCase {
         _ = try await manager.storedTransfer("missing")
         let snapshot = try await manager.backupSnapshot()
         let backup = try XCTUnwrap(snapshot)
+        manager.recordDepositStatus(id: "old-deposit", status: "funded")
+        XCTAssertTrue(manager.hasProtectedFunds)
         try await manager.restoreBackup(backup)
+        XCTAssertFalse(manager.hasProtectedFunds)
         XCTAssertEqual(credentialReads, 1)
 
+        manager.recordDepositStatus(id: "old-deposit", status: "funded")
         try await manager.wipe()
+        manager.recordDepositStatus(id: "late-response", status: "funded")
+        XCTAssertFalse(manager.hasProtectedFunds)
         do {
             _ = try await manager.paymentEndpoint()
             XCTFail("A wiped session must not read credentials or reopen its wallet")

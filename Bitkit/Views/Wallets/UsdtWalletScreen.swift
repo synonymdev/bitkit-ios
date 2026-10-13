@@ -136,7 +136,7 @@ struct UsdtAmountHeader: View {
                 CaptionMText("USDT", textColor: .textSecondary)
             }
             DisplayText(
-                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : displayAmount ?? amount),
+                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : displayAmount ?? usdtInputAmount(amount)),
                 accentColor: .textSecondary, accentFont: Fonts.extraBold
             )
             .lineLimit(1).minimumScaleFactor(0.5)
@@ -168,7 +168,7 @@ extension UsdtTransferStatus {
         case .pending: t("usdt__pending")
         case .confirmed: t("usdt__confirmed")
         case .failed: t("usdt__failed")
-        case .bridging: t("usdt__bridging")
+        case .bridging: t("wallet__activity_transferring")
         case .bridgeNeedsAttention, .bridgeFailed: t("usdt__bridge_attention")
         case .replaced: t("usdt__replaced")
         case .bridgeRefunded: t("usdt__deposit_refunded")
@@ -191,4 +191,8 @@ func usdtOverviewAmount(_ amount: UInt64, locale: Locale = .current) -> String {
         .rounded(rule: .toNearestOrAwayFromZero).locale(locale)
     if amount > 0, amount < 10000 { return "<" + (Decimal(1) / 100).formatted(format) }
     return (Decimal(amount) / 1_000_000).formatted(format)
+}
+
+func usdtInputAmount(_ amount: String, locale: Locale = .current) -> String {
+    amount.replacingOccurrences(of: ".", with: locale.decimalSeparator ?? ".")
 }

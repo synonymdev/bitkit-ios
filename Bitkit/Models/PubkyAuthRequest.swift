@@ -55,6 +55,10 @@ struct PubkyAuthClaim: Equatable {
         sharesBitcoin || sharesUsdt
     }
 
+    var requiresUsdtAddress: Bool {
+        sharesUsdt && !sharesBitcoin && !includesPaykitAccess
+    }
+
     func unsignedPayload(account: WatchOnlyAccountRecord?, usdtEndpoint: PublicPaykitService.Endpoint?) throws -> Data? {
         guard sharesUsdt else {
             return try account.map { try WatchOnlyAccountClaimCodec.encode(record: $0) }

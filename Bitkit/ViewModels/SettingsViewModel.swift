@@ -253,6 +253,10 @@ class SettingsViewModel: NSObject, ObservableObject {
         Env.isUsdtEnabled && usdtPreference == .enabled
     }
 
+    func protectUsdtFunds(_ hasProtectedFunds: Bool) {
+        if hasProtectedFunds { usdtPreference = .enabled }
+    }
+
     var electrumHasEdited: Bool {
         let formHost = electrumHost.trimmingCharacters(in: .whitespaces)
         let formPort = electrumPort.trimmingCharacters(in: .whitespaces)

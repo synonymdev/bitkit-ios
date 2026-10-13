@@ -216,6 +216,7 @@ struct SendAmountView: View {
 
                 NumberPad(
                     type: app.paykitUsesUsdt ? .decimal : amountViewModel.getNumberPadType(currency: currency),
+                    decimalSeparator: app.paykitUsesUsdt ? Locale.current.decimalSeparator ?? "." : ".",
                     errorKey: amountViewModel.errorKey,
                     isDisabled: !canEditAmount
                 ) { key in
@@ -446,6 +447,10 @@ struct SendAmountView: View {
                             } else {
                                 MoneyText(sats: Int(fundingSourceBalance(source)), forceUnit: .bitcoin, size: .bodyMSB,
                                           symbol: false, enableHide: true, fillsWidth: false)
+                            }
+                            if source == .spending {
+                                Image("arrow-up-down").resizable().scaledToFit().frame(width: 16, height: 16)
+                                    .foregroundStyle(Color.white64)
                             }
                             Spacer(minLength: 0)
                             if source == selectedFundingSource {

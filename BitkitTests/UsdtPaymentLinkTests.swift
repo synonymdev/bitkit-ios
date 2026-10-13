@@ -16,6 +16,18 @@ final class UsdtPaymentLinkTests: XCTestCase {
                        .usdtPayment(recipient: recipient, amount: ""))
     }
 
+    @MainActor
+    func testExplicitUsdtLinkKeepsItsPaymentWhenOptInIsDisabled() async throws {
+        snapshotAppDefaults(UsdtPreference.key)
+        UserDefaults.standard.set(UsdtPreference.disabled.rawValue, forKey: UsdtPreference.key)
+        let input = uri + "&uint256=10001"
+        XCTAssertFalse(UsdtPreference.isEnabled())
+        XCTAssertEqual(try resolveUsdtPaymentRoute(input: input, isEnabled: true),
+                       .usdtPayment(recipient: recipient, amount: "0.010001"))
+        let clipboardSupported = await ClipboardPromptValidator.isSupportedURI(input, ownPublicKey: nil, contacts: [])
+        XCTAssertFalse(clipboardSupported)
+    }
+
     func testUnsupportedPaymentLinksCannotOpenTheWallet() {
         for input in [
             uri.replacingOccurrences(of: "@42161", with: "@1"),

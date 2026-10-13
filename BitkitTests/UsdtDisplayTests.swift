@@ -14,6 +14,14 @@ final class UsdtDisplayTests: XCTestCase {
         XCTAssertNil(usdtDisplaySats(amount: "999999999999999999999999", rate: rate, now: now))
     }
 
+    func testAmountInputUsesLocaleSeparatorWithoutRoundingTypedPrecision() {
+        for amount in ["0", "0.", "0.000001", "1.230000", "1234567.890000"] {
+            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "en_US")), amount)
+            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "de_DE")), amount.replacingOccurrences(of: ".", with: ","))
+            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "fr_FR")), amount.replacingOccurrences(of: ".", with: ","))
+        }
+    }
+
     func testOverviewAmountsRoundToCentsWithoutHidingSmallBalances() {
         let locale = Locale(identifier: "en_US")
         for (amount, expected): (UInt64, String) in [

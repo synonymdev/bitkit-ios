@@ -724,7 +724,8 @@ struct MainNavView: View {
                 await ClipboardPromptValidator.isSupportedURI(
                     uri,
                     ownPublicKey: pubkyProfile.publicKey,
-                    contacts: contactsManager.contacts
+                    contacts: contactsManager.contacts,
+                    isUsdtEnabled: settings.isUsdtEnabled
                 )
             } else {
                 false

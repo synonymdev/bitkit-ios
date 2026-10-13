@@ -174,6 +174,7 @@ enum PubkyService {
         accountManager: WatchOnlyAccountManager? = nil,
         approvedUsdtAddress: String? = nil,
         usdtEndpoint: (() async throws -> PublicPaykitService.Endpoint)? = nil,
+        isUsdtEnabled: () -> Bool = { Env.isUsdtEnabled && UsdtPreference.isEnabled() },
         ordinaryApproval: @escaping OrdinaryAuthApproval = { authUrl, capabilities, clientID, secretKeyHex in
             try await approveAuth(
                 authUrl: authUrl,
@@ -193,12 +194,22 @@ enum PubkyService {
         }
     ) async throws {
         guard authUrl == request.rawUrl else { throw PubkyServiceError.invalidAuthUrl }
+        if request.bitkitClaim?.requiresUsdtAddress == true, !isUsdtEnabled() {
+            throw PubkyAuthRequestError.invalidPaymentDetails
+        }
         let endpoint: PublicPaykitService.Endpoint?
-        if request.bitkitClaim?.sharesUsdt == true, let approvedUsdtAddress {
+        if request.bitkitClaim?.sharesUsdt == true, isUsdtEnabled(), let approvedUsdtAddress {
             guard let usdtEndpoint else { throw PubkyAuthRequestError.invalidPaymentDetails }
             endpoint = try await usdtEndpoint()
             guard endpoint?.value == approvedUsdtAddress else { throw PubkyAuthRequestError.invalidPaymentDetails }
         } else { endpoint = nil }
+        func approvedEndpoint() throws -> PublicPaykitService.Endpoint? {
+            let currentEndpoint = isUsdtEnabled() ? endpoint : nil
+            if request.bitkitClaim?.requiresUsdtAddress == true, currentEndpoint == nil {
+                throw PubkyAuthRequestError.invalidPaymentDetails
+            }
+            return currentEndpoint
+        }
         if let claim = request.bitkitClaim, claim.includesWatchOnlyAccount {
             let accountManager = accountManager ?? .shared
             let preparedClaim = try await accountManager.prepareUnsignedClaim(
@@ -218,7 +229,7 @@ enum PubkyService {
             }
 
             do {
-                let payload = try claim.unsignedPayload(account: preparedClaim.0, usdtEndpoint: endpoint)
+                let payload = try claim.unsignedPayload(account: preparedClaim.0, usdtEndpoint: approvedEndpoint())
                 try await companionApproval(authUrl, request.clientID, claim, payload, secretKeyHex)
             } catch {
                 if !didDeliverCompanionClaim(error: error) {
@@ -232,7 +243,7 @@ enum PubkyService {
 
             try await accountManager.markSetupActive(attempt: authorizationAttempt)
         } else if let claim = request.bitkitClaim {
-            let payload = try claim.unsignedPayload(account: nil, usdtEndpoint: endpoint)
+            let payload = try claim.unsignedPayload(account: nil, usdtEndpoint: approvedEndpoint())
             try await companionApproval(authUrl, request.clientID, claim, payload, secretKeyHex)
         } else {
             try await ordinaryApproval(authUrl, request.capabilities, request.clientID, secretKeyHex)

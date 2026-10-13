@@ -23,6 +23,7 @@ final class UsdtWalletManager {
         didSet { if oldValue != transfers { Self.backupStateChanged.send() } }
     }
 
+    private var pendingDepositIds: Set<String> = []
     private(set) var historyComplete = false
     private(set) var refreshing = false
     var errorMessage: String?
@@ -43,7 +44,7 @@ final class UsdtWalletManager {
     }
 
     var hasProtectedFunds: Bool {
-        UsdtPreference.protectsFunds(balance: balance, transfers: transfers)
+        UsdtPreference.protectsFunds(balance: balance, transfers: transfers) || !pendingDepositIds.isEmpty
     }
 
     func checkCanDisable() async throws {
@@ -53,7 +54,7 @@ final class UsdtWalletManager {
         let wallet = try await wallet()
         balance = try await wallet.balance()
         transfers = try await wallet.refreshTransfers()
-        guard !hasProtectedFunds else { throw UsdtWalletError.cannotDisable }
+        guard !UsdtPreference.protectsFunds(balance: balance, transfers: transfers) else { throw UsdtWalletError.cannotDisable }
         if depositsConfigured {
             var offset: UInt32 = 0
             repeat {
@@ -68,6 +69,13 @@ final class UsdtWalletManager {
                 offset = next
             } while true
         }
+        guard !hasProtectedFunds else { throw UsdtWalletError.cannotDisable }
+    }
+
+    func recordDepositStatus(id: String, status: String) {
+        guard !wiping else { return }
+        if UsdtPreference.hasPendingDeposit(status) { pendingDepositIds.insert(id) }
+        else { pendingDepositIds.remove(id) }
     }
 
     var networkName: String {
@@ -175,6 +183,7 @@ final class UsdtWalletManager {
         defer { finishOperation() }
         let wallet = try await wallet()
         try await wallet.restoreBackup(snapshot: snapshot)
+        pendingDepositIds.removeAll()
         transfers = try wallet.history()
         historyComplete = false
     }
@@ -289,15 +298,21 @@ final class UsdtWalletManager {
     }
 
     func depositHistory(offset: UInt32) async throws -> UsdtDepositPage {
-        try await withDeposits { client, mnemonic, passphrase in
+        let page = try await withDeposits { client, mnemonic, passphrase in
             try await client.history(offset: offset, mnemonic: mnemonic, passphrase: passphrase)
         }
+        for deposit in page.deposits {
+            recordDepositStatus(id: deposit.id, status: deposit.status)
+        }
+        return page
     }
 
     func depositDetail(id: String, offset: UInt32) async throws -> UsdtDepositDetail {
-        try await withDeposits { client, mnemonic, passphrase in
+        let detail = try await withDeposits { client, mnemonic, passphrase in
             try await client.detail(depositId: id, offset: offset, mnemonic: mnemonic, passphrase: passphrase)
         }
+        recordDepositStatus(id: id, status: detail.order?.status ?? detail.deposit.status)
+        return detail
     }
 
     func refundDeposit(_ deposit: UsdtDeposit, offset: UInt32, address: String) async throws {
@@ -339,6 +354,7 @@ final class UsdtWalletManager {
         address = ""
         receiveUri = ""
         transfers = []
+        pendingDepositIds.removeAll()
         historyComplete = false
         errorMessage = nil
         let directory = storageDirectory

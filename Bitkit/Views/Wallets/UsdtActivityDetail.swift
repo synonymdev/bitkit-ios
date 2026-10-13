@@ -162,7 +162,9 @@ struct UsdtActivityDetail: View {
         }
         SendSectionView(t("usdt__to_address")) { BodySSBText(transfer.recipient).textSelection(.enabled) }
         HStack(alignment: .top, spacing: 16) {
-            UsdtDetailCell(title: t("usdt__sender_network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network")
+            if !transfer.isIncoming {
+                UsdtDetailCell(title: t("usdt__sender_network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network")
+            }
             UsdtDetailCell(title: t("usdt__destination"), value: transfer.destination.label, icon: "usdt-network")
         }
         if let bridge = transfer.orchestra {

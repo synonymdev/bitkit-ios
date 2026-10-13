@@ -1909,7 +1909,7 @@
 "pubky_auth__usdt_intro_title" = "<accent>EARN USDT</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__usdt_intro_description" = "Share your existing USDT address on Arbitrum One to receive earnings directly in Bitkit. The service cannot spend your funds.";
 "pubky_auth__usdt_privacy" = "This is your existing USDT account. The service can see its balance and transaction history, but cannot spend your funds.";
-"pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. You can retry or continue without sharing it.";
+"pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. Please try again.";
 "pubky_auth__shared_usdt" = "Your USDT receiving address was shared.";
 "pubky_auth__shared_bitcoin" = "Your Bitcoin watch-only account was shared.";
 "pubky_auth__shared_both" = "Your Bitcoin watch-only account and USDT receiving address were shared.";
@@ -1938,7 +1938,7 @@
 "usdt__receive_fee" = "Fees";
 "usdt__receive_fees_title" = "Estimated Fees";
 
-"usdt__receive_network_note" = "Regardless of the receiving network, your USDT is credited to your Arbitrum One balance.";
+"usdt__receive_network_note" = "Note: Regardless of the network used to receive, your USDT will be credited as Arbitrum One balance.";
 
 "usdt__receive_network" = "Network: {network}";
 
@@ -1972,3 +1972,5 @@
 "usdt__settings_title" = "USDT (Tether)";
 
 "usdt__camera_permission" = "Allow camera access to scan USDT payment requests and pay more quickly.";
+
+"usdt__disabled" = "USDT is turned off.";

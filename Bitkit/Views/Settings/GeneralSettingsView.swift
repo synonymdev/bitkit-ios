@@ -8,6 +8,8 @@ struct GeneralSettingsView: View {
 
     @Environment(UsdtWalletManager.self) private var usdt
     @State private var isUpdatingUsdt = false
+    @State private var isCheckingUsdt = false
+    @State private var usdtDisableBlocked = false
 
     @Environment(HwWalletManager.self) private var hwWalletManager
 
@@ -147,8 +149,9 @@ struct GeneralSettingsView: View {
                         title: t("usdt__settings_title"),
                         iconName: "usdt-settings",
                         rightIcon: nil,
-                        toggle: Binding(get: { settings.isUsdtEnabled }, set: { enabled in Task { await updateUsdt(enabled) } }),
-                        disabled: isUpdatingUsdt,
+                        toggle: Binding(get: { settings.isUsdtEnabled || usdt.hasProtectedFunds },
+                                        set: { enabled in Task { await updateUsdt(enabled) } }),
+                        disabled: isUpdatingUsdt || isCheckingUsdt || usdt.hasProtectedFunds || usdtDisableBlocked,
                         testIdentifier: "UsdtSettingsToggle"
                     )
                 }
@@ -156,6 +159,17 @@ struct GeneralSettingsView: View {
             .padding(.top, 16)
             .padding(.horizontal, 16)
             .bottomSafeAreaPadding()
+        }
+        .task(id: settings.isUsdtEnabled) {
+            guard settings.isUsdtEnabled else { usdtDisableBlocked = false; return }
+            isCheckingUsdt = true
+            defer { isCheckingUsdt = false }
+            do {
+                try await usdt.checkCanDisable()
+                usdtDisableBlocked = false
+            } catch UsdtWalletError.cannotDisable {
+                usdtDisableBlocked = true
+            } catch {}
         }
         .task {
             ContactPaymentsService.enableAllPaymentOptions()
@@ -179,6 +193,7 @@ struct GeneralSettingsView: View {
             settings.usdtPreference = enabled ? .enabled : .disabled
         } catch is CancellationError {
         } catch {
+            if case UsdtWalletError.cannotDisable = error { usdtDisableBlocked = true }
             app.toast(type: .warning, title: t("usdt__settings_title"), description: t("usdt__disable_unavailable"))
         }
     }
