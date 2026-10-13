@@ -13,7 +13,11 @@ enum UsdtPreference: String {
     }
 
     static func protectsFunds(balance: UInt64?, transfers: [UsdtTransfer]) -> Bool {
-        (balance ?? 0) > 0 || (balance == nil && !transfers.isEmpty) || transfers.contains { transfer in
+        (balance == nil && !transfers.isEmpty) || hasFundsOrPendingTransfers(balance: balance, transfers: transfers)
+    }
+
+    static func hasFundsOrPendingTransfers(balance: UInt64?, transfers: [UsdtTransfer]) -> Bool {
+        (balance ?? 0) > 0 || transfers.contains { transfer in
             switch transfer.status {
             case .pending, .bridging, .bridgeNeedsAttention, .bridgeFailed: true
             case .confirmed, .failed, .replaced, .bridgeRefunded: false

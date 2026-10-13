@@ -97,6 +97,15 @@ struct PubkyAuthApprovalSheet: View {
             self != .authorizing
         }
 
+        mutating func updateUsdtAvailability(isEnabled: Bool, claim: PubkyAuthClaim?, shareUsdt: inout Bool) {
+            if !isEnabled {
+                shareUsdt = false
+                if self == .watchOnlyConsent, claim?.sharesBitcoin != true { self = .authorize }
+            } else if self == .authorize, claim?.requiresUsdtAddress == true {
+                self = .watchOnlyConsent
+            }
+        }
+
         @MainActor
         mutating func approveWatchOnlyConsent() -> Bool {
             guard self == .watchOnlyConsent else { return false }
@@ -114,7 +123,9 @@ struct PubkyAuthApprovalSheet: View {
 
     init(config: PubkyAuthApprovalSheetItem) {
         self.config = config
-        _state = State(initialValue: Self.initialState(for: config.request))
+        let isUsdtEnabled = Env.isUsdtEnabled && UsdtPreference.isEnabled()
+        _state = State(initialValue: Self.initialState(for: config.request, isUsdtEnabled: isUsdtEnabled))
+        _shareUsdt = State(initialValue: config.request.bitkitClaim?.sharesUsdt == true && isUsdtEnabled)
     }
 
     static func initialState(
@@ -172,15 +183,9 @@ struct PubkyAuthApprovalSheet: View {
             }
         }
         .task(id: settings.isUsdtEnabled) {
-            shareUsdt = config.request.bitkitClaim?.sharesUsdt == true && settings.isUsdtEnabled
+            state.updateUsdtAvailability(isEnabled: settings.isUsdtEnabled, claim: config.request.bitkitClaim, shareUsdt: &shareUsdt)
+            if !settings.isUsdtEnabled { usdtAddress = nil }
             await loadUsdtAddress()
-        }
-        .onChange(of: settings.isUsdtEnabled) { _, enabled in
-            if !enabled {
-                shareUsdt = false
-                usdtAddress = nil
-                if state == .watchOnlyConsent, config.request.bitkitClaim?.sharesBitcoin != true { state = .authorize }
-            }
         }
         .interactiveDismissDisabled(!state.canDismiss)
         .fullScreenCover(isPresented: $isShowingAuthCheck) {

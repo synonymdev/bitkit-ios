@@ -80,6 +80,7 @@ final class PaykitUsdtPaymentService {
     private var restoreGeneration = 0
     private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = []
     private var unsubmittedAttempts: [Attempt] = []
+    private var boundRequestIds: Set<PaykitPaymentRequest.ID>?
 
     private nonisolated(unsafe) static let stateChanged = PassthroughSubject<Void, Never>()
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
@@ -93,6 +94,7 @@ final class PaykitUsdtPaymentService {
     }
 
     func restoreBackup(_ backup: PaykitUsdtStateBackup) throws {
+        boundRequestIds = nil
         restoreGeneration &+= 1
         unsubmittedAttempts = []
         resumableRequests = []
@@ -166,6 +168,7 @@ final class PaykitUsdtPaymentService {
     }
 
     private func save(_ state: State) throws {
+        boundRequestIds = nil
         try Keychain.upsert(key: .paykitUsdtPayments, data: JSONEncoder().encode(state))
         publish(state)
         Self.stateChanged.send()
@@ -175,11 +178,15 @@ final class PaykitUsdtPaymentService {
         attempts = state.attempts.filter { $0.wallet == activeWallet && $0.identity == activeIdentity }
         receipts = state.receipts.filter { $0.wallet == activeWallet && $0.identity == activeIdentity }
         unsubmittedAttempts.removeAll { !attempts.contains($0) }
+        boundRequestIds = Set(state.attempts.filter { !unsubmittedAttempts.contains($0) }.compactMap(\.requestId))
     }
 
     func hasBinding(for requestId: PaykitPaymentRequest.ID) -> Bool {
-        guard let state = try? load() else { return true }
-        return state.attempts.contains { $0.requestId == requestId && !unsubmittedAttempts.contains($0) }
+        if boundRequestIds == nil {
+            guard let state = try? load() else { return true }
+            publish(state)
+        }
+        return boundRequestIds?.contains(requestId) ?? true
     }
 
     func paymentProtection(identity: String) throws
@@ -313,6 +320,7 @@ final class PaykitUsdtPaymentService {
 
     func reconcile(wallet: UsdtWalletManager) async {
         guard wallet.isConfigured else {
+            boundRequestIds = nil
             unsubmittedAttempts = []
             resumableRequests = []
             return
@@ -343,6 +351,7 @@ final class PaykitUsdtPaymentService {
         let generation = restoreGeneration
         reconciling = true
         defer { reconciling = false }
+        boundRequestIds = nil
         unsubmittedAttempts = []
         resumableRequests = []
         do {
@@ -401,9 +410,10 @@ final class PaykitUsdtPaymentService {
                 }
             }
             guard restoreGeneration == generation, activeWallet == owner, activeIdentity == identity else { return }
-            let currentAttempts = try load().attempts
-            resumableRequests = Set(resumable.filter { currentAttempts.contains($0) }.compactMap(\.requestId))
-            unsubmittedAttempts = unsubmitted.filter { currentAttempts.contains($0) }
+            let currentState = try load()
+            resumableRequests = Set(resumable.filter { currentState.attempts.contains($0) }.compactMap(\.requestId))
+            unsubmittedAttempts = unsubmitted.filter { currentState.attempts.contains($0) }
+            publish(currentState)
             try Task.checkCancellation()
             for record in try await paymentRequests() where record.localRole == .payee {
                 for submission in record.paymentProofs
@@ -440,12 +450,14 @@ final class PaykitUsdtPaymentService {
                         let receivedAt = Date(timeIntervalSince1970: TimeInterval(payment.timestamp))
                         let terms = try request.payment(using: .usdtArbitrum, at: receivedAt, quoteId: submission.conversionQuoteId)
                         let received = PaykitAmount(asset: .usdt, atomic: payment.amount)
+                        let receipt = Receipt(wallet: owner, identity: identity, requestId: request.id,
+                                              paymentId: payment.paymentId, proofEventId: submission.eventId, verified: true,
+                                              transferId: payment.transferId, amount: received,
+                                              receivedAt: receivedAt, underpaid: received.atomic < terms.amount.atomic,
+                                              afterExpiry: !terms.isValid(at: receivedAt))
+                        guard !current.receipts.contains(receipt) else { continue }
                         current.receipts.removeAll { $0.wallet == owner && $0.identity == identity && $0.paymentId == payment.paymentId }
-                        current.receipts.append(Receipt(wallet: owner, identity: identity, requestId: request.id,
-                                                        paymentId: payment.paymentId, proofEventId: submission.eventId, verified: true,
-                                                        transferId: payment.transferId, amount: received,
-                                                        receivedAt: receivedAt, underpaid: received.atomic < terms.amount.atomic,
-                                                        afterExpiry: !terms.isValid(at: receivedAt)))
+                        current.receipts.append(receipt)
                         try save(current)
                     } catch let error as UsdtError {
                         if case .InvalidPaymentProof = error {

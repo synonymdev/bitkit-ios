@@ -47,6 +47,10 @@ final class UsdtWalletManager {
         UsdtPreference.protectsFunds(balance: balance, transfers: transfers) || !pendingDepositIds.isEmpty
     }
 
+    var hasFundsOrPendingTransfers: Bool {
+        UsdtPreference.hasFundsOrPendingTransfers(balance: balance, transfers: transfers) || !pendingDepositIds.isEmpty
+    }
+
     func checkCanDisable() async throws {
         try beginOperation()
         defer { finishOperation() }

@@ -659,8 +659,8 @@ struct AppScene: View {
 
     private var appEventContent: some View {
         paykitEventContent
-            .onChange(of: wallet.usdtWallet.hasProtectedFunds, initial: true) { _, hasProtectedFunds in
-                settings.protectUsdtFunds(hasProtectedFunds)
+            .onChange(of: wallet.usdtWallet.hasFundsOrPendingTransfers, initial: true) { _, hasFundsOrPendingTransfers in
+                settings.protectUsdtFunds(hasFundsOrPendingTransfers)
             }
             .onChange(of: settings.usdtPreference) { _, _ in
                 PublicPaykitService.setCleanupPending(true)

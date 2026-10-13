@@ -131,6 +131,17 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
             let request = try PubkyAuthRequest.parse(url: url)
             XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request, isUsdtEnabled: false), disabledState, claim)
             XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request, isUsdtEnabled: true), .watchOnlyConsent, claim)
+            var state = disabledState
+            var shareUsdt = false
+            state.updateUsdtAvailability(isEnabled: true, claim: request.bitkitClaim, shareUsdt: &shareUsdt)
+            XCTAssertFalse(shareUsdt, "Enabling USDT must not opt into sharing its address")
+            XCTAssertEqual(state, request.bitkitClaim?.requiresUsdtAddress == true ? .watchOnlyConsent : disabledState, claim)
+            shareUsdt = true
+            state.updateUsdtAvailability(isEnabled: false, claim: request.bitkitClaim, shareUsdt: &shareUsdt)
+            XCTAssertFalse(shareUsdt)
+            XCTAssertEqual(state, disabledState, claim)
+            state.updateUsdtAvailability(isEnabled: true, claim: request.bitkitClaim, shareUsdt: &shareUsdt)
+            XCTAssertFalse(shareUsdt, "Reloading the address must preserve an opt-out")
         }
     }
 

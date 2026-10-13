@@ -8606,7 +8606,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let service = PaykitUsdtPaymentService()
             try service.restoreBackup(PaykitUsdtStateBackup(attempts: attempts.map(PaykitUsdtStateBackup.Attempt.init), receipts: []))
             var verified = 0
-            for _ in 0 ... 1 {
+            var backupChanges = 0
+            let observation = PaykitUsdtPaymentService.walletBackupDataChangedPublisher.sink { backupChanges += 1 }
+            defer { observation.cancel() }
+            for iteration in 0 ... 1 {
+                backupChanges = 0
                 await service.reconcile(
                     context: { ("wallet", identity) },
                     storedTransfer: { id in self.usdtTransfer(id, status: .confirmed) },
@@ -8626,6 +8630,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertTrue(try XCTUnwrap(service.attempts.first { $0.quoteId == "quote-1" }).proofQueued)
                 XCTAssertEqual(service.receipts.count, 1)
                 XCTAssertTrue(try XCTUnwrap(service.receipts.first).satisfied)
+                if iteration == 1 { XCTAssertEqual(backupChanges, 0) }
             }
             XCTAssertEqual(verified, 2)
         }

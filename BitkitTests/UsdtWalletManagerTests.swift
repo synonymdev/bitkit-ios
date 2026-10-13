@@ -23,18 +23,32 @@ final class UsdtWalletManagerTests: XCTestCase {
         defer { settings.usdtPreference = original }
         for preference: UsdtPreference in [.undecided, .disabled] {
             settings.usdtPreference = preference
-            settings.protectUsdtFunds(UsdtPreference.protectsFunds(balance: 0, transfers: []))
+            settings.protectUsdtFunds(UsdtPreference.hasFundsOrPendingTransfers(balance: 0, transfers: []))
             XCTAssertEqual(settings.usdtPreference, preference)
             for (balance, transfers): (UInt64, [UsdtTransfer]) in [
                 (1, []), (0, [transfer("pending", status: .pending)]), (0, [transfer("bridge", status: .bridging)]),
             ] {
                 settings.usdtPreference = preference
-                settings.protectUsdtFunds(UsdtPreference.protectsFunds(balance: balance, transfers: transfers))
+                settings.protectUsdtFunds(UsdtPreference.hasFundsOrPendingTransfers(balance: balance, transfers: transfers))
                 XCTAssertTrue(settings.isUsdtEnabled)
                 XCTAssertTrue(UsdtPreference.isEnabled())
                 settings.protectUsdtFunds(false)
                 XCTAssertTrue(settings.isUsdtEnabled, "Draining funds must not silently turn off an enabled wallet")
             }
+        }
+    }
+
+    func testUnknownBalancePreservesDisabledPreferenceWhileKeepingHistoryVisible() {
+        let settings = SettingsViewModel.shared
+        let original = settings.usdtPreference
+        defer { settings.usdtPreference = original }
+        settings.usdtPreference = .disabled
+        let history = [transfer("completed")]
+        XCTAssertTrue(UsdtPreference.protectsFunds(balance: nil, transfers: history))
+        for balance: UInt64? in [nil, 0] {
+            settings.protectUsdtFunds(UsdtPreference.hasFundsOrPendingTransfers(balance: balance, transfers: history))
+            XCTAssertEqual(settings.usdtPreference, .disabled)
+            XCTAssertFalse(PublicPaykitService.isUsdtPaymentOptionEnabled())
         }
     }
 
@@ -47,7 +61,7 @@ final class UsdtWalletManagerTests: XCTestCase {
         manager.recordDepositStatus(id: "waiting", status: "awaiting_deposit")
         XCTAssertFalse(manager.hasProtectedFunds)
         manager.recordDepositStatus(id: "first", status: "funded")
-        settings.protectUsdtFunds(manager.hasProtectedFunds)
+        settings.protectUsdtFunds(manager.hasFundsOrPendingTransfers)
         XCTAssertTrue(settings.isUsdtEnabled)
         manager.recordDepositStatus(id: "second", status: "refunding")
         manager.recordDepositStatus(id: "first", status: "completed")

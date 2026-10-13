@@ -158,6 +158,12 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         await reconcileUsdt(service)
         XCTAssertFalse(service.hasBinding(for: requestId))
 
+        for context in [("other-wallet", identity), ("wallet", "other-identity")] {
+            await service.reconcile(context: { context }, storedTransfer: { _ in nil }, paymentProof: { _, _ in nil },
+                                    submitProof: { _ in false }, paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+            XCTAssertTrue(service.hasBinding(for: requestId))
+        }
+
         let restarted = PaykitUsdtPaymentService()
         XCTAssertTrue(restarted.hasBinding(for: requestId))
         await reconcileUsdt(restarted)
@@ -178,7 +184,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
-    func testChangedUsdtAttemptsAndUnreadablePersistenceInvalidateReleaseEvidence() async throws {
+    func testReconciliationInvalidatesReleaseEvidenceForChangedOrUnreadablePersistence() async throws {
         let service = PaykitUsdtPaymentService()
         let attempt = unsubmittedUsdtAttempt()
         let requestId = try XCTUnwrap(attempt.requestId)
@@ -196,6 +202,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             await reconcileUsdt(service)
             XCTAssertFalse(service.hasBinding(for: requestId))
             try saveUsdtAttempts([changed])
+            await reconcileUsdt(service) { _ in throw PaykitPaymentStateBackupTestError.restoreFailed }
             XCTAssertTrue(service.hasBinding(for: requestId))
             if changed != replacement {
                 await reconcileUsdt(service)
@@ -205,7 +212,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try saveUsdtAttempts([attempt])
         await reconcileUsdt(service)
         try Keychain.upsert(key: .paykitUsdtPayments, data: Data("unreadable".utf8))
-        XCTAssertTrue(service.hasBinding(for: requestId))
+        XCTAssertTrue(PaykitUsdtPaymentService().hasBinding(for: requestId))
         await reconcileUsdt(service)
         XCTAssertTrue(service.hasBinding(for: requestId))
     }

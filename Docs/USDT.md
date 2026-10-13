@@ -1,6 +1,6 @@
 # USDT configuration
 
-Normal builds use published bitkit-core `0.8.0-rc5`, including its matching native libraries and generated bindings. MAX requires the USDT gateway to allow Core's pinned balance override during gas estimation; it never applies to signing or submission.
+Normal builds use published bitkit-core `0.8.0-rc6`, including its matching native libraries and generated bindings. MAX requires the USDT gateway to allow Core's pinned balance override during gas estimation; it never applies to signing or submission.
 
 USDT uses Arbitrum One regardless of the Bitcoin network setting. Builds use the credential-free Bitkit gateway by default:
 
@@ -29,7 +29,7 @@ USDT starts off. The introductory sheet offers Enable USDT and No Thanks; dismis
 
 When off, USDT is hidden from new payment choices, Paykit offers and authorization details. Combined Bitcoin and USDT authorization continues with Bitcoin and omits the USDT address; a USDT-only authorization is unavailable. Authorization never asks to enable USDT. Automatic clipboard detection ignores USDT addresses and links while retaining Bitcoin and Lightning detection.
 
-Explicitly opening a USDT link or request, or scanning its QR, offers the USDT enable sheet. Enabling resumes the original flow; declining cancels it quietly. Funds or unresolved transfers keep USDT enabled, with the Settings switch on and greyed out. Disabling requires a fresh empty balance and no unresolved transfers or deposits. Tracking, history and encrypted backups continue, including after restore. Previously shared addresses cannot be revoked.
+Explicitly opening a USDT link or request, or scanning its QR, offers the USDT enable sheet. Enabling resumes the original flow; declining cancels it quietly. Funds or unresolved transfers keep USDT enabled, with the Settings switch on and greyed out. Disabling requires a fresh empty balance and no unresolved transfers or deposits. Tracking, history and encrypted backups continue, including after restore. Previously shared addresses cannot be revoked. If a declined wallet has settled history but its balance is unavailable, history remains visible without re-enabling receiving options.
 
 ## Paykit
 

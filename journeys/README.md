@@ -212,6 +212,10 @@ authenticated Contacts list. It has not yet been ported to Android.
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
 
+`usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
+Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
+A submitted payment must return to the wallet without reopening the paid draft on either platform.
+
 `coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
 name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.
 The iOS picker has no accessibility identifiers, so assert its visible "Coin Selection" title.
