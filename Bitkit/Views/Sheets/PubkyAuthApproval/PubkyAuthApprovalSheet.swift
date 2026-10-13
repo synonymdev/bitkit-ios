@@ -206,27 +206,28 @@ struct PubkyAuthApprovalSheet: View {
             SheetHeader(title: t("pubky_auth__watch_only_intro_nav_title"),
                         topPadding: 28, bottomPadding: 0, dragIndicatorTopPadding: 8)
 
-            GeometryReader { geometry in
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 32) {
+                    watchOnlyConsentArtwork
+                        .frame(minHeight: 0, idealHeight: 0, maxHeight: 256)
+                        .layoutPriority(-1)
+
+                    watchOnlyConsentIntroduction
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+                }
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 32) {
-                        Image("coin-stack-4")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 328, height: 328)
-                            .frame(width: 256, height: 256)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityHidden(true)
+                        watchOnlyConsentArtwork
+                            .frame(height: 256)
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            DisplayText(t("pubky_auth__watch_only_intro_title"), accentColor: .blueAccent)
-                            BodyMText(watchOnlyConsentDescription, kerning: 0, lineHeight: 22)
-                                .accessibilityIdentifier("PubkyAuthWatchOnlyConsentDescription")
-                        }
+                        watchOnlyConsentIntroduction
                     }
-                    .frame(minHeight: geometry.size.height, alignment: .bottom)
                 }
                 .scrollIndicators(.hidden)
             }
+            .frame(maxHeight: .infinity, alignment: .bottom)
 
             if config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled {
                 usdtSharingConsent
@@ -247,6 +248,23 @@ struct PubkyAuthApprovalSheet: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("PubkyAuthWatchOnlyConsent")
+    }
+
+    private var watchOnlyConsentArtwork: some View {
+        Image("coin-stack-4")
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(328.0 / 256.0)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+    }
+
+    private var watchOnlyConsentIntroduction: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DisplayText(t("pubky_auth__watch_only_intro_title"), accentColor: .blueAccent)
+            BodyMText(watchOnlyConsentDescription, kerning: 0, lineHeight: 22)
+                .accessibilityIdentifier("PubkyAuthWatchOnlyConsentDescription")
+        }
     }
 
     private var receivingDetailsUnavailable: Bool {
