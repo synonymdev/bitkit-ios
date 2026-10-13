@@ -426,21 +426,23 @@ struct PaymentRequestDetailsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request"), showBackButton: true)
+            SheetHeader(title: t("wallet__payment_request"), showBackButton: true,
+                        topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 32) {
                     amount
                     noteInput
                     recipient
-                    acceptedMethods
                     expirationPicker
+                    acceptedMethods
                 }
+                .padding(.bottom, 24)
             }
 
             CustomButton(
                 title: t("wallet__payment_request_send_request"),
-                icon: Image("airplane").resizable().frame(width: 16, height: 16),
+                icon: Image("paper-plane-tilt").resizable().frame(width: 16, height: 16),
                 isDisabled: (restrictedEndpoints ?? enabledEndpoints).isEmpty,
                 isLoading: paymentRequests.isCreatingRequest
             ) {
@@ -450,7 +452,8 @@ struct PaymentRequestDetailsView: View {
             .accessibilityIdentifier("PaymentRequestSend")
         }
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .navigationBarHidden(true)
         .interactiveDismissDisabled(paymentRequests.isCreatingRequest)
         .task {
@@ -468,15 +471,20 @@ struct PaymentRequestDetailsView: View {
     }
 
     private var amount: some View {
-        Button { onEditAmount(currentDraft) } label: {
-            HStack(spacing: 8) {
-                if initialDraft.amount.asset == .btc {
-                    MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
-                              symbol: true, color: .textPrimary, symbolColor: .textSecondary)
-                } else { NumberPadAmountText(value: initialDraft.amount.value, symbol: "$") }
-                Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
+        VStack(alignment: .leading, spacing: 16) {
+            CaptionMText(t("wallet__payment_request_amount"), textColor: .white64)
+            Button { onEditAmount(currentDraft) } label: {
+                HStack(spacing: 16) {
+                    if initialDraft.amount.asset == .btc {
+                        MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
+                                  symbol: true, color: .textPrimary, symbolColor: .textSecondary, fillsWidth: false)
+                    } else { NumberPadAmountText(value: initialDraft.amount.value, symbol: "$") }
+                    Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
+                }
             }
-        }.buttonStyle(.plain)
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("PaymentRequestEditAmount")
+        }
     }
 
     private var enabledEndpoints: [String] {
@@ -485,8 +493,7 @@ struct PaymentRequestDetailsView: View {
 
     private var acceptedMethodGroups: [[PublicPaykitService.MethodId]] {
         let groups: [[PublicPaykitService.MethodId]] = [
-            PublicPaykitService.MethodId.onchainPreferenceOrder,
-            [.bitcoinLightningBolt11, .bitcoinLightningLnurl],
+            PublicPaykitService.MethodId.onchainPreferenceOrder + [.bitcoinLightningBolt11, .bitcoinLightningLnurl],
             [.usdtArbitrum],
         ]
         return groups.map { $0.filter { enabledEndpoints.contains($0.rawValue) } }.filter { !$0.isEmpty }
@@ -495,22 +502,22 @@ struct PaymentRequestDetailsView: View {
     private var acceptedMethods: some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
-            HStack {
+            HStack(spacing: 8) {
                 ForEach(acceptedMethodGroups, id: \.self) { methods in
                     let endpoints = methods.map(\.rawValue)
                     let usdt = methods.contains(.usdtArbitrum)
-                    let lightning = methods.contains(.bitcoinLightningBolt11) || methods.contains(.bitcoinLightningLnurl)
                     let selected = restrictedEndpoints ?? enabledEndpoints
-                    let isSelected = endpoints.allSatisfy(selected.contains)
-                    NumberPadActionButton(text: usdt ? "USDT" : t(lightning ? "lightning__spending" : "lightning__savings").uppercased(),
-                                          color: usdt ? .usdtAccent : lightning ? .purpleAccent : .brandAccent,
-                                          variant: isSelected ? .primary : .secondary)
+                    let isSelected = endpoints.contains(where: selected.contains)
+                    NumberPadActionButton(text: usdt ? "USDT" : "BITCOIN",
+                                          color: isSelected ? (usdt ? .usdtAccent : .brandAccent) : .white32,
+                                          variant: .secondary)
                     {
                         restrictedEndpoints = isSelected
                             ? selected.filter { !endpoints.contains($0) }
                             : selected + endpoints.filter { !selected.contains($0) }
                     }
-                    .accessibilityIdentifier("PaymentRequestAccept-\(usdt ? "usdt" : lightning ? "spending" : "savings")")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .accessibilityIdentifier("PaymentRequestAccept-\(usdt ? "usdt" : "bitcoin")")
                 }
             }
         }
@@ -523,7 +530,10 @@ struct PaymentRequestDetailsView: View {
                 text: $note,
                 placeholder: t("wallet__receive_note_placeholder"),
                 testIdentifier: "PaymentRequestNote",
-                isFocused: $isNoteFocused
+                isFocused: $isNoteFocused,
+                minHeight: 20,
+                maxHeight: 20,
+                backgroundColor: .white10
             )
         }
     }

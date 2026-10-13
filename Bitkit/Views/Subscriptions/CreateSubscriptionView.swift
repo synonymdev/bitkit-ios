@@ -3,6 +3,8 @@ import SwiftUI
 
 struct CreateSubscriptionView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     @Binding var draft: PaykitSubscriptionDraft
@@ -23,19 +25,21 @@ struct CreateSubscriptionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("subscriptions__create_subscription"))
+            SheetHeader(title: t("subscriptions__create_subscription"), topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
 
             ScrollViewReader { proxy in
                 GeometryReader { geometry in
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 24) {
                             amount
-                            SubscriptionPaymentMethods(title: t("wallet__payment_request_accepted_methods"), endpoints: acceptedEndpoints)
                             frequency
+                            acceptedPayments
                             name
-                            description
-                                .id("SubscriptionDescription")
-                            customIcon
+                            HStack(alignment: .top, spacing: 16) {
+                                description
+                                customIcon
+                            }
+                            .id("SubscriptionDescription")
                         }
                         .padding(.bottom, 24)
                     }
@@ -61,7 +65,8 @@ struct CreateSubscriptionView: View {
             .accessibilityIdentifier("SubscriptionChooseRecipient")
         }
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .navigationBarHidden(true)
         .onChange(of: draft.name) { _, value in
             if value.count > 256 {
@@ -81,7 +86,7 @@ struct CreateSubscriptionView: View {
     }
 
     private var amount: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
@@ -113,6 +118,33 @@ struct CreateSubscriptionView: View {
             requested: draft.amount.asset,
             available: PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
         )
+    }
+
+    private var acceptedPayments: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("subscriptions__accepted_payments"), textColor: .white64)
+            HStack(spacing: 8) {
+                ForEach(settings.isUsdtEnabled ? [PaykitAsset.btc, .usd] : [.btc], id: \.self) { asset in
+                    let isSelected = draft.amount.asset == asset
+                    NumberPadActionButton(
+                        text: asset == .btc ? "BITCOIN" : "USDT",
+                        color: isSelected ? (asset == .btc ? .brandAccent : .usdtAccent) : .white32,
+                        variant: .secondary
+                    ) {
+                        guard !isSelected else { return }
+                        do {
+                            draft.amount = draft.amount.atomic == 0
+                                ? PaykitAmount(asset: asset, atomic: 0)
+                                : try draft.amount.converted(to: asset, rate: currency.paykitRate, at: Date())
+                        } catch {
+                            app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
+                        }
+                    }
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .accessibilityIdentifier("SubscriptionAccept-\(asset == .btc ? "bitcoin" : "usdt")")
+                }
+            }
+        }
     }
 
     private var frequency: some View {
@@ -151,8 +183,8 @@ struct CreateSubscriptionView: View {
                 placeholder: t("subscriptions__description_placeholder"),
                 testIdentifier: "SubscriptionDescription",
                 isFocused: $isDescriptionFocused,
-                minHeight: 60,
-                maxHeight: 60,
+                minHeight: 80,
+                maxHeight: 80,
                 backgroundColor: .white10
             )
         }
@@ -162,27 +194,23 @@ struct CreateSubscriptionView: View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64)
             PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                HStack(spacing: 16) {
-                    Group {
-                        if let iconImage {
-                            Image(uiImage: iconImage)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            SubscriptionDefaultIcon(size: 40)
-                        }
+                Group {
+                    if let iconImage {
+                        Image(uiImage: iconImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        SubscriptionDefaultIcon(size: 40)
                     }
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    CaptionBText(t("subscriptions__custom_icon_description"), textColor: .white64)
-                    Spacer()
                 }
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
                 .padding(16)
                 .background(Color.white10)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .disabled(isLoadingIcon)
+            .accessibilityLabel(t("subscriptions__custom_icon_description"))
             .accessibilityIdentifier("SubscriptionIconPicker")
         }
     }

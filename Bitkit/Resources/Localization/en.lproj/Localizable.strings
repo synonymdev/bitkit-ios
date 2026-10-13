@@ -732,7 +732,7 @@
 "pubky_auth__paykit_access_description" = "This service will manage your private Paykit data and send Paykit messages for you. Your pubky secret and wallet keys stay private.";
 "pubky_auth__watch_only_intro_relay" = "Your authorization will be delivered to <accent>{relay}</accent>.";
 "pubky_auth__watch_only_intro_nav_title" = "Earn";
-"pubky_auth__watch_only_intro_title" = "<accent>EARN BITCOIN</accent>\nFROM YOUR\nCONTENT";
+"pubky_auth__watch_only_intro_title" = "<accent>EARN MONEY</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit could not create a valid account xpub.";
 "pubky_auth__trust_warning" = "Make sure you trust the service, browser, and device before authorizing with your pubky.";
 "pubky_auth__authorization_relay" = "AUTHORIZATION RELAY";
@@ -1893,7 +1893,7 @@
 "usdt__deposit_amount_out_of_range" = "Amount outside deposit limits.";
 "usdt__deposit_not_found" = "Deposit details changed. Refresh the deposit history and select it again.";
 
-"wallet__payment_request_accepted_methods" = "Accept payment with";
+"wallet__payment_request_accepted_methods" = "Accept payment in";
 "wallet__payment_request_rate_unavailable" = "Payment rates are unavailable or expired. Try again when online.";
 
 "wallet__payment_request_payment_verified" = "Payment verified";
@@ -1902,17 +1902,12 @@
 "wallet__payment_request_underpaid" = "Received · Underpaid";
 "wallet__payment_request_after_expiry" = "Received · After expiry";
 
-"pubky_auth__bitcoin_account" = "Separate watch-only account · xpub";
-"pubky_auth__payment_details" = "PAYMENT DETAILS TO SHARE";
-"pubky_auth__payment_details_intro_title" = "<accent>EARN BITCOIN\nAND USDT</accent>\nFROM YOUR CONTENT";
-"pubky_auth__payment_details_intro_description" = "Share a separate Bitcoin account to receive earnings. You can also share your existing USDT address. Sharing these details does not let the service spend your funds.";
-"pubky_auth__usdt_intro_title" = "<accent>EARN USDT</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__usdt_intro_description" = "Share your existing USDT address on Arbitrum One to receive earnings directly in Bitkit. The service cannot spend your funds.";
 "pubky_auth__usdt_privacy" = "This is your existing USDT account. The service can see its balance and transaction history, but cannot spend your funds.";
 "pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. Please try again.";
-"pubky_auth__shared_usdt" = "Your USDT receiving address was shared.";
-"pubky_auth__shared_bitcoin" = "Your Bitcoin watch-only account was shared.";
-"pubky_auth__shared_both" = "Your Bitcoin watch-only account and USDT receiving address were shared.";
+"pubky_auth__shared_usdt" = "Also, you shared a USDT address with Paykit.";
+"pubky_auth__shared_bitcoin" = "Also, you shared a watch-only Bitcoin account with Paykit.";
+"pubky_auth__shared_both" = "Also, you shared a watch-only Bitcoin account and USDT address with Paykit.";
 "usdt__deposit_batch" = "Converted batch";
 "usdt__deposit_refund_address" = "Refund address on the source network";
 "usdt__deposit_refund_note" = "Confirm a refund address with the sender. Do not assume an exchange deposit can be returned to its sending address. Refund fees may apply. TRON refunds can require Orchestra operator assistance.";
@@ -1930,7 +1925,7 @@
 "usdt__bridge_reference" = "Bridge reference";
 "usdt__copy_details" = "Copy Details";
 
-"pubky_auth__share_usdt_optional" = "Share USDT address (optional)";
+"pubky_auth__share_usdt_optional" = "Also share my USDT address";
 
 "usdt__receive_network_title" = "USDT Network";
 
@@ -1974,3 +1969,5 @@
 "usdt__camera_permission" = "Allow camera access to scan USDT payment requests and pay more quickly.";
 
 "usdt__disabled" = "USDT is turned off.";
+
+"subscriptions__accepted_payments" = "Accepted payments";
