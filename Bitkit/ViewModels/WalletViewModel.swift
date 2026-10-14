@@ -243,7 +243,7 @@ class WalletViewModel: ObservableObject {
                             routeFeeMsat: routeFeeMsat
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
-                        self.bolt11 = ""
+                        self.invalidateReceiveInvoice()
                         if self.isPaykitUIActive {
                             self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
                         }
@@ -252,19 +252,19 @@ class WalletViewModel: ObservableObject {
                                 await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
                             }
                             await self.refreshAndSyncState()
-                            try? await self.refreshBip21()
+                            try? await self.refreshBip21(reportsError: false)
                         }
                     case .channelReady:
-                        self.bolt11 = ""
+                        self.invalidateReceiveInvoice()
                         Task {
                             await self.refreshAndSyncState()
-                            try? await self.refreshBip21()
+                            try? await self.refreshBip21(reportsError: false)
                             await self.reconnectTrustedPeers()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
                             try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
                             guard !Task.isCancelled else { return }
                             await self.refreshAndSyncState()
-                            try? await self.refreshBip21()
+                            try? await self.refreshBip21(reportsError: false)
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
                                 reason: "channel-ready delayed refresh",
                                 forceRefreshLightning: true
@@ -272,11 +272,11 @@ class WalletViewModel: ObservableObject {
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
-                        self.bolt11 = ""
+                        self.invalidateReceiveInvoice()
                         Task {
                             await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
-                            try? await self.refreshBip21()
+                            try? await self.refreshBip21(reportsError: false)
                             if self.isPaykitUIActive {
                                 await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
                             }
@@ -1446,7 +1446,7 @@ class WalletViewModel: ObservableObject {
 
     private func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         await refreshAndSyncState()
-        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false)
+        try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false, reportsError: false)
 
         guard isPaykitUIActive else { return }
 
@@ -1510,7 +1510,7 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true) async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true, reportsError: Bool = true) async throws {
         let refreshID = UUID()
         let wasUpdating = isReceiveInvoiceUpdating
         receiveRefreshID = refreshID
@@ -1552,7 +1552,7 @@ class WalletViewModel: ObservableObject {
             if canCreateReceiveLightningInvoice(amountSats: amountSats) {
                 if forceRefreshBolt11 || wasUpdating || !hasMatchingInputs || cachedInvoice.isEmpty {
                     invoice = try await createInvoice(amountSats: amountSats, note: note)
-                } else if case let .lightning(decoded) = try await decode(invoice: cachedInvoice), !decoded.isExpired {
+                } else if try await isReceiveInvoiceReusable(cachedInvoice) {
                     invoice = cachedInvoice
                 } else {
                     invoice = try await createInvoice(amountSats: amountSats, note: note)
@@ -1570,33 +1570,63 @@ class WalletViewModel: ObservableObject {
 
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
+            guard invoice != cachedInvoice || bolt11 == cachedInvoice else { return }
             let hash = await receiveInvoicePaymentHash(invoice: invoice)
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
             await persistPreActivityMetadata(paymentId: hash ?? address, paymentHash: hash, address: address, tags: tagsToMigrate)
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
+            guard invoice != cachedInvoice || bolt11 == cachedInvoice else { return }
             onchainAddress = address
             bolt11 = invoice
             bip21 = components.string ?? ""
             receiveCommitID = UUID()
+            isReceiveInvoiceUpdating = false
 
             if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
                 do {
-                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+                    try await syncReceivePublicPaykitEndpoints()
                 } catch {
                     Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
                 }
             }
         } catch {
-            if error is CancellationError {
-                if receiveRefreshID == refreshID { receiveInvoiceError = error.localizedDescription }
-                throw error
+            guard receiveRefreshID == refreshID else {
+                if error is CancellationError { throw error }
+                return
             }
-            guard receiveRefreshID == refreshID else { return }
+            if !reportsError, hasMatchingInputs, bolt11 == cachedInvoice, hasCoherentReceiveInvoice,
+               invoiceAmountSats == (amountSats ?? 0), invoiceNote == note
+            {
+                let reusable = await (try? isReceiveInvoiceReusable(cachedInvoice)) == true
+                guard receiveRefreshID == refreshID else {
+                    if error is CancellationError { throw error }
+                    return
+                }
+                if reusable, bolt11 == cachedInvoice, hasCoherentReceiveInvoice,
+                   invoiceAmountSats == (amountSats ?? 0), invoiceNote == note
+                { throw error }
+            }
             receiveInvoiceError = error.localizedDescription
             throw error
         }
+    }
+
+    func invalidateReceiveInvoice() {
+        receiveRefreshID = UUID()
+        isReceiveInvoiceUpdating = false
+        receiveInvoiceError = nil
+        bolt11 = ""
+    }
+
+    func isReceiveInvoiceReusable(_ invoice: String) async throws -> Bool {
+        guard case let .lightning(decoded) = try await decode(invoice: invoice) else { return false }
+        return !decoded.isExpired
+    }
+
+    func syncReceivePublicPaykitEndpoints() async throws {
+        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
     }
 
     func receiveInvoiceTags(paymentId: String, searchByAddress: Bool = false) async -> [String]? {
@@ -1785,7 +1815,7 @@ class WalletViewModel: ObservableObject {
         channelCount = 0
 
         onchainAddress = ""
-        bolt11 = ""
+        invalidateReceiveInvoice()
         bip21 = ""
         clearPublicPaykitBolt11()
 

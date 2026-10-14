@@ -7,7 +7,10 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        stored = ["bolt11", "bip21", "onchainAddress", PaykitFeatureFlags.uiEnabledKey].map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        stored = ["bolt11", "bip21", "onchainAddress", PublicPaykitService.publishingEnabledKey, PaykitFeatureFlags.uiEnabledKey].map { (
+            $0,
+            UserDefaults.standard.object(forKey: $0)
+        ) }
         for (key, _) in stored {
             UserDefaults.standard.removeObject(forKey: key)
         }
@@ -256,6 +259,138 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         return wallet
     }
 
+    func testPaymentReceivedDuringRevalidationDoesNotRecommitPaidInvoice() async throws {
+        let wallet = GatedReceiveWallet()
+        seedReusableInvoice(wallet)
+        wallet.reusableInvoice = true
+        wallet.gateFirstAddress = true
+        let refresh = Task { try await wallet.refreshBip21(syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.olderAddressStarted], timeout: 5)
+        wallet.invalidateReceiveInvoice()
+        wallet.releaseOlderAddress()
+        try await refresh.value
+        XCTAssertNotEqual(wallet.bolt11, "ln-paid")
+        try await wallet.refreshBip21(syncPublicPaykit: false)
+        XCTAssertNotEqual(wallet.bolt11, "ln-paid")
+    }
+
+    func testPublicEndpointSyncDoesNotKeepCommittedInvoiceLoading() async throws {
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let wallet = GatedReceiveWallet()
+        wallet.invoiceAmountSats = 2000
+        wallet.gateEndpointSync = true
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true) }
+        await fulfillment(of: [wallet.endpointSyncStarted], timeout: 5)
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+        wallet.releaseEndpointSync()
+        try await refresh.value
+    }
+
+    func testFailedBackgroundForcedRefreshKeepsValidQr() async throws {
+        let wallet = GatedReceiveWallet()
+        seedReusableInvoice(wallet)
+        wallet.reusableInvoice = true
+        wallet.failNextInvoice = true
+        try? await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false, reportsError: false)
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+        XCTAssertNil(wallet.receiveInvoiceError)
+    }
+
+    func testInvalidationDuringNewInvoiceCreationStopsPublication() async throws {
+        let wallet = GatedReceiveWallet()
+        wallet.invoiceAmountSats = 1000
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.olderStarted], timeout: 5)
+        wallet.invalidateReceiveInvoice()
+        wallet.releaseOlderInvoice()
+        try await refresh.value
+        XCTAssertTrue(wallet.bolt11.isEmpty)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+        XCTAssertNil(wallet.receiveInvoiceError)
+    }
+
+    func testInvalidationDuringMetadataSaveStopsPublication() async throws {
+        let wallet = taggedReceiveWallet()
+        wallet.gateFirstHash = false
+        wallet.gateFirstWrite = true
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.firstWriteStarted], timeout: 5)
+        wallet.invalidateReceiveInvoice()
+        wallet.releaseFirstWrite()
+        try await refresh.value
+        XCTAssertTrue(wallet.bolt11.isEmpty)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+    }
+
+    func testDirectInvoiceClearDuringCachedRevalidationDoesNotRepublishIt() async throws {
+        let wallet = GatedReceiveWallet()
+        seedReusableInvoice(wallet)
+        wallet.reusableInvoice = true
+        wallet.gateFirstAddress = true
+        let refresh = Task { try await wallet.refreshBip21(syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.olderAddressStarted], timeout: 5)
+        wallet.bolt11 = ""
+        wallet.releaseOlderAddress()
+        try await refresh.value
+        XCTAssertTrue(wallet.bolt11.isEmpty)
+    }
+
+    func testOlderEndpointSyncCompletionDoesNotClearNewerPendingRefresh() async throws {
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let wallet = GatedReceiveWallet()
+        wallet.invoiceAmountSats = 2000
+        wallet.gateEndpointSync = true
+        let older = Task { try await wallet.refreshBip21(forceRefreshBolt11: true) }
+        await fulfillment(of: [wallet.endpointSyncStarted], timeout: 5)
+        wallet.invoiceAmountSats = 1000
+        let newer = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.olderStarted], timeout: 5)
+        wallet.releaseEndpointSync()
+        try await older.value
+        XCTAssertTrue(wallet.isReceiveInvoiceUpdating)
+        wallet.releaseOlderInvoice()
+        try await newer.value
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+    }
+
+    func testFailedBackgroundRefreshWithoutCachedInvoiceReportsError() async throws {
+        let wallet = GatedReceiveWallet()
+        wallet.failNextInvoice = true
+        try? await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false, reportsError: false)
+        XCTAssertNotNil(wallet.receiveInvoiceError)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+    }
+
+    func testFailedBackgroundRefreshWithExpiredCachedInvoiceReportsError() async throws {
+        let wallet = GatedReceiveWallet()
+        seedReusableInvoice(wallet)
+        wallet.reusableInvoice = false
+        wallet.failNextInvoice = true
+        try? await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false, reportsError: false)
+        XCTAssertNotNil(wallet.receiveInvoiceError)
+    }
+
+    func testFailedBackgroundRefreshWithChangedInputsReportsError() async throws {
+        let wallet = GatedReceiveWallet()
+        seedReusableInvoice(wallet)
+        wallet.reusableInvoice = true
+        wallet.invoiceNote = "new request"
+        wallet.failNextInvoice = true
+        try? await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false, reportsError: false)
+        XCTAssertNotNil(wallet.receiveInvoiceError)
+    }
+
+    private func seedReusableInvoice(_ wallet: GatedReceiveWallet) {
+        wallet.invoiceAmountSats = 0
+        wallet.invoiceNote = ""
+        wallet.onchainAddress = "bcrt1qreceive"
+        wallet.bolt11 = "ln-paid"
+        wallet.bip21 = "bitcoin:bcrt1qreceive?lightning=ln-paid"
+    }
+
     func testAutoRejectsOnchainOnlyAndMismatchedCachedInvoices() {
         let wallet = GatedReceiveWallet()
         wallet.bolt11 = "ln-newer"
@@ -293,6 +428,30 @@ private final class GatedReceiveWallet: WalletViewModel {
     var addressCallCount = 0
     let olderAddressStarted = XCTestExpectation(description: "Older address suspended")
     private var olderAddress: CheckedContinuation<String, Never>?
+
+    var reusableInvoice: Bool?
+    var gateEndpointSync = false
+    let endpointSyncStarted = XCTestExpectation(description: "Public endpoint sync suspended")
+    private var endpointSync: CheckedContinuation<Void, Never>?
+
+    override func isReceiveInvoiceReusable(_ invoice: String) async throws -> Bool {
+        if let reusableInvoice { return reusableInvoice }
+        return try await super.isReceiveInvoiceReusable(invoice)
+    }
+
+    override func syncReceivePublicPaykitEndpoints() async throws {
+        if gateEndpointSync {
+            await withCheckedContinuation {
+                endpointSync = $0
+                endpointSyncStarted.fulfill()
+            }
+        }
+    }
+
+    func releaseEndpointSync() {
+        endpointSync?.resume()
+        endpointSync = nil
+    }
 
     override func paymentId() async -> String? { nil }
     override func persistPreActivityMetadata(tags: [String] = []) async {}
