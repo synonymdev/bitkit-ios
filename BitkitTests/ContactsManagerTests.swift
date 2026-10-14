@@ -329,6 +329,142 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
+    func testRefreshCoalescesOverlappingReadsAndUpdatesWarmContacts() async throws {
+        let cached = contactRecord(key: contactProfileKey, name: "Saved")
+        let added = contactRecord(key: unresolvedFollowKey, name: "Shop")
+        let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
+        let manager = ContactsManager(observedContactRecords: { owner in
+            _ = try await gate.fetch(owner)
+            return [cached, added]
+        }, fetchRemoteProfile: { _, _ in nil })
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [cached] }, fetchRemoteProfile: { _ in nil })
+        var announcedKeys: [Set<String>] = []
+        let subscription = manager.savedContactsChangedPublisher.sink { announcedKeys.append(Set($0.map(\.publicKey))) }
+        defer { subscription.cancel() }
+        await gate.hold()
+
+        let foreground = Task { try await manager.refreshContacts(for: "owner") }
+        while await gate.heldCount == 0 {
+            await Task.yield()
+        }
+        var checkoutStarted = false
+        let checkout = Task {
+            checkoutStarted = true
+            try await manager.refreshContacts(for: "owner")
+        }
+        while !checkoutStarted {
+            await Task.yield()
+        }
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [cached.publicKey])
+        await gate.release()
+        try await foreground.value
+        try await checkout.value
+
+        let reads = await gate.fetchedKeys
+        XCTAssertEqual(reads, ["owner"])
+        XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), [cached.publicKey, added.publicKey])
+        XCTAssertEqual(announcedKeys, [[cached.publicKey, added.publicKey]])
+        try await manager.refreshContacts(for: "owner")
+        let laterReads = await gate.fetchedKeys
+        XCTAssertEqual(laterReads, ["owner", "owner"])
+        XCTAssertEqual(announcedKeys.count, 1, "Unchanged membership must not restart linking")
+    }
+
+    func testRefreshWaitsForOlderLoadThenReadsFreshContacts() async throws {
+        let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
+        let cached = contactRecord(key: contactProfileKey, name: "Saved")
+        let added = contactRecord(key: unresolvedFollowKey, name: "Shop")
+        let manager = ContactsManager(observedContactRecords: { _ in [cached, added] }, fetchRemoteProfile: { _, _ in nil })
+        await gate.hold()
+        let older = Task {
+            try await manager.loadContacts(for: "owner", fetchContactRecords: {
+                _ = try await gate.fetch("owner")
+                return [cached]
+            }, fetchRemoteProfile: { _ in nil })
+        }
+        while await gate.heldCount == 0 {
+            await Task.yield()
+        }
+        let refresh = Task { try await manager.refreshContacts(for: "owner") }
+        await Task.yield()
+        await gate.release()
+        try await older.value
+        try await refresh.value
+        XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), [cached.publicKey, added.publicKey])
+    }
+
+    func testFailedRefreshPreservesWarmContactsAndCanRetry() async throws {
+        let cached = contactRecord(key: contactProfileKey, name: "Saved")
+        let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
+        let manager = ContactsManager(observedContactRecords: { owner in
+            _ = try await gate.fetch(owner)
+            return []
+        }, fetchRemoteProfile: { _, _ in nil })
+        try await manager.loadContacts(for: "owner", fetchContactRecords: { [cached] }, fetchRemoteProfile: { _ in nil })
+
+        do {
+            try await manager.refreshContacts(for: "unavailable")
+            XCTFail("A failed fresh read must not succeed from cached contacts")
+        } catch {
+            XCTAssertEqual(manager.contacts.map(\.publicKey), [cached.publicKey])
+        }
+        try await manager.refreshContacts(for: "owner")
+        XCTAssertTrue(manager.contacts.isEmpty)
+    }
+
+    func testRefreshCanBeCancelledWhileWaitingForOlderLoad() async throws {
+        let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
+        let manager = ContactsManager(observedContactRecords: { _ in
+            XCTFail("A cancelled waiter must not start another read")
+            return []
+        })
+        await gate.hold()
+        let older = Task {
+            try await manager.loadContacts(for: "owner", fetchContactRecords: {
+                _ = try await gate.fetch("owner")
+                return []
+            }, fetchRemoteProfile: { _ in nil })
+        }
+        while await gate.heldCount == 0 {
+            await Task.yield()
+        }
+        let refresh = Task { try await manager.refreshContacts(for: "owner") }
+        await Task.yield()
+        refresh.cancel()
+        let result = await refresh.result
+        XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertTrue(manager.isLoading, "Cancelling the waiter must not cancel the older read")
+        await gate.release()
+        try await older.value
+    }
+
+    func testCancelledOrResetRefreshCannotPublishAndCanRetry() async throws {
+        for reset in [false, true] {
+            let cached = contactRecord(key: contactProfileKey, name: "Saved")
+            let added = contactRecord(key: unresolvedFollowKey, name: "Shop")
+            let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
+            let manager = ContactsManager(observedContactRecords: { owner in
+                _ = try await gate.fetch(owner)
+                return [added]
+            }, fetchRemoteProfile: { _, _ in nil })
+            try await manager.loadContacts(for: "owner", fetchContactRecords: { [cached] }, fetchRemoteProfile: { _ in nil })
+            await gate.hold()
+            let refresh = Task { try await manager.refreshContacts(for: "owner") }
+            while await gate.heldCount == 0 {
+                await Task.yield()
+            }
+            if reset { manager.reset() } else { refresh.cancel() }
+            await gate.release()
+            let result = await refresh.result
+            XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+            XCTAssertEqual(manager.contacts.map(\.publicKey), reset ? [] : [cached.publicKey])
+            XCTAssertFalse(manager.isLoading)
+
+            try await manager.refreshContacts(for: "owner")
+            XCTAssertEqual(manager.contacts.map(\.publicKey), [added.publicKey])
+        }
+    }
+
     private func unprofiledRecord(key: String, label: String?) -> ContactRecord {
         ContactRecord(
             publicKey: key, label: label, profile: nil,

@@ -370,6 +370,12 @@ struct MainNavView: View {
             guard canHandleDeepLinks, url != nil else { return }
             Task { await handlePendingDeepLink() }
         }
+        .task(id: scenePhase == .active) {
+            guard scenePhase == .active, canHandleDeepLinks,
+                  let url = app.pendingDeepLinkURL, PubkyContactLink.matches(url)
+            else { return }
+            await handlePendingDeepLink()
+        }
         .task(id: wallet.nodeLifecycleState == .running) {
             guard canHandleDeepLinks,
                   wallet.nodeLifecycleState == .running,
@@ -753,11 +759,7 @@ struct MainNavView: View {
                 }
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
-                app.toast(
-                    type: .error,
-                    title: t("other__qr_error_header"),
-                    description: t("other__qr_error_text")
-                )
+                showScanError()
             }
 
             // Clear stored URI after processing
@@ -770,9 +772,12 @@ struct MainNavView: View {
     }
 
     private func handlePendingDeepLink() async {
+        guard !isPreparingPendingContactDeepLink else { return }
+        var contactsReady = true
         await prepareAndRoutePendingDeepLink {
-            await loadContactsForPendingDeepLinkIfNeeded()
+            contactsReady = await loadContactsForPendingDeepLinkIfNeeded()
         } routing: {
+            guard contactsReady else { return }
             await app.routePendingDeepLinkIfReady(
                 canHandleDeepLinks,
                 nodeIsRunning: wallet.nodeLifecycleState == .running,
@@ -783,25 +788,34 @@ struct MainNavView: View {
         }
     }
 
-    private func loadContactsForPendingDeepLinkIfNeeded() async {
+    private func loadContactsForPendingDeepLinkIfNeeded() async -> Bool {
         guard isPaykitUIActive,
               pubkyProfile.isInitialized,
-              !contactsManager.hasLoaded,
               !isPreparingPendingContactDeepLink,
               let url = app.pendingDeepLinkURL,
               let contactPublicKey = PubkyContactLink.publicKey(from: url)
-        else { return }
+        else { return true }
 
+        let session = pubkyProfile.currentSession
         let contactsOwnerPublicKey = pubkyProfile.publicKey ?? contactPublicKey
         isPreparingPendingContactDeepLink = true
         defer { isPreparingPendingContactDeepLink = false }
 
         do {
-            try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
+            if pubkyProfile.publicKey != nil {
+                try await contactsManager.refreshContacts(for: contactsOwnerPublicKey)
+            } else {
+                try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
+            }
+            return pubkyProfile.currentSession == session && !Task.isCancelled
         } catch is CancellationError {
-            return
+            return false
         } catch {
             Logger.warn("Failed to load contacts before routing contact link: \(error)", context: "MainNavView")
+            if app.pendingDeepLinkURL == url {
+                showScanError()
+            }
+            return false
         }
     }
 
@@ -849,12 +863,12 @@ struct MainNavView: View {
             }
         } catch {
             Logger.error(error, context: "Failed to handle deeplink")
-            app.toast(
-                type: .error,
-                title: t("other__qr_error_header"),
-                description: t("other__qr_error_text")
-            )
+            showScanError()
         }
+    }
+
+    private func showScanError() {
+        app.toast(type: .error, title: t("other__qr_error_header"), description: t("other__qr_error_text"))
     }
 
     private func sanitizedDeeplinkDescription(_ url: URL) -> String {

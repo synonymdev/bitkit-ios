@@ -371,6 +371,7 @@ struct AppScene: View {
     @State private var foregroundReturnTracker = ForegroundReturnTracker()
     @State private var paykitLifecycleTask: Task<Void, Never>?
     @State private var isPaykitSceneActive = false
+    @State private var isContactRefreshForeground = false
     @State private var foregroundWalletSync: Task<Void, Never>?
 
     private var nodeRestarter: NodeRestarter {
@@ -505,6 +506,16 @@ struct AppScene: View {
                 await pubkyProfile.retrySessionRestoration()
             }
             .task(id: [scenePhase == .active, network.isConnected]) { await pollIncomingPaykitPaymentRequests() }
+            .task(id: foregroundContactSession) {
+                guard let session = foregroundContactSession else { return }
+                do {
+                    try await contactsManager.refreshContacts(for: session.publicKey)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    Logger.warn("Failed to refresh shared contacts: \(error)", context: "AppScene")
+                }
+            }
             .task(id: publicPaykitForegroundSession) {
                 guard let session = publicPaykitForegroundSession else { return }
                 await foregroundWalletSync?.value
@@ -1214,6 +1225,7 @@ struct AppScene: View {
 
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         isPaykitSceneActive = newPhase == .active
+        if newPhase != .inactive { isContactRefreshForeground = newPhase == .active }
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
         let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
@@ -1270,6 +1282,13 @@ struct AppScene: View {
                 }
             }
         }
+    }
+
+    private var foregroundContactSession: PubkyProfileManager.SignedInSession? {
+        guard isContactRefreshForeground, network.isConnected, PaykitFeatureFlags.isUIEnabled,
+              wallet.walletExists == true, pubkyProfile.authState == .authenticated
+        else { return nil }
+        return pubkyProfile.currentSession
     }
 
     private var pendingPaykitProofRefresh: PaykitPaymentProofRefreshState.Request? {

@@ -131,6 +131,7 @@ class ContactsManager: ObservableObject {
 
     private var contactsRevision = 0
     private var loadGeneration = 0
+    private var contactRefresh: (id: UUID, publicKey: String, task: Task<Void, Error>)?
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
@@ -244,6 +245,8 @@ class ContactsManager: ObservableObject {
     }
 
     func reset() {
+        contactRefresh?.task.cancel()
+        contactRefresh = nil
         loadGeneration += 1
         forgetResolvedProfiles(owner: nil)
         contacts = []
@@ -269,6 +272,36 @@ class ContactsManager: ObservableObject {
     }
 
     // MARK: - Load Contacts
+
+    func refreshContacts(for publicKey: String) async throws {
+        try Task.checkCancellation()
+        if contactRefresh?.publicKey != publicKey || contactRefresh?.task.isCancelled != false {
+            contactRefresh?.task.cancel()
+            let task = Task {
+                while isLoading {
+                    try Task.checkCancellation()
+                    for await loading in $isLoading.values {
+                        try Task.checkCancellation()
+                        if !loading { break }
+                    }
+                }
+                try Task.checkCancellation()
+                try await loadObservedContacts(for: publicKey)
+                try Task.checkCancellation()
+            }
+            contactRefresh = (UUID(), publicKey, task)
+        }
+        guard let refresh = contactRefresh else { return }
+        defer {
+            if contactRefresh?.id == refresh.id { contactRefresh = nil }
+        }
+        try await withTaskCancellationHandler {
+            try await refresh.task.value
+            try Task.checkCancellation()
+        } onCancel: {
+            refresh.task.cancel()
+        }
+    }
 
     func loadContactsIfNeeded(for publicKey: String) async throws {
         while !hasLoaded {
