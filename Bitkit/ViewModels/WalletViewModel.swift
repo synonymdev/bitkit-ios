@@ -1532,10 +1532,8 @@ class WalletViewModel: ObservableObject {
         do {
             let oldPaymentId = await paymentId()
             var tagsToMigrate: [String] = []
-            if let oldPaymentId, !oldPaymentId.isEmpty,
-               let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false)
-            {
-                tagsToMigrate = oldMetadata.tags
+            if let oldPaymentId, !oldPaymentId.isEmpty {
+                tagsToMigrate = await receiveInvoiceTags(paymentId: oldPaymentId)
             }
 
             try Task.checkCancellation()
@@ -1565,18 +1563,17 @@ class WalletViewModel: ObservableObject {
 
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
+            let hash = await receiveInvoicePaymentHash(invoice: invoice)
+            try Task.checkCancellation()
+            guard receiveRefreshID == refreshID else { return }
+            await persistPreActivityMetadata(paymentId: hash ?? address, paymentHash: hash, address: address, tags: tagsToMigrate)
+            try Task.checkCancellation()
+            guard receiveRefreshID == refreshID else { return }
             onchainAddress = address
             bolt11 = invoice
             bip21 = components.string ?? ""
             receiveCommitID = UUID()
 
-            var hash: String?
-            if !invoice.isEmpty, case let .lightning(decoded) = try? await decode(invoice: invoice) {
-                hash = decoded.paymentHash.hex
-            }
-            guard receiveRefreshID == refreshID else { return }
-            await persistPreActivityMetadata(paymentId: hash ?? address, paymentHash: hash, address: address, tags: tagsToMigrate)
-            guard receiveRefreshID == refreshID else { return }
             if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
                 do {
                     try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
@@ -1593,6 +1590,15 @@ class WalletViewModel: ObservableObject {
             receiveInvoiceError = error.localizedDescription
             throw error
         }
+    }
+
+    func receiveInvoiceTags(paymentId: String) async -> [String] {
+        await (try? coreService.activity.getPreActivityMetadata(searchKey: paymentId, searchByAddress: false))?.tags ?? []
+    }
+
+    func receiveInvoicePaymentHash(invoice: String) async -> String? {
+        guard !invoice.isEmpty, case let .lightning(decoded) = try? await decode(invoice: invoice) else { return nil }
+        return decoded.paymentHash.hex
     }
 
     /// Payment hash from the current bolt11 invoice, if available

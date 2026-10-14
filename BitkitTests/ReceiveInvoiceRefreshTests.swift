@@ -145,6 +145,53 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
     }
 
+    func testNewerRefreshPreservesTagsWhileOlderInvoiceHashIsResolving() async throws {
+        let wallet = TaggedReceiveWallet()
+        let older = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.firstHashStarted], timeout: 5)
+        try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false)
+        wallet.releaseFirstHash()
+        try await older.value
+        XCTAssertEqual(wallet.bolt11, "ln-second")
+        XCTAssertEqual(wallet.metadata["ln-second"], ["Lunch"])
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+    }
+
+    func testNewerRefreshPreservesTagsWhileOlderMetadataSaveIsPending() async throws {
+        let wallet = TaggedReceiveWallet()
+        wallet.gateFirstHash = false
+        wallet.gateFirstWrite = true
+        let older = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.firstWriteStarted], timeout: 5)
+        XCTAssertTrue(wallet.bolt11.isEmpty)
+        try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false)
+        wallet.releaseFirstWrite()
+        try await older.value
+        XCTAssertEqual(wallet.bolt11, "ln-second")
+        XCTAssertEqual(wallet.metadata["ln-second"], ["Lunch"])
+    }
+
+    func testCancellationDuringMetadataSaveDoesNotPublishInvoiceAndRetryKeepsTags() async throws {
+        let wallet = TaggedReceiveWallet()
+        wallet.gateFirstHash = false
+        wallet.gateFirstWrite = true
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.firstWriteStarted], timeout: 5)
+        refresh.cancel()
+        wallet.releaseFirstWrite()
+        do {
+            try await refresh.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {} catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertTrue(wallet.bolt11.isEmpty)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+        try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false)
+        XCTAssertEqual(wallet.metadata["ln-second"], ["Lunch"])
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+    }
+
     func testAutoRejectsOnchainOnlyAndMismatchedCachedInvoices() {
         let wallet = GatedReceiveWallet()
         wallet.bolt11 = "ln-newer"
@@ -232,4 +279,55 @@ private final class GatedReceiveWallet: WalletViewModel {
     }
 
     private enum TestError: Error { case failed }
+}
+
+@MainActor
+private final class TaggedReceiveWallet: WalletViewModel {
+    let firstHashStarted = XCTestExpectation(description: "Older invoice hash suspended")
+    var metadata: [String: [String]] = ["initial": ["Lunch"]]
+    private var firstHash: CheckedContinuation<String?, Never>?
+    let firstWriteStarted = XCTestExpectation(description: "Older metadata save suspended")
+    var gateFirstHash = true
+    var gateFirstWrite = false
+    private var firstWrite: CheckedContinuation<Void, Never>?
+    private var invoiceCount = 0
+
+    override func paymentId() async -> String? { bolt11.isEmpty ? "initial" : bolt11 }
+    override func receiveInvoiceTags(paymentId: String) async -> [String] { metadata[paymentId] ?? [] }
+    override func refreshReusableOnchainAddress() async throws -> String { "bcrt1qreceive" }
+    override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool { true }
+    override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+        invoiceCount += 1
+        return invoiceCount == 1 ? "ln-first" : "ln-second"
+    }
+
+    override func receiveInvoicePaymentHash(invoice: String) async -> String? {
+        if invoice == "ln-first", gateFirstHash {
+            return await withCheckedContinuation {
+                firstHash = $0
+                firstHashStarted.fulfill()
+            }
+        }
+        return invoice
+    }
+
+    override func persistPreActivityMetadata(paymentId: String, paymentHash: String?, address: String, tags: [String]) async {
+        if paymentId == "ln-first", gateFirstWrite {
+            await withCheckedContinuation {
+                firstWrite = $0
+                firstWriteStarted.fulfill()
+            }
+        }
+        metadata[paymentId] = tags
+    }
+
+    func releaseFirstWrite() {
+        firstWrite?.resume()
+        firstWrite = nil
+    }
+
+    func releaseFirstHash() {
+        firstHash?.resume(returning: "ln-first")
+        firstHash = nil
+    }
 }
