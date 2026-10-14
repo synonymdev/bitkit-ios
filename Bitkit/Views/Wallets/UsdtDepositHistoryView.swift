@@ -345,7 +345,7 @@ extension UsdtDepositDetail {
 
     func refundConfirmation(address: String, hideBalance: Bool) -> String {
         t("usdt__deposit_refund_confirmation", variables: [
-            "amount": hideBalance ? "• • • • •" : deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—",
+            "amount": hideBalance ? "• • • • •" : deposit.amount.map { usdtOverviewAmount($0) } ?? "—",
             "network": UsdtDepositNetwork.named(deposit.network) == .bsc ? "BNB Smart Chain (BSC)" : deposit.networkLabel,
             "shortNetwork": deposit.refundNetworkLabel,
             "address": address,
