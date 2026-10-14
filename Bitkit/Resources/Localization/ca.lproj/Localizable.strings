@@ -843,7 +843,7 @@
 "settings__support__report" = "Informa d\'un problema";
 "settings__support__help" = "Centre d\'ajuda";
 "settings__support__status" = "Estat de l\'aplicació";
-"settings__support__copyright" = "Bitkit ha estat creat per Synonym Software, S.A. DE C.V. ©2025. Tots els drets reservats.";
+"settings__support__copyright" = "Bitkit ha estat creat per Synonym Software, S.A. DE C.V. ©{year}. Tots els drets reservats.";
 "settings__support__report_text" = "Si us plau, descriu el problema que estàs experimentant o fes una pregunta general.";
 "settings__support__label_address" = "Adreça de correu electrònic";
 "settings__support__label_message" = "Problema o pregunta";

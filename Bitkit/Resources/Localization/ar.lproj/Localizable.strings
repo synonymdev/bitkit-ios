@@ -782,7 +782,7 @@
 "settings__support__report" = "الإبلاغ عن مشكلة";
 "settings__support__help" = "مركز المساعدة";
 "settings__support__status" = "حالة التطبيق";
-"settings__support__copyright" = "Bitkit من تصميم Synonym Software, S.A. DE C.V. ©2025. جميع الحقوق محفوظة.";
+"settings__support__copyright" = "Bitkit من تصميم Synonym Software, S.A. DE C.V. ©{year}. جميع الحقوق محفوظة.";
 "settings__support__report_text" = "يرجى وصف المشكلة التي تواجهها أو طرح سؤال عام.";
 "settings__support__label_address" = "عنوان البريد الإلكتروني";
 "settings__support__label_message" = "المشكلة أو السؤال";

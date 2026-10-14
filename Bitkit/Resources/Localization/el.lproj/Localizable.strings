@@ -788,7 +788,7 @@
 "settings__support__report" = "Αναφορά Προβλήματος";
 "settings__support__help" = "Κέντρο Βοήθειας";
 "settings__support__status" = "Κατάσταση Εφαρμογής";
-"settings__support__copyright" = "Το Bitkit δημιουργήθηκε από τη Synonym Software, S.A. DE C.V. ©2025. Με επιφύλαξη παντός δικαιώματος.";
+"settings__support__copyright" = "Το Bitkit δημιουργήθηκε από τη Synonym Software, S.A. DE C.V. ©{year}. Με επιφύλαξη παντός δικαιώματος.";
 "settings__support__report_text" = "Παρακαλώ περιγράψτε το πρόβλημα που αντιμετωπίζετε ή κάντε μια γενική ερώτηση.";
 "settings__support__label_address" = "Διεύθυνση email";
 "settings__support__label_message" = "Πρόβλημα ή ερώτηση";

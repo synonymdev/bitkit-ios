@@ -853,7 +853,7 @@
 "settings__support__report" = "Reportar Problema";
 "settings__support__help" = "Centro de Ayuda";
 "settings__support__status" = "Estado de la App";
-"settings__support__copyright" = "Bitkit fue creado por Synonym Software, S.A. DE C.V. ©2025. Todos los derechos reservados.";
+"settings__support__copyright" = "Bitkit fue creado por Synonym Software, S.A. DE C.V. ©{year}. Todos los derechos reservados.";
 "settings__support__report_text" = "Por favor, describa el problema que está experimentando o haga una pregunta.";
 "settings__support__label_address" = "Dirección Email";
 "settings__support__label_message" = "Problema o pregunta";
@@ -1021,7 +1021,7 @@
 "slashtags__onboarding_header" = "Contactos\n<accent>dinámicos</accent>";
 "slashtags__onboarding_text" = "Recibe actualizaciones automáticas de tus contactos de Bitkit, págales y sigue sus perfiles públicos.";
 "slashtags__onboarding_button" = "Añadir Primer Contacto";
-"contacts__detail_title" = "Contactar";
+"contacts__detail_title" = "Contacto";
 "contacts__activity_sent_to" = "Enviado a {name}";
 "contacts__activity_received_from" = "Recibido de {name}";
 "contacts__detail_empty_state" = "No se pudo cargar el contacto.";
@@ -1432,7 +1432,7 @@
 "wallet__payment_request_send_request" = "Enviar solicitud";
 "wallet__payment_request_sent_title" = "Enviado";
 "wallet__payment_request_sent_headline" = "Pago <accent>solicitado</accent>";
-"wallet__payment_request_sent_description" = "Ha enviado una solicitud de pago a";
+"wallet__payment_request_sent_description" = "Ha enviado una solicitud de pago";
 "wallet__payment_request_queued_description" = "Su solicitud de pago está en cola y se enviará automáticamente";
 "wallet__payment_request_sending" = "Enviando solicitud";
 "wallet__payment_request_waiting" = "Esperando el pago";
@@ -1443,7 +1443,7 @@
 "wallet__payment_request_time" = "Hora";
 "wallet__payment_request_status_pending" = "Pendiente";
 "wallet__payment_request_status_paid" = "Pagada";
-"wallet__payment_request_contact" = "Contactar";
+"wallet__payment_request_contact" = "Contacto";
 "subscriptions__active" = "Activa";
 "subscriptions__cancel" = "Cancelar";
 "subscriptions__cancel_subscription" = "Cancelar suscripción";

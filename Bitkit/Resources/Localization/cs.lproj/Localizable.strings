@@ -906,7 +906,7 @@
 "settings__support__report" = "Nahlásit problém";
 "settings__support__help" = "Centrum pomoci";
 "settings__support__status" = "Stav aplikace";
-"settings__support__copyright" = "Bitkit vytvořila společnost Synonym Software, S.A. DE C.V. ©2025. Všechna práva vyhrazena.";
+"settings__support__copyright" = "Bitkit vytvořila společnost Synonym Software, S.A. DE C.V. ©{year}. Všechna práva vyhrazena.";
 "settings__support__report_text" = "Popište prosím problém, se kterým se setkáváte, nebo položte obecnou otázku.";
 "settings__support__label_address" = "E-mailová adresa";
 "settings__support__label_message" = "Problém nebo otázka";

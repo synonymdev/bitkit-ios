@@ -907,7 +907,7 @@
 "settings__support__report" = "Reportar error";
 "settings__support__help" = "Centro de ayuda";
 "settings__support__status" = "Estatus del App";
-"settings__support__copyright" = "Bitkit fue creado por Synonym Software, S.A. DE C.V. ©2025. Todos los derechos reservados.";
+"settings__support__copyright" = "Bitkit fue creado por Synonym Software, S.A. DE C.V. ©{year}. Todos los derechos reservados.";
 "settings__support__report_text" = "Por favor, describa el problema que está experimentando o haga una pregunta general.";
 "settings__support__label_address" = "Dirección de correo electrónico";
 "settings__support__label_message" = "Asunto o pregunta";

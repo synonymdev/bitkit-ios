@@ -904,7 +904,7 @@
 "settings__support__report" = "Probleem rapporteren";
 "settings__support__help" = "Helpcentrum";
 "settings__support__status" = "App-status";
-"settings__support__copyright" = "Bitkit is gemaakt door Synonym Software, S.A. DE C.V. ©2025. Alle rechten voorbehouden.";
+"settings__support__copyright" = "Bitkit is gemaakt door Synonym Software, S.A. DE C.V. ©{year}. Alle rechten voorbehouden.";
 "settings__support__report_text" = "Beschrijf het probleem dat u ondervindt of stel maar een vraag.";
 "settings__support__label_address" = "E-mailadres";
 "settings__support__label_message" = "Probleem of vraag";

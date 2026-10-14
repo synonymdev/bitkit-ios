@@ -608,7 +608,7 @@
 "security__pass_never_share_warning" = "<accent>Nunca compartilhe sua frase secreta</accent> com ninguém, pois pode resultar em perda de fundos. Mantenha-a em segredo!";
 "security__pass_confirm" = "Confirmar Frase Secreta";
 "security__pass_confirm_text" = "Digite a frase secreta que você adicionou ao configurar e criar sua carteira.";
-"security__pass_recovery" = "<gray>Senha:</gray> {passphrase}";
+"security__pass_recovery" = "<accent>Senha:</accent> {passphrase}";
 "security__mnemonic_phrase" = "Frase mnemônica";
 "security__mnemonic_your" = "Sua frase de recuperação";
 "security__mnemonic_error" = "Falha na Carteira";
@@ -906,7 +906,7 @@
 "settings__support__report" = "Relatar problema";
 "settings__support__help" = "Central de Ajuda";
 "settings__support__status" = "Status do Aplicativo";
-"settings__support__copyright" = "Bitkit foi criado pela Synonym Software, S.A. DE C.V. ©2025. Todos os direitos reservados.";
+"settings__support__copyright" = "Bitkit foi criado pela Synonym Software, S.A. DE C.V. ©{year}. Todos os direitos reservados.";
 "settings__support__report_text" = "Descreva o problema que está enfrentando ou faça uma pergunta.";
 "settings__support__label_address" = "Endereço de e-mail";
 "settings__support__label_message" = "Problema ou pergunta";

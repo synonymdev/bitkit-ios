@@ -907,7 +907,7 @@
 "settings__support__report" = "Rapporter un problème";
 "settings__support__help" = "Centre d\'aide";
 "settings__support__status" = "Statut de l\'application";
-"settings__support__copyright" = "Bitkit a été conçu par Synonym Software, S.A. DE C.V. ©2025. Tous droits réservés.";
+"settings__support__copyright" = "Bitkit a été conçu par Synonym Software, S.A. DE C.V. ©{year}. Tous droits réservés.";
 "settings__support__report_text" = "Veuillez décrire le problème que vous rencontrez ou poser une question.";
 "settings__support__label_address" = "Adresse email";
 "settings__support__label_message" = "Problème ou question";
