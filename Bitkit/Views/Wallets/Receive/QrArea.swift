@@ -37,8 +37,11 @@ struct QrArea: View {
 
     var body: some View {
         ZStack {
-            QR(content: uri, imageAsset: imageAsset) {
-                onCopy()
+            if uri.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                QR(content: uri, imageAsset: imageAsset) { onCopy() }
             }
 
             if showCopyTooltip {
@@ -67,6 +70,7 @@ struct QrArea: View {
                 title: t("common__copy"),
                 size: .small,
                 icon: Image("copy").foregroundColor(accentColor),
+                isDisabled: uri.isEmpty,
                 shouldExpand: true
             ) {
                 onCopy()
@@ -77,6 +81,7 @@ struct QrArea: View {
                 title: t("common__share"),
                 size: .small,
                 icon: Image("share").foregroundColor(accentColor),
+                isDisabled: uri.isEmpty,
                 shouldExpand: true
             ) {
                 showShareSheet = true

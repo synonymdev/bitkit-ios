@@ -17,6 +17,17 @@ class WalletViewModel: ObservableObject {
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
+    @Published private(set) var isReceiveInvoiceUpdating = false
+    @Published private(set) var receiveInvoiceError: String?
+    private var receiveRefreshID = UUID()
+
+    var hasCoherentReceiveInvoice: Bool {
+        guard !bolt11.isEmpty,
+              let query = URLComponents(string: bip21)?.queryItems
+        else { return false }
+        return query.first(where: { $0.name == "lightning" })?.value == bolt11
+    }
+
     @AppStorage("publicPaykitBolt11") var publicPaykitBolt11 = ""
     @AppStorage("publicPaykitBolt11PaymentHash") var publicPaykitBolt11PaymentHash = ""
     @AppStorage("publicPaykitBolt11ExpiresAt") var publicPaykitBolt11ExpiresAt = 0.0
@@ -1357,26 +1368,16 @@ class WalletViewModel: ObservableObject {
     }
 
     @discardableResult
-    private func refreshReusableOnchainAddress() async throws -> String {
+    func refreshReusableOnchainAddress() async throws -> String {
         let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
-
-        if await PrivatePaykitAddressReservationStore.shared.isUnavailableForReusableReceive(address: onchainAddress) {
-            onchainAddress = ""
+        let address = onchainAddress
+        if address.isEmpty || await PrivatePaykitAddressReservationStore.shared.isUnavailableForReusableReceive(address: address) {
+            return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
         }
-
-        if onchainAddress.isEmpty {
-            onchainAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
-        } else {
-            // Check if current address has been used
-            let hasTransactions = try await coreService.utility.isAddressUsed(address: onchainAddress)
-
-            if hasTransactions {
-                // Address has been used, generate a new one
-                onchainAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
-            }
+        if try await coreService.utility.isAddressUsed(address: address) {
+            return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
         }
-
-        return onchainAddress
+        return address
     }
 
     func refreshPublicPaykitEndpoints(
@@ -1388,7 +1389,9 @@ class WalletViewModel: ObservableObject {
             return ("", "")
         }
 
+        let receiveID = receiveRefreshID
         let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
+        if includeOnchain, receiveRefreshID == receiveID { onchainAddress = publicOnchainAddress }
 
         if includeLightning, hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
@@ -1502,65 +1505,86 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true) async throws {
-        // Get old payment ID and tags before refreshing (which may change payment ID)
-        let oldPaymentId = await paymentId()
-        var tagsToMigrate: [String] = []
-        if let oldPaymentId, !oldPaymentId.isEmpty {
-            if let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false) {
+        let refreshID = UUID()
+        let wasUpdating = isReceiveInvoiceUpdating
+        receiveRefreshID = refreshID
+        isReceiveInvoiceUpdating = true
+        receiveInvoiceError = nil
+        let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
+        let note = invoiceNote
+        let cachedInvoice = bolt11
+        let cachedQuery = URLComponents(string: bip21)?.queryItems ?? []
+        let cachedAmount = cachedQuery.first(where: { $0.name == "amount" })?.value
+        let cachedNote = cachedQuery.first(where: { $0.name == "message" })?.value ?? ""
+        let hasMatchingInputs = cachedAmount == amountSats.map(Self.formatBitcoinAmount) && cachedNote == note && hasCoherentReceiveInvoice
+        defer {
+            if receiveRefreshID == refreshID {
+                isReceiveInvoiceUpdating = false
+            }
+        }
+
+        do {
+            let oldPaymentId = await paymentId()
+            var tagsToMigrate: [String] = []
+            if let oldPaymentId, !oldPaymentId.isEmpty,
+               let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false)
+            {
                 tagsToMigrate = oldMetadata.tags
             }
-        }
 
-        try await refreshReusableOnchainAddress()
-
-        var newBip21 = "bitcoin:\(onchainAddress)"
-
-        let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
-
-        if canCreateReceiveLightningInvoice(amountSats: amountSats) {
-            if forceRefreshBolt11 || bolt11.isEmpty {
-                bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
-            } else {
-                // Existing invoice needs to be checked for expiry
-                if case let .lightning(lightningInvoice) = try await decode(invoice: bolt11) {
-                    if lightningInvoice.isExpired {
-                        bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
-                    }
+            try Task.checkCancellation()
+            guard receiveRefreshID == refreshID else { return }
+            let address = try await refreshReusableOnchainAddress()
+            try Task.checkCancellation()
+            guard receiveRefreshID == refreshID else { return }
+            var invoice = ""
+            if canCreateReceiveLightningInvoice(amountSats: amountSats) {
+                if forceRefreshBolt11 || wasUpdating || !hasMatchingInputs || cachedInvoice.isEmpty {
+                    invoice = try await createInvoice(amountSats: amountSats, note: note)
+                } else if case let .lightning(decoded) = try await decode(invoice: cachedInvoice), !decoded.isExpired {
+                    invoice = cachedInvoice
+                } else {
+                    invoice = try await createInvoice(amountSats: amountSats, note: note)
                 }
             }
-        } else {
-            bolt11 = ""
-        }
 
-        if !bolt11.isEmpty {
-            newBip21 += "?lightning=\(bolt11)"
-        }
+            var components = URLComponents()
+            components.scheme = "bitcoin"
+            components.path = address
+            var query: [URLQueryItem] = []
+            if !invoice.isEmpty { query.append(URLQueryItem(name: "lightning", value: invoice)) }
+            if let amountSats { query.append(URLQueryItem(name: "amount", value: Self.formatBitcoinAmount(sats: amountSats))) }
+            if !note.isEmpty { query.append(URLQueryItem(name: "message", value: note)) }
+            components.queryItems = query.isEmpty ? nil : query
 
-        // Add amount and note if available
-        if invoiceAmountSats > 0 {
-            let separator = newBip21.contains("?") ? "&" : "?"
-            let formattedAmount = Self.formatBitcoinAmount(sats: invoiceAmountSats)
-            newBip21 += "\(separator)amount=\(formattedAmount)"
-        }
+            try Task.checkCancellation()
+            guard receiveRefreshID == refreshID else { return }
+            onchainAddress = address
+            bolt11 = invoice
+            bip21 = components.string ?? ""
 
-        if !invoiceNote.isEmpty {
-            let separator = newBip21.contains("?") ? "&" : "?"
-            if let encodedNote = invoiceNote.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                newBip21 += "\(separator)message=\(encodedNote)"
+            var hash: String?
+            if !invoice.isEmpty, case let .lightning(decoded) = try? await decode(invoice: invoice) {
+                hash = decoded.paymentHash.hex
             }
-        }
-
-        bip21 = newBip21
-
-        // Persist metadata with migrated tags
-        await persistPreActivityMetadata(tags: tagsToMigrate)
-
-        if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
-            do {
-                try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
-            } catch {
-                Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
+            guard receiveRefreshID == refreshID else { return }
+            await persistPreActivityMetadata(paymentId: hash ?? address, paymentHash: hash, address: address, tags: tagsToMigrate)
+            guard receiveRefreshID == refreshID else { return }
+            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
+                do {
+                    try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+                } catch {
+                    Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
+                }
             }
+        } catch {
+            if error is CancellationError {
+                if receiveRefreshID == refreshID { receiveInvoiceError = error.localizedDescription }
+                throw error
+            }
+            guard receiveRefreshID == refreshID else { return }
+            receiveInvoiceError = error.localizedDescription
+            throw error
         }
     }
 
@@ -1584,6 +1608,10 @@ class WalletViewModel: ObservableObject {
 
         let paymentHash = await paymentHash()
 
+        await persistPreActivityMetadata(paymentId: paymentId, paymentHash: paymentHash, address: onchainAddress, tags: tags)
+    }
+
+    func persistPreActivityMetadata(paymentId: String, paymentHash: String?, address: String, tags: [String]) async {
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
             walletId: WalletScope.default,
@@ -1591,7 +1619,7 @@ class WalletViewModel: ObservableObject {
             tags: tags,
             paymentHash: paymentHash,
             txId: nil,
-            address: onchainAddress,
+            address: address,
             isReceive: true,
             feeRate: 0,
             isTransfer: false,
