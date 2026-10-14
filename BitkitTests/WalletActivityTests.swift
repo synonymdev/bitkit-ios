@@ -3,6 +3,24 @@ import BitkitCore
 import XCTest
 
 final class WalletActivityTests: XCTestCase {
+    func testUsdtSearchMatchesFullAssetNameOrRecipientAndTransactionFragments() {
+        let transfer = UsdtTransfer(
+            sender: nil, id: "received", txHash: "0xAbCd5678", userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+            recipient: "0xEf901234", destination: .arbitrum, amount: 1_000_000, receivedAmount: 1_000_000, fee: nil,
+            isIncoming: true, status: .confirmed, timestamp: 1
+        )
+        for query in ["", "USDT", "usdt", "eF90", "aBcD"] {
+            XCTAssertTrue(transfer.matchesActivitySearch(query), query)
+        }
+        for query in ["u", "us", "t", "BTC", "no match"] {
+            XCTAssertFalse(transfer.matchesActivitySearch(query), query)
+        }
+        var unconfirmed = transfer
+        unconfirmed.txHash = nil
+        XCTAssertTrue(unconfirmed.matchesActivitySearch("eF90"))
+        XCTAssertFalse(unconfirmed.matchesActivitySearch("aBcD"))
+    }
+
     func testMergedActivityPositionsIncludeDateHeaders() throws {
         let today = Calendar.current.startOfDay(for: Date())
         let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: today))

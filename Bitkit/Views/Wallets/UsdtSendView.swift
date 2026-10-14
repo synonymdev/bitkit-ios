@@ -13,7 +13,6 @@ struct UsdtSendView: View {
     var onClose: (() -> Void)?
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var contactsManager: ContactsManager
-    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.dismiss) private var dismiss
@@ -109,11 +108,6 @@ struct UsdtSendView: View {
         Group {
             if !settings.isUsdtEnabled, !submitted {
                 UsdtIntroContent(isEnablePrompt: true, onDecline: {
-                    if !embedded, !initialRecipient.isEmpty,
-                       navigation.currentRoute == .usdtPayment(recipient: initialRecipient, amount: initialAmount)
-                    {
-                        navigation.navigateBack()
-                    }
                     if let onClose { onClose() } else { dismiss() }
                 }, onEnable: { settings.usdtPreference = .enabled })
             } else if embedded { content }
@@ -640,7 +634,11 @@ struct UsdtSendView: View {
             if usdt.transfers.contains(where: { $0.id == quote.id }) {
                 submitted = true
             } else {
-                self.error = (error as? LocalizedError)?.errorDescription ?? UsdtWalletManager.message(for: error)
+                self.error = if error is UsdtError {
+                    UsdtWalletManager.message(for: error)
+                } else {
+                    (error as? LocalizedError)?.errorDescription ?? UsdtWalletManager.message(for: error)
+                }
                 self.quote = nil
             }
             Logger.warn("Failed to send USDT: \(UsdtWalletManager.message(for: error))", context: "UsdtSendView")

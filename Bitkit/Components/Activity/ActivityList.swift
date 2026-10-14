@@ -46,8 +46,7 @@ struct ActivityList: View {
             let end = activity.endDate.flatMap { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: $0)) }
             let search = activity.searchText
             return matchesTab && (start.map { date >= $0 } ?? true) && (end.map { date < $0 } ?? true) &&
-                (search.isEmpty || transfer.recipient.localizedCaseInsensitiveContains(search) ||
-                    transfer.txHash?.localizedCaseInsensitiveContains(search) == true || "USDT".localizedCaseInsensitiveContains(search))
+                transfer.matchesActivitySearch(search)
         }
     }
 
@@ -57,5 +56,12 @@ struct ActivityList: View {
         case .lightning: return activity.lightningActivities ?? []
         case .onchain: return activity.onchainActivities ?? []
         }
+    }
+}
+
+extension UsdtTransfer {
+    func matchesActivitySearch(_ search: String) -> Bool {
+        search.isEmpty || search.caseInsensitiveCompare("USDT") == .orderedSame ||
+            recipient.localizedCaseInsensitiveContains(search) || txHash?.localizedCaseInsensitiveContains(search) == true
     }
 }
