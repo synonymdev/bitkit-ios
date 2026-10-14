@@ -1220,6 +1220,15 @@ struct SendSheet: View {
             return
         }
 
+        // `resetSendState` cleared the rate and setup does not run again, so the automatic payment would wait for it forever.
+        do {
+            try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error("Failed to set default fee rate for retry: \(error)")
+        }
+
         guard sheets.activeSheetConfiguration?.id == .subscription,
               app.ownsContactPaymentContext(context)
         else {
