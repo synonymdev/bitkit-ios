@@ -431,8 +431,12 @@ struct SendConfirmationView: View {
             }
             if !Task.isCancelled, walletSwitchContext == context {
                 walletSwitchContext = nil
-                await startAutomaticPaymentIfNeeded()
             }
+        }
+        .onChange(of: walletSwitchContext) { previous, context in
+            // Clearing the context cancels the switch task, so the start runs outside it with the current setup state.
+            guard previous != nil, context == nil, confirmationContext != nil, preparingRequest == nil else { return }
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
         }
         .onDisappear {
             if !isEditingSendDetails || sendContext != walletSwitchContext {
