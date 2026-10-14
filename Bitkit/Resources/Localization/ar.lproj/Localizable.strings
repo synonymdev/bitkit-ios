@@ -1,6 +1,5 @@
 "cards__backupSeedPhrase__title" = "نسخ احتياطي";
 "cards__backupSeedPhrase__description" = "احفظ عملات Bitcoin الخاصة بك";
-"cards__discount__description" = "رصيد الإنفاق";
 "cards__quickpay__description" = "امسح وادفع";
 "cards__notifications__description_alt" = "عندما يكون Bitkit مغلقًا";
 "cards__notifications__title" = "استلم الأموال";
@@ -8,8 +7,6 @@
 "cards__invite__description" = "شارك Bitkit";
 "cards__lightning__title" = "إنفاق";
 "cards__lightning__description" = "مدفوعات فورية";
-"cards__lightningSettingUp__title" = "تحويل";
-"cards__transferPending__title" = "تحويل";
 "cards__pin__title" = "تأمين";
 "cards__pin__description" = "إعداد رمز PIN";
 "cards__shop__title" = "تسوق";
@@ -20,8 +17,6 @@
 "cards__support__description" = "احصل على المساعدة";
 "cards__buyBitcoin__title" = "شراء";
 "cards__buyBitcoin__description" = "اشترِ بعض Bitcoin";
-"cards__btFailed__title" = "فشلت";
-"cards__suggestions" = "اقتراحات";
 "coming_soon__nav_title" = "قريبًا";
 "coming_soon__headline" = "قريبًا\n<accent>جدًا</accent>";
 "coming_soon__description" = "هذه الميزة قيد التطوير حاليًا وستكون متاحة قريبًا.";
@@ -43,7 +38,6 @@
 "common__off" = "إيقاف";
 "common__ok" = "حسنًا";
 "common__on" = "تشغيل";
-"common__total" = "الإجمالي";
 "common__ok_random" = "رائع!\nممتاز!\nعظيم!\nجيد!\nمذهل!\nحلو!\nممتاز!\nرائع!";
 "common__reset" = "إعادة تعيين";
 "common__retry" = "إعادة المحاولة";
@@ -60,7 +54,6 @@
 "common__max" = "الحد الأقصى";
 "common__default" = "افتراضي";
 "common__preview" = "معاينة";
-"common__qr_code" = "رمز QR";
 "common__show_all" = "عرض الكل";
 "common__show_details" = "عرض التفاصيل";
 "common__success" = "نجاح";
@@ -79,7 +72,6 @@
 "lightning__transfer_intro__title" = "رصيد\n<accent>الإنفاق</accent>";
 "lightning__transfer_intro__text" = "موّل رصيد إنفاقك للاستمتاع بمعاملات فورية ورخيصة مع الأصدقاء والعائلة والتجار.";
 "lightning__transfer_intro__button" = "ابدأ";
-"lightning__funding__nav_title" = "رصيد الإنفاق";
 "lightning__funding__title" = "موّل <accent>رصيد إنفاقك</accent>";
 "lightning__funding__text_blocked" = "لا يوفر Bitkit حاليًا خدمات Lightning في بلدك، ولكن لا يزال بإمكانك الاتصال بعقد أخرى مباشرة.";
 "lightning__funding__text_blocked_cjit" = "لا يوفر Bitkit حاليًا خدمات Lightning في بلدك، ولكن لا يزال بإمكانك الاتصال بعقد أخرى مباشرة.";
@@ -99,7 +91,6 @@
 "lightning__spending_intro__title" = "تحويل\n<accent>إلى الإنفاق</accent>";
 "lightning__spending_intro__text" = "حوّل الأموال إلى رصيد إنفاقك للاستمتاع بمعاملات فورية ورخيصة مع الأصدقاء والعائلة والتجار.";
 "lightning__spending_intro__button" = "ابدأ";
-"lightning__transfer_failed__continue" = "حاول مرة أخرى";
 "lightning__spending_amount__title" = "تحويل\n<accent>إلى الإنفاق</accent>";
 "lightning__spending_confirm__network_fee" = "رسوم الشبكة";
 "lightning__spending_confirm__lsp_fee" = "رسوم الخدمة";
@@ -153,7 +144,6 @@
 "lightning__setting_up_step4" = "جارٍ فتح الاتصال";
 "lightning__setting_up_button" = "متابعة استخدام Bitkit";
 "lightning__node_info" = "عقدة Lightning";
-"lightning__node_disconnected" = "غير متصل";
 "lightning__connections" = "اتصالات Lightning";
 "lightning__conn_pending" = "الاتصالات المعلقة";
 "lightning__conn_open" = "الاتصالات المفتوحة";
@@ -260,8 +250,6 @@
 "onboarding__restore_success_text" = "لقد استعدت محفظتك بنجاح من النسخة الاحتياطية. استمتع بـ Bitkit!";
 "onboarding__restore_failed_header" = "خطأ في <accent>رصيد الإنفاق</accent>";
 "onboarding__restore_failed_text" = "استعاد Bitkit مدخراتك، لكنه فشل في استعادة رصيد إنفاقك الحالي (حالة Lightning) وبيانات المحفظة.";
-"onboarding__restore_no_backup_button" = "المتابعة بدون نسخة احتياطية";
-"onboarding__restore_no_backup_warn" = "إذا كان لديك نسخة احتياطية لـ Lightning سابقًا، فسيتم استبدالها وفقدانها. قد يؤدي هذا إلى خسارة الأموال.";
 "onboarding__empty_wallet" = "للبدء\nأرسل\n<accent>Bitcoin</accent>\nإلى\nمحفظتك";
 "onboarding__multiple_header" = "<accent>تنبيه:</accent>\nأجهزة متعددة";
 "onboarding__multiple_text" = "لا تقم بتثبيت عبارة استرداد Bitkit على هواتف متعددة في وقت واحد، لأن ذلك قد يفسد بياناتك.";
@@ -270,11 +258,9 @@
 "other__qr_error_text" = "لا يستطيع Bitkit قراءة رمز QR هذا.";
 "other__qr_error_detection_description" = "فشل معالجة الصورة للبحث عن رموز QR.";
 "other__qr_error_detection_title" = "خطأ في الاكتشاف";
-"other__qr_error_generic_description" = "عذرًا. حدث خطأ عند محاولة معالجة هذه الصورة.";
 "other__qr_error_load_image" = "عذرًا. تعذر على Bitkit تحميل هذه الصورة.";
 "other__qr_error_no_qr_description" = "عذرًا. تعذر على Bitkit اكتشاف رمز QR في هذه الصورة.";
 "other__qr_error_no_qr_title" = "لم يُعثر على رمز QR";
-"other__qr_error_process_image" = "عذرًا. تعذر على Bitkit معالجة هذه الصورة.";
 "other__qr_paste" = "لصق رمز QR";
 "other__buy_header" = "اشترِ بعض\n<accent>Bitcoin</accent>";
 "other__buy_text" = "ليس لديك أي Bitcoin أو تحتاج المزيد؟";
@@ -317,7 +303,6 @@
 "other__lnurl_withdr_success_msg" = "تم طلب سحبك بنجاح. في انتظار الدفع.";
 "other__notification_registration_failed_description" = "تعذر على Bitkit التسجيل لإشعارات الدفع.";
 "other__notification_registration_failed_title" = "فشل تسجيل الإشعارات";
-"other__bt_error_retrieve" = "فشل التحويل";
 "other__update_nav_title" = "تحديث متاح";
 "other__update_title" = "حدّث\n<accent>Bitkit</accent>";
 "other__update_text" = "يرجى تحديث Bitkit إلى أحدث إصدار للحصول على ميزات جديدة وإصلاحات للأخطاء!";
@@ -329,10 +314,8 @@
 "other__gift__claiming__title" = "جارٍ المطالبة بالهدية";
 "other__gift__error__title" = "خطأ في رمز الهدية";
 "other__gift__error__text" = "تعذر على Bitkit المطالبة بالأموال. يرجى المحاولة لاحقًا أو الاتصال بنا.";
-"other__gift__error__button" = "حسنًا";
 "other__gift__used__title" = "رمز مستخدم";
 "other__gift__used__text" = "تم استخدام رمز هدية Bitkit هذا بالفعل، وتم دفع الأموال.";
-"other__gift__used__button" = "حسنًا";
 "other__shop__intro__title" = "تسوق";
 "other__shop__intro__description" = "اجعل حياتك على معيار Bitcoin. أنفق Bitcoin على بطاقات الهدايا الرقمية وبطاقات eSIM وشحن الهاتف والمزيد.";
 "other__shop__intro__button" = "ابدأ";
@@ -431,7 +414,6 @@
 "security__cp_changed_text" = "لقد غيرت رمز PIN بنجاح إلى مجموعة جديدة من 4 أرقام.";
 "security__wiped_title" = "تم حذف بيانات المحفظة";
 "security__wiped_message" = "تمت إعادة تعيين Bitkit وحذف جميع بيانات المحفظة.";
-"security__authorization__success" = "نجاح";
 "settings__settings" = "الإعدادات";
 "settings__dev_enabled_title" = "تم تمكين خيارات المطور";
 "settings__dev_enabled_message" = "تم تمكين خيارات المطور في جميع أنحاء التطبيق.";
@@ -439,7 +421,6 @@
 "settings__dev_disabled_message" = "تم تعطيل خيارات المطور في جميع أنحاء التطبيق.";
 "settings__general_title" = "عام";
 "settings__advanced_title" = "متقدم";
-"settings__support_title" = "الدعم";
 "settings__about__legal" = "قانوني";
 "settings__about__share" = "مشاركة";
 "settings__about__version" = "الإصدار";
@@ -489,21 +470,17 @@
 "settings__quickpay__settings__text" = "إذا تم التمكين، سيتم دفع الفواتير الممسوحة التي تقل عن ${amount} تلقائيًا دون الحاجة إلى تأكيدك أو PIN*.";
 "settings__quickpay__settings__label" = "حد QuickPay";
 "settings__quickpay__settings__note" = "* يدعم Bitkit QuickPay حصريًا المدفوعات من رصيد الإنفاق الخاص بك.";
-"settings__security__title" = "الأمان والخصوصية";
 "settings__security__swipe_balance_to_hide" = "اسحب الرصيد للإخفاء";
 "settings__security__hide_balance_on_open" = "إخفاء الرصيد عند الفتح";
 "settings__security__clipboard" = "قراءة الحافظة لسهولة الاستخدام";
 "settings__security__warn_100" = "تحذير عند الإرسال فوق 100 دولار";
 "settings__security__pin" = "رمز PIN";
-"settings__security__pin_change" = "تغيير رمز PIN";
 "settings__security__pin_payments" = "طلب PIN للمدفوعات";
 "settings__security__pin_enabled" = "ممكّن";
 "settings__security__pin_disabled" = "معطل";
-"settings__security__footer" = "عند التمكين، يمكنك استخدام {biometryTypeName} بدلاً من رمز PIN لفتح محفظتك أو إرسال المدفوعات.";
 "settings__backup__wallet" = "نسخ احتياطي لمحفظتك";
 "settings__backup__failed_title" = "فشل النسخ الاحتياطي للبيانات";
 "settings__backup__failed_message" = "فشل Bitkit في عمل نسخة احتياطية لبيانات المحفظة. إعادة المحاولة خلال {interval, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتين} few {# دقائق} many {# دقيقة} other {# دقيقة}}.";
-"settings__backup__latest" = "أحدث النسخ الاحتياطية للبيانات";
 "settings__backup__category_connections" = "الاتصالات";
 "settings__backup__category_connection_receipts" = "إيصالات الاتصال";
 "settings__backup__category_transaction_log" = "سجل المعاملات";
@@ -511,7 +488,6 @@
 "settings__backup__category_settings" = "الإعدادات";
 "settings__backup__category_widgets" = "الأدوات";
 "settings__backup__category_tags" = "العلامات";
-"settings__backup__category_profile" = "الملف الشخصي";
 "wallet__payment_recipient_rejected" = "رفض المستلم دفعة Lightning هذه. تحقق من الفاتورة وحاول مرة أخرى.";
 "wallet__payment_abandoned" = "تم إيقاف دفعة Lightning قبل اكتمالها.";
 "wallet__payment_expired" = "انتهت صلاحية دفعة Lightning هذه. اطلب فاتورة جديدة.";
@@ -566,7 +542,6 @@
 "settings__status__internet__ready" = "متصل";
 "settings__status__internet__error" = "غير متصل";
 "settings__status__electrum__title" = "عقدة Bitcoin";
-"settings__status__electrum__ready" = "متصل";
 "settings__status__lightning_node__title" = "عقدة Lightning";
 "settings__status__lightning_connection__title" = "اتصال Lightning";
 "settings__status__backup__title" = "آخر نسخة احتياطية كاملة للبيانات";
@@ -574,7 +549,6 @@
 "settings__adv__section_payments" = "المدفوعات";
 "settings__adv__section_networks" = "الشبكات";
 "settings__adv__address_type" = "نوع عنوان Bitcoin";
-"settings__adv__gap_limit" = "حد فجوة العناوين";
 "settings__adv__coin_selection" = "اختيار العملة";
 "settings__adv__cs_method" = "طريقة اختيار العملة";
 "settings__adv__cs_manual" = "يدوي";
@@ -591,39 +565,10 @@
 "settings__adv__cs_first_in_first_out_description" = "استخدم UTXO الأقدم أولاً (حسب ارتفاع الكتلة).";
 "settings__adv__cs_single_random_draw" = "سحب عشوائي واحد";
 "settings__adv__cs_single_random_draw_description" = "اختيار عشوائي للخصوصية";
-"settings__adv__payment_preference" = "تفضيل الدفع";
 "settings__adv__address_viewer" = "عارض العناوين";
-"settings__adv__sweep_funds" = "مسح الأموال";
-"settings__adv__rescan" = "إعادة مسح العناوين";
-"sweep__title" = "مسح الأموال";
-"sweep__found_title" = "تم العثور على أموال";
-"sweep__loading_description" = "يرجى الانتظار بينما يبحث Bitkit عن أموال في عناوين غير مدعومة (Legacy و Nested SegWit و Taproot).";
-"sweep__looking_for_funds" = "جارٍ البحث عن الأموال...";
-"sweep__found_description" = "وجد Bitkit أموالاً في عناوين غير مدعومة (Legacy و Nested SegWit و Taproot).";
-"sweep__funds_found" = "تم العثور على أموال";
-"sweep__sweep_to_wallet" = "مسح إلى المحفظة";
-"sweep__no_funds_title" = "لا توجد أموال للمسح";
-"sweep__no_funds_description" = "تحقق Bitkit من أنواع العناوين غير المدعومة ولم يجد أموالاً لمسحها.";
-"sweep__error_title" = "خطأ";
-"sweep__error_destination_address" = "فشل الحصول على عنوان الوجهة";
-"sweep__error_fee_rate_not_set" = "لم يتم تعيين معدل الرسوم";
-"sweep__confirm_title" = "تأكيد المسح";
-"sweep__destination" = "الوجهة";
-"sweep__preparing" = "جارٍ تحضير المعاملة...";
-"sweep__broadcasting" = "جارٍ البث...";
-"sweep__swipe" = "اسحب للمسح";
-"sweep__fee_total" = "{fee} sats إجمالي الرسوم";
-"sweep__complete_title" = "اكتمل المسح";
-"sweep__complete_description" = "تم مسح أموالك وستُضاف إلى رصيد محفظتك.";
-"sweep__wallet_overview" = "نظرة عامة على المحفظة";
-"sweep__prompt_title" = "مسح الأموال";
-"sweep__prompt_headline" = "امسح أموال\n<accent>Bitkit القديمة</accent>";
-"sweep__prompt_description" = "وجد Bitkit أموالاً على أنواع عناوين Bitcoin غير مدعومة. امسح لنقل الأموال إلى رصيد محفظتك الجديد.";
-"sweep__prompt_sweep" = "مسح";
 "migration__title" = "ترحيل المحفظة";
 "migration__headline" = "جارٍ\n<accent>ترحيل المحفظة</accent>";
 "migration__description" = "يرجى الانتظار أثناء ترحيل بيانات محفظتك القديمة إلى إصدار Bitkit الجديد...";
-"settings__adv__suggestions_reset" = "إعادة تعيين الاقتراحات";
 "settings__adv__reset_title" = "إعادة تعيين الاقتراحات؟";
 "settings__adv__reset_desc" = "هل أنت متأكد من رغبتك في إعادة تعيين الاقتراحات؟ ستظهر مرة أخرى في حال إزالتها من نظرة عامة محفظة Bitkit.";
 "settings__adv__reset_confirm" = "نعم، إعادة التعيين";
@@ -647,8 +592,6 @@
 "settings__es__protocol" = "البروتوكول";
 "settings__es__button_reset" = "إعادة التعيين إلى الافتراضي";
 "settings__es__button_connect" = "الاتصال بالمضيف";
-"settings__gap__save" = "حفظ";
-"settings__gap__reset" = "إعادة تعيين";
 "settings__rgs__server_url" = "عنوان URL لخادم Rapid-Gossip-Sync";
 "settings__rgs__button_connect" = "اتصال";
 "settings__rgs__error_peer" = "خطأ اتصال RGS";
@@ -663,7 +606,6 @@
 "slashtags__contact_add" = "أضف جهة اتصال";
 "slashtags__contact_add_capital" = "أضف جهة اتصال";
 "slashtags__contact_add_explain" = "أضف جهة اتصال بمسح رمز استجابتها السريع أو بلصق مفتاحها أدناه";
-"slashtags__contact_add_button" = "إضافة";
 "slashtags__contact_key_paste" = "الصق مفتاحًا";
 "slashtags__contact_error_yourself" = "ليس لك أن تضيف نفسك في جهات اتصالك.";
 "slashtags__contact_error_key" = "هذا ليس مفتاحًا صالحًا.";
@@ -679,15 +621,7 @@
 "slashtags__contact_delete_text" = "هل أنت متأكد من إرادتك حذف {name} من جهات اتصالك؟";
 "slashtags__contact_delete_yes" = "نعم، احذف";
 "slashtags__contact_select" = "اختر جهة اتصال";
-"slashtags__onboarding_header" = "جهات اتصال\n<accent>ديناميكية</accent>";
-"slashtags__onboarding_text" = "احصل على تحديثات تلقائية من جهات اتصال Bitkit، وادفع لهم، وتابع ملفاتهم الشخصية العامة.";
-"slashtags__onboarding_button" = "أضف أول جهة اتصال";
-"slashtags__onboarding_profile1_header" = "امتلك\n<accent>ملفك الشخصي</accent>";
-"slashtags__onboarding_profile1_text" = "أعد ملفك الشخصي العام وروابطك، حتى يتمكن جهات اتصال Bitkit من الوصول إليك أو الدفع لك في أي وقت وأي مكان.";
-"slashtags__profile" = "الملف الشخصي";
-"slashtags__profile_save" = "حفظ";
 "slashtags__profile_link_suggestions" = "اقتراحات";
-"slashtags__profile_delete" = "حذف";
 "slashtags__profile_delete_dialogue_yes" = "نعم، احذف";
 "wallet__drawer__wallet" = "المحفظة";
 "wallet__drawer__activity" = "النشاط";
@@ -705,7 +639,6 @@
 "wallet__recipient_contact" = "جهة الاتصال";
 "wallet__recipient_invoice" = "لصق فاتورة";
 "wallet__recipient_manual" = "إدخال يدوي";
-"wallet__recipient_scan" = "مسح QR";
 "wallet__send_invoice" = "الفاتورة";
 "wallet__send_address_placeholder" = "أدخل فاتورة أو عنوان أو مفتاح ملف شخصي";
 "wallet__send_clipboard_empty_title" = "الحافظة فارغة";
@@ -742,7 +675,6 @@
 "wallet__activity_explorer" = "فتح مستكشف الكتل";
 "wallet__activity_successful" = "ناجح";
 "wallet__activity_invoice_note" = "ملاحظة الفاتورة";
-"wallet__activity_invoice_comment" = "تعليق";
 "wallet__activity_invoice" = "الفاتورة";
 "wallet__activity_tabs__all" = "الكل";
 "wallet__activity_tabs__sent" = "مرسل";
@@ -751,8 +683,6 @@
 "wallet__activity_group_month" = "هذا الشهر";
 "wallet__activity_group_week" = "هذا الأسبوع";
 "wallet__activity_group_year" = "هذا العام";
-"wallet__details_savings_title" = "المدخرات";
-"wallet__details_spending_title" = "الإنفاق";
 "wallet__savings__title" = "المدخرات";
 "wallet__savings__onboarding" = "<accent>أرسل\nBitcoin</accent>\nإلى\nرصيد مدخراتك";
 "wallet__spending__title" = "الإنفاق";
@@ -818,7 +748,6 @@
 "wallet__balance_hidden_message" = "اسحب رصيد محفظتك لإظهاره مرة أخرى.";
 "wallet__balance_unit_switched_title" = "تم التبديل إلى {unit}";
 "wallet__balance_unit_switched_message" = "انقر على رصيد محفظتك لإعادته إلى {unit}.";
-"widgets__widgets" = "الأدوات";
 "wallet__send_error_support" = "الدعم";
 "wallet__send_details" = "التفاصيل";
 "wallet__send_fee_and_speed" = "السرعة والرسوم";
@@ -850,7 +779,6 @@
 "wallet__receive_will" = "ستستلم";
 "wallet__activity" = "النشاط";
 "wallet__activity_no" = "لا يوجد نشاط بعد";
-"wallet__activity_no_explain" = "استلم بعض الأموال للبدء";
 "wallet__activity_sent" = "مرسل";
 "wallet__activity_received" = "مستلم";
 "wallet__activity_pending" = "معلق";
@@ -879,4 +807,3 @@
 "wallet__receive_liquidity__text_additional" = "يستخدم رصيد إنفاقك Lightning Network لجعل مدفوعاتك أرخص وأسرع وأكثر خصوصية.\n\nيعمل هذا مثل الوصول إلى الإنترنت، لكنك تدفع مقابل السيولة والتوجيه بدلاً من النطاق الترددي.\n\nيحتاج Bitkit إلى زيادة سعة استلام رصيد إنفاقك لمعالجة هذه الدفعة.";
 "wallet__receive_liquidity__label" = "سيولة رصيد الإنفاق";
 "wallet__receive_liquidity__label_additional" = "سيولة رصيد إنفاق إضافية";
-"wallet__receive_cjit_error" = "فشلت المعاملة";
