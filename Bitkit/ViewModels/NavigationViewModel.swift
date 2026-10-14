@@ -13,6 +13,7 @@ enum Route: Hashable {
     case usdtWallet
     case usdtPayment(recipient: String, amount: String)
     case usdtActivity(transferId: String)
+    case usdtDepositHistory
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)
@@ -151,7 +152,7 @@ extension Route {
 
     var isUsdtWalletRoute: Bool {
         switch self {
-        case .usdtWallet, .usdtPayment: true
+        case .usdtWallet, .usdtPayment, .usdtDepositHistory: true
         default: false
         }
     }

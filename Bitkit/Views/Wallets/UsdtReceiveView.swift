@@ -6,19 +6,19 @@ struct UsdtReceiveView: View {
     let onSelectTab: (ReceiveQr.ReceiveTab) -> Void
     var contactAction: AnyView?
     @Environment(UsdtWalletManager.self) private var usdt
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var networks: [UsdtDepositNetwork] = []
     @State private var network: UsdtDepositNetwork?
     @State private var page = Page.address
-    @State private var historyBlocking = false
     @State private var amount = ""
     @State private var draftAmount = ""
     @State private var deposit: UsdtDepositAddress?
     @State private var busy = false
     @State private var error: String?
 
-    private enum Page { case address, networks, amount, fees, history }
+    private enum Page { case address, networks, amount, fees }
 
     private var networkName: String {
         network?.label ?? "Arbitrum One"
@@ -30,7 +30,6 @@ struct UsdtReceiveView: View {
         case .networks: t("usdt__receive_network_title")
         case .amount: t("wallet__receive_amount")
         case .fees: t("usdt__receive_fees_title")
-        case .history: t("usdt__deposit_history")
         }
     }
 
@@ -49,7 +48,7 @@ struct UsdtReceiveView: View {
                             else if page == .amount, network != nil, deposit == nil { page = .networks }
                             else { if deposit == nil { network = nil }; page = .address }
                         })
-                        .disabled(busy || historyBlocking)
+                        .disabled(busy)
             switch page {
             case .address:
                 SegmentedControl(selectedTab: Binding(get: { .usdt }, set: onSelectTab), tabItems: tabs)
@@ -68,15 +67,13 @@ struct UsdtReceiveView: View {
                 amountEntry
             case .fees:
                 if let deposit { feeEstimate(deposit) }
-            case .history:
-                UsdtDepositHistoryView(onBlockingChange: { historyBlocking = $0 })
             }
         }
         .padding(.horizontal, 16)
         .background(Color.gray7)
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onReceive(usdt.receivedTxPublisher) { transfer in
-            guard !historyBlocking, sheets.activeSheetConfiguration?.id == .receive else { return }
+            guard sheets.activeSheetConfiguration?.id == .receive else { return }
             sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: transfer.amount, usdtTransferId: transfer.id))
         }
         .task(id: scenePhase) {
@@ -99,8 +96,11 @@ struct UsdtReceiveView: View {
                 ForEach(networks, id: \.self) { networkRow($0) }
             }
             if usdt.depositsConfigured {
-                CustomButton(title: t("usdt__deposit_history"), variant: .tertiary) { page = .history }
-                    .accessibilityIdentifier("UsdtDepositHistory")
+                CustomButton(title: t("usdt__deposit_history"), variant: .tertiary) {
+                    sheets.hideSheet()
+                    navigation.navigate(.usdtDepositHistory)
+                }
+                .accessibilityIdentifier("UsdtDepositHistory")
             }
             if let error { BodySText(error, textColor: .textSecondary) }
         }

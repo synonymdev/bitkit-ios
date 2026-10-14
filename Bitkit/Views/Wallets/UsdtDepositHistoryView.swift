@@ -2,7 +2,7 @@ import BitkitCore
 import SwiftUI
 
 struct UsdtDepositHistoryView: View {
-    let onBlockingChange: (Bool) -> Void
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
@@ -10,6 +10,7 @@ struct UsdtDepositHistoryView: View {
     @State private var nextOffset: UInt32?
     @State private var selected: UsdtDepositDetail?
     @State private var refundAddress = ""
+    @State private var showDetails = true
     @State private var approved: RefundApproval?
     @State private var pageOffsets: [String: UInt32] = [:]
     @State private var confirmRefund = false
@@ -23,75 +24,67 @@ struct UsdtDepositHistoryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if let selected { detail(selected) }
-                        else {
-                            if deposits.isEmpty { BodySText(t("usdt__deposit_empty"), textColor: .textSecondary) }
-                            ForEach(deposits, id: \.id) { deposit in
-                                Button {
-                                    Task { await loadDetail(deposit.id) }
-                                } label: {
-                                    ActivityRowContainer {
-                                        ActivityRowContent(title: deposit.network.uppercased(), subtitle: t("wallet__send_details")) {
-                                            CircularIcon(
-                                                icon: "arrow-down",
-                                                iconColor: .usdtAccent,
-                                                backgroundColor: .usdtAccent.opacity(0.16),
-                                                size: 40
-                                            )
-                                        } amount: { BodySSBText(deposit.asset == "USDT" ? amount(deposit.amount) : deposit.asset) }
-                                    }
-                                }.buttonStyle(.plain).disabled(busy)
-                            }
-                            if let nextOffset {
-                                CustomButton(title: t("usdt__deposit_more"), variant: .secondary, isDisabled: busy) { await loadPage(nextOffset) }
-                            }
-                        }
-                        if let error { BodySText(error, textColor: .brandAccent) }
-                        if let message { BodySText(message, textColor: .textSecondary) }
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: selected == nil ? t("usdt__deposit_history") : t("usdt__receiving_title"), onBack: {
+                if selected == nil { dismiss() }
+                else { clearSelection() }
+            })
+            .disabled(busy || recoveryActive)
+            .padding(.bottom, 16)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let selected { detail(selected) }
+                    else { depositList }
+                    if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtDepositError") }
+                    if let message { BodySText(message, textColor: .textSecondary) }
                 }
-                .scrollDismissesKeyboard(.immediately)
-                CustomButton(title: t(selected == nil ? "usdt__deposit_refresh" : "usdt__deposit_history"),
-                             variant: .secondary, isDisabled: busy, isLoading: busy)
-                {
-                    selected = nil
-                    message = nil
-                    refundAddress = ""
-                    approved = nil
+                .padding(.bottom, 16)
+            }
+            .scrollDismissesKeyboard(.immediately)
+            .refreshable {
+                guard !recoveryActive else { return }
+                if let selected { await loadDetail(selected.deposit.id) }
+                else { await loadPage(0) }
+            }
+            if selected != nil {
+                CustomButton(title: t("usdt__deposit_history"), isDisabled: busy || recoveryActive) {
+                    clearSelection()
                     await loadPage(0)
                 }
-            }
-            .navigationBarHidden(true)
-            .navigationDestination(isPresented: $pin) {
-                SendPinScreen(onCancel: {
-                    pin = false
-                    approved = nil
-                }, onPinVerified: {
-                    pin = false
-                    Task { await refund() }
-                })
-            }
-            .alert(t("usdt__deposit_refund"), isPresented: $confirmRefund) {
-                Button(t("common__cancel"), role: .cancel) {}
-                Button(t("usdt__deposit_refund")) {
-                    if let deposit = selected?.deposit {
-                        approved = RefundApproval(deposit: deposit, offset: pageOffsets[deposit.id] ?? 0, address: refundAddress)
-                        Task { await authorizeRefund() }
-                    }
-                }
-            } message: {
-                let network: String = selected?.deposit.network.uppercased() ?? ""
-                let depositId: String = selected?.deposit.id ?? ""
-                let refundAmount: String = amount(selected?.deposit.amount)
-                let note: String = t("usdt__deposit_refund_note")
-                Text("\(network)\n\(depositId)\n\(refundAmount)\n\(refundAddress)\n\n\(note)")
+                .padding(.top, 16)
+                .accessibilityIdentifier("UsdtDepositHistory")
+            } else if error != nil || deposits.isEmpty {
+                CustomButton(title: t("usdt__deposit_refresh"), isDisabled: busy, isLoading: busy) { await loadPage(0) }
             }
         }
-        .task { await loadPage(0) }
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        .background(Color.black)
+        .navigationBarHidden(true)
+        .navigationDestination(isPresented: $pin) {
+            SendPinScreen(onCancel: {
+                pin = false
+                approved = nil
+            }, onPinVerified: {
+                pin = false
+                Task { await refund() }
+            })
+        }
+        .alert(t("usdt__deposit_confirm_refund"), isPresented: $confirmRefund) {
+            Button(t("common__cancel"), role: .cancel) {}
+                .accessibilityIdentifier("UsdtRefundCancel")
+            Button(t("usdt__deposit_refund")) {
+                if let detail = selected, detail.canRequestRefund {
+                    let deposit = detail.deposit
+                    approved = RefundApproval(deposit: deposit, offset: pageOffsets[deposit.id] ?? 0, address: refundAddress)
+                    Task { await authorizeRefund() }
+                }
+            }
+            .accessibilityIdentifier("UsdtRefundConfirm")
+        } message: {
+            Text(selected?.refundConfirmation(address: refundAddress, hideBalance: settings.hideBalance) ?? "")
+        }
+        .task { if !recoveryActive { await loadPage(0) } }
         .task(id: "\(scenePhase == .active)-\(selected?.deposit.id ?? "")-\(recoveryActive)") {
             guard scenePhase == .active, !recoveryActive, let id = selected?.deposit.id else { return }
             while !Task.isCancelled {
@@ -105,48 +98,118 @@ struct UsdtDepositHistoryView: View {
             }
         }
         .interactiveDismissDisabled(busy || pin)
-        .onChange(of: busy || pin) { _, blocked in onBlockingChange(blocked) }
-        .onDisappear { onBlockingChange(false) }
+    }
+
+    private var depositList: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SendSectionView(t("usdt__provider_status"), labelKerning: 1, labelLineHeight: 18) {
+                BodySSBText(t("usdt__deposit_status_note"), lineHeight: 20)
+            }
+            if deposits.isEmpty, !busy { BodySText(t("usdt__deposit_empty"), textColor: .textSecondary) }
+            ForEach(deposits, id: \.id) { deposit in
+                Button { Task { await loadDetail(deposit.id) } } label: {
+                    UsdtDepositRow(deposit: deposit, hideBalance: settings.hideBalance)
+                }
+                .buttonStyle(.plain).disabled(busy)
+                .accessibilityIdentifier("UsdtDepositRow-\(deposit.id)")
+            }
+            if let nextOffset {
+                CustomButton(title: t("usdt__deposit_more"), variant: .secondary, isDisabled: busy) { await loadPage(nextOffset) }
+            }
+        }
     }
 
     private func detail(_ detail: UsdtDepositDetail) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             if detail.deposit.asset == "USDT" {
-                UsdtAmountHeader(
-                    amount: detail.deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—",
-                    displayAmount: detail.deposit.amount.map { usdtOverviewAmount($0) }, hideBalance: settings.hideBalance
-                )
+                UsdtActivityAmountHeader(amount: detail.deposit.amount, isIncoming: true, hideBalance: settings.hideBalance)
+                    .padding(.bottom, 16)
             } else {
-                BodySSBText(detail.deposit.asset + " · " + detail.deposit.network.uppercased())
+                BodySSBText(detail.deposit.asset + " · " + detail.deposit.networkLabel, lineHeight: 20)
             }
-            SendSectionView(t("wallet__activity_status")) { BodySSBText(detail.statusText) }
-            BodySText(t("usdt__deposit_status_note"), textColor: .textSecondary)
-            SendSectionView(t("usdt__deposit_reference")) { BodySText(detail.deposit.id).textSelection(.enabled) }
-            SendSectionView(t("wallet__activity_tx_id")) { BodySText(detail.deposit.sourceTx).textSelection(.enabled) }
-            if let code = detail.statusCode { BodySText(code, textColor: .textSecondary).textSelection(.enabled) }
-            if let order = detail.order, order.status != "refunded", let received = order.amountOut {
-                SendSectionView(t("usdt__deposit_batch")) { BodySSBText(amount(received)) }
-                if let sent = order.amountIn, sent >= received {
-                    SendSectionView(t("usdt__deposit_cost")) { BodySSBText(amount(sent - received)) }
+            if showDetails {
+                SendSectionView(t("wallet__activity_tx_id"), labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(detail.deposit.sourceTx, lineHeight: 20).textSelection(.enabled)
                 }
+                SendSectionView(t("usdt__deposit_reference"), labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(detail.deposit.id, lineHeight: 20).textSelection(.enabled)
+                }
+                if !detail.canRequestRefund {
+                    UsdtDetailCell(title: t("wallet__activity_status"), value: detail.statusText, icon: detail.statusIcon,
+                                   valueColor: detail.statusColor, iconColor: detail.statusColor)
+                }
+                if detail.canRequestRefund {
+                    SendSectionView(t("usdt__deposit_refund_heading"), labelKerning: 1, labelLineHeight: 18) {
+                        BodySSBText(t("usdt__deposit_refund_instructions", variables: ["network": detail.deposit.refundNetworkLabel]), lineHeight: 20)
+                    }
+                    TextField(t("usdt__deposit_refund_address_network", variables: ["network": detail.deposit.refundNetworkLabel]),
+                              text: $refundAddress, axis: .vertical, testIdentifier: "UsdtRefundAddress")
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
+                }
+                HStack(spacing: 16) {
+                    if detail.canRequestRefund {
+                        CustomButton(title: t("usdt__deposit_refund"), size: .small,
+                                     icon: Image("coins").resizable().frame(width: 16, height: 16).foregroundColor(.usdtAccent),
+                                     isDisabled: busy || refundAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                     isLoading: busy, shouldExpand: true) { confirmRefund = true }
+                            .accessibilityIdentifier("UsdtDepositRefund")
+                    }
+                    detailsButton
+                }
+                if detail.canRequestRefund, UsdtDepositNetwork.named(detail.deposit.network) == .tron {
+                    BodySText(t("usdt__deposit_tron_refund_note"), textColor: .textSecondary)
+                }
+                if let code = detail.statusCode { BodySText(code, textColor: .textSecondary).textSelection(.enabled) }
+                if let tx = detail.order?.destinationTx {
+                    SendSectionView(t("usdt__destination_tx"), labelKerning: 1, labelLineHeight: 18) {
+                        BodySSBText(tx, lineHeight: 20).textSelection(.enabled)
+                    }
+                }
+                if let tx = detail.order?.refundTx ?? detail.deposit.refundTx {
+                    SendSectionView(t("usdt__refund_tx"), labelKerning: 1, labelLineHeight: 18) {
+                        BodySSBText(tx, lineHeight: 20).textSelection(.enabled)
+                    }
+                }
+                if detail.deposit.asset != "USDT" || UsdtDepositNetwork.named(detail.deposit.network) == nil {
+                    BodySText(t("usdt__deposit_wrong_asset"), textColor: .textSecondary)
+                }
+                UsdtSupportActions(details: detail.supportDetails).disabled(busy || recoveryActive)
+            } else {
+                HStack(alignment: .top, spacing: 16) {
+                    UsdtDetailCell(title: t("wallet__activity_status"), value: detail.statusText, icon: detail.statusIcon,
+                                   valueColor: detail.statusColor, iconColor: detail.statusColor)
+                    UsdtDetailCell(title: t("usdt__receiving_network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network")
+                }
+                UsdtDetailCell(title: t("usdt__sender_network"), value: detail.deposit.networkLabel, icon: "usdt-network")
+                if let order = detail.order, order.status != "refunded", let received = order.amountOut {
+                    SendSectionView(t("usdt__deposit_batch"), labelKerning: 1, labelLineHeight: 18) { BodySSBText(amount(received), lineHeight: 20) }
+                    if let sent = order.amountIn, sent >= received {
+                        SendSectionView(t("usdt__deposit_cost"), labelKerning: 1, labelLineHeight: 18) { BodySSBText(
+                            amount(sent - received),
+                            lineHeight: 20
+                        ) }
+                    }
+                }
+                detailsButton
+                UsdtSupportActions(details: detail.supportDetails).disabled(busy || recoveryActive)
             }
-            if let tx = detail.order?
-                .destinationTx { SendSectionView(t("wallet__activity_tx_id") + " · Arbitrum One") { BodySText(tx).textSelection(.enabled) } }
-            if let tx = detail.order?.refundTx ?? detail.deposit.refundTx {
-                SendSectionView(t("usdt__refund_tx")) { BodySText(tx).textSelection(.enabled) }
-            }
-            if detail.deposit.asset != "USDT" || UsdtDepositNetwork.named(detail.deposit.network) == nil {
-                BodySText(t("usdt__deposit_wrong_asset"), textColor: .textSecondary)
-            } else if !["completed", "refunded", "refunding", "refund_requested"].contains(detail.order?.status ?? detail.deposit.status) {
-                BodySText(t("usdt__deposit_refund_note"), textColor: .textSecondary)
-                TextField(t("usdt__deposit_refund_address"), text: $refundAddress, axis: .vertical, testIdentifier: "UsdtRefundAddress")
-                    .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
-                CustomButton(title: t("usdt__deposit_refund"), variant: .secondary,
-                             isDisabled: busy || refundAddress.isEmpty, isLoading: busy) { if !busy { confirmRefund = true } }
-                    .accessibilityIdentifier("UsdtDepositRefund")
-            }
-            UsdtSupportActions(details: detail.supportDetails).disabled(busy || recoveryActive)
         }
+    }
+
+    private var detailsButton: some View {
+        CustomButton(title: t(showDetails ? "common__hide_details" : "wallet__send_details"), size: .small,
+                     icon: Image(showDetails ? "eye-slash" : "git-branch").resizable().frame(width: 16, height: 16)
+                         .foregroundColor(.usdtAccent), isDisabled: busy || recoveryActive, shouldExpand: true) { showDetails.toggle() }
+            .accessibilityIdentifier("UsdtDepositDetails")
+    }
+
+    private func clearSelection() {
+        selected = nil
+        message = nil
+        error = nil
+        refundAddress = ""
+        approved = nil
+        showDetails = true
     }
 
     private func amount(_ value: UInt64?) -> String {
@@ -184,12 +247,22 @@ struct UsdtDepositHistoryView: View {
                 refundAddress = ""
                 approved = nil
                 message = nil
+                showDetails = true
             }
             if ["completed", "refunded"].contains(detail.order?.status ?? detail.deposit.status) {
                 message = nil
             }
-            selected = detail
+            updateSelection(detail)
         } catch is CancellationError {} catch { self.error = UsdtWalletManager.message(for: error) }
+    }
+
+    private func updateSelection(_ detail: UsdtDepositDetail) {
+        selected = detail
+        if let index = deposits.firstIndex(where: { $0.id == detail.deposit.id }) {
+            deposits[index].status = detail.order?.status ?? detail.deposit.status
+            deposits[index].code = detail.statusCode
+            deposits[index].refundTx = detail.order?.refundTx ?? detail.deposit.refundTx
+        }
     }
 
     private func authorizeRefund() async {
@@ -226,7 +299,7 @@ struct UsdtDepositHistoryView: View {
             acknowledged.deposit.code = nil
             acknowledged.order?.status = "refund_requested"
             acknowledged.order?.code = nil
-            self.selected = acknowledged
+            updateSelection(acknowledged)
             message = t("usdt__deposit_refund_requested")
         } catch { self.error = UsdtWalletManager.message(for: error) }
     }
@@ -239,6 +312,28 @@ private struct RefundApproval {
 }
 
 extension UsdtDepositDetail {
+    var canRequestRefund: Bool {
+        deposit.asset == "USDT" && UsdtDepositNetwork.named(deposit.network) != nil &&
+            !["completed", "refunded", "refunding", "refund_requested"].contains(order?.status ?? deposit.status)
+    }
+
+    var statusIcon: String {
+        ["completed", "refunded"].contains(order?.status ?? deposit.status) ? "check-circle" : "hourglass-simple"
+    }
+
+    var statusColor: Color {
+        ["completed", "refunded"].contains(order?.status ?? deposit.status) ? .usdtAccent : .yellowAccent
+    }
+
+    func refundConfirmation(address: String, hideBalance: Bool) -> String {
+        t("usdt__deposit_refund_confirmation", variables: [
+            "amount": hideBalance ? "• • • • •" : deposit.amount.map { usdtFormatAmount(amount: $0) } ?? "—",
+            "network": UsdtDepositNetwork.named(deposit.network) == .bsc ? "BNB Smart Chain (BSC)" : deposit.networkLabel,
+            "shortNetwork": deposit.refundNetworkLabel,
+            "address": address,
+        ])
+    }
+
     var statusCode: String? {
         if let order { return order.code }
         return deposit.code
@@ -258,5 +353,46 @@ private func depositStatusText(_ status: String, code: String?) -> String {
     case "pending", "processing", "funded", "confirming", "swapping", "bridging", "delivering":
         code == nil ? t("usdt__pending") : t("usdt__deposit_needs_attention")
     default: t("usdt__deposit_needs_attention")
+    }
+}
+
+extension UsdtDeposit {
+    var networkLabel: String {
+        UsdtDepositNetwork.named(network)?.label ?? network
+    }
+
+    var refundNetworkLabel: String {
+        UsdtDepositNetwork.named(network) == .bsc ? "BSC" : networkLabel
+    }
+
+    var statusText: String {
+        depositStatusText(status, code: code)
+    }
+}
+
+struct UsdtDepositRow: View {
+    let deposit: UsdtDeposit
+    let hideBalance: Bool
+
+    private var amount: String {
+        hideBalance ? "• • • • •" : deposit.amount.map { usdtOverviewAmount($0) } ?? "—"
+    }
+
+    var body: some View {
+        let completed = ["completed", "refunded"].contains(deposit.status)
+        let color: Color = completed ? .usdtAccent : .yellowAccent
+        ActivityRowContainer {
+            ActivityRowContent(title: deposit.networkLabel, subtitle: deposit.statusText) {
+                CircularIcon(icon: completed ? "check-circle" : "hourglass-simple", iconColor: color,
+                             backgroundColor: color.opacity(0.16), size: 40)
+            } amount: {
+                VStack(alignment: .trailing, spacing: 2) {
+                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset).lineLimit(1).minimumScaleFactor(0.7)
+                    if deposit.asset == "USDT" {
+                        CaptionBText(hideBalance ? amount : "$ " + amount, textColor: .textSecondary)
+                    }
+                }
+            }
+        }
     }
 }

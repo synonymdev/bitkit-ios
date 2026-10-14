@@ -280,6 +280,40 @@ final class UsdtWalletManagerTests: XCTestCase {
         }
     }
 
+    func testDepositRefundEligibilityUsesCurrentOrderAndSupportedAsset() {
+        let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
+                                  sourceTx: "source-tx", status: "held", code: nil, refundTx: nil)
+        var detail = UsdtDepositDetail(deposit: deposit, order: nil)
+        XCTAssertTrue(detail.canRequestRefund)
+        for status in ["completed", "refunded", "refunding", "refund_requested"] {
+            detail.order = UsdtDepositOrder(status: status, amountIn: nil, amountOut: nil, destinationTx: nil, refundTx: nil, code: nil)
+            XCTAssertFalse(detail.canRequestRefund, status)
+        }
+        detail.order = nil
+        detail.deposit.asset = "ETH"
+        XCTAssertFalse(detail.canRequestRefund)
+        detail.deposit.asset = "USDT"
+        detail.deposit.network = "unsupported"
+        XCTAssertFalse(detail.canRequestRefund)
+    }
+
+    func testRefundConfirmationShowsExactAmountNetworkAndFullAddress() {
+        let address = "0x1111222233334444555566667777888899990000"
+        let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
+                                  sourceTx: "source-tx", status: "held", code: nil, refundTx: nil)
+        let detail = UsdtDepositDetail(deposit: deposit, order: nil)
+        let confirmation = detail.refundConfirmation(address: address, hideBalance: false)
+        for value in ["50.000001", "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
+            XCTAssertTrue(confirmation.contains(value), value)
+        }
+        let hidden = detail.refundConfirmation(address: address, hideBalance: true)
+        XCTAssertFalse(hidden.contains("50.000001"))
+        XCTAssertTrue(hidden.contains("• • • • •"))
+        XCTAssertTrue(hidden.contains(address))
+        XCTAssertEqual(deposit.networkLabel, "BNB Smart Chain")
+        XCTAssertEqual(deposit.refundNetworkLabel, "BSC")
+    }
+
     private func transfer(_ id: String, incoming: Bool = true, status: UsdtTransferStatus = .confirmed, amount: UInt64 = 1_000_000) -> UsdtTransfer {
         UsdtTransfer(
             sender: nil,

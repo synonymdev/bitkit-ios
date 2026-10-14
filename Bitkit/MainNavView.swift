@@ -471,6 +471,7 @@ struct MainNavView: View {
                 case .usdtWallet: UsdtWalletScreen()
                 case let .usdtPayment(recipient, amount): UsdtWalletScreen(initialRecipient: recipient, initialAmount: amount)
                 case let .usdtActivity(transferId): UsdtActivityDetail(transferId: transferId)
+                case .usdtDepositHistory: UsdtDepositHistoryView()
                 case .scanner: ScannerScreen()
 
                 // Transfer

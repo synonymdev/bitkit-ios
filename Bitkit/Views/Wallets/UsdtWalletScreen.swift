@@ -4,6 +4,7 @@ import SwiftUI
 struct UsdtWalletScreen: View {
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @State private var showSend = false
     @State private var selectedTransferId: String?
@@ -72,7 +73,7 @@ struct UsdtWalletScreen: View {
         .padding(.horizontal, 16)
         .navigationBarHidden(true)
         .onReceive(usdt.receivedTxPublisher) { tx in
-            guard !showSend, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
+            guard navigation.currentRoute != .usdtDepositHistory, !showSend, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
             sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
         }
         .sheet(isPresented: $showSend) {
@@ -168,7 +169,7 @@ extension UsdtTransferStatus {
         case .pending: t("usdt__pending")
         case .confirmed: t("usdt__confirmed")
         case .failed: t("usdt__failed")
-        case .bridging: t("wallet__activity_transferring")
+        case .bridging: t("usdt__delivering")
         case .bridgeNeedsAttention, .bridgeFailed: t("usdt__bridge_attention")
         case .replaced: t("usdt__replaced")
         case .bridgeRefunded: t("usdt__deposit_refunded")

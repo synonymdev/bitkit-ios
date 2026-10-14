@@ -341,6 +341,8 @@ struct BodySSBText: View {
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
 
+    var lineHeight: CGFloat?
+
     private let fontSize: CGFloat = 15
 
     init(
@@ -348,8 +350,10 @@ struct BodySSBText: View {
         textColor: Color = .textPrimary,
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        lineHeight: CGFloat? = nil
     ) {
+        self.lineHeight = lineHeight
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -366,6 +370,11 @@ struct BodySSBText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
+        .transformEnvironment(\._lineHeightMultiple) { value in
+            if let lineHeight, let font = UIFont(name: Fonts.semiBold, size: fontSize) {
+                value = lineHeight / font.lineHeight
+            }
+        }
         .kerning(0.4)
         // .lineSpacing(0)
     }
@@ -451,6 +460,9 @@ struct CaptionMText: View {
     var accentColor: Color = .brandAccent
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
+    var kerning: CGFloat
+
+    var lineHeight: CGFloat?
 
     private let fontSize: CGFloat = 13
 
@@ -459,12 +471,16 @@ struct CaptionMText: View {
         textColor: Color = .textSecondary,
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
-        accentAction: (() -> Void)? = nil
+        accentAction: (() -> Void)? = nil,
+        kerning: CGFloat = 0.8,
+        lineHeight: CGFloat? = nil
     ) {
+        self.lineHeight = lineHeight
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
+        self.kerning = kerning
     }
 
     var body: some View {
@@ -476,7 +492,12 @@ struct CaptionMText: View {
             accentFont: accentFont?(fontSize),
             accentAction: accentAction
         )
-        .kerning(0.8)
+        .transformEnvironment(\._lineHeightMultiple) { value in
+            if let lineHeight, let font = UIFont(name: Fonts.medium, size: fontSize) {
+                value = lineHeight / font.lineHeight
+            }
+        }
+        .kerning(kerning)
         .textCase(.uppercase)
     }
 }
