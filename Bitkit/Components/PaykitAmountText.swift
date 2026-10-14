@@ -7,7 +7,11 @@ struct PaykitAmountText: View {
     var color: Color = .textPrimary
 
     private var displayValue: String {
-        amount.asset == .usdt ? usdtOverviewAmount(amount.atomic) : amount.value
+        switch amount.asset {
+        case .usd: usdDisplayAmount(amount.atomic)
+        case .usdt: usdtOverviewAmount(amount.atomic)
+        case .btc: amount.value
+        }
     }
 
     var body: some View {
@@ -20,4 +24,8 @@ struct PaykitAmountText: View {
             BodyMSBText(prefix + "$" + displayValue, textColor: color)
         }
     }
+}
+
+func usdDisplayAmount(_ cents: UInt64, locale: Locale = .current) -> String {
+    (Decimal(cents) / 100).formatted(.number.precision(.fractionLength(2)).locale(locale))
 }

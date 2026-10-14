@@ -29,14 +29,14 @@ struct SheetBackgroundModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .background(
+            .background {
                 LinearGradient(
                     gradient: Gradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.012)]),
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .opacity(applyGradient ? 1 : 0)
-            )
+            }
             .background(base)
     }
 }

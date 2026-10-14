@@ -102,7 +102,7 @@ struct CreateSubscriptionView: View {
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                    } else { NumberPadAmountText(value: usdtInputAmount(draft.amount.value), symbol: "$") }
+                    } else { PaykitAmountText(amount: draft.amount, size: .display) }
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)

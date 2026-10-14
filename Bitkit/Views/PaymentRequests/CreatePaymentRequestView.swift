@@ -496,7 +496,7 @@ struct PaymentRequestDetailsView: View {
                     if initialDraft.amount.asset == .btc {
                         MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
                                   symbol: true, color: .textPrimary, symbolColor: .textSecondary, fillsWidth: false)
-                    } else { NumberPadAmountText(value: usdtInputAmount(initialDraft.amount.value), symbol: "$") }
+                    } else { PaykitAmountText(amount: initialDraft.amount, size: .display) }
                     Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
                 }
             }
@@ -578,7 +578,7 @@ struct PaymentRequestDetailsView: View {
                 }
                 Spacer(minLength: 8)
                 if initialDraft.amount.asset == .btc { MoneyCell(sats: Int(clamping: initialDraft.amount.atomic), prefix: "") }
-                else { BodyMSBText("$" + usdtInputAmount(initialDraft.amount.value)) }
+                else { PaykitAmountText(amount: initialDraft.amount) }
             }
             .padding(16)
             .background(Color.gray6)
