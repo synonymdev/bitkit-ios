@@ -1662,7 +1662,10 @@ class ActivityService {
             if metadata == nil, !address.isEmpty {
                 metadata = try BitkitCore.getPreActivityMetadata(walletId: WalletScope.default, searchKey: address, searchByAddress: true)
             }
-            guard let metadata else { throw AppError(message: "Receive metadata not available") }
+            guard let metadata else { throw AppError(
+                message: "Receive metadata not available",
+                debugMessage: "No metadata for the committed receive invoice or address"
+            ) }
             switch mutation {
             case let .add(tags):
                 try BitkitCore.addPreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId, tags: tags)
