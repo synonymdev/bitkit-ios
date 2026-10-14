@@ -1599,8 +1599,8 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func receiveInvoiceTags(paymentId: String) async -> [String] {
-        await (try? coreService.activity.getPreActivityMetadata(searchKey: paymentId, searchByAddress: false))?.tags ?? []
+    func receiveInvoiceTags(paymentId: String, searchByAddress: Bool = false) async -> [String]? {
+        await (try? coreService.activity.getPreActivityMetadata(searchKey: paymentId, searchByAddress: searchByAddress))?.tags
     }
 
     func receiveInvoicePaymentHash(invoice: String) async -> String? {
