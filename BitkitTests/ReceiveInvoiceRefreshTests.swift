@@ -214,7 +214,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         try await assertTagMutationAfterCancelledReplacement(.reset, expected: [])
     }
 
-    private func assertTagMutationAfterCancelledReplacement(_ mutation: ReceiveTagMutation, expected: [String]) async throws {
+    private func assertTagMutationAfterCancelledReplacement(_ mutation: Bitkit.ReceiveTagMutation, expected: [String]) async throws {
         let wallet = taggedReceiveWallet()
         wallet.gateFirstHash = false
         wallet.gateFirstWrite = true
@@ -400,7 +400,7 @@ private final class TaggedReceiveWallet: WalletViewModel {
         }
     }
 
-    override func mutateReceiveMetadataTags(paymentId: String?, address: String, mutation: ReceiveTagMutation) async throws {
+    override func mutateReceiveMetadataTags(paymentId: String?, address: String, mutation: Bitkit.ReceiveTagMutation) async throws {
         let exactKey = paymentId.flatMap { metadata[$0] == nil ? nil : $0 }
         guard let key = exactKey ?? metadataAddresses.first(where: { $0.value == address })?.key else { throw TestError.missingMetadata }
         switch mutation {
