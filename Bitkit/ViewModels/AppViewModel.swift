@@ -216,7 +216,7 @@ class AppViewModel: ObservableObject {
         }
         if url.scheme?.lowercased() == "bitkit",
            url.host?.lowercased() == "pubky-auth",
-           url.path == "/setup"
+           ["/setup", "/signin"].contains(url.path)
         {
             return false
         }

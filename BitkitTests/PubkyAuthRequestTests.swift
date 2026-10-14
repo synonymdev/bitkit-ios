@@ -29,6 +29,53 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.capabilities, PubkyAuthClaim.requiredCapabilities)
     }
 
+    func testProtocolUrlNormalizesBitkitSigninHandoffWithoutClaimMarker() throws {
+        let query = "caps=/pub/locks.app/:rw&relay=\(relay)&secret=\(secret)&cid=locks.test&cpk=\(publicKey)"
+        let url = "bitkit://pubky-auth/signin?\(query)"
+
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url))
+        XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), "pubkyauth://signin_grant?\(query)")
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertEqual(request.rawUrl, "pubkyauth://signin_grant?\(query)")
+        XCTAssertNil(request.bitkitClaim)
+        XCTAssertEqual(request.capabilities, "/pub/locks.app/:rw")
+        XCTAssertEqual(request.serviceNames, ["locks.app"])
+    }
+
+    func testProtocolUrlValidatesOptionalClaimOnBitkitSigninHandoff() throws {
+        let base = "bitkit://pubky-auth/signin?caps=\(PubkyAuthClaim.requiredCapabilities)" +
+            "&relay=\(relay)&secret=\(secret)&cid=paykit.test&cpk=\(publicKey)"
+
+        XCTAssertEqual(try PubkyAuthRequest.parse(url: base + "&x-bitkit-claim=watch-only-account-v1").bitkitClaim, .watchOnlyAccountV1)
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: base + "&x-bitkit-claim=unknown-v1")) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .unsupportedBitkitClaim("unknown-v1"))
+        }
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: base.replacingOccurrences(of: "secret=", with: "secret=a&secret="))) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .duplicateSecret)
+        }
+    }
+
+    func testProtocolUrlRejectsMalformedBitkitSigninHandoff() {
+        let query = "caps=/pub/locks.app/:rw&relay=\(relay)&secret=\(secret)"
+        let urls = [
+            "bitkit://pubky-auth/signin",
+            "bitkit://pubky-auth/signin?",
+            "bitkit://pubky-auth/signin??\(query)",
+            "bitkit://pubky-auth/signin?\(query)#ignored",
+            "bitkit://user@pubky-auth/signin?\(query)",
+            "bitkit://pubky-auth:123/signin?\(query)",
+            "bitkit://pubky-auth/signin/extra?\(query)",
+        ]
+
+        for url in urls {
+            XCTAssertFalse(PubkyAuthRequest.isProtocolURL(url), url)
+            XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), url)
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url), url)
+        }
+    }
+
     func testRelayOriginShowsOnlyTheAuthorizationDestination() throws {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)" +
