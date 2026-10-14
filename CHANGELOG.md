@@ -28,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Share Paykit contacts and payment state with authorized apps while keeping wallet keys private, restore contacts when re-importing an identity, prepare incoming payments in the payment sheet, support one-time payment deadlines, prioritize payment submission over background synchronization, distinguish temporary restoration failures from expired sessions, preserve subscription reminders through retries, and label received payments with their Paykit contact. #856
 - Jade hardware wallets now display device artwork that matches the app's hardware wallet design. #878
 - Pubky authorization dialogs now name the requesting service, group permissions and details under clear headings, and show a compact profile card. #880
+- Improved Home pull-to-refresh feedback and added on-demand exchange-rate updates. #532
 
 ### Fixed
-- Improved Home pull-to-refresh feedback and added on-demand exchange-rate updates. #532
 - Incoming on-chain transactions that confirm before being seen in the mempool now show the received notification. #588
 - Payment requests now provide safe failure diagnostics and show an error when requested payment details remain unavailable. #721
 - Fixed the transfer to spending flow creating a Blocktank order every time you tapped Continue, so an order is now only created when you confirm the transfer. #738
