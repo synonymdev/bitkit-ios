@@ -1519,6 +1519,9 @@ class WalletViewModel: ObservableObject {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         let note = invoiceNote
         let cachedInvoice = bolt11
+        let cachedComponents = URLComponents(string: bip21)
+        let invoiceAddress = cachedComponents?.scheme?.lowercased() == "bitcoin" ? cachedComponents?.path : nil
+        let committedAddress = invoiceAddress.flatMap { $0.isEmpty ? nil : $0 } ?? onchainAddress
         let cachedQuery = URLComponents(string: bip21)?.queryItems ?? []
         let cachedAmount = cachedQuery.first(where: { $0.name == "amount" })?.value
         let cachedNote = cachedQuery.first(where: { $0.name == "message" })?.value ?? ""
@@ -1533,7 +1536,11 @@ class WalletViewModel: ObservableObject {
             let oldPaymentId = await paymentId()
             var tagsToMigrate: [String] = []
             if let oldPaymentId, !oldPaymentId.isEmpty {
-                tagsToMigrate = await receiveInvoiceTags(paymentId: oldPaymentId)
+                if let tags = await receiveInvoiceTags(paymentId: oldPaymentId) {
+                    tagsToMigrate = tags
+                } else if !committedAddress.isEmpty {
+                    tagsToMigrate = await receiveInvoiceTags(paymentId: committedAddress, searchByAddress: true) ?? []
+                }
             }
 
             try Task.checkCancellation()
