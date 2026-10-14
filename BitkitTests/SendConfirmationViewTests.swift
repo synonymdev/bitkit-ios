@@ -34,24 +34,92 @@ final class SendConfirmationViewTests: XCTestCase {
         XCTAssertFalse(SendConfirmationView.canEditConfirmationFee(retained: nil, isLoading: true))
     }
 
-    func testAutomaticPaymentRequiresManualConfirmationForNonLightningFunding() {
-        for walletType in [WalletType.lightning, .onchain] {
-            for isHardwarePayment in [false, true] {
-                XCTAssertEqual(
-                    SendConfirmationView.requiresManualConfirmation(
-                        isAutomatic: true,
-                        walletType: walletType,
-                        isHardwarePayment: isHardwarePayment
-                    ),
-                    walletType == .onchain || isHardwarePayment
-                )
-                XCTAssertFalse(SendConfirmationView.requiresManualConfirmation(
-                    isAutomatic: false,
-                    walletType: walletType,
+    func testAutomaticPaymentRequiresManualConfirmationOnlyForHardwareFunding() {
+        for isHardwarePayment in [false, true] {
+            XCTAssertEqual(
+                SendConfirmationView.requiresManualConfirmation(
+                    isAutomatic: true,
                     isHardwarePayment: isHardwarePayment
-                ))
-            }
+                ),
+                isHardwarePayment
+            )
+            XCTAssertFalse(SendConfirmationView.requiresManualConfirmation(
+                isAutomatic: false,
+                isHardwarePayment: isHardwarePayment
+            ))
         }
+    }
+
+    func testAutomaticPaymentStartsOnlyAfterSetupAndWalletSwitchFinish() {
+        XCTAssertTrue(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: false, isSetupPending: false, isPreparingWallet: false
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: false, isSetupPending: false, isPreparingWallet: true
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: false, isSetupPending: true, isPreparingWallet: false
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: true, isSetupPending: false, isPreparingWallet: false
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: false, hasStartedAutomaticPayment: false, isSetupPending: false, isPreparingWallet: false
+        ))
+    }
+
+    func testAutomaticPaymentAwaitsFeeRateOnlyWhileItIsLoading() {
+        XCTAssertTrue(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: false))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: true))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: false, feeRateLoadFailed: false))
+    }
+
+    func testAutomaticPaymentLacksFeeOnlyForOnchainWithoutCalculatedFee() {
+        XCTAssertTrue(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 0))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .onchain, transactionFee: 143))
+        XCTAssertFalse(SendConfirmationView.automaticPaymentLacksFee(walletType: .lightning, transactionFee: 0))
+    }
+
+    func testManualCoinSelectionIsNeededOnlyForOnchainSavingsWithoutSelectedCoins() {
+        func needs(_ walletType: WalletType, hardware: Bool = false, method: CoinSelectionMethod = .manual) -> Bool {
+            SendConfirmationView.needsManualCoinSelection(
+                walletType: walletType,
+                isHardwarePayment: hardware,
+                coinSelectionMethod: method,
+                selectedUtxos: nil
+            )
+        }
+        XCTAssertTrue(needs(.onchain))
+        XCTAssertFalse(needs(.lightning))
+        XCTAssertFalse(needs(.onchain, hardware: true))
+        XCTAssertFalse(needs(.onchain, method: .autopilot))
+        XCTAssertTrue(SendConfirmationView.needsManualCoinSelection(
+            walletType: .onchain,
+            isHardwarePayment: false,
+            coinSelectionMethod: .manual,
+            selectedUtxos: []
+        ))
+    }
+
+    func testManuallyChosenCoinsAreDetectedOnlyForOnchainSavingsWithManualSelection() {
+        func hasChosen(
+            _ walletType: WalletType = .onchain, hardware: Bool = false, method: CoinSelectionMethod = .manual,
+            utxos: [SpendableUtxo]?
+        ) -> Bool {
+            SendConfirmationView.hasManuallyChosenCoins(
+                walletType: walletType,
+                isHardwarePayment: hardware,
+                coinSelectionMethod: method,
+                selectedUtxos: utxos
+            )
+        }
+        let utxo = SpendableUtxo(outpoint: OutPoint(txid: "00", vout: 0), valueSats: 1000)
+        XCTAssertTrue(hasChosen(utxos: [utxo]))
+        XCTAssertFalse(hasChosen(utxos: nil))
+        XCTAssertFalse(hasChosen(utxos: []))
+        XCTAssertFalse(hasChosen(.lightning, utxos: [utxo]))
+        XCTAssertFalse(hasChosen(hardware: true, utxos: [utxo]))
+        XCTAssertFalse(hasChosen(method: .autopilot, utxos: [utxo]))
     }
 
     func testLightningFailureReleasesOnlyDefinitePreSubmissionAttempts() {

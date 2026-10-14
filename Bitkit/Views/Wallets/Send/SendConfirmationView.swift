@@ -23,6 +23,8 @@ struct SendConfirmationView: View {
     let routingCacheResetAttempted: Bool
     var preparingRequest: PaykitPaymentRequest?
     var amountIsRoot = false
+    /// True while the send sheet is still loading the fee rate and choosing the funding source.
+    var isSetupPending = false
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -223,9 +225,24 @@ struct SendConfirmationView: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app
-            .selectedWalletToPayFrom == .lightning &&
-            !hwSend.isActive && !requiresPaymentConfirmation && app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
+        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
+            !hwSend.isActive && !requiresPaymentConfirmation && app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil &&
+            !Self.hasManuallyChosenCoins(
+                walletType: app.selectedWalletToPayFrom,
+                isHardwarePayment: hwSend.isActive,
+                coinSelectionMethod: settings.coinSelectionMethod,
+                selectedUtxos: wallet.selectedUtxos
+            )
+    }
+
+    /// The coin picker opens a new confirmation, which must wait for a swipe instead of paying by itself.
+    static func hasManuallyChosenCoins(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?
+    ) -> Bool {
+        walletType == .onchain && !isHardwarePayment && coinSelectionMethod == .manual && selectedUtxos?.isEmpty == false
     }
 
     static func acceptedOnchainRoute(
@@ -380,14 +397,22 @@ struct SendConfirmationView: View {
             guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
             ensureSendAmountFromScannedInvoicesIfNeeded()
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
-                requiresPaymentConfirmation = true
-                showDetails = true
+                showManualConfirmation(reason: "not automatic when opened")
             }
             await calculateTransactionFee()
             await calculateRoutingFee()
             guard !Task.isCancelled else { return }
             // PIN navigation can cancel the view task while authorization is awaiting its result.
             Task { @MainActor in await startAutomaticPaymentIfNeeded() }
+        }
+        .onChange(of: isSetupPending) { _, isPending in
+            guard !isPending, preparingRequest == nil else { return }
+            Task { @MainActor in
+                if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
+                    showManualConfirmation(reason: "not automatic after setup")
+                }
+                await startAutomaticPaymentIfNeeded()
+            }
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             guard preparingRequest == nil else { return }
@@ -420,6 +445,11 @@ struct SendConfirmationView: View {
             if !Task.isCancelled, walletSwitchContext == context {
                 walletSwitchContext = nil
             }
+        }
+        .onChange(of: walletSwitchContext) { previous, context in
+            // Clearing the context cancels the switch task, so the start runs outside it with the current setup state.
+            guard previous != nil, context == nil, confirmationContext != nil, preparingRequest == nil else { return }
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
         }
         .onDisappear {
             if !isEditingSendDetails || sendContext != walletSwitchContext {
@@ -470,8 +500,12 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment
-        else { return }
+        guard Self.canStartAutomaticPayment(
+            shouldAutomaticallyPay: shouldAutomaticallyPay,
+            hasStartedAutomaticPayment: hasStartedAutomaticPayment,
+            isSetupPending: isSetupPending,
+            isPreparingWallet: walletSwitchContext != nil
+        ) else { return }
         hasStartedAutomaticPayment = true
         do {
             try await submitPayment(isAutomatic: true)
@@ -772,30 +806,43 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
+        if isAutomatic, isFeeRateMissing {
+            guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
+                // The rate is still loading; the automatic start runs again when send setup finishes.
+                hasStartedAutomaticPayment = false
+                return
+            }
+            showManualConfirmation(reason: "fee rate missing")
+            return
+        }
+        if isAutomatic, Self.needsManualCoinSelection(
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive,
+            coinSelectionMethod: settings.coinSelectionMethod,
+            selectedUtxos: wallet.selectedUtxos
+        ) {
+            showManualConfirmation(reason: "manual coin selection")
+            try? await openManualCoinSelection()
+            return
+        }
         try await Self.requireManualCoinSelection(
             walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive,
             coinSelectionMethod: settings.coinSelectionMethod,
             selectedUtxos: wallet.selectedUtxos
         ) {
-            guard let context = confirmationContext else { return }
-            func isCurrentSend() -> Bool {
-                !Task.isCancelled && confirmationContext == context
-            }
-            guard isCurrentSend() else { throw CancellationError() }
-            do {
-                try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
-                guard isCurrentSend() else { throw CancellationError() }
-                navigationPath.append(.utxoSelection)
-            } catch {
-                guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
-                Logger.error("Failed to reload UTXOs for manual selection: \(error)")
-                showManualCoinSelectionError()
-                throw error
-            }
+            try await openManualCoinSelection()
         }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+        }
+
+        if isAutomatic {
+            await settleTransactionFee()
+            if Self.automaticPaymentLacksFee(walletType: app.selectedWalletToPayFrom, transactionFee: transactionFee) {
+                showManualConfirmation(reason: "onchain fee unknown")
+                return
+            }
         }
 
         // Validate payment and show warnings if needed
@@ -847,7 +894,7 @@ struct SendConfirmationView: View {
         }
 
         if requiresManualConfirmation(isAutomatic: isAutomatic) {
-            showManualConfirmation()
+            showManualConfirmation(reason: "hardware wallet")
             return
         }
 
@@ -858,8 +905,28 @@ struct SendConfirmationView: View {
         }
     }
 
-    static func requiresManualConfirmation(isAutomatic: Bool, walletType: WalletType, isHardwarePayment: Bool) -> Bool {
-        isAutomatic && (walletType != .lightning || isHardwarePayment)
+    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
+    static func canStartAutomaticPayment(
+        shouldAutomaticallyPay: Bool,
+        hasStartedAutomaticPayment: Bool,
+        isSetupPending: Bool,
+        isPreparingWallet: Bool
+    ) -> Bool {
+        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet
+    }
+
+    static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
+        isAutomatic && isHardwarePayment
+    }
+
+    /// A missing rate that has not failed is still loading, so the automatic payment waits instead of asking for a swipe.
+    static func automaticPaymentAwaitsFeeRate(isFeeRateMissing: Bool, feeRateLoadFailed: Bool) -> Bool {
+        isFeeRateMissing && !feeRateLoadFailed
+    }
+
+    /// An automatic on-chain payment must not be sent before its fee is known, because the fee warnings read it.
+    static func automaticPaymentLacksFee(walletType: WalletType, transactionFee: Int) -> Bool {
+        walletType == .onchain && transactionFee <= 0
     }
 
     static func privatePaymentListOutcomeForLightningFailure(
@@ -937,6 +1004,24 @@ struct SendConfirmationView: View {
         isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
     }
 
+    private func openManualCoinSelection() async throws {
+        guard let context = confirmationContext else { return }
+        func isCurrentSend() -> Bool {
+            !Task.isCancelled && confirmationContext == context
+        }
+        guard isCurrentSend() else { throw CancellationError() }
+        do {
+            try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
+            guard isCurrentSend() else { throw CancellationError() }
+            navigationPath.append(.utxoSelection)
+        } catch {
+            guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
+            Logger.error("Failed to reload UTXOs for manual selection: \(error)")
+            showManualCoinSelectionError()
+            throw error
+        }
+    }
+
     private func showManualCoinSelectionError() {
         app.toast(type: .error, title: t("other__try_again"))
     }
@@ -966,10 +1051,23 @@ struct SendConfirmationView: View {
         selectedUtxos: [SpendableUtxo]?,
         prepareSelection: () async throws -> Void
     ) async throws {
-        guard walletType == .onchain, !isHardwarePayment, coinSelectionMethod == .manual,
-              selectedUtxos?.isEmpty != false else { return }
+        guard needsManualCoinSelection(
+            walletType: walletType,
+            isHardwarePayment: isHardwarePayment,
+            coinSelectionMethod: coinSelectionMethod,
+            selectedUtxos: selectedUtxos
+        ) else { return }
         try await prepareSelection()
         throw CancellationError()
+    }
+
+    static func needsManualCoinSelection(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?
+    ) -> Bool {
+        walletType == .onchain && !isHardwarePayment && coinSelectionMethod == .manual && selectedUtxos?.isEmpty != false
     }
 
     static func isSwipeDisabled(
@@ -1006,12 +1104,12 @@ struct SendConfirmationView: View {
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
         Self.requiresManualConfirmation(
             isAutomatic: isAutomatic,
-            walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive
         )
     }
 
-    private func showManualConfirmation() {
+    private func showManualConfirmation(reason: String) {
+        Logger.info("Opening manual confirmation for first subscription payment: \(reason)")
         hasStartedAutomaticPayment = false
         requiresPaymentConfirmation = true
         showDetails = true
@@ -1096,7 +1194,7 @@ struct SendConfirmationView: View {
                 if shouldCancelPaymentProof, let incomingPaymentRequest {
                     await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
                 }
-                showManualConfirmation()
+                showManualConfirmation(reason: "hardware wallet")
                 return
             }
 
@@ -1664,6 +1762,16 @@ struct SendConfirmationView: View {
 
         guard isCurrentSend() else { return }
         await calculateTransactionFee()
+    }
+
+    /// Recalculates until the newest calculation is the one that finished, so a concurrent one cannot leave the fee unset.
+    @MainActor
+    private func settleTransactionFee() async {
+        for _ in 0 ..< 3 {
+            let startedFrom = feeCalculationId
+            await calculateTransactionFee()
+            if feeCalculationId == startedFrom + 1 { return }
+        }
     }
 
     @MainActor

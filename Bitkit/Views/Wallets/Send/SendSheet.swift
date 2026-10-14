@@ -143,6 +143,9 @@ struct SendSheet: View {
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
     @State private var usdtDetails: String?
+    /// Starts pending so a confirmation rendered before `setUpSend` runs does not read setup as finished.
+    @State private var isSetupPending = true
+    @State private var isFallbackFundingPending = false
 
     init(config: SendSheetItem, isEmbedded: Bool = false) {
         self.config = config
@@ -396,7 +399,13 @@ struct SendSheet: View {
             app.resetSendState()
         }
         setupTask?.cancel()
+        isSetupPending = true
         setupTask = Task {
+            defer {
+                if !Task.isCancelled {
+                    isSetupPending = false
+                }
+            }
             if incomingPaymentRequest == nil, config.hardwareWalletId == nil,
                currentRoot == .options || app.selectedWalletToPayFrom == .onchain
             {
@@ -664,6 +673,9 @@ struct SendSheet: View {
                     if requestedAmount == nil {
                         navigationPath = [.amount]
                     }
+                    if let onchainAmount {
+                        selectHardwareFundingSourceAfterOnchainFallback(amountSats: onchainAmount)
+                    }
                     hasValidatedAfterSync = true
                     return .ready
                 } else {
@@ -725,6 +737,15 @@ struct SendSheet: View {
             && sheets.activeSheetConfiguration?.id == (isEmbedded ? .subscription : .send)
             && incomingPaymentRequest?.id == requestId
             && app.contactPaymentContext?.incomingPaymentRequest?.id == requestId
+    }
+
+    private func selectHardwareFundingSourceAfterOnchainFallback(amountSats: UInt64) {
+        guard let request = incomingPaymentRequest else { return }
+        isFallbackFundingPending = true
+        Task {
+            _ = await selectHardwareFundingSourceIfNeeded(amountSats: amountSats, requestId: request.id)
+            isFallbackFundingPending = false
+        }
     }
 
     private func selectHardwareFundingSourceIfNeeded(
@@ -850,7 +871,8 @@ struct SendSheet: View {
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted,
                 preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
-                amountIsRoot: currentRoot == .amount
+                amountIsRoot: currentRoot == .amount,
+                isSetupPending: isSetupPending || isFallbackFundingPending
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1255,6 +1277,23 @@ struct SendSheet: View {
             }
             showEmbeddedInitialPaymentFailure(request, error: error, context: context)
             return
+        }
+
+        /// The retry task outlives the sheet, so it must not set the rate of a send opened after it.
+        func isCurrentRetry() -> Bool {
+            sheets.activeSheetConfiguration?.id == .subscription && app.ownsContactPaymentContext(context)
+        }
+        // `resetSendState` cleared the rate and setup does not run again, so the automatic payment would wait for it forever.
+        if isCurrentRetry() {
+            do {
+                try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed) {
+                    try await wallet.setFeeRate(speed: $0, isCurrentSend: isCurrentRetry)
+                }
+            } catch is CancellationError {
+                // The ownership check below releases a retry that no longer owns the send.
+            } catch {
+                Logger.error("Failed to set default fee rate for retry: \(error)")
+            }
         }
 
         guard sheets.activeSheetConfiguration?.id == .subscription,
