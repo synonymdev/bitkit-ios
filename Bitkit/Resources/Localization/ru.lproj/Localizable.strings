@@ -58,6 +58,7 @@
 "common__delete_yes" = "Да, Удалить";
 "common__off" = "Выкл";
 "common__ok" = "ОК";
+"common__on" = "Вкл";
 "common__total" = "Итого";
 "common__ok_random" = "Отлично!\nКласс!\nКруто!\nСупер!\nФантастика!\nЗдорово!\nПревосходно!\nПотрясающе!";
 "common__reset" = "Сбросить";
@@ -75,6 +76,7 @@
 "common__max" = "Макс";
 "common__default" = "По умолчанию";
 "common__preview" = "Предпросмотр";
+"common__qr_code" = "QR-код";
 "common__show_all" = "Показать Все";
 "common__show_details" = "Показать Детали";
 "common__success" = "Успешно";
@@ -150,6 +152,7 @@
 "lightning__spending_confirm__network_fee" = "Сетевые Комиссии";
 "lightning__spending_confirm__lsp_fee" = "Сервисные Комиссии";
 "lightning__spending_confirm__amount" = "На Баланс Расходов";
+"lightning__spending_confirm__background_setup" = "Настроить в фоновом режиме";
 "lightning__spending_confirm__total" = "Итого";
 "lightning__spending_confirm__default" = "Использовать По Умолчанию";
 "lightning__spending_advanced__title" = "Входящая\n<accent>Ёмкость</accent>";
@@ -290,6 +293,7 @@
 "lightning__order_state__closed" = "Соединение Закрыто";
 "lightning__order_state__open" = "Соединение Открыто";
 "lightning__order_state__inactive" = "Соединение неактивно";
+"lightning__peer_disconnected" = "Узел отключён.";
 "lightning__wait_text_top" = "Пожалуйста, подождите, пока Bitkit подключается к платёжной сети (±10 секунд).";
 "lightning__wait_text_bottom" = "Подключение и Синхронизация...";
 "onboarding__tos_header" = "Bitkit\n<accent>Условия использования</accent>";
@@ -310,6 +314,7 @@
 "onboarding__slide0_text_alt" = "Bitkit даёт вам ключи для управления вашими деньгами, профилем и контактами. Возьмите контроль и станьте безграничными.";
 "onboarding__slide1_header" = "Мгновенные\n<accent>платежи</accent>";
 "onboarding__slide1_text" = "Тратьте биткойны быстрее, чем когда-либо. Наслаждайтесь мгновенными и недорогими платежами с друзьями, семьёй и продавцами.";
+"onboarding__slide1_text_alt" = "Наслаждайтесь мгновенными и недорогими платежами с друзьями, семьёй и продавцами в Lightning Network.";
 "onboarding__slide1_note" = "*Bitkit в настоящее время не предоставляет услуги Lightning в вашей стране, но вы всё равно можете подключаться к другим узлам.";
 "onboarding__slide2_header" = "Биткойнеры,\n<accent>без границ</accent>";
 "onboarding__slide2_text" = "Берите под контроль свою цифровую жизнь с помощью портативных профилей и оплачиваемых контактов.";
@@ -351,10 +356,14 @@
 "other__qr_error_header" = "Не удалось прочитать QR-код";
 "other__qr_error_text" = "Bitkit не может прочитать этот QR-код.";
 "other__qr_error_detection_description" = "Не удалось обработать изображение для поиска QR-кодов.";
+"other__qr_error_detection_title" = "Ошибка Обнаружения";
+"other__qr_error_generic_description" = "Извините. Произошла ошибка при попытке обработать это изображение.";
+"other__qr_error_load_image" = "Извините. Bitkit не удалось загрузить это изображение.";
 "other__qr_error_no_data_header" = "Не удалось прочитать данные";
 "other__qr_error_no_data_text" = "Bitkit не смог прочитать предоставленные данные.";
 "other__qr_error_no_qr_description" = "Извините. Bitkit не удалось обнаружить QR-код на этом изображении.";
 "other__qr_error_no_qr_title" = "QR-код Не Найден";
+"other__qr_error_process_image" = "Извините. Bitkit не удалось обработать это изображение.";
 "other__qr_error_network_header" = "Неправильная Сеть";
 "other__qr_error_network_text" = "В настройках Bitkit в данный момент выбрана {selectedNetwork}, а данные предназначены для {dataNetwork}.";
 "other__qr_paste" = "Вставить QR-код";
@@ -736,6 +745,7 @@
 "settings__adv__cs_manual" = "Вручную";
 "settings__adv__cs_auto" = "Автопилот";
 "settings__adv__cs_auto_mode" = "Режим Автопилота";
+"settings__adv__cs_branch_and_bound_description" = "Находит точные совпадения сумм для минимизации сдачи";
 "settings__adv__cs_max" = "Сначала Мелкие";
 "settings__adv__cs_max_description" = "Сортировать и использовать сначала мелкие UTXO. Потенциально выше комиссия, но скрывает ваши крупные UTXO.";
 "settings__adv__cs_min" = "Сначала Крупные";
@@ -756,15 +766,23 @@
 "settings__adv__sweep_funds" = "Сбор Средств";
 "settings__adv__rescan" = "Повторное Сканирование Адресов";
 "sweep__title" = "Сбор Средств";
+"sweep__found_title" = "Найдены Средства";
 "sweep__loading_description" = "Пожалуйста, подождите, пока Bitkit ищет средства на неподдерживаемых адресах (Legacy, Nested SegWit и Taproot).";
 "sweep__looking_for_funds" = "ПОИСК СРЕДСТВ...";
 "sweep__found_description" = "Bitkit нашёл средства на неподдерживаемых адресах (Legacy, Nested SegWit и Taproot).";
+"sweep__funds_found" = "СРЕДСТВА НАЙДЕНЫ";
 "sweep__sweep_to_wallet" = "Собрать в Кошелёк";
+"sweep__no_funds_title" = "Нет Средств Для Сбора";
 "sweep__no_funds_description" = "Bitkit проверил неподдерживаемые типы адресов и не нашёл средств для сбора.";
+"sweep__error_title" = "Ошибка";
 "sweep__error_destination_address" = "Не удалось получить адрес назначения";
+"sweep__error_fee_rate_not_set" = "Ставка комиссии не установлена";
 "sweep__confirm_title" = "Подтвердить Сбор";
+"sweep__destination" = "Назначение";
 "sweep__preparing" = "Подготовка транзакции...";
+"sweep__broadcasting" = "Отправка...";
 "sweep__swipe" = "Проведите для Сбора";
+"sweep__fee_total" = "{fee} сатоши общая комиссия";
 "sweep__complete_title" = "Сбор Завершён";
 "sweep__complete_description" = "Ваши средства были собраны и будут добавлены к балансу вашего кошелька.";
 "sweep__wallet_overview" = "Обзор Кошелька";
@@ -774,6 +792,7 @@
 "sweep__prompt_sweep" = "Собрать";
 "migration__title" = "Миграция Кошелька";
 "migration__headline" = "МИГРАЦИЯ\n<accent>КОШЕЛЬКА</accent>";
+"migration__description" = "Пожалуйста, подождите, пока данные вашего старого кошелька мигрируют в эту новую версию Bitkit...";
 "settings__adv__suggestions_reset" = "Сбросить Рекомендации";
 "settings__adv__reset_title" = "Сбросить Рекомендации?";
 "settings__adv__reset_desc" = "Вы уверены, что хотите сбросить рекомендации? Они появятся снова, если вы их удалили.";
@@ -828,6 +847,7 @@
 "settings__rgs__server_url" = "URL Сервера Rapid-Gossip-Sync";
 "settings__rgs__button_connect" = "Подключиться";
 "settings__rgs__error_peer" = "Ошибка Подключения RGS";
+"settings__rgs__server_error_description" = "Не удалось подключиться к серверу Rapid-Gossip-Sync.";
 "settings__rgs__update_success_title" = "Сервер Rapid-Gossip-Sync Обновлён";
 "settings__rgs__update_success_description" = "Возможно, вам потребуется перезапустить приложение один или два раза, чтобы изменения вступили в силу.";
 "settings__wr__error_wr" = "Ошибка Web Relay";
@@ -1024,6 +1044,7 @@
 "wallet__receive_note_placeholder" = "Опциональная заметка для плательщика";
 "wallet__receive_show_qr" = "Показать QR-код";
 "wallet__receive_text_lnfunds" = "Хотите получить <accent>Лайтнинг</accent> средства?";
+"wallet__receive_background_setup_text" = "Включите фоновую настройку, чтобы безопасно выйти из Bitkit пока настраивается ваш баланс.";
 "wallet__receive_background_setup_toggle" = "Включить фоновую настройку";
 "wallet__receive_spending" = "Получить Lightning средства";
 "wallet__receive_spending_title" = "Получить на <accent>баланс расходов</accent>";
@@ -1162,6 +1183,7 @@
 "wallet__ldk_sync_error_title" = "Ошибка Синхронизации Lightning";
 "wallet__receive_insufficient_title" = "Недостаточный входящий баланс.";
 "wallet__receive_insufficient_text" = "Недостаточно входящей ликвидности для получения данной суммы через Lightning.";
+"widgets__widgets" = "Виджеты";
 "widgets__onboarding__title" = "Привет,\n<accent>Виджеты</accent>";
 "widgets__onboarding__description" = "Наслаждайтесь децентрализованными лентами ваших любимых веб-сервисов, добавляя интересные и полезные виджеты в ваш кошелёк Bitkit.";
 "widgets__nav_title" = "Виджеты";

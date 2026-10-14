@@ -59,6 +59,7 @@
 "common__delete_yes" = "Sim, Excluir";
 "common__off" = "Desativado";
 "common__ok" = "OK";
+"common__on" = "Ativado";
 "common__ok_random" = "Incrível!\nLegal!\nMassa!\nÓtimo!\nFantástico!\nShow!\nExcelente!\nDemais!";
 "common__reset" = "Redefinir";
 "common__retry" = "Tentar novamente";
@@ -75,6 +76,7 @@
 "common__max" = "Máx";
 "common__default" = "Padrão";
 "common__preview" = "Pré-visualização";
+"common__qr_code" = "Código QR";
 "common__show_all" = "Mostrar tudo";
 "common__show_details" = "Mostrar detalhes";
 "common__success" = "Sucesso";
@@ -134,6 +136,7 @@
 "lightning__transfer__confirm" = "Por favor\n<accent>confirme</accent>";
 "lightning__transfer__custom_fee" = "<accent>Taxa</accent> personalizada";
 "lightning__transfer__swipe" = "Deslizar Para Transferir";
+"lightning__transfer_to_savings_button" = "Transferir para poupança";
 "lightning__transfer_to_spending_button" = "Transferir para gastos";
 "lightning__spending_intro__title" = "Transferir\n<accent>para gastos</accent>";
 "lightning__spending_intro__text" = "Transfira fundos para seu saldo de gastos para desfrutar de transações instantâneas e baratas com amigos, familiares e comerciantes.";
@@ -153,6 +156,7 @@
 "lightning__spending_confirm__network_fee" = "Taxa da rede";
 "lightning__spending_confirm__lsp_fee" = "Taxa de serviço";
 "lightning__spending_confirm__amount" = "Para gastos";
+"lightning__spending_confirm__background_setup" = "Configurar em segundo plano";
 "lightning__spending_confirm__total" = "Total";
 "lightning__spending_confirm__default" = "Usar padrões";
 "lightning__spending_advanced__title" = "Capacidade de recebimento\n<accent>capacidade</accent>";
@@ -294,14 +298,17 @@
 "lightning__order_state__closed" = "Conexão fechada";
 "lightning__order_state__open" = "Conexão aberta";
 "lightning__order_state__inactive" = "Conexão inativa";
+"lightning__peer_disconnected" = "Par desconectado.";
 "lightning__wait_text_top" = "Por favor, espere que a Bitkit se conecte à rede de pagamento (±10 segundos).";
 "lightning__wait_text_bottom" = "Conectando e Sincronizando...";
 "onboarding__tos_header" = "Bitkit\n<accent>termos de uso</accent>";
 "onboarding__tos_checkbox" = "Termos de uso";
 "onboarding__tos_checkbox_value" = "Ao continuar, você declara que leu e aceitou os <accent>termos de uso.</accent>";
+"onboarding__tos_subtitle" = "Ao continuar, você declara que leu e aceita os termos de uso.";
 "onboarding__tos_title" = "Termos de Uso";
 "onboarding__pp_checkbox" = "Política de Privacidade";
 "onboarding__pp_checkbox_value" = "Ao continuar, você declara que leu e aceitou a <accent>política de privacidade.</accent>";
+"onboarding__pp_subtitle" = "Ao continuar, você declara que leu e aceita a <accent>política de privacidade.</accent>";
 "onboarding__welcome_title" = "Você pode ser \n<accent>a mudança</accent>";
 "onboarding__welcome_text" = "Use a Bitkit para pagar qualquer pessoa, em qualquer lugar, a qualquer momento, e gaste seu bitcoin no que você valoriza.";
 "onboarding__get_started" = "Começar";
@@ -312,6 +319,7 @@
 "onboarding__slide0_text_alt" = "O Bitkit entrega as chaves para controlar seu dinheiro, perfil e contatos. Assuma o controle e torne-se sem fronteiras.";
 "onboarding__slide1_header" = "Pagamentos\n<accent>instantâneos</accent>";
 "onboarding__slide1_text" = "Envie bitcoin mais rápido do que nunca. Aproveite os pagamentos instantâneos e baratos com amigos, familiares e comerciantes.";
+"onboarding__slide1_text_alt" = "Aproveite pagamentos instantâneos e baratos com amigos, família e comerciantes na rede Lightning.";
 "onboarding__slide1_note" = "*No momento, a Bitkit não fornece serviços Lightning em seu país, mas você ainda pode se conectar a outros nós.";
 "onboarding__slide2_header" = "Bitcoiners,\n<accent>sem fronteiras</accent>";
 "onboarding__slide2_text" = "Assuma o controle de sua vida digital com perfis e contatos pagáveis.";
@@ -353,10 +361,14 @@
 "other__qr_error_header" = "Incapaz de Ler o QR";
 "other__qr_error_text" = "A Bitkit não consegue ler este código QR.";
 "other__qr_error_detection_description" = "Falha ao processar a imagem para códigos QR.";
+"other__qr_error_detection_title" = "Erro de detecção";
+"other__qr_error_generic_description" = "Desculpe. Ocorreu um erro ao tentar processar esta imagem.";
+"other__qr_error_load_image" = "Desculpe. O Bitkit não conseguiu carregar esta imagem.";
 "other__qr_error_no_data_header" = "Incapaz de Ler os Dados";
 "other__qr_error_no_data_text" = "A Bitkit não conseguiu ler os dados fornecidos.";
 "other__qr_error_no_qr_description" = "Desculpe. O Bitkit não conseguiu detectar um código QR nesta imagem.";
 "other__qr_error_no_qr_title" = "Código QR não encontrado";
+"other__qr_error_process_image" = "Desculpe. O Bitkit não conseguiu processar esta imagem.";
 "other__qr_error_network_header" = "Rede Incorreta";
 "other__qr_error_network_text" = "A Bitkit está atualmente configurada para {selectedNetwork} mas os dados são para {dataNetwork}.";
 "other__qr_paste" = "Colar código QR";
@@ -428,6 +440,7 @@
 "other__lnurl_withdr_error_minmax" = "Parâmetros de saque LNURL incorretos, mínimo/máximo não configurados corretamente.";
 "other__lnurl_withdr_success_title" = "Saque solicitado";
 "other__lnurl_withdr_success_msg" = "Seu saque foi solicitado com sucesso. Aguardando pagamento.";
+"other__notification_registration_failed_description" = "O Bitkit não conseguiu se registrar para notificações push.";
 "other__notification_registration_failed_title" = "Falha no registro de notificações";
 "other__phone_settings" = "Abrir as configurações do telefone";
 "other__bt_error_retrieve" = "A Transferência Falhou";
@@ -444,6 +457,7 @@
 "other__transfer_notification__body" = "Abra a Bitkit para concluir sua transferência";
 "other__scan__error__generic" = "Bitkit não consegue ler os dados fornecidos.";
 "other__scan__error__expired" = "Este invoice lightning expirou.";
+"other__gift__claimed__text" = "Desculpe, você chegou tarde! Todos os presentes para este código já foram resgatados.";
 "other__gift__claiming__text" = "Reivindicando seu gitf code Bitkit...";
 "other__gift__claiming__title" = "Reivindicando presente";
 "other__gift__error__title" = "Erro no código de presente";
@@ -736,6 +750,7 @@
 "settings__adv__cs_manual" = "Manual";
 "settings__adv__cs_auto" = "Piloto automático";
 "settings__adv__cs_auto_mode" = "Modo Piloto Automático";
+"settings__adv__cs_branch_and_bound_description" = "Encontra correspondências exatas para minimizar troco";
 "settings__adv__cs_max" = "Menor Primeiro";
 "settings__adv__cs_max_description" = "Use o menor UTXO primeiro. Taxa potencialmente mais alta, mas oculta os maiores UTXOs.";
 "settings__adv__cs_min" = "Maior Primeiro";
@@ -758,14 +773,25 @@
 "settings__adv__sweep_funds" = "Varrer Fundos";
 "settings__adv__rescan" = "Reescanear Endereços";
 "sweep__title" = "Varrer Fundos";
+"sweep__found_title" = "Fundos Encontrados";
 "sweep__loading_description" = "Aguarde enquanto o Bitkit procura fundos em endereços não suportados (Legacy, Nested SegWit e Taproot).";
+"sweep__looking_for_funds" = "PROCURANDO FUNDOS...";
 "sweep__found_description" = "O Bitkit encontrou fundos em endereços não suportados (Legacy, Nested SegWit e Taproot).";
+"sweep__funds_found" = "FUNDOS ENCONTRADOS";
 "sweep__sweep_to_wallet" = "Varrer para Carteira";
+"sweep__no_funds_title" = "Sem Fundos para Varrer";
+"sweep__no_funds_description" = "O Bitkit verificou tipos de endereço não suportados e não encontrou fundos para varrer.";
+"sweep__error_title" = "Erro";
 "sweep__error_destination_address" = "Falha ao obter endereço de destino";
+"sweep__error_fee_rate_not_set" = "Taxa de transação não definida";
 "sweep__confirm_title" = "Confirmar Varredura";
+"sweep__destination" = "Destino";
 "sweep__preparing" = "Preparando transação...";
+"sweep__broadcasting" = "Transmitindo...";
 "sweep__swipe" = "Deslize para Varrer";
+"sweep__fee_total" = "{fee} sats de taxa total";
 "sweep__complete_title" = "Varredura Completa";
+"sweep__complete_description" = "Seus fundos foram varridos e serão adicionados ao saldo da sua carteira.";
 "sweep__wallet_overview" = "Visão Geral da Carteira";
 "sweep__prompt_title" = "Varrer Fundos";
 "sweep__prompt_headline" = "VARRER FUNDOS\n<accent>ANTIGOS DO BITKIT</accent>";
@@ -773,6 +799,7 @@
 "sweep__prompt_sweep" = "Varrer";
 "migration__title" = "Migração da Carteira";
 "migration__headline" = "MIGRANDO\n<accent>CARTEIRA</accent>";
+"migration__description" = "Por favor, aguarde enquanto os dados da sua carteira antiga são migrados para esta nova versão do Bitkit...";
 "settings__adv__suggestions_reset" = "Resetar Sugestões";
 "settings__adv__reset_title" = "Resetar Sugestões?";
 "settings__adv__reset_desc" = "Tem certeza de que deseja resetar as sugestões? Eles reaparecerão na tela inicial caso você tenha removido.";
@@ -831,6 +858,8 @@
 "settings__gap__look_ahead_change" = "Olhar à frente Troco";
 "settings__rgs__server_url" = "URL do Servidor de Rapid-Gossip-Sync";
 "settings__rgs__button_connect" = "Conectar";
+"settings__rgs__error_peer" = "Erro de conexão RGS";
+"settings__rgs__server_error_description" = "Não foi possível conectar ao servidor Rapid-Gossip-Sync.";
 "settings__rgs__update_success_title" = "Servidor de Rapid-Gossip-Sync Atualizado";
 "settings__rgs__update_success_description" = "Pode ser necessário reiniciar o aplicativo uma ou duas vezes para que esta alteração seja aplicada.";
 "settings__wr__error_wr" = "Erro do Web Relay";
@@ -1036,6 +1065,7 @@
 "wallet__receive_note_placeholder" = "Comentário opcional para o pagador";
 "wallet__receive_show_qr" = "Mostrar código QR";
 "wallet__receive_text_lnfunds" = "Deseja receber <accent>via Lightning</accent>?";
+"wallet__receive_background_setup_text" = "Ative a configuração em segundo plano para sair do Bitkit com segurança enquanto seu saldo está sendo configurado.";
 "wallet__receive_background_setup_toggle" = "Ativar configuração em segundo plano";
 "wallet__receive_spending" = "Receber no Saldo de Gastos";
 "wallet__receive_spending_title" = "Receber no <accent>saldo de gastos</accent>";
@@ -1069,6 +1099,7 @@
 "wallet__activity_transfer_spending_pending" = "Da Poupança ({duration})";
 "wallet__activity_transfer_spending_done" = "Da Poupança";
 "wallet__activity_transfer_to_spending" = "Para o Saldo de Gastos";
+"wallet__activity_transfer_in_progress" = "TRANSFERÊNCIA EM ANDAMENTO";
 "wallet__activity_transfer_pending" = "Transferência ({duration})";
 "wallet__activity_transfer_ready_in" = "TRANSFERÊNCIA PRONTA EM {duration}";
 "wallet__activity_transfer_to_savings" = "Para Poupança";
