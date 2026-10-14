@@ -132,6 +132,7 @@ class ContactsManager: ObservableObject {
     private var contactsRevision = 0
     private var loadGeneration = 0
     private var contactRefresh: (id: UUID, publicKey: String, task: Task<Void, Error>)?
+    private let shopContactImporter: ShopContactImporter
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
@@ -177,7 +178,8 @@ class ContactsManager: ObservableObject {
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
         },
-        currentDate: @escaping @Sendable () -> Date = { Date() }
+        currentDate: @escaping @Sendable () -> Date = { Date() },
+        shopContactImporter: ShopContactImporter? = nil
     ) {
         self.contactRecords = contactRecords
         self.observedContactRecords = observedContactRecords
@@ -188,6 +190,7 @@ class ContactsManager: ObservableObject {
         self.removeContactRecords = removeContactRecords
         self.forgetRemovedContacts = forgetRemovedContacts
         self.currentDate = currentDate
+        self.shopContactImporter = shopContactImporter ?? ShopContactImporter()
     }
 
     /// Profile refreshes replace rows without counting as a change to the saved contacts.
@@ -245,6 +248,7 @@ class ContactsManager: ObservableObject {
     }
 
     func reset() {
+        shopContactImporter.reset()
         contactRefresh?.task.cancel()
         contactRefresh = nil
         loadGeneration += 1
@@ -273,21 +277,18 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Load Contacts
 
+    func importShopContacts(for publicKey: String, isSessionCurrent: @escaping @MainActor @Sendable () -> Bool) async throws {
+        _ = try await shopContactImporter.importPage(publicKey: publicKey, refreshContacts: {
+            try await self.loadFreshObservedContacts(for: publicKey)
+        }, isStillCurrent: isSessionCurrent)
+    }
+
     func refreshContacts(for publicKey: String) async throws {
         try Task.checkCancellation()
         if contactRefresh?.publicKey != publicKey || contactRefresh?.task.isCancelled != false {
             contactRefresh?.task.cancel()
             let task = Task {
-                while isLoading {
-                    try Task.checkCancellation()
-                    for await loading in $isLoading.values {
-                        try Task.checkCancellation()
-                        if !loading { break }
-                    }
-                }
-                try Task.checkCancellation()
-                try await loadObservedContacts(for: publicKey)
-                try Task.checkCancellation()
+                try await loadFreshObservedContacts(for: publicKey)
             }
             contactRefresh = (UUID(), publicKey, task)
         }
@@ -301,6 +302,19 @@ class ContactsManager: ObservableObject {
         } onCancel: {
             refresh.task.cancel()
         }
+    }
+
+    private func loadFreshObservedContacts(for publicKey: String) async throws {
+        while isLoading {
+            try Task.checkCancellation()
+            for await loading in $isLoading.values {
+                try Task.checkCancellation()
+                if !loading { break }
+            }
+        }
+        try Task.checkCancellation()
+        try await loadObservedContacts(for: publicKey)
+        try Task.checkCancellation()
     }
 
     func loadContactsIfNeeded(for publicKey: String) async throws {

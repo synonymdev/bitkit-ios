@@ -393,6 +393,46 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), [cached.publicKey, added.publicKey])
     }
 
+    func testShopImportReadsAgainAfterAnOlderForegroundRefresh() async throws {
+        let buyer = "pubky" + String(repeating: "n", count: 51) + "y"
+        let seller = String(unresolvedFollowKey.dropFirst(5))
+        let cached = contactRecord(key: contactProfileKey, name: "Saved")
+        let added = contactRecord(key: unresolvedFollowKey, name: "Shop")
+        let gate = HeldProfileLookups(profiles: [buyer: "Owner"])
+        let committed = expectation(description: "Contact import committed")
+        let importer = ShopContactImporter(listPage: { root, _, _ in
+            ["\(root)\(seller).json"]
+        }, fetchFile: { uri, _ in
+            let body = uri.hasSuffix("shop.json")
+                ? "{\"schemaVersion\":1,\"recordType\":\"shop\",\"ownerPubky\":\"\(seller)\"}"
+                : "{\"seller\":\"\(seller)\",\"completedAt\":1}"
+            return Data(body.utf8)
+        }, saveContacts: { keys, identity, _ in
+            XCTAssertEqual(keys, [added.publicKey])
+            XCTAssertEqual(identity, buyer)
+            committed.fulfill()
+            return true
+        })
+        let manager = ContactsManager(observedContactRecords: { owner in
+            let previous = await gate.fetchedKeys.count
+            _ = try await gate.fetch(owner)
+            return previous == 0 ? [cached] : [cached, added]
+        }, fetchRemoteProfile: { _, _ in nil }, shopContactImporter: importer)
+        await gate.hold()
+        let foreground = Task { try await manager.refreshContacts(for: buyer) }
+        while await gate.heldCount == 0 {
+            await Task.yield()
+        }
+        let importing = Task { try await manager.importShopContacts(for: buyer) { true } }
+        await fulfillment(of: [committed], timeout: 2)
+        await gate.release()
+        try await foreground.value
+        try await importing.value
+        let reads = await gate.fetchedKeys
+        XCTAssertEqual(reads, [buyer, buyer])
+        XCTAssertEqual(Set(manager.contacts.map(\.publicKey)), [cached.publicKey, added.publicKey])
+    }
+
     func testFailedRefreshPreservesWarmContactsAndCanRetry() async throws {
         let cached = contactRecord(key: contactProfileKey, name: "Saved")
         let gate = HeldProfileLookups(profiles: ["owner": "Owner"])

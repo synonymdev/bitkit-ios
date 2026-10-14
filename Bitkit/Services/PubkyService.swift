@@ -295,6 +295,24 @@ enum PubkyService {
         try await PaykitSdkService.shared.fetchFile(uri: uri, maxBytes: maxBytes)
     }
 
+    static func listPublicDirectoryPage(uri: String, cursor: String?, limit: UInt16) async throws -> [String] {
+        try await PaykitSdkService.shared.listPublicDirectoryPage(uri: uri, cursor: cursor, limit: limit)
+    }
+
+    static func fetchPublicFile(uri: String, maxBytes: UInt64) async throws -> Data {
+        try await PaykitSdkService.shared.fetchPublicFile(uri: uri, maxBytes: maxBytes)
+    }
+
+    static func importShopContacts(
+        publicKeys: [String],
+        expectedIdentity: String,
+        isStillCurrent: @escaping @Sendable () async -> Bool
+    ) async throws -> Bool {
+        try await PaykitSdkService.shared.importShopContacts(
+            publicKeys: publicKeys, expectedIdentity: expectedIdentity, isStillCurrent: isStillCurrent
+        )
+    }
+
     // MARK: - Profile
 
     static func publishPaykitProfile(_ profile: Paykit.PaykitProfile, expectedIdentity: String? = nil) async throws {
@@ -693,6 +711,19 @@ actor PaykitSdkService {
         return data
     }
 
+    func listPublicDirectoryPage(uri: String, cursor: String?, limit: UInt16) async throws -> [String] {
+        try await withPublicRead(priority: .bulk) {
+            try await $0.listPubkyDirectoryPage(uri: uri, cursor: cursor, limit: limit)
+        }
+    }
+
+    func fetchPublicFile(uri: String, maxBytes: UInt64) async throws -> Data {
+        guard let data = try await withPublicRead(priority: .bulk, { try await $0.fetchPubkyFileBounded(uri: uri, maxBytes: maxBytes) }) else {
+            throw PubkyServiceError.profileNotFound
+        }
+        return data
+    }
+
     /// With `expectedIdentity`, it publishes only while that identity is signed in, checked in the same locked operation as
     /// the publication, so one that a sign-out or another identity's sign-in overtakes writes nothing and throws
     /// `identityChanged`.
@@ -806,6 +837,19 @@ actor PaykitSdkService {
                 try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
             }
             return try await sdk.saveContactsAndUnblockPeers(updates: updates)
+        }
+    }
+
+    func importShopContacts(
+        publicKeys: [String],
+        expectedIdentity: String,
+        isStillCurrent: @escaping @Sendable () async -> Bool
+    ) async throws -> Bool {
+        guard !publicKeys.isEmpty else { return false }
+        return try await withStateRevisionTracking(priority: .background, deferDuringPayment: true) { sdk in
+            try Task.checkCancellation()
+            guard await isStillCurrent() else { throw PubkyServiceError.identityChanged }
+            return try await !sdk.importContacts(expectedIdentity: expectedIdentity, publicKeys: publicKeys).isEmpty
         }
     }
 
