@@ -192,6 +192,42 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
     }
 
+    func testDeletedTagAfterCancelledReplacementDoesNotReturnOnRetry() async throws {
+        let wallet = taggedReceiveWallet()
+        wallet.gateFirstHash = false
+        wallet.gateFirstWrite = true
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.firstWriteStarted], timeout: 5)
+        refresh.cancel()
+        wallet.releaseFirstWrite()
+        do { try await refresh.value; XCTFail("Expected cancellation") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        try await wallet.mutateReceiveTags(.remove(["Lunch"]))
+        try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false)
+        XCTAssertEqual(wallet.metadata["ln-second"], [])
+    }
+
+    func testTagAdditionAfterCancelledReplacementSurvivesRetry() async throws {
+        try await assertTagMutationAfterCancelledReplacement(.add(["Dinner"]), expected: ["Dinner", "Lunch"])
+    }
+
+    func testTagResetAfterCancelledReplacementSurvivesRetry() async throws {
+        try await assertTagMutationAfterCancelledReplacement(.reset, expected: [])
+    }
+
+    private func assertTagMutationAfterCancelledReplacement(_ mutation: ReceiveTagMutation, expected: [String]) async throws {
+        let wallet = taggedReceiveWallet()
+        wallet.gateFirstHash = false
+        wallet.gateFirstWrite = true
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.firstWriteStarted], timeout: 5)
+        refresh.cancel()
+        wallet.releaseFirstWrite()
+        do { try await refresh.value; XCTFail("Expected cancellation") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        try await wallet.mutateReceiveTags(mutation)
+        try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false)
+        XCTAssertEqual(wallet.metadata["ln-second"], expected)
+    }
+
     func testExistingEmptyTagsDoNotUseAddressFallback() async throws {
         let wallet = taggedReceiveWallet()
         wallet.gateFirstHash = false
@@ -363,6 +399,18 @@ private final class TaggedReceiveWallet: WalletViewModel {
             }
         }
     }
+
+    override func mutateReceiveMetadataTags(paymentId: String?, address: String, mutation: ReceiveTagMutation) async throws {
+        let exactKey = paymentId.flatMap { metadata[$0] == nil ? nil : $0 }
+        guard let key = exactKey ?? metadataAddresses.first(where: { $0.value == address })?.key else { throw TestError.missingMetadata }
+        switch mutation {
+        case let .add(tags): metadata[key] = Array(Set((metadata[key] ?? []) + tags)).sorted()
+        case let .remove(tags): metadata[key] = metadata[key]?.filter { !tags.contains($0) }
+        case .reset: metadata[key] = []
+        }
+    }
+
+    private enum TestError: Error { case missingMetadata }
 
     func releaseFirstWrite() {
         firstWrite?.resume()

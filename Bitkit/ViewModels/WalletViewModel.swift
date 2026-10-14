@@ -1623,6 +1623,19 @@ class WalletViewModel: ObservableObject {
         return onchainAddress.isEmpty ? nil : onchainAddress
     }
 
+    func mutateReceiveTags(_ mutation: ReceiveTagMutation) async throws {
+        let invoice = bolt11
+        let components = URLComponents(string: bip21)
+        let invoiceAddress = components?.scheme?.lowercased() == "bitcoin" ? components?.path : nil
+        let address = invoiceAddress.flatMap { $0.isEmpty ? nil : $0 } ?? onchainAddress
+        let paymentId = await receiveInvoicePaymentHash(invoice: invoice)
+        try await mutateReceiveMetadataTags(paymentId: paymentId, address: address, mutation: mutation)
+    }
+
+    func mutateReceiveMetadataTags(paymentId: String?, address: String, mutation: ReceiveTagMutation) async throws {
+        try await coreService.activity.mutateReceiveMetadataTags(paymentId: paymentId, address: address, mutation: mutation)
+    }
+
     func persistPreActivityMetadata(tags: [String] = []) async {
         guard let paymentId = await paymentId(), !paymentId.isEmpty else { return }
 

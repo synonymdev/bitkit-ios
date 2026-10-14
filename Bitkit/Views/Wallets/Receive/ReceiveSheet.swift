@@ -79,9 +79,7 @@ struct ReceiveSheet: View {
             guard config.initialRoute.requiresInvoiceRefresh else { return }
             Task {
                 // Reset tags for current payment ID before refreshing
-                if let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
-                    try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
-                }
+                try? await wallet.mutateReceiveTags(.reset)
                 try? await wallet.refreshBip21(forceRefreshBolt11: true)
             }
         }
