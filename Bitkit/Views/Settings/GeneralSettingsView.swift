@@ -149,9 +149,10 @@ struct GeneralSettingsView: View {
                         title: t("usdt__settings_title"),
                         iconName: "usdt-settings",
                         rightIcon: nil,
-                        toggle: Binding(get: { settings.isUsdtEnabled || usdt.hasProtectedFunds },
+                        toggle: Binding(get: { settings.isUsdtEnabled || usdt.hasFundsOrPendingTransfers },
                                         set: { enabled in Task { await updateUsdt(enabled) } }),
-                        disabled: isUpdatingUsdt || isCheckingUsdt || usdt.hasProtectedFunds || usdtDisableBlocked,
+                        disabled: isUpdatingUsdt || isCheckingUsdt || usdt.hasFundsOrPendingTransfers ||
+                            (settings.isUsdtEnabled && (usdt.hasProtectedFunds || usdtDisableBlocked)),
                         testIdentifier: "UsdtSettingsToggle"
                     )
                 }
