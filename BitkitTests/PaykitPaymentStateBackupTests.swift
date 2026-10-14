@@ -184,6 +184,42 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testTerminalUsdtBindingRequiresCurrentUnexecutedEvidenceWithoutProofs() async throws {
+        var attempt = unsubmittedUsdtAttempt()
+        attempt.paymentStarted = true
+        let requestId = try XCTUnwrap(attempt.requestId)
+        for status: UsdtTransferStatus in [.failed, .replaced] {
+            let service = PaykitUsdtPaymentService()
+            try saveUsdtAttempts([attempt])
+            XCTAssertTrue(service.hasBinding(for: requestId))
+            await reconcileUsdt(service) { id in
+                UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                             recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 0,
+                             fee: nil, isIncoming: false, status: status, timestamp: 1)
+            }
+            XCTAssertFalse(service.hasBinding(for: requestId))
+            XCTAssertTrue(PaykitUsdtPaymentService().hasBinding(for: requestId))
+            await reconcileUsdt(service)
+            XCTAssertTrue(service.hasBinding(for: requestId))
+            for hasProof in [false, true] {
+                var protected = attempt
+                protected.proofQueued = !hasProof
+                if hasProof {
+                    protected.proof = PaykitUsdtPaymentService.Proof(UsdtPaymentProof(chainId: "42161", transactionHash: "transaction",
+                                                                                      receiptLogIndex: "0", signature: "signature"))
+                }
+                try saveUsdtAttempts([protected])
+                await reconcileUsdt(service) { id in
+                    UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                                 recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 0,
+                                 fee: nil, isIncoming: false, status: status, timestamp: 1)
+                }
+                XCTAssertTrue(service.hasBinding(for: requestId))
+            }
+        }
+    }
+
+    @MainActor
     func testReconciliationInvalidatesReleaseEvidenceForChangedOrUnreadablePersistence() async throws {
         let service = PaykitUsdtPaymentService()
         let attempt = unsubmittedUsdtAttempt()

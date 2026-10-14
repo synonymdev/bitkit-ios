@@ -3,6 +3,7 @@ import SwiftUI
 /// MoneyStack - Stacked display with toggle functionality, optional eye icon and swipe gestures
 struct MoneyStack: View {
     let sats: Int
+    var isUnavailable = false
     var prefix: String?
     var showSymbol: Bool = false
     var showEyeIcon: Bool = false
@@ -24,6 +25,7 @@ struct MoneyStack: View {
             if currency.primaryDisplay == .bitcoin {
                 MoneyText(
                     sats: sats,
+                    isUnavailable: isUnavailable,
                     unitType: .secondary,
                     size: .caption,
                     symbol: true,
@@ -43,6 +45,7 @@ struct MoneyStack: View {
                 HStack {
                     MoneyText(
                         sats: sats,
+                        isUnavailable: isUnavailable,
                         unitType: .primary,
                         size: .display,
                         symbol: showSymbol,
@@ -69,6 +72,7 @@ struct MoneyStack: View {
             } else {
                 MoneyText(
                     sats: sats,
+                    isUnavailable: isUnavailable,
                     unitType: .secondary,
                     size: .caption,
                     symbol: true,
@@ -88,6 +92,7 @@ struct MoneyStack: View {
                 HStack {
                     MoneyText(
                         sats: sats,
+                        isUnavailable: isUnavailable,
                         unitType: .primary,
                         size: .display,
                         symbol: true,

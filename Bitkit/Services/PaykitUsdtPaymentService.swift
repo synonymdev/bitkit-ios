@@ -79,7 +79,7 @@ final class PaykitUsdtPaymentService {
     private var preparing = false
     private var restoreGeneration = 0
     private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = []
-    private var unsubmittedAttempts: [Attempt] = []
+    private var releasedAttempts: [Attempt] = []
     private var boundRequestIds: Set<PaykitPaymentRequest.ID>?
 
     private nonisolated(unsafe) static let stateChanged = PassthroughSubject<Void, Never>()
@@ -96,7 +96,7 @@ final class PaykitUsdtPaymentService {
     func restoreBackup(_ backup: PaykitUsdtStateBackup) throws {
         boundRequestIds = nil
         restoreGeneration &+= 1
-        unsubmittedAttempts = []
+        releasedAttempts = []
         resumableRequests = []
         var state = try load()
         for attempt in try backup.attempts.map({ try $0.restored() }) {
@@ -177,8 +177,8 @@ final class PaykitUsdtPaymentService {
     private func publish(_ state: State) {
         attempts = state.attempts.filter { $0.wallet == activeWallet && $0.identity == activeIdentity }
         receipts = state.receipts.filter { $0.wallet == activeWallet && $0.identity == activeIdentity }
-        unsubmittedAttempts.removeAll { !attempts.contains($0) }
-        boundRequestIds = Set(state.attempts.filter { !unsubmittedAttempts.contains($0) }.compactMap(\.requestId))
+        releasedAttempts.removeAll { !attempts.contains($0) }
+        boundRequestIds = Set(state.attempts.filter { !releasedAttempts.contains($0) }.compactMap(\.requestId))
     }
 
     func hasBinding(for requestId: PaykitPaymentRequest.ID) -> Bool {
@@ -321,7 +321,7 @@ final class PaykitUsdtPaymentService {
     func reconcile(wallet: UsdtWalletManager) async {
         guard wallet.isConfigured else {
             boundRequestIds = nil
-            unsubmittedAttempts = []
+            releasedAttempts = []
             resumableRequests = []
             return
         }
@@ -352,7 +352,7 @@ final class PaykitUsdtPaymentService {
         reconciling = true
         defer { reconciling = false }
         boundRequestIds = nil
-        unsubmittedAttempts = []
+        releasedAttempts = []
         resumableRequests = []
         do {
             try Task.checkCancellation()
@@ -362,16 +362,16 @@ final class PaykitUsdtPaymentService {
             let state = try load()
             publish(state)
             var resumable: [Attempt] = []
-            var unsubmitted: [Attempt] = []
+            var released: [Attempt] = []
             for attempt in state.attempts where attempt.wallet == owner && attempt.identity == identity {
                 guard let requestId = attempt.requestId else { continue }
                 do {
                     try Task.checkCancellation()
                     let transfer = try await storedTransfer(attempt.quoteId)
-                    if (transfer == nil && !attempt.paymentStarted) || transfer?.status == .failed || transfer?
-                        .status == .replaced { resumable.append(attempt) }
-                    if transfer == nil, !attempt.paymentStarted, attempt.proof == nil, !attempt.proofQueued {
-                        unsubmitted.append(attempt)
+                    let unexecuted = (transfer == nil && !attempt.paymentStarted) || transfer?.status == .failed || transfer?.status == .replaced
+                    if unexecuted { resumable.append(attempt) }
+                    if unexecuted, attempt.proof == nil, !attempt.proofQueued {
+                        released.append(attempt)
                     }
                     guard !attempt.proofQueued, let binding = attempt.binding else { continue }
                     guard attempt.proof != nil || transfer?.status == .confirmed else { continue }
@@ -412,7 +412,7 @@ final class PaykitUsdtPaymentService {
             guard restoreGeneration == generation, activeWallet == owner, activeIdentity == identity else { return }
             let currentState = try load()
             resumableRequests = Set(resumable.filter { currentState.attempts.contains($0) }.compactMap(\.requestId))
-            unsubmittedAttempts = unsubmitted.filter { currentState.attempts.contains($0) }
+            releasedAttempts = released.filter { currentState.attempts.contains($0) }
             publish(currentState)
             try Task.checkCancellation()
             for record in try await paymentRequests() where record.localRole == .payee {

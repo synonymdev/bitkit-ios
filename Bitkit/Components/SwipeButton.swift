@@ -7,6 +7,7 @@ struct SwipeButton: View {
     var isDisabled = false
     /// Blocks interaction and shows the knob spinner while an operation is running.
     var isLoading = false
+    var isSubmitted = false
     var isComplete = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
@@ -16,15 +17,15 @@ struct SwipeButton: View {
     @State private var isSubmitting = false
 
     private var isBusy: Bool {
-        isDisabled || isLoading || isSubmitting || isComplete
+        isDisabled || isLoading || isSubmitted || isSubmitting || isComplete
     }
 
     private var showsSpinner: Bool {
-        !isComplete && (isLoading || isSubmitting)
+        !isComplete && (isLoading || isSubmitted || isSubmitting)
     }
 
     private var contentOpacity: Double {
-        isDisabled && !isLoading && !isSubmitting && !isComplete ? 0.5 : 1
+        isDisabled && !isLoading && !isSubmitted && !isSubmitting && !isComplete ? 0.5 : 1
     }
 
     private let buttonHeight: CGFloat = 76
@@ -33,7 +34,7 @@ struct SwipeButton: View {
     var body: some View {
         GeometryReader { geometry in
             let maxOffset = max(1, geometry.size.width - buttonHeight)
-            let clampedOffset = isLoading || isComplete ? maxOffset : max(0, min(offset, maxOffset))
+            let clampedOffset = isSubmitted || isComplete ? maxOffset : max(0, min(offset, maxOffset))
             let trailWidth = max(0, min(clampedOffset + (buttonHeight - innerPadding), geometry.size.width - innerPadding))
             let textProgress = clampedOffset / maxOffset
             let halfWidth = geometry.size.width / 2

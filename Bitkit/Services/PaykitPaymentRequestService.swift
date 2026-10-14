@@ -161,14 +161,25 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         } else {
             paymentDeadline = nil
         }
-        guard let asset = PaykitAsset(rawValue: terms.amount.asset) else { return .failure(.unsupportedAsset) }
-        guard let amount = try? PaykitAmount(asset: asset, value: terms.amount.value) else { return .failure(.invalidAmount) }
-        guard asset != .btc || amount.atomic <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
-
-        let acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
+        var acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
             terms.acceptedPaymentEndpointIdentifiers,
             network: network
         )
+        let amount: PaykitAmount
+        var pricing = PaykitRequestPricing(conversion: terms.conversion, deadline: terms.paymentDeadline, quotes: record.conversionQuotes)
+        if let asset = PaykitAsset(rawValue: terms.amount.asset) {
+            guard let parsed = try? PaykitAmount(asset: asset, value: terms.amount.value) else { return .failure(.invalidAmount) }
+            guard asset != .btc || parsed.atomic <= UInt64.max / 1000 else { return .failure(.amountOutOfRange) }
+            amount = parsed
+        } else {
+            let bitcoinEndpoints = acceptedPaymentEndpointIdentifiers.filter { $0.hasPrefix("btc-") }
+            guard let payment = PaykitBitcoinRequestPricing.bitcoinPayment(terms: terms, endpoints: bitcoinEndpoints) else {
+                return .failure(.unsupportedAsset)
+            }
+            amount = PaykitAmount(asset: .btc, atomic: payment.amountSats)
+            acceptedPaymentEndpointIdentifiers = payment.endpointIdentifiers
+            pricing.conversion = nil
+        }
         if requiresActionableRequest, acceptedPaymentEndpointIdentifiers.isEmpty {
             return .failure(.noSupportedEndpoint)
         }
@@ -190,7 +201,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             proposalStreamItemId: record.proposalStreamItemId,
             amount: amount,
             paymentReference: terms.paymentReference.exportText(),
-            pricing: PaykitRequestPricing(conversion: terms.conversion, deadline: terms.paymentDeadline, quotes: record.conversionQuotes),
+            pricing: pricing,
             note: Self.note(from: terms.metadata),
             createdAt: record.lastEventAt.flatMap(Self.parseDate),
             expiresAt: expiresAt,

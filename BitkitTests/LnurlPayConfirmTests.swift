@@ -5,6 +5,37 @@ import XCTest
 
 @MainActor
 final class LnurlPayConfirmTests: XCTestCase {
+    func testFixedLnurlLocksReviewedAmountAndPreservesMillisatoshis() {
+        let data = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 222_222, maxSendable: 222_538,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        let app = AppViewModel()
+        app.lnurlPayData = data
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 223)
+        XCTAssertTrue(data.accepts(amountSats: 223))
+        XCTAssertFalse(data.accepts(amountSats: 222))
+        XCTAssertFalse(data.accepts(amountSats: 224))
+        XCTAssertEqual(data.callbackAmountMsats(userSats: 223), 222_222)
+        app.selectedWalletToPayFrom = .onchain
+        XCTAssertNil(app.fixedLightningAmountSats)
+    }
+
+    func testVariableLnurlAcceptsOnlyAmountsWithinItsBounds() {
+        let data = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 1_000_001, maxSendable: 5_000_999,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        XCTAssertFalse(data.accepts(amountSats: 1000))
+        XCTAssertTrue(data.accepts(amountSats: 1001))
+        XCTAssertTrue(data.accepts(amountSats: 5000))
+        XCTAssertFalse(data.accepts(amountSats: 5001))
+        XCTAssertEqual(data.callbackAmountMsats(userSats: 1001), 1_001_000)
+    }
+
     func testResetWhileMountedDoesNotCrashOrPreparePayment() async {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")

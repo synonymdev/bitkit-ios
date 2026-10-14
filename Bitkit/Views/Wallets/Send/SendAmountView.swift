@@ -25,6 +25,7 @@ struct SendAmountView: View {
     @State private var routingFee: UInt64 = 0
     @State private var isContinuing = false
     @State private var usdtAmount = ""
+    @State private var amountConversion = PaykitAmountEntryConversion()
     @State private var conversionError: String?
     @State private var showingFundingSources = false
 
@@ -106,10 +107,12 @@ struct SendAmountView: View {
 
     private var isValidAmount: Bool {
         if app.paykitUsesUsdt {
-            return (try? PaykitAmount(asset: .usdt, value: usdtAmount)).map { $0.atomic > 0 && $0.atomic <= (usdt.balance ?? 0) } ?? false
+            return (try? parsePaykitAmountInput(asset: .usdt, value: usdtAmount)).map { $0.atomic > 0 && $0.atomic <= (usdt.balance ?? 0) } ?? false
         }
         let minAmount = app.selectedWalletToPayFrom == .lightning ? 1 : Env.dustLimit
 
+        if app.selectedWalletToPayFrom == .lightning, let data = app.lnurlPayData,
+           !data.accepts(amountSats: amountSats) { return false }
         return amountSats >= minAmount && amountSats <= availableAmount
     }
 
@@ -167,6 +170,7 @@ struct SendAmountView: View {
                         )
                         .onTapGesture {
                             guard canEditAmount else { return }
+                            amountConversion.reset()
                             amountViewModel.updateFromSats(availableAmount, currency: currency)
 
                             if app.selectedWalletToPayFrom == .lightning {
@@ -220,6 +224,7 @@ struct SendAmountView: View {
                     errorKey: amountViewModel.errorKey,
                     isDisabled: !canEditAmount
                 ) { key in
+                    amountConversion.reset()
                     if app.paykitUsesUsdt { usdtAmount = NumberPadInputHandler.handleInput(
                         key: key,
                         current: usdtAmount,
@@ -320,19 +325,23 @@ struct SendAmountView: View {
                 let terms = try request.payment(using: app.paykitPaymentMethod)
                 guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
                 let expected = terms.amount
-                let entered = app.paykitUsesUsdt ? try PaykitAmount(asset: .usdt, value: usdtAmount) : PaykitAmount(asset: .btc, atomic: amountSats)
+                let entered = app.paykitUsesUsdt ? try parsePaykitAmountInput(asset: .usdt, value: usdtAmount) : PaykitAmount(
+                    asset: .btc,
+                    atomic: amountSats
+                )
                 guard expected == entered else { updateRequestAmount(); return }
                 app.paykitPaymentTerms = terms
             }
             if app.contactPaymentContext != nil {
-                app.paykitReviewedAmount = app.paykitUsesUsdt ? try PaykitAmount(asset: .usdt, value: usdtAmount) : PaykitAmount(
+                app.paykitReviewedAmount = app.paykitUsesUsdt ? try parsePaykitAmountInput(asset: .usdt, value: usdtAmount) : PaykitAmount(
                     asset: .btc,
                     atomic: amountSats
                 )
             }
             if app.paykitUsesUsdt {
                 guard let recipient = app.contactPaymentContext?.endpoints.first(where: { $0.methodId == .usdtArbitrum })?.value else { return }
-                navigationPath.append(.usdt(recipient: recipient, amount: usdtAmount))
+                let amount = try parsePaykitAmountInput(asset: .usdt, value: usdtAmount)
+                navigationPath.append(.usdt(recipient: recipient, amount: amount.value))
                 return
             }
             wallet.sendAmountSats = amountSats
@@ -515,22 +524,20 @@ struct SendAmountView: View {
     private func selectFundingSource(_ source: SendFundingSource) {
         guard source != selectedFundingSource, fundingSources.contains(source) else { return }
         let target: PaykitAsset = source == .usdt ? .usdt : .btc
-        let selectsFixedLightning = source == .spending && (app.scannedLightningInvoice?.amountSatoshis ?? 0) > 0
+        let selectsFixedLightning = source == .spending &&
+            ((app.scannedLightningInvoice?.amountSatoshis ?? 0) > 0 || app.lnurlPayData?.isFixedAmount == true)
         if app.contactPaymentContext?.incomingPaymentRequest != nil || (!selectsFixedLightning && app.paykitUsesUsdt != (source == .usdt)) {
             do {
                 let value = app.contactPaymentContext?.incomingPaymentRequest?.amount ??
-                    (app.paykitUsesUsdt ? (try? PaykitAmount(asset: .usdt, value: usdtAmount)) : PaykitAmount(asset: .btc, atomic: amountSats))
-                if let value, value.atomic > 0 {
-                    let converted = try app.contactPaymentContext?.incomingPaymentRequest?
-                        .payment(using: source == .usdt ? .usdtArbitrum : app.paykitBitcoinMethod(for: source == .spending ? .lightning : .onchain))
-                        .amount ?? value.converted(
-                            to: target,
-                            rate: currency.paykitRate,
-                            at: Date()
-                        )
-                    if target == .usdt { usdtAmount = converted.value }
-                    else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
-                }
+                    (app.paykitUsesUsdt ? (try? parsePaykitAmountInput(asset: .usdt, value: usdtAmount)) : PaykitAmount(
+                        asset: .btc,
+                        atomic: amountSats
+                    ))
+                let converted = try app.contactPaymentContext?.incomingPaymentRequest?
+                    .payment(using: source == .usdt ? .usdtArbitrum : app.paykitBitcoinMethod(for: source == .spending ? .lightning : .onchain))
+                    .amount ?? amountConversion.converted(value, to: target, rate: currency.paykitRate, at: Date())
+                if target == .usdt { usdtAmount = converted.atomic == 0 ? "" : converted.value }
+                else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
             } catch { conversionError = t("wallet__payment_request_rate_unavailable"); return }
         }
         conversionError = nil

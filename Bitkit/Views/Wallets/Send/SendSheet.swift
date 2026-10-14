@@ -573,7 +573,10 @@ struct SendSheet: View {
             // Original signed bytes only; new-payment balance admission does not apply.
             return .ready
         }
-        if app.contactPaymentContext?.endpoints.isEmpty == false { hasValidatedAfterSync = true; return .ready }
+        if app.paykitUsesUsdt || (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && navigationPath.isEmpty) {
+            hasValidatedAfterSync = true
+            return .ready
+        }
         let request = app.contactPaymentContext?.incomingPaymentRequest
         let requestedAmount = try? request?.payment(using: app.paykitPaymentMethod, at: Date()).amount.atomic
         if request != nil && requestedAmount == nil {
@@ -846,7 +849,8 @@ struct SendSheet: View {
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                preparingRequest: isPreparingRequest ? config.preparation?.request : nil
+                preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
+                amountIsRoot: currentRoot == .amount
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1270,6 +1274,14 @@ struct SendSheet: View {
             return
         }
 
+        if !context.requiresAssetSelection {
+            do {
+                wallet.sendAmountSats = try request.payment(using: app.paykitPaymentMethod).amount.atomic
+            } catch {
+                showEmbeddedInitialPaymentFailure(request, error: error, context: context)
+                return
+            }
+        }
         pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
         hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }

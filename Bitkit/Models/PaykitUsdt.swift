@@ -19,7 +19,7 @@ enum PaykitUsdt {
     }
 
     static func endpoint(address: String) throws -> PublicPaykitService.Endpoint {
-        let data = try JSONSerialization.data(withJSONObject: ["value": address, "chain_id": chainId, "token": token])
+        let data = try JSONSerialization.data(withJSONObject: ["value": address, "chain_id": chainId, "token": token], options: [.sortedKeys])
         let payload = String(decoding: data, as: UTF8.self)
         guard let address = self.address(from: payload) else { throw PublicPaykitError.invalidPayload }
         return PublicPaykitService.Endpoint(methodId: .usdtArbitrum, value: address, min: nil, max: nil, rawPayload: payload)

@@ -4,10 +4,12 @@ import SwiftUI
 struct UsdtActivityRow: View {
     let transfer: UsdtTransfer
     let hideBalance: Bool
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @EnvironmentObject private var contacts: ContactsManager
 
     private var contactName: String? {
-        guard let key = PaykitUsdtPaymentService.shared.contact(for: transfer.id) else { return nil }
+        guard PaykitFeatureFlags.isUIAvailable, isPaykitUIEnabled,
+              let key = PaykitUsdtPaymentService.shared.contact(for: transfer.id) else { return nil }
         return contacts.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, key) }?.displayName ?? PubkyPublicKeyFormat.displayTruncated(key)
     }
 
@@ -51,6 +53,7 @@ struct UsdtActivityIcon: View {
 
 struct UsdtActivityDetail: View {
     let transferId: String
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var contacts: ContactsManager
@@ -139,13 +142,13 @@ struct UsdtActivityDetail: View {
             UsdtDetailCell(title: t("wallet__activity_payment"), value: displayedAmount(transfer.amount), icon: "user")
             UsdtDetailCell(title: t("wallet__activity_fee"), value: transfer.fee.map(displayedAmount) ?? "—", icon: "speed-normal")
         }
-        if let key = PaykitUsdtPaymentService.shared.contact(for: transfer.id) {
+        if PaykitFeatureFlags.isUIAvailable, isPaykitUIEnabled, let key = PaykitUsdtPaymentService.shared.contact(for: transfer.id) {
             SendSectionView(t("wallet__payment_request_contact")) {
                 BodySSBText(contacts.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, key) }?.displayName
                     ?? PubkyPublicKeyFormat.displayTruncated(key))
             }
         }
-        if transfer.destination != .arbitrum, transfer.status != .failed, transfer.status != .replaced {
+        if transfer.destination != .arbitrum, ![.failed, .replaced, .bridgeRefunded].contains(transfer.status) {
             SendSectionView(t(transfer.status == .confirmed ? "usdt__recipient_gets" : "usdt__expected_amount")) {
                 amountText(transfer.receivedAmount)
             }

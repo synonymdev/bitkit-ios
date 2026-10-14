@@ -4,6 +4,57 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testEndpointPublicationOmitsUnavailableUsdtAndPropagatesCancellation() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        let unavailable = UsdtWalletManager(loadCredentials: { throw UsdtError.InvalidCredentials })
+        let endpoint = try await unavailable.paymentEndpointForPublishing()
+        XCTAssertNil(endpoint)
+        let cancelled = UsdtWalletManager(loadCredentials: { throw CancellationError() })
+        do {
+            _ = try await cancelled.paymentEndpointForPublishing()
+            XCTFail("Cancelled endpoint publication must stop")
+        } catch is CancellationError {}
+    }
+
+    func testHistoryRequestDuringRefreshSurvivesTheBalanceThrottle() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        let entered = expectation(description: "refresh started")
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        var attempts = 0
+        let manager = UsdtWalletManager(loadCredentials: {
+            attempts += 1
+            if attempts == 1 {
+                entered.fulfill()
+                for await _ in gate.stream {
+                    break
+                }
+            }
+            throw UsdtError.InvalidCredentials
+        })
+        let refresh = Task { await manager.refresh() }
+        await fulfillment(of: [entered], timeout: 2)
+        await manager.refresh(includeHistory: true)
+        gate.continuation.yield(())
+        await refresh.value
+        await manager.refresh()
+        XCTAssertEqual(attempts, 2)
+    }
+
+    func testUsdCentsUseTheLocalesDecimalAndGroupingSeparators() {
+        XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "en_US")), "$10,000.00")
+        XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$10.000,00")
+        XCTAssertEqual("5".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$0,05")
+        XCTAssertEqual("invalid".formattedUsdCents(locale: Locale(identifier: "en_US")), "—")
+    }
+
+    func testUsdtEndpointPayloadUsesCanonicalKeyOrder() throws {
+        let address = "0x18503bD685aF84E6A7bC289898bAa1C3f5d8527E"
+        let endpoint = try PaykitUsdt.endpoint(address: address)
+        XCTAssertEqual(endpoint.rawPayload, "{\"chain_id\":\"42161\",\"token\":\"\(PaykitUsdt.token)\",\"value\":\"\(address)\"}")
+        XCTAssertEqual(PaykitUsdt.address(from: endpoint.rawPayload), address)
+    }
+
     func testChangingUsdtPreferencePublishesForOpenPaymentAndAuthorizationViews() {
         let settings = SettingsViewModel.shared
         let original = settings.usdtPreference

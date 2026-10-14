@@ -2,6 +2,7 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityLatest: View {
+    let showsUsdtWallet: Bool
     @EnvironmentObject private var activity: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
@@ -40,7 +41,7 @@ struct ActivityLatest: View {
     private var maxActivityItemsOnHome: Int {
         let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
         var nonItemSlots = 0
-        nonItemSlots += (hwWalletManager.wallets.count + 1) / 2
+        nonItemSlots += (hwWalletManager.wallets.count + (showsUsdtWallet ? 1 : 0) + 1) / 2
         if shouldShowBanner {
             nonItemSlots += 1
         }

@@ -35,6 +35,8 @@ final class UsdtWalletManager {
     private var activeOperations = 0
     private var initialization: Task<UsdtWallet, Error>?
     private var wipeTask: Task<Void, Error>?
+    private var nextHistoryRefresh = Date.distantPast
+    private var historyRefreshRequested = false
     private var nextRefresh = Date.distantPast
     private var rateLimitedUntil = Date.distantPast
     private var idleWaiter: CheckedContinuation<Void, Never>?
@@ -100,8 +102,11 @@ final class UsdtWalletManager {
     }
 
     func refresh(includeHistory: Bool = false) async {
-        guard isConfigured, !refreshing, !wiping else { return }
-        guard Date() >= max(nextRefresh, rateLimitedUntil) else { return }
+        guard isConfigured, !wiping else { return }
+        historyRefreshRequested = historyRefreshRequested || includeHistory
+        guard !refreshing, Date() >= rateLimitedUntil else { return }
+        let historyDue = historyRefreshRequested && !isSendPresented && Date() >= nextHistoryRefresh
+        guard historyDue || Date() >= nextRefresh else { return }
         var refreshDelay: TimeInterval = 10
         activeOperations += 1
         refreshing = true
@@ -121,7 +126,9 @@ final class UsdtWalletManager {
                 settlementError = error
             }
             try Task.checkCancellation()
-            if includeHistory, !isSendPresented {
+            if historyRefreshRequested, !isSendPresented, Date() >= nextHistoryRefresh {
+                historyRefreshRequested = false
+                nextHistoryRefresh = Date().addingTimeInterval(10)
                 let complete = try await wallet.syncHistory()
                 historyComplete = historyComplete || complete
                 transfers = try await ServiceQueue.background(.core, wrapErrors: false) { try wallet.history() }
@@ -199,19 +206,30 @@ final class UsdtWalletManager {
         return try PaykitUsdt.endpoint(address: wallet.receiveAddress())
     }
 
+    func paymentEndpointForPublishing() async throws -> PublicPaykitService.Endpoint? {
+        do {
+            return try await paymentEndpoint()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            try Task.checkCancellation()
+            Logger.warn("Unable to prepare USDT payment endpoint: \(Self.message(for: error))", context: "UsdtWalletManager")
+            return nil
+        }
+    }
+
     func send(_ quote: UsdtQuote, submissionDeadline: PaykitPreciseInstant? = nil,
               beforeSubmission: @escaping @MainActor () async throws -> Void = {}) async throws
     {
         try beginOperation()
         defer { finishOperation() }
         let wallet = try await wallet()
+        let credentials = try await loadCredentials()
         do {
             let transfer = try await ServiceQueue.background(.core, wrapErrors: false) {
-                guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
-                let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
                 try await beforeSubmission()
                 return try await wallet.sendWithDeadline(
-                    quoteId: quote.id, mnemonic: mnemonic, passphrase: passphrase,
+                    quoteId: quote.id, mnemonic: credentials.0, passphrase: credentials.1,
                     submissionDeadline: submissionDeadline?.timestamp
                 )
             }
@@ -227,9 +245,8 @@ final class UsdtWalletManager {
         try beginOperation()
         defer { finishOperation() }
         let core = try await wallet()
-        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
-        return try await core.createPaymentProof(transferId: quoteId, binding: binding, mnemonic: mnemonic,
-                                                 passphrase: Keychain.loadString(key: .bip39Passphrase(index: 0)))
+        let credentials = try await loadCredentials()
+        return try await core.createPaymentProof(transferId: quoteId, binding: binding, mnemonic: credentials.0, passphrase: credentials.1)
     }
 
     func storedTransfer(_ id: String) async throws -> UsdtTransfer? {
@@ -331,12 +348,11 @@ final class UsdtWalletManager {
         try beginOperation()
         defer { finishOperation() }
         guard depositsConfigured, let url = Env.usdtDepositsUrl else { throw UsdtError.NotConfigured }
+        let credentials = try await loadCredentials()
         return try await ServiceQueue.background(.core, wrapErrors: false) {
-            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
-            let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0))
-            let owner = try usdtAddress(mnemonic: mnemonic, passphrase: passphrase)
+            let owner = try usdtAddress(mnemonic: credentials.0, passphrase: credentials.1)
             let client = try UsdtDepositClient(address: owner, serviceUrl: url)
-            return try await operation(client, mnemonic, passphrase)
+            return try await operation(client, credentials.0, credentials.1)
         }
     }
 
@@ -470,8 +486,12 @@ extension UsdtDepositNetwork {
 
 extension String {
     var usdCents: String {
+        formattedUsdCents()
+    }
+
+    func formattedUsdCents(locale: Locale = .current) -> String {
         guard let value = UInt64(self) else { return "—" }
-        return "$\((value / 100).formatted()).\(String(format: "%02d", value % 100))"
+        return "$" + (Decimal(value) / 100).formatted(.number.locale(locale).precision(.fractionLength(2)))
     }
 }
 

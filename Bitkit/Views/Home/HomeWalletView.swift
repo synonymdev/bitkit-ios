@@ -16,22 +16,33 @@ struct HomeWalletView: View {
     }
 
     var hasActivity: Bool {
-        return activity.latestActivities?.isEmpty == false || (showsUsdt && !usdt.transfers.isEmpty)
+        return activity.latestActivities?.isEmpty == false || !usdt.transfers.isEmpty
     }
 
     /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
-    private var headlineSats: Int {
-        let hw = Int(clamping: hwWalletManager.totalSats)
-        let usdtSats = (showsUsdt ? usdt.balance : nil)
-            .flatMap { usdtDisplaySats(amount: usdtFormatAmount(amount: $0), rate: currency.paykitRate) } ?? 0
-        return wallet.totalBalanceSats.saturatingAdd(hw).saturatingAdd(usdtSats)
+    private var headlineSats: Int? {
+        Self.aggregateBalance(bitcoinSats: wallet.totalBalanceSats, hardwareSats: hwWalletManager.totalSats,
+                              includesUsdt: showsUsdt, usdtBalance: usdt.balance, rate: currency.paykitRate)
+    }
+
+    static func aggregateBalance(bitcoinSats: Int, hardwareSats: UInt64, includesUsdt: Bool, usdtBalance: UInt64?,
+                                 rate: PaykitExchangeRate?, now: Date = Date()) -> Int?
+    {
+        let bitcoin = bitcoinSats.saturatingAdd(Int(clamping: hardwareSats))
+        guard includesUsdt else { return bitcoin }
+        guard let usdtBalance else { return nil }
+        guard usdtBalance > 0 else { return bitcoin }
+        guard let usdtSats = usdtDisplaySats(amount: usdtFormatAmount(amount: usdtBalance), rate: rate, now: now) else { return nil }
+        return bitcoin.saturatingAdd(usdtSats)
     }
 
     var body: some View {
+        let total = headlineSats
         VStack(spacing: 0) {
             MoneyStack(
-                sats: headlineSats,
+                sats: total ?? 0,
+                isUnavailable: total == nil,
                 showSymbol: true,
                 showEyeIcon: true,
                 enableSwipeGesture: settings.swipeBalanceToHide,
@@ -82,7 +93,7 @@ struct HomeWalletView: View {
             }
 
             if hasActivity {
-                ActivityLatest()
+                ActivityLatest(showsUsdtWallet: showsUsdt)
 
                 Spacer()
 

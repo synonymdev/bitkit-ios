@@ -12,6 +12,7 @@ struct CreateSubscriptionView: View {
     let onChooseRecipient: () -> Void
 
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var entryConversion = PaykitAmountEntryConversion()
     @FocusState private var isNameFocused: Bool
     @FocusState private var isDescriptionFocused: Bool
 
@@ -101,7 +102,7 @@ struct CreateSubscriptionView: View {
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                    } else { NumberPadAmountText(value: draft.amount.value, symbol: "$") }
+                    } else { NumberPadAmountText(value: usdtInputAmount(draft.amount.value), symbol: "$") }
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -133,9 +134,7 @@ struct CreateSubscriptionView: View {
                     ) {
                         guard !isSelected else { return }
                         do {
-                            draft.amount = draft.amount.atomic == 0
-                                ? PaykitAmount(asset: asset, atomic: 0)
-                                : try draft.amount.converted(to: asset, rate: currency.paykitRate, at: Date())
+                            draft.amount = try entryConversion.converted(draft.amount, to: asset, rate: currency.paykitRate, at: Date())
                         } catch {
                             app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
                         }
@@ -235,6 +234,8 @@ struct CreateSubscriptionView: View {
 }
 
 struct SubscriptionAmountView: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+
     let initialAmount: PaykitAmount
     let onBack: () -> Void
     let onContinue: (PaykitAmount) -> Void
@@ -247,7 +248,8 @@ struct SubscriptionAmountView: View {
             onBack: onBack,
             // Android tags this step PaymentRequest* on the subscription flow too; the journeys
             // share the vocabulary, so keep the odd-reading prefix rather than diverging.
-            testIdentifierPrefix: "PaymentRequest"
+            testIdentifierPrefix: "PaymentRequest",
+            allowedAssets: settings.isUsdtEnabled ? [.btc, .usd] : [.btc]
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionAmount")

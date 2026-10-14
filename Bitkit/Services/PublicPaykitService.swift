@@ -569,8 +569,8 @@ enum PublicPaykitService {
             )
         }
 
-        if isUsdtPaymentOptionEnabled() {
-            try await endpoints.append(wallet.usdtWallet.paymentEndpoint())
+        if isUsdtPaymentOptionEnabled(), let endpoint = try await wallet.usdtWallet.paymentEndpointForPublishing() {
+            endpoints.append(endpoint)
         }
 
         guard !endpoints.isEmpty || !requireEndpoint else {

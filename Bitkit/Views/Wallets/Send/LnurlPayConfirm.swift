@@ -166,7 +166,8 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
-                isLoading: hasStartedAutomaticPayment
+                isLoading: hasStartedAutomaticPayment,
+                isSubmitted: hasStartedAutomaticPayment
             ) {
                 try await submitPayment()
             }
@@ -270,7 +271,11 @@ struct LnurlPayConfirm: View {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
-        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
+        let reviewedAmount = wallet.sendAmountSats ?? lnurlPayData.minSendableSat
+        guard lnurlPayData.accepts(amountSats: reviewedAmount) else {
+            throw PaykitPaymentRequestError.amountMismatch
+        }
+        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: reviewedAmount)
         let contactPaymentContext = app.contactPaymentContext
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
         let paymentActivity = PaykitPaymentActivity.shared.begin()

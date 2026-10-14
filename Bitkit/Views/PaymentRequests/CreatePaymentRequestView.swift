@@ -308,15 +308,17 @@ struct PaymentRequestAmountView: View {
     let onContinue: (PaykitPaymentRequestDraft) -> Void
     var onBack: (() -> Void)?
     var testIdentifierPrefix = "PaymentRequest"
+    var allowedAssets: [PaykitAsset] = [.btc, .usd]
 
     @State private var amountViewModel = AmountInputViewModel()
     @State private var asset: PaykitAsset = .btc
     @State private var dollarAmount = ""
     @State private var conversionError = false
     @State private var didLoadAmount = false
+    @State private var entryConversion = PaykitAmountEntryConversion()
 
     private var amount: PaykitAmount? {
-        asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? PaykitAmount(asset: .usd, value: dollarAmount)
+        asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? parsePaykitAmountInput(asset: .usd, value: dollarAmount)
     }
 
     var body: some View {
@@ -340,22 +342,29 @@ struct PaymentRequestAmountView: View {
 
             HStack {
                 Spacer()
-                ForEach([PaykitAsset.btc, .usd], id: \.self) { choice in
+                ForEach(allowedAssets, id: \.self) { choice in
                     NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
                                           variant: asset == choice ? .primary : .secondary)
                     {
                         guard choice != asset else { return }
                         do {
-                            if let current = amount, current.atomic > 0 {
-                                let converted = try current.converted(to: choice, rate: currency.paykitRate, at: Date())
-                                if choice == .usd { dollarAmount = converted.value }
-                                else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
-                            }
+                            let converted = try entryConversion.converted(amount, to: choice, rate: currency.paykitRate, at: Date())
+                            if choice == .usd { dollarAmount = converted.atomic == 0 ? "" : converted.value }
+                            else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
                             asset = choice
                             conversionError = false
                         } catch { conversionError = true }
                     }
                     .accessibilityIdentifier("\(testIdentifierPrefix)Asset-\(choice.rawValue)")
+                }
+                if asset == .btc {
+                    NumberPadActionButton(
+                        text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
+                        imageName: "arrow-up-down", color: .brandAccent
+                    ) {
+                        withAnimation { amountViewModel.togglePrimaryDisplay(currency: currency) }
+                    }
+                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
                 }
             }
             .padding(.bottom, 12)
@@ -368,12 +377,13 @@ struct PaymentRequestAmountView: View {
                 decimalSeparator: asset == .usd ? Locale.current.decimalSeparator ?? "." : ".",
                 errorKey: amountViewModel.errorKey
             ) { key in
+                entryConversion.reset()
                 if asset == .usd { dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2) }
                 else { amountViewModel.handleNumberPadInput(key, currency: currency) }
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: (amount?.atomic ?? 0) == 0) {
-                guard let amount else { return }
+            CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
+                guard allowedAssets.contains(asset), let amount else { return }
                 onContinue(
                     PaykitPaymentRequestDraft(
                         amount: amount, acceptedPaymentEndpointIdentifiers: initialDraft.acceptedPaymentEndpointIdentifiers,
@@ -391,6 +401,10 @@ struct PaymentRequestAmountView: View {
             guard !didLoadAmount else { return }
             didLoadAmount = true
             asset = initialDraft.amount.asset == .btc ? .btc : .usd
+            guard allowedAssets.contains(asset) else {
+                asset = allowedAssets.first ?? .btc
+                return
+            }
             if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
             else { dollarAmount = initialDraft.amount.value }
         }
@@ -447,7 +461,7 @@ struct PaymentRequestDetailsView: View {
             CustomButton(
                 title: t("wallet__payment_request_send_request"),
                 icon: Image("paper-plane-tilt").resizable().frame(width: 16, height: 16),
-                isDisabled: (restrictedEndpoints ?? enabledEndpoints).isEmpty,
+                isDisabled: selectedEnabledEndpoints.isEmpty,
                 isLoading: paymentRequests.isCreatingRequest
             ) {
                 await sendRequest()
@@ -495,6 +509,10 @@ struct PaymentRequestDetailsView: View {
         PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
     }
 
+    private var selectedEnabledEndpoints: [String] {
+        enabledEndpoints.filter { restrictedEndpoints?.contains($0) ?? true }
+    }
+
     private var acceptedMethodGroups: [[PublicPaykitService.MethodId]] {
         let groups: [[PublicPaykitService.MethodId]] = [
             PublicPaykitService.MethodId.onchainPreferenceOrder + [.bitcoinLightningBolt11, .bitcoinLightningLnurl],
@@ -510,7 +528,7 @@ struct PaymentRequestDetailsView: View {
                 ForEach(acceptedMethodGroups, id: \.self) { methods in
                     let endpoints = methods.map(\.rawValue)
                     let usdt = methods.contains(.usdtArbitrum)
-                    let selected = restrictedEndpoints ?? enabledEndpoints
+                    let selected = selectedEnabledEndpoints
                     let isSelected = endpoints.contains(where: selected.contains)
                     NumberPadActionButton(text: usdt ? "USDT" : "BITCOIN",
                                           color: isSelected ? (usdt ? .usdtAccent : .brandAccent) : .white32,

@@ -9,7 +9,7 @@ struct UsdtReceiveAmountView: View {
     let onContinue: () async -> Void
 
     private var canContinue: Bool {
-        !busy && (amount.isEmpty ? allowEmpty : (try? PaykitAmount(asset: .usdt, value: amount)) != nil)
+        !busy && (amount.isEmpty ? allowEmpty : (try? parsePaykitAmountInput(asset: .usdt, value: amount)) != nil)
     }
 
     var body: some View {
@@ -32,8 +32,12 @@ struct UsdtReceiveAmountView: View {
                 amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
             }
             .padding(.bottom, 36)
-            CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy, action: onContinue)
-                .accessibilityIdentifier("UsdtDepositCreate")
+            CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy) {
+                guard canContinue else { return }
+                if let parsed = try? parsePaykitAmountInput(asset: .usdt, value: amount) { amount = parsed.value }
+                await onContinue()
+            }
+            .accessibilityIdentifier("UsdtDepositCreate")
         }
     }
 }

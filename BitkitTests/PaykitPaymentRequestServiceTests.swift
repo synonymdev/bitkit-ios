@@ -57,6 +57,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testExternalFixedDenominationRetainsBitcoinCompatibilityAndDeadline() throws {
+        let deadline = "2037-01-15T08:00:00Z"
+        let endpoints = ["btc-regtest-p2wpkh", "btc-lightning-bolt11", "usdt-arbitrum-address"]
+        for asset in ["eur", "gbp"] {
+            let record = try paymentRequestRecord(
+                amount: "10", asset: asset,
+                conversion: .fixed(rates: [.init(asset: "btc", value: "0.000011"), .init(asset: "usdt", value: "2")]),
+                paymentDeadline: .at(timestamp: deadline), endpoints: endpoints
+            )
+            let request = try PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest).get()
+            XCTAssertEqual(request.amount, PaykitAmount(asset: .btc, atomic: 11000))
+            XCTAssertEqual(request.acceptedPaymentEndpointIdentifiers, Array(endpoints.prefix(2)))
+            XCTAssertEqual(try request.payment(using: .bitcoinLightningBolt11).amount.atomic, 11000)
+            XCTAssertEqual(request.paymentDeadline?.timestamp, deadline)
+            XCTAssertNil(request.pricing.conversion)
+            XCTAssertEqual(record.terms?.amount.asset, asset)
+            XCTAssertEqual(record.terms?.amount.value, "10")
+            XCTAssertEqual(record.terms?.conversion, .fixed(rates: [.init(asset: "btc", value: "0.000011"), .init(asset: "usdt", value: "2")]))
+            var history = record
+            history.state = .proofSubmitted
+            XCTAssertEqual(PaykitPaymentRequest(historyRecord: history, now: Date())?.amount, request.amount)
+        }
+    }
+
+    func testExternalDenominationRequiresAConsistentFixedBitcoinQuote() throws {
+        let conversions: [PaymentConversion?] = [
+            nil, .perPeriod, .fixed(rates: [.init(asset: "usdt", value: "1")]),
+            .fixed(rates: [.init(asset: "btc", value: "0.000011"), .init(asset: "btc-lightning", value: "0.000022")]),
+        ]
+        for conversion in conversions {
+            let record = try paymentRequestRecord(amount: "10", asset: "eur", conversion: conversion,
+                                                  endpoints: ["btc-regtest-p2wpkh", "btc-lightning-bolt11", "usdt-arbitrum-address"])
+            guard case .failure = PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest) else {
+                return XCTFail("An external denomination requires a consistent fixed Bitcoin quote")
+            }
+        }
+    }
+
     func testFixedPricingRejectsRequestedAmountsBeyondCurrencyPrecision() throws {
         for amount in ["9.001", "9." + String(repeating: "0", count: 35) + "1"] {
             let record = try paymentRequestRecord(
@@ -4627,7 +4665,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sheets = SheetViewModel()
         let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
         let wallet = PaymentRequestSendWallet()
-        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+            .init(methodId: onchainMethod, value: "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x", min: nil, max: nil, rawPayload: ""),
+        ])
         XCTAssertTrue(app.claimContactPaymentContext(context))
         app.selectedWalletToPayFrom = .lightning
         app.scannedOnchainInvoice = OnChainInvoice(

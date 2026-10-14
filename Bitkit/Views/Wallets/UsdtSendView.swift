@@ -13,6 +13,7 @@ struct UsdtSendView: View {
     var onClose: (() -> Void)?
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.dismiss) private var dismiss
@@ -24,6 +25,7 @@ struct UsdtSendView: View {
     @State private var destinations = Env.usdtDestinations
     @State private var quote: UsdtQuote?
     @State private var maximumQuote: UsdtQuote?
+    @State private var isMaximumAmount = false
     @State private var preparingMaximum = false
     @State private var editingRecipient = false
     @State private var editingAmount = false
@@ -57,7 +59,7 @@ struct UsdtSendView: View {
         self.onBack = onBack
         self.onClose = onClose
         _recipient = State(initialValue: initialRecipient)
-        _amount = State(initialValue: initialAmount)
+        _amount = State(initialValue: (try? usdtParseAmount(value: initialAmount)) == 0 ? "" : initialAmount)
         _editingAmount = State(initialValue: !initialRecipient.isEmpty)
     }
 
@@ -107,6 +109,11 @@ struct UsdtSendView: View {
         Group {
             if !settings.isUsdtEnabled, !submitted {
                 UsdtIntroContent(isEnablePrompt: true, onDecline: {
+                    if !embedded, !initialRecipient.isEmpty,
+                       navigation.currentRoute == .usdtPayment(recipient: initialRecipient, amount: initialAmount)
+                    {
+                        navigation.navigateBack()
+                    }
                     if let onClose { onClose() } else { dismiss() }
                 }, onEnable: { settings.usdtPreference = .enabled })
             } else if embedded { content }
@@ -120,7 +127,10 @@ struct UsdtSendView: View {
                 do { destinations = try await usdt.sendDestinations() }
                 catch { Logger.warn("Could not load USDT bridge destinations", context: "UsdtSendView") }
             }
-            guard settings.isUsdtEnabled, !initialRecipient.isEmpty, !initialAmount.isEmpty, quote == nil else { return }
+            guard !Task.isCancelled, settings.isUsdtEnabled, !busy, !submitted, quote == nil, maximumQuote == nil,
+                  editingAmount, !showingNetworks,
+                  !initialRecipient.isEmpty, recipient == initialRecipient, amount == initialAmount, destination == .arbitrum,
+                  (try? parsePaykitAmountInput(asset: .usdt, value: amount)) != nil else { return }
             busy = true
             defer { busy = false }
             do { quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination) }
@@ -213,6 +223,8 @@ struct UsdtSendView: View {
                     showingNetworks = false
                     guard destination != item else { return }
                     destination = item
+                    if isMaximumAmount { amount = "" }
+                    isMaximumAmount = false
                     maximumQuote = nil
                     quote = nil
                     error = nil
@@ -299,11 +311,13 @@ struct UsdtSendView: View {
                 type: .decimal,
                 decimalSeparator: Locale.current.decimalSeparator ?? ".",
                 isDisabled: busy || embedded,
-                onDeleteLongPress: { amount = ""; maximumQuote = nil },
+                onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false },
                 onPress: enterAmount
             )
             .frame(maxHeight: .infinity)
-            CustomButton(title: t("common__continue"), isDisabled: busy || amount.isEmpty, isLoading: busy && !preparingMaximum) {
+            CustomButton(title: t("common__continue"), isDisabled: busy || (try? parsePaykitAmountInput(asset: .usdt, value: amount)) == nil,
+                         isLoading: busy && !preparingMaximum)
+            {
                 guard !busy, quote == nil else { return }
                 busy = true
                 error = nil
@@ -430,7 +444,7 @@ struct UsdtSendView: View {
             }
             SwipeButton(
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
-                isLoading: busy, isComplete: paymentComplete, swipeProgress: $swipeProgress
+                isLoading: busy, isSubmitted: submitted, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
                 await confirmPayment()
                 if !submitted { throw CancellationError() }
@@ -517,9 +531,10 @@ struct UsdtSendView: View {
             else { try UsdtPaymentRequest(recipient: usdtValidateRecipient(value: value, destination: destination), amount: nil, chainId: nil) }
             if request.chainId != nil { destination = .arbitrum }
             recipient = request.recipient
-            if let requestedAmount = request.amount { amount = usdtFormatAmount(amount: requestedAmount) }
+            if let requestedAmount = request.amount { amount = requestedAmount == 0 ? "" : usdtFormatAmount(amount: requestedAmount) }
         } catch { self.error = UsdtWalletManager.message(for: error); return }
         maximumQuote = nil
+        isMaximumAmount = false
         recipientFocused = false
         editingAmount = true
         error = nil
@@ -559,6 +574,7 @@ struct UsdtSendView: View {
         do {
             let prepared = try await usdt.quoteMaximum(recipient: recipient, destination: destination)
             maximumQuote = prepared
+            isMaximumAmount = true
             amount = usdtFormatAmount(amount: prepared.amount)
         } catch is CancellationError {
         } catch { self.error = UsdtWalletManager.message(for: error) }
@@ -566,8 +582,11 @@ struct UsdtSendView: View {
 
     private func enterAmount(_ key: String) {
         guard !busy else { return }
+        let updated = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
+        guard updated != amount else { return }
         maximumQuote = nil
-        amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
+        isMaximumAmount = false
+        amount = updated
     }
 
     private func confirmPayment() async {
@@ -610,6 +629,7 @@ struct UsdtSendView: View {
         defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         busy = true
         error = nil
+        maximumQuote = nil
         defer { if !submitted { busy = false } }
         do {
             if let sendPayment { try await sendPayment(quote) }
@@ -620,7 +640,7 @@ struct UsdtSendView: View {
             if usdt.transfers.contains(where: { $0.id == quote.id }) {
                 submitted = true
             } else {
-                self.error = UsdtWalletManager.message(for: error)
+                self.error = (error as? LocalizedError)?.errorDescription ?? UsdtWalletManager.message(for: error)
                 self.quote = nil
             }
             Logger.warn("Failed to send USDT: \(UsdtWalletManager.message(for: error))", context: "UsdtSendView")

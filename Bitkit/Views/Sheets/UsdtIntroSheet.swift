@@ -6,6 +6,7 @@ struct UsdtIntroSheetItem: SheetItem {
 }
 
 struct UsdtIntroSheet: View {
+    @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     let config: UsdtIntroSheetItem
@@ -13,7 +14,7 @@ struct UsdtIntroSheet: View {
     var body: some View {
         Sheet(id: .usdtIntro, data: config, backgroundColor: .gray7, applyGradient: false) {
             UsdtIntroContent(onDecline: {
-                settings.usdtPreference = .disabled
+                if !usdt.hasProtectedFunds { settings.usdtPreference = .disabled }
                 sheets.hideSheet()
             }, onEnable: {
                 settings.usdtPreference = .enabled

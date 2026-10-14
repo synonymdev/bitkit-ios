@@ -402,10 +402,6 @@ struct AppScene: View {
         PaykitFeatureFlags.enforceBuildAvailability()
         ContactPaymentsService.enableAllPaymentOptions()
 
-        _app = StateObject(wrappedValue: AppViewModel(
-            sheetViewModel: sheetViewModel,
-            navigationViewModel: navigationViewModel
-        ))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
         let feeEstimatesManager = FeeEstimatesManager()
@@ -414,6 +410,11 @@ struct AppScene: View {
             sheetViewModel: sheetViewModel,
             feeEstimatesManager: feeEstimatesManager
         )
+        _app = StateObject(wrappedValue: AppViewModel(
+            sheetViewModel: sheetViewModel,
+            navigationViewModel: navigationViewModel,
+            usdtBalance: { walletVm.usdtWallet.balance }
+        ))
         _wallet = StateObject(wrappedValue: walletVm)
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())

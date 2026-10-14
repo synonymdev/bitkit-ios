@@ -22,6 +22,7 @@ struct SendConfirmationView: View {
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
     var preparingRequest: PaykitPaymentRequest?
+    var amountIsRoot = false
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -358,6 +359,7 @@ struct SendConfirmationView: View {
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
                     isPreparingRequest: preparingRequest != nil
                 ),
+                isSubmitted: hasStartedAutomaticPayment,
                 swipeProgress: $swipeProgress
             ) {
                 try await submitPayment()
@@ -746,7 +748,7 @@ struct SendConfirmationView: View {
     private func selectFundingSource(_ source: SendFundingSource) {
         switch source {
         case .usdt:
-            navigationPath = [.amount]
+            navigationPath = amountIsRoot ? [] : [.amount]
         case .spending:
             hwSend.selectWallet(nil)
             app.selectedWalletToPayFrom = .lightning
@@ -1585,7 +1587,7 @@ struct SendConfirmationView: View {
         guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()) else {
             app.paykitPaymentTerms = nil
             app.paykitReviewedAmount = nil
-            navigationPath = [.amount]
+            navigationPath = amountIsRoot ? [] : [.amount]
             return true
         }
         return false
@@ -1594,7 +1596,9 @@ struct SendConfirmationView: View {
     private func navigateToAmount() {
         guard canEditAmount else { return }
 
-        if let amountIndex = navigationPath.lastIndex(of: .amount) {
+        if amountIsRoot {
+            navigationPath = []
+        } else if let amountIndex = navigationPath.lastIndex(of: .amount) {
             navigationPath = Array(navigationPath.prefix(amountIndex + 1))
         } else {
             if let confirmIndex = navigationPath.lastIndex(of: .confirm) {
