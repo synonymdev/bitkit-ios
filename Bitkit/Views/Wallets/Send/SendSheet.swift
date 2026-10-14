@@ -1220,13 +1220,21 @@ struct SendSheet: View {
             return
         }
 
+        /// The retry task outlives the sheet, so it must not set the rate of a send opened after it.
+        func isCurrentRetry() -> Bool {
+            sheets.activeSheetConfiguration?.id == .subscription && app.ownsContactPaymentContext(context)
+        }
         // `resetSendState` cleared the rate and setup does not run again, so the automatic payment would wait for it forever.
-        do {
-            try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
-        } catch is CancellationError {
-            return
-        } catch {
-            Logger.error("Failed to set default fee rate for retry: \(error)")
+        if isCurrentRetry() {
+            do {
+                try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed) {
+                    try await wallet.setFeeRate(speed: $0, isCurrentSend: isCurrentRetry)
+                }
+            } catch is CancellationError {
+                // The ownership check below releases a retry that no longer owns the send.
+            } catch {
+                Logger.error("Failed to set default fee rate for retry: \(error)")
+            }
         }
 
         guard sheets.activeSheetConfiguration?.id == .subscription,
