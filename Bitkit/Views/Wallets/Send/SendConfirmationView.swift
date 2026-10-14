@@ -431,6 +431,7 @@ struct SendConfirmationView: View {
             }
             if !Task.isCancelled, walletSwitchContext == context {
                 walletSwitchContext = nil
+                await startAutomaticPaymentIfNeeded()
             }
         }
         .onDisappear {
@@ -482,8 +483,12 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment, !isSetupPending
-        else { return }
+        guard Self.canStartAutomaticPayment(
+            shouldAutomaticallyPay: shouldAutomaticallyPay,
+            hasStartedAutomaticPayment: hasStartedAutomaticPayment,
+            isSetupPending: isSetupPending,
+            isPreparingWallet: walletSwitchContext != nil
+        ) else { return }
         hasStartedAutomaticPayment = true
         do {
             try await submitPayment(isAutomatic: true)
@@ -879,6 +884,16 @@ struct SendConfirmationView: View {
         } else {
             try await performPayment(isAutomatic: isAutomatic)
         }
+    }
+
+    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
+    static func canStartAutomaticPayment(
+        shouldAutomaticallyPay: Bool,
+        hasStartedAutomaticPayment: Bool,
+        isSetupPending: Bool,
+        isPreparingWallet: Bool
+    ) -> Bool {
+        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet
     }
 
     static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {

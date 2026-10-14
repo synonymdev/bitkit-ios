@@ -30,6 +30,24 @@ final class SendConfirmationViewTests: XCTestCase {
         }
     }
 
+    func testAutomaticPaymentStartsOnlyAfterSetupAndWalletSwitchFinish() {
+        XCTAssertTrue(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: false, isSetupPending: false, isPreparingWallet: false
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: false, isSetupPending: false, isPreparingWallet: true
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: false, isSetupPending: true, isPreparingWallet: false
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: true, hasStartedAutomaticPayment: true, isSetupPending: false, isPreparingWallet: false
+        ))
+        XCTAssertFalse(SendConfirmationView.canStartAutomaticPayment(
+            shouldAutomaticallyPay: false, hasStartedAutomaticPayment: false, isSetupPending: false, isPreparingWallet: false
+        ))
+    }
+
     func testAutomaticPaymentAwaitsFeeRateOnlyWhileItIsLoading() {
         XCTAssertTrue(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: false))
         XCTAssertFalse(SendConfirmationView.automaticPaymentAwaitsFeeRate(isFeeRateMissing: true, feeRateLoadFailed: true))
