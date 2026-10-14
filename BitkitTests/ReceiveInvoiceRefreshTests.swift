@@ -119,8 +119,17 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
     }
 
     func testEndpointRefreshCannotReplaceReceiveAddressCommittedDuringItsAwait() async throws {
+        try await assertEndpointRefreshPreservesReceiveAddress(initialAddress: "")
+    }
+
+    func testEndpointRefreshCannotReplaceNewInvoiceWhenReceiveKeepsTheSameAddress() async throws {
+        try await assertEndpointRefreshPreservesReceiveAddress(initialAddress: "bcrt1qreceive")
+    }
+
+    private func assertEndpointRefreshPreservesReceiveAddress(initialAddress: String) async throws {
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
         let wallet = GatedReceiveWallet()
+        wallet.onchainAddress = initialAddress
         wallet.invoiceAmountSats = 1000
         let receive = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
         await fulfillment(of: [wallet.olderStarted], timeout: 5)

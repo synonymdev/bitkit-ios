@@ -20,6 +20,7 @@ class WalletViewModel: ObservableObject {
     @Published private(set) var isReceiveInvoiceUpdating = false
     @Published private(set) var receiveInvoiceError: String?
     private var receiveRefreshID = UUID()
+    private var receiveCommitID = UUID()
 
     var hasCoherentReceiveInvoice: Bool {
         guard !bolt11.isEmpty,
@@ -1391,9 +1392,12 @@ class WalletViewModel: ObservableObject {
         }
 
         let receiveID = receiveRefreshID
+        let commitID = receiveCommitID
         let previousAddress = onchainAddress
         let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
-        if includeOnchain, receiveRefreshID == receiveID, onchainAddress == previousAddress { onchainAddress = publicOnchainAddress }
+        if includeOnchain, receiveRefreshID == receiveID, receiveCommitID == commitID, onchainAddress == previousAddress {
+            onchainAddress = publicOnchainAddress
+        }
 
         if includeLightning, hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
@@ -1564,6 +1568,7 @@ class WalletViewModel: ObservableObject {
             onchainAddress = address
             bolt11 = invoice
             bip21 = components.string ?? ""
+            receiveCommitID = UUID()
 
             var hash: String?
             if !invoice.isEmpty, case let .lightning(decoded) = try? await decode(invoice: invoice) {
