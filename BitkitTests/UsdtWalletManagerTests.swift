@@ -297,17 +297,20 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertFalse(detail.canRequestRefund)
     }
 
-    func testRefundConfirmationShowsExactAmountNetworkAndFullAddress() {
+    func testRefundConfirmationShowsLocalizedAmountNetworkAndFullAddress() {
         let address = "0x1111222233334444555566667777888899990000"
         let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
                                   sourceTx: "source-tx", status: "held", code: nil, refundTx: nil)
         let detail = UsdtDepositDetail(deposit: deposit, order: nil)
-        let confirmation = detail.refundConfirmation(address: address, hideBalance: false)
-        for value in ["50.000001", "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
-            XCTAssertTrue(confirmation.contains(value), value)
+        for (identifier, amount) in [("en_US", "50.00"), ("de_DE", "50,00")] {
+            let confirmation = detail.refundConfirmation(address: address, hideBalance: false, locale: Locale(identifier: identifier))
+            for value in [amount, "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
+                XCTAssertTrue(confirmation.contains(value), value)
+            }
+            XCTAssertFalse(confirmation.contains("50.000001"))
         }
-        let hidden = detail.refundConfirmation(address: address, hideBalance: true)
-        XCTAssertFalse(hidden.contains("50.000001"))
+        let hidden = detail.refundConfirmation(address: address, hideBalance: true, locale: Locale(identifier: "en_US"))
+        XCTAssertFalse(hidden.contains("50.00"))
         XCTAssertTrue(hidden.contains("• • • • •"))
         XCTAssertTrue(hidden.contains(address))
         XCTAssertEqual(deposit.networkLabel, "BNB Smart Chain")
