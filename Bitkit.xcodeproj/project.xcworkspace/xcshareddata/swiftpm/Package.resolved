@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "d1bd9fcc9ceb11849323f4aaf21d32eb95b15c02",
-        "version" : "0.7.0-rc.72"
+        "revision" : "190a7d98b24aa0f4b337b21d9cee6fb8b2986679",
+        "version" : "0.7.0-rc.74"
       }
     },
     {
