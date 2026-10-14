@@ -1391,8 +1391,9 @@ class WalletViewModel: ObservableObject {
         }
 
         let receiveID = receiveRefreshID
+        let previousAddress = onchainAddress
         let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
-        if includeOnchain, receiveRefreshID == receiveID { onchainAddress = publicOnchainAddress }
+        if includeOnchain, receiveRefreshID == receiveID, onchainAddress == previousAddress { onchainAddress = publicOnchainAddress }
 
         if includeLightning, hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()

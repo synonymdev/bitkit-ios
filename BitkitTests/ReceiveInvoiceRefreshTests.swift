@@ -7,7 +7,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        stored = ["bolt11", "bip21", "onchainAddress"].map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        stored = ["bolt11", "bip21", "onchainAddress", PaykitFeatureFlags.uiEnabledKey].map { ($0, UserDefaults.standard.object(forKey: $0)) }
         for (key, _) in stored {
             UserDefaults.standard.removeObject(forKey: key)
         }
@@ -118,6 +118,24 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
     }
 
+    func testEndpointRefreshCannotReplaceReceiveAddressCommittedDuringItsAwait() async throws {
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let wallet = GatedReceiveWallet()
+        wallet.invoiceAmountSats = 1000
+        let receive = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
+        await fulfillment(of: [wallet.olderStarted], timeout: 5)
+        wallet.gateSecondAddress = true
+        let endpoint = Task { try await wallet.refreshPublicPaykitEndpoints(includeLightning: false) }
+        await fulfillment(of: [wallet.endpointAddressStarted], timeout: 5)
+        wallet.releaseOlderInvoice()
+        try await receive.value
+        wallet.releaseEndpointAddress()
+        _ = try await endpoint.value
+        XCTAssertEqual(wallet.onchainAddress, "bcrt1qreceive")
+        XCTAssertTrue(wallet.bip21.hasPrefix("bitcoin:bcrt1qreceive"))
+        XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+    }
+
     func testAutoRejectsOnchainOnlyAndMismatchedCachedInvoices() {
         let wallet = GatedReceiveWallet()
         wallet.bolt11 = "ln-newer"
@@ -149,6 +167,9 @@ private final class GatedReceiveWallet: WalletViewModel {
     var failNextInvoice = false
     var failNextAddress = false
     var gateFirstAddress = false
+    var gateSecondAddress = false
+    let endpointAddressStarted = XCTestExpectation(description: "Endpoint address suspended")
+    private var endpointAddress: CheckedContinuation<String, Never>?
     var addressCallCount = 0
     let olderAddressStarted = XCTestExpectation(description: "Older address suspended")
     private var olderAddress: CheckedContinuation<String, Never>?
@@ -164,6 +185,12 @@ private final class GatedReceiveWallet: WalletViewModel {
             return await withCheckedContinuation {
                 olderAddress = $0
                 olderAddressStarted.fulfill()
+            }
+        }
+        if gateSecondAddress, addressCallCount == 2 {
+            return await withCheckedContinuation {
+                endpointAddress = $0
+                endpointAddressStarted.fulfill()
             }
         }
         return "bcrt1qreceive"
@@ -188,6 +215,11 @@ private final class GatedReceiveWallet: WalletViewModel {
     func releaseOlderAddress() {
         olderAddress?.resume(returning: "bcrt1qolder")
         olderAddress = nil
+    }
+
+    func releaseEndpointAddress() {
+        endpointAddress?.resume(returning: "bcrt1qendpoint")
+        endpointAddress = nil
     }
 
     private enum TestError: Error { case failed }
