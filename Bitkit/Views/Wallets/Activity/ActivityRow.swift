@@ -84,15 +84,19 @@ struct ActivityRowContainer<Content: View>: View {
 struct ActivityRowContent<Icon: View, Amount: View>: View {
     let title: String
     let subtitle: String
+    var textKerning: CGFloat = 0.4
+    var titleLineHeight: CGFloat?
+    var subtitleLineHeight: CGFloat?
+    var textSpacing: CGFloat = 2
     @ViewBuilder var icon: () -> Icon
     @ViewBuilder var amount: () -> Amount
 
     var body: some View {
         HStack(spacing: 16) {
             icon()
-            VStack(alignment: .leading, spacing: 2) {
-                BodyMSBText(title).lineLimit(1)
-                CaptionBText(subtitle).lineLimit(1)
+            VStack(alignment: .leading, spacing: textSpacing) {
+                BodyMSBText(title, kerning: textKerning, lineHeight: titleLineHeight).lineLimit(1)
+                CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(1)
             }
             .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)

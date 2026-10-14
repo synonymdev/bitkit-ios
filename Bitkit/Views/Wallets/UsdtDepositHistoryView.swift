@@ -25,10 +25,15 @@ struct UsdtDepositHistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: selected == nil ? t("usdt__deposit_history") : t("usdt__receiving_title"), onBack: {
-                if selected == nil { dismiss() }
-                else { clearSelection() }
-            })
+            NavigationBar(
+                title: selected == nil ? t("usdt__deposit_history") : t("usdt__receiving_title"),
+                titleKerning: 0,
+                titleLineHeight: 26,
+                onBack: {
+                    if selected == nil { dismiss() }
+                    else { clearSelection() }
+                }
+            )
             .disabled(busy || recoveryActive)
             .padding(.bottom, 16)
             ScrollView(showsIndicators: false) {
@@ -47,7 +52,7 @@ struct UsdtDepositHistoryView: View {
                 else { await loadPage(0) }
             }
             if selected != nil {
-                CustomButton(title: t("usdt__deposit_history"), isDisabled: busy || recoveryActive) {
+                CustomButton(title: t("usdt__deposit_history"), isDisabled: busy || recoveryActive, titleKerning: -0.4, titleLineHeight: 20) {
                     clearSelection()
                     await loadPage(0)
                 }
@@ -102,8 +107,8 @@ struct UsdtDepositHistoryView: View {
 
     private var depositList: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SendSectionView(t("usdt__provider_status"), labelKerning: 1, labelLineHeight: 18) {
-                BodySSBText(t("usdt__deposit_status_note"), lineHeight: 20)
+            SendSectionView(t("usdt__provider_status"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                BodySSBText(t("usdt__deposit_status_note"), kerning: 0, lineHeight: 20)
             }
             if deposits.isEmpty, !busy { BodySText(t("usdt__deposit_empty"), textColor: .textSecondary) }
             ForEach(deposits, id: \.id) { deposit in
@@ -128,30 +133,36 @@ struct UsdtDepositHistoryView: View {
                 BodySSBText(detail.deposit.asset + " · " + detail.deposit.networkLabel, lineHeight: 20)
             }
             if showDetails {
-                SendSectionView(t("wallet__activity_tx_id"), labelKerning: 1, labelLineHeight: 18) {
-                    BodySSBText(detail.deposit.sourceTx, lineHeight: 20).textSelection(.enabled)
+                SendSectionView(t("wallet__activity_tx_id"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(detail.deposit.sourceTx, kerning: 0, lineHeight: 20).textSelection(.enabled)
                 }
-                SendSectionView(t("usdt__deposit_reference"), labelKerning: 1, labelLineHeight: 18) {
-                    BodySSBText(detail.deposit.id, lineHeight: 20).textSelection(.enabled)
+                SendSectionView(t("usdt__deposit_reference"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(detail.deposit.id, kerning: 0, lineHeight: 20).textSelection(.enabled)
                 }
                 if !detail.canRequestRefund {
                     UsdtDetailCell(title: t("wallet__activity_status"), value: detail.statusText, icon: detail.statusIcon,
-                                   valueColor: detail.statusColor, iconColor: detail.statusColor)
+                                   valueColor: detail.statusColor, iconColor: detail.statusColor, valueKerning: 0)
                 }
                 if detail.canRequestRefund {
-                    SendSectionView(t("usdt__deposit_refund_heading"), labelKerning: 1, labelLineHeight: 18) {
-                        BodySSBText(t("usdt__deposit_refund_instructions", variables: ["network": detail.deposit.refundNetworkLabel]), lineHeight: 20)
+                    SendSectionView(t("usdt__deposit_refund_heading"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                        BodySSBText(
+                            t("usdt__deposit_refund_instructions", variables: ["network": detail.deposit.refundNetworkLabel]),
+                            kerning: 0,
+                            lineHeight: 20
+                        )
                     }
                     TextField(t("usdt__deposit_refund_address_network", variables: ["network": detail.deposit.refundNetworkLabel]),
-                              text: $refundAddress, axis: .vertical, testIdentifier: "UsdtRefundAddress")
+                              text: $refundAddress, axis: .vertical, testIdentifier: "UsdtRefundAddress", placeholderColor: .white50,
+                              minContentHeight: 20)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
+                        .environment(\._lineHeightMultiple, 20 / (UIFont(name: Fonts.semiBold, size: 15)?.lineHeight ?? 20))
                 }
                 HStack(spacing: 16) {
                     if detail.canRequestRefund {
                         CustomButton(title: t("usdt__deposit_refund"), size: .small,
                                      icon: Image("coins").resizable().frame(width: 16, height: 16).foregroundColor(.usdtAccent),
                                      isDisabled: busy || refundAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                     isLoading: busy, shouldExpand: true) { confirmRefund = true }
+                                     isLoading: busy, shouldExpand: true, titleKerning: 0, titleLineHeight: 13) { confirmRefund = true }
                             .accessibilityIdentifier("UsdtDepositRefund")
                     }
                     detailsButton
@@ -161,13 +172,13 @@ struct UsdtDepositHistoryView: View {
                 }
                 if let code = detail.statusCode { BodySText(code, textColor: .textSecondary).textSelection(.enabled) }
                 if let tx = detail.order?.destinationTx {
-                    SendSectionView(t("usdt__destination_tx"), labelKerning: 1, labelLineHeight: 18) {
-                        BodySSBText(tx, lineHeight: 20).textSelection(.enabled)
+                    SendSectionView(t("usdt__destination_tx"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                        BodySSBText(tx, kerning: 0, lineHeight: 20).textSelection(.enabled)
                     }
                 }
                 if let tx = detail.order?.refundTx ?? detail.deposit.refundTx {
-                    SendSectionView(t("usdt__refund_tx"), labelKerning: 1, labelLineHeight: 18) {
-                        BodySSBText(tx, lineHeight: 20).textSelection(.enabled)
+                    SendSectionView(t("usdt__refund_tx"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                        BodySSBText(tx, kerning: 0, lineHeight: 20).textSelection(.enabled)
                     }
                 }
                 if detail.deposit.asset != "USDT" || UsdtDepositNetwork.named(detail.deposit.network) == nil {
@@ -177,14 +188,17 @@ struct UsdtDepositHistoryView: View {
             } else {
                 HStack(alignment: .top, spacing: 16) {
                     UsdtDetailCell(title: t("wallet__activity_status"), value: detail.statusText, icon: detail.statusIcon,
-                                   valueColor: detail.statusColor, iconColor: detail.statusColor)
+                                   valueColor: detail.statusColor, iconColor: detail.statusColor, valueKerning: 0)
                     UsdtDetailCell(title: t("usdt__receiving_network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network")
                 }
                 UsdtDetailCell(title: t("usdt__sender_network"), value: detail.deposit.networkLabel, icon: "usdt-network")
                 if let order = detail.order, order.status != "refunded", let received = order.amountOut {
-                    SendSectionView(t("usdt__deposit_batch"), labelKerning: 1, labelLineHeight: 18) { BodySSBText(amount(received), lineHeight: 20) }
+                    SendSectionView(t("usdt__deposit_batch"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) { BodySSBText(
+                        amount(received),
+                        lineHeight: 20
+                    ) }
                     if let sent = order.amountIn, sent >= received {
-                        SendSectionView(t("usdt__deposit_cost"), labelKerning: 1, labelLineHeight: 18) { BodySSBText(
+                        SendSectionView(t("usdt__deposit_cost"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) { BodySSBText(
                             amount(sent - received),
                             lineHeight: 20
                         ) }
@@ -199,8 +213,12 @@ struct UsdtDepositHistoryView: View {
     private var detailsButton: some View {
         CustomButton(title: t(showDetails ? "common__hide_details" : "wallet__send_details"), size: .small,
                      icon: Image(showDetails ? "eye-slash" : "git-branch").resizable().frame(width: 16, height: 16)
-                         .foregroundColor(.usdtAccent), isDisabled: busy || recoveryActive, shouldExpand: true) { showDetails.toggle() }
-            .accessibilityIdentifier("UsdtDepositDetails")
+                         .foregroundColor(.usdtAccent), isDisabled: busy || recoveryActive, shouldExpand: true, titleKerning: 0,
+                     titleLineHeight: 13)
+        {
+            showDetails.toggle()
+        }
+        .accessibilityIdentifier("UsdtDepositDetails")
     }
 
     private func clearSelection() {
@@ -382,14 +400,17 @@ struct UsdtDepositRow: View {
         let completed = ["completed", "refunded"].contains(deposit.status)
         let color: Color = completed ? .usdtAccent : .yellowAccent
         ActivityRowContainer {
-            ActivityRowContent(title: deposit.networkLabel, subtitle: deposit.statusText) {
+            ActivityRowContent(title: deposit.networkLabel, subtitle: deposit.statusText, textKerning: 0,
+                               titleLineHeight: 22, subtitleLineHeight: 18, textSpacing: 0)
+            {
                 CircularIcon(icon: completed ? "check-circle" : "hourglass-simple", iconColor: color,
                              backgroundColor: color.opacity(0.16), size: 40)
             } amount: {
-                VStack(alignment: .trailing, spacing: 2) {
-                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset).lineLimit(1).minimumScaleFactor(0.7)
+                VStack(alignment: .trailing, spacing: 0) {
+                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset, kerning: 0, lineHeight: 22).lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     if deposit.asset == "USDT" {
-                        CaptionBText(hideBalance ? amount : "$ " + amount, textColor: .textSecondary)
+                        CaptionBText(hideBalance ? amount : "$ " + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
                     }
                 }
             }

@@ -60,6 +60,8 @@ struct CustomButton: View {
     }
 
     let title: String
+    let titleKerning: CGFloat
+    let titleLineHeight: CGFloat?
     let variant: Variant
     let size: Size
     let icon: AnyView?
@@ -85,9 +87,13 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
-        background: (any View)? = nil
+        background: (any View)? = nil,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
@@ -109,9 +115,13 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil,
         action: @escaping () async -> Void
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
@@ -133,9 +143,13 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil,
         destination: some View
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
@@ -152,6 +166,8 @@ struct CustomButton: View {
         case .primary:
             AnyView(PrimaryButtonView(
                 title: title,
+                titleKerning: titleKerning,
+                titleLineHeight: titleLineHeight,
                 size: size,
                 icon: icon,
                 isDisabled: effectiveIsDisabled,
@@ -163,6 +179,8 @@ struct CustomButton: View {
         case .secondary:
             AnyView(SecondaryButtonView(
                 title: title,
+                titleKerning: titleKerning,
+                titleLineHeight: titleLineHeight,
                 size: size,
                 icon: icon,
                 isDisabled: effectiveIsDisabled,
@@ -173,6 +191,8 @@ struct CustomButton: View {
         case .tertiary:
             AnyView(TertiaryButtonView(
                 title: title,
+                titleKerning: titleKerning,
+                titleLineHeight: titleLineHeight,
                 icon: icon,
                 isPressed: isPressed
             ))

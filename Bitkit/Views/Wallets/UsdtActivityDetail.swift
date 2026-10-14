@@ -66,7 +66,7 @@ struct UsdtActivityDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: transfer?.detailTitle ?? t("usdt__sent_title"), onBack: { dismiss() })
+            NavigationBar(title: transfer?.detailTitle ?? t("usdt__sent_title"), titleKerning: 0, titleLineHeight: 26, onBack: { dismiss() })
                 .padding(.bottom, 16)
             if let transfer {
                 ScrollView(showsIndicators: false) {
@@ -82,7 +82,7 @@ struct UsdtActivityDetail: View {
                         CustomButton(
                             title: t(showDetails ? "common__hide_details" : "wallet__send_details"), size: .small,
                             icon: Image(showDetails ? "eye-slash" : "git-branch").resizable().frame(width: 16, height: 16)
-                                .foregroundColor(.usdtAccent), shouldExpand: true
+                                .foregroundColor(.usdtAccent), shouldExpand: true, titleKerning: 0, titleLineHeight: 13
                         ) { showDetails.toggle() }
                             .accessibilityIdentifier("UsdtActivityDetails")
                         if showDetails, let txHash = transfer.txHash {
@@ -104,11 +104,13 @@ struct UsdtActivityDetail: View {
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 if showDetails, transfer.isIncoming, usdt.depositsConfigured {
-                    CustomButton(title: t("usdt__deposit_history"), shouldExpand: true) { navigation.navigate(.usdtDepositHistory) }
-                        .padding(.top, 24)
-                        .accessibilityIdentifier("UsdtDepositHistory")
+                    CustomButton(title: t("usdt__deposit_history"), shouldExpand: true, titleKerning: -0.4, titleLineHeight: 20) {
+                        navigation.navigate(.usdtDepositHistory)
+                    }
+                    .padding(.top, 24)
+                    .accessibilityIdentifier("UsdtDepositHistory")
                 } else if showDetails, let txHash = transfer.txHash {
-                    CustomButton(title: t("wallet__activity_explorer"), shouldExpand: true) {
+                    CustomButton(title: t("wallet__activity_explorer"), shouldExpand: true, titleKerning: -0.4, titleLineHeight: 20) {
                         if let url = URL(string: "https://arbiscan.io/tx/" + txHash) { openURL(url) }
                     }
                     .padding(.top, 24)
@@ -133,13 +135,13 @@ struct UsdtActivityDetail: View {
         HStack(alignment: .top, spacing: 16) {
             UsdtDetailCell(title: t("wallet__activity_status"), value: transfer.status.label,
                            icon: transfer.status == .confirmed ? "check-circle" : transfer.statusIcon,
-                           valueColor: transfer.statusColor, iconColor: transfer.statusColor)
+                           valueColor: transfer.statusColor, iconColor: transfer.statusColor, valueKerning: 0)
                 .accessibilityIdentifier("UsdtActivityStatus")
             UsdtDetailCell(title: t("usdt__receiving_network"), value: transfer.destination.label, icon: "usdt-network")
         }
         let time = DateFormatterHelpers.formatActivityDetail(transfer.timestamp)
         HStack(alignment: .top, spacing: 16) {
-            UsdtDetailCell(title: t("wallet__activity_date"), value: time.date, icon: "calendar")
+            UsdtDetailCell(title: t("wallet__activity_date"), value: time.date, icon: "calendar", valueKerning: 0)
             UsdtDetailCell(title: t("wallet__activity_time"), value: time.time, icon: "clock")
         }
         HStack(alignment: .top, spacing: 16) {
@@ -147,7 +149,7 @@ struct UsdtActivityDetail: View {
             UsdtDetailCell(title: t("wallet__activity_fee"), value: transfer.fee.map(displayedAmount) ?? "—", icon: "speed-normal")
         }
         if PaykitFeatureFlags.isUIAvailable, isPaykitUIEnabled, let key = PaykitUsdtPaymentService.shared.contact(for: transfer.id) {
-            SendSectionView(t("wallet__payment_request_contact"), labelKerning: 1, labelLineHeight: 18) {
+            SendSectionView(t("wallet__payment_request_contact"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
                 BodySSBText(contacts.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, key) }?.displayName
                     ?? PubkyPublicKeyFormat.displayTruncated(key), lineHeight: 20)
             }
@@ -157,17 +159,17 @@ struct UsdtActivityDetail: View {
     @ViewBuilder
     private func technicalDetails(_ transfer: UsdtTransfer) -> some View {
         if let txHash = transfer.txHash {
-            SendSectionView(t("wallet__activity_tx_id"), labelKerning: 1, labelLineHeight: 18) {
-                BodySSBText(txHash, lineHeight: 20).textSelection(.enabled)
+            SendSectionView(t("wallet__activity_tx_id"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                BodySSBText(txHash, kerning: 0, lineHeight: 20).textSelection(.enabled)
             }
         }
         if let sender = transfer.sender ?? (!transfer.isIncoming && !usdt.address.isEmpty ? usdt.address : nil) {
-            SendSectionView(t("usdt__from_address"), labelKerning: 1, labelLineHeight: 18) {
-                BodySSBText(sender, lineHeight: 20).textSelection(.enabled)
+            SendSectionView(t("usdt__from_address"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                BodySSBText(sender, kerning: 0, lineHeight: 20).textSelection(.enabled)
             }
         }
-        SendSectionView(t("usdt__to_address"), labelKerning: 1, labelLineHeight: 18) {
-            BodySSBText(transfer.recipient, lineHeight: 20).textSelection(.enabled)
+        SendSectionView(t("usdt__to_address"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+            BodySSBText(transfer.recipient, kerning: 0, lineHeight: 20).textSelection(.enabled)
         }
         HStack(alignment: .top, spacing: 16) {
             if !transfer.isIncoming {
@@ -180,21 +182,21 @@ struct UsdtActivityDetail: View {
             UsdtDetailCell(title: t("usdt__bridge_reference"), value: bridge.quoteId, icon: "note")
                 .textSelection(.enabled)
             if let hash = bridge.destinationTx {
-                SendSectionView(t("usdt__destination_tx"), labelKerning: 1, labelLineHeight: 18) {
-                    BodySSBText(hash, lineHeight: 20).textSelection(.enabled)
+                SendSectionView(t("usdt__destination_tx"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(hash, kerning: 0, lineHeight: 20).textSelection(.enabled)
                 }
             }
             if let amount = bridge.refundAmount, let hash = bridge.refundTx {
-                SendSectionView(t("usdt__deposit_refunded"), labelKerning: 1, labelLineHeight: 18) { amountText(amount) }
-                SendSectionView(t("usdt__refund_tx"), labelKerning: 1, labelLineHeight: 18) {
-                    BodySSBText(hash, lineHeight: 20).textSelection(.enabled)
+                SendSectionView(t("usdt__deposit_refunded"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) { amountText(amount) }
+                SendSectionView(t("usdt__refund_tx"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(hash, kerning: 0, lineHeight: 20).textSelection(.enabled)
                 }
             }
         }
         if transfer.destination != .arbitrum, ![.failed, .replaced, .bridgeRefunded].contains(transfer.status) {
             SendSectionView(
                 t(transfer.status == .confirmed ? "usdt__recipient_gets" : "usdt__expected_amount"),
-                labelKerning: 1,
+                dividerSpacing: 15, labelKerning: 1,
                 labelLineHeight: 18
             ) {
                 amountText(transfer.receivedAmount)
@@ -269,13 +271,14 @@ struct UsdtDetailCell: View {
     let icon: String
     var valueColor: Color = .textPrimary
     var iconColor: Color = .usdtAccent
+    var valueKerning: CGFloat = 0.4
     var minimumValueHeight: CGFloat = 20
 
     var body: some View {
-        SendSectionView(title, labelKerning: 1, labelLineHeight: 18) {
+        SendSectionView(title, dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
             HStack(spacing: 4) {
                 Image(icon).resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(iconColor)
-                BodySSBText(value, textColor: valueColor, lineHeight: 20)
+                BodySSBText(value, textColor: valueColor, kerning: valueKerning, lineHeight: 20)
             }
             .frame(minHeight: 20, alignment: .leading)
             .frame(minHeight: minimumValueHeight, alignment: .topLeading)
@@ -297,9 +300,9 @@ struct UsdtActivityAmountHeader: View {
             CaptionMText(hideBalance ? displayedAmount : "$ " + displayedAmount, kerning: 1, lineHeight: 18)
             HStack(spacing: 16) {
                 HStack(spacing: 6) {
-                    DisplayText("<accent>\(isIncoming ? "+" : "−")</accent>",
-                                accentColor: .textSecondary, accentFont: Fonts.extraBold, fillsWidth: false)
-                    DisplayText(displayedAmount).lineLimit(1).minimumScaleFactor(0.5)
+                    DisplayText("<accent>\(isIncoming ? "+" : "-")</accent>",
+                                accentColor: .textSecondary, accentFont: Fonts.extraBold, fillsWidth: false, lineHeight: 44)
+                    DisplayText(displayedAmount, lineHeight: 44).lineLimit(1).minimumScaleFactor(0.5)
                 }
                 CircularIcon(icon: isIncoming ? "arrow-down" : "arrow-up", iconColor: .usdtAccent,
                              backgroundColor: .usdtAccent.opacity(0.16), size: 48)
