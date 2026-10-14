@@ -1371,7 +1371,8 @@ class WalletViewModel: ObservableObject {
     func refreshReusableOnchainAddress() async throws -> String {
         let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
         let address = onchainAddress
-        if address.isEmpty || await PrivatePaykitAddressReservationStore.shared.isUnavailableForReusableReceive(address: address) {
+        let isUnavailable = await PrivatePaykitAddressReservationStore.shared.isUnavailableForReusableReceive(address: address)
+        if address.isEmpty || isUnavailable {
             return try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
         }
         if try await coreService.utility.isAddressUsed(address: address) {
