@@ -141,6 +141,9 @@ struct SendSheet: View {
     @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
     @State private var hwSend: HwSendCoordinator
     @State private var setupTask: Task<Void, Never>?
+    /// Starts pending so a confirmation rendered before `setUpSend` runs does not read setup as finished.
+    @State private var isSetupPending = true
+    @State private var isFallbackFundingPending = false
 
     init(config: SendSheetItem, isEmbedded: Bool = false) {
         self.config = config
@@ -243,7 +246,11 @@ struct SendSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
-        .offlineSheetOverlay(title: t("wallet__send_bitcoin"), forceShow: syncTimedOut, isEnabled: !isPreparingRequest && !isResumingAcceptedOrdinarySend)
+        .offlineSheetOverlay(
+            title: t("wallet__send_bitcoin"),
+            forceShow: syncTimedOut,
+            isEnabled: !isPreparingRequest && !isResumingAcceptedOrdinarySend
+        )
         .onChange(of: shouldDismissUnavailableRequest) { _, shouldDismiss in
             guard shouldDismiss else { return }
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
@@ -381,30 +388,36 @@ struct SendSheet: View {
             app.resetSendState()
         }
         setupTask?.cancel()
+        isSetupPending = true
         setupTask = Task {
-                if incomingPaymentRequest == nil, config.hardwareWalletId == nil,
-                   currentRoot == .options || app.selectedWalletToPayFrom == .onchain
-                {
-                    do {
-                        if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
-                            walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
-                        ) {
-                            let context = OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
-                            if attempt.requestId != nil || attempt.orderId != nil || attempt.status != .accepted {
-                                hasValidatedAfterSync = true
-                                replaceRootRoute(with: .onchainOperationPending(context, requestId: attempt.requestId))
-                                return
-                            }
-                            isResumingAcceptedOrdinarySend = true
+            defer {
+                if !Task.isCancelled {
+                    isSetupPending = false
+                }
+            }
+            if incomingPaymentRequest == nil, config.hardwareWalletId == nil,
+               currentRoot == .options || app.selectedWalletToPayFrom == .onchain
+            {
+                do {
+                    if let attempt = try await OnchainSendAttemptService.shared.unresolvedAttempt(
+                        walletId: OnchainSendAttemptService.walletId(index: LightningService.shared.currentWalletIndex)
+                    ) {
+                        let context = OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
+                        if attempt.requestId != nil || attempt.orderId != nil || attempt.status != .accepted {
                             hasValidatedAfterSync = true
-                            app.selectedWalletToPayFrom = .onchain
-                            replaceRootRoute(with: Self.acceptedOrdinaryStartupRoute(attempt: attempt))
+                            replaceRootRoute(with: .onchainOperationPending(context, requestId: attempt.requestId))
                             return
                         }
-                    } catch {
-                        Logger.warn("Could not inspect retained on-chain follow-up", context: "SendSheet")
+                        isResumingAcceptedOrdinarySend = true
+                        hasValidatedAfterSync = true
+                        app.selectedWalletToPayFrom = .onchain
+                        replaceRootRoute(with: Self.acceptedOrdinaryStartupRoute(attempt: attempt))
+                        return
                     }
+                } catch {
+                    Logger.warn("Could not inspect retained on-chain follow-up", context: "SendSheet")
                 }
+            }
             do {
                 try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed)
             } catch is CancellationError {
@@ -635,6 +648,7 @@ struct SendSheet: View {
                     if requestedAmount == nil {
                         navigationPath = [.amount]
                     }
+                    selectHardwareFundingSourceAfterOnchainFallback()
                     hasValidatedAfterSync = true
                     return .ready
                 } else {
@@ -696,6 +710,15 @@ struct SendSheet: View {
             && sheets.activeSheetConfiguration?.id == (isEmbedded ? .subscription : .send)
             && incomingPaymentRequest?.id == requestId
             && app.contactPaymentContext?.incomingPaymentRequest?.id == requestId
+    }
+
+    private func selectHardwareFundingSourceAfterOnchainFallback() {
+        guard let request = incomingPaymentRequest else { return }
+        isFallbackFundingPending = true
+        Task {
+            _ = await selectHardwareFundingSourceIfNeeded(amountSats: request.amountSats, requestId: request.id)
+            isFallbackFundingPending = false
+        }
     }
 
     private func selectHardwareFundingSourceIfNeeded(
@@ -803,7 +826,8 @@ struct SendSheet: View {
                 requestPinCheck: requestPinCheck,
                 prepareIncomingPaymentRequest: prepareIncomingPaymentRequest,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                preparingRequest: isPreparingRequest ? config.preparation?.request : nil
+                preparingRequest: isPreparingRequest ? config.preparation?.request : nil,
+                isSetupPending: isSetupPending || isFallbackFundingPending
             )
         case .hardwareSign:
             let contactContext = app.contactPaymentContext
@@ -1194,6 +1218,23 @@ struct SendSheet: View {
             }
             showEmbeddedInitialPaymentFailure(request, error: error, context: context)
             return
+        }
+
+        /// The retry task outlives the sheet, so it must not set the rate of a send opened after it.
+        func isCurrentRetry() -> Bool {
+            sheets.activeSheetConfiguration?.id == .subscription && app.ownsContactPaymentContext(context)
+        }
+        // `resetSendState` cleared the rate and setup does not run again, so the automatic payment would wait for it forever.
+        if isCurrentRetry() {
+            do {
+                try await wallet.loadFeeRateWithRetry(speed: settings.defaultTransactionSpeed) {
+                    try await wallet.setFeeRate(speed: $0, isCurrentSend: isCurrentRetry)
+                }
+            } catch is CancellationError {
+                // The ownership check below releases a retry that no longer owns the send.
+            } catch {
+                Logger.error("Failed to set default fee rate for retry: \(error)")
+            }
         }
 
         guard sheets.activeSheetConfiguration?.id == .subscription,
