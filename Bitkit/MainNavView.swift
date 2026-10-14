@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct MainNavView: View {
@@ -23,6 +24,7 @@ struct MainNavView: View {
     @Environment(UsdtWalletManager.self) private var usdt
     @Environment(\.scenePhase) var scenePhase
 
+    @State private var usdtReceipts = UsdtReceiptQueue()
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
@@ -56,6 +58,16 @@ struct MainNavView: View {
             isReplacingSheet: sheets.isReplacingSheet,
             currentRoute: navigation.currentRoute
         )
+    }
+
+    private var canPresentUsdtReceipt: Bool {
+        scenePhase == .active && !wallet.isRestoringWallet && !usdt.isSendPresented
+            && !sheets.isAnySheetOpen && !sheets.isReplacingSheet && navigation.currentRoute != .usdtDepositHistory
+    }
+
+    private func presentUsdtReceipt() {
+        guard let tx = usdtReceipts.takeNext(canPresent: canPresentUsdtReceipt) else { return }
+        sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
     }
 
     // Delay constants for clipboard processing
@@ -187,6 +199,8 @@ struct MainNavView: View {
             item: $sheets.receivedTxSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.receivedTx, reason: "Received transaction sheet dismissed")
+                usdtReceipts.didDismiss()
+                presentUsdtReceipt()
             }
         ) {
             config in ReceivedTx(config: config)
@@ -301,9 +315,15 @@ struct MainNavView: View {
             }
         }
         .onReceive(usdt.receivedTxPublisher) { tx in
-            guard navigation.currentRoute?.isUsdtWalletRoute != true,
-                  !wallet.isRestoringWallet, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
-            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
+            guard !wallet.isRestoringWallet else { return }
+            usdtReceipts.append(tx)
+            presentUsdtReceipt()
+        }
+        .onChange(of: canPresentUsdtReceipt) { _, ready in
+            if ready { presentUsdtReceipt() }
+        }
+        .onChange(of: wallet.isRestoringWallet) { _, restoring in
+            if restoring { usdtReceipts.removeAll() }
         }
         .onReceive(hwWalletManager.receivedTxPublisher) { tx in
             // New inbound transaction to a watched hardware wallet — show the received celebration.
@@ -316,6 +336,9 @@ struct MainNavView: View {
             DrawerView()
         }
         .onChange(of: sheets.activeSheetConfiguration?.id) { _, sheet in
+            if sheet == .receivedTx {
+                usdtReceipts.didPresent()
+            }
             if sheet != nil {
                 app.showDrawer = false
             }
@@ -924,5 +947,33 @@ struct MainNavView: View {
         components.fragment = nil
 
         return components.string ?? (url.scheme ?? "unknown")
+    }
+}
+
+struct UsdtReceiptQueue {
+    private var transfers: [UsdtTransfer] = []
+    private var isPresenting = false
+
+    mutating func append(_ transfer: UsdtTransfer) {
+        guard !transfers.contains(where: { $0.id == transfer.id }) else { return }
+        transfers.append(transfer)
+    }
+
+    mutating func takeNext(canPresent: Bool) -> UsdtTransfer? {
+        guard canPresent, !isPresenting, !transfers.isEmpty else { return nil }
+        didPresent()
+        return transfers.removeFirst()
+    }
+
+    mutating func didPresent() {
+        isPresenting = true
+    }
+
+    mutating func didDismiss() {
+        isPresenting = false
+    }
+
+    mutating func removeAll() {
+        transfers.removeAll()
     }
 }

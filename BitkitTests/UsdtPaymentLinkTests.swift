@@ -8,10 +8,6 @@ final class UsdtPaymentLinkTests: XCTestCase {
         "ethereum:\(PaykitUsdt.token)@42161/transfer?address=\(recipient)"
     }
 
-    func testDepositHistoryDefersIncomingCelebrationDuringRefundReview() {
-        XCTAssertTrue(Route.usdtDepositHistory.isUsdtWalletRoute)
-    }
-
     func testPaymentLinkPreservesOptionalAtomicAmount() throws {
         XCTAssertEqual(try resolveUsdtPaymentRoute(input: uri, isEnabled: true), .usdtPayment(recipient: recipient, amount: ""))
         XCTAssertEqual(try resolveUsdtPaymentRoute(input: " \(uri)&uint256=10001\n", isEnabled: true),

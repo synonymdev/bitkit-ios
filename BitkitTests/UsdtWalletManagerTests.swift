@@ -314,6 +314,44 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertEqual(deposit.refundNetworkLabel, "BSC")
     }
 
+    func testIncomingCelebrationsWaitUntilPresentationIsAvailable() {
+        var receipts = UsdtReceiptQueue()
+        let sheets = SheetViewModel()
+        let first = transfer("first")
+        let second = transfer("second")
+
+        // Bitcoin and Lightning receipts share the same presentation.
+        sheets.showSheet(.receivedTx)
+        receipts.didPresent()
+        receipts.append(first)
+        receipts.append(first)
+        receipts.append(second)
+
+        XCTAssertNil(receipts.takeNext(canPresent: false))
+
+        sheets.receivedTxSheetItem = nil
+        XCTAssertNil(receipts.takeNext(canPresent: !sheets.isAnySheetOpen))
+        sheets.hideSheetIfActive(.receivedTx)
+        receipts.didDismiss()
+
+        XCTAssertEqual(receipts.takeNext(canPresent: true), first)
+        sheets.showSheet(.receivedTx)
+        XCTAssertNil(receipts.takeNext(canPresent: false))
+
+        // SwiftUI clears the binding before the sheet's dismissal animation finishes.
+        sheets.receivedTxSheetItem = nil
+        XCTAssertNil(receipts.takeNext(canPresent: !sheets.isAnySheetOpen))
+        sheets.hideSheetIfActive(.receivedTx)
+        receipts.didDismiss()
+
+        XCTAssertEqual(receipts.takeNext(canPresent: true), second)
+        sheets.showSheet(.receivedTx)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .receivedTx)
+        sheets.hideSheetIfActive(.receivedTx)
+        receipts.didDismiss()
+        XCTAssertNil(receipts.takeNext(canPresent: true))
+    }
+
     private func transfer(_ id: String, incoming: Bool = true, status: UsdtTransferStatus = .confirmed, amount: UInt64 = 1_000_000) -> UsdtTransfer {
         UsdtTransfer(
             sender: nil,

@@ -44,8 +44,8 @@ struct UsdtActivityIcon: View {
     var body: some View {
         CircularIcon(
             icon: transfer.statusIcon,
-            iconColor: .usdtAccent,
-            backgroundColor: Color.usdtAccent.opacity(0.16),
+            iconColor: transfer.activityIconColor,
+            backgroundColor: transfer.activityIconColor.opacity(0.16),
             size: size
         )
     }
@@ -250,9 +250,18 @@ extension UsdtTransfer {
     var statusIcon: String {
         switch status {
         case .failed, .replaced, .bridgeFailed: "x-circle"
-        case .pending, .bridging, .bridgeNeedsAttention: "hourglass-simple"
+        case .pending, .bridgeNeedsAttention: "hourglass-simple"
+        case .bridging: "transfer"
         case .confirmed: isIncoming ? "arrow-down" : "arrow-up"
         case .bridgeRefunded: "arrow-down"
+        }
+    }
+
+    var activityIconColor: Color {
+        switch status {
+        case .failed, .replaced, .bridgeFailed: .redAccent
+        case .pending, .bridgeNeedsAttention: .yellowAccent
+        default: .usdtAccent
         }
     }
 

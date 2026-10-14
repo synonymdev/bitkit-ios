@@ -72,10 +72,6 @@ struct UsdtWalletScreen: View {
         }
         .padding(.horizontal, 16)
         .navigationBarHidden(true)
-        .onReceive(usdt.receivedTxPublisher) { tx in
-            guard navigation.currentRoute != .usdtDepositHistory, !showSend, !sheets.isAnySheetOpen, !sheets.isReplacingSheet else { return }
-            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
-        }
         .sheet(isPresented: $showSend, onDismiss: {
             if !settings.isUsdtEnabled, !sendRecipient.isEmpty,
                navigation.currentRoute == .usdtPayment(recipient: sendRecipient, amount: sendAmount)

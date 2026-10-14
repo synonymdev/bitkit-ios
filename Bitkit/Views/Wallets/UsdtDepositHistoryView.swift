@@ -10,7 +10,7 @@ struct UsdtDepositHistoryView: View {
     @State private var nextOffset: UInt32?
     @State private var selected: UsdtDepositDetail?
     @State private var refundAddress = ""
-    @State private var showDetails = true
+    @State private var showDetails = false
     @State private var approved: RefundApproval?
     @State private var pageOffsets: [String: UInt32] = [:]
     @State private var confirmRefund = false
@@ -159,7 +159,7 @@ struct UsdtDepositHistoryView: View {
                 }
                 HStack(spacing: 16) {
                     if detail.canRequestRefund {
-                        CustomButton(title: t("usdt__deposit_refund"), size: .small,
+                        CustomButton(title: t("usdt__deposit_refund_action"), size: .small,
                                      icon: Image("coins").resizable().frame(width: 16, height: 16).foregroundColor(.usdtAccent),
                                      isDisabled: busy || refundAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                                      isLoading: busy, shouldExpand: true, titleKerning: 0, titleLineHeight: 13) { confirmRefund = true }
@@ -211,7 +211,7 @@ struct UsdtDepositHistoryView: View {
     }
 
     private var detailsButton: some View {
-        CustomButton(title: t(showDetails ? "common__hide_details" : "wallet__send_details"), size: .small,
+        CustomButton(title: t(showDetails ? "usdt__hide_details" : "wallet__send_details"), size: .small,
                      icon: Image(showDetails ? "eye-slash" : "git-branch").resizable().frame(width: 16, height: 16)
                          .foregroundColor(.usdtAccent), isDisabled: busy || recoveryActive, shouldExpand: true, titleKerning: 0,
                      titleLineHeight: 13)
@@ -227,7 +227,7 @@ struct UsdtDepositHistoryView: View {
         error = nil
         refundAddress = ""
         approved = nil
-        showDetails = true
+        showDetails = false
     }
 
     private func amount(_ value: UInt64?) -> String {
@@ -265,7 +265,7 @@ struct UsdtDepositHistoryView: View {
                 refundAddress = ""
                 approved = nil
                 message = nil
-                showDetails = true
+                showDetails = false
             }
             if ["completed", "refunded"].contains(detail.order?.status ?? detail.deposit.status) {
                 message = nil
@@ -410,7 +410,7 @@ struct UsdtDepositRow: View {
                     BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset, kerning: 0, lineHeight: 22).lineLimit(1)
                         .minimumScaleFactor(0.7)
                     if deposit.asset == "USDT" {
-                        CaptionBText(hideBalance ? amount : "$ " + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
+                        CaptionBText(hideBalance ? amount : "$" + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
                     }
                 }
             }
