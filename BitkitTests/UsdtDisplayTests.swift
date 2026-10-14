@@ -15,10 +15,11 @@ final class UsdtDisplayTests: XCTestCase {
     }
 
     func testAmountInputUsesLocaleSeparatorWithoutRoundingTypedPrecision() {
-        for amount in ["0", "0.", "0.000001", "1.230000", "1234567.890000"] {
+        for amount in ["0", "0.", "3.25", "0.000001", "1.230000", "1234567.890000"] {
             XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "en_US")), amount)
             XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "de_DE")), amount.replacingOccurrences(of: ".", with: ","))
             XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "fr_FR")), amount.replacingOccurrences(of: ".", with: ","))
+            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "en_BR")), amount.replacingOccurrences(of: ".", with: ","))
         }
     }
 

@@ -725,7 +725,7 @@ struct MainNavView: View {
                     uri,
                     ownPublicKey: pubkyProfile.publicKey,
                     contacts: contactsManager.contacts,
-                    isUsdtEnabled: settings.isUsdtEnabled
+                    isUsdtEnabled: settings.isUsdtEnabled && !usdt.isSendPresented && app.contactPaymentContext == nil
                 )
             } else {
                 false

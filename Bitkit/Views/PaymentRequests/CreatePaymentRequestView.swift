@@ -313,6 +313,7 @@ struct PaymentRequestAmountView: View {
     @State private var asset: PaykitAsset = .btc
     @State private var dollarAmount = ""
     @State private var conversionError = false
+    @State private var didLoadAmount = false
 
     private var amount: PaykitAmount? {
         asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? PaykitAmount(asset: .usd, value: dollarAmount)
@@ -364,7 +365,7 @@ struct PaymentRequestAmountView: View {
             }
             NumberPad(
                 type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
-                decimalSeparator: Locale.current.decimalSeparator ?? ".",
+                decimalSeparator: asset == .usd ? Locale.current.decimalSeparator ?? "." : ".",
                 errorKey: amountViewModel.errorKey
             ) { key in
                 if asset == .usd { dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2) }
@@ -387,6 +388,8 @@ struct PaymentRequestAmountView: View {
         .sheetBackground()
         .navigationBarHidden(true)
         .task {
+            guard !didLoadAmount else { return }
+            didLoadAmount = true
             asset = initialDraft.amount.asset == .btc ? .btc : .usd
             if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
             else { dollarAmount = initialDraft.amount.value }
@@ -479,7 +482,7 @@ struct PaymentRequestDetailsView: View {
                     if initialDraft.amount.asset == .btc {
                         MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
                                   symbol: true, color: .textPrimary, symbolColor: .textSecondary, fillsWidth: false)
-                    } else { NumberPadAmountText(value: initialDraft.amount.value, symbol: "$") }
+                    } else { NumberPadAmountText(value: usdtInputAmount(initialDraft.amount.value), symbol: "$") }
                     Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
                 }
             }
@@ -557,7 +560,7 @@ struct PaymentRequestDetailsView: View {
                 }
                 Spacer(minLength: 8)
                 if initialDraft.amount.asset == .btc { MoneyCell(sats: Int(clamping: initialDraft.amount.atomic), prefix: "") }
-                else { BodyMSBText("$" + initialDraft.amount.value) }
+                else { BodyMSBText("$" + usdtInputAmount(initialDraft.amount.value)) }
             }
             .padding(16)
             .background(Color.gray6)
