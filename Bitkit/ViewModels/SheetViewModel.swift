@@ -132,6 +132,10 @@ class SheetViewModel: ObservableObject {
         return activeSheetConfiguration != nil
     }
 
+    var canPresentReceivedTx: Bool {
+        !isReplacingSheet && (activeSheetConfiguration == nil || activeSheetConfiguration?.id == .receive)
+    }
+
     private func playHaptics(for sheetId: SheetID) {
         sheetId == .receivedTx ? Haptics.notify(.success) : Haptics.play(.openSheet)
     }

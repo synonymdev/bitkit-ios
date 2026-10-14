@@ -99,7 +99,7 @@ struct UsdtDepositHistoryView: View {
                     try Task.checkCancellation()
                 } catch { return }
                 guard !recoveryActive else { return }
-                await loadDetail(id)
+                await loadDetail(id, isRefreshing: true)
             }
         }
         .interactiveDismissDisabled(busy || pin)
@@ -254,13 +254,20 @@ struct UsdtDepositHistoryView: View {
         } catch is CancellationError {} catch { self.error = UsdtWalletManager.message(for: error) }
     }
 
-    private func loadDetail(_ id: String) async {
+    private func loadDetail(_ id: String, isRefreshing: Bool = false) async {
         guard !busy else { return }
-        busy = true
-        error = nil
-        defer { busy = false }
+        let previous = selected
+        guard !isRefreshing || previous?.deposit.id == id else { return }
+        if !isRefreshing {
+            busy = true
+            error = nil
+        }
+        defer { if !isRefreshing { busy = false } }
         do {
             let detail = try await usdt.depositDetail(id: id, offset: pageOffsets[id] ?? 0)
+            try Task.checkCancellation()
+            guard !isRefreshing || (!busy && !recoveryActive && selected == previous) else { return }
+            error = nil
             if selected?.deposit.id != id {
                 refundAddress = ""
                 approved = nil
@@ -271,7 +278,10 @@ struct UsdtDepositHistoryView: View {
                 message = nil
             }
             updateSelection(detail)
-        } catch is CancellationError {} catch { self.error = UsdtWalletManager.message(for: error) }
+        } catch is CancellationError {} catch {
+            guard !isRefreshing || (!busy && !recoveryActive && selected == previous) else { return }
+            self.error = UsdtWalletManager.message(for: error)
+        }
     }
 
     private func updateSelection(_ detail: UsdtDepositDetail) {

@@ -62,7 +62,7 @@ struct MainNavView: View {
 
     private var canPresentUsdtReceipt: Bool {
         scenePhase == .active && !wallet.isRestoringWallet && !usdt.isSendPresented
-            && !sheets.isAnySheetOpen && !sheets.isReplacingSheet && navigation.currentRoute != .usdtDepositHistory
+            && sheets.canPresentReceivedTx && navigation.currentRoute != .usdtDepositHistory
     }
 
     private func presentUsdtReceipt() {

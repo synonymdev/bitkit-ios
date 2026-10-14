@@ -355,6 +355,27 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertNil(receipts.takeNext(canPresent: true))
     }
 
+    func testIncomingCelebrationReplacesReceiveAndDoesNotRepeatOnDismiss() async throws {
+        var receipts = UsdtReceiptQueue()
+        let sheets = SheetViewModel()
+        let received = transfer("received")
+        sheets.showSheet(.receive)
+        receipts.append(received)
+
+        let next = try XCTUnwrap(receipts.takeNext(canPresent: sheets.canPresentReceivedTx))
+        sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: next.amount, usdtTransferId: next.id))
+        XCTAssertTrue(sheets.isReplacingSheet)
+        XCTAssertFalse(sheets.canPresentReceivedTx)
+        XCTAssertNil(receipts.takeNext(canPresent: sheets.canPresentReceivedTx))
+
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .receivedTx)
+        XCTAssertEqual((sheets.activeSheetConfiguration?.data as? ReceivedTxSheetDetails)?.usdtTransferId, received.id)
+        sheets.hideSheetIfActive(.receivedTx)
+        receipts.didDismiss()
+        XCTAssertNil(receipts.takeNext(canPresent: sheets.canPresentReceivedTx))
+    }
+
     private func transfer(_ id: String, incoming: Bool = true, status: UsdtTransferStatus = .confirmed, amount: UInt64 = 1_000_000) -> UsdtTransfer {
         UsdtTransfer(
             sender: nil,

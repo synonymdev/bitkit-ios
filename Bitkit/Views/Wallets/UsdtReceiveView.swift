@@ -72,10 +72,6 @@ struct UsdtReceiveView: View {
         .padding(.horizontal, 16)
         .background(Color.gray7)
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
-        .onReceive(usdt.receivedTxPublisher) { transfer in
-            guard sheets.activeSheetConfiguration?.id == .receive else { return }
-            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: transfer.amount, usdtTransferId: transfer.id))
-        }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {

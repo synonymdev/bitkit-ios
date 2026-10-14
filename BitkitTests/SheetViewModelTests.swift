@@ -3,6 +3,15 @@ import XCTest
 
 @MainActor
 final class SheetViewModelTests: XCTestCase {
+    func testReceivedTransactionCanReplaceOnlyReceive() {
+        let sheets = SheetViewModel()
+        XCTAssertTrue(sheets.canPresentReceivedTx)
+        for id in SheetID.allCases {
+            sheets.activeSheetConfiguration = SheetConfiguration(id: id, data: nil)
+            XCTAssertEqual(sheets.canPresentReceivedTx, id == .receive, id.rawValue)
+        }
+    }
+
     func testLateDismissOfPreviousSheetKeepsNextSheetOpen() {
         let sheets = SheetViewModel()
 
