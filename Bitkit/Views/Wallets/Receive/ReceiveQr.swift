@@ -431,7 +431,9 @@ struct ReceiveQr: View {
             }
             QrArea(
                 uri: "", imageAsset: nil, accentColor: tab == .spending ? .purpleAccent : .brandAccent,
-                navigationPath: $navigationPath, editRoute: editRoute(for: tab)
+                onEdit: editRoute(for: tab).map { route in
+                    { navigationPath.append(route) }
+                }
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
