@@ -3,6 +3,63 @@ import Paykit
 import XCTest
 
 final class PaykitSdkOperationLockTests: XCTestCase {
+    func testBackupExportPairsVersionAfterQueuedMutationAndRejectsLaterChanges() async throws {
+        let sdk = PublicReadSdk(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let identity = try await service.backupIdentity()
+        let initialVersion = await service.backupStateVersion
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        let started = expectation(description: "SDK mutation started")
+        sdk.paymentMutation = { _ in
+            started.fulfill()
+            for await _ in gate {}
+        }
+        let mutation = Task { try await service.claimPaymentRequestForExecution(counterparty: "peer", paymentRequestId: "request") }
+        await fulfillment(of: [started], timeout: 2)
+        let export = Task { try await service.exportBackupSnapshot(priority: .interactive) }
+        try await Task.sleep(for: .milliseconds(50))
+        release.finish()
+        do {
+            _ = try await mutation.value
+            XCTFail("Expected partial mutation failure")
+        } catch PaymentMutationReached.reached {}
+
+        let snapshot = try await export.value
+        XCTAssertEqual(snapshot.state, "backup")
+        XCTAssertGreaterThan(snapshot.version, initialVersion)
+        try await service.validateBackupSnapshot(version: snapshot.version, identity: identity)
+
+        sdk.paymentMutation = { _ in }
+        do {
+            _ = try await service.claimPaymentRequestForExecution(counterparty: "peer", paymentRequestId: "request")
+        } catch PaymentMutationReached.reached {}
+        do {
+            try await service.validateBackupSnapshot(version: snapshot.version, identity: identity)
+            XCTFail("Expected later SDK change to invalidate the snapshot")
+        } catch WalletBackupSnapshotError.changed {}
+    }
+
+    func testBackupIdentityFenceSurvivesRecaptureAfterRuntimeReplacement() async throws {
+        let sdk = PublicReadSdk(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let identity = try await service.backupIdentity()
+        var captures = 0
+        do {
+            try await WalletBackupChangeTracker().capture {
+                captures += 1
+                if captures == 1 {
+                    await service.clearState()
+                    throw WalletBackupSnapshotError.changed
+                }
+                let snapshot = try await service.exportBackupSnapshot(priority: .interactive)
+                try await service.validateBackupSnapshot(version: snapshot.version, identity: identity)
+            }
+            XCTFail("A fresh content baseline must not acknowledge a different identity")
+        } catch PubkyServiceError.identityChanged {}
+        XCTAssertEqual(captures, 2)
+    }
+
     private actor Recorder {
         private(set) var events: [String] = []
 
