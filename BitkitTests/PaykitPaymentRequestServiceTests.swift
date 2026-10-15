@@ -11,6 +11,31 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testDollarRequestsPreferUsdtOnlyWhenTheQuotedAmountIsCovered() throws {
+        let bitcoin = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh,
+            value: "bcrt1qexample",
+            min: nil,
+            max: nil,
+            rawPayload: "bcrt1qexample"
+        )
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let endpoints = [bitcoin, usdt]
+        let rates = [ConversionRate(asset: "btc", value: "0.00001"), ConversionRate(asset: "usdt", value: "1"),
+                     ConversionRate(asset: "usdt-arbitrum", value: "1.2345678")]
+        let record = try paymentRequestRecord(amount: "1", asset: "usd", conversion: .fixed(rates: rates),
+                                              endpoints: endpoints.map(\.methodId.rawValue))
+        let request = try PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest).get()
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: endpoints)
+        for (balance, expected): (UInt64, Bool) in [(0, false), (1_000_000, false), (1_234_567, false), (1_234_568, true), (2_000_000, true)] {
+            XCTAssertEqual(context.prefersUsdt(onchainBalanceSats: 0, usdtBalance: balance), expected, "balance \(balance)")
+            XCTAssertEqual(context.prefersUsdt(onchainBalanceSats: 100_000, canSendLightning: true, usdtBalance: balance), expected)
+        }
+        XCTAssertFalse(context.prefersUsdt(onchainBalanceSats: 0, usdtBalance: 2_000_000, isUsdtEnabled: false))
+        let usdtOnly = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [usdt])
+        XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 100_000, usdtBalance: 0))
+    }
+
     func testMonthlyCostCombinesAssetsUsingTheWalletRate() {
         let now = Date()
         let amounts = [

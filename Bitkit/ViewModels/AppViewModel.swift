@@ -45,8 +45,13 @@ struct ContactPaymentContext: Equatable {
     ) -> Bool {
         guard endpoints.contains(where: { $0.methodId == .usdtArbitrum }) else { return false }
         if !endpoints.contains(where: { $0.methodId != .usdtArbitrum }) { return true }
-        return isUsdtEnabled && (incomingPaymentRequest.map { $0.amount.asset != .btc } == true ||
-            (onchainBalanceSats == 0 && !canSendLightning && usdtBalance > 0))
+        guard isUsdtEnabled else { return false }
+        if let request = incomingPaymentRequest, request.amount.asset != .btc {
+            let now = Date()
+            guard let payment = try? request.payment(using: .usdtArbitrum, at: now), payment.isValid(at: now) else { return false }
+            return usdtBalance >= payment.amount.atomic
+        }
+        return onchainBalanceSats == 0 && !canSendLightning && usdtBalance > 0
     }
 
     init(
