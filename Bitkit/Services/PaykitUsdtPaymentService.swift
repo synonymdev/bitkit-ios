@@ -77,7 +77,8 @@ final class PaykitUsdtPaymentService {
     private var activeIdentity: String?
     private var reconciling = false
     private var preparing = false
-    private var restoreGeneration = 0
+    private var stateGeneration = 0
+    private var sending = false
     private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = []
     private var releasedAttempts: [Attempt] = []
     private var boundRequestIds: Set<PaykitPaymentRequest.ID>?
@@ -95,7 +96,7 @@ final class PaykitUsdtPaymentService {
 
     func restoreBackup(_ backup: PaykitUsdtStateBackup) throws {
         boundRequestIds = nil
-        restoreGeneration &+= 1
+        stateGeneration &+= 1
         releasedAttempts = []
         resumableRequests = []
         var state = try load()
@@ -123,6 +124,10 @@ final class PaykitUsdtPaymentService {
               wallet: UsdtWalletManager, authorize: @escaping @MainActor () async throws -> Void) async throws
     {
         let submissionDeadline = try context.incomingPaymentRequest?.submissionDeadline(quoteId: paymentTerms?.quoteId)
+        guard !sending else { throw PaykitPaymentRequestError.operationInProgress }
+        sending = true
+        stateGeneration += 1
+        defer { sending = false }
         try setPaymentStarted(quoteId: quote.id, started: true)
         do {
             try await wallet.send(quote, submissionDeadline: submissionDeadline) {
@@ -319,7 +324,7 @@ final class PaykitUsdtPaymentService {
     }
 
     func reconcile(wallet: UsdtWalletManager) async {
-        guard wallet.isConfigured else {
+        guard wallet.isConfigured, UsdtPreference.isEnabled() || (try? wallet.hasStoredWallet) == true else {
             boundRequestIds = nil
             releasedAttempts = []
             resumableRequests = []
@@ -347,8 +352,8 @@ final class PaykitUsdtPaymentService {
         paymentRequests: () async throws -> [Paykit.PaymentRequestRecord],
         verifyPayment: (UsdtPaymentProofBinding, UsdtPaymentProof) async throws -> UsdtVerifiedPayment?
     ) async {
-        guard !reconciling else { return }
-        let generation = restoreGeneration
+        guard !reconciling, !sending else { return }
+        let generation = stateGeneration
         reconciling = true
         defer { reconciling = false }
         boundRequestIds = nil
@@ -363,11 +368,19 @@ final class PaykitUsdtPaymentService {
             publish(state)
             var resumable: [Attempt] = []
             var released: [Attempt] = []
-            for attempt in state.attempts where attempt.wallet == owner && attempt.identity == identity {
+            for var attempt in state.attempts where attempt.wallet == owner && attempt.identity == identity {
                 guard let requestId = attempt.requestId else { continue }
                 do {
                     try Task.checkCancellation()
                     let transfer = try await storedTransfer(attempt.quoteId)
+                    guard stateGeneration == generation else { return }
+                    if transfer == nil, attempt.paymentStarted {
+                        var current = try load()
+                        guard let index = current.attempts.firstIndex(of: attempt) else { continue }
+                        attempt.paymentStarted = false
+                        current.attempts[index] = attempt
+                        try save(current)
+                    }
                     let unexecuted = (transfer == nil && !attempt.paymentStarted) || transfer?.status == .failed || transfer?.status == .replaced
                     if unexecuted { resumable.append(attempt) }
                     if unexecuted, attempt.proof == nil, !attempt.proofQueued {
@@ -409,7 +422,7 @@ final class PaykitUsdtPaymentService {
                     Logger.warn("Unable to reconcile Paykit USDT payment attempt: \(error)", context: "PaykitUsdt")
                 }
             }
-            guard restoreGeneration == generation, activeWallet == owner, activeIdentity == identity else { return }
+            guard stateGeneration == generation, activeWallet == owner, activeIdentity == identity else { return }
             let currentState = try load()
             resumableRequests = Set(resumable.filter { currentState.attempts.contains($0) }.compactMap(\.requestId))
             releasedAttempts = released.filter { currentState.attempts.contains($0) }

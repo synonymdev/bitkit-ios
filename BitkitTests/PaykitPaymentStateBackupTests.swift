@@ -151,7 +151,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     @MainActor
     func testUnsubmittedUsdtBindingRequiresCurrentJournalEvidenceAfterRestart() async throws {
         let service = PaykitUsdtPaymentService()
-        let attempt = unsubmittedUsdtAttempt()
+        var attempt = unsubmittedUsdtAttempt()
+        attempt.paymentStarted = true
         let requestId = try XCTUnwrap(attempt.requestId)
         try saveUsdtAttempts([attempt])
         XCTAssertTrue(service.hasBinding(for: requestId))
@@ -200,7 +201,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             XCTAssertFalse(service.hasBinding(for: requestId))
             XCTAssertTrue(PaykitUsdtPaymentService().hasBinding(for: requestId))
             await reconcileUsdt(service)
-            XCTAssertTrue(service.hasBinding(for: requestId))
+            XCTAssertFalse(service.hasBinding(for: requestId))
             for hasProof in [false, true] {
                 var protected = attempt
                 protected.proofQueued = !hasProof
@@ -242,7 +243,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             XCTAssertTrue(service.hasBinding(for: requestId))
             if changed != replacement {
                 await reconcileUsdt(service)
-                XCTAssertTrue(service.hasBinding(for: requestId))
+                XCTAssertEqual(service.hasBinding(for: requestId), changed != started)
             }
         }
         try saveUsdtAttempts([attempt])
@@ -276,7 +277,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
         XCTAssertTrue(service.hasBinding(for: requestId))
         await reconcileUsdt(service)
-        XCTAssertTrue(service.hasBinding(for: requestId))
+        XCTAssertFalse(service.hasBinding(for: requestId))
     }
 
     @MainActor

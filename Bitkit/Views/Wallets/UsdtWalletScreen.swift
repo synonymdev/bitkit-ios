@@ -196,6 +196,10 @@ func usdtOverviewAmount(_ amount: UInt64, locale: Locale = .current) -> String {
     return (Decimal(amount) / 1_000_000).formatted(format)
 }
 
+func usdtExactAmount(_ amount: UInt64, locale: Locale = .current) -> String {
+    (Decimal(amount) / 1_000_000).formatted(.number.precision(.fractionLength(2 ... 6)).locale(locale))
+}
+
 func usdtInputAmount(_ amount: String, locale: Locale = .current) -> String {
     amount.replacingOccurrences(of: ".", with: locale.decimalSeparator ?? ".")
 }

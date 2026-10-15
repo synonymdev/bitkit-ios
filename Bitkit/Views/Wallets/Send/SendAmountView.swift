@@ -282,7 +282,7 @@ struct SendAmountView: View {
                 }
             }
         }
-        .task { await usdt.refresh() }
+        .task { if usdt.shouldRefresh(enabled: settings.isUsdtEnabled) { await usdt.refresh() } }
         .onChange(of: paymentRequests.pendingRequests) { updateRequestAmount() }
         .onChange(of: app.selectedWalletToPayFrom) { _, newValue in
             // Recalculate max sendable amount when switching wallet types

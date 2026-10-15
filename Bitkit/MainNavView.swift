@@ -321,7 +321,7 @@ struct MainNavView: View {
             .task(id: scenePhase) {
                 guard usdt.isConfigured, scenePhase == .active else { return }
                 while !Task.isCancelled {
-                    await usdt.refresh(includeHistory: true)
+                    if usdt.shouldRefresh(enabled: settings.isUsdtEnabled) { await usdt.refresh(includeHistory: true) }
                     let pending = usdt.transfers.contains { $0.status == .pending }
                     try? await Task.sleep(for: .seconds(pending ? 10 : 30))
                 }

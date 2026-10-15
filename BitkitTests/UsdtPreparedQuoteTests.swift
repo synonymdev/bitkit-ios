@@ -14,6 +14,18 @@ final class UsdtPreparedQuoteTests: XCTestCase {
         )
     }
 
+    func testQuotedCostIncludesDeductedBridgeFeesWithoutUnsignedOverflow() {
+        var quote = prepared.quote
+        XCTAssertEqual(quote.totalCost, 20)
+        quote.receivedAmount = 400_000
+        XCTAssertEqual(quote.totalCost, 600_020)
+        quote.maximumFee = UInt64.max
+        XCTAssertEqual(quote.totalCost, UInt64.max)
+        quote.receivedAmount = 2_000_000
+        quote.maximumFee = 20
+        XCTAssertEqual(quote.totalCost, 20)
+    }
+
     func testUnchangedPaymentKeepsTheApprovedFeeUntilTheExpiryBuffer() {
         XCTAssertTrue(prepared.matches(recipient: recipient, amount: "1", destination: .arbitrum, sender: sender,
                                        now: Date(timeIntervalSince1970: 114)))

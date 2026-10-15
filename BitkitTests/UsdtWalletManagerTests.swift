@@ -4,6 +4,29 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testOfflineBackupDoesNotCreateAnUnusedWalletAndPreservesRestoredHistory() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, loadCredentials: {
+            ("test test test test test test test test test test test junk", nil)
+        })
+        XCTAssertFalse(manager.shouldRefresh(enabled: false))
+        let empty = try await manager.backupSnapshot()
+        XCTAssertNil(empty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let address = try usdtAddress(mnemonic: "test test test test test test test test test test test junk", passphrase: nil)
+        let snapshot = "{\"identity\":\"42161:\(address)\",\"transfers\":[]}"
+        try await manager.restoreBackup(snapshot)
+        let restored = try await manager.backupSnapshot()
+        XCTAssertNotNil(restored)
+        XCTAssertTrue(try manager.hasStoredWallet)
+        do {
+            _ = try await manager.paymentEndpoint()
+            XCTFail("Local backup access must not enable network operations")
+        } catch UsdtError.NotConfigured {}
+    }
+
     func testEndpointPublicationOmitsUnavailableUsdtAndPropagatesCancellation() async throws {
         try XCTSkipUnless(Env.isUsdtEnabled)
         let unavailable = UsdtWalletManager(loadCredentials: { throw UsdtError.InvalidCredentials })
@@ -302,12 +325,11 @@ final class UsdtWalletManagerTests: XCTestCase {
         let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
                                   sourceTx: "source-tx", status: "held", code: nil, refundTx: nil)
         let detail = UsdtDepositDetail(deposit: deposit, order: nil)
-        for (identifier, amount) in [("en_US", "50.00"), ("de_DE", "50,00")] {
+        for (identifier, amount) in [("en_US", "50.000001"), ("de_DE", "50,000001")] {
             let confirmation = detail.refundConfirmation(address: address, hideBalance: false, locale: Locale(identifier: identifier))
             for value in [amount, "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
                 XCTAssertTrue(confirmation.contains(value), value)
             }
-            XCTAssertFalse(confirmation.contains("50.000001"))
         }
         let hidden = detail.refundConfirmation(address: address, hideBalance: true, locale: Locale(identifier: "en_US"))
         XCTAssertFalse(hidden.contains("50.00"))

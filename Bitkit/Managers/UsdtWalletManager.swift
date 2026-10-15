@@ -30,6 +30,8 @@ final class UsdtWalletManager {
     var isSendPresented = false
     private var core: UsdtWallet?
     private let storageDirectory: URL
+    private let rpcUrl: String?
+    private let bundlerUrl: String?
     private let loadCredentials: @MainActor () async throws -> (String, String?)
     private var wiping = false
     private var activeOperations = 0
@@ -42,7 +44,19 @@ final class UsdtWalletManager {
     private var idleWaiter: CheckedContinuation<Void, Never>?
 
     var isConfigured: Bool {
-        Env.isUsdtEnabled
+        Env.isUsdtEnabled && rpcUrl != nil && bundlerUrl != nil
+    }
+
+    var hasStoredWallet: Bool {
+        get throws {
+            guard FileManager.default.fileExists(atPath: storageDirectory.path) else { return false }
+            return try FileManager.default.contentsOfDirectory(at: storageDirectory, includingPropertiesForKeys: nil)
+                .contains { $0.lastPathComponent.hasPrefix("usdt-") && $0.pathExtension == "sqlite" }
+        }
+    }
+
+    func shouldRefresh(enabled: Bool) -> Bool {
+        enabled || hasProtectedFunds || (balance == nil && (try? hasStoredWallet) == true)
     }
 
     var hasProtectedFunds: Bool {
@@ -90,6 +104,8 @@ final class UsdtWalletManager {
 
     init(
         storageDirectory: URL = Env.bitkitCoreStorage(walletIndex: 0),
+        rpcUrl: String? = Env.usdtRpcUrl,
+        bundlerUrl: String? = Env.usdtBundlerUrl,
         loadCredentials: @escaping @MainActor () async throws -> (String, String?) = {
             try await ServiceQueue.background(.core, wrapErrors: false) {
                 guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
@@ -98,6 +114,8 @@ final class UsdtWalletManager {
         }
     ) {
         self.storageDirectory = storageDirectory
+        self.rpcUrl = rpcUrl
+        self.bundlerUrl = bundlerUrl
         self.loadCredentials = loadCredentials
     }
 
@@ -174,25 +192,17 @@ final class UsdtWalletManager {
     }
 
     func backupSnapshot() async throws -> String? {
-        guard isConfigured else {
-            if FileManager.default.fileExists(atPath: storageDirectory.path) {
-                let files = try FileManager.default.contentsOfDirectory(at: storageDirectory, includingPropertiesForKeys: nil)
-                guard !files.contains(where: { $0.lastPathComponent.hasPrefix("usdt-") && $0.pathExtension == "sqlite" }) else {
-                    throw UsdtError.NotConfigured
-                }
-            }
-            return nil
-        }
+        guard try hasStoredWallet else { return nil }
         try beginOperation()
         defer { finishOperation() }
-        let wallet = try await wallet()
+        let wallet = try await wallet(requiresNetwork: false)
         return try await ServiceQueue.background(.core, wrapErrors: false) { try wallet.exportBackup() }
     }
 
     func restoreBackup(_ snapshot: String) async throws {
         try beginOperation()
         defer { finishOperation() }
-        let wallet = try await wallet()
+        let wallet = try await wallet(requiresNetwork: false)
         try await wallet.restoreBackup(snapshot: snapshot)
         pendingDepositIds.removeAll()
         transfers = try wallet.history()
@@ -402,11 +412,14 @@ final class UsdtWalletManager {
         }
     }
 
-    private func wallet() async throws -> UsdtWallet {
-        guard isConfigured, let bundlerUrl = Env.usdtBundlerUrl, let rpcUrl = Env.usdtRpcUrl else { throw UsdtError.NotConfigured }
+    private func wallet(requiresNetwork: Bool = true) async throws -> UsdtWallet {
+        if requiresNetwork, !isConfigured { throw UsdtError.NotConfigured }
         if let core { return core }
         if let initialization { return try await initialization.value }
-        let task = Task { try await initializeWallet(bundlerUrl: bundlerUrl, rpcUrl: rpcUrl) }
+        // Core's constructor requires URLs even for local export/restore. Network operations remain configuration-gated.
+        let task = Task {
+            try await initializeWallet(bundlerUrl: bundlerUrl ?? "http://127.0.0.1:1", rpcUrl: rpcUrl ?? "http://127.0.0.1:1")
+        }
         initialization = task
         defer { initialization = nil }
         return try await task.value

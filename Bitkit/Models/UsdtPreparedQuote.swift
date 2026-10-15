@@ -11,3 +11,11 @@ struct UsdtPreparedQuote {
             && Double(quote.expiresAt) > now.timeIntervalSince1970 + 5
     }
 }
+
+extension UsdtQuote {
+    var totalCost: UInt64 {
+        let deductedFee = amount - min(amount, receivedAmount)
+        let (cost, overflow) = maximumFee.addingReportingOverflow(deductedFee)
+        return overflow ? UInt64.max : cost
+    }
+}

@@ -97,6 +97,7 @@ struct UsdtSendView: View {
         if showingNetworks { return t("usdt__receive_network_title") }
         if submitted, !busy {
             if submittedStatus == .confirmed { return t("usdt__payment_sent") }
+            if error != nil { return t("wallet__payment_request_expired") }
             if submittedStatus == .bridgeRefunded { return t("usdt__deposit_refunded") }
             if bridgeNeedsAttention { return t("usdt__bridge_attention") }
             return t(submissionFailed ? "wallet__send_error_tx_failed" : "usdt__submitted")
@@ -491,7 +492,9 @@ struct UsdtSendView: View {
                 UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
                     .padding(.bottom, 32)
             }
-            if submittedStatus == .bridgeRefunded {
+            if let error {
+                BodyMText(error, textColor: .textSecondary)
+            } else if submittedStatus == .bridgeRefunded {
                 BodyMText(t("usdt__bridge_refunded_description"), textColor: .textSecondary)
             } else if submittedStatus != .confirmed {
                 BodyMText(t(bridgeNeedsAttention ? "usdt__bridge_attention" : submissionFailed ? "usdt__send_failed_description"
@@ -601,8 +604,8 @@ struct UsdtSendView: View {
         var warnings: [String] = []
         if let balance = usdt.balance, quote.amount > balance / 2 { warnings.append("wallet__send_dialog2") }
         if settings.warnWhenSendingOver100, quote.amount > 100_000_000 { warnings.append("wallet__send_dialog1") }
-        if quote.maximumFee > 10_000_000 { warnings.append("wallet__send_dialog4") }
-        if quote.maximumFee > quote.amount / 2 { warnings.append("wallet__send_dialog3") }
+        if quote.totalCost > 10_000_000 { warnings.append("wallet__send_dialog4") }
+        if quote.totalCost > quote.amount / 2 { warnings.append("wallet__send_dialog3") }
         if let next = warnings.first(where: { !confirmedWarnings.contains($0) }) {
             warning = next
             return
@@ -647,6 +650,9 @@ struct UsdtSendView: View {
         } catch is CancellationError {} catch {
             if usdt.transfers.contains(where: { $0.id == quote.id }) {
                 submitted = true
+                if case UsdtError.SubmissionDeadlineExpired = error {
+                    self.error = UsdtWalletManager.message(for: error)
+                }
             } else {
                 self.error = if error is UsdtError {
                     UsdtWalletManager.message(for: error)

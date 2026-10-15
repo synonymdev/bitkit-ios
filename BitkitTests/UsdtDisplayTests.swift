@@ -3,6 +3,12 @@ import Foundation
 import XCTest
 
 final class UsdtDisplayTests: XCTestCase {
+    func testExactAmountsPreserveTokenPrecisionAndLocaleSeparators() {
+        XCTAssertEqual(usdtExactAmount(4_996_000, locale: Locale(identifier: "en_US")), "4.996")
+        XCTAssertEqual(usdtExactAmount(1_234_567, locale: Locale(identifier: "de_DE")), "1,234567")
+        XCTAssertEqual(usdtExactAmount(3_500_000, locale: Locale(identifier: "de_DE")), "3,50")
+    }
+
     func testBitcoinEquivalentRequiresFreshRateAndFitsDisplayBounds() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let rate = PaykitExchangeRate(price: "100000", timestamp: now)
