@@ -413,12 +413,12 @@
 "onboarding__skip_intro" = "Pular Introdução";
 "onboarding__skip" = "Pular";
 "onboarding__slide0_header" = "Liberdade no\n<accent>seu bolso</accent>";
-"onboarding__slide0_text_alt" = "A Bitkit lhe dá as chaves para gerenciar seu dinheiro. Gaste agora ou economize para depois. A escolha é sua.";
+"onboarding__slide0_text_alt" = "A Bitkit dá-lhe as chaves para controlar o seu dinheiro, o seu perfil e os seus contactos. Assuma o controlo e torne-se sem fronteiras.";
 "onboarding__slide1_header" = "Pagamentos\n<accent>instantâneos</accent>";
-"onboarding__slide1_text_alt" = "Envie bitcoin mais rápido do que nunca. Aproveite os pagamentos instantâneos e baratos com amigos, familiares e comerciantes.";
+"onboarding__slide1_text_alt" = "Desfrute de pagamentos instantâneos e baratos com amigos, familiares e comerciantes na rede Lightning.";
 "onboarding__slide1_note" = "*No momento, a Bitkit não fornece serviços Lightning em seu país, mas você ainda pode se conectar a outros nós.";
 "onboarding__slide3_header" = "Privacidade\n<accent>não é crime</accent>";
-"onboarding__slide3_text_alt" = "Deslize seu saldo para ocultá-lo, desfrute de pagamentos mais privados e proteja sua carteira ativando os recursos de segurança.";
+"onboarding__slide3_text_alt" = "O seu dinheiro, a sua privacidade. Deslize para ocultar o seu saldo e gaste de forma mais privada, sem rastreamento de dados e com zero KYC.";
 "onboarding__slide4_header" = "Suas chaves,\n<accent>suas moedas</accent>";
 "onboarding__slide4_text" = "Vamos criar a sua carteira. Tenha em conta que a Bitkit é uma app móvel. <accent>Não guarde todo o seu dinheiro na Bitkit.</accent>";
 "onboarding__new_wallet" = "Nova Carteira";
@@ -542,7 +542,7 @@
 "security__pass" = "frase secreta";
 "security__pass_your" = "Sua Frase Secreta";
 "security__pass_text" = "Você adicionou uma frase secreta durante a configuração da carteira.";
-"security__pass_never_share_warning" = "<accent>Nunca compartilhe</accent> sua senha com ninguém, pois isso pode resultar na perda de fundos.";
+"security__pass_never_share_warning" = "<accent>Nunca partilhe a sua frase de acesso</accent> com ninguém, pois isso pode resultar na perda de fundos. Mantenha-a em segredo!";
 "security__pass_confirm" = "Confirmar Frase Secreta";
 "security__pass_confirm_text" = "Digite a frase secreta que você adicionou ao configurar e criar sua carteira.";
 "security__pass_recovery" = "<accent>Senha:</accent> {passphrase}";
@@ -1115,7 +1115,7 @@
 "wallet__receive_background_setup_text" = "Ative a configuração em segundo plano para sair da Bitkit com segurança enquanto seu saldo está sendo configurado.";
 "wallet__receive_background_setup_toggle" = "Ativar configuração em segundo plano";
 "wallet__receive_spending" = "Receber fundos Lightning";
-"wallet__receive_spending_text" = "Aproveite transações instantâneas e baratas\ncom amigos, familiares\ne comerciantes.";
+"wallet__receive_spending_text" = "Desfrute de pagamentos em bitcoin instantâneos e baratos na rede Lightning.";
 "wallet__receive_spending_title" = "Receba no <accent>saldo de gastos</accent>";
 "wallet__receive_connect_initial" = "Para configurar seu saldo de gastos, uma  taxa de rede de <accent>{networkFee}</accent> e <accent>{serviceFee}</accent> de taxa do provedor de serviços serão deduzidas.";
 "wallet__receive_connect_additional" = "Para receber mais Bitcoin instantâneo, a Bitkit precisa aumentar sua liquidez. A taxa de rede de <accent>{networkFee}</accent> e <accent>{serviceFee}</accent> de taxa do provedor de serviços serão deduzidas do valor que você especificou.";

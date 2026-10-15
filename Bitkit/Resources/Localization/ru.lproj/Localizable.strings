@@ -674,7 +674,7 @@
 "security__reset_dialog_desc" = "Вы уверены, что хотите сбросить настройки своего кошелька Bitkit? У вас есть резервная копия фразы восстановления и данных кошелька?";
 "security__reset_confirm" = "Да,\nСбросить";
 "security__reset_graph_button" = "Сбросить Граф Сети";
-"security__reset_graph_confirm" = "Да,\nСбросить";
+"security__reset_graph_confirm" = "Да, Сбросить";
 "security__reset_graph_dialog_desc" = "Кэшированный граф сети Lightning будет очищен и загружен заново с нуля. Это может исправить ошибки «маршрут не найден». Bitkit перезапустится автоматически.";
 "security__reset_graph_dialog_title" = "Сбросить Граф Сети?";
 "security__reset_graph_error" = "Не удалось сбросить граф сети. Пожалуйста, попробуйте снова.";
