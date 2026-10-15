@@ -295,12 +295,8 @@ struct ReceiveEdit: View {
     }
 
     private func deleteTag(_ tag: String) async {
-        guard let paymentId = await wallet.paymentId(), !paymentId.isEmpty else { return }
         do {
-            try await CoreService.shared.activity.removePreActivityMetadataTags(
-                paymentId: paymentId,
-                tags: [tag]
-            )
+            try await wallet.mutateReceiveTags(.remove([tag]))
 
             await MainActor.run {
                 tagManager.removeTagFromSelection(tag)

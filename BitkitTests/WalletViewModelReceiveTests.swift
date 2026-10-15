@@ -56,7 +56,7 @@ final class WalletViewModelReceiveTests: XCTestCase {
         var metadataPersistenceCount = 0
         var publicEndpointRefreshCount = 0
 
-        override func persistPreActivityMetadata(tags: [String]) async {
+        override func persistPreActivityMetadata(paymentId: String, paymentHash: String?, address: String, tags: [String]) async {
             metadataPersistenceCount += 1
         }
 
