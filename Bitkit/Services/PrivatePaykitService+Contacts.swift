@@ -106,10 +106,13 @@ extension PrivatePaykitService {
         requireImmediatePublication: Bool = false,
         isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
-        let revision = savedContactsRevision
         let generation = preparationGeneration
-        if let isSessionCurrent, await !isSessionCurrent() { return nil }
-        guard revision == savedContactsRevision, generation == preparationGeneration else { return nil }
+        while true {
+            let revision = savedContactsRevision
+            if let isSessionCurrent, await !isSessionCurrent() { return nil }
+            guard !Task.isCancelled, generation == preparationGeneration else { return nil }
+            if revision == savedContactsRevision { break }
+        }
         if !requireImmediatePublication {
             let keys = rememberSavedContacts(publicKeys, replacing: true)
             scheduleContactPreparation(keys, wallet: wallet, isSessionCurrent: isSessionCurrent)
