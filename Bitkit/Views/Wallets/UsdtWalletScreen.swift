@@ -134,9 +134,9 @@ struct UsdtAmountHeader: View {
         VStack(alignment: .leading, spacing: 16) {
             if let sats = usdtDisplaySats(amount: amount, rate: currency.paykitRate) {
                 MoneyText(sats: sats, forceUnit: .bitcoin, size: .caption, symbol: true,
-                          enableHide: hideBalance, color: .textSecondary)
+                          enableHide: hideBalance, color: .textSecondary, lineHeight: 18)
             } else {
-                CaptionMText("USDT", textColor: .textSecondary)
+                CaptionMText("USDT", textColor: .textSecondary, lineHeight: 18)
             }
             DisplayText(
                 "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : displayAmount ?? usdtInputAmount(amount)),

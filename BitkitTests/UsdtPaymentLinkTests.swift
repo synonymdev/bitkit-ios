@@ -16,16 +16,35 @@ final class UsdtPaymentLinkTests: XCTestCase {
                        .usdtPayment(recipient: recipient, amount: ""))
     }
 
+    func testBareEvmAddressOpensUsdtWithoutAnAmount() throws {
+        for input in [recipient, recipient.lowercased(), " \(recipient)\n"] {
+            XCTAssertEqual(try resolveUsdtPaymentRoute(input: input, isEnabled: true),
+                           .usdtPayment(recipient: recipient, amount: ""))
+        }
+        for input in ["0x1234", "0x" + String(repeating: "g", count: 40), PaykitUsdt.token] {
+            XCTAssertThrowsError(try resolveUsdtPaymentRoute(input: input, isEnabled: true), input)
+        }
+        XCTAssertThrowsError(try resolveUsdtPaymentRoute(input: recipient, isEnabled: false))
+    }
+
     @MainActor
-    func testExplicitUsdtLinkKeepsItsPaymentWhenOptInIsDisabled() async throws {
+    func testExplicitUsdtInputKeepsItsPaymentWhenOptInIsDisabled() async throws {
         snapshotAppDefaults(UsdtPreference.key)
         UserDefaults.standard.set(UsdtPreference.disabled.rawValue, forKey: UsdtPreference.key)
-        let input = uri + "&uint256=10001"
         XCTAssertFalse(UsdtPreference.isEnabled())
-        XCTAssertEqual(try resolveUsdtPaymentRoute(input: input, isEnabled: true),
-                       .usdtPayment(recipient: recipient, amount: "0.010001"))
-        let clipboardSupported = await ClipboardPromptValidator.isSupportedURI(input, ownPublicKey: nil, contacts: [])
-        XCTAssertFalse(clipboardSupported)
+        for (input, amount) in [(uri + "&uint256=10001", "0.010001"), (recipient, "")] {
+            XCTAssertEqual(try resolveUsdtPaymentRoute(input: input, isEnabled: true),
+                           .usdtPayment(recipient: recipient, amount: amount))
+            for enabled in [false, true] {
+                let clipboardSupported = await ClipboardPromptValidator.isSupportedURI(
+                    input, ownPublicKey: nil, contacts: [], isUsdtEnabled: enabled
+                ) { _ in
+                    XCTFail("USDT clipboard inputs must be validated locally")
+                    return false
+                }
+                XCTAssertEqual(clipboardSupported, enabled)
+            }
+        }
     }
 
     func testUnsupportedPaymentLinksCannotOpenTheWallet() {
@@ -48,6 +67,9 @@ final class UsdtPaymentLinkTests: XCTestCase {
         let cases: [(String, ScanHandlingScope, ManualEntryValidationResult)] = [
             (uri + "&uint256=10001", .unrestricted, .valid),
             (uri + "&uint256=10001", .onchainPayments, .onchainOnly),
+            (recipient, .unrestricted, .valid),
+            (recipient, .onchainPayments, .onchainOnly),
+            ("0x1234", .unrestricted, .invalid),
             (uri.replacingOccurrences(of: "@42161", with: "@1"), .unrestricted, .invalid),
             (uri, .unrestricted, .valid),
         ]
@@ -68,7 +90,7 @@ final class UsdtPaymentLinkTests: XCTestCase {
     }
 
     func testOtherInputsRemainWithTheirExistingScanner() throws {
-        for input in [recipient, "bitcoin:bcrt1qexample", "lightning:lnbcrt1example", "pubkyexample", ""] {
+        for input in ["bitcoin:bcrt1qexample", "lightning:lnbcrt1example", "pubkyexample", ""] {
             XCTAssertNil(try resolveUsdtPaymentRoute(input: input, isEnabled: true), input)
         }
     }

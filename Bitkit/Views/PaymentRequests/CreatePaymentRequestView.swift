@@ -185,7 +185,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
+                    CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64, lineHeight: 18)
                         .padding(.bottom, 16)
                     CustomDivider()
                     if recipientTargets.isEmpty {
@@ -219,7 +219,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
 
     private var recipientInput: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64, lineHeight: 18)
 
             HStack(spacing: 8) {
                 TextField(
@@ -462,7 +462,8 @@ struct PaymentRequestDetailsView: View {
                 title: t("wallet__payment_request_send_request"),
                 icon: Image("paper-plane-tilt").resizable().frame(width: 16, height: 16),
                 isDisabled: selectedEnabledEndpoints.isEmpty,
-                isLoading: paymentRequests.isCreatingRequest
+                isLoading: paymentRequests.isCreatingRequest,
+                titleKerning: 0, titleLineHeight: 20
             ) {
                 await sendRequest()
             }
@@ -490,7 +491,7 @@ struct PaymentRequestDetailsView: View {
 
     private var amount: some View {
         VStack(alignment: .leading, spacing: 16) {
-            CaptionMText(t("wallet__payment_request_amount"), textColor: .white64)
+            CaptionMText(t("wallet__payment_request_amount"), textColor: .white64, lineHeight: 18)
             Button { onEditAmount(currentDraft) } label: {
                 HStack(spacing: 16) {
                     if initialDraft.amount.asset == .btc {
@@ -513,41 +514,22 @@ struct PaymentRequestDetailsView: View {
         enabledEndpoints.filter { restrictedEndpoints?.contains($0) ?? true }
     }
 
-    private var acceptedMethodGroups: [[PublicPaykitService.MethodId]] {
-        let groups: [[PublicPaykitService.MethodId]] = [
-            PublicPaykitService.MethodId.onchainPreferenceOrder + [.bitcoinLightningBolt11, .bitcoinLightningLnurl],
-            [.usdtArbitrum],
-        ]
-        return groups.map { $0.filter { enabledEndpoints.contains($0.rawValue) } }.filter { !$0.isEmpty }
-    }
-
     private var acceptedMethods: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
-            HStack(spacing: 8) {
-                ForEach(acceptedMethodGroups, id: \.self) { methods in
-                    let endpoints = methods.map(\.rawValue)
-                    let usdt = methods.contains(.usdtArbitrum)
-                    let selected = selectedEnabledEndpoints
-                    let isSelected = endpoints.contains(where: selected.contains)
-                    NumberPadActionButton(text: usdt ? "USDT" : "BITCOIN",
-                                          color: isSelected ? (usdt ? .usdtAccent : .brandAccent) : .white32,
-                                          variant: .secondary)
-                    {
-                        restrictedEndpoints = isSelected
-                            ? selected.filter { !endpoints.contains($0) }
-                            : selected + endpoints.filter { !selected.contains($0) }
-                    }
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    .accessibilityIdentifier("PaymentRequestAccept-\(usdt ? "usdt" : "bitcoin")")
-                }
-            }
+        PaykitAcceptedMethods(
+            title: t("wallet__payment_request_accepted_methods"), available: enabledEndpoints,
+            selected: selectedEnabledEndpoints, identifierPrefix: "PaymentRequest"
+        ) { option in
+            let endpoints = option.endpoints(in: enabledEndpoints)
+            let selected = selectedEnabledEndpoints
+            restrictedEndpoints = endpoints.contains(where: selected.contains)
+                ? selected.filter { !endpoints.contains($0) }
+                : selected + endpoints.filter { !selected.contains($0) }
         }
     }
 
     private var noteInput: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__note").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__note").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             NoteTextEditor(
                 text: $note,
                 placeholder: t("wallet__receive_note_placeholder"),
@@ -555,24 +537,26 @@ struct PaymentRequestDetailsView: View {
                 isFocused: $isNoteFocused,
                 minHeight: 20,
                 maxHeight: 20,
-                backgroundColor: .white10
+                backgroundColor: .white10,
+                textKerning: 0.4, textLineHeight: 20
             )
         }
     }
 
     private var recipient: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64, lineHeight: 18)
             HStack(spacing: 16) {
                 if let contact {
                     PubkyContactAvatar(contact: contact, size: 40)
                 } else {
                     ContactAvatarLetter(source: target.publicKey, size: 40)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    BodyMSBText(contact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(target.publicKey))
+                VStack(alignment: .leading, spacing: 0) {
+                    BodyMSBText(contact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(target.publicKey),
+                                kerning: 0, lineHeight: 22)
                     if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        CaptionText(note, textColor: .white64)
+                        CaptionBText(note, textColor: .white64, kerning: 0, lineHeight: 18)
                             .lineLimit(1)
                     }
                 }
@@ -588,8 +572,9 @@ struct PaymentRequestDetailsView: View {
 
     private var expirationPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_expires").localizedUppercase, textColor: .white64)
-            SegmentedControl(selectedTab: $expiration, tabs: PaymentRequestExpiration.allCases)
+            CaptionMText(t("wallet__payment_request_expires").localizedUppercase, textColor: .white64, lineHeight: 18)
+            SegmentedControl(selectedTab: $expiration, tabs: PaymentRequestExpiration.allCases,
+                             inactiveColor: .white.opacity(0.5), labelKerning: 0, labelLineHeight: 18)
         }
     }
 

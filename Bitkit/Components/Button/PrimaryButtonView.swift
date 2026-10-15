@@ -11,6 +11,7 @@ struct PrimaryButtonView: View {
     let isPressed: Bool
     let shouldExpand: Bool
     let background: AnyView?
+    var showsHighlightShadow = true
 
     var body: some View {
         HStack(spacing: 8) {
@@ -62,7 +63,7 @@ struct PrimaryButtonView: View {
     }
 
     private var shadowColor: Color {
-        if isDisabled {
+        if isDisabled || !showsHighlightShadow {
             return .clear
         }
         return isPressed ? Color.white.opacity(0.4) : Color.white.opacity(0.25)

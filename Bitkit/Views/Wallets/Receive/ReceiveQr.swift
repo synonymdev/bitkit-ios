@@ -418,7 +418,6 @@ struct ReceiveQr: View {
             (tab == .unified && !wallet.hasCoherentReceiveInvoice)
     }
 
-    @ViewBuilder
     private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {
         VStack(spacing: 16) {
             if !wallet.isReceiveInvoiceUpdating, let error = wallet.receiveInvoiceError {

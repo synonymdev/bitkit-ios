@@ -2295,6 +2295,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testCreatorProposalBuildsRecurringTermsAndStaysQueuedUntilDelivery() async throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2027-01-15T08:00:00Z"))
         let expiresAt = now.addingTimeInterval(60)
+        let savings = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh).rawValue
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let sdk = PaymentRequestSdkMock(records: [])
         await sdk.configureRecipients(
@@ -2311,6 +2312,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         let subscription = try await manager.proposeSubscription(
             PaykitSubscriptionDraft(amount: PaykitAmount(asset: .btc, atomic: 100_000),
+                                    acceptedPaymentEndpointIdentifiers: [savings],
                                     name: " Monthly support ",
                                     description: " Thank you ",
                                     frequency: .month,
@@ -2323,7 +2325,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let proposed = try XCTUnwrap(snapshot.proposedRequests.first)
         XCTAssertEqual(proposed.amount, "0.001")
         XCTAssertEqual(proposed.asset, PaykitIssuerInterop.bitcoinAsset)
-        XCTAssertFalse(proposed.endpointIdentifiers.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue))
+        XCTAssertEqual(proposed.endpointIdentifiers, [savings])
         XCTAssertNil(subscription.pricing.conversion)
         XCTAssertEqual(proposed.expiresAt, timestamp(expiresAt))
         XCTAssertEqual(proposed.recurrence?.every, 1)

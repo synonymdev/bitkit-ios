@@ -146,12 +146,14 @@ struct TitleText: View {
 }
 
 struct SubtitleText: View {
+    @Environment(\._lineHeightMultiple) private var inheritedLineHeightMultiple
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
     var accentFont: ((CGFloat) -> Font)?
     var accentAction: (() -> Void)?
     var kerning: CGFloat
+    var lineHeight: CGFloat?
 
     private let fontSize: CGFloat = 17
 
@@ -161,7 +163,8 @@ struct SubtitleText: View {
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
         accentAction: (() -> Void)? = nil,
-        kerning: CGFloat = 0.4
+        kerning: CGFloat = 0.4,
+        lineHeight: CGFloat? = nil
     ) {
         self.text = text
         self.textColor = textColor
@@ -169,6 +172,7 @@ struct SubtitleText: View {
         self.accentFont = accentFont
         self.accentAction = accentAction
         self.kerning = kerning
+        self.lineHeight = lineHeight
     }
 
     var body: some View {
@@ -181,6 +185,9 @@ struct SubtitleText: View {
             accentAction: accentAction
         )
         .kerning(kerning)
+        .environment(\._lineHeightMultiple, lineHeight.map {
+            $0 / (UIFont(name: Fonts.bold, size: fontSize)?.lineHeight ?? fontSize)
+        } ?? inheritedLineHeightMultiple)
     }
 }
 

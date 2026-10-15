@@ -91,14 +91,17 @@ struct UsdtReceiveView: View {
                 networkRow(nil)
                 ForEach(networks, id: \.self) { networkRow($0) }
             }
+            if let error { BodySText(error, textColor: .textSecondary) }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 16) {
             if usdt.depositsConfigured {
-                CustomButton(title: t("usdt__deposit_history"), variant: .tertiary) {
+                CustomButton(title: t("usdt__deposit_history"), titleKerning: 0, titleLineHeight: 20) {
                     sheets.hideSheet()
                     navigation.navigate(.usdtDepositHistory)
                 }
+                .minimumScaleFactor(0.7)
                 .accessibilityIdentifier("UsdtDepositHistory")
             }
-            if let error { BodySText(error, textColor: .textSecondary) }
         }
     }
 
@@ -132,7 +135,7 @@ struct UsdtReceiveView: View {
     private func feeEstimate(_ deposit: UsdtDepositAddress) -> some View {
         VStack(alignment: .leading, spacing: 24) {
             UsdtAmountHeader(amount: usdtFormatAmount(amount: deposit.amount), displayAmount: usdtOverviewAmount(deposit.amount))
-            BodyMText(t("usdt__deposit_fee_note"), textColor: .textSecondary)
+            BodyMText(t("usdt__deposit_fee_note"), textColor: .textSecondary, kerning: 0, lineHeight: 22)
             VStack(alignment: .leading, spacing: 24) {
                 feeRow(
                     t("usdt__receive_fee"),
@@ -141,14 +144,17 @@ struct UsdtReceiveView: View {
                 feeRow(t("usdt__receive_estimate"), amount: deposit.estimatedReceived)
             }
             Spacer()
-            CustomButton(title: t("common__continue")) { page = .address }
+            CustomButton(title: t("common__continue"), titleKerning: 0, titleLineHeight: 20) { page = .address }
                 .accessibilityIdentifier("UsdtReceiveFeesContinue")
         }
     }
 
     private func feeRow(_ title: String, amount: UInt64?) -> some View {
-        SendSectionView(title.uppercased(), dividerSpacing: 24) {
-            BodyMSBText("<accent>± $</accent> " + (amount.map { usdtOverviewAmount($0) } ?? "—"), accentColor: .textSecondary)
+        SendSectionView(title.uppercased(), dividerSpacing: 24, labelKerning: 1, labelLineHeight: 18) {
+            HStack(spacing: 4) {
+                BodySSBText("± $", textColor: .textSecondary, lineHeight: 20)
+                BodySSBText(amount.map { usdtOverviewAmount($0) } ?? "—", kerning: 0, lineHeight: 20)
+            }
         }
     }
 }
@@ -196,12 +202,15 @@ struct UsdtReceiveAddressContent: View {
             size: .small,
             icon: Image("usdt-network").resizable().frame(width: 16, height: 16),
             shouldExpand: true,
+            titleKerning: 0,
+            titleLineHeight: 13,
             action: onNetwork
         )
         .padding(.bottom, 16)
         .accessibilityIdentifier("UsdtReceiveNetwork")
         CustomButton(title: t(showDetails ? "wallet__receive_show_qr" : "common__show_details"),
-                     icon: showDetails ? Image("qr").resizable().frame(width: 16, height: 16) : nil, shouldExpand: true)
+                     icon: showDetails ? Image("qr").resizable().frame(width: 16, height: 16) : nil, shouldExpand: true,
+                     titleKerning: 0, titleLineHeight: 20)
         { showDetails.toggle() }.accessibilityIdentifier("UsdtReceiveDetails")
     }
 }

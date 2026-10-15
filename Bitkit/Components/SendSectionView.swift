@@ -6,6 +6,7 @@ struct SendSectionView<Content: View>: View {
     private let labelLineHeight: CGFloat?
     private let labelKerning: CGFloat
     private let dividerSpacing: CGFloat
+    private let alignDividerToBottom: Bool
     @ViewBuilder private let content: () -> Content
 
     init(
@@ -13,12 +14,14 @@ struct SendSectionView<Content: View>: View {
         dividerSpacing: CGFloat = 16,
         labelKerning: CGFloat = 0.8,
         labelLineHeight: CGFloat? = nil,
+        alignDividerToBottom: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.labelKerning = labelKerning
         self.labelLineHeight = labelLineHeight
         self.dividerSpacing = dividerSpacing
+        self.alignDividerToBottom = alignDividerToBottom
         self.content = content
     }
 
@@ -28,6 +31,8 @@ struct SendSectionView<Content: View>: View {
                 .padding(.bottom, 8)
 
             content()
+
+            if alignDividerToBottom { Spacer(minLength: 0) }
 
             CustomDivider()
                 .padding(.top, dividerSpacing)

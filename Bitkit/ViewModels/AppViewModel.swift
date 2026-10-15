@@ -1276,7 +1276,8 @@ extension AppViewModel {
             return
         }
 
-        if scope == .onchainPayments, normalized.removingLightningSchemes().lowercased().hasPrefix("ethereum:") {
+        let paymentInput = normalized.removingLightningSchemes().lowercased()
+        if scope == .onchainPayments, paymentInput.hasPrefix("ethereum:") || paymentInput.hasPrefix("0x") {
             manualEntryValidationResult = .onchainOnly
             isManualEntryInputValid = false
             showValidationErrorToast(for: .onchainOnly)
@@ -1321,7 +1322,7 @@ extension AppViewModel {
             return
         }
 
-        if normalized.lowercased().hasPrefix("ethereum:") {
+        if normalized.lowercased().hasPrefix("ethereum:") || normalized.lowercased().hasPrefix("0x") {
             let valid = (try? resolveUsdtPaymentRoute(input: normalized)) != nil
             manualEntryValidationResult = valid ? .valid : .invalid
             isManualEntryInputValid = valid

@@ -44,6 +44,19 @@ struct CreateSubscriptionView: View {
                         }
                         .padding(.bottom, 24)
                     }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        CustomButton(
+                            title: t("subscriptions__choose_recipient"),
+                            isDisabled: draft.amount.atomic == 0 ||
+                                draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                isLoadingIcon || acceptedEndpoints.isEmpty,
+                            titleKerning: 0, titleLineHeight: 20
+                        ) {
+                            onChooseRecipient()
+                        }
+                        .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
+                        .accessibilityIdentifier("SubscriptionChooseRecipient")
+                    }
                     .onChange(of: isDescriptionFocused ? geometry.size.height : nil) { _, focusedHeight in
                         if focusedHeight != nil {
                             withAnimation {
@@ -53,17 +66,6 @@ struct CreateSubscriptionView: View {
                     }
                 }
             }
-
-            CustomButton(
-                title: t("subscriptions__choose_recipient"),
-                isDisabled: draft.amount.atomic == 0 ||
-                    draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    isLoadingIcon || acceptedEndpoints.isEmpty
-            ) {
-                onChooseRecipient()
-            }
-            .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
-            .accessibilityIdentifier("SubscriptionChooseRecipient")
         }
         .padding(.horizontal, 16)
         .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
@@ -88,7 +90,7 @@ struct CreateSubscriptionView: View {
 
     private var amount: some View {
         VStack(alignment: .leading, spacing: 16) {
-            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64, lineHeight: 18)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
                     if draft.amount.asset == .btc { MoneyText(
@@ -114,41 +116,42 @@ struct CreateSubscriptionView: View {
         }
     }
 
+    private var availableEndpoints: [String] {
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+            .filter { settings.isUsdtEnabled || $0 != PublicPaykitService.MethodId.usdtArbitrum.rawValue }
+    }
+
     private var acceptedEndpoints: [String] {
         PaykitRequestPricing.subscriptionEndpoints(
-            requested: draft.amount.asset,
-            available: PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+            requested: draft.amount.asset, available: availableEndpoints, selected: draft.acceptedPaymentEndpointIdentifiers
         )
     }
 
     private var acceptedPayments: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__accepted_payments"), textColor: .white64)
-            HStack(spacing: 8) {
-                ForEach(settings.isUsdtEnabled ? [PaykitAsset.btc, .usd] : [.btc], id: \.self) { asset in
-                    let isSelected = draft.amount.asset == asset
-                    NumberPadActionButton(
-                        text: asset == .btc ? "BITCOIN" : "USDT",
-                        color: isSelected ? (asset == .btc ? .brandAccent : .usdtAccent) : .white32,
-                        variant: .secondary
-                    ) {
-                        guard !isSelected else { return }
-                        do {
-                            draft.amount = try entryConversion.converted(draft.amount, to: asset, rate: currency.paykitRate, at: Date())
-                        } catch {
-                            app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
-                        }
-                    }
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    .accessibilityIdentifier("SubscriptionAccept-\(asset == .btc ? "bitcoin" : "usdt")")
+        PaykitAcceptedMethods(
+            title: t("subscriptions__accepted_payments"), available: availableEndpoints,
+            selected: acceptedEndpoints, identifierPrefix: "Subscription"
+        ) { option in
+            let endpoints = option.endpoints(in: availableEndpoints)
+            do {
+                if draft.amount.asset != option.asset {
+                    draft.amount = try entryConversion.converted(draft.amount, to: option.asset, rate: currency.paykitRate, at: Date())
+                    draft.acceptedPaymentEndpointIdentifiers = endpoints
+                } else {
+                    let selected = acceptedEndpoints
+                    draft.acceptedPaymentEndpointIdentifiers = endpoints.contains(where: selected.contains)
+                        ? selected.filter { !endpoints.contains($0) }
+                        : selected + endpoints.filter { !selected.contains($0) }
                 }
+            } catch {
+                app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
             }
         }
     }
 
     private var frequency: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64, lineHeight: 18)
             SegmentedControl(
                 selectedTab: Binding(
                     get: { SubscriptionFrequencyOption.allCases.first { $0.unit == draft.frequency } ?? .month },
@@ -157,26 +160,29 @@ struct CreateSubscriptionView: View {
                 tabItems: SubscriptionFrequencyOption.allCases.map {
                     TabItem($0, accessibilityIdentifier: "Tab-\($0.rawValue)")
                 },
-                inactiveColor: .white.opacity(0.5)
+                inactiveColor: .white.opacity(0.5), labelKerning: 0, labelLineHeight: 18
             )
         }
     }
 
     private var name: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__name").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__name").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             TextField(
                 t("subscriptions__name_placeholder"),
                 text: $draft.name,
-                testIdentifier: "SubscriptionName"
+                testIdentifier: "SubscriptionName",
+                minContentHeight: 20
             )
+            .kerning(0.4)
+            .environment(\._lineHeightMultiple, 20 / (UIFont(name: Fonts.semiBold, size: 15)?.lineHeight ?? 20))
             .focused($isNameFocused)
         }
     }
 
     private var description: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__description").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__description").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             NoteTextEditor(
                 text: $draft.description,
                 placeholder: t("subscriptions__description_placeholder"),
@@ -184,14 +190,15 @@ struct CreateSubscriptionView: View {
                 isFocused: $isDescriptionFocused,
                 minHeight: 80,
                 maxHeight: 80,
-                backgroundColor: .white10
+                backgroundColor: .white10,
+                textKerning: 0.4, textLineHeight: 20
             )
         }
     }
 
     private var customIcon: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                 Group {
                     if let iconImage {

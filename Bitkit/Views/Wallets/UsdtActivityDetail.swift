@@ -132,12 +132,18 @@ struct UsdtActivityDetail: View {
 
     @ViewBuilder
     private func summary(_ transfer: UsdtTransfer) -> some View {
+        let statusIcon = switch transfer.status {
+        case .confirmed: "check-circle"
+        case .bridging: "hourglass-simple"
+        default: transfer.statusIcon
+        }
         HStack(alignment: .top, spacing: 16) {
             UsdtDetailCell(title: t("wallet__activity_status"), value: transfer.status.label,
-                           icon: transfer.status == .confirmed ? "check-circle" : transfer.statusIcon,
+                           icon: statusIcon,
                            valueColor: transfer.statusColor, iconColor: transfer.statusColor, valueKerning: 0)
                 .accessibilityIdentifier("UsdtActivityStatus")
-            UsdtDetailCell(title: t("usdt__receiving_network"), value: transfer.destination.label, icon: "usdt-network")
+            UsdtDetailCell(title: t(transfer.status == .confirmed ? "usdt__network" : "usdt__receiving_network"),
+                           value: transfer.destination.label, icon: "usdt-network")
         }
         let time = DateFormatterHelpers.formatActivityDetail(transfer.timestamp)
         HStack(alignment: .top, spacing: 16) {
@@ -282,9 +288,10 @@ struct UsdtDetailCell: View {
     var iconColor: Color = .usdtAccent
     var valueKerning: CGFloat = 0.4
     var minimumValueHeight: CGFloat = 20
+    var alignDividerToBottom = false
 
     var body: some View {
-        SendSectionView(title, dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+        SendSectionView(title, dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18, alignDividerToBottom: alignDividerToBottom) {
             HStack(spacing: 4) {
                 Image(icon).resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(iconColor)
                 BodySSBText(value, textColor: valueColor, kerning: valueKerning, lineHeight: 20)

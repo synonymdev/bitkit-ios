@@ -592,6 +592,7 @@ struct SubscriptionSheet: View {
                     initialAmount: creationDraft.amount,
                     onBack: { route = .create },
                     onContinue: {
+                        if creationDraft.amount.asset != $0.asset { creationDraft.acceptedPaymentEndpointIdentifiers = nil }
                         creationDraft.amount = $0
                         route = .create
                     }

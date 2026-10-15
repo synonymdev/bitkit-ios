@@ -158,9 +158,9 @@ struct SendAmountView: View {
                 HStack(alignment: .bottom) {
                     if app.paykitUsesUsdt {
                         VStack(alignment: .leading, spacing: 4) {
-                            CaptionMText(t("wallet__send_available"))
+                            CaptionMText(t("wallet__send_available"), kerning: 1, lineHeight: 18)
                             BodySSBText(settings.hideBalance ? "•••••" : "<accent>$</accent> " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"),
-                                        accentColor: .textSecondary)
+                                        accentColor: .textSecondary, kerning: 0, lineHeight: 20)
                         }
                     } else {
                         AvailableAmount(
@@ -187,6 +187,8 @@ struct SendAmountView: View {
                     NumberPadActionButton(
                         text: selectedSourceLabel,
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        titleKerning: app.paykitUsesUsdt ? 1 : 0.8,
+                        titleLineHeight: app.paykitUsesUsdt ? 18 : nil,
                         color: selectedSourceColor,
                         variant: canSwitchFundingSource ? .primary : .secondary,
                         disabled: isContinuing,
@@ -232,11 +234,14 @@ struct SendAmountView: View {
                         maxDecimals: 6
                     ) } else { amountViewModel.handleNumberPadInput(key, currency: currency) }
                 }
+                .frame(maxHeight: app.paykitUsesUsdt ? .infinity : nil)
 
                 CustomButton(
                     title: t("common__continue"),
                     isDisabled: !isValidAmount || conversionError != nil || hwSend.isFundingSourceLoading,
-                    isLoading: isContinuing
+                    isLoading: isContinuing,
+                    titleKerning: app.paykitUsesUsdt ? 0 : 0.4,
+                    titleLineHeight: app.paykitUsesUsdt ? 20 : nil
                 ) {
                     await onContinue()
                 }
@@ -441,7 +446,7 @@ struct SendAmountView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
-                            CaptionMText(fundingSourceLabel(source)).lineLimit(1)
+                            CaptionMText(fundingSourceLabel(source), kerning: 1, lineHeight: 18).lineLimit(1)
                             if case let .hardware(walletId) = source,
                                let hardwareWallet = hwWalletManager.wallets.first(where: { $0.walletId == walletId })
                             {
@@ -452,14 +457,11 @@ struct SendAmountView: View {
                         HStack(spacing: 8) {
                             Image(fundingSourceIcon(source)).resizable().scaledToFit().frame(width: 24, height: 24)
                             if source == .usdt {
-                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—")
+                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—",
+                                            kerning: 0, lineHeight: 22)
                             } else {
                                 MoneyText(sats: Int(fundingSourceBalance(source)), forceUnit: .bitcoin, size: .bodyMSB,
-                                          symbol: false, enableHide: true, fillsWidth: false)
-                            }
-                            if source == .spending {
-                                Image("arrow-up-down").resizable().scaledToFit().frame(width: 16, height: 16)
-                                    .foregroundStyle(Color.white64)
+                                          symbol: false, enableHide: true, fillsWidth: false, kerning: 0, lineHeight: 22)
                             }
                             Spacer(minLength: 0)
                             if source == selectedFundingSource {
@@ -471,7 +473,7 @@ struct SendAmountView: View {
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NoAnimationButtonStyle())
                 .disabled(!enabled || hwSend.isFundingSourceLoading)
                 .opacity(enabled ? 1 : 0.30)
                 .accessibilityIdentifier("SendFundingSource-\(index)")

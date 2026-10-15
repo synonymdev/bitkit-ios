@@ -10,7 +10,7 @@ struct UsdtNetworkRow: View {
         Button(action: onSelect) {
             HStack(spacing: 16) {
                 Image("tether-circle").resizable().scaledToFit().frame(width: 40, height: 40)
-                BodyMSBText(title, kerning: 0)
+                BodyMSBText(title, kerning: 0, lineHeight: 22)
                 Spacer(minLength: 0)
                 if selected {
                     Image("check-mark").resizable().scaledToFit().frame(width: 20, height: 20).foregroundColor(.usdtAccent)

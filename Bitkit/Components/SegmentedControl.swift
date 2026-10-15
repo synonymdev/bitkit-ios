@@ -30,20 +30,40 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
     private let tabItems: [TabItem<T>]
     private let defaultActiveColor: Color
     private let inactiveColor: Color?
+    private let labelKerning: CGFloat
+    private let labelLineHeight: CGFloat?
     @Namespace private var underlineNamespace
 
-    init(selectedTab: Binding<T>, tabs: [T], activeColor: Color = .textPrimary, inactiveColor: Color? = nil) {
+    init(
+        selectedTab: Binding<T>,
+        tabs: [T],
+        activeColor: Color = .textPrimary,
+        inactiveColor: Color? = nil,
+        labelKerning: CGFloat = 0.4,
+        labelLineHeight: CGFloat? = nil
+    ) {
         _selectedTab = selectedTab
         tabItems = tabs.map { TabItem($0) }
         defaultActiveColor = activeColor
         self.inactiveColor = inactiveColor
+        self.labelKerning = labelKerning
+        self.labelLineHeight = labelLineHeight
     }
 
-    init(selectedTab: Binding<T>, tabItems: [TabItem<T>], defaultActiveColor: Color = .textPrimary, inactiveColor: Color? = nil) {
+    init(
+        selectedTab: Binding<T>,
+        tabItems: [TabItem<T>],
+        defaultActiveColor: Color = .textPrimary,
+        inactiveColor: Color? = nil,
+        labelKerning: CGFloat = 0.4,
+        labelLineHeight: CGFloat? = nil
+    ) {
         _selectedTab = selectedTab
         self.tabItems = tabItems
         self.defaultActiveColor = defaultActiveColor
         self.inactiveColor = inactiveColor
+        self.labelKerning = labelKerning
+        self.labelLineHeight = labelLineHeight
     }
 
     var body: some View {
@@ -63,12 +83,13 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                                 .hidden()
                             CaptionBText(
                                 tabItem.title,
-                                textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary
+                                textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary,
+                                kerning: labelKerning, lineHeight: labelLineHeight
                             )
                             badge(for: tabItem)
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 20)
+                        .frame(height: labelLineHeight ?? 20)
                         ZStack {
                             Rectangle()
                                 .frame(height: 2)

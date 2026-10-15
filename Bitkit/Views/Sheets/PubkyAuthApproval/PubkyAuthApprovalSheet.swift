@@ -209,7 +209,7 @@ struct PubkyAuthApprovalSheet: View {
     private var watchOnlyConsentContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("pubky_auth__watch_only_intro_nav_title"),
-                        topPadding: 28, bottomPadding: 0, dragIndicatorTopPadding: 8)
+                        topPadding: 28, bottomPadding: 0, dragIndicatorTopPadding: 8, titleKerning: 0)
 
             ViewThatFits(in: .vertical) {
                 VStack(alignment: .leading, spacing: 32) {
@@ -234,16 +234,20 @@ struct PubkyAuthApprovalSheet: View {
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
 
-            if config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled {
+            if config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled,
+               config.request.bitkitClaim?.requiresUsdtAddress != true || usdtAddress == nil
+            {
                 usdtSharingConsent
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 32)
             }
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__cancel"), variant: .secondary) { sheets.hideSheet() }
+                CustomButton(title: t("common__cancel"), variant: .secondary, titleKerning: 0, titleLineHeight: 20) { sheets.hideSheet() }
                     .accessibilityIdentifier("PubkyAuthWatchOnlyCancel")
-                CustomButton(title: t("pubky_auth__watch_only_intro_approve"), isDisabled: receivingDetailsUnavailable) {
+                CustomButton(title: t("pubky_auth__watch_only_intro_approve"), isDisabled: receivingDetailsUnavailable,
+                             titleKerning: 0, titleLineHeight: 20)
+                {
                     _ = state.approveWatchOnlyConsent()
                 }
                 .accessibilityIdentifier("PubkyAuthWatchOnlyApprove")
@@ -266,8 +270,9 @@ struct PubkyAuthApprovalSheet: View {
 
     private var watchOnlyConsentIntroduction: some View {
         VStack(alignment: .leading, spacing: 8) {
-            DisplayText(t("pubky_auth__watch_only_intro_title"), accentColor: .blueAccent)
-            BodyMText(watchOnlyConsentDescription, kerning: 0, lineHeight: 22)
+            DisplayText(t("pubky_auth__watch_only_intro_title"),
+                        accentColor: config.request.bitkitClaim?.sharesBitcoin == true ? .blueAccent : .usdtAccent)
+            BodyMText(t(introDescriptionKey), kerning: 0, lineHeight: 22)
                 .accessibilityIdentifier("PubkyAuthWatchOnlyConsentDescription")
         }
     }
@@ -280,14 +285,13 @@ struct PubkyAuthApprovalSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             if config.request.bitkitClaim?.requiresUsdtAddress != true {
                 Toggle(isOn: $shareUsdt) {
-                    BodyMText(t("pubky_auth__share_usdt_optional"), kerning: 0, lineHeight: 22)
+                    BodyMText(t(config.request.bitkitClaim?.sharesBitcoin == true
+                            ? "pubky_auth__share_usdt_optional" : "pubky_auth__share_usdt"), kerning: 0, lineHeight: 22)
                 }
                 .tint(.blueAccent)
                 .accessibilityIdentifier("PubkyAuthShareUsdt")
             }
             if shareUsdt || config.request.bitkitClaim?.requiresUsdtAddress == true {
-                BodySText(t("pubky_auth__usdt_privacy"), textColor: .white64)
-                    .accessibilityIdentifier("PubkyAuthUsdtPrivacy")
                 if usdtUnavailable {
                     BodySText(t("pubky_auth__usdt_unavailable"), textColor: .white64)
                     Button(t("common__retry")) { Task { await loadUsdtAddress() } }
@@ -331,12 +335,12 @@ struct PubkyAuthApprovalSheet: View {
             approvalDetails
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__cancel"), variant: .secondary) {
+                CustomButton(title: t("common__cancel"), variant: .secondary, titleKerning: 0, titleLineHeight: 20) {
                     sheets.hideSheet()
                 }
                 .accessibilityIdentifier("PubkyAuthCancel")
 
-                CustomButton(title: t("pubky_auth__title")) {
+                CustomButton(title: t("pubky_auth__title"), titleKerning: 0, titleLineHeight: 20) {
                     await onAuthorize()
                 }
                 .disabled(receivingDetailsUnavailable || (config.request.bitkitClaim?.requiresUsdtAddress == true && !shareUsdt))
@@ -384,7 +388,7 @@ struct PubkyAuthApprovalSheet: View {
                 .scrollIndicators(.hidden)
             }
 
-            CustomButton(title: t("common__ok")) {
+            CustomButton(title: t("common__ok"), titleKerning: 0, titleLineHeight: 20) {
                 sheets.hideSheet()
             }
             .accessibilityIdentifier("PubkyAuthOK")
@@ -476,7 +480,9 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var introDescriptionKey: String {
-        config.request.bitkitClaim?.sharesBitcoin == true ? "pubky_auth__watch_only_intro_description" : "pubky_auth__usdt_intro_description"
+        if config.request.bitkitClaim?.sharesBitcoin == true { return "pubky_auth__watch_only_intro_description" }
+        return config.request.bitkitClaim?.requiresUsdtAddress == true
+            ? "pubky_auth__usdt_intro_description" : "pubky_auth__usdt_intro_optional"
     }
 
     private var sharingSuccessKey: String {
@@ -500,16 +506,6 @@ struct PubkyAuthApprovalSheet: View {
             usdtUnavailable = true
             shareUsdt = false
         }
-    }
-
-    private var watchOnlyConsentDescription: String {
-        let description = t(introDescriptionKey)
-        guard let relayOrigin = config.request.relayOrigin else { return description }
-
-        return description + "\n\n" + t(
-            "pubky_auth__watch_only_intro_relay",
-            variables: ["relay": relayOrigin]
-        )
     }
 
     private func relayOriginSection(_ relayOrigin: String) -> some View {
@@ -596,7 +592,7 @@ struct PubkyAuthApprovalSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 CaptionMText(
                     truncatedPublicKey.localizedUppercase,
-                    textColor: .white64
+                    textColor: .white64, kerning: 1, lineHeight: 18
                 )
                 .lineLimit(1)
 

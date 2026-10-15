@@ -730,7 +730,6 @@
 "pubky_auth__watch_only_intro_approve" = "Approve";
 "pubky_auth__watch_only_intro_description" = "To earn, you need to share a watch-only Bitcoin account with Paykit. It can view sales activity, but cannot spend funds.";
 "pubky_auth__paykit_access_description" = "This service will manage your private Paykit data and send Paykit messages for you. Your pubky secret and wallet keys stay private.";
-"pubky_auth__watch_only_intro_relay" = "Your authorization will be delivered to <accent>{relay}</accent>.";
 "pubky_auth__watch_only_intro_nav_title" = "Earn";
 "pubky_auth__watch_only_intro_title" = "<accent>EARN MONEY</accent>\nFROM YOUR\nCONTENT";
 "pubky_auth__watch_only_account_xpub_error" = "Bitkit could not create a valid account xpub.";
@@ -1848,6 +1847,7 @@
 "usdt__receive_warning" = "Receive USDT on Arbitrum One only. Bridge funds from other networks before sending.";
 "usdt__received" = "Received";
 "usdt__recipient_gets" = "Recipient gets";
+"usdt__recipient_network" = "Recipient network";
 "usdt__send" = "Send";
 "usdt__sent" = "Sent";
 "usdt__submitted" = "Payment submitted";
@@ -1903,8 +1903,8 @@
 "wallet__payment_request_underpaid" = "Received · Underpaid";
 "wallet__payment_request_after_expiry" = "Received · After expiry";
 
-"pubky_auth__usdt_intro_description" = "Share your existing USDT address on Arbitrum One to receive earnings directly in Bitkit. The service cannot spend your funds.";
-"pubky_auth__usdt_privacy" = "This is your existing USDT account. The service can see its balance and transaction history, but cannot spend your funds.";
+"pubky_auth__usdt_intro_description" = "To earn, you need to share your USDT address with Paykit. It can view sales activity, but cannot spend funds.";
+"pubky_auth__usdt_intro_optional" = "You can share your USDT address with Paykit to receive earnings. It can view sales activity, but cannot spend funds.";
 "pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. Please try again.";
 "pubky_auth__shared_usdt" = "Also, you shared a USDT address with Paykit.";
 "pubky_auth__shared_bitcoin" = "Also, you shared a watch-only Bitcoin account with Paykit.";
@@ -1914,9 +1914,7 @@
 "usdt__deposit_refunding" = "Refund in progress";
 
 "usdt__bridge_provider" = "Bridge";
-"usdt__bridge_deducted_fee" = "Estimated bridge cost (included)";
-"usdt__maximum_total" = "Maximum total debit";
-"usdt__bridge_estimate_note" = "Delivery is estimated. Bridge costs are deducted from the amount; the network fee is additional.";
+"usdt__maximum_total" = "Max total debit";
 "usdt__bridge_refunded_description" = "USDT was returned to your wallet. See details for the refunded amount.";
 "usdt__destination_tx" = "Destination transaction";
 "usdt__refund_tx" = "Refund transaction";
@@ -1925,6 +1923,7 @@
 "usdt__copy_details" = "Copy Details";
 
 "pubky_auth__share_usdt_optional" = "Also share my USDT address";
+"pubky_auth__share_usdt" = "Share my USDT address";
 
 "usdt__receive_network_title" = "USDT Network";
 
@@ -1954,7 +1953,6 @@
 
 "usdt__to_address" = "To address";
 
-"usdt__you_send" = "You send";
 
 "usdt__disable_unavailable" = "USDT must stay enabled while you have a balance or a pending transfer. Please wait for transfers to finish and check your balance before turning it off.";
 "usdt__enable" = "Enable USDT";

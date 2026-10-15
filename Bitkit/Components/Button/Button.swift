@@ -69,6 +69,7 @@ struct CustomButton: View {
     let isLoading: Bool
     let shouldExpand: Bool
     let background: AnyView?
+    let showsHighlightShadow: Bool
     let action: (() async -> Void)?
     let destination: AnyView?
 
@@ -88,6 +89,7 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        showsHighlightShadow: Bool = true,
         titleKerning: CGFloat = 0.4,
         titleLineHeight: CGFloat? = nil
     ) {
@@ -101,6 +103,7 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.background = background.map { AnyView($0) }
+        self.showsHighlightShadow = showsHighlightShadow
         action = nil
         destination = nil
     }
@@ -115,6 +118,7 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        showsHighlightShadow: Bool = true,
         titleKerning: CGFloat = 0.4,
         titleLineHeight: CGFloat? = nil,
         action: @escaping () async -> Void
@@ -129,6 +133,7 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.background = background.map { AnyView($0) }
+        self.showsHighlightShadow = showsHighlightShadow
         self.action = action
         destination = nil
     }
@@ -143,6 +148,7 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        showsHighlightShadow: Bool = true,
         titleKerning: CGFloat = 0.4,
         titleLineHeight: CGFloat? = nil,
         destination: some View
@@ -157,6 +163,7 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.background = background.map { AnyView($0) }
+        self.showsHighlightShadow = showsHighlightShadow
         action = nil
         self.destination = AnyView(destination)
     }
@@ -174,7 +181,8 @@ struct CustomButton: View {
                 isLoading: isLoading,
                 isPressed: isPressed,
                 shouldExpand: shouldExpand,
-                background: background
+                background: background,
+                showsHighlightShadow: showsHighlightShadow
             ))
         case .secondary:
             AnyView(SecondaryButtonView(

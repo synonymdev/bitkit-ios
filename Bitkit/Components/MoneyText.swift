@@ -32,6 +32,8 @@ struct MoneyText: View {
     var symbolColor: Color?
     var testIdentifier: String?
     var fillsWidth: Bool = true
+    var kerning: CGFloat?
+    var lineHeight: CGFloat?
 
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -108,20 +110,26 @@ extension MoneyText {
             DisplayText(
                 // Cap symbol font weight to ExtraBold
                 text, textColor: color, accentColor: symbolColor ?? .textSecondary,
-                accentFont: Fonts.extraBold, fillsWidth: fillsWidth
+                accentFont: Fonts.extraBold, fillsWidth: fillsWidth, kerning: kerning ?? -1, lineHeight: lineHeight
             )
         case .title:
-            TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                      kerning: kerning ?? 0.4, lineHeight: lineHeight)
         case .subtitle:
-            SubtitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            SubtitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                         kerning: kerning ?? 0.4, lineHeight: lineHeight)
         case .bodyMSB:
-            BodyMSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            BodyMSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                        kerning: kerning ?? 0.4, lineHeight: lineHeight)
         case .bodySSB:
-            BodySSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            BodySSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                        kerning: kerning ?? 0.4, lineHeight: lineHeight)
         case .caption:
-            CaptionMText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            CaptionMText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                         kerning: kerning ?? 0.8, lineHeight: lineHeight)
         case .captionB:
-            CaptionBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            CaptionBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
+                         kerning: kerning ?? 0.4, lineHeight: lineHeight)
         }
     }
 }
