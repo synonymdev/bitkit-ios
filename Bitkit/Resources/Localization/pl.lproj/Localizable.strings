@@ -10,13 +10,13 @@
 "cards__invite__description" = "Udostępnij Bitkit";
 "cards__lightning__title" = "Wydawaj";
 "cards__lightning__description" = "Płatności natychmiastowe";
-"cards__lightningSettingUp__title" = "Transfery";
+"cards__lightningSettingUp__title" = "Transfer";
 "cards__lightningSettingUp__description" = "W toku...";
 "cards__lightningConnecting__title" = "Łączenie";
 "cards__lightningConnecting__description" = "Gotowe w ±10 minut";
 "cards__lightningReady__title" = "Gotowe";
 "cards__lightningReady__description" = "Połączone!";
-"cards__transferPending__title" = "Transfery";
+"cards__transferPending__title" = "Transfer";
 "cards__transferPending__description" = "Gotowe za {duration}";
 "cards__transferClosingChannel__title" = "Inicjowanie";
 "cards__transferClosingChannel__description" = "Pozostaw aplikację włączoną";
@@ -785,7 +785,7 @@
 "settings__dev_disabled_title" = "Opcje Dev wyłączone";
 "settings__dev_disabled_message" = "Opcje deweloperskie są teraz wyłączone w całej aplikacji.";
 "settings__general_title" = "Ogólne";
-"settings__security_title" = "Bezpieczeństwo i prywatność";
+"settings__security_title" = "Ochrona";
 "settings__backup_title" = "Utwórz kopię zapasową lub przywróć";
 "settings__advanced_title" = "Zaawansowane";
 "settings__data_backups_nav_title" = "Kopie zapasowe danych";

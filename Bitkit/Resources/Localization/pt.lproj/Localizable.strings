@@ -691,7 +691,7 @@
 "settings__dev_disabled_title" = "Modo Desenvolvedor Desativado";
 "settings__dev_disabled_message" = "As opções de desenvolvedor estão agora desabilitadas em todo o aplicativo.";
 "settings__general_title" = "Geral";
-"settings__security_title" = "Segurança e Privacidade";
+"settings__security_title" = "Segurança";
 "settings__advanced_title" = "Avançado";
 "settings__data_backups_nav_title" = "Cópias de segurança";
 "settings__about__legal" = "Legal";

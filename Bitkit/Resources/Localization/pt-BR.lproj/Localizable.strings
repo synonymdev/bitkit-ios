@@ -785,7 +785,7 @@
 "settings__dev_disabled_title" = "Modo Desenvolvedor Desativado";
 "settings__dev_disabled_message" = "As opções de desenvolvedor estão agora desabilitadas em todo o aplicativo.";
 "settings__general_title" = "Geral";
-"settings__security_title" = "Segurança e Privacidade";
+"settings__security_title" = "Segurança";
 "settings__backup_title" = "Fazer backup ou Restaurar";
 "settings__advanced_title" = "Avançado";
 "settings__data_backups_nav_title" = "Backups de Dados";
@@ -836,7 +836,7 @@
 "settings__widgets__reset_widgets_dialog_title" = "Redefinir widgets?";
 "settings__widgets__reset_widgets_dialog_description" = "Tem certeza de que deseja redefinir os widgets? O conjunto padrão de widgets com configurações padrão será exibido.";
 "settings__widgets__reset_suggestions" = "Redefinir cartões de sugestões";
-"settings__notifications__nav_title" = "Pagamentos em Segundo Plano";
+"settings__notifications__nav_title" = "Pagar em segundo plano";
 "settings__notifications__intro__title" = "Receba\n<accent>Passivamente</accent>";
 "settings__notifications__intro__text" = "Ative as notificações para receber pagamentos, mesmo quando o Bitkit estiver fechado.";
 "settings__notifications__intro__button" = "Ativar";
