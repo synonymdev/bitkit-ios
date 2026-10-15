@@ -813,7 +813,8 @@ final class TrezorManager {
             var lastError: Error?
             for attempt in 1 ... Self.maxXpubFetchAttempts {
                 do {
-                    result[addressType.stringValue] = try await trezorService.getPublicKey(params: params).xpub
+                    let response = try await trezorService.getPublicKey(params: params)
+                    result[addressType.stringValue] = response.storedAccountKey(for: addressType)
                     lastError = nil
                     break
                 } catch {
