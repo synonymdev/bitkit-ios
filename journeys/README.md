@@ -111,6 +111,14 @@ script, and there is no iOS copy yet — #694 tracks porting it. The relative pa
 journeys already reach for `../bitkit-docker` the same way. If you do not have that clone, fund the
 wallet however you normally do against regtest and skip the helper.
 
+### Paykit amount-entry rates
+
+`paykit-quoted-usdt.xml` preserves the originally entered amount across denomination switches until
+the user edits it. Conversion uses the current fresh BTC/USD rate on both platforms. An entered
+10 USD must return as exactly 10 USD; its BTC equivalent may change when the rate refreshes.
+Require identical converted amounts only with an unchanged rate. The same rule applies to
+subscription payment-method switches: preserve the originally entered denomination exactly.
+
 ### USDT full-balance errors
 
 `usdt-payment-links-and-scans.xml` accepts either the insufficient-balance message or the paymaster
