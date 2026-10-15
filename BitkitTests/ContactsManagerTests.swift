@@ -370,6 +370,37 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(announcedKeys.count, 1, "Unchanged membership must not restart linking")
     }
 
+    func testCancellingOneRefreshDoesNotCancelAnotherWaiter() async throws {
+        let added = contactRecord(key: contactProfileKey, name: "Shop")
+        let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
+        let manager = ContactsManager(observedContactRecords: { owner in
+            _ = try await gate.fetch(owner)
+            return [added]
+        }, fetchRemoteProfile: { _, _ in nil })
+        await gate.hold()
+        let foreground = Task { try await manager.refreshContacts(for: "owner") }
+        while await gate.heldCount == 0 {
+            await Task.yield()
+        }
+        var checkoutStarted = false
+        let checkout = Task {
+            checkoutStarted = true
+            try await manager.refreshContacts(for: "owner")
+        }
+        while !checkoutStarted {
+            await Task.yield()
+        }
+        foreground.cancel()
+        let cancelled = await foreground.result
+        XCTAssertThrowsError(try cancelled.get()) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertTrue(manager.isLoading)
+        await gate.release()
+        try await checkout.value
+        XCTAssertEqual(manager.contacts.map(\.publicKey), [added.publicKey])
+        let reads = await gate.fetchedKeys
+        XCTAssertEqual(reads, ["owner"])
+    }
+
     func testRefreshWaitsForOlderLoadThenReadsFreshContacts() async throws {
         let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
         let cached = contactRecord(key: contactProfileKey, name: "Saved")

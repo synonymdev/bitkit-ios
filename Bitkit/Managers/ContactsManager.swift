@@ -9,6 +9,26 @@ private func ensurePubkyPrefix(_ key: String) -> String {
     key.hasPrefix(pubkyPrefix) ? key : "\(pubkyPrefix)\(key)"
 }
 
+private final class ContactRefreshWaiters: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 1
+
+    func join() -> Bool {
+        lock.withLock {
+            guard count > 0 else { return false }
+            count += 1
+            return true
+        }
+    }
+
+    func cancel() -> Bool {
+        lock.withLock {
+            count -= 1
+            return count == 0
+        }
+    }
+}
+
 enum AddContactValidationResult: Equatable {
     case empty
     case existingContact
@@ -131,7 +151,7 @@ class ContactsManager: ObservableObject {
 
     private var contactsRevision = 0
     private var loadGeneration = 0
-    private var contactRefresh: (id: UUID, publicKey: String, task: Task<Void, Error>)?
+    private var contactRefresh: (id: UUID, publicKey: String, task: Task<Void, Error>, waiters: ContactRefreshWaiters)?
     private let shopContactImporter: ShopContactImporter
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
@@ -285,22 +305,34 @@ class ContactsManager: ObservableObject {
 
     func refreshContacts(for publicKey: String) async throws {
         try Task.checkCancellation()
-        if contactRefresh?.publicKey != publicKey || contactRefresh?.task.isCancelled != false {
+        if contactRefresh?.publicKey != publicKey || contactRefresh?.task.isCancelled != false || contactRefresh?.waiters.join() != true {
             contactRefresh?.task.cancel()
             let task = Task {
                 try await loadFreshObservedContacts(for: publicKey)
             }
-            contactRefresh = (UUID(), publicKey, task)
+            contactRefresh = (UUID(), publicKey, task, ContactRefreshWaiters())
         }
         guard let refresh = contactRefresh else { return }
+        let (completion, continuation) = AsyncStream<Result<Void, Error>>.makeStream()
+        let waiter = Task {
+            await continuation.yield(refresh.task.result)
+            continuation.finish()
+        }
         defer {
-            if contactRefresh?.id == refresh.id { contactRefresh = nil }
+            waiter.cancel()
+            continuation.finish()
+            if contactRefresh?.id == refresh.id, !Task.isCancelled || refresh.task.isCancelled { contactRefresh = nil }
         }
         try await withTaskCancellationHandler {
-            try await refresh.task.value
+            for await result in completion {
+                try Task.checkCancellation()
+                return try result.get()
+            }
+            if refresh.task.isCancelled { _ = await refresh.task.result }
             try Task.checkCancellation()
         } onCancel: {
-            refresh.task.cancel()
+            if refresh.waiters.cancel() { refresh.task.cancel() }
+            continuation.finish()
         }
     }
 
