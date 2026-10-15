@@ -18,6 +18,7 @@ enum MoneyUnitType {
 
 struct MoneyText: View {
     let sats: Int
+    var isUnavailable = false
     var unitType: MoneyUnitType = .primary
     /// When set, overrides user preference so the value is always shown in this unit.
     var forceUnit: PrimaryDisplay?
@@ -141,6 +142,7 @@ extension MoneyText {
         if hideBalance {
             return displayDots
         }
+        if isUnavailable { return "—" }
 
         if let converted = currency.convert(sats: UInt64(abs(sats))) {
             switch unit {
@@ -168,6 +170,7 @@ extension MoneyText {
     }
 
     private var accessibilityValue: String {
+        if !hideBalance, isUnavailable { return "—" }
         guard !hideBalance, let converted = currency.convert(sats: UInt64(abs(sats))) else {
             return prefixed(displayDots)
         }

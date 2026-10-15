@@ -520,4 +520,40 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         XCTAssertTrue(service.snapshotStartedParams().isEmpty)
         XCTAssertNil(viewModel.activeWatcherId)
     }
+
+    /// Core 0.7.0 returns a normalized xpub/tpub that prefix detection reads as Legacy, so using the
+    /// fetched key must also select the account type of the path it was read from.
+    @MainActor
+    func testPopulateWatcherFromXpubSelectsTheFetchedKeysAccountType() {
+        let viewModel = makeViewModel(service: MockWatcherService())
+        viewModel.xpub = "tpubFetched"
+        viewModel.publicKeyAccountType = .nativeSegwit
+
+        viewModel.populateWatcherFromXpub()
+
+        XCTAssertEqual(viewModel.watcherExtendedKey, "tpubFetched")
+        XCTAssertEqual(viewModel.onchainAccountTypeSelection, .nativeSegwit)
+    }
+
+    @MainActor
+    func testPopulateWatcherFromXpubKeepsTheSelectionForAnUnknownPath() {
+        let viewModel = makeViewModel(service: MockWatcherService())
+        viewModel.onchainAccountTypeSelection = .taproot
+        viewModel.xpub = "xpubFetched"
+        viewModel.publicKeyAccountType = nil
+
+        viewModel.populateWatcherFromXpub()
+
+        XCTAssertEqual(viewModel.watcherExtendedKey, "xpubFetched")
+        XCTAssertEqual(viewModel.onchainAccountTypeSelection, .taproot)
+    }
+
+    func testAccountTypeSelectionFollowsThePathPurpose() {
+        XCTAssertEqual(TrezorAccountTypeSelection.matching(derivationPath: "m/44'/0'/0'"), .legacy)
+        XCTAssertEqual(TrezorAccountTypeSelection.matching(derivationPath: "m/49'/1'/0'"), .wrappedSegwit)
+        XCTAssertEqual(TrezorAccountTypeSelection.matching(derivationPath: "m/84'/1'/0'"), .nativeSegwit)
+        XCTAssertEqual(TrezorAccountTypeSelection.matching(derivationPath: "m/86h/0h/0h"), .taproot)
+        XCTAssertNil(TrezorAccountTypeSelection.matching(derivationPath: "m/45'/0'/0'"))
+        XCTAssertNil(TrezorAccountTypeSelection.matching(derivationPath: "84'/0'/0'"))
+    }
 }

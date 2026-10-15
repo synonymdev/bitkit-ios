@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct MainNavView: View {
@@ -20,8 +21,10 @@ struct MainNavView: View {
     @Environment(TrezorManager.self) private var trezorManager
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(PaykitPaymentRequestManager.self) private var paykitPaymentRequestManager
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(\.scenePhase) var scenePhase
 
+    @State private var usdtReceipts = UsdtReceiptQueue()
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
@@ -57,11 +60,21 @@ struct MainNavView: View {
         )
     }
 
+    private var canPresentUsdtReceipt: Bool {
+        scenePhase == .active && !wallet.isRestoringWallet && !usdt.isSendPresented
+            && sheets.canPresentReceivedTx && navigation.currentRoute != .usdtDepositHistory
+    }
+
+    private func presentUsdtReceipt() {
+        guard let tx = usdtReceipts.takeNext(canPresent: canPresentUsdtReceipt) else { return }
+        sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, usdtAmount: tx.amount, usdtTransferId: tx.id))
+    }
+
     // Delay constants for clipboard processing
     private static let nodeReadyDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
     private static let statePropagationDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
 
-    var body: some View {
+    private var navigationWithGeneralSheets: some View {
         NavigationStack(path: $navigation.path) {
             navigationContent
         }
@@ -158,197 +171,223 @@ struct MainNavView: View {
         ) {
             config in NotificationsSheet(config: config)
         }
-        .sheet(
-            item: $sheets.paymentRequestsSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.paymentRequests, reason: "Payment requests sheet dismissed")
-            }
-        ) {
-            config in PaymentRequestsSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.subscriptionSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.subscription, reason: "Subscription sheet dismissed")
-            }
-        ) {
-            config in SubscriptionSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.receiveSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.receive, reason: "Receive sheet dismissed")
-            }
-        ) {
-            config in ReceiveSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.receivedTxSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.receivedTx, reason: "Received transaction sheet dismissed")
-            }
-        ) {
-            config in ReceivedTx(config: config)
-        }
-        .sheet(
-            item: $sheets.btcpayConnectionSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.btcpayConnection, reason: "BTCPay connection sheet dismissed")
-            }
-        ) {
-            config in BTCPayConnectionSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.scannerSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
-            }
-        ) {
-            config in ScannerSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.securitySheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.security, reason: "Security sheet dismissed")
-            }
-        ) {
-            config in SecuritySheet(config: config)
-        }
-        .sheet(
-            item: $sheets.quickpaySheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.quickpay, reason: "Quickpay sheet dismissed")
-                app.hasSeenQuickpayIntro = true
-            }
-        ) {
-            config in QuickpaySheet(config: config)
-        }
-        .sheet(
-            item: $sheets.sendSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
-            }
-        ) {
-            config in SendSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.forceTransferSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.forceTransfer, reason: "Force transfer sheet dismissed")
-            }
-        ) {
-            config in ForceTransferSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.widgetsSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.widgets, reason: "Widgets sheet dismissed")
-            }
-        ) {
-            config in WidgetsSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.hardwareConnectSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.hardwareConnect, reason: "Hardware connect sheet dismissed")
-            }
-        ) {
-            config in HardwareConnectSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.hardwarePairingSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.hardwarePairing, reason: "Hardware pairing sheet dismissed")
-            }
-        ) {
-            config in HardwarePairingSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.renameHardwareWalletSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.renameHardwareWallet, reason: "Rename hardware wallet sheet dismissed")
-            }
-        ) {
-            config in RenameHardwareWalletSheet(config: config)
-        }
-        .onChange(of: trezorManager.showPairingCode) { _, needsCode in
-            // A hardware device asked for its one-time pairing code (e.g. during reconnect);
-            // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
-            if needsCode {
-                guard !sheets.hardwareConnectHandlesPairing else { return }
-                if let activeId = sheets.activeSheetConfiguration?.id,
-                   activeId == .send || activeId == .receive
-                {
-                    return
-                }
-                sheets.showSheet(.hardwarePairing)
-            } else {
-                sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
-            }
-        }
-        .onReceive(hwWalletManager.receivedTxPublisher) { tx in
-            // New inbound transaction to a watched hardware wallet — show the received celebration.
-            sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: tx.sats))
-        }
-        .accentColor(.white)
-        .overlay {
-            TabBar()
-                .ignoresSafeArea(.keyboard)
-            DrawerView()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                // Update permissions in case user changed them in OS settings
-                notificationManager.updateNotificationPermission()
-                cameraManager.refreshPermission()
-            }
-        }
-        .onChange(of: scenePhase, initial: true) { _, newPhase in
-            guard newPhase == .active else { return }
-            handleClipboardIfEnabled()
-        }
-        .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
-            // Handle notification permission changes
-            if newStatus == .authorized {
-                settings.enableNotifications = true
-                notificationManager.requestPermission()
-            } else {
-                settings.enableNotifications = false
-                notificationManager.unregister()
-            }
-        }
-        .onChange(of: notificationManager.deviceToken) { _, token in
-            // Register with backend if device token changed and notifications are enabled
-            if let token, settings.enableNotifications {
-                Task {
-                    do {
-                        try await notificationManager.registerWithBackend(deviceToken: token)
-                    } catch {
-                        Logger.error("Failed to sync push notifications with backend: \(error)")
-                        app.toast(
-                            type: .error,
-                            title: t("other__notification_registration_failed_title"),
-                            description: t("other__notification_registration_failed_description")
-                        )
-                    }
-                }
-            }
-        }
-        .onChange(of: settings.enableNotifications) { _, newValue in
-            Task {
-                await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
-            }
-            // Handle notification enable/disable
-            if newValue {
-                // Request permission in case user was not prompted yet
-                notificationManager.requestPermission()
+    }
 
-                if let token = notificationManager.deviceToken {
+    private var navigationWithPaymentSheets: some View {
+        navigationWithGeneralSheets
+            .sheet(
+                item: $sheets.paymentRequestsSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.paymentRequests, reason: "Payment requests sheet dismissed")
+                }
+            ) {
+                config in PaymentRequestsSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.subscriptionSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.subscription, reason: "Subscription sheet dismissed")
+                }
+            ) {
+                config in SubscriptionSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.receiveSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.receive, reason: "Receive sheet dismissed")
+                }
+            ) {
+                config in ReceiveSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.receivedTxSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.receivedTx, reason: "Received transaction sheet dismissed")
+                    usdtReceipts.didDismiss()
+                    presentUsdtReceipt()
+                }
+            ) {
+                config in ReceivedTx(config: config)
+            }
+            .sheet(
+                item: $sheets.btcpayConnectionSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.btcpayConnection, reason: "BTCPay connection sheet dismissed")
+                }
+            ) {
+                config in BTCPayConnectionSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.scannerSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
+                }
+            ) {
+                config in ScannerSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.securitySheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.security, reason: "Security sheet dismissed")
+                }
+            ) {
+                config in SecuritySheet(config: config)
+            }
+            .sheet(item: $sheets.usdtIntroSheetItem, onDismiss: {
+                sheets.hideSheetIfActive(.usdtIntro, reason: "USDT intro dismissed")
+            }) { config in
+                UsdtIntroSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.quickpaySheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.quickpay, reason: "Quickpay sheet dismissed")
+                    app.hasSeenQuickpayIntro = true
+                }
+            ) {
+                config in QuickpaySheet(config: config)
+            }
+            .sheet(
+                item: $sheets.sendSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
+                }
+            ) {
+                config in SendSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.forceTransferSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.forceTransfer, reason: "Force transfer sheet dismissed")
+                }
+            ) {
+                config in ForceTransferSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.widgetsSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.widgets, reason: "Widgets sheet dismissed")
+                }
+            ) {
+                config in WidgetsSheet(config: config)
+            }
+    }
+
+    private var navigationWithHardwareSheets: some View {
+        navigationWithPaymentSheets
+            .sheet(
+                item: $sheets.hardwareConnectSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.hardwareConnect, reason: "Hardware connect sheet dismissed")
+                }
+            ) {
+                config in HardwareConnectSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.hardwarePairingSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.hardwarePairing, reason: "Hardware pairing sheet dismissed")
+                }
+            ) {
+                config in HardwarePairingSheet(config: config)
+            }
+            .sheet(
+                item: $sheets.renameHardwareWalletSheetItem,
+                onDismiss: {
+                    sheets.hideSheetIfActive(.renameHardwareWallet, reason: "Rename hardware wallet sheet dismissed")
+                }
+            ) {
+                config in RenameHardwareWalletSheet(config: config)
+            }
+            .onChange(of: trezorManager.showPairingCode) { _, needsCode in
+                // A hardware device asked for its one-time pairing code (e.g. during reconnect);
+                // surface the app-wide Pair Device sheet. Hidden again once submitted/cancelled.
+                if needsCode {
+                    guard !sheets.hardwareConnectHandlesPairing else { return }
+                    if let activeId = sheets.activeSheetConfiguration?.id,
+                       activeId == .send || activeId == .receive
+                    {
+                        return
+                    }
+                    sheets.showSheet(.hardwarePairing)
+                } else {
+                    sheets.hideSheetIfActive(.hardwarePairing, reason: "Pairing code resolved")
+                }
+            }
+    }
+
+    private var navigationWithReceipts: some View {
+        navigationWithHardwareSheets
+            .task(id: scenePhase) {
+                guard usdt.isConfigured, scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    if usdt.shouldRefresh(enabled: settings.isUsdtEnabled) { await usdt.refresh(includeHistory: true) }
+                    let pending = usdt.transfers.contains { $0.status == .pending }
+                    try? await Task.sleep(for: .seconds(pending ? 10 : 30))
+                }
+            }
+            .onReceive(usdt.receivedTxPublisher) { tx in
+                guard !wallet.isRestoringWallet else { return }
+                usdtReceipts.append(tx)
+                presentUsdtReceipt()
+            }
+            .onChange(of: canPresentUsdtReceipt) { _, ready in
+                if ready { presentUsdtReceipt() }
+            }
+            .onChange(of: wallet.isRestoringWallet) { _, restoring in
+                if restoring { usdtReceipts.removeAll() }
+            }
+            .onReceive(hwWalletManager.receivedTxPublisher) { tx in
+                // New inbound transaction to a watched hardware wallet — show the received celebration.
+                sheets.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: tx.sats))
+            }
+            .accentColor(.white)
+            .overlay {
+                TabBar()
+                    .ignoresSafeArea(.keyboard)
+                DrawerView()
+            }
+            .onChange(of: sheets.activeSheetConfiguration?.id) { _, sheet in
+                if sheet == .receivedTx {
+                    usdtReceipts.didPresent()
+                }
+                if sheet != nil {
+                    app.showDrawer = false
+                }
+            }
+    }
+
+    var body: some View {
+        navigationWithReceipts
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    // Update permissions in case user changed them in OS settings
+                    notificationManager.updateNotificationPermission()
+                    cameraManager.refreshPermission()
+                }
+            }
+            .onChange(of: scenePhase, initial: true) { _, newPhase in
+                guard newPhase == .active else { return }
+                handleClipboardIfEnabled()
+            }
+            .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
+                // Handle notification permission changes
+                if newStatus == .authorized {
+                    settings.enableNotifications = true
+                    notificationManager.requestPermission()
+                } else {
+                    settings.enableNotifications = false
+                    notificationManager.unregister()
+                }
+            }
+            .onChange(of: notificationManager.deviceToken) { _, token in
+                // Register with backend if device token changed and notifications are enabled
+                if let token, settings.enableNotifications {
                     Task {
                         do {
                             try await notificationManager.registerWithBackend(deviceToken: token)
                         } catch {
-                            Logger.error("Failed to sync push notifications: \(error)")
+                            Logger.error("Failed to sync push notifications with backend: \(error)")
                             app.toast(
                                 type: .error,
                                 title: t("other__notification_registration_failed_title"),
@@ -357,54 +396,78 @@ struct MainNavView: View {
                         }
                     }
                 }
-            } else {
-                // Disable notifications (unregister)
-                notificationManager.unregister()
             }
-        }
-        .task(id: canHandleDeepLinks) {
-            guard canHandleDeepLinks else { return }
-            await handlePendingDeepLink()
-        }
-        .onChange(of: app.pendingDeepLinkURL) { _, url in
-            guard canHandleDeepLinks, url != nil else { return }
-            Task { await handlePendingDeepLink() }
-        }
-        .task(id: scenePhase == .active) {
-            guard scenePhase == .active, canHandleDeepLinks,
-                  let url = app.pendingDeepLinkURL, PubkyContactLink.matches(url)
-            else { return }
-            await handlePendingDeepLink()
-        }
-        .task(id: wallet.nodeLifecycleState == .running) {
-            guard canHandleDeepLinks,
-                  wallet.nodeLifecycleState == .running,
-                  let url = app.pendingDeepLinkURL,
-                  !PubkyContactLink.matches(url)
-            else { return }
-            await handlePendingDeepLink()
-        }
-        .onChange(of: canPrepareContactDeepLink) { _, canPrepare in
-            guard canHandleDeepLinks, canPrepare else { return }
-            Task { await handlePendingDeepLink() }
-        }
-        .onChange(of: isContactDeepLinkReady) { _, isReady in
-            guard canHandleDeepLinks, isReady else { return }
-            Task { await handlePendingDeepLink() }
-        }
-        .alert(
-            t("other__clipboard_redirect_title"),
-            isPresented: $showClipboardAlert
-        ) {
-            Button(t("common__ok")) {
-                processClipboardUri()
+            .onChange(of: settings.enableNotifications) { _, newValue in
+                Task {
+                    await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
+                }
+                // Handle notification enable/disable
+                if newValue {
+                    // Request permission in case user was not prompted yet
+                    notificationManager.requestPermission()
+
+                    if let token = notificationManager.deviceToken {
+                        Task {
+                            do {
+                                try await notificationManager.registerWithBackend(deviceToken: token)
+                            } catch {
+                                Logger.error("Failed to sync push notifications: \(error)")
+                                app.toast(
+                                    type: .error,
+                                    title: t("other__notification_registration_failed_title"),
+                                    description: t("other__notification_registration_failed_description")
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Disable notifications (unregister)
+                    notificationManager.unregister()
+                }
             }
-            Button(t("common__dialog_cancel"), role: .cancel) {
-                clipboardUri = nil
+            .task(id: canHandleDeepLinks) {
+                guard canHandleDeepLinks else { return }
+                await handlePendingDeepLink()
             }
-        } message: {
-            Text(t("other__clipboard_redirect_msg"))
-        }
+            .onChange(of: app.pendingDeepLinkURL) { _, url in
+                guard canHandleDeepLinks, url != nil else { return }
+                Task { await handlePendingDeepLink() }
+            }
+            .task(id: scenePhase == .active) {
+                guard scenePhase == .active, canHandleDeepLinks,
+                      let url = app.pendingDeepLinkURL, PubkyContactLink.matches(url)
+                else { return }
+                await handlePendingDeepLink()
+            }
+            .task(id: wallet.nodeLifecycleState == .running) {
+                guard canHandleDeepLinks,
+                      wallet.nodeLifecycleState == .running,
+                      let url = app.pendingDeepLinkURL,
+                      !PubkyContactLink.matches(url)
+                else { return }
+                await handlePendingDeepLink()
+            }
+            .onChange(of: canPrepareContactDeepLink) { _, canPrepare in
+                guard canHandleDeepLinks, canPrepare else { return }
+                Task { await handlePendingDeepLink() }
+            }
+            .onChange(of: isContactDeepLinkReady) { _, isReady in
+                guard canHandleDeepLinks, isReady else { return }
+                Task { await handlePendingDeepLink() }
+            }
+            .alert(
+                t("other__clipboard_redirect_title"),
+                isPresented: $showClipboardAlert
+            ) {
+                Button(t("common__ok")) {
+                    processClipboardUri()
+                }
+                Button(t("common__dialog_cancel"), role: .cancel) {
+                    clipboardUri = nil
+                }
+            } message: {
+                Text(t("other__clipboard_redirect_msg"))
+            }
     }
 
     // MARK: - Loading View
@@ -450,6 +513,10 @@ struct MainNavView: View {
                 case .savingsWallet: SavingsWalletScreen()
                 case .spendingWallet: SpendingWalletScreen()
                 case let .hardwareWallet(walletId): HardwareWalletScreen(walletId: walletId)
+                case .usdtWallet: UsdtWalletScreen()
+                case let .usdtPayment(recipient, amount): UsdtWalletScreen(initialRecipient: recipient, initialAmount: amount)
+                case let .usdtActivity(transferId): UsdtActivityDetail(transferId: transferId)
+                case .usdtDepositHistory: UsdtDepositHistoryView()
                 case .scanner: ScannerScreen()
 
                 // Transfer
@@ -703,7 +770,8 @@ struct MainNavView: View {
                 await ClipboardPromptValidator.isSupportedURI(
                     uri,
                     ownPublicKey: pubkyProfile.publicKey,
-                    contacts: contactsManager.contacts
+                    contacts: contactsManager.contacts,
+                    isUsdtEnabled: settings.isUsdtEnabled && !usdt.isSendPresented && app.contactPaymentContext == nil
                 )
             } else {
                 false
@@ -728,6 +796,16 @@ struct MainNavView: View {
 
         Task { @MainActor in
             do {
+                if let route = try resolveUsdtPaymentRoute(input: uri) {
+                    guard !usdt.isSendPresented, app.contactPaymentContext == nil else { return }
+                    let path = navigation.path
+                    sheets.hideSheetBeforePerforming(reason: "Clipboard routed USDT payment") {
+                        guard !usdt.isSendPresented, app.contactPaymentContext == nil, navigation.path == path else { return }
+                        navigation.navigate(route)
+                    }
+                    clipboardUri = nil
+                    return
+                }
                 if let route = resolvePastedPubkyRoute(
                     input: uri,
                     ownPublicKey: pubkyProfile.publicKey,
@@ -829,6 +907,15 @@ struct MainNavView: View {
         }
 
         do {
+            if let route = try resolveUsdtPaymentRoute(input: url.absoluteString) {
+                guard !usdt.isSendPresented, app.contactPaymentContext == nil else { return }
+                let path = navigation.path
+                sheets.hideSheetBeforePerforming(reason: "Deeplink routed USDT payment") {
+                    guard !usdt.isSendPresented, app.contactPaymentContext == nil, navigation.path == path else { return }
+                    navigation.navigate(route)
+                }
+                return
+            }
             if PubkyContactLink.matches(url) {
                 guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
                 guard pubkyProfile.initializationErrorMessage == nil,
@@ -890,5 +977,33 @@ struct MainNavView: View {
         components.fragment = nil
 
         return components.string ?? (url.scheme ?? "unknown")
+    }
+}
+
+struct UsdtReceiptQueue {
+    private var transfers: [UsdtTransfer] = []
+    private var isPresenting = false
+
+    mutating func append(_ transfer: UsdtTransfer) {
+        guard !transfers.contains(where: { $0.id == transfer.id }) else { return }
+        transfers.append(transfer)
+    }
+
+    mutating func takeNext(canPresent: Bool) -> UsdtTransfer? {
+        guard canPresent, !isPresenting, !transfers.isEmpty else { return nil }
+        didPresent()
+        return transfers.removeFirst()
+    }
+
+    mutating func didPresent() {
+        isPresenting = true
+    }
+
+    mutating func didDismiss() {
+        isPresenting = false
+    }
+
+    mutating func removeAll() {
+        transfers.removeAll()
     }
 }

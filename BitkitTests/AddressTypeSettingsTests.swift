@@ -312,6 +312,23 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(settings.quickpayAmount, 1)
     }
 
+    func testUsdtPreferenceSurvivesBackupAndMissingPreferenceRequiresConsent() {
+        for preference in [UsdtPreference.enabled, .disabled, .undecided] {
+            settings.usdtPreference = preference
+            let backup = settings.getSettingsDictionary()
+            XCTAssertEqual(backup[UsdtPreference.key] as? String, preference.rawValue)
+
+            settings.resetToDefaults()
+            settings.restoreSettingsDictionary(backup)
+            XCTAssertEqual(settings.usdtPreference, preference)
+        }
+
+        settings.usdtPreference = .enabled
+        settings.restoreSettingsDictionary([:])
+        XCTAssertEqual(settings.usdtPreference, .undecided)
+        XCTAssertFalse(UsdtPreference.isEnabled())
+    }
+
     func testRestoresDailyLimitMultiplierFromAndroidKey() {
         settings.restoreSettingsDictionary(["quickPayDailyLimitMultiplier": 3])
 

@@ -1,6 +1,6 @@
 # Pubky auth
 
-This suite covers the uniquely targetable `bitkit://pubky-auth/setup` OS handoff into Bitkit. The wrapper carries the Paykit grant-auth requester fields, normalizes to `pubkyauth://signin_grant`, and is the only Pubky request accepted from an OS link. `lightning:`/`lnurl*:`-prefixed raw Pubky auth and signup requests are rejected before authorization.
+This suite covers the uniquely targetable `bitkit://pubky-auth/setup` and `bitkit://pubky-auth/signin` OS handoffs into Bitkit. Both carry the grant-auth requester fields and normalize to `pubkyauth://signin_grant`; `/setup` is Paykit setup and requires a Bitkit claim, `/signin` is a plain grant sign-in (`open-signin-link.xml`). They are the only Pubky requests accepted from an OS link. `lightning:`/`lnurl*:`-prefixed raw Pubky auth and signup requests are rejected before authorization.
 It stops at explicit watch-only consent and never authorizes or exports account material.
 Bitkit retains links delivered during startup, restoration, or PIN entry and presents consent only after the main wallet UI is available.
 

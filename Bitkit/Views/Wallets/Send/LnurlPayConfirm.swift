@@ -41,12 +41,17 @@ struct LnurlPayConfirm: View {
         return try await send()
     }
 
+    private var shouldAutomaticallyPay: Bool {
+        app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
+            app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
+    }
+
     var body: some View {
         ZStack {
             if let lnurlPayData = app.lnurlPayData {
                 confirmationContent(lnurlPayData: lnurlPayData)
             }
-            if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
+            if shouldAutomaticallyPay {
                 InitialSubscriptionPaymentProgress()
             }
         }
@@ -161,7 +166,8 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
-                isLoading: hasStartedAutomaticPayment
+                isLoading: hasStartedAutomaticPayment,
+                isSubmitted: hasStartedAutomaticPayment
             ) {
                 try await submitPayment()
             }
@@ -178,7 +184,7 @@ struct LnurlPayConfirm: View {
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
         guard let lnurlPayData = app.lnurlPayData,
-              app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+              shouldAutomaticallyPay,
               !hasStartedAutomaticPayment
         else { return }
         hasStartedAutomaticPayment = true
@@ -265,7 +271,11 @@ struct LnurlPayConfirm: View {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
-        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
+        let reviewedAmount = wallet.sendAmountSats ?? lnurlPayData.minSendableSat
+        guard lnurlPayData.accepts(amountSats: reviewedAmount) else {
+            throw PaykitPaymentRequestError.amountMismatch
+        }
+        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: reviewedAmount)
         let contactPaymentContext = app.contactPaymentContext
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
         let paymentActivity = PaykitPaymentActivity.shared.begin()
@@ -287,7 +297,8 @@ struct LnurlPayConfirm: View {
                     request: incomingPaymentRequest,
                     paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
                     paymentEndpointIdentifier: endpointIdentifier,
-                    kind: .lightning
+                    kind: .lightning,
+                    paymentTerms: app.paykitPaymentTerms
                 )
                 shouldCancelPaymentProof = true
             }
@@ -326,7 +337,7 @@ struct LnurlPayConfirm: View {
                 try await wallet.sendWithTimeout(
                     bolt11: bolt11,
                     sats: nil,
-                    paymentDeadline: incomingPaymentRequest?.paymentDeadline,
+                    paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                     afterListening: { _ in lightningPaymentSubmitted = true },
                     onTimeout: { timedOutHash in
                         app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -397,8 +408,8 @@ struct LnurlPayConfirm: View {
         }
         guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
         guard let amountSats = wallet.sendAmountSats,
-              request.acceptsPaymentAmount(amountSats),
-              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+              request.acceptsPaymentAmount(amountSats, method: .bitcoinLightningLnurl, paymentTerms: app.paykitPaymentTerms),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats, paymentTerms: app.paykitPaymentTerms)
         else {
             throw PaykitPaymentRequestError.amountMismatch
         }

@@ -404,10 +404,6 @@ struct AppScene: View {
         PaykitFeatureFlags.enforceBuildAvailability()
         ContactPaymentsService.enableAllPaymentOptions()
 
-        _app = StateObject(wrappedValue: AppViewModel(
-            sheetViewModel: sheetViewModel,
-            navigationViewModel: navigationViewModel
-        ))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
         let feeEstimatesManager = FeeEstimatesManager()
@@ -416,6 +412,11 @@ struct AppScene: View {
             sheetViewModel: sheetViewModel,
             feeEstimatesManager: feeEstimatesManager
         )
+        _app = StateObject(wrappedValue: AppViewModel(
+            sheetViewModel: sheetViewModel,
+            navigationViewModel: navigationViewModel,
+            usdtBalance: { walletVm.usdtWallet.balance }
+        ))
         _wallet = StateObject(wrappedValue: walletVm)
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
@@ -592,6 +593,7 @@ struct AppScene: View {
             .environment(trezorViewModel)
             .environment(jadeManager)
             .environment(hwWalletManager)
+            .environment(wallet.usdtWallet)
             .environment(calculatorInputManager)
             .environment(paykitPaymentRequestManager)
     }
@@ -673,6 +675,17 @@ struct AppScene: View {
 
     private var appEventContent: some View {
         paykitEventContent
+            .onChange(of: wallet.usdtWallet.hasFundsOrPendingTransfers, initial: true) { _, hasFundsOrPendingTransfers in
+                settings.protectUsdtFunds(hasFundsOrPendingTransfers)
+            }
+            .onChange(of: settings.usdtPreference) { _, _ in
+                PublicPaykitService.setCleanupPending(true)
+                Task {
+                    await retryPendingPaykitEndpointRemoval()
+                    let keys = contactsManager.contacts.map(\.publicKey)
+                    await PrivatePaykitService.shared.refreshSavedContactEndpoints(for: keys, savedPublicKeys: keys, wallet: wallet)
+                }
+            }
             .onChange(of: sheets.activeSheetConfiguration?.id) { _, activeSheetId in
                 guard activeSheetId == nil, !sheets.isReplacingSheet else { return }
                 scheduleNextIncomingPaykitItemPresentation()
@@ -1351,6 +1364,7 @@ struct AppScene: View {
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
+            await PaykitUsdtPaymentService.shared.reconcile(wallet: wallet.usdtWallet)
         }
         guard !Task.isCancelled, !onlyWhileActive || isPaykitSceneActive else { return false }
         guard let identity = pubkyProfile.publicKey else { return false }
@@ -1558,7 +1572,7 @@ struct AppScene: View {
                         }
                         return
                     }
-                    guard case let .opened(paymentTarget, privatePaymentContext) = result else {
+                    guard case let .opened(paymentTarget, privatePaymentContext, endpoints) = result else {
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
                             reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
@@ -1569,7 +1583,8 @@ struct AppScene: View {
                     let contactPaymentContext = ContactPaymentContext(
                         publicKey: request.counterparty,
                         privatePaymentContext: privatePaymentContext,
-                        incomingPaymentRequest: request
+                        incomingPaymentRequest: request,
+                        endpoints: endpoints
                     )
                     guard app.claimContactPaymentContext(contactPaymentContext) else { return }
                     preparation.paymentContext = contactPaymentContext

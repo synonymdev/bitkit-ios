@@ -303,8 +303,8 @@ struct SendPendingScreen: View {
                         }
                     }
                     if attempt.requestId != nil {
-                        let request = try await paymentRequests.ensureOnchainRecoveryAllowed(attempt, proofService: proofService)
-                        guard request.paymentDeadline == paymentDeadline else { throw PaykitPaymentRequestError.requestUnavailable }
+                        let authorization = try await paymentRequests.ensureOnchainRecoveryAllowed(attempt, proofService: proofService)
+                        guard authorization.paymentDeadline == paymentDeadline else { throw PaykitPaymentRequestError.requestUnavailable }
                         guard let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
                         try await proofService.requireRecoveryPayer(payer)
                     } else if let orderId = attempt.orderId {

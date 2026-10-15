@@ -6,10 +6,13 @@ struct PubkyAuthClaim: Equatable {
     private enum Item: String {
         case paykitAccessV1 = "paykit-access-v1"
         case watchOnlyAccountV1 = "watch-only-account-v1"
+        case usdtAddressV1 = "usdt-address-v1"
     }
 
     static let watchOnlyAccountV1 = Self(items: [.watchOnlyAccountV1])
     static let paykitAccessV1 = Self(items: [.paykitAccessV1])
+    static let usdtAddressV1 = Self(items: [.usdtAddressV1])
+    static let bitcoinAndUsdt = Self(items: [.watchOnlyAccountV1, .usdtAddressV1])
 
     private let items: [Item]
 
@@ -40,7 +43,58 @@ struct PubkyAuthClaim: Equatable {
         items.contains(.paykitAccessV1)
     }
 
+    var sharesBitcoin: Bool {
+        includesWatchOnlyAccount
+    }
+
+    var sharesUsdt: Bool {
+        items.contains(.usdtAddressV1)
+    }
+
+    var sharesReceivingDetails: Bool {
+        sharesBitcoin || sharesUsdt
+    }
+
+    var requiresUsdtAddress: Bool {
+        sharesUsdt && !sharesBitcoin && !includesPaykitAccess
+    }
+
+    func unsignedPayload(account: WatchOnlyAccountRecord?, usdtEndpoint: PublicPaykitService.Endpoint?) throws -> Data? {
+        guard sharesUsdt else {
+            return try account.map { try WatchOnlyAccountClaimCodec.encode(record: $0) }
+        }
+        var payload: [String: Any] = [:]
+        if let usdtEndpoint {
+            guard usdtEndpoint.methodId == .usdtArbitrum,
+                  PaykitUsdt.address(from: usdtEndpoint.rawPayload) == usdtEndpoint.value
+            else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            payload[PublicPaykitService.MethodId.usdtArbitrum.rawValue] = try JSONSerialization.jsonObject(with: Data(usdtEndpoint.rawPayload.utf8))
+        }
+        if sharesBitcoin {
+            guard let account else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            _ = try WatchOnlyAccountClaimCodec.encode(record: account)
+            payload["bitcoin_account"] = ["account_index": account.accountIndex, "address_type": account.addressType, "xpub": account.xpub]
+        }
+        return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+    }
+
     func encode(accountPayload: Data?, paykitKey: PaykitIdentitySecretKey?) throws -> Data {
+        if sharesUsdt {
+            guard let accountPayload,
+                  var payload = try JSONSerialization.jsonObject(with: accountPayload) as? [String: Any],
+                  includesPaykitAccess == (paykitKey != nil)
+            else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            if let paykitKey {
+                payload["paykit_access"] = [
+                    "key_generation": paykitKey.keyGeneration(),
+                    "secret": paykitKey.exportBytes().base64EncodedString()
+                        .replacingOccurrences(of: "+", with: "-")
+                        .replacingOccurrences(of: "/", with: "_")
+                        .replacingOccurrences(of: "=", with: ""),
+                ]
+            }
+            return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        }
         guard includesWatchOnlyAccount == (accountPayload != nil),
               includesPaykitAccess == (paykitKey != nil)
         else {
@@ -68,6 +122,7 @@ struct PubkyAuthClaim: Equatable {
 
 enum PubkyAuthRequestError: Error, Equatable {
     case invalidUrl
+    case invalidPaymentDetails
     case missingBitkitClaim
     case duplicateBitkitClaim
     case duplicateRelay
@@ -101,8 +156,10 @@ struct PubkyAuthPermission {
 // MARK: - PubkyAuth Request
 
 struct PubkyAuthRequest {
-    private static let bitkitSetupHost = "pubky-auth"
+    private static let bitkitHandoffHost = "pubky-auth"
+    /// `/setup` is Paykit setup and must carry a Bitkit claim; `/signin` is a plain grant sign-in.
     private static let bitkitSetupPath = "/setup"
+    private static let bitkitSigninPath = "/signin"
 
     let rawUrl: String
     let kind: Paykit.PubkyAuthRequestKind
@@ -160,10 +217,10 @@ struct PubkyAuthRequest {
         }
     }
 
-    /// Normalizes Bitkit's unique iOS handoff because the OS cannot deterministically route a custom scheme shared with Pubky Ring.
+    /// Normalizes Bitkit's unique iOS handoffs because the OS cannot deterministically route a custom scheme shared with Pubky Ring.
     static func normalizedProtocolURL(_ value: String) -> String {
         let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isBitkitSetupHandoff(trimmedValue),
+        guard bitkitHandoffPath(trimmedValue) != nil,
               let queryDelimiter = trimmedValue.firstIndex(of: "?")
         else {
             return value
@@ -175,7 +232,7 @@ struct PubkyAuthRequest {
 
     static func parse(url: String) throws -> PubkyAuthRequest {
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requiresBitkitClaim = isBitkitSetupHandoff(trimmedURL)
+        let requiresBitkitClaim = bitkitHandoffPath(trimmedURL) == bitkitSetupPath
         let normalizedURL = normalizedProtocolURL(trimmedURL)
         try rejectDuplicateRelayAndSecret(in: normalizedURL)
 
@@ -368,11 +425,12 @@ struct PubkyAuthRequest {
         return claim
     }
 
-    private static func isBitkitSetupHandoff(_ value: String) -> Bool {
+    /// Returns the handoff path of a `bitkit://pubky-auth/setup?…` or `bitkit://pubky-auth/signin?…` link.
+    private static func bitkitHandoffPath(_ value: String) -> String? {
         guard let components = URLComponents(string: value),
               components.scheme?.lowercased() == "bitkit",
-              components.host?.lowercased() == bitkitSetupHost,
-              components.path == bitkitSetupPath,
+              components.host?.lowercased() == bitkitHandoffHost,
+              [bitkitSetupPath, bitkitSigninPath].contains(components.path),
               components.user == nil,
               components.password == nil,
               components.port == nil,
@@ -381,10 +439,10 @@ struct PubkyAuthRequest {
               !query.isEmpty,
               !query.hasPrefix("?")
         else {
-            return false
+            return nil
         }
 
-        return true
+        return components.path
     }
 
     static func parseCapabilities(_ caps: String) -> [PubkyAuthPermission] {

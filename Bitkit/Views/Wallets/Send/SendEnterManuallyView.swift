@@ -9,6 +9,7 @@ struct SendEnterManuallyView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var scanner: ScannerManager
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
@@ -26,7 +27,8 @@ struct SendEnterManuallyView: View {
                         wallet.spendableOnchainBalanceSats,
                         Int(clamping: hwWalletManager.maximumFundingBalanceSats)
                     ),
-                    spendingBalanceSats: wallet.maxSendLightningSats
+                    spendingBalanceSats: wallet.maxSendLightningSats,
+                    scope: hwSend.isActive ? .onchainPayments : .unrestricted
                 )
             }
         )
@@ -39,30 +41,12 @@ struct SendEnterManuallyView: View {
             CaptionMText(t("wallet__send_to"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            ZStack(alignment: .topLeading) {
-                if app.manualEntryInput.isEmpty {
-                    TitleText(t("wallet__send_address_placeholder"), textColor: .textSecondary)
-                        .padding(20)
-                }
-
-                TextEditor(text: manualEntryBinding)
-                    .focused($isTextEditorFocused)
-                    .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
-                    .padding(20)
-                    .frame(maxHeight: .infinity)
-                    .scrollContentBackground(.hidden)
-                    .font(.custom(Fonts.bold, size: 22))
-                    .foregroundColor(.textPrimary)
-                    .accentColor(.brandAccent)
-                    .submitLabel(.done)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .dismissKeyboardOnReturn(text: manualEntryBinding, isFocused: $isTextEditorFocused)
-                    .accessibilityValue(app.manualEntryInput)
-                    .accessibilityIdentifier("RecipientInput")
-            }
-            .background(Color.white06)
-            .cornerRadius(8)
+            PaymentAddressInput(
+                text: manualEntryBinding,
+                isFocused: $isTextEditorFocused,
+                placeholder: t("wallet__send_address_placeholder"),
+                testIdentifier: "RecipientInput"
+            )
 
             Spacer(minLength: 16)
 
@@ -93,6 +77,13 @@ struct SendEnterManuallyView: View {
         ) {
             sheets.hideSheetIfActive(.send, reason: "Manual pubky entry routed to contacts")
             navigation.navigate(route)
+            return
+        }
+
+        if uri.lowercased().hasPrefix("ethereum:") {
+            await scanner.handleSendScan(uri, scope: hwSend.isActive ? .onchainPayments : .unrestricted) { route in
+                if let route { navigationPath.append(route) }
+            }
             return
         }
 
@@ -135,6 +126,7 @@ struct SendEnterManuallyView: View {
         .environmentObject(NavigationViewModel())
         .environmentObject(PubkyProfileManager())
         .environmentObject(SheetViewModel())
+        .environmentObject(ScannerManager())
         .environment(HwWalletManager())
         .preferredColorScheme(.dark)
 }

@@ -6,6 +6,36 @@ import LocalAuthentication
 enum Env {
     static let appName = "bitkit"
 
+    static var isUsdtEnabled: Bool {
+        (network == .bitcoin || isDebug) && usdtBundlerUrl != nil && usdtRpcUrl != nil
+    }
+
+    static var usdtBundlerUrl: String? {
+        configValue("USDT_BUNDLER_URL")
+    }
+
+    static var usdtDepositsUrl: String? {
+        configValue("USDT_DEPOSITS_URL")
+    }
+
+    static var usdtBridgesUrl: String? {
+        configValue("USDT_BRIDGES_URL")
+    }
+
+    static var usdtRpcUrl: String? {
+        configValue("USDT_RPC_URL")
+    }
+
+    static var usdtDestinations: [UsdtDestination] {
+        let enabled = Set((configValue("USDT_BRIDGE_NETWORKS") ?? "").split(separator: ",").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        })
+        let bridges: [(String, UsdtDestination)] = [
+            ("ethereum", .ethereum), ("polygon", .polygon), ("plasma", .plasma), ("stable", .stable),
+        ]
+        return [.arbitrum] + bridges.filter { enabled.contains($0.0) }.map(\.1)
+    }
+
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil

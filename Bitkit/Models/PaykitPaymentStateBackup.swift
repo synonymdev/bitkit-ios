@@ -6,12 +6,19 @@ struct PaykitPaymentStateBackup: Codable {
     let subscriptions: [String: Subscription]
     let pendingProofs: [Proof]
     var activeOnchainAttempt: ActiveOnchainAttempt? = nil
+    var usdt: PaykitUsdtStateBackup? = nil
     var acceptedOneTimeRequests: [String: [RequestID]]? = nil
 
     struct RequestID: Codable {
         let paymentRequestId: String
         let counterparty: String
         let billingPeriodStartsAt: String?
+
+        init(paymentRequestId: String, counterparty: String, billingPeriodStartsAt: String?) {
+            self.paymentRequestId = paymentRequestId
+            self.counterparty = counterparty
+            self.billingPeriodStartsAt = billingPeriodStartsAt
+        }
 
         init(_ id: PaykitPaymentRequest.ID, billingPeriod: PaykitBillingPeriod?) {
             paymentRequestId = id.paymentRequestId
@@ -68,6 +75,7 @@ struct PaykitPaymentStateBackup: Codable {
         let paymentStarted: Bool
         let paymentIdentifier: String?
         let proofData: String?
+        let conversionQuoteId: String?
         let billingPeriod: Period?
         let onchainAddress: String?
         let onchainAmountSats: UInt64?
@@ -91,6 +99,7 @@ struct PaykitPaymentStateBackup: Codable {
             paymentStarted = proof.paymentStarted
             paymentIdentifier = proof.paymentIdentifier
             proofData = proof.proofData
+            conversionQuoteId = proof.conversionQuoteId
             billingPeriod = proof.billingPeriod.map { Period(startsAt: $0.sdkValue.startsAt, endsAt: $0.sdkValue.endsAt) }
             onchainAddress = proof.onchainAddress
             onchainAmountSats = proof.onchainAmountSats
@@ -123,6 +132,7 @@ struct PaykitPaymentStateBackup: Codable {
                 paymentStarted: paymentStarted,
                 paymentIdentifier: paymentIdentifier,
                 proofData: proofData,
+                conversionQuoteId: conversionQuoteId,
                 onchainAddress: onchainAddress,
                 onchainAmountSats: onchainAmountSats,
                 onchainWalletId: onchainWalletId,

@@ -2,6 +2,7 @@ import BitkitCore
 import SwiftUI
 
 enum ReceiveRoute: Hashable {
+    case usdt
     case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
     case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool, replacesCurrentQr: Bool = false)
     case tag
@@ -19,7 +20,7 @@ enum ReceiveRoute: Hashable {
         switch self {
         case .qr, .edit, .tag, .cjitAmount, .cjitConfirm, .cjitLearnMore, .cjitGeoBlocked:
             return true
-        case .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
+        case .usdt, .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
             return false
         }
     }
@@ -56,9 +57,18 @@ struct ReceiveSheet: View {
     let config: ReceiveSheetItem
 
     @State private var navigationPath: [ReceiveRoute] = []
+    @State private var isUsdtSelected: Bool?
+
+    private var usesUsdtHeader: Bool {
+        switch navigationPath.last ?? config.initialRoute {
+        case .usdt: isUsdtSelected ?? true
+        case let .qr(_, tab): isUsdtSelected ?? (tab == .usdt)
+        default: false
+        }
+    }
 
     var body: some View {
-        Sheet(id: .receive, data: config) {
+        Sheet(id: .receive, data: config, dragIndicatorInset: usesUsdtHeader ? 8 : 12) {
             NavigationStack(path: $navigationPath) {
                 viewForRoute(config.initialRoute)
                     .navigationDestination(for: ReceiveRoute.self) { route in
@@ -67,7 +77,7 @@ struct ReceiveSheet: View {
             }
             .id(config.id)
         }
-        .offlineSheetOverlay(title: t("wallet__receive_bitcoin"))
+        .offlineSheetOverlay(title: t("wallet__receive"), isEnabled: config.initialRoute != .usdt)
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
@@ -101,12 +111,16 @@ struct ReceiveSheet: View {
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
+        case .usdt:
+            ReceiveQr(navigationPath: $navigationPath, tab: .usdt, hardwareWalletId: config.hardwareWalletId,
+                      onUsdtSelectionChange: { isUsdtSelected = $0 })
         case let .qr(cjitInvoice, tab):
             ReceiveQr(
                 navigationPath: $navigationPath,
                 cjitInvoice: cjitInvoice,
                 tab: tab,
-                hardwareWalletId: config.hardwareWalletId
+                hardwareWalletId: config.hardwareWalletId,
+                onUsdtSelectionChange: { isUsdtSelected = $0 }
             )
         case let .edit(tab, onchainOnly, replacesCurrentQr):
             ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab, onchainOnly: onchainOnly, replacesCurrentQr: replacesCurrentQr) { draft in
@@ -128,7 +142,7 @@ struct ReceiveSheet: View {
             }
         case let .paymentRequestRecipient(draft):
             PaymentRequestRecipientView { target in
-                if draft.amountSats == 0 {
+                if draft.amount.atomic == 0 {
                     navigationPath.append(.paymentRequestAmount(draft, target))
                 } else {
                     navigationPath.append(.paymentRequestDetails(draft, target))
@@ -164,7 +178,7 @@ struct ReceiveSheet: View {
 
     static var defaultPaymentRequestDraft: PaykitPaymentRequestDraft {
         PaykitPaymentRequestDraft(
-            amountSats: 0,
+            amount: PaykitAmount(asset: .btc, atomic: 0),
             note: "",
             expiresAt: PaymentRequestExpiration.week.date(from: Date())
         )
