@@ -209,7 +209,7 @@ struct PubkyAuthApprovalSheet: View {
     private var watchOnlyConsentContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("pubky_auth__watch_only_intro_nav_title"),
-                        topPadding: 28, bottomPadding: 0, dragIndicatorTopPadding: 8)
+                        topPadding: 28, bottomPadding: 0, dragIndicatorTopPadding: 8, titleKerning: 0)
 
             ViewThatFits(in: .vertical) {
                 VStack(alignment: .leading, spacing: 32) {
@@ -243,9 +243,11 @@ struct PubkyAuthApprovalSheet: View {
             }
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__cancel"), variant: .secondary) { sheets.hideSheet() }
+                CustomButton(title: t("common__cancel"), variant: .secondary, titleKerning: 0, titleLineHeight: 20) { sheets.hideSheet() }
                     .accessibilityIdentifier("PubkyAuthWatchOnlyCancel")
-                CustomButton(title: t("pubky_auth__watch_only_intro_approve"), isDisabled: receivingDetailsUnavailable) {
+                CustomButton(title: t("pubky_auth__watch_only_intro_approve"), isDisabled: receivingDetailsUnavailable,
+                             titleKerning: 0, titleLineHeight: 20)
+                {
                     _ = state.approveWatchOnlyConsent()
                 }
                 .accessibilityIdentifier("PubkyAuthWatchOnlyApprove")
@@ -332,12 +334,12 @@ struct PubkyAuthApprovalSheet: View {
             approvalDetails
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__cancel"), variant: .secondary) {
+                CustomButton(title: t("common__cancel"), variant: .secondary, titleKerning: 0, titleLineHeight: 20) {
                     sheets.hideSheet()
                 }
                 .accessibilityIdentifier("PubkyAuthCancel")
 
-                CustomButton(title: t("pubky_auth__title")) {
+                CustomButton(title: t("pubky_auth__title"), titleKerning: 0, titleLineHeight: 20) {
                     await onAuthorize()
                 }
                 .disabled(receivingDetailsUnavailable || (config.request.bitkitClaim?.requiresUsdtAddress == true && !shareUsdt))
@@ -385,7 +387,7 @@ struct PubkyAuthApprovalSheet: View {
                 .scrollIndicators(.hidden)
             }
 
-            CustomButton(title: t("common__ok")) {
+            CustomButton(title: t("common__ok"), titleKerning: 0, titleLineHeight: 20) {
                 sheets.hideSheet()
             }
             .accessibilityIdentifier("PubkyAuthOK")
@@ -587,7 +589,7 @@ struct PubkyAuthApprovalSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 CaptionMText(
                     truncatedPublicKey.localizedUppercase,
-                    textColor: .white64
+                    textColor: .white64, kerning: 1, lineHeight: 18
                 )
                 .lineLimit(1)
 

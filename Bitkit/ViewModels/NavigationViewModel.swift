@@ -196,8 +196,12 @@ func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [Pu
 
 func resolveUsdtPaymentRoute(input: String, isEnabled: Bool = Env.isUsdtEnabled) throws -> Route? {
     let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard input.lowercased().hasPrefix("ethereum:") else { return nil }
+    let isPaymentURI = input.lowercased().hasPrefix("ethereum:")
+    guard isPaymentURI || input.lowercased().hasPrefix("0x") else { return nil }
     guard isEnabled else { throw ScanHandlingError.unsupportedRequest }
+    if !isPaymentURI {
+        return try .usdtPayment(recipient: usdtValidateRecipient(value: input, destination: .arbitrum), amount: "")
+    }
     let request = try usdtParsePaymentRequest(value: input)
     return .usdtPayment(recipient: request.recipient, amount: request.amount.map { usdtFormatAmount(amount: $0) } ?? "")
 }

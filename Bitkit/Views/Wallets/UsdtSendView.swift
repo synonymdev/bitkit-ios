@@ -203,7 +203,7 @@ struct UsdtSendView: View {
         Button { recipientFocused = false; showingNetworks = true } label: {
             HStack(spacing: 8) {
                 Image("usdt-network").resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
-                CaptionBText(destination.label, kerning: 0).lineLimit(1).minimumScaleFactor(0.8)
+                CaptionBText(destination.label, kerning: 0, lineHeight: 13).lineLimit(1).minimumScaleFactor(0.8)
             }
             .padding(.horizontal, 12).frame(height: 28)
             .background(Color.white01, in: RoundedRectangle(cornerRadius: 12))
@@ -313,7 +313,7 @@ struct UsdtSendView: View {
             )
             .frame(maxHeight: .infinity)
             CustomButton(title: t("common__continue"), isDisabled: busy || (try? parsePaykitAmountInput(asset: .usdt, value: amount)) == nil,
-                         isLoading: busy && !preparingMaximum)
+                         isLoading: busy && !preparingMaximum, titleKerning: 0, titleLineHeight: 20)
             {
                 guard !busy, quote == nil else { return }
                 busy = true
@@ -343,9 +343,9 @@ struct UsdtSendView: View {
 
     private var availableBalance: some View {
         VStack(alignment: .leading, spacing: 4) {
-            CaptionMText(t("wallet__send_available"))
+            CaptionMText(t("wallet__send_available"), kerning: 1, lineHeight: 18)
             BodySSBText(settings.hideBalance ? " • • • • •" : "<accent>$</accent> " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"),
-                        accentColor: .textSecondary)
+                        accentColor: .textSecondary, kerning: 0, lineHeight: 20)
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -354,7 +354,7 @@ struct UsdtSendView: View {
         HStack(spacing: 8) {
             NumberPadActionButton(text: "USDT", titleKerning: 1, titleLineHeight: 18, color: .usdtAccent, variant: .secondary, disabled: true) {}
             if !embedded {
-                NumberPadActionButton(text: t("common__max"), color: .usdtAccent, disabled: busy,
+                NumberPadActionButton(text: t("common__max"), titleKerning: 1, titleLineHeight: 18, color: .usdtAccent, disabled: busy,
                                       isLoading: preparingMaximum)
                 {
                     Task { await useMaximum() }

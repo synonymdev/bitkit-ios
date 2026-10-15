@@ -58,7 +58,8 @@ struct CreateSubscriptionView: View {
                 title: t("subscriptions__choose_recipient"),
                 isDisabled: draft.amount.atomic == 0 ||
                     draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    isLoadingIcon || acceptedEndpoints.isEmpty
+                    isLoadingIcon || acceptedEndpoints.isEmpty,
+                titleKerning: 0, titleLineHeight: 20
             ) {
                 onChooseRecipient()
             }
@@ -169,8 +170,11 @@ struct CreateSubscriptionView: View {
             TextField(
                 t("subscriptions__name_placeholder"),
                 text: $draft.name,
-                testIdentifier: "SubscriptionName"
+                testIdentifier: "SubscriptionName",
+                minContentHeight: 20
             )
+            .kerning(0.4)
+            .environment(\._lineHeightMultiple, 20 / (UIFont(name: Fonts.semiBold, size: 15)?.lineHeight ?? 20))
             .focused($isNameFocused)
         }
     }
@@ -185,7 +189,8 @@ struct CreateSubscriptionView: View {
                 isFocused: $isDescriptionFocused,
                 minHeight: 80,
                 maxHeight: 80,
-                backgroundColor: .white10
+                backgroundColor: .white10,
+                textKerning: 0.4, textLineHeight: 20
             )
         }
     }

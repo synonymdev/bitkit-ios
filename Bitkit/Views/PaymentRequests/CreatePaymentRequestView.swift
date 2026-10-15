@@ -462,7 +462,8 @@ struct PaymentRequestDetailsView: View {
                 title: t("wallet__payment_request_send_request"),
                 icon: Image("paper-plane-tilt").resizable().frame(width: 16, height: 16),
                 isDisabled: selectedEnabledEndpoints.isEmpty,
-                isLoading: paymentRequests.isCreatingRequest
+                isLoading: paymentRequests.isCreatingRequest,
+                titleKerning: 0, titleLineHeight: 20
             ) {
                 await sendRequest()
             }
@@ -536,7 +537,8 @@ struct PaymentRequestDetailsView: View {
                 isFocused: $isNoteFocused,
                 minHeight: 20,
                 maxHeight: 20,
-                backgroundColor: .white10
+                backgroundColor: .white10,
+                textKerning: 0.4, textLineHeight: 20
             )
         }
     }
