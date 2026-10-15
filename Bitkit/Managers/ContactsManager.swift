@@ -9,6 +9,26 @@ private func ensurePubkyPrefix(_ key: String) -> String {
     key.hasPrefix(pubkyPrefix) ? key : "\(pubkyPrefix)\(key)"
 }
 
+private final class ContactRefreshWaiters: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 1
+
+    func join() -> Bool {
+        lock.withLock {
+            guard count > 0 else { return false }
+            count += 1
+            return true
+        }
+    }
+
+    func cancel() -> Bool {
+        lock.withLock {
+            count -= 1
+            return count == 0
+        }
+    }
+}
+
 enum AddContactValidationResult: Equatable {
     case empty
     case existingContact
@@ -131,6 +151,8 @@ class ContactsManager: ObservableObject {
 
     private var contactsRevision = 0
     private var loadGeneration = 0
+    private var contactRefresh: (id: UUID, publicKey: String, task: Task<Void, Error>, waiters: ContactRefreshWaiters)?
+    private let shopContactImporter: ShopContactImporter
     private var isApplyingProfileRefresh = false
     private var profileRefresh: ContactProfileRefresh?
     private var profileRefreshCount = 0
@@ -176,7 +198,8 @@ class ContactsManager: ObservableObject {
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
         },
-        currentDate: @escaping @Sendable () -> Date = { Date() }
+        currentDate: @escaping @Sendable () -> Date = { Date() },
+        shopContactImporter: ShopContactImporter? = nil
     ) {
         self.contactRecords = contactRecords
         self.observedContactRecords = observedContactRecords
@@ -187,6 +210,7 @@ class ContactsManager: ObservableObject {
         self.removeContactRecords = removeContactRecords
         self.forgetRemovedContacts = forgetRemovedContacts
         self.currentDate = currentDate
+        self.shopContactImporter = shopContactImporter ?? ShopContactImporter()
     }
 
     /// Profile refreshes replace rows without counting as a change to the saved contacts.
@@ -244,6 +268,9 @@ class ContactsManager: ObservableObject {
     }
 
     func reset() {
+        shopContactImporter.reset()
+        contactRefresh?.task.cancel()
+        contactRefresh = nil
         loadGeneration += 1
         forgetResolvedProfiles(owner: nil)
         contacts = []
@@ -269,6 +296,58 @@ class ContactsManager: ObservableObject {
     }
 
     // MARK: - Load Contacts
+
+    func importShopContacts(for publicKey: String, isSessionCurrent: @escaping @MainActor @Sendable () -> Bool) async throws {
+        _ = try await shopContactImporter.importPage(publicKey: publicKey, refreshContacts: {
+            try await self.loadFreshObservedContacts(for: publicKey)
+        }, isStillCurrent: isSessionCurrent)
+    }
+
+    func refreshContacts(for publicKey: String) async throws {
+        try Task.checkCancellation()
+        if contactRefresh?.publicKey != publicKey || contactRefresh?.task.isCancelled != false || contactRefresh?.waiters.join() != true {
+            contactRefresh?.task.cancel()
+            let task = Task {
+                try await loadFreshObservedContacts(for: publicKey)
+            }
+            contactRefresh = (UUID(), publicKey, task, ContactRefreshWaiters())
+        }
+        guard let refresh = contactRefresh else { return }
+        let (completion, continuation) = AsyncStream<Result<Void, Error>>.makeStream()
+        let waiter = Task {
+            await continuation.yield(refresh.task.result)
+            continuation.finish()
+        }
+        defer {
+            waiter.cancel()
+            continuation.finish()
+            if contactRefresh?.id == refresh.id, !Task.isCancelled || refresh.task.isCancelled { contactRefresh = nil }
+        }
+        try await withTaskCancellationHandler {
+            for await result in completion {
+                try Task.checkCancellation()
+                return try result.get()
+            }
+            if refresh.task.isCancelled { _ = await refresh.task.result }
+            try Task.checkCancellation()
+        } onCancel: {
+            if refresh.waiters.cancel() { refresh.task.cancel() }
+            continuation.finish()
+        }
+    }
+
+    private func loadFreshObservedContacts(for publicKey: String) async throws {
+        while isLoading {
+            try Task.checkCancellation()
+            for await loading in $isLoading.values {
+                try Task.checkCancellation()
+                if !loading { break }
+            }
+        }
+        try Task.checkCancellation()
+        try await loadObservedContacts(for: publicKey)
+        try Task.checkCancellation()
+    }
 
     func loadContactsIfNeeded(for publicKey: String) async throws {
         while !hasLoaded {

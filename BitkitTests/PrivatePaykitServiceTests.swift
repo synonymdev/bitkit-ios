@@ -996,6 +996,53 @@ final class PrivatePaykitServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testContactPreparationRevalidatesAfterPruningDuringSessionCheck() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        PrivatePaykitService.clearDeletedContactCleanupPending()
+        let key = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        for change in ["current", "removed", "session", "generation", "cancelled"] {
+            let contacts = ContactsManager()
+            contacts.contacts = [.init(publicKey: key, profile: PubkyProfile.placeholder(publicKey: key))]
+            let snapshot = contacts.savedContactsSnapshot()
+            var linked: [String] = []
+            let service = PrivatePaykitService(publicationOperations: .init(
+                currentPublicKey: { "pubkylocal" },
+                ensureLink: { linked.append($0); return .linked },
+                buildEndpoints: { _ in [] },
+                syncPaymentLists: { _ in .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: []) }
+            ))
+            var sessionCurrent = true
+            var prune: Task<Void, Never>?
+            let preparation = Task {
+                await service.prepareSavedContacts(snapshot.publicKeys, wallet: WalletViewModel(), isSessionCurrent: {
+                    let current = sessionCurrent && snapshot.isCurrent()
+                    if prune == nil {
+                        let pruned = self.expectation(description: "Prune updates membership during session validation")
+                        prune = Task.detached {
+                            await service.pruneUnsavedContactState(savedPublicKeys: snapshot.publicKeys)
+                            if change == "generation" { await service.invalidateContactPreparation() }
+                            pruned.fulfill()
+                        }
+                        // Finish the actor update while preparation awaits this MainActor predicate.
+                        XCTAssertEqual(XCTWaiter.wait(for: [pruned], timeout: 5), .completed)
+                        if change == "removed" { contacts.contacts = [] }
+                        if change == "session" { sessionCurrent = false }
+                        if change == "cancelled" { withUnsafeCurrentTask { $0?.cancel() } }
+                    }
+                    return current
+                })
+            }
+            let error = await preparation.value
+            await prune?.value
+            try await service.awaitContactPreparation()
+            XCTAssertNil(error, change)
+            XCTAssertNotNil(prune, change)
+            XCTAssertEqual(linked, change == "current" ? [key] : [], change)
+            await service.invalidateContactPreparation()
+        }
+    }
+
+    @MainActor
     func testBackgroundPreparationStopsPublicationWhenSessionEnds() async throws {
         PrivatePaykitService.setContactSharingCleanupPending(false)
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"

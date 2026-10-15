@@ -32,6 +32,27 @@ final class PaykitContactLifecycleTests: XCTestCase {
         }
     }
 
+    func testShopImportUsesAtomicSdkOperationAndRejectsAnEndedSession() async throws {
+        let sdk = ContactLifecycleSdk(noPointer: .init())
+        let owner = "pubky" + String(repeating: "y", count: 52)
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let keys = [sdk.publicKey, sdk.publicKey, owner]
+        sdk.shopImportResult = try [XCTUnwrap(sdk.record)]
+        let added = try await service.importShopContacts(publicKeys: keys, expectedIdentity: owner) { true }
+        XCTAssertTrue(added)
+        XCTAssertEqual(sdk.shopImports.first?.identity, owner)
+        XCTAssertEqual(sdk.shopImports.first?.keys, keys)
+        sdk.shopImportResult = []
+        let unchanged = try await service.importShopContacts(publicKeys: keys, expectedIdentity: owner) { true }
+        XCTAssertFalse(unchanged)
+        do {
+            _ = try await service.importShopContacts(publicKeys: keys, expectedIdentity: owner) { false }
+            XCTFail("An ended session must not import")
+        } catch PubkyServiceError.identityChanged {}
+        XCTAssertEqual(sdk.shopImports.count, 2)
+        XCTAssertFalse(sdk.events.contains("save-and-unblock"))
+    }
+
     func testActiveSubscriptionPreventsDeletionUntilItEnds() async throws {
         let fixedEndTimestamp = "2100-02-01T00:00:00Z"
         let cases: [(role: PaymentRequestLocalRole, endsAt: String?, appId: String)] = [
@@ -400,6 +421,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
 private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
     var events: [String] = []
+    var shopImports: [(identity: String, keys: [String])] = []
+    var shopImportResult: [ContactRecord] = []
     var requests: [PaymentRequestRecord] = []
     var failWithdrawal = false
     var failBlock = false
@@ -441,6 +464,11 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     override func identityStatus() async throws -> IdentityStatus? {
         identityReads += 1
         return IdentityStatus(publicKey: publicKey, capability: .privateLinkCapable)
+    }
+
+    override func importContacts(expectedIdentity: String, publicKeys: [String]) async throws -> [ContactRecord] {
+        shopImports.append((expectedIdentity, publicKeys))
+        return shopImportResult
     }
 
     override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
