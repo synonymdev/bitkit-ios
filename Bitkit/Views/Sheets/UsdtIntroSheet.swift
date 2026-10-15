@@ -25,6 +25,7 @@ struct UsdtIntroSheet: View {
 }
 
 struct UsdtIntroContent: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var isEnablePrompt = false
     let onDecline: () -> Void
     let onEnable: () -> Void
@@ -45,11 +46,14 @@ struct UsdtIntroContent: View {
                     .frame(minHeight: geometry.size.height, alignment: .bottom)
                 }
             }
-            HStack(spacing: 16) {
+            let buttonLayout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 16))
+                : AnyLayout(HStackLayout(spacing: 16))
+            buttonLayout {
                 CustomButton(title: t(isEnablePrompt ? "common__cancel" : "usdt__no_thanks"), variant: .secondary, shouldExpand: true,
-                             action: onDecline)
+                             titleKerning: 0, titleLineHeight: 20, action: onDecline)
                     .accessibilityIdentifier(isEnablePrompt ? "UsdtEnablePromptCancel" : "UsdtIntroDecline")
-                CustomButton(title: t("usdt__enable"), shouldExpand: true, action: onEnable)
+                CustomButton(title: t("usdt__enable"), shouldExpand: true, titleKerning: 0, titleLineHeight: 20, action: onEnable)
                     .accessibilityIdentifier(isEnablePrompt ? "UsdtEnablePromptContinue" : "UsdtIntroEnable")
             }
             .padding(.top, 32)

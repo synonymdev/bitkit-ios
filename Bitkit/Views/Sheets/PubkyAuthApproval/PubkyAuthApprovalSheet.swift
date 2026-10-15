@@ -285,7 +285,8 @@ struct PubkyAuthApprovalSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             if config.request.bitkitClaim?.requiresUsdtAddress != true {
                 Toggle(isOn: $shareUsdt) {
-                    BodyMText(t("pubky_auth__share_usdt_optional"), kerning: 0, lineHeight: 22)
+                    BodyMText(t(config.request.bitkitClaim?.sharesBitcoin == true
+                            ? "pubky_auth__share_usdt_optional" : "pubky_auth__share_usdt"), kerning: 0, lineHeight: 22)
                 }
                 .tint(.blueAccent)
                 .accessibilityIdentifier("PubkyAuthShareUsdt")
@@ -479,7 +480,9 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var introDescriptionKey: String {
-        config.request.bitkitClaim?.sharesBitcoin == true ? "pubky_auth__watch_only_intro_description" : "pubky_auth__usdt_intro_description"
+        if config.request.bitkitClaim?.sharesBitcoin == true { return "pubky_auth__watch_only_intro_description" }
+        return config.request.bitkitClaim?.requiresUsdtAddress == true
+            ? "pubky_auth__usdt_intro_description" : "pubky_auth__usdt_intro_optional"
     }
 
     private var sharingSuccessKey: String {

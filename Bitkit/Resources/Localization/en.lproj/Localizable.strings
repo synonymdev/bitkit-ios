@@ -1904,6 +1904,7 @@
 "wallet__payment_request_after_expiry" = "Received · After expiry";
 
 "pubky_auth__usdt_intro_description" = "To earn, you need to share your USDT address with Paykit. It can view sales activity, but cannot spend funds.";
+"pubky_auth__usdt_intro_optional" = "You can share your USDT address with Paykit to receive earnings. It can view sales activity, but cannot spend funds.";
 "pubky_auth__usdt_unavailable" = "Your USDT address is unavailable. Please try again.";
 "pubky_auth__shared_usdt" = "Also, you shared a USDT address with Paykit.";
 "pubky_auth__shared_bitcoin" = "Also, you shared a watch-only Bitcoin account with Paykit.";
@@ -1922,6 +1923,7 @@
 "usdt__copy_details" = "Copy Details";
 
 "pubky_auth__share_usdt_optional" = "Also share my USDT address";
+"pubky_auth__share_usdt" = "Share my USDT address";
 
 "usdt__receive_network_title" = "USDT Network";
 

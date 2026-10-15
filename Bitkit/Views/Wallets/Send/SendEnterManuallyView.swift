@@ -80,7 +80,7 @@ struct SendEnterManuallyView: View {
             return
         }
 
-        if uri.lowercased().hasPrefix("ethereum:") {
+        if uri.lowercased().hasPrefix("ethereum:") || uri.lowercased().hasPrefix("0x") {
             await scanner.handleSendScan(uri, scope: hwSend.isActive ? .onchainPayments : .unrestricted) { route in
                 if let route { navigationPath.append(route) }
             }

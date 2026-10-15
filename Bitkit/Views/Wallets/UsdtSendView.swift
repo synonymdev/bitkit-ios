@@ -370,7 +370,7 @@ struct UsdtSendView: View {
         CustomButton(
             title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
             icon: Image(showDetails ? "eye-slash" : "speed-normal").resizable().frame(width: 16, height: 16)
-                .foregroundColor(.usdtAccent), background: Color.white06, titleKerning: 0, titleLineHeight: 13
+                .foregroundColor(.usdtAccent), background: Color.white06, showsHighlightShadow: false, titleKerning: 0, titleLineHeight: 13
         ) { showDetails.toggle() }
             .frame(maxWidth: .infinity)
             .accessibilityIdentifier("UsdtReviewDetails")
@@ -466,7 +466,9 @@ struct UsdtSendView: View {
                 }
             }
             HStack(alignment: .top, spacing: 16) {
-                SendSectionView(t("wallet__activity_address"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                SendSectionView(t("wallet__activity_address"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18,
+                                alignDividerToBottom: true)
+                {
                     BodySSBText(quote.recipient, kerning: 0, lineHeight: 20)
                         .lineLimit(showFullRecipient ? nil : 1).truncationMode(.middle)
                         .fixedSize(horizontal: false, vertical: true)
@@ -477,10 +479,14 @@ struct UsdtSendView: View {
                         .accessibilityHint(t(showFullRecipient ? "common__hide_details" : "common__show_details"))
                         .accessibilityIdentifier("UsdtReviewAddress")
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 if quote.destination != .arbitrum {
-                    UsdtDetailCell(title: t("usdt__recipient_network"), value: quote.destination.label, icon: "usdt-network")
+                    UsdtDetailCell(title: t("usdt__recipient_network"), value: quote.destination.label, icon: "usdt-network",
+                                   alignDividerToBottom: true)
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -510,10 +516,12 @@ struct UsdtSendView: View {
             }
             Spacer(minLength: 16)
             HStack(spacing: 16) {
-                CustomButton(title: t("wallet__send_details"), variant: .secondary, isDisabled: quote == nil, shouldExpand: true) {
+                CustomButton(title: t("wallet__send_details"), variant: .secondary, isDisabled: quote == nil, shouldExpand: true,
+                             titleKerning: 0, titleLineHeight: 20)
+                {
                     if let quote { onDetails(quote.id) }
                 }
-                CustomButton(title: t("common__close"), shouldExpand: true) {
+                CustomButton(title: t("common__close"), shouldExpand: true, titleKerning: 0, titleLineHeight: 20) {
                     if let onClose { onClose() } else { dismiss() }
                 }
             }

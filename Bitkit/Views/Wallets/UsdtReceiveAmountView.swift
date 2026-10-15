@@ -18,7 +18,7 @@ struct UsdtReceiveAmountView: View {
                 UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount)
                 Spacer(minLength: 16)
                 if let error {
-                    BodySText(error, textColor: .brandAccent)
+                    BodySText(error, textColor: .brandAccent, kerning: 0, lineHeight: 20)
                         .padding(.bottom, 16)
                 }
             }
@@ -32,7 +32,7 @@ struct UsdtReceiveAmountView: View {
                 amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
             }
             .padding(.bottom, 36)
-            CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy) {
+            CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy, titleKerning: 0, titleLineHeight: 20) {
                 guard canContinue else { return }
                 if let parsed = try? parsePaykitAmountInput(asset: .usdt, value: amount) { amount = parsed.value }
                 await onContinue()

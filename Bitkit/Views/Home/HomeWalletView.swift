@@ -78,11 +78,12 @@ struct HomeWalletView: View {
                 } additionalWallet: {
                     Button { navigation.navigate(.usdtWallet) } label: {
                         WalletBalanceContent {
-                            CaptionMText("USDT")
+                            CaptionMText("USDT", kerning: 1)
                         } icon: {
                             Image("tether-circle").resizable().frame(width: 24, height: 24)
                         } amount: {
-                            SubtitleText(settings.hideBalance ? " • • • • •" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—")
+                            BodyMSBText(settings.hideBalance ? " • • • • •" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—",
+                                        kerning: 0, lineHeight: 22)
                                 .lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }

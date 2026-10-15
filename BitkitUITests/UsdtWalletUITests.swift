@@ -2,6 +2,53 @@ import XCTest
 
 final class UsdtWalletUITests: XCTestCase {
     @MainActor
+    func testOrdinaryManualEntryRoutesBareAddressToUsdt() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
+        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.launchEnvironment["USDT_BRIDGE_NETWORKS"] = "polygon"
+        app.launch()
+        if app.buttons["Continue"].waitForExistence(timeout: 3) { app.buttons["Continue"].tap() }
+        if app.buttons["SkipIntro"].waitForExistence(timeout: 3) {
+            app.buttons["SkipIntro"].tap()
+            XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
+            app.buttons["NewWallet"].tap()
+        }
+        XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
+        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) { app.buttons["UsdtIntroEnable"].tap() }
+        app.buttons["Send"].tap()
+        XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
+        app.buttons["RecipientManual"].tap()
+        let input = app.textViews["RecipientInput"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        let recipient = "0x18503bD685aF84E6A7bC289898bAa1C3f5d8527E"
+        input.tap()
+        input.typeText(recipient)
+        let continueButton = app.buttons["AddressContinue"]
+        let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: continueButton)
+        wait(for: [enabled], timeout: 5)
+        continueButton.tap()
+        if app.buttons["UsdtEnablePromptContinue"].waitForExistence(timeout: 3) { app.buttons["UsdtEnablePromptContinue"].tap() }
+        XCTAssertTrue(app.buttons["UsdtReview"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["$ 0"].exists)
+        XCTAssertFalse(app.buttons["UsdtReview"].isEnabled)
+        let network = app.buttons["UsdtNetwork"]
+        XCTAssertTrue(network.label.contains("Arbitrum One"))
+        XCTAssertTrue(network.isEnabled)
+        network.tap()
+        XCTAssertTrue(app.buttons["UsdtNetwork-Polygon"].waitForExistence(timeout: 5))
+        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        XCTAssertTrue(app.buttons["UsdtReview"].waitForExistence(timeout: 5))
+        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        let restoredRecipient = app.textViews["UsdtRecipient"]
+        XCTAssertTrue(restoredRecipient.waitForExistence(timeout: 5))
+        XCTAssertEqual(restoredRecipient.value as? String, recipient)
+        capture(app, "Manual USDT recipient preserved")
+    }
+
+    @MainActor
     func testPaymentUsesUsdtOnLocalArbitrumFork() async throws {
         let client: String
         do {

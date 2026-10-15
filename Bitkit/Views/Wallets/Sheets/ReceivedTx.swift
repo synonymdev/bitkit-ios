@@ -46,7 +46,8 @@ struct ReceivedTx: View {
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: title, topPadding: config.details.usdtAmount != nil ? 28 : 32,
                                 bottomPadding: config.details.usdtAmount != nil ? 22 : 24,
-                                dragIndicatorTopPadding: config.details.usdtAmount != nil ? 8 : nil)
+                                dragIndicatorTopPadding: config.details.usdtAmount != nil ? 8 : nil,
+                                titleKerning: config.details.usdtAmount != nil ? 0 : 0.4)
                     if let amount = config.details.usdtAmount {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: amount), displayAmount: usdtOverviewAmount(amount))
                             .accessibilityIdentifier("ReceivedTransaction")
@@ -58,10 +59,17 @@ struct ReceivedTx: View {
                     Spacer()
                     HStack(spacing: 16) {
                         if config.details.usdtTransferId != nil {
-                            CustomButton(title: t("wallet__send_details"), variant: .secondary, action: showUsdtDetails)
-                                .accessibilityIdentifier("ReceivedTransactionDetails")
+                            CustomButton(
+                                title: t("wallet__send_details"),
+                                variant: .secondary,
+                                titleKerning: 0,
+                                titleLineHeight: 20,
+                                action: showUsdtDetails
+                            )
+                            .accessibilityIdentifier("ReceivedTransactionDetails")
                         }
-                        CustomButton(title: buttonText) { sheets.hideSheet() }
+                        CustomButton(title: buttonText, titleKerning: config.details.usdtAmount != nil ? 0 : 0.4,
+                                     titleLineHeight: config.details.usdtAmount != nil ? 20 : nil) { sheets.hideSheet() }
                             .accessibilityIdentifier("ReceivedTransactionButton")
                     }
                 }

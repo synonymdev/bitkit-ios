@@ -158,9 +158,9 @@ struct SendAmountView: View {
                 HStack(alignment: .bottom) {
                     if app.paykitUsesUsdt {
                         VStack(alignment: .leading, spacing: 4) {
-                            CaptionMText(t("wallet__send_available"))
+                            CaptionMText(t("wallet__send_available"), kerning: 1, lineHeight: 18)
                             BodySSBText(settings.hideBalance ? "•••••" : "<accent>$</accent> " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"),
-                                        accentColor: .textSecondary)
+                                        accentColor: .textSecondary, kerning: 0, lineHeight: 20)
                         }
                     } else {
                         AvailableAmount(
@@ -187,6 +187,8 @@ struct SendAmountView: View {
                     NumberPadActionButton(
                         text: selectedSourceLabel,
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        titleKerning: app.paykitUsesUsdt ? 1 : 0.8,
+                        titleLineHeight: app.paykitUsesUsdt ? 18 : nil,
                         color: selectedSourceColor,
                         variant: canSwitchFundingSource ? .primary : .secondary,
                         disabled: isContinuing,
@@ -232,11 +234,14 @@ struct SendAmountView: View {
                         maxDecimals: 6
                     ) } else { amountViewModel.handleNumberPadInput(key, currency: currency) }
                 }
+                .frame(maxHeight: app.paykitUsesUsdt ? .infinity : nil)
 
                 CustomButton(
                     title: t("common__continue"),
                     isDisabled: !isValidAmount || conversionError != nil || hwSend.isFundingSourceLoading,
-                    isLoading: isContinuing
+                    isLoading: isContinuing,
+                    titleKerning: app.paykitUsesUsdt ? 0 : 0.4,
+                    titleLineHeight: app.paykitUsesUsdt ? 20 : nil
                 ) {
                     await onContinue()
                 }
