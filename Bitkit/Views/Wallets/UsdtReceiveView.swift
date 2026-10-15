@@ -91,14 +91,17 @@ struct UsdtReceiveView: View {
                 networkRow(nil)
                 ForEach(networks, id: \.self) { networkRow($0) }
             }
+            if let error { BodySText(error, textColor: .textSecondary) }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 16) {
             if usdt.depositsConfigured {
                 CustomButton(title: t("usdt__deposit_history"), titleKerning: 0, titleLineHeight: 20) {
                     sheets.hideSheet()
                     navigation.navigate(.usdtDepositHistory)
                 }
+                .minimumScaleFactor(0.7)
                 .accessibilityIdentifier("UsdtDepositHistory")
             }
-            if let error { BodySText(error, textColor: .textSecondary) }
         }
     }
 
