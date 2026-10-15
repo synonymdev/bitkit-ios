@@ -5,6 +5,7 @@ extension Color {
 
     static let brandAccent = Color(hex: 0xFF4400)
     static let blueAccent = Color(hex: 0x0085FF)
+    static let usdtAccent = Color(hex: 0x009393)
     static let greenAccent = Color(hex: 0x75BF72)
     static let purpleAccent = Color(hex: 0xB95CE8)
     static let redAccent = Color(hex: 0xE95164)

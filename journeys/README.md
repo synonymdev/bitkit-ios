@@ -76,6 +76,8 @@ what the journeys assert on, and it avoids the image-size limits the Android run
 
 ## Backend preconditions
 
+In a build with USDT configured, resolve the introductory USDT sheet by enabling or declining it before starting an unrelated journey. The choice persists; a fresh undecided wallet can show the sheet after Home appears. USDT journeys state whether they require opt-in.
+
 Most journeys need regtest and a reachable LSP. Start the stack from a sibling `bitkit-docker`
 checkout on `main` (same stack `Docs/AI_DEVICE_TESTS.md` uses):
 
@@ -164,6 +166,8 @@ journey PR, which is what made this file conflict on every merge.
 
 | Capability | Provided by |
 | --- | --- |
+| USDT wallet navigation without funding | an onboarded build with USDT configured; provider errors may remain visible while offline — [USDT QA](../Docs/USDT-QA.md) |
+| Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
 | Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |
 | A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
@@ -211,6 +215,10 @@ authenticated Contacts list. It has not yet been ported to Android.
 `payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
+
+`usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
+Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
+A submitted payment must return to the wallet without reopening the paid draft on either platform.
 
 `coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
 name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.

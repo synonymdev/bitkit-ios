@@ -17,6 +17,7 @@ enum SheetID: String, CaseIterable {
     case paymentRequests
     case subscription
     case quickpay
+    case usdtIntro
     case receive
     case receivedTx
     case btcpayConnection
@@ -129,6 +130,10 @@ class SheetViewModel: ObservableObject {
 
     var isAnySheetOpen: Bool {
         return activeSheetConfiguration != nil
+    }
+
+    var canPresentReceivedTx: Bool {
+        !isReplacingSheet && (activeSheetConfiguration == nil || activeSheetConfiguration?.id == .receive)
     }
 
     private func playHaptics(for sheetId: SheetID) {
@@ -316,6 +321,14 @@ class SheetViewModel: ObservableObject {
                 activeSheetConfiguration = nil
             }
         }
+    }
+
+    var usdtIntroSheetItem: UsdtIntroSheetItem? {
+        get {
+            guard activeSheetConfiguration?.id == .usdtIntro else { return nil }
+            return UsdtIntroSheetItem()
+        }
+        set { if newValue == nil { activeSheetConfiguration = nil } }
     }
 
     var quickpaySheetItem: QuickpaySheetItem? {

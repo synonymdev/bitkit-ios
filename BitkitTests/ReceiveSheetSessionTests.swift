@@ -19,10 +19,15 @@ final class ReceiveSheetSessionTests: XCTestCase {
         XCTAssertNotEqual(firstID, secondID)
     }
 
-    func testPaykitRoutesDoNotRequireInvoiceRefresh() {
-        let draft = PaykitPaymentRequestDraft(amountSats: 1000, note: "Lunch", expiresAt: Date(timeIntervalSince1970: 86400))
+    func testPaykitAndUsdtRoutesDoNotRequireInvoiceRefresh() {
+        let draft = PaykitPaymentRequestDraft(
+            amount: PaykitAmount(asset: .btc, atomic: 1000),
+            note: "Lunch",
+            expiresAt: Date(timeIntervalSince1970: 86400)
+        )
         let target = PaykitPaymentRequestTarget(publicKey: "pubkycontact")
         let routes: [ReceiveRoute] = [
+            .usdt,
             .requestOrPay(publicKey: target.publicKey),
             .paymentRequestRecipient(draft),
             .paymentRequestAmount(draft, target),

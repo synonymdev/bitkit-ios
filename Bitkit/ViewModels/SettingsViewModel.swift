@@ -99,6 +99,8 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .normal
     @AppStorage("hideBalance") var hideBalance: Bool = false
+    @AppStorage(UsdtPreference.key) var usdtPreference: UsdtPreference = .undecided
+
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
@@ -213,6 +215,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         _swipeBalanceToHide = true
         defaultTransactionSpeed = .normal
         hideBalance = false
+        usdtPreference = .undecided
         hideBalanceOnOpen = false
         readClipboard = false
         warnWhenSendingOver100 = false
@@ -245,6 +248,14 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     // MARK: - Computed Properties
+
+    var isUsdtEnabled: Bool {
+        Env.isUsdtEnabled && usdtPreference == .enabled
+    }
+
+    func protectUsdtFunds(_ hasProtectedFunds: Bool) {
+        if hasProtectedFunds { usdtPreference = .enabled }
+    }
 
     var electrumHasEdited: Bool {
         let formHost = electrumHost.trimmingCharacters(in: .whitespaces)
@@ -866,6 +877,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
     private func syncAppStorageFromDefaults() {
+        usdtPreference = UsdtPreference(rawValue: defaults.string(forKey: UsdtPreference.key) ?? "") ?? .undecided
         _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
         defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "")
         hideBalance = defaults.bool(forKey: "hideBalance")

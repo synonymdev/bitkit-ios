@@ -90,7 +90,7 @@ extension PrivatePaykitService {
         proof: PendingPaykitPaymentProof, request: PaykitPaymentRequest
     ) -> PublicPaykitPaymentLaunchResult? {
         guard proof.requestId == request.id, proof.retainedHardwareRetry != nil,
-              proof.onchainAmountSats == request.amountSats, proof.billingPeriod == request.billingPeriod,
+              request.matchesOnchainPayment(proof), proof.billingPeriod == request.billingPeriod,
               let address = proof.onchainAddress,
               request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
         else { return nil }
@@ -249,7 +249,8 @@ extension PrivatePaykitService {
                     uniquingKeysWith: { first, _ in first }
                 ),
                 paymentListVersion: paymentListVersion
-            )
+            ),
+            endpoints: payableEndpoints
         )
     }
 

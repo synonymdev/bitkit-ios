@@ -40,7 +40,7 @@ struct NumberPadActionButton: View {
             .background(background)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(variant == .secondary ? color : Color.clear, lineWidth: 2)
+                    .stroke(variant == .secondary ? color : Color.clear, lineWidth: 1)
             )
             .cornerRadius(8)
         }

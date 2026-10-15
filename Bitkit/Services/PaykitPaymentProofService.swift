@@ -8,10 +8,11 @@ import Paykit
 enum PaykitPaymentProofKind: String, Codable {
     case lightning = "bitcoin-bolt11-preimage"
     case onchain = "bitcoin-onchain-txid"
+    case usdt = "erc20-transfer-eip712"
 
     init?(paymentEndpointIdentifier: String) {
         guard let method = PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier) else { return nil }
-        self = method.onchainNetwork == nil ? .lightning : .onchain
+        self = method == .usdtArbitrum ? .usdt : method.onchainNetwork == nil ? .lightning : .onchain
     }
 }
 
@@ -53,6 +54,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     var paymentStarted: Bool
     var paymentIdentifier: String?
     var proofData: String?
+    var conversionQuoteId: String?
     var onchainAddress: String?
     var onchainAmountSats: UInt64?
     var onchainWalletId: String?
@@ -103,6 +105,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         paymentStarted: Bool = false,
         paymentIdentifier: String?,
         proofData: String?,
+        conversionQuoteId: String? = nil,
         onchainAddress: String? = nil,
         onchainAmountSats: UInt64? = nil,
         onchainWalletId: String? = nil,
@@ -119,6 +122,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         self.paymentStarted = paymentStarted
         self.paymentIdentifier = paymentIdentifier
         self.proofData = proofData
+        self.conversionQuoteId = conversionQuoteId
         self.onchainAddress = onchainAddress
         self.onchainAmountSats = onchainAmountSats
         self.onchainWalletId = onchainWalletId
@@ -339,7 +343,8 @@ actor PaykitPaymentProofService {
         request: PaykitPaymentRequest,
         paymentAppId: String,
         paymentEndpointIdentifier: String,
-        kind: PaykitPaymentProofKind
+        kind: PaykitPaymentProofKind,
+        paymentTerms: PaykitRequestPricing.Payment? = nil
     ) async throws {
         if try await attemptService.hasAttempt(for: request.id) {
             if kind == .onchain,
@@ -349,12 +354,21 @@ actor PaykitPaymentProofService {
             }
             throw PaykitPaymentRequestError.operationInProgress
         }
-        let proof = try await pendingProof(
+        var proof = try await pendingProof(
             request: request,
             paymentAppId: paymentAppId,
             paymentEndpointIdentifier: paymentEndpointIdentifier,
             kind: kind
         )
+        guard let method = PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        let payment = try request.payment(using: method, quoteId: paymentTerms?.quoteId)
+        guard payment.isValid(at: Date()), paymentTerms == nil || payment == paymentTerms else {
+            throw PaykitPaymentRequestError.amountMismatch
+        }
+        proof.conversionQuoteId = payment.quoteId
+        if kind == .onchain { proof.onchainAmountSats = payment.amount.atomic }
         try await mutationLock.withLock { try await prepareLocked(request: request, proof: proof) }
     }
 
@@ -467,7 +481,9 @@ actor PaykitPaymentProofService {
         return identity
     }
 
-    func authorizeOnchainRecovery(_ attempt: OnchainSendAttempt, restoreStartedProof: Bool = true) async throws -> PaykitPaymentRequest {
+    func authorizeOnchainRecovery(
+        _ attempt: OnchainSendAttempt, restoreStartedProof: Bool = true
+    ) async throws -> (request: PaykitPaymentRequest, paymentDeadline: PaykitPreciseInstant?) {
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
@@ -489,7 +505,7 @@ actor PaykitPaymentProofService {
         let request: PaykitPaymentRequest
         if let period = proof.billingPeriod {
             guard let subscription = PaykitSubscription(record: record), subscription.isPayer,
-                  subscription.isActive(at: now), !subscription.hasPaymentDeadline,
+                  subscription.isActive(at: now),
                   subscription.recurrence.unit.isSupported, subscription.recurrence.canMaterializePeriods,
                   period.startsAt <= now, subscription.recurrence.contains(period)
             else { throw PaykitPaymentRequestError.requestUnavailable }
@@ -500,7 +516,7 @@ actor PaykitPaymentProofService {
             }
             request = original
         }
-        guard request.id == requestId, request.amountSats == attempt.amountSats, !request.requiresAcceptance,
+        guard request.id == requestId, request.matchesOnchainPayment(proof, amountSats: attempt.amountSats), !request.requiresAcceptance,
               request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier),
               !request.isExpired(at: Date()), record.state != .proofSubmitted,
               !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: proof.billingPeriod) })
@@ -518,7 +534,7 @@ actor PaykitPaymentProofService {
                 try await persist(proofs)
             }
         }
-        return request
+        return try (request, request.submissionDeadline(quoteId: proof.conversionQuoteId))
     }
 
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
@@ -621,7 +637,7 @@ actor PaykitPaymentProofService {
         }
         pendingProofs[index].paymentStarted = true
         pendingProofs[index].onchainAddress = address
-        pendingProofs[index].onchainAmountSats = request.amountSats
+        guard request.matchesOnchainPayment(pendingProofs[index]) else { throw PaykitPaymentRequestError.amountMismatch }
         pendingProofs[index].onchainWalletId = hardwareWalletId
         pendingProofs[index].paymentIdentifier = signedTxid
         pendingProofs[index].hardwareSignedTransaction = serializedTx
@@ -1105,7 +1121,11 @@ actor PaykitPaymentProofService {
                 }) else { return }
                 // Only an exact, definitely unsent receipt authorizes releasing its consumed version.
                 if let version = original.privatePaymentListVersion {
-                    try await privatePaykitService.releaseUnsentPaymentListVersion(publicKey: request.counterparty, version: version, previousVersion: original.previousPrivatePaymentListVersion)
+                    try await privatePaykitService.releaseUnsentPaymentListVersion(
+                        publicKey: request.counterparty,
+                        version: version,
+                        previousVersion: original.previousPrivatePaymentListVersion
+                    )
                 }
                 do {
                     try await persist(proofs.filter { $0 != original })
@@ -1337,7 +1357,7 @@ actor PaykitPaymentProofService {
     func retainedHardwarePaymentForRetry(request: PaykitPaymentRequest) async throws -> PendingPaykitPaymentProof? {
         let identity = try await currentIdentity()
         let proof = await retainedHardwarePaymentsForRetry(identity: identity)[request.id]
-        guard let proof, proof.onchainAmountSats == request.amountSats, proof.billingPeriod == request.billingPeriod,
+        guard let proof, request.matchesOnchainPayment(proof), proof.billingPeriod == request.billingPeriod,
               request.acceptedPaymentEndpointIdentifiers.contains(proof.paymentEndpointIdentifier)
         else { return nil }
         return proof
@@ -1397,7 +1417,7 @@ actor PaykitPaymentProofService {
     func consumeOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, activeIdentity: String?) async {
         if resolution.walletId != WalletScope.default {
             guard PubkyPublicKeyFormat.matches(activeIdentity, resolution.identity),
-                  PubkyPublicKeyFormat.matches((try? await sdk.identityStatus())?.publicKey, resolution.identity)
+                  await PubkyPublicKeyFormat.matches((try? sdk.identityStatus())?.publicKey, resolution.identity)
             else {
                 if Self.onchainPaymentResolutionSubject.value == resolution {
                     Self.onchainPaymentResolutionSubject.send(nil)
@@ -1437,6 +1457,11 @@ actor PaykitPaymentProofService {
         return identity
     }
 
+    func submitUsdtProof(_ proof: PendingPaykitPaymentProof) async -> Bool {
+        guard proof.kind == .usdt else { return false }
+        return await submit(proof)
+    }
+
     @discardableResult
     private func submit(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
         guard !pendingProof.hasUnsupportedOnchainWallet ||
@@ -1459,6 +1484,7 @@ actor PaykitPaymentProofService {
             let isAlreadyQueued = request.paymentProofs.contains(where: {
                 Self.billingPeriod($0.billingPeriod, matches: pendingProof.billingPeriod) &&
                     $0.paymentAppId == pendingProof.paymentAppId &&
+                    $0.conversionQuoteId == pendingProof.conversionQuoteId &&
                     $0.paymentEndpointIdentifier == pendingProof.paymentEndpointIdentifier &&
                     Self.proofValues($0.proof.exportText()) == Self.proofValues(proofText)
             })
@@ -1472,7 +1498,7 @@ actor PaykitPaymentProofService {
                         paymentAppId: pendingProof.paymentAppId,
                         paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
                         allowanceId: nil,
-                        conversionQuoteId: nil,
+                        conversionQuoteId: pendingProof.conversionQuoteId,
                         proof: Paykit.PrivateJsonObject(text: proofText)
                     )
                 )
@@ -1483,7 +1509,7 @@ actor PaykitPaymentProofService {
                     logWarning("Paykit payment proof remains queued for private delivery: \(error)")
                 }
             }
-            await removeRequestProofs(pendingProof)
+            if pendingProof.kind != .usdt { await removeRequestProofs(pendingProof) }
             return true
         } catch {
             logWarning("Failed to queue a Paykit payment proof: \(error)")
@@ -1593,6 +1619,8 @@ actor PaykitPaymentProofService {
             return methodId == .bitcoinLightningBolt11 || methodId == .bitcoinLightningLnurl
         case .onchain:
             return methodId.onchainNetwork != nil
+        case .usdt:
+            return methodId == .usdtArbitrum
         }
     }
 
@@ -1620,8 +1648,10 @@ actor PaykitPaymentProofService {
     }
 
     private static func proofText(kind: PaykitPaymentProofKind, data: String) throws -> String {
+        if kind == .usdt { return data }
+        let values = ["data": data, "type": kind.rawValue]
         let encoded = try JSONSerialization.data(
-            withJSONObject: ["data": data, "type": kind.rawValue],
+            withJSONObject: values,
             options: [.sortedKeys]
         )
         return String(decoding: encoded, as: UTF8.self)

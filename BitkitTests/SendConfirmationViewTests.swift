@@ -3,6 +3,26 @@ import LDKNode
 import XCTest
 
 final class SendConfirmationViewTests: XCTestCase {
+    func testLightningPaymentRejectsAmountsThatDifferFromTheFixedInvoice() async throws {
+        for (invoiceAmount, reviewedAmount, expectedSend) in [(10000, 1000, false), (10000, 10000, true), (0, 1000, true)] {
+            var sent = false
+            do {
+                try await SendConfirmationView.sendLightningPayment(
+                    invoiceAmountSats: UInt64(invoiceAmount),
+                    reviewedAmountSats: UInt64(reviewedAmount),
+                    request: nil,
+                    authorize: { _ in },
+                    onAuthorizationFailure: { _ in }
+                ) { sent = true }
+                XCTAssertTrue(expectedSend)
+            } catch {
+                XCTAssertFalse(expectedSend)
+                XCTAssertEqual(error as? PaykitPaymentRequestError, .amountMismatch)
+            }
+            XCTAssertEqual(sent, expectedSend)
+        }
+    }
+
     func testRetainedHardwareConfirmationLocksSignedFeeRateDespitePresetEdits() {
         let signed = HwFundingSignedTx(serializedTx: "original", miningFeeSats: 181, feeRate: 2.25, totalSpent: 42181)
         for preset: UInt32? in [1, 17, 99, nil] {

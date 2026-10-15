@@ -94,6 +94,10 @@ extension PrivatePaykitService {
             }
         }
 
+        if PublicPaykitService.isUsdtPaymentOptionEnabled(), let endpoint = try await wallet.usdtWallet.paymentEndpointForPublishing() {
+            endpoints.append(endpoint)
+        }
+
         guard !endpoints.isEmpty else {
             throw PublicPaykitError.noSupportedEndpoint
         }

@@ -7,8 +7,8 @@ struct SwipeButton: View {
     var isDisabled = false
     /// Blocks interaction and shows the knob spinner while an operation is running.
     var isLoading = false
-    /// Shows the knob at the end of the track, as after a completed swipe.
-    var isConfirmed = false
+    var isSubmitted = false
+    var isComplete = false
     /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
     var swipeProgress: Binding<CGFloat>?
     let onComplete: () async throws -> Void
@@ -17,11 +17,15 @@ struct SwipeButton: View {
     @State private var isSubmitting = false
 
     private var isBusy: Bool {
-        isDisabled || isLoading || isSubmitting
+        isDisabled || isLoading || isSubmitted || isSubmitting || isComplete
     }
 
     private var showsSpinner: Bool {
-        isLoading || isSubmitting
+        !isComplete && (isLoading || isSubmitted || isSubmitting)
+    }
+
+    private var contentOpacity: Double {
+        isDisabled && !isLoading && !isSubmitted && !isSubmitting && !isComplete ? 0.5 : 1
     }
 
     private let buttonHeight: CGFloat = 76
@@ -30,10 +34,9 @@ struct SwipeButton: View {
     var body: some View {
         GeometryReader { geometry in
             let maxOffset = max(1, geometry.size.width - buttonHeight)
-            let knobOffset = isConfirmed ? maxOffset : offset
-            let clampedOffset = max(0, min(knobOffset, geometry.size.width - buttonHeight))
+            let clampedOffset = isSubmitted || isComplete ? maxOffset : max(0, min(offset, maxOffset))
             let trailWidth = max(0, min(clampedOffset + (buttonHeight - innerPadding), geometry.size.width - innerPadding))
-            let textProgress = knobOffset / maxOffset
+            let textProgress = clampedOffset / maxOffset
             let halfWidth = geometry.size.width / 2
 
             ZStack(alignment: .leading) {
@@ -52,12 +55,12 @@ struct SwipeButton: View {
                             .frame(height: buttonHeight - innerPadding)
                             .padding(.horizontal, innerPadding / 2)
                     }
-                    .opacity(isDisabled ? 0.5 : 1)
+                    .opacity(contentOpacity)
 
                 // Track text
                 BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .opacity(Double(1.0 - textProgress) * (isDisabled ? 0.5 : 1))
+                    .opacity(Double(1.0 - textProgress) * contentOpacity)
 
                 // Knob
                 Circle()
@@ -72,20 +75,20 @@ struct SwipeButton: View {
                                     .resizable()
                                     .frame(width: 24, height: 24)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(1.0 - (knobOffset / halfWidth)))
+                                    .opacity(isComplete ? 0 : Double(1.0 - (clampedOffset / halfWidth)))
 
                                 Image("check-mark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(max(0, (knobOffset - halfWidth) / halfWidth)))
+                                    .opacity(isComplete ? 1 : Double(max(0, (clampedOffset - halfWidth) / halfWidth)))
                             }
                         }
                     )
                     .accessibilityIdentifier("GRAB")
                     .offset(x: clampedOffset)
                     .padding(.horizontal, innerPadding / 2)
-                    .opacity(isDisabled ? 0.5 : 1)
+                    .opacity(contentOpacity)
                     .gesture(
                         DragGesture()
                             .onChanged { value in

@@ -28,21 +28,46 @@ struct ContactPaymentContext: Equatable {
     let id: UUID
     let publicKey: String
     let privatePaymentContext: PrivatePaykitPaymentContext?
-    let incomingPaymentRequest: PaykitPaymentRequest?
+    var incomingPaymentRequest: PaykitPaymentRequest?
     let isInitialSubscriptionPayment: Bool
+    let endpoints: [PublicPaykitService.Endpoint]
+
+    var requiresAssetSelection: Bool {
+        endpoints.contains { $0.methodId == .usdtArbitrum } ||
+            incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
+    }
+
+    func prefersUsdt(
+        onchainBalanceSats: UInt64,
+        canSendLightning: Bool = false,
+        usdtBalance: UInt64 = 0,
+        isUsdtEnabled: Bool = true
+    ) -> Bool {
+        guard endpoints.contains(where: { $0.methodId == .usdtArbitrum }) else { return false }
+        if !endpoints.contains(where: { $0.methodId != .usdtArbitrum }) { return true }
+        guard isUsdtEnabled else { return false }
+        if let request = incomingPaymentRequest, request.amount.asset != .btc {
+            let now = Date()
+            guard let payment = try? request.payment(using: .usdtArbitrum, at: now), payment.isValid(at: now) else { return false }
+            return usdtBalance >= payment.amount.atomic
+        }
+        return onchainBalanceSats == 0 && !canSendLightning && usdtBalance > 0
+    }
 
     init(
         id: UUID = UUID(),
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext? = nil,
         incomingPaymentRequest: PaykitPaymentRequest? = nil,
-        isInitialSubscriptionPayment: Bool = false
+        isInitialSubscriptionPayment: Bool = false,
+        endpoints: [PublicPaykitService.Endpoint] = []
     ) {
         self.id = id
         self.publicKey = publicKey
         self.privatePaymentContext = privatePaymentContext
         self.incomingPaymentRequest = incomingPaymentRequest
         self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
+        self.endpoints = endpoints
     }
 }
 
@@ -50,6 +75,7 @@ enum ManualEntryValidationResult: Equatable {
     case valid
     case empty
     case invalid
+    case onchainOnly
     case insufficientSavings
     case insufficientSpending
     case expiredLightningOnly
@@ -116,6 +142,15 @@ class AppViewModel: ObservableObject {
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
+    @Published var paykitUsesUsdt = false
+    @Published var paykitReviewedAmount: PaykitAmount?
+    @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
+
+    var fixedLightningAmountSats: UInt64? {
+        guard !paykitUsesUsdt, selectedWalletToPayFrom == .lightning else { return nil }
+        if let amount = scannedLightningInvoice?.amountSatoshis, amount > 0 { return amount }
+        return lnurlPayData?.isFixedAmount == true ? lnurlPayData?.minSendableSat : nil
+    }
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -223,7 +258,7 @@ class AppViewModel: ObservableObject {
         if SamRockSetupRequest.isProtocolURL(url.absoluteString) {
             return false
         }
-        if url.scheme?.lowercased() == "bitcoin" {
+        if let scheme = url.scheme?.lowercased(), scheme == "bitcoin" || scheme == "ethereum" {
             return false
         }
         if isBolt11Invoice(url) {
@@ -247,6 +282,7 @@ class AppViewModel: ObservableObject {
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
     private let scanPaymentOperations: ScanPaymentOperations
+    private let usdtBalance: () -> UInt64?
     private var scannedDataHandlingId: UUID?
     private var manualEntryValidationSequence: UInt64 = 0
 
@@ -260,6 +296,7 @@ class AppViewModel: ObservableObject {
         sheetViewModel: SheetViewModel,
         navigationViewModel: NavigationViewModel,
         scanPaymentOperations: ScanPaymentOperations? = nil,
+        usdtBalance: @escaping () -> UInt64? = { nil },
         migrations: MigrationsService = .shared,
         postMigrationSyncOperations: PostMigrationSyncOperations? = nil
     ) {
@@ -270,6 +307,7 @@ class AppViewModel: ObservableObject {
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
         self.scanPaymentOperations = scanPaymentOperations ?? .live(lightningService: lightningService)
+        self.usdtBalance = usdtBalance
 
         setupManualEntryValidationDebounce()
 
@@ -312,8 +350,8 @@ class AppViewModel: ObservableObject {
         )
     }
 
-    private func validateIncomingOnchainPaymentRequestAmount() -> Bool {
-        guard let amount = contactPaymentContext?.incomingPaymentRequest?.amountSats, amount < Env.dustLimit else { return true }
+    private func validateIncomingOnchainPaymentRequestAmount(_ amount: UInt64) -> Bool {
+        guard contactPaymentContext?.incomingPaymentRequest != nil, amount < Env.dustLimit else { return true }
         didRejectScannedPayment = true
         toast(
             type: .error,
@@ -329,7 +367,7 @@ class AppViewModel: ObservableObject {
 
     /// Validates the onchain request amount and balance, showing feedback when invalid.
     private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
-        guard validateIncomingOnchainPaymentRequestAmount() else { return false }
+        guard validateIncomingOnchainPaymentRequestAmount(invoiceAmount) else { return false }
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
                 didRejectScannedPayment = true
@@ -369,6 +407,13 @@ class AppViewModel: ObservableObject {
                 title: t("other__scan_err_decoding"),
                 description: t("other__scan__error__generic"),
                 accessibilityIdentifier: "InvalidAddressToast"
+            )
+        case .onchainOnly:
+            toast(
+                type: .error,
+                title: t("hardware__send_onchain_only_title"),
+                description: t("hardware__send_onchain_only_text"),
+                accessibilityIdentifier: "HardwareOnchainOnlyToast"
             )
         case .insufficientSavings:
             toast(
@@ -595,6 +640,20 @@ extension AppViewModel {
     }
 }
 
+extension AppViewModel {
+    var paykitPaymentMethod: PublicPaykitService.MethodId {
+        if paykitUsesUsdt { return .usdtArbitrum }
+        return paykitBitcoinMethod(for: selectedWalletToPayFrom)
+    }
+
+    func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
+        if wallet == .lightning {
+            return lnurlPayData != nil ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+        }
+        return PublicPaykitService.onchainMethodId(for: scannedOnchainInvoice?.address ?? "")
+    }
+}
+
 // MARK: Scanning/pasting handling
 
 extension AppViewModel {
@@ -618,7 +677,42 @@ extension AppViewModel {
             }
         }
 
-        let rawUri = uri
+        if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
+            resetSendState(preservingContactPaymentContext: true)
+            for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
+                switch try await decode(invoice: endpoint.paymentRequest) {
+                case let .onChain(invoice): scannedOnchainInvoice = invoice
+                case let .lightning(invoice): scannedLightningInvoice = invoice
+                case let .lnurlPay(data): lnurlPayData = data
+                default: break
+                }
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
+            }
+            let state = scanPaymentOperations.state()
+            let lightningMethod: PublicPaykitService.MethodId = lnurlPayData == nil ? .bitcoinLightningBolt11 : .bitcoinLightningLnurl
+            let lightningAmount = (try? context.incomingPaymentRequest?.payment(using: lightningMethod).amount.atomic) ??
+                scannedLightningInvoice?.amountSatoshis ?? lnurlPayData?.minSendableSat ?? 0
+            let hasLightning = scannedLightningInvoice != nil || lnurlPayData != nil
+            let canUseLightning = hasLightning && scanPaymentOperations.canSendLightning(max(1, lightningAmount))
+            paykitUsesUsdt = context.prefersUsdt(
+                onchainBalanceSats: max(state.spendableOnchainBalanceSats, alternativeOnchainBalanceSats),
+                canSendLightning: canUseLightning,
+                usdtBalance: usdtBalance() ?? 0,
+                isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
+            ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
+            selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            return
+        }
+
+        let rawUri: String
+        if scope == .onchainPayments, let context = claimedContactPaymentContext, !context.endpoints.isEmpty {
+            guard let endpoint = context.endpoints.first(where: { $0.methodId.onchainNetwork != nil }) else {
+                throw ScanHandlingError.unsupportedRequest
+            }
+            rawUri = endpoint.paymentRequest
+        } else {
+            rawUri = uri
+        }
         let sourceURI = rawUri.removingLightningSchemes()
         let uri = PubkyAuthRequest.normalizedProtocolURL(sourceURI)
         if let claimedContactPaymentContext, PubkyAuthRequest.isProtocolURL(sourceURI) {
@@ -703,7 +797,6 @@ extension AppViewModel {
             data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
-        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
         let paymentState = scanPaymentOperations.state()
 
         if scope == .onchainPayments {
@@ -713,6 +806,9 @@ extension AppViewModel {
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
+            let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(
+                using: PublicPaykitService.onchainMethodId(for: invoice.address)
+            ).amount.atomic
             // Check network first - treat wrong network as decoding error
             let addressValidation = try? validateBitcoinAddress(address: invoice.address)
             let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
@@ -744,7 +840,10 @@ extension AppViewModel {
                         if nodeIsRunning {
                             // Node is running → we have fresh balances; validate immediately.
                             // Prefer lightning; if insufficient or no channels/capacity, fall back to onchain.
-                            let canSendLightning = scanPaymentOperations.canSendLightning(requestedAmount ?? lightningInvoice.amountSatoshis)
+                            let canSendLightning = try scanPaymentOperations.canSendLightning(
+                                contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic ??
+                                    lightningInvoice.amountSatoshis
+                            )
 
                             if canSendLightning {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
@@ -790,7 +889,7 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty else { return }
-            guard validateIncomingOnchainPaymentRequestAmount() else { return }
+            guard validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -808,6 +907,7 @@ extension AppViewModel {
 
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
+            let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic
             // Check network first - treat wrong network as decoding error
             let invoiceNetwork = NetworkValidationHelper.convertNetworkType(invoice.networkType)
             if NetworkValidationHelper.isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network) {
@@ -946,11 +1046,16 @@ extension AppViewModel {
         guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
               context.publicKey == request.counterparty,
               PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
-              let address = proof.onchainAddress
+              let address = proof.onchainAddress, let amount = proof.onchainAmountSats
         else { throw PaykitPaymentRequestError.requestUnavailable }
+        guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier) else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        paykitPaymentTerms = try request.payment(using: method, quoteId: proof.conversionQuoteId)
+        paykitReviewedAmount = paykitPaymentTerms?.amount
         // This route submits an existing transaction, so it never admits fresh inputs against a balance.
         handleScannedOnchainInvoice(OnChainInvoice(
-            address: address, amountSatoshis: request.amountSats, label: nil, message: nil, params: nil
+            address: address, amountSatoshis: amount, label: nil, message: nil, params: nil
         ))
     }
 
@@ -961,7 +1066,7 @@ extension AppViewModel {
     }
 
     func handleLnurlPayInvoice(_ data: LnurlPayData) throws {
-        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
+        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningLnurl, at: Date()).amount.atomic
         if let requestedAmount,
            requestedAmount < data.minSendableSat || requestedAmount > data.maxSendableSat
         {
@@ -1117,10 +1222,13 @@ extension AppViewModel {
     }
 
     var hasSendPaymentTarget: Bool {
-        scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
+        paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }
 
     func resetSendState(preservingContactPaymentContext: Bool = false) {
+        paykitUsesUsdt = false
+        paykitReviewedAmount = nil
+        paykitPaymentTerms = nil
         scannedLightningInvoice = nil
         scannedOnchainInvoice = nil
         selectedWalletToPayFrom = .onchain // Reset to default
@@ -1149,7 +1257,12 @@ extension AppViewModel {
     }
 
     /// Queue validation with debounce
-    func validateManualEntryInput(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) {
+    func validateManualEntryInput(
+        _ rawValue: String,
+        savingsBalanceSats: Int,
+        spendingBalanceSats: Int,
+        scope: ScanHandlingScope = .unrestricted
+    ) {
         // Increment sequence first so any pending debounced requests become stale
         manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
@@ -1160,6 +1273,13 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
+            return
+        }
+
+        if scope == .onchainPayments, normalized.removingLightningSchemes().lowercased().hasPrefix("ethereum:") {
+            manualEntryValidationResult = .onchainOnly
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .onchainOnly)
             return
         }
 
@@ -1198,6 +1318,14 @@ extension AppViewModel {
                 isManualEntryInputValid = false
                 showValidationErrorToast(for: .invalid)
             }
+            return
+        }
+
+        if normalized.lowercased().hasPrefix("ethereum:") {
+            let valid = (try? resolveUsdtPaymentRoute(input: normalized)) != nil
+            manualEntryValidationResult = valid ? .valid : .invalid
+            isManualEntryInputValid = valid
+            if !valid { showValidationErrorToast(for: .invalid) }
             return
         }
 

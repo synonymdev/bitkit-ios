@@ -32,6 +32,7 @@ struct SubscriptionsView: View {
         }
     }
 
+    @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
@@ -180,16 +181,13 @@ struct SubscriptionsView: View {
     private var metrics: some View {
         HStack(spacing: 16) {
             SubscriptionMetric(title: t("subscriptions__monthly_cost"), icon: "calendar") {
-                MoneyText(
-                    sats: monthlyCostSats,
-                    unitType: .primary,
-                    size: .bodyMSB,
-                    symbol: true,
-                    color: .textPrimary,
-                    symbolColor: .textSecondary
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
+                let costs = subscriptionMonthlyCosts(subscriptions: paymentRequests.subscriptions, now: now)
+                if let sats = subscriptionMonthlyCostSats(amounts: costs, rate: currency.paykitRate) {
+                    MoneyText(sats: sats, size: .bodyMSB, symbol: true, fillsWidth: false)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                } else {
+                    BodyMSBText("—")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Rectangle()
@@ -230,13 +228,25 @@ struct SubscriptionsView: View {
             }
         }
     }
-
-    private var monthlyCostSats: Int {
-        subscriptionMonthlyCostSats(subscriptions: paymentRequests.subscriptions, now: now)
-    }
 }
 
-func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date) -> Int {
+func subscriptionMonthlyCostSats(amounts: [PaykitAmount], rate: PaykitExchangeRate?, now: Date = Date()) -> Int? {
+    var total = 0
+    for amount in amounts {
+        let sats: Int? = switch amount.asset {
+        case _ where amount.atomic == 0: 0
+        case .btc: Int(exactly: amount.atomic)
+        case .usd, .usdt: usdtDisplaySats(amount: amount.value, rate: rate, now: now)
+        }
+        guard let sats else { return nil }
+        let addition = total.addingReportingOverflow(sats)
+        guard !addition.overflow else { return nil }
+        total = addition.partialValue
+    }
+    return total
+}
+
+func subscriptionMonthlyCosts(subscriptions: [PaykitSubscription], now: Date) -> [PaykitAmount] {
     let annualPeriods: (PaykitSubscriptionRecurrence.Unit) -> Decimal = { unit in
         switch unit {
         case .minute: 525_600
@@ -247,14 +257,20 @@ func subscriptionMonthlyCostSats(subscriptions: [PaykitSubscription], now: Date)
         case .year: 1
         }
     }
-    let maximum = NSDecimalNumber(value: Int.max)
-    return subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) }.reduce(into: 0) { total, subscription in
-        var monthlyCost = Decimal(subscription.amountSats) * annualPeriods(subscription.recurrence.unit)
-            / Decimal(subscription.recurrence.every) / 12
-        var roundedMonthlyCost = Decimal()
-        NSDecimalRound(&roundedMonthlyCost, &monthlyCost, 0, .plain)
-        let number = NSDecimalNumber(decimal: roundedMonthlyCost)
-        total = total.saturatingAdd(number.compare(maximum) == .orderedDescending ? .max : number.intValue)
+    let active = subscriptions.filter { $0.isPayer && $0.runsUntilPaidThrough(at: now) }
+    let assets = Set(active.map(\.amount.asset))
+    return (assets.isEmpty ? [.btc] : PaykitAsset.allCases.filter { assets.contains($0) }).map { asset in
+        var total: UInt64 = 0
+        for subscription in active where subscription.amount.asset == asset {
+            var monthlyCost = Decimal(subscription.amount.atomic) * annualPeriods(subscription.recurrence.unit)
+                / Decimal(subscription.recurrence.every) / 12
+            var rounded = Decimal()
+            NSDecimalRound(&rounded, &monthlyCost, 0, .plain)
+            let amount = rounded > Decimal(UInt64.max) ? UInt64.max : NSDecimalNumber(decimal: rounded).uint64Value
+            let addition = total.addingReportingOverflow(amount)
+            total = addition.overflow ? .max : addition.partialValue
+        }
+        return PaykitAmount(asset: asset, atomic: total)
     }
 }
 
@@ -327,7 +343,7 @@ struct SubscriptionRow: View {
 
             Spacer(minLength: 8)
 
-            MoneyCell(sats: Int(clamping: subscription.amountSats), prefix: "", symbol: true)
+            PaykitAmountText(amount: subscription.amount)
         }
         .padding(16)
         .background(Color.gray6)
@@ -397,14 +413,7 @@ struct SubscriptionDetailView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             CaptionMText(subscription.recurrence.cadenceLabel.localizedUppercase, textColor: .white64)
                             HStack(spacing: 16) {
-                                MoneyText(
-                                    sats: Int(clamping: subscription.amountSats),
-                                    unitType: .primary,
-                                    size: .display,
-                                    symbol: true,
-                                    color: .textPrimary,
-                                    symbolColor: .textSecondary
-                                )
+                                PaykitAmountText(amount: subscription.amount, size: .display)
                                 Spacer()
                                 SubscriptionAvatar(subscription: subscription, size: 48)
                             }
@@ -467,7 +476,7 @@ struct SubscriptionDetailView: View {
                 )
                 LabeledDetailCell(
                     title: t("subscriptions__payments"),
-                    value: "\(subscription.payments.count)",
+                    value: "\(subscription.paidPeriods.count)",
                     icon: "coins"
                 )
             }
@@ -512,7 +521,6 @@ struct SubscriptionDetailView: View {
                         titleOverride: subscription.note ?? t("subscriptions__subscription"),
                         subtitleOverride: payment.createdAt.map(Self.dateFormatter.string),
                         isHighlighted: false,
-                        showsAmountSymbol: false,
                         paymentDirection: payment.direction
                     )
                 }
@@ -581,10 +589,10 @@ struct SubscriptionSheet: View {
                 )
             case .createAmount:
                 SubscriptionAmountView(
-                    initialAmountSats: creationDraft.amountSats,
+                    initialAmount: creationDraft.amount,
                     onBack: { route = .create },
                     onContinue: {
-                        creationDraft.amountSats = $0
+                        creationDraft.amount = $0
                         route = .create
                     }
                 )
@@ -694,7 +702,7 @@ struct SubscriptionSheet: View {
             try showInitialPaymentFailure(dueRequest, error: error)
             return
         }
-        guard case let .opened(paymentTarget, privatePaymentContext) = resolution else {
+        guard case let .opened(paymentTarget, privatePaymentContext, endpoints) = resolution else {
             try showInitialPaymentFailure(dueRequest, error: PaykitPaymentRequestError.requestUnavailable)
             return
         }
@@ -704,7 +712,7 @@ struct SubscriptionSheet: View {
             publicKey: dueRequest.counterparty,
             privatePaymentContext: privatePaymentContext,
             incomingPaymentRequest: dueRequest,
-            isInitialSubscriptionPayment: true
+            isInitialSubscriptionPayment: true, endpoints: endpoints
         )
         guard app.claimContactPaymentContext(context) else {
             throw PaykitPaymentRequestError.operationInProgress
@@ -745,7 +753,7 @@ struct SubscriptionSheet: View {
             return
         }
 
-        let sendRoute: SendRoute = app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
         route = .payment(sendRoute)
     }
 
@@ -924,6 +932,9 @@ struct SubscriptionReviewContent: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("subscriptions__review_and_subscribe"))
             SubscriptionAmountHeader(subscription: subscription)
+            SubscriptionPaymentMethods(title: t("subscriptions__payment_methods"), endpoints: subscription.acceptedPaymentEndpointIdentifiers)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 24)
             SubscriptionProviderCard(subscription: subscription, action: onDetails)
                 .allowsHitTesting(!isLoading && !isPaying)
 
@@ -931,7 +942,7 @@ struct SubscriptionReviewContent: View {
                 BodyMText(t("subscriptions__unsupported_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 16)
-            } else if subscription.hasPaymentDeadline || subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
+            } else if subscription.acceptedPaymentEndpointIdentifiers.isEmpty {
                 BodyMText(t("subscriptions__unsupported_payment_description"), textColor: .white64)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 16)
@@ -951,9 +962,10 @@ struct SubscriptionReviewContent: View {
             if isLoading || isPaying || subscription.isProposalActionable(at: now) {
                 SwipeButton(
                     title: t("subscriptions__swipe_to_subscribe"),
-                    accentColor: .brandAccent,
+                    accentColor: subscription.acceptedPaymentEndpointIdentifiers == [PublicPaykitService.MethodId.usdtArbitrum.rawValue]
+                        ? .usdtAccent : .brandAccent,
                     isLoading: isLoading || isPaying,
-                    isConfirmed: isPaying,
+                    isSubmitted: isPaying,
                     onComplete: onSubscribe
                 )
             }
@@ -966,7 +978,7 @@ private struct SubscriptionAmountHeader: View {
     let subscription: PaykitSubscription
 
     var body: some View {
-        MoneyStack(sats: Int(clamping: subscription.amountSats), showSymbol: true)
+        PaykitAmountText(amount: subscription.amount, size: .display)
             .padding(.bottom, 20)
     }
 }
@@ -1084,10 +1096,10 @@ extension PaykitSubscription {
                     : t("subscriptions__proposal_queued_status")
             }
             if isActive(at: now) {
-                let key = payments.count == 1
+                let key = paidPeriods.count == 1
                     ? "subscriptions__created_summary_single_payment"
                     : "subscriptions__created_summary"
-                return t(key, variables: ["count": "\(payments.count)"])
+                return t(key, variables: ["count": "\(paidPeriods.count)"])
             }
         }
         if isProposalVisible(at: now) || !recurrence.unit.isSupported {

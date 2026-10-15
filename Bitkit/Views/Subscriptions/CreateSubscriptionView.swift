@@ -3,12 +3,16 @@ import SwiftUI
 
 struct CreateSubscriptionView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     @Binding var draft: PaykitSubscriptionDraft
     let onEditAmount: () -> Void
     let onChooseRecipient: () -> Void
 
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var entryConversion = PaykitAmountEntryConversion()
     @FocusState private var isNameFocused: Bool
     @FocusState private var isDescriptionFocused: Bool
 
@@ -22,7 +26,7 @@ struct CreateSubscriptionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("subscriptions__create_subscription"))
+            SheetHeader(title: t("subscriptions__create_subscription"), topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
 
             ScrollViewReader { proxy in
                 GeometryReader { geometry in
@@ -30,10 +34,13 @@ struct CreateSubscriptionView: View {
                         VStack(alignment: .leading, spacing: 24) {
                             amount
                             frequency
+                            acceptedPayments
                             name
-                            description
-                                .id("SubscriptionDescription")
-                            customIcon
+                            HStack(alignment: .top, spacing: 16) {
+                                description
+                                customIcon
+                            }
+                            .id("SubscriptionDescription")
                         }
                         .padding(.bottom, 24)
                     }
@@ -49,9 +56,9 @@ struct CreateSubscriptionView: View {
 
             CustomButton(
                 title: t("subscriptions__choose_recipient"),
-                isDisabled: draft.amountSats == 0 ||
+                isDisabled: draft.amount.atomic == 0 ||
                     draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    isLoadingIcon
+                    isLoadingIcon || acceptedEndpoints.isEmpty
             ) {
                 onChooseRecipient()
             }
@@ -59,7 +66,8 @@ struct CreateSubscriptionView: View {
             .accessibilityIdentifier("SubscriptionChooseRecipient")
         }
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .navigationBarHidden(true)
         .onChange(of: draft.name) { _, value in
             if value.count > 256 {
@@ -79,12 +87,12 @@ struct CreateSubscriptionView: View {
     }
 
     private var amount: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
-                    MoneyText(
-                        sats: Int(clamping: draft.amountSats),
+                    if draft.amount.asset == .btc { MoneyText(
+                        sats: Int(clamping: draft.amount.atomic),
                         unitType: .primary,
                         size: .display,
                         symbol: true,
@@ -94,6 +102,7 @@ struct CreateSubscriptionView: View {
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
+                    } else { PaykitAmountText(amount: draft.amount, size: .display) }
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -102,6 +111,38 @@ struct CreateSubscriptionView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("SubscriptionEditAmount")
+        }
+    }
+
+    private var acceptedEndpoints: [String] {
+        PaykitRequestPricing.subscriptionEndpoints(
+            requested: draft.amount.asset,
+            available: PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+        )
+    }
+
+    private var acceptedPayments: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("subscriptions__accepted_payments"), textColor: .white64)
+            HStack(spacing: 8) {
+                ForEach(settings.isUsdtEnabled ? [PaykitAsset.btc, .usd] : [.btc], id: \.self) { asset in
+                    let isSelected = draft.amount.asset == asset
+                    NumberPadActionButton(
+                        text: asset == .btc ? "BITCOIN" : "USDT",
+                        color: isSelected ? (asset == .btc ? .brandAccent : .usdtAccent) : .white32,
+                        variant: .secondary
+                    ) {
+                        guard !isSelected else { return }
+                        do {
+                            draft.amount = try entryConversion.converted(draft.amount, to: asset, rate: currency.paykitRate, at: Date())
+                        } catch {
+                            app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
+                        }
+                    }
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .accessibilityIdentifier("SubscriptionAccept-\(asset == .btc ? "bitcoin" : "usdt")")
+                }
+            }
         }
     }
 
@@ -141,8 +182,8 @@ struct CreateSubscriptionView: View {
                 placeholder: t("subscriptions__description_placeholder"),
                 testIdentifier: "SubscriptionDescription",
                 isFocused: $isDescriptionFocused,
-                minHeight: 60,
-                maxHeight: 60,
+                minHeight: 80,
+                maxHeight: 80,
                 backgroundColor: .white10
             )
         }
@@ -152,27 +193,23 @@ struct CreateSubscriptionView: View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64)
             PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                HStack(spacing: 16) {
-                    Group {
-                        if let iconImage {
-                            Image(uiImage: iconImage)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            SubscriptionDefaultIcon(size: 40)
-                        }
+                Group {
+                    if let iconImage {
+                        Image(uiImage: iconImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        SubscriptionDefaultIcon(size: 40)
                     }
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    CaptionBText(t("subscriptions__custom_icon_description"), textColor: .white64)
-                    Spacer()
                 }
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
                 .padding(16)
                 .background(Color.white10)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .disabled(isLoadingIcon)
+            .accessibilityLabel(t("subscriptions__custom_icon_description"))
             .accessibilityIdentifier("SubscriptionIconPicker")
         }
     }
@@ -197,19 +234,22 @@ struct CreateSubscriptionView: View {
 }
 
 struct SubscriptionAmountView: View {
-    let initialAmountSats: UInt64
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    let initialAmount: PaykitAmount
     let onBack: () -> Void
-    let onContinue: (UInt64) -> Void
+    let onContinue: (PaykitAmount) -> Void
 
     var body: some View {
         PaymentRequestAmountView(
-            initialDraft: PaykitPaymentRequestDraft(amountSats: initialAmountSats, note: "", expiresAt: .distantFuture),
+            initialDraft: PaykitPaymentRequestDraft(amount: initialAmount, note: "", expiresAt: .distantFuture),
             target: nil,
-            onContinue: { onContinue($0.amountSats) },
+            onContinue: { onContinue($0.amount) },
             onBack: onBack,
             // Android tags this step PaymentRequest* on the subscription flow too; the journeys
             // share the vocabulary, so keep the odd-reading prefix rather than diverging.
-            testIdentifierPrefix: "PaymentRequest"
+            testIdentifierPrefix: "PaymentRequest",
+            allowedAssets: settings.isUsdtEnabled ? [.btc, .usd] : [.btc]
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionAmount")
@@ -371,5 +411,34 @@ private enum SubscriptionFrequencyOption: String, CaseIterable, CustomStringConv
         case .month: t("subscriptions__monthly")
         case .year: t("subscriptions__yearly")
         }
+    }
+}
+
+struct SubscriptionPaymentMethods: View {
+    let title: String
+    let endpoints: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(title, textColor: .white64)
+            HStack(spacing: 16) {
+                if endpoints.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue) {
+                    BodyMSBText("USDT", textColor: .usdtAccent)
+                }
+                if endpoints.contains(where: { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }) {
+                    BodyMSBText(t("lightning__savings"), textColor: .brandAccent)
+                }
+                if endpoints.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue) ||
+                    endpoints.contains(PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue)
+                {
+                    BodyMSBText(t("lightning__spending"), textColor: .purpleAccent)
+                }
+                if endpoints.isEmpty {
+                    BodySText(t("wallet__payment_request_status_unavailable"), textColor: .white64)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SubscriptionAcceptedMethods")
     }
 }

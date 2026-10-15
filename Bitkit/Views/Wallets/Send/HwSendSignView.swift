@@ -12,7 +12,6 @@ struct HwSendSignView: View {
     let hwSend: HwSendCoordinator
     let contactPaymentRequestId: PaykitPaymentRequest.ID?
     let contactPaymentIdentity: String?
-    let contactPaymentDeadline: PaykitPreciseInstant?
     let prepareContactPayment: (HwFundingSignedTx) async throws -> Void
     let authorizeContactPayment: () async throws -> Void
     let completeContactPayment: (String) async -> Bool
@@ -165,6 +164,8 @@ struct HwSendSignView: View {
                 if let request = app.contactPaymentContext?.incomingPaymentRequest {
                     retained = try await PaykitPaymentProofService.shared.retainedHardwarePaymentForRetry(request: request)
                 }
+                let quoteId = retained.map(\.conversionQuoteId) ?? app.paykitPaymentTerms?.quoteId
+                let deadline = try app.contactPaymentContext?.incomingPaymentRequest?.submissionDeadline(quoteId: quoteId)
                 guard let feeRate = SendConfirmationView.confirmationFeeRate(
                     retained: retained?.retainedHardwareRetry?.signedTx, selected: wallet.selectedFeeRateSatsPerVByte
                 ) else { throw PaykitPaymentRequestError.requestUnavailable }
@@ -175,7 +176,7 @@ struct HwSendSignView: View {
                         address: invoice.address,
                         sats: amount,
                         satsPerVByte: UInt64(feeRate),
-                        paymentDeadline: contactPaymentDeadline,
+                        paymentDeadline: deadline,
                         paymentRequestId: requestId,
                         loadSignedPayment: {
                             guard let requestId else { return nil }
