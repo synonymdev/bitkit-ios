@@ -44,6 +44,19 @@ struct CreateSubscriptionView: View {
                         }
                         .padding(.bottom, 24)
                     }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        CustomButton(
+                            title: t("subscriptions__choose_recipient"),
+                            isDisabled: draft.amount.atomic == 0 ||
+                                draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                isLoadingIcon || acceptedEndpoints.isEmpty,
+                            titleKerning: 0, titleLineHeight: 20
+                        ) {
+                            onChooseRecipient()
+                        }
+                        .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
+                        .accessibilityIdentifier("SubscriptionChooseRecipient")
+                    }
                     .onChange(of: isDescriptionFocused ? geometry.size.height : nil) { _, focusedHeight in
                         if focusedHeight != nil {
                             withAnimation {
@@ -53,18 +66,6 @@ struct CreateSubscriptionView: View {
                     }
                 }
             }
-
-            CustomButton(
-                title: t("subscriptions__choose_recipient"),
-                isDisabled: draft.amount.atomic == 0 ||
-                    draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    isLoadingIcon || acceptedEndpoints.isEmpty,
-                titleKerning: 0, titleLineHeight: 20
-            ) {
-                onChooseRecipient()
-            }
-            .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
-            .accessibilityIdentifier("SubscriptionChooseRecipient")
         }
         .padding(.horizontal, 16)
         .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
