@@ -46,6 +46,196 @@ final class PubkyAuthApprovalSheetTests: XCTestCase {
         XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request), .authorize)
     }
 
+    @MainActor
+    func testReceivingDetailsShareExactlyTheRequestedAssets() async throws {
+        let endpoint = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        for claim in [PubkyAuthClaim.usdtAddressV1, .bitcoinAndUsdt] {
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: "EarnSharing.\(UUID().uuidString)"))
+            let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
+            let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: claim.rawValue)
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request, isUsdtEnabled: true), .watchOnlyConsent)
+            var shared: [String: Any]?
+            try await PubkyService.approveAuthRequest(
+                request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret", accountManager: manager,
+                approvedUsdtAddress: endpoint.value, usdtEndpoint: { endpoint }, isUsdtEnabled: { true },
+                ordinaryApproval: { _, _, _, _ in XCTFail("A receiving-details request requires a companion claim") },
+                companionApproval: { _, _, type, payload, _ in
+                    XCTAssertEqual(type, claim)
+                    shared = try JSONSerialization.jsonObject(with: XCTUnwrap(payload)) as? [String: Any]
+                }
+            )
+            let details = try XCTUnwrap(shared)
+            let usdt = try XCTUnwrap(details["usdt-arbitrum-address"] as? [String: String])
+            XCTAssertEqual(usdt, ["value": endpoint.value, "chain_id": PaykitUsdt.chainId, "token": PaykitUsdt.token])
+            XCTAssertEqual(Set(details.keys), claim.sharesBitcoin ? ["bitcoin_account", "usdt-arbitrum-address"] : ["usdt-arbitrum-address"])
+            XCTAssertEqual(manager.accounts.count, claim.sharesBitcoin ? 1 : 0)
+            if claim.sharesBitcoin {
+                let bitcoin = try XCTUnwrap(details["bitcoin_account"] as? [String: Any])
+                XCTAssertEqual(bitcoin["xpub"] as? String, manager.accounts.first?.xpub)
+                XCTAssertEqual(bitcoin["account_index"] as? UInt32, manager.accounts.first?.accountIndex)
+                XCTAssertEqual(manager.accounts.first?.setupState, .active)
+            }
+        }
+    }
+
+    @MainActor
+    func testReceivingDetailsRequireTheReviewedAddress() async throws {
+        let endpoint = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: "usdt-address-v1")
+        let request = try PubkyAuthRequest.parse(url: url)
+        for approvedAddress in ["0x2222222222222222222222222222222222222222"] {
+            do {
+                try await PubkyService.approveAuthRequest(
+                    request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret",
+                    approvedUsdtAddress: approvedAddress, usdtEndpoint: { endpoint }, isUsdtEnabled: { true },
+                    companionApproval: { _, _, _, _, _ in XCTFail("Unapproved details must not be sent") }
+                )
+                XCTFail("Expected approval to require the reviewed address")
+            } catch {
+                XCTAssertEqual(error as? PubkyAuthRequestError, .invalidPaymentDetails)
+            }
+        }
+    }
+
+    @MainActor
+    func testOptionalUsdtCanBeDeclinedWithoutLoadingAnAddress() async throws {
+        let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: "paykit-access-v1.usdt-address-v1")
+        let request = try PubkyAuthRequest.parse(url: url)
+        var shared: Data?
+        try await PubkyService.approveAuthRequest(
+            request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret",
+            approvedUsdtAddress: nil,
+            usdtEndpoint: { XCTFail("Declined permission must not read the wallet"); throw PubkyAuthRequestError.invalidPaymentDetails },
+            companionApproval: { _, _, _, payload, _ in shared = payload }
+        )
+        let claim = try XCTUnwrap(request.bitkitClaim)
+        let key = try PaykitIdentitySecretKey(bytes: Data(repeating: 11, count: 32), keyGeneration: 3)
+        let encoded = try claim.encode(accountPayload: shared, paykitKey: key)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(Set(json.keys), ["paykit_access"])
+        let access = try XCTUnwrap(json["paykit_access"] as? [String: Any])
+        XCTAssertEqual(access["key_generation"] as? UInt64, 3)
+        XCTAssertEqual(access["secret"] as? String, "CwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws")
+    }
+
+    func testReceivingConsentMatchesTheAvailableRequestedAssets() throws {
+        let claims: [(String, PubkyAuthApprovalSheet.ApprovalState)] = [
+            (PubkyAuthClaim.watchOnlyAccountV1.rawValue, .watchOnlyConsent),
+            (PubkyAuthClaim.bitcoinAndUsdt.rawValue, .watchOnlyConsent),
+            (PubkyAuthClaim.usdtAddressV1.rawValue, .authorize),
+            ("paykit-access-v1.usdt-address-v1", .authorize),
+        ]
+        for (claim, disabledState) in claims {
+            let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: claim)
+            let request = try PubkyAuthRequest.parse(url: url)
+            XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request, isUsdtEnabled: false), disabledState, claim)
+            XCTAssertEqual(PubkyAuthApprovalSheet.initialState(for: request, isUsdtEnabled: true), .watchOnlyConsent, claim)
+            var state = disabledState
+            var shareUsdt = false
+            state.updateUsdtAvailability(isEnabled: true, claim: request.bitkitClaim, shareUsdt: &shareUsdt)
+            XCTAssertFalse(shareUsdt, "Enabling USDT must not opt into sharing its address")
+            XCTAssertEqual(state, request.bitkitClaim?.requiresUsdtAddress == true ? .watchOnlyConsent : disabledState, claim)
+            shareUsdt = true
+            state.updateUsdtAvailability(isEnabled: false, claim: request.bitkitClaim, shareUsdt: &shareUsdt)
+            XCTAssertFalse(shareUsdt)
+            XCTAssertEqual(state, disabledState, claim)
+            state.updateUsdtAvailability(isEnabled: true, claim: request.bitkitClaim, shareUsdt: &shareUsdt)
+            XCTAssertFalse(shareUsdt, "Reloading the address must preserve an opt-out")
+        }
+    }
+
+    @MainActor
+    func testDisabledUsdtIsOmittedFromCombinedReceivingDetails() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+        let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
+        let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: PubkyAuthClaim.bitcoinAndUsdt.rawValue)
+        let request = try PubkyAuthRequest.parse(url: url)
+        var shared: [String: Any]?
+        try await PubkyService.approveAuthRequest(
+            request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret", accountManager: manager,
+            approvedUsdtAddress: "0x1111111111111111111111111111111111111111",
+            usdtEndpoint: { XCTFail("Disabled USDT must not load its address"); throw PubkyAuthRequestError.invalidPaymentDetails },
+            isUsdtEnabled: { false },
+            companionApproval: { _, _, _, payload, _ in
+                shared = try JSONSerialization.jsonObject(with: XCTUnwrap(payload)) as? [String: Any]
+            }
+        )
+        XCTAssertEqual(try Set(XCTUnwrap(shared).keys), ["bitcoin_account"])
+        XCTAssertEqual(manager.accounts.first?.setupState, .active)
+    }
+
+    @MainActor
+    func testStandaloneUsdtRequiresEnabledAndReviewedReceivingDetails() async throws {
+        let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: PubkyAuthClaim.usdtAddressV1.rawValue)
+        let request = try PubkyAuthRequest.parse(url: url)
+        for enabled in [false, true] {
+            do {
+                try await PubkyService.approveAuthRequest(
+                    request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret",
+                    usdtEndpoint: { XCTFail("No address was approved"); throw PubkyAuthRequestError.invalidPaymentDetails },
+                    isUsdtEnabled: { enabled },
+                    companionApproval: { _, _, _, _, _ in XCTFail("A standalone USDT authorization cannot succeed without its address") }
+                )
+                XCTFail("Expected unavailable authorization, enabled: \(enabled)")
+            } catch {
+                XCTAssertEqual(error as? PubkyAuthRequestError, .invalidPaymentDetails)
+            }
+        }
+    }
+
+    @MainActor
+    func testApprovalRechecksUsdtPreferenceAfterLoadingReceivingDetails() async throws {
+        let endpoint = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        for claim in [PubkyAuthClaim.usdtAddressV1, .bitcoinAndUsdt] {
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+            let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
+            let url = approvalTestAuthUrl().replacingOccurrences(of: "watch-only-account-v1", with: claim.rawValue)
+            let request = try PubkyAuthRequest.parse(url: url)
+            var enabled = true
+            var shared: [String: Any]?
+            do {
+                try await PubkyService.approveAuthRequest(
+                    request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret", accountManager: manager,
+                    approvedUsdtAddress: endpoint.value, usdtEndpoint: { enabled = false; return endpoint },
+                    isUsdtEnabled: { enabled },
+                    companionApproval: { _, _, _, payload, _ in
+                        shared = try JSONSerialization.jsonObject(with: XCTUnwrap(payload)) as? [String: Any]
+                    }
+                )
+                XCTAssertFalse(claim.requiresUsdtAddress)
+                XCTAssertEqual(try Set(XCTUnwrap(shared).keys), ["bitcoin_account"])
+                XCTAssertEqual(manager.accounts.first?.setupState, .active)
+            } catch {
+                XCTAssertTrue(claim.requiresUsdtAddress)
+                XCTAssertEqual(error as? PubkyAuthRequestError, .invalidPaymentDetails)
+                XCTAssertNil(shared)
+                XCTAssertTrue(manager.accounts.isEmpty)
+            }
+        }
+    }
+
+    @MainActor
+    func testBitcoinOnlyApprovalIsIndependentOfUsdtPreference() async throws {
+        for enabled in [false, true] {
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
+            let manager = Bitkit.WatchOnlyAccountManager(defaults: defaults, node: ApprovalFakeWatchOnlyAccountNode())
+            let url = approvalTestAuthUrl()
+            let request = try PubkyAuthRequest.parse(url: url)
+            var shared: Data?
+            try await PubkyService.approveAuthRequest(
+                request: request, authUrl: url, accountName: "Earn", secretKeyHex: "secret", accountManager: manager,
+                usdtEndpoint: { XCTFail("Bitcoin authorization must not read USDT"); throw PubkyAuthRequestError.invalidPaymentDetails },
+                isUsdtEnabled: { enabled },
+                companionApproval: { _, _, _, payload, _ in
+                    shared = payload
+                }
+            )
+            XCTAssertEqual(shared, try Bitkit.WatchOnlyAccountClaimCodec.encode(record: XCTUnwrap(manager.accounts.first)))
+            XCTAssertEqual(manager.accounts.first?.setupState, .active)
+        }
+    }
+
     func testAuthDisplayPublicKeyOmitsPubkyPrefix() {
         XCTAssertEqual(pubkyAuthDisplayPublicKey("pubky3rsd123456789w5xg"), "3rsd...w5xg")
         XCTAssertEqual(pubkyAuthDisplayPublicKey("3rsd123456789w5xg"), "3rsd...w5xg")

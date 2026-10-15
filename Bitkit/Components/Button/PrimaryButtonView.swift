@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PrimaryButtonView: View {
     let title: String
+    var titleKerning: CGFloat = 0.4
+    var titleLineHeight: CGFloat?
     let size: CustomButton.Size
     let icon: AnyView?
     let isDisabled: Bool
@@ -22,9 +24,9 @@ struct PrimaryButtonView: View {
                     .frame(width: 20, height: 20)
             } else {
                 if size == .small {
-                    CaptionBText(title, textColor: .textPrimary)
+                    CaptionBText(title, textColor: .textPrimary, kerning: titleKerning, lineHeight: titleLineHeight)
                 } else {
-                    BodySSBText(title, textColor: .textPrimary)
+                    BodySSBText(title, textColor: .textPrimary, kerning: titleKerning, lineHeight: titleLineHeight)
                 }
             }
         }

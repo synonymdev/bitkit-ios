@@ -71,6 +71,8 @@ class TimedSheetManager: ObservableObject {
         )
         registerSheet(notificationsSheet)
 
+        registerSheet(UsdtIntroTimedSheet(wallet: walletViewModel, settings: settingsViewModel))
+
         let quickpaySheet = QuickpayTimedSheet(appViewModel: appViewModel, walletViewModel: walletViewModel)
         registerSheet(quickpaySheet)
 

@@ -5,6 +5,39 @@ import os
 import XCTest
 
 final class ClipboardPromptValidatorTests: XCTestCase {
+    func testUsdtLinksAreValidatedLocallyWhenEnabled() async {
+        let uri = "ethereum:\(PaykitUsdt.token)@42161/transfer?address=0x1111111111111111111111111111111111111111"
+        for (input, enabled, expected) in [
+            (uri, true, true),
+            (" \(uri)&uint256=10001\n", true, true),
+            (uri.replacingOccurrences(of: "ethereum:", with: "ETHEREUM:"), true, true),
+            (uri, false, false),
+            (uri.replacingOccurrences(of: "@42161", with: "@1"), true, false),
+            (uri.replacingOccurrences(of: PaykitUsdt.token, with: "0x2222222222222222222222222222222222222222"), true, false),
+            ("ethereum:invalid", true, false),
+        ] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(
+                input, ownPublicKey: nil, contacts: [], isUsdtEnabled: enabled
+            ) { _ in
+                XCTFail("USDT clipboard links must be validated locally: '\(input)'")
+                return false
+            }
+            XCTAssertEqual(supported, expected, "\(input), enabled: \(enabled)")
+        }
+    }
+
+    func testDisabledUsdtAddressesAreIgnoredWithoutDecoding() async {
+        for value in ["0x1111111111111111111111111111111111111111", " 0x1111111111111111111111111111111111111111\n"] {
+            let supported = await ClipboardPromptValidator.isSupportedURI(
+                value, ownPublicKey: nil, contacts: [], isUsdtEnabled: false
+            ) { _ in
+                XCTFail("Disabled USDT addresses must not trigger a clipboard prompt or a decoder")
+                return true
+            }
+            XCTAssertFalse(supported)
+        }
+    }
+
     func testLightningAddressCandidatesDoNotInvokeNetworkDecoder() async {
         for uri in [
             "alice@corp.example",
@@ -15,7 +48,7 @@ final class ClipboardPromptValidatorTests: XCTestCase {
             "bitkit://lightning:alice@corp.example",
             "bitkit://lightning:bitkit://alice@corp.example",
         ] {
-            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: []) { _ in
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false) { _ in
                 XCTFail("Must not decode a network-resolved clipboard candidate before confirmation: '\(uri)'")
                 return false
             }
@@ -26,7 +59,7 @@ final class ClipboardPromptValidatorTests: XCTestCase {
     func testWrappedLnurlCandidatesDoNotInvokeNetworkDecoder() async {
         let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1/lnurlp")
         for uri in wrappedLnurls(lnurl) {
-            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: []) { _ in
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false) { _ in
                 XCTFail("Must not decode a network-resolved clipboard candidate before confirmation: '\(uri)'")
                 return false
             }
@@ -44,7 +77,7 @@ final class ClipboardPromptValidatorTests: XCTestCase {
         let lnurl = ClipboardLnurlEncoder.encode("http://127.0.0.1:\(port)/lnurlp")
 
         for uri in wrappedLnurls(lnurl) {
-            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [])
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false)
             XCTAssertTrue(supported, uri)
         }
         XCTAssertEqual(probe.connections, 0, "Automatic inspection must not contact clipboard-derived endpoints")
@@ -70,7 +103,7 @@ final class ClipboardPromptValidatorTests: XCTestCase {
     func testLocalPaymentFormatsRemainSupported() async {
         let address = "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"
         for uri in [address, "bitcoin:\(address)?amount=0.001", "LIGHTNING:\(address)", "bitkit://\(address)", "bitkit://gift-test-1000"] {
-            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [])
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false)
             XCTAssertTrue(supported, uri)
         }
     }
@@ -78,13 +111,13 @@ final class ClipboardPromptValidatorTests: XCTestCase {
     func testBolt11InvoiceRemainsLocallyValidated() async {
         let invoice =
             "lnbcrt200n1p5hn4c8dqqnp4qwrgh4a03djj2sl34465uwnxhva0gtpjm4u8kvzgc5jergrkm9syypp55lwcgfpkdwuknmekjgted72n0ddl5qtaha7knk7c9n7yrjr4auassp5jgqw0a9w33e2ta4j7gyjrvsvu0lv844w895305nd8spnknq3f2hq9qyysgqcqzp2xqyz5vqrzjq29gjy9sqjrrp48tz7hj2e5vm4l2dukc4csf2mn6qm32u3hted5leapyqqqqqqqtcsqqqqlgqqqqqqgq2qd2gk64eg2kfxtdaryrlh98hvu97jdaxz2ma7aeyuy2uy9vkn9x5qft47p9taju297xnrehva20xcfml7wacuv737xv3xjjzyrtplcxqpfpu9dt"
-        let supported = await ClipboardPromptValidator.isSupportedURI(invoice, ownPublicKey: nil, contacts: [])
+        let supported = await ClipboardPromptValidator.isSupportedURI(invoice, ownPublicKey: nil, contacts: [], isUsdtEnabled: false)
         XCTAssertTrue(supported)
     }
 
     func testOrdinaryUnsupportedContentRemainsRejected() async {
         for uri in ["", "ordinary clipboard text", "https://example.com", "alice+invalid@corp.example", "Alice@corp.example", "lnurl1invalid"] {
-            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [])
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false)
             XCTAssertFalse(supported, uri)
         }
     }
@@ -116,7 +149,7 @@ final class ClipboardPromptValidatorTests: XCTestCase {
             key,
             "https://btcpay.example/plugins/store123/samrock/protocol?setup=btc-chain&otp=abc123",
         ] {
-            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: []) { _ in
+            let supported = await ClipboardPromptValidator.isSupportedURI(uri, ownPublicKey: nil, contacts: [], isUsdtEnabled: false) { _ in
                 XCTFail("Existing locally parsed candidates must not invoke the decoder")
                 return false
             }

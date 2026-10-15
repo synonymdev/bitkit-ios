@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import Combine
 import CryptoKit
 import Paykit
@@ -105,6 +106,257 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try Keychain.delete(key: .paykitPendingBackupRestore)
         try Keychain.delete(key: .onchainSendAttempts)
         try Keychain.delete(key: .paykitAcceptedPaymentRequests)
+        try Keychain.delete(key: .paykitUsdtPayments)
+    }
+
+    func testWalletEnvelopePreservesCoreRecoveryData() throws {
+        let fixture = #"{"version":1,"createdAt":1,"transfers":[],"usdtWallet":"{\"identity\":\"42161:wallet\",\"transfers\":[]}"}"#
+        let decoded = try JSONDecoder().decode(WalletBackupV1.self, from: Data(fixture.utf8))
+        XCTAssertEqual(decoded.usdtWallet, #"{"identity":"42161:wallet","transfers":[]}"#)
+        let encoded = try JSONEncoder().encode(decoded)
+        XCTAssertEqual(try JSONDecoder().decode(WalletBackupV1.self, from: encoded).usdtWallet, decoded.usdtWallet)
+        let withoutUsdt = #"{"version":1,"createdAt":1,"transfers":[]}"#
+        XCTAssertNil(try JSONDecoder().decode(WalletBackupV1.self, from: Data(withoutUsdt.utf8)).usdtWallet)
+    }
+
+    @MainActor
+    func testRestoredUsdtAttemptsProtectPendingPaymentsAndOnlySatisfiedReceiptsCount() throws {
+        let counterparty = "pubky" + String(repeating: "y", count: 52)
+        let ids = (0 ..< 4).map { PaykitPaymentRequest.ID(paymentRequestId: "request-\($0)", counterparty: counterparty) }
+        let proof = PaykitUsdtPaymentService.Proof(UsdtPaymentProof(chainId: "42161", transactionHash: "transaction",
+                                                                    receiptLogIndex: "0", signature: "signature"))
+        let attempts = ids.enumerated().map { index, id in
+            PaykitUsdtPaymentService.Attempt(quoteId: "quote-\(index)", wallet: "wallet", identity: identity, contact: counterparty,
+                                             requestId: id, binding: nil, billingPeriod: nil, proof: index == 2 ? proof : nil,
+                                             proofQueued: false, paymentStarted: index == 1)
+        }
+        let receipts = ids.enumerated().map { index, id in
+            PaykitUsdtPaymentService.Receipt(wallet: "wallet", identity: identity, requestId: id, paymentId: "payment-\(index)",
+                                             proofEventId: "proof-\(index)", verified: index != 1, transferId: "transfer-\(index)",
+                                             amount: PaykitAmount(asset: .usdt, atomic: 5_000_000), receivedAt: Date(),
+                                             underpaid: index == 2, afterExpiry: index == 3)
+        }
+        let service = PaykitUsdtPaymentService()
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: attempts.map(PaykitUsdtStateBackup.Attempt.init),
+                                                        receipts: receipts.map(PaykitUsdtStateBackup.Receipt.init)))
+        let protection = try service.paymentProtection(identity: identity)
+        XCTAssertEqual(protection.inFlight, [ids[1], ids[2]])
+        XCTAssertEqual(protection.completed, [ids[2]: .usdt])
+        XCTAssertEqual(receipts.filter(\.satisfied).map(\.requestId), [ids[0]])
+        XCTAssertTrue(try service.satisfiedProofs(identity: identity).isEmpty, "Restored receipts require the active wallet before use")
+        XCTAssertTrue(try service.paymentProtection(identity: counterparty).inFlight.isEmpty)
+        XCTAssertTrue(try service.satisfiedProofs(identity: counterparty).isEmpty)
+    }
+
+    @MainActor
+    func testUnsubmittedUsdtBindingRequiresCurrentJournalEvidenceAfterRestart() async throws {
+        let service = PaykitUsdtPaymentService()
+        var attempt = unsubmittedUsdtAttempt()
+        attempt.paymentStarted = true
+        let requestId = try XCTUnwrap(attempt.requestId)
+        try saveUsdtAttempts([attempt])
+        XCTAssertTrue(service.hasBinding(for: requestId))
+        await reconcileUsdt(service)
+        XCTAssertFalse(service.hasBinding(for: requestId))
+
+        for context in [("other-wallet", identity), ("wallet", "other-identity")] {
+            await service.reconcile(context: { context }, storedTransfer: { _ in nil }, paymentProof: { _, _ in nil },
+                                    submitProof: { _ in false }, paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+            XCTAssertTrue(service.hasBinding(for: requestId))
+        }
+
+        let restarted = PaykitUsdtPaymentService()
+        XCTAssertTrue(restarted.hasBinding(for: requestId))
+        await reconcileUsdt(restarted)
+        XCTAssertFalse(restarted.hasBinding(for: requestId))
+        await reconcileUsdt(restarted) { _ in throw PaykitPaymentStateBackupTestError.restoreFailed }
+        XCTAssertTrue(restarted.hasBinding(for: requestId))
+
+        for status in [UsdtTransferStatus.pending, .confirmed, .bridging] {
+            await reconcileUsdt(restarted)
+            XCTAssertFalse(restarted.hasBinding(for: requestId))
+            await reconcileUsdt(restarted) { id in
+                UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                             recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                             fee: nil, isIncoming: false, status: status, timestamp: 1)
+            }
+            XCTAssertTrue(restarted.hasBinding(for: requestId))
+        }
+    }
+
+    @MainActor
+    func testTerminalUsdtBindingRequiresCurrentUnexecutedEvidenceWithoutProofs() async throws {
+        var attempt = unsubmittedUsdtAttempt()
+        attempt.paymentStarted = true
+        let requestId = try XCTUnwrap(attempt.requestId)
+        for status: UsdtTransferStatus in [.failed, .replaced] {
+            let service = PaykitUsdtPaymentService()
+            try saveUsdtAttempts([attempt])
+            XCTAssertTrue(service.hasBinding(for: requestId))
+            await reconcileUsdt(service) { id in
+                UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                             recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 0,
+                             fee: nil, isIncoming: false, status: status, timestamp: 1)
+            }
+            XCTAssertFalse(service.hasBinding(for: requestId))
+            XCTAssertTrue(PaykitUsdtPaymentService().hasBinding(for: requestId))
+            await reconcileUsdt(service)
+            XCTAssertFalse(service.hasBinding(for: requestId))
+            for hasProof in [false, true] {
+                var protected = attempt
+                protected.proofQueued = !hasProof
+                if hasProof {
+                    protected.proof = PaykitUsdtPaymentService.Proof(UsdtPaymentProof(chainId: "42161", transactionHash: "transaction",
+                                                                                      receiptLogIndex: "0", signature: "signature"))
+                }
+                try saveUsdtAttempts([protected])
+                await reconcileUsdt(service) { id in
+                    UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                                 recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 0,
+                                 fee: nil, isIncoming: false, status: status, timestamp: 1)
+                }
+                XCTAssertTrue(service.hasBinding(for: requestId))
+            }
+        }
+    }
+
+    @MainActor
+    func testReconciliationInvalidatesReleaseEvidenceForChangedOrUnreadablePersistence() async throws {
+        let service = PaykitUsdtPaymentService()
+        let attempt = unsubmittedUsdtAttempt()
+        let requestId = try XCTUnwrap(attempt.requestId)
+        var started = attempt
+        started.paymentStarted = true
+        var proved = attempt
+        proved.proof = PaykitUsdtPaymentService.Proof(UsdtPaymentProof(chainId: "42161", transactionHash: "transaction",
+                                                                       receiptLogIndex: "0", signature: "signature"))
+        var queued = attempt
+        queued.proofQueued = true
+        let replacement = PaykitUsdtPaymentService.Attempt(quoteId: "replacement", wallet: attempt.wallet, identity: identity,
+                                                           contact: attempt.contact, requestId: requestId, binding: nil, billingPeriod: nil)
+        for changed in [started, proved, queued, replacement] {
+            try saveUsdtAttempts([attempt])
+            await reconcileUsdt(service)
+            XCTAssertFalse(service.hasBinding(for: requestId))
+            try saveUsdtAttempts([changed])
+            await reconcileUsdt(service) { _ in throw PaykitPaymentStateBackupTestError.restoreFailed }
+            XCTAssertTrue(service.hasBinding(for: requestId))
+            if changed != replacement {
+                await reconcileUsdt(service)
+                XCTAssertEqual(service.hasBinding(for: requestId), changed != started)
+            }
+        }
+        try saveUsdtAttempts([attempt])
+        await reconcileUsdt(service)
+        try Keychain.upsert(key: .paykitUsdtPayments, data: Data("unreadable".utf8))
+        XCTAssertTrue(PaykitUsdtPaymentService().hasBinding(for: requestId))
+        await reconcileUsdt(service)
+        XCTAssertTrue(service.hasBinding(for: requestId))
+    }
+
+    @MainActor
+    func testUsdtRestoreInvalidatesReleaseEvidenceBeforeReconciliation() async throws {
+        let service = PaykitUsdtPaymentService()
+        var attempt = unsubmittedUsdtAttempt()
+        let requestId = try XCTUnwrap(attempt.requestId)
+        try saveUsdtAttempts([attempt])
+        await reconcileUsdt(service)
+        XCTAssertFalse(service.hasBinding(for: requestId))
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
+        XCTAssertTrue(service.hasBinding(for: requestId))
+        XCTAssertTrue(service.resumableRequests.isEmpty)
+        await reconcileUsdt(service) { id in
+            UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                         recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                         fee: nil, isIncoming: false, status: .pending, timestamp: 1)
+        }
+        XCTAssertTrue(service.hasBinding(for: requestId))
+        await reconcileUsdt(service)
+        XCTAssertFalse(service.hasBinding(for: requestId))
+        attempt.paymentStarted = true
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
+        XCTAssertTrue(service.hasBinding(for: requestId))
+        await reconcileUsdt(service)
+        XCTAssertFalse(service.hasBinding(for: requestId))
+    }
+
+    @MainActor
+    func testUsdtRestoreInvalidatesSuspendedReconciliationEvidence() async throws {
+        let service = PaykitUsdtPaymentService()
+        let attempt = unsubmittedUsdtAttempt()
+        let requestId = try XCTUnwrap(attempt.requestId)
+        try saveUsdtAttempts([attempt])
+        let entered = expectation(description: "journal read started")
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        let reconciliation = Task {
+            await reconcileUsdt(service) { _ in
+                entered.fulfill()
+                for await _ in gate.stream {
+                    break
+                }
+                return nil
+            }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
+        gate.continuation.yield(())
+        gate.continuation.finish()
+        await reconciliation.value
+        XCTAssertTrue(service.hasBinding(for: requestId))
+        XCTAssertTrue(service.resumableRequests.isEmpty)
+        await reconcileUsdt(service)
+        XCTAssertFalse(service.hasBinding(for: requestId))
+    }
+
+    @MainActor
+    private func unsubmittedUsdtAttempt() -> PaykitUsdtPaymentService.Attempt {
+        let id = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "counterparty")
+        return PaykitUsdtPaymentService.Attempt(quoteId: "quote", wallet: "wallet", identity: identity, contact: id.counterparty,
+                                                requestId: id, binding: nil, billingPeriod: nil)
+    }
+
+    @MainActor
+    private func saveUsdtAttempts(_ attempts: [PaykitUsdtPaymentService.Attempt]) throws {
+        struct State: Encodable {
+            let attempts: [PaykitUsdtPaymentService.Attempt]
+            let receipts: [PaykitUsdtPaymentService.Receipt] = []
+        }
+        try Keychain.upsert(key: .paykitUsdtPayments, data: JSONEncoder().encode(State(attempts: attempts)))
+    }
+
+    @MainActor
+    private func reconcileUsdt(_ service: PaykitUsdtPaymentService,
+                               storedTransfer: (String) async throws -> UsdtTransfer? = { _ in nil }) async
+    {
+        await service.reconcile(context: { ("wallet", self.identity) }, storedTransfer: storedTransfer,
+                                paymentProof: { _, _ in nil }, submitProof: { _ in false }, paymentRequests: { [] },
+                                verifyPayment: { _, _ in nil })
+    }
+
+    func testWalletBackupWritesWaitForEarlierUploadAndRecoverAfterFailure() async throws {
+        let writer = WalletBackupWriter()
+        let entered = expectation(description: "upload started")
+        let gate = AsyncStream<Void>.makeStream()
+        let events = BackupWriteEvents()
+        let first = Task {
+            try await writer.write {
+                entered.fulfill()
+                for await _ in gate.stream {
+                    break
+                }
+                await events.append(1)
+                throw PaykitPaymentStateBackupTestError.restoreFailed
+            }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        let second = Task { try await writer.write { await events.append(2) } }
+        gate.continuation.yield(())
+        gate.continuation.finish()
+        do { try await first.value; XCTFail("Upload should fail") } catch {}
+        try await second.value
+        let recorded = await events.values
+        XCTAssertEqual(recorded, [1, 2])
     }
 
     func testSharedBackupBindingUsesActualVssDerivationAndNetworkNames() throws {
@@ -281,7 +533,8 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         for status in ["pending", "unknown", "rejected", "accepted"] {
             object["status"] = status
             for rates: [String: String]? in [nil, [:], [successor: "4"], [later: "5"],
-                                           [original: "3", successor: "4", later: "5"]] {
+                                             [original: "3", successor: "4", later: "5"]]
+            {
                 object["candidateFeeRates"] = rates
                 XCTAssertThrowsError(try restored(object))
             }
@@ -304,7 +557,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         object["amountSats"] = "1000"
         var understated = object
         understated["transfer"] = ["txTotalSats": "1", "preTransferOnchainSats": "3000",
-                                    "originalOrderClientBalanceSats": "900", "originalOrderFeeSats": "1000"]
+                                   "originalOrderClientBalanceSats": "900", "originalOrderFeeSats": "1000"]
         XCTAssertThrowsError(try restored(understated))
         let attempt = try restored(object)
         XCTAssertEqual(attempt.amountSats, 1000)
@@ -521,6 +774,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             paymentStarted: true,
             paymentIdentifier: "transaction-id",
             proofData: "transaction-id",
+            conversionQuoteId: "quote",
             onchainAddress: "test-address",
             onchainAmountSats: 1000,
             onchainWalletId: "trezor:android",
@@ -545,6 +799,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try PaykitSubscriptionStateStore().restoreBackup(decoded.subscriptions)
         try await PaykitPaymentProofService.shared.restoreBackup(decoded.pendingProofs)
         try Keychain.delete(key: .paykitAcceptedPaymentRequests)
+        try Keychain.delete(key: .paykitUsdtPayments)
         try acceptanceStore.restoreBackup(XCTUnwrap(decoded.acceptedOneTimeRequests))
         XCTAssertEqual(try acceptanceStore.load(identity: identity), [acceptedId])
 
@@ -553,6 +808,93 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         XCTAssertEqual(loaded, [proof])
         let restoredBackup = try await PaykitPaymentProofService.shared.backupSnapshot()
         XCTAssertEqual(restoredBackup.first?.onchainWalletId, "trezor:android")
+    }
+
+    func testUsdtBackupPreservesSharedWireFormat() throws {
+        let fixture = """
+        {
+          "attempts": [
+            {
+              "quoteId": "operation",
+              "wallet": "wallet",
+              "identity": "alice",
+              "contact": "bob",
+              "requestId": {
+                "paymentRequestId": "request",
+                "counterparty": "bob",
+                "billingPeriodStartsAt": "2026-10-01T00:00:00.125Z"
+              },
+              "binding": {
+                "payer": "alice",
+                "payee": "bob",
+                "paymentAppId": "bitkit",
+                "paymentRequestId": "request",
+                "paymentReference": "invoice",
+                "paymentEndpointIdentifier": "usdt-arbitrum-address",
+                "periodStartsAt": "2026-10-01T00:00:00.125Z",
+                "periodEndsAt": "2026-11-01T00:00:00.125Z",
+                "conversionQuoteId": "quote"
+              },
+              "billingPeriod": {
+                "startsAt": "2026-10-01T00:00:00.125Z",
+                "endsAt": "2026-11-01T00:00:00.125Z"
+              },
+              "proof": null,
+              "proofQueued": false,
+              "paymentStarted": true
+            }
+          ],
+          "receipts": [
+            {
+              "wallet": "wallet",
+              "identity": "alice",
+              "requestId": {
+                "paymentRequestId": "request",
+                "counterparty": "bob",
+                "billingPeriodStartsAt": "2026-10-01T00:00:00.125Z"
+              },
+              "paymentId": "42161:transaction:2",
+              "proofEventId": "proof",
+              "verified": true,
+              "transferId": "transfer",
+              "amountAtomic": 50000,
+              "receivedAtMillis": 1790812801000,
+              "underpaid": false,
+              "afterExpiry": false
+            }
+          ]
+        }
+        """
+        let backup = try JSONDecoder().decode(PaykitUsdtStateBackup.self, from: Data(fixture.utf8))
+        let attempt = try XCTUnwrap(backup.attempts.first).restored()
+        let receipt = try XCTUnwrap(backup.receipts.first).restored()
+        XCTAssertTrue(attempt.paymentStarted)
+        XCTAssertEqual(attempt.binding?.paymentAppId, "bitkit")
+        XCTAssertEqual(attempt.binding?.conversionQuoteId, "quote")
+        XCTAssertEqual(attempt.billingPeriod?.sdkValue.startsAt, "2026-10-01T00:00:00.125Z")
+        XCTAssertEqual(receipt.amount.atomic, 50000)
+        XCTAssertEqual(receipt.requestId, attempt.requestId)
+        let encoded = try JSONEncoder().encode(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: [.init(receipt)]))
+        let restored = try JSONDecoder().decode(PaykitUsdtStateBackup.self, from: encoded)
+        XCTAssertEqual(try restored.attempts.first?.restored(), attempt)
+        XCTAssertEqual(try restored.receipts.first?.restored(), receipt)
+    }
+
+    @MainActor
+    func testUsdtRestorePreservesStartedPaymentsWhenSnapshotsOverlap() throws {
+        let service = PaykitUsdtPaymentService()
+        let started = PaykitUsdtPaymentService.Attempt(quoteId: "operation", wallet: "wallet", identity: "alice", contact: "bob",
+                                                       requestId: nil, binding: nil, billingPeriod: nil, proofQueued: true,
+                                                       paymentStarted: true)
+        var unstarted = started
+        unstarted.paymentStarted = false
+        let older = PaykitUsdtStateBackup(attempts: [.init(unstarted)], receipts: [])
+        try service.restoreBackup(older)
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(started)], receipts: []))
+        try service.restoreBackup(older)
+        let restored = try XCTUnwrap(service.backupSnapshot().attempts.first).restored()
+        XCTAssertTrue(restored.paymentStarted)
+        XCTAssertFalse(restored.proofQueued)
     }
 
     func testUnreadablePaymentStateIsPreserved() async throws {
@@ -565,7 +907,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         do {
             _ = try await PaykitPaymentProofStore().load()
             XCTFail("Unreadable proof state must fail")
-        } catch is DecodingError {}
+        } catch is Swift.DecodingError {}
         XCTAssertEqual(try Keychain.load(key: .paykitSubscriptionState), data)
         XCTAssertEqual(try Keychain.load(key: .paykitPendingPaymentProofs), data)
     }
@@ -800,5 +1142,12 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         try store.save(restored, identity: identity)
         let migratedData = try XCTUnwrap(Keychain.load(key: .paykitSubscriptionState))
         XCTAssertTrue(String(decoding: migratedData, as: UTF8.self).contains("2026-09-24T10:00:00Z"))
+    }
+}
+
+private actor BackupWriteEvents {
+    private(set) var values: [Int] = []
+    func append(_ value: Int) {
+        values.append(value)
     }
 }

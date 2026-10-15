@@ -22,6 +22,9 @@ struct SendConfirmationView: View {
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
     var preparingRequest: PaykitPaymentRequest?
+    var amountIsRoot = false
+    /// True while the send sheet is still loading the fee rate and choosing the funding source.
+    var isSetupPending = false
 
     @State private var showDetails = false
     @State private var showingBiometricError = false
@@ -164,9 +167,12 @@ struct SendConfirmationView: View {
         transactionFee > 0 ? transactionFee : Int(hwSend.previewFeeSats)
     }
 
-    /// BIP21 flow can land on confirm with `sendAmountSats` unset; set it from the scanned invoices.
     @MainActor
     private func ensureSendAmountFromScannedInvoicesIfNeeded() {
+        if app.contactPaymentContext?.incomingPaymentRequest == nil, let amount = app.fixedLightningAmountSats {
+            wallet.sendAmountSats = amount
+            return
+        }
         guard wallet.sendAmountSats == nil || wallet.sendAmountSats == 0 else { return }
         if let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0 {
             wallet.sendAmountSats = invoice.amountSatoshis
@@ -219,9 +225,24 @@ struct SendConfirmationView: View {
     }
 
     private var shouldAutomaticallyPay: Bool {
-        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true && app
-            .selectedWalletToPayFrom == .lightning &&
-            !hwSend.isActive && !requiresPaymentConfirmation
+        retainedHardwareRetry == nil && preparingRequest == nil && app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
+            !hwSend.isActive && !requiresPaymentConfirmation && app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil &&
+            !Self.hasManuallyChosenCoins(
+                walletType: app.selectedWalletToPayFrom,
+                isHardwarePayment: hwSend.isActive,
+                coinSelectionMethod: settings.coinSelectionMethod,
+                selectedUtxos: wallet.selectedUtxos
+            )
+    }
+
+    /// The coin picker opens a new confirmation, which must wait for a swipe instead of paying by itself.
+    static func hasManuallyChosenCoins(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?
+    ) -> Bool {
+        walletType == .onchain && !isHardwarePayment && coinSelectionMethod == .manual && selectedUtxos?.isEmpty == false
     }
 
     static func acceptedOnchainRoute(
@@ -267,7 +288,14 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if let preparingRequest {
-                    MoneyStack(sats: Int(preparingRequest.amountSats), showSymbol: true, testIdPrefix: "ReviewAmount")
+                    CaptionMText(t("wallet__payment_request_requested_amount"), textColor: .white64)
+                        .padding(.bottom, 8)
+                    if preparingRequest.amount.asset == .btc {
+                        MoneyStack(sats: Int(clamping: preparingRequest.amount.atomic), showSymbol: true, testIdPrefix: "ReviewAmount")
+                    } else {
+                        PaykitAmountText(amount: preparingRequest.amount, size: .display)
+                            .accessibilityIdentifier("ReviewAmount")
+                    }
                 } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     MoneyStack(
                         sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
@@ -296,17 +324,15 @@ struct SendConfirmationView: View {
                 }
             } else {
                 if let request = oneOffPaymentRequest {
-                    paymentRequestSummary(request)
-                        .padding(.bottom, 16)
+                    PaymentRequestSummary(
+                        contactName: contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
+                        note: oneOffPaymentRequestNote,
+                        accentColor: accentColor
+                    )
+                    .padding(.bottom, 16)
                 }
 
-                Image("coin-stack-4")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: UIScreen.main.bounds.width * 0.8)
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 16)
-                    .rotationEffect(.degrees(swipeProgress * 14))
+                PaymentReviewIllustration(swipeProgress: swipeProgress)
             }
 
             Spacer(minLength: 16)
@@ -350,6 +376,7 @@ struct SendConfirmationView: View {
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
                     isPreparingRequest: preparingRequest != nil
                 ),
+                isSubmitted: hasStartedAutomaticPayment,
                 swipeProgress: $swipeProgress
             ) {
                 try await submitPayment()
@@ -367,17 +394,25 @@ struct SendConfirmationView: View {
             if presentationID == nil {
                 presentationID = sheets.activeSheetConfiguration?.presentationID
             }
-            guard preparingRequest == nil else { return }
+            guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
             ensureSendAmountFromScannedInvoicesIfNeeded()
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
-                requiresPaymentConfirmation = true
-                showDetails = true
+                showManualConfirmation(reason: "not automatic when opened")
             }
             await calculateTransactionFee()
             await calculateRoutingFee()
             guard !Task.isCancelled else { return }
             // PIN navigation can cancel the view task while authorization is awaiting its result.
             Task { @MainActor in await startAutomaticPaymentIfNeeded() }
+        }
+        .onChange(of: isSetupPending) { _, isPending in
+            guard !isPending, preparingRequest == nil else { return }
+            Task { @MainActor in
+                if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
+                    showManualConfirmation(reason: "not automatic after setup")
+                }
+                await startAutomaticPaymentIfNeeded()
+            }
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             guard preparingRequest == nil else { return }
@@ -391,6 +426,8 @@ struct SendConfirmationView: View {
             }
         }
         .onChange(of: app.selectedWalletToPayFrom) {
+            guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
+            ensureSendAmountFromScannedInvoicesIfNeeded()
             walletSwitchContext = sendContext
         }
         .onChange(of: sendContext) { _, context in
@@ -408,6 +445,11 @@ struct SendConfirmationView: View {
             if !Task.isCancelled, walletSwitchContext == context {
                 walletSwitchContext = nil
             }
+        }
+        .onChange(of: walletSwitchContext) { previous, context in
+            // Clearing the context cancels the switch task, so the start runs outside it with the current setup state.
+            guard previous != nil, context == nil, confirmationContext != nil, preparingRequest == nil else { return }
+            Task { @MainActor in await startAutomaticPaymentIfNeeded() }
         }
         .onDisappear {
             if !isEditingSendDetails || sendContext != walletSwitchContext {
@@ -458,8 +500,12 @@ struct SendConfirmationView: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard shouldAutomaticallyPay, !hasStartedAutomaticPayment
-        else { return }
+        guard Self.canStartAutomaticPayment(
+            shouldAutomaticallyPay: shouldAutomaticallyPay,
+            hasStartedAutomaticPayment: hasStartedAutomaticPayment,
+            isSetupPending: isSetupPending,
+            isPreparingWallet: walletSwitchContext != nil
+        ) else { return }
         hasStartedAutomaticPayment = true
         do {
             try await submitPayment(isAutomatic: true)
@@ -600,7 +646,7 @@ struct SendConfirmationView: View {
             }
 
             if let note = oneOffPaymentRequestNote {
-                paymentRequestInvoiceNote(note)
+                PaymentRequestInvoiceNote(note: note)
             }
         }
     }
@@ -721,7 +767,7 @@ struct SendConfirmationView: View {
             }
 
             if let note = oneOffPaymentRequestNote {
-                paymentRequestInvoiceNote(note)
+                PaymentRequestInvoiceNote(note: note)
             }
         }
     }
@@ -735,6 +781,8 @@ struct SendConfirmationView: View {
 
     private func selectFundingSource(_ source: SendFundingSource) {
         switch source {
+        case .usdt:
+            navigationPath = amountIsRoot ? [] : [.amount]
         case .spending:
             hwSend.selectWallet(nil)
             app.selectedWalletToPayFrom = .lightning
@@ -758,30 +806,43 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
+        if isAutomatic, isFeeRateMissing {
+            guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
+                // The rate is still loading; the automatic start runs again when send setup finishes.
+                hasStartedAutomaticPayment = false
+                return
+            }
+            showManualConfirmation(reason: "fee rate missing")
+            return
+        }
+        if isAutomatic, Self.needsManualCoinSelection(
+            walletType: app.selectedWalletToPayFrom,
+            isHardwarePayment: hwSend.isActive,
+            coinSelectionMethod: settings.coinSelectionMethod,
+            selectedUtxos: wallet.selectedUtxos
+        ) {
+            showManualConfirmation(reason: "manual coin selection")
+            try? await openManualCoinSelection()
+            return
+        }
         try await Self.requireManualCoinSelection(
             walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive,
             coinSelectionMethod: settings.coinSelectionMethod,
             selectedUtxos: wallet.selectedUtxos
         ) {
-            guard let context = confirmationContext else { return }
-            func isCurrentSend() -> Bool {
-                !Task.isCancelled && confirmationContext == context
-            }
-            guard isCurrentSend() else { throw CancellationError() }
-            do {
-                try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
-                guard isCurrentSend() else { throw CancellationError() }
-                navigationPath.append(.utxoSelection)
-            } catch {
-                guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
-                Logger.error("Failed to reload UTXOs for manual selection: \(error)")
-                showManualCoinSelectionError()
-                throw error
-            }
+            try await openManualCoinSelection()
         }
         if isFeeRateMissing {
             try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+        }
+
+        if isAutomatic {
+            await settleTransactionFee()
+            if Self.automaticPaymentLacksFee(walletType: app.selectedWalletToPayFrom, transactionFee: transactionFee) {
+                showManualConfirmation(reason: "onchain fee unknown")
+                return
+            }
         }
 
         // Validate payment and show warnings if needed
@@ -833,7 +894,7 @@ struct SendConfirmationView: View {
         }
 
         if requiresManualConfirmation(isAutomatic: isAutomatic) {
-            showManualConfirmation()
+            showManualConfirmation(reason: "hardware wallet")
             return
         }
 
@@ -844,8 +905,28 @@ struct SendConfirmationView: View {
         }
     }
 
-    static func requiresManualConfirmation(isAutomatic: Bool, walletType: WalletType, isHardwarePayment: Bool) -> Bool {
-        isAutomatic && (walletType != .lightning || isHardwarePayment)
+    /// The wallet switch chooses coins separately from send setup, so the automatic start waits for both.
+    static func canStartAutomaticPayment(
+        shouldAutomaticallyPay: Bool,
+        hasStartedAutomaticPayment: Bool,
+        isSetupPending: Bool,
+        isPreparingWallet: Bool
+    ) -> Bool {
+        shouldAutomaticallyPay && !hasStartedAutomaticPayment && !isSetupPending && !isPreparingWallet
+    }
+
+    static func requiresManualConfirmation(isAutomatic: Bool, isHardwarePayment: Bool) -> Bool {
+        isAutomatic && isHardwarePayment
+    }
+
+    /// A missing rate that has not failed is still loading, so the automatic payment waits instead of asking for a swipe.
+    static func automaticPaymentAwaitsFeeRate(isFeeRateMissing: Bool, feeRateLoadFailed: Bool) -> Bool {
+        isFeeRateMissing && !feeRateLoadFailed
+    }
+
+    /// An automatic on-chain payment must not be sent before its fee is known, because the fee warnings read it.
+    static func automaticPaymentLacksFee(walletType: WalletType, transactionFee: Int) -> Bool {
+        walletType == .onchain && transactionFee <= 0
     }
 
     static func privatePaymentListOutcomeForLightningFailure(
@@ -870,18 +951,21 @@ struct SendConfirmationView: View {
     }
 
     static func sendLightningPayment<Result>(
+        invoiceAmountSats: UInt64,
+        reviewedAmountSats: UInt64,
         request: PaykitPaymentRequest?,
         authorize: (PaykitPaymentRequest) async throws -> Void,
         onAuthorizationFailure: (Error) async -> Void,
         send: () async throws -> Result
     ) async throws -> Result {
-        if let request {
-            do {
-                try await authorize(request)
-            } catch {
-                await onAuthorizationFailure(error)
-                throw error
+        do {
+            guard invoiceAmountSats == 0 || invoiceAmountSats == reviewedAmountSats else {
+                throw PaykitPaymentRequestError.amountMismatch
             }
+            if let request { try await authorize(request) }
+        } catch {
+            await onAuthorizationFailure(error)
+            throw error
         }
         return try await send()
     }
@@ -920,6 +1004,24 @@ struct SendConfirmationView: View {
         isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
     }
 
+    private func openManualCoinSelection() async throws {
+        guard let context = confirmationContext else { return }
+        func isCurrentSend() -> Bool {
+            !Task.isCancelled && confirmationContext == context
+        }
+        guard isCurrentSend() else { throw CancellationError() }
+        do {
+            try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
+            guard isCurrentSend() else { throw CancellationError() }
+            navigationPath.append(.utxoSelection)
+        } catch {
+            guard isCurrentSend(), !(error is CancellationError) else { throw CancellationError() }
+            Logger.error("Failed to reload UTXOs for manual selection: \(error)")
+            showManualCoinSelectionError()
+            throw error
+        }
+    }
+
     private func showManualCoinSelectionError() {
         app.toast(type: .error, title: t("other__try_again"))
     }
@@ -949,10 +1051,23 @@ struct SendConfirmationView: View {
         selectedUtxos: [SpendableUtxo]?,
         prepareSelection: () async throws -> Void
     ) async throws {
-        guard walletType == .onchain, !isHardwarePayment, coinSelectionMethod == .manual,
-              selectedUtxos?.isEmpty != false else { return }
+        guard needsManualCoinSelection(
+            walletType: walletType,
+            isHardwarePayment: isHardwarePayment,
+            coinSelectionMethod: coinSelectionMethod,
+            selectedUtxos: selectedUtxos
+        ) else { return }
         try await prepareSelection()
         throw CancellationError()
+    }
+
+    static func needsManualCoinSelection(
+        walletType: WalletType,
+        isHardwarePayment: Bool,
+        coinSelectionMethod: CoinSelectionMethod,
+        selectedUtxos: [SpendableUtxo]?
+    ) -> Bool {
+        walletType == .onchain && !isHardwarePayment && coinSelectionMethod == .manual && selectedUtxos?.isEmpty != false
     }
 
     static func isSwipeDisabled(
@@ -989,12 +1104,12 @@ struct SendConfirmationView: View {
     private func requiresManualConfirmation(isAutomatic: Bool) -> Bool {
         Self.requiresManualConfirmation(
             isAutomatic: isAutomatic,
-            walletType: app.selectedWalletToPayFrom,
             isHardwarePayment: hwSend.isActive
         )
     }
 
-    private func showManualConfirmation() {
+    private func showManualConfirmation(reason: String) {
+        Logger.info("Opening manual confirmation for first subscription payment: \(reason)")
         hasStartedAutomaticPayment = false
         requiresPaymentConfirmation = true
         showDetails = true
@@ -1034,65 +1149,6 @@ struct SendConfirmationView: View {
         return note
     }
 
-    private func paymentRequestSummary(_ request: PaykitPaymentRequest) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            SendSectionView(t("wallet__send_from")) {
-                paymentRequestSummaryValue(
-                    contactPaymentContact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
-                    icon: "user",
-                    accessibilityIdentifier: "PaymentRequestFrom"
-                )
-            }
-
-            let note = oneOffPaymentRequestNote
-
-            SendSectionView(t("wallet__payment_request_for")) {
-                paymentRequestSummaryValue(
-                    note ?? t("wallet__payment_request_for_not_specified"),
-                    icon: "note",
-                    textColor: note == nil ? .textSecondary : .textPrimary,
-                    accessibilityIdentifier: "PaymentRequestFor"
-                )
-            }
-        }
-    }
-
-    private func paymentRequestInvoiceNote(_ note: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CaptionMText(t("wallet__activity_invoice_note"))
-                .padding(.bottom, 8)
-
-            VStack(alignment: .leading, spacing: 0) {
-                ZigzagDivider()
-
-                TitleText(note, textColor: .primary)
-                    .padding(24)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white10)
-                    .accessibilityIdentifier("PaymentRequestInvoiceNote")
-            }
-        }
-    }
-
-    private func paymentRequestSummaryValue(
-        _ text: String,
-        icon: String,
-        textColor: Color = .textPrimary,
-        accessibilityIdentifier: String
-    ) -> some View {
-        HStack(spacing: 4) {
-            Image(icon)
-                .resizable()
-                .scaledToFit()
-                .foregroundColor(accentColor)
-                .frame(width: 16, height: 16)
-
-            BodySSBText(text, textColor: textColor)
-                .lineLimit(1)
-                .accessibilityIdentifier(accessibilityIdentifier)
-        }
-    }
-
     private func performPayment(isAutomatic: Bool) async throws {
         let paymentActivity = PaykitPaymentActivity.shared.begin()
         defer { PaykitPaymentActivity.shared.end(paymentActivity) }
@@ -1122,7 +1178,8 @@ struct SendConfirmationView: View {
                     request: incomingPaymentRequest,
                     paymentAppId: paymentAppId,
                     paymentEndpointIdentifier: proof.endpointIdentifier,
-                    kind: proof.kind
+                    kind: proof.kind,
+                    paymentTerms: app.paykitPaymentTerms
                 )
                 preparedPaymentProof = (proof.endpointIdentifier, proof.kind, paymentAppId)
                 if proof.kind == .onchain {
@@ -1137,7 +1194,7 @@ struct SendConfirmationView: View {
                 if shouldCancelPaymentProof, let incomingPaymentRequest {
                     await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
                 }
-                showManualConfirmation()
+                showManualConfirmation(reason: "hardware wallet")
                 return
             }
 
@@ -1162,6 +1219,8 @@ struct SendConfirmationView: View {
                 // native millisatoshi precision instead of our truncated satoshi value.
                 let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
                 try await Self.sendLightningPayment(
+                    invoiceAmountSats: invoice.amountSatoshis,
+                    reviewedAmountSats: amount,
                     request: incomingPaymentRequest,
                     authorize: { try await paykitPaymentRequestManager.ensurePaymentAllowed($0) },
                     onAuthorizationFailure: { _ in
@@ -1173,7 +1232,7 @@ struct SendConfirmationView: View {
                         try await wallet.sendWithTimeout(
                             bolt11: invoice.bolt11,
                             sats: paymentSats,
-                            paymentDeadline: incomingPaymentRequest?.paymentDeadline,
+                            paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                             afterListening: { _ in lightningPaymentSubmitted = true },
                             onTimeout: { timedOutHash in
                                 app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -1222,6 +1281,7 @@ struct SendConfirmationView: View {
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
+                wallet.sendAmountSats = amount
                 let useMaxAmount = await shouldUseMaxOnchainSend(address: invoice.address, amountSats: amount)
                 let result = try await Self.sendOnchainPayment(
                     request: incomingPaymentRequest,
@@ -1253,7 +1313,7 @@ struct SendConfirmationView: View {
                                 tags: tagManager.selectedTagsArray, contact: contactPublicKey,
                                 createdAt: UInt64(Date().timeIntervalSince1970)
                             ),
-                            paymentDeadline: incomingPaymentRequest?.paymentDeadline,
+                            paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                             beforeBroadcastAttempt: beforeBroadcastAttempt,
                             onPreDispatchFailure: { _ in
                                 guard let incomingPaymentRequest else { return }
@@ -1322,7 +1382,7 @@ struct SendConfirmationView: View {
                 }
 
                 // The accepted attempt owns the original amount and metadata during local resume.
-                wallet.sendAmountSats = savedActivity?.value ?? incomingPaymentRequest?.amountSats ?? amount
+                wallet.sendAmountSats = savedActivity?.value ?? amount
 
                 Logger.info("Onchain send result txid: \(txid)")
 
@@ -1358,7 +1418,6 @@ struct SendConfirmationView: View {
                 } else if onchainPaymentStarted {
                     shouldCancelPaymentProof = false
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
-                    wallet.sendAmountSats = incomingPaymentRequest.amountSats
                     Logger.warn("On-chain payment outcome is uncertain after broadcast started: \(error)", context: "SendConfirmation")
                     navigationPath.append(.pending(
                         paymentHash: nil,
@@ -1434,7 +1493,9 @@ struct SendConfirmationView: View {
             wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis
         }
 
-        guard let paymentAmount, request.acceptsPaymentAmount(paymentAmount) else {
+        guard let paymentAmount,
+              request.acceptsPaymentAmount(paymentAmount, method: app.paykitPaymentMethod, paymentTerms: app.paykitPaymentTerms)
+        else {
             throw PaykitPaymentRequestError.amountMismatch
         }
         guard app.selectedWalletToPayFrom == .lightning else { return }
@@ -1442,7 +1503,7 @@ struct SendConfirmationView: View {
             throw PaykitPaymentRequestError.amountMismatch
         }
         let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: invoice.bolt11)
-        guard request.acceptsLightningInvoiceAmount(milliSatoshis: parsedInvoice.amountMilliSatoshis())
+        guard request.acceptsLightningInvoiceAmount(milliSatoshis: parsedInvoice.amountMilliSatoshis(), paymentTerms: app.paykitPaymentTerms)
         else {
             throw PaykitPaymentRequestError.amountMismatch
         }
@@ -1607,7 +1668,8 @@ struct SendConfirmationView: View {
         app.validateManualEntryInput(
             value,
             savingsBalanceSats: wallet.spendableOnchainBalanceSats,
-            spendingBalanceSats: wallet.maxSendLightningSats
+            spendingBalanceSats: wallet.maxSendLightningSats,
+            scope: hwSend.isActive ? .onchainPayments : .unrestricted
         )
 
         if let manualIndex = navigationPath.firstIndex(of: .manual) {
@@ -1617,10 +1679,24 @@ struct SendConfirmationView: View {
         }
     }
 
+    private func returnToAmountReviewIfNeeded() -> Bool {
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.pricing.conversion != nil else { return false }
+        let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
+        guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()) else {
+            app.paykitPaymentTerms = nil
+            app.paykitReviewedAmount = nil
+            navigationPath = amountIsRoot ? [] : [.amount]
+            return true
+        }
+        return false
+    }
+
     private func navigateToAmount() {
         guard canEditAmount else { return }
 
-        if let amountIndex = navigationPath.lastIndex(of: .amount) {
+        if amountIsRoot {
+            navigationPath = []
+        } else if let amountIndex = navigationPath.lastIndex(of: .amount) {
             navigationPath = Array(navigationPath.prefix(amountIndex + 1))
         } else {
             if let confirmIndex = navigationPath.lastIndex(of: .confirm) {
@@ -1686,6 +1762,16 @@ struct SendConfirmationView: View {
 
         guard isCurrentSend() else { return }
         await calculateTransactionFee()
+    }
+
+    /// Recalculates until the newest calculation is the one that finished, so a concurrent one cannot leave the fee unset.
+    @MainActor
+    private func settleTransactionFee() async {
+        for _ in 0 ..< 3 {
+            let startedFrom = feeCalculationId
+            await calculateTransactionFee()
+            if feeCalculationId == startedFrom + 1 { return }
+        }
     }
 
     @MainActor

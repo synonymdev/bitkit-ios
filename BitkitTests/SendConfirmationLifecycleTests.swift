@@ -7,6 +7,27 @@ import XCTest
 
 @MainActor
 final class SendConfirmationLifecycleTests: XCTestCase {
+    func testFixedLightningReviewUsesInvoiceAmountAfterEditingAnotherFundingSource() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 10000,
+            timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+            description: nil, networkType: .regtest, payeeNodeId: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 1000
+        let window = host(app: app, wallet: wallet, sheets: sheets, path: .constant([]))
+        defer { close(window) }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(wallet.sendAmountSats, 10000)
+    }
+
     func testSuspendedPreparationCannotChangeClosedOrReplacementSend() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -384,27 +405,84 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertTrue(shownToasts.isEmpty)
     }
 
+    func testInitialPaymentStartsOnceWhenSetupFinishesBeforeWalletSwitch() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let pinEnabled = settings.pinEnabled
+        addTeardownBlock { @MainActor in settings.pinEnabled = pinEnabled }
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        settings.coinSelectionMethod = .autopilot
+        let wallet = ControlledSendWallet(operation: .selection)
+        let app = AppViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkytest", isInitialSubscriptionPayment: true)
+        app.scannedOnchainInvoice = invoice
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 6007
+        wallet.selectedFeeRateSatsPerVByte = 2
+        wallet.totalOnchainSats = 1_000_000
+        let setup = SendConfirmationTestSetup()
+        var path: [SendRoute] = []
+        let window = host(
+            app: app,
+            wallet: wallet,
+            sheets: sheets,
+            path: Binding(get: { path }, set: { path = $0 }),
+            setup: setup
+        )
+        defer { close(window) }
+        try await Task.sleep(for: .milliseconds(100))
+
+        app.selectedWalletToPayFrom = .onchain
+        await fulfillment(of: [wallet.started], timeout: 3)
+        setup.isPending = false
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(setup.pinChecks.isEmpty)
+
+        wallet.resume()
+        await fulfillment(of: [wallet.finished], timeout: 3)
+        let deadline = ContinuousClock.now + .seconds(3)
+        while setup.pinChecks.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(setup.pinChecks, [false], "The payment starts once and is not cancelled while it awaits the PIN")
+    }
+
     private func host(
         app: AppViewModel,
         wallet: WalletViewModel,
         sheets: SheetViewModel,
         path: Binding<[SendRoute]>,
-        navigation: SendConfirmationTestNavigation? = nil
+        navigation: SendConfirmationTestNavigation? = nil,
+        setup: SendConfirmationTestSetup? = nil
     ) -> UIWindow {
         let hwSend = HwSendCoordinator()
-        let confirmation = SendConfirmationView(
-            navigationPath: path,
-            isSubmittingPayment: .constant(false),
-            hwSend: hwSend,
-            requestPinCheck: {
-                XCTFail("Preparing confirmation must not authorize a payment")
-                return false
-            },
-            prepareIncomingPaymentRequest: {
-                XCTFail("Preparing confirmation must not submit a payment request")
-            },
-            routingCacheResetAttempted: false
-        )
+        let makeConfirmation = { (isSetupPending: Bool) in
+            SendConfirmationView(
+                navigationPath: path,
+                isSubmittingPayment: .constant(false),
+                hwSend: hwSend,
+                requestPinCheck: {
+                    guard let setup else {
+                        XCTFail("Preparing confirmation must not authorize a payment")
+                        return false
+                    }
+                    setup.pinChecks.append(Task.isCancelled)
+                    return false
+                },
+                prepareIncomingPaymentRequest: {
+                    XCTFail("Preparing confirmation must not submit a payment request")
+                },
+                routingCacheResetAttempted: false,
+                isSetupPending: isSetupPending
+            )
+        }
+        let confirmation = SetupObservingConfirmation(setup: setup, makeConfirmation: makeConfirmation)
         let view = Group {
             if let navigation {
                 @Bindable var navigation = navigation
@@ -461,6 +539,23 @@ final class SendConfirmationLifecycleTests: XCTestCase {
 
     private var invoice: OnChainInvoice {
         OnChainInvoice(address: "bcrt1qexample", amountSatoshis: 6007, label: nil, message: nil, params: nil)
+    }
+}
+
+@Observable
+@MainActor
+private final class SendConfirmationTestSetup {
+    var isPending = true
+    /// Whether the payment task was cancelled at each PIN request.
+    var pinChecks: [Bool] = []
+}
+
+private struct SetupObservingConfirmation: View {
+    let setup: SendConfirmationTestSetup?
+    let makeConfirmation: (Bool) -> SendConfirmationView
+
+    var body: some View {
+        makeConfirmation(setup?.isPending ?? false)
     }
 }
 

@@ -16,6 +16,7 @@
     <action>Verify the Send sheet shows the recipient options, then tap "Enter Manually" (id "RecipientManual")</action>
     <action>Type the destination regtest address into the recipient field (id "RecipientInput") and tap Continue (id "AddressContinue")</action>
     <action>Verify the Send amount screen (id "SendAmount") is visible and its available amount (id "AvailableAmount") is greater than 0</action>
+    <action>Tap the funding-source button once, verify the source menu (id "SendFundingSources") opens, then select the paired Trezor row. Wait for balance loading to finish and verify the button shows the paired Trezor name in blue</action>
     <action>Tap the keys "1", "0", "0", "0", "0" (ids "N1", "N0", "N0", "N0", "N0") to enter 10 000 sats and tap Continue (id "ContinueAmount")</action>
     <action>Verify the review screen (id "SendConfirm") shows an amount of 10 000 sats and the paired hardware wallet as the funding source (blue accent)</action>
     <action>Tap "Show Details" (id "SendConfirmToggleDetails") and verify the destination address and a non-zero network fee are listed</action>
