@@ -234,7 +234,9 @@ struct PubkyAuthApprovalSheet: View {
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
 
-            if config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled {
+            if config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled,
+               config.request.bitkitClaim?.requiresUsdtAddress != true || usdtAddress == nil
+            {
                 usdtSharingConsent
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 32)
@@ -266,8 +268,9 @@ struct PubkyAuthApprovalSheet: View {
 
     private var watchOnlyConsentIntroduction: some View {
         VStack(alignment: .leading, spacing: 8) {
-            DisplayText(t("pubky_auth__watch_only_intro_title"), accentColor: .blueAccent)
-            BodyMText(watchOnlyConsentDescription, kerning: 0, lineHeight: 22)
+            DisplayText(t("pubky_auth__watch_only_intro_title"),
+                        accentColor: config.request.bitkitClaim?.sharesBitcoin == true ? .blueAccent : .usdtAccent)
+            BodyMText(t(introDescriptionKey), kerning: 0, lineHeight: 22)
                 .accessibilityIdentifier("PubkyAuthWatchOnlyConsentDescription")
         }
     }
@@ -286,8 +289,6 @@ struct PubkyAuthApprovalSheet: View {
                 .accessibilityIdentifier("PubkyAuthShareUsdt")
             }
             if shareUsdt || config.request.bitkitClaim?.requiresUsdtAddress == true {
-                BodySText(t("pubky_auth__usdt_privacy"), textColor: .white64)
-                    .accessibilityIdentifier("PubkyAuthUsdtPrivacy")
                 if usdtUnavailable {
                     BodySText(t("pubky_auth__usdt_unavailable"), textColor: .white64)
                     Button(t("common__retry")) { Task { await loadUsdtAddress() } }
@@ -500,16 +501,6 @@ struct PubkyAuthApprovalSheet: View {
             usdtUnavailable = true
             shareUsdt = false
         }
-    }
-
-    private var watchOnlyConsentDescription: String {
-        let description = t(introDescriptionKey)
-        guard let relayOrigin = config.request.relayOrigin else { return description }
-
-        return description + "\n\n" + t(
-            "pubky_auth__watch_only_intro_relay",
-            variables: ["relay": relayOrigin]
-        )
     }
 
     private func relayOriginSection(_ relayOrigin: String) -> some View {

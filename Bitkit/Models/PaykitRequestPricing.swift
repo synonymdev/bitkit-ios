@@ -84,9 +84,9 @@ struct PaykitRequestPricing: Hashable {
         }
     }
 
-    static func subscriptionEndpoints(requested: PaykitAsset, available: [String]) -> [String] {
+    static func subscriptionEndpoints(requested: PaykitAsset, available: [String], selected: [String]? = nil) -> [String] {
         available.filter {
-            guard let method = PublicPaykitService.MethodId(rawValue: $0) else { return false }
+            guard selected?.contains($0) ?? true, let method = PublicPaykitService.MethodId(rawValue: $0) else { return false }
             switch requested {
             case .btc: return method != .usdtArbitrum
             case .usd: return method == .usdtArbitrum

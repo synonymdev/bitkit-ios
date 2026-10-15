@@ -92,7 +92,7 @@ struct UsdtReceiveView: View {
                 ForEach(networks, id: \.self) { networkRow($0) }
             }
             if usdt.depositsConfigured {
-                CustomButton(title: t("usdt__deposit_history"), variant: .tertiary) {
+                CustomButton(title: t("usdt__deposit_history")) {
                     sheets.hideSheet()
                     navigation.navigate(.usdtDepositHistory)
                 }

@@ -114,34 +114,35 @@ struct CreateSubscriptionView: View {
         }
     }
 
+    private var availableEndpoints: [String] {
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+            .filter { settings.isUsdtEnabled || $0 != PublicPaykitService.MethodId.usdtArbitrum.rawValue }
+    }
+
     private var acceptedEndpoints: [String] {
         PaykitRequestPricing.subscriptionEndpoints(
-            requested: draft.amount.asset,
-            available: PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+            requested: draft.amount.asset, available: availableEndpoints, selected: draft.acceptedPaymentEndpointIdentifiers
         )
     }
 
     private var acceptedPayments: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__accepted_payments"), textColor: .white64)
-            HStack(spacing: 8) {
-                ForEach(settings.isUsdtEnabled ? [PaykitAsset.btc, .usd] : [.btc], id: \.self) { asset in
-                    let isSelected = draft.amount.asset == asset
-                    NumberPadActionButton(
-                        text: asset == .btc ? "BITCOIN" : "USDT",
-                        color: isSelected ? (asset == .btc ? .brandAccent : .usdtAccent) : .white32,
-                        variant: .secondary
-                    ) {
-                        guard !isSelected else { return }
-                        do {
-                            draft.amount = try entryConversion.converted(draft.amount, to: asset, rate: currency.paykitRate, at: Date())
-                        } catch {
-                            app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
-                        }
-                    }
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    .accessibilityIdentifier("SubscriptionAccept-\(asset == .btc ? "bitcoin" : "usdt")")
+        PaykitAcceptedMethods(
+            title: t("subscriptions__accepted_payments"), available: availableEndpoints,
+            selected: acceptedEndpoints, identifierPrefix: "Subscription"
+        ) { option in
+            let endpoints = option.endpoints(in: availableEndpoints)
+            do {
+                if draft.amount.asset != option.asset {
+                    draft.amount = try entryConversion.converted(draft.amount, to: option.asset, rate: currency.paykitRate, at: Date())
+                    draft.acceptedPaymentEndpointIdentifiers = endpoints
+                } else {
+                    let selected = acceptedEndpoints
+                    draft.acceptedPaymentEndpointIdentifiers = endpoints.contains(where: selected.contains)
+                        ? selected.filter { !endpoints.contains($0) }
+                        : selected + endpoints.filter { !selected.contains($0) }
                 }
+            } catch {
+                app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
             }
         }
     }

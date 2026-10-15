@@ -61,6 +61,18 @@ final class PaykitRequestPricingTests: XCTestCase {
         XCTAssertThrowsError(try pricing.payment(requested: requested, endpoint: "btc-lightning-bolt11", period: period, at: now, quoteId: "unknown"))
     }
 
+    func testSubscriptionMethodsRespectSelectionAndAvailability() {
+        let savings = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh).rawValue
+        let spending = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        let usdt = PublicPaykitService.MethodId.usdtArbitrum.rawValue
+        let available = [savings, spending, usdt]
+        XCTAssertEqual(PaykitRequestPricing.subscriptionEndpoints(requested: .btc, available: available, selected: [spending, usdt]), [spending])
+        XCTAssertEqual(PaykitRequestPricing.subscriptionEndpoints(requested: .btc, available: available, selected: [savings]), [savings])
+        XCTAssertEqual(PaykitRequestPricing.subscriptionEndpoints(requested: .usd, available: available, selected: available), [usdt])
+        XCTAssertTrue(PaykitRequestPricing.subscriptionEndpoints(requested: .btc, available: available, selected: []).isEmpty)
+        XCTAssertTrue(PaykitRequestPricing.subscriptionEndpoints(requested: .usd, available: [savings, spending], selected: [usdt]).isEmpty)
+    }
+
     func testSubscriptionsKeepOnePaymentCurrencyAcrossBillingPeriods() throws {
         let bitcoin = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh).rawValue
         let lightning = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue

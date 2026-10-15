@@ -513,35 +513,16 @@ struct PaymentRequestDetailsView: View {
         enabledEndpoints.filter { restrictedEndpoints?.contains($0) ?? true }
     }
 
-    private var acceptedMethodGroups: [[PublicPaykitService.MethodId]] {
-        let groups: [[PublicPaykitService.MethodId]] = [
-            PublicPaykitService.MethodId.onchainPreferenceOrder + [.bitcoinLightningBolt11, .bitcoinLightningLnurl],
-            [.usdtArbitrum],
-        ]
-        return groups.map { $0.filter { enabledEndpoints.contains($0.rawValue) } }.filter { !$0.isEmpty }
-    }
-
     private var acceptedMethods: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_accepted_methods"), textColor: .white64)
-            HStack(spacing: 8) {
-                ForEach(acceptedMethodGroups, id: \.self) { methods in
-                    let endpoints = methods.map(\.rawValue)
-                    let usdt = methods.contains(.usdtArbitrum)
-                    let selected = selectedEnabledEndpoints
-                    let isSelected = endpoints.contains(where: selected.contains)
-                    NumberPadActionButton(text: usdt ? "USDT" : "BITCOIN",
-                                          color: isSelected ? (usdt ? .usdtAccent : .brandAccent) : .white32,
-                                          variant: .secondary)
-                    {
-                        restrictedEndpoints = isSelected
-                            ? selected.filter { !endpoints.contains($0) }
-                            : selected + endpoints.filter { !selected.contains($0) }
-                    }
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    .accessibilityIdentifier("PaymentRequestAccept-\(usdt ? "usdt" : "bitcoin")")
-                }
-            }
+        PaykitAcceptedMethods(
+            title: t("wallet__payment_request_accepted_methods"), available: enabledEndpoints,
+            selected: selectedEnabledEndpoints, identifierPrefix: "PaymentRequest"
+        ) { option in
+            let endpoints = option.endpoints(in: enabledEndpoints)
+            let selected = selectedEnabledEndpoints
+            restrictedEndpoints = endpoints.contains(where: selected.contains)
+                ? selected.filter { !endpoints.contains($0) }
+                : selected + endpoints.filter { !selected.contains($0) }
         }
     }
 

@@ -8,13 +8,13 @@ struct UsdtSupportActions: View {
     @EnvironmentObject private var sheets: SheetViewModel
 
     var body: some View {
-        VStack(spacing: 16) {
-            CustomButton(title: t("wallet__send_error_support"), variant: .secondary) {
+        HStack(spacing: 16) {
+            CustomButton(title: t("wallet__send_error_support"), size: .small, shouldExpand: true, titleKerning: 0, titleLineHeight: 13) {
                 sheets.hideSheet()
                 navigation.navigate(.reportIssue(ReportIssuePrefill(message: details)))
             }
             .accessibilityIdentifier("UsdtContactSupport")
-            CustomButton(title: t("usdt__copy_details"), variant: .secondary) {
+            CustomButton(title: t("usdt__copy_details"), size: .small, shouldExpand: true, titleKerning: 0, titleLineHeight: 13) {
                 UIPasteboard.general.string = details
                 app.toast(type: .success, title: t("common__copied"))
             }

@@ -510,6 +510,7 @@ struct PaykitPaymentRequestDraft: Hashable {
 
 struct PaykitSubscriptionDraft: Hashable {
     var amount: PaykitAmount
+    var acceptedPaymentEndpointIdentifiers: [String]?
     var name: String
     var description: String
     var frequency: PaykitSubscriptionRecurrence.Unit
@@ -905,7 +906,8 @@ struct PaykitPaymentRequestService {
     ) async throws -> PaykitSubscription {
         let acceptedPaymentEndpointIdentifiers = await PaykitRequestPricing.subscriptionEndpoints(
             requested: draft.amount.asset,
-            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning())
+            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning()),
+            selected: draft.acceptedPaymentEndpointIdentifiers
         )
         let validationDate = now()
         let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -946,7 +948,8 @@ struct PaykitPaymentRequestService {
         try await validateBeforeProposing()
         guard await PaykitRequestPricing.subscriptionEndpoints(
             requested: draft.amount.asset,
-            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning())
+            available: Self.acceptedPaymentEndpointIdentifiers(canReceiveLightning: canReceiveLightning()),
+            selected: draft.acceptedPaymentEndpointIdentifiers
         ) == acceptedPaymentEndpointIdentifiers else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
