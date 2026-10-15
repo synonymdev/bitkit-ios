@@ -1580,7 +1580,7 @@
 "subscriptions__description" = "Opis";
 "subscriptions__description_placeholder" = "Czego dotyczy ta subskrypcja?";
 "subscriptions__empty_description" = "Obecnie nie masz żadnych aktywnych subskrypcji od żadnych dostawców.";
-"subscriptions__empty_headline" = "Witaj w\n<accent>subskrypcjach</accent>";
+"subscriptions__empty_headline" = "Twoje\n<accent>subskrypcje</accent>";
 "subscriptions__every_days" = "Co {count} dni";
 "subscriptions__every_months" = "Co {count} mies.";
 "subscriptions__every_weeks" = "Co {count} tyg.";

@@ -1510,7 +1510,7 @@
 "wallet__payment_requests_not_now" = "Nicht jetzt";
 "wallet__payment_requests_see_all" = "Alle anzeigen";
 "wallet__payment_requests_empty_description" = "Du hast noch keine Zahlungen an Anbieter getätigt und hast noch keine Zahlungsanforderungen.";
-"wallet__payment_requests_empty_headline" = "Kein\n<accent>Zahlungsverlauf</accent>";
+"wallet__payment_requests_empty_headline" = "Keine\n<accent>Zahlungen</accent>";
 "wallet__payment_request_status_rejected" = "Abgelehnt";
 "wallet__payment_request_status_canceled" = "Abgebrochen";
 "wallet__payment_request_status_expired" = "Abgelaufen";
