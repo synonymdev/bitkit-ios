@@ -418,7 +418,6 @@ struct ReceiveQr: View {
             (tab == .unified && !wallet.hasCoherentReceiveInvoice)
     }
 
-    @ViewBuilder
     private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {
         VStack(spacing: 16) {
             if !wallet.isReceiveInvoiceUpdating, let error = wallet.receiveInvoiceError {
@@ -431,7 +430,9 @@ struct ReceiveQr: View {
             }
             QrArea(
                 uri: "", imageAsset: nil, accentColor: tab == .spending ? .purpleAccent : .brandAccent,
-                navigationPath: $navigationPath, editRoute: editRoute(for: tab)
+                onEdit: editRoute(for: tab).map { route in
+                    { navigationPath.append(route) }
+                }
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
