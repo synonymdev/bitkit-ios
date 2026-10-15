@@ -101,8 +101,10 @@ struct PubkyAuthPermission {
 // MARK: - PubkyAuth Request
 
 struct PubkyAuthRequest {
-    private static let bitkitSetupHost = "pubky-auth"
+    private static let bitkitHandoffHost = "pubky-auth"
+    /// `/setup` is Paykit setup and must carry a Bitkit claim; `/signin` is a plain grant sign-in.
     private static let bitkitSetupPath = "/setup"
+    private static let bitkitSigninPath = "/signin"
 
     let rawUrl: String
     let kind: Paykit.PubkyAuthRequestKind
@@ -160,10 +162,10 @@ struct PubkyAuthRequest {
         }
     }
 
-    /// Normalizes Bitkit's unique iOS handoff because the OS cannot deterministically route a custom scheme shared with Pubky Ring.
+    /// Normalizes Bitkit's unique iOS handoffs because the OS cannot deterministically route a custom scheme shared with Pubky Ring.
     static func normalizedProtocolURL(_ value: String) -> String {
         let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isBitkitSetupHandoff(trimmedValue),
+        guard bitkitHandoffPath(trimmedValue) != nil,
               let queryDelimiter = trimmedValue.firstIndex(of: "?")
         else {
             return value
@@ -175,7 +177,7 @@ struct PubkyAuthRequest {
 
     static func parse(url: String) throws -> PubkyAuthRequest {
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        let requiresBitkitClaim = isBitkitSetupHandoff(trimmedURL)
+        let requiresBitkitClaim = bitkitHandoffPath(trimmedURL) == bitkitSetupPath
         let normalizedURL = normalizedProtocolURL(trimmedURL)
         try rejectDuplicateRelayAndSecret(in: normalizedURL)
 
@@ -368,11 +370,12 @@ struct PubkyAuthRequest {
         return claim
     }
 
-    private static func isBitkitSetupHandoff(_ value: String) -> Bool {
+    /// Returns the handoff path of a `bitkit://pubky-auth/setup?…` or `bitkit://pubky-auth/signin?…` link.
+    private static func bitkitHandoffPath(_ value: String) -> String? {
         guard let components = URLComponents(string: value),
               components.scheme?.lowercased() == "bitkit",
-              components.host?.lowercased() == bitkitSetupHost,
-              components.path == bitkitSetupPath,
+              components.host?.lowercased() == bitkitHandoffHost,
+              [bitkitSetupPath, bitkitSigninPath].contains(components.path),
               components.user == nil,
               components.password == nil,
               components.port == nil,
@@ -381,10 +384,10 @@ struct PubkyAuthRequest {
               !query.isEmpty,
               !query.hasPrefix("?")
         else {
-            return false
+            return nil
         }
 
-        return true
+        return components.path
     }
 
     static func parseCapabilities(_ caps: String) -> [PubkyAuthPermission] {

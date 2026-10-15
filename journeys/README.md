@@ -172,7 +172,7 @@ journey PR, which is what made this file conflict on every merge.
 | An incoming Payment Request from a linked issuer | the fixture issuer, saved as a contact and linked as identities — [payment-requests](payment-requests/README.md) |
 | A Pubky identity and a two-wallet marketplace purchase | a Bitkit-generated Pubky profile, plus the integration fixture runtime: Pubky testnet, Paykit Server, regtest bitcoind and Fulcrum — [pubky-auth](pubky-auth/README.md), [pubky-marketplace](pubky-marketplace/README.md) |
 | LNURL pay, withdraw, channel and auth, and Lightning Addresses | the `bitkit-docker` `lnurl-server` on local regtest, reached by a simulator app built with `E2E_BUILD`, whose default `E2E_BACKEND=local` targets the host at `127.0.0.1`; it issues memo invoices, so a check that needs a description-hash invoice needs another endpoint |
-| Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup`, `bitkit://contact?pubky=`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [deeplinks](deeplinks), [Not ported](#not-ported) |
+| Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup` and `/signin`, `bitkit://contact?pubky=`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [deeplinks](deeplinks), [Not ported](#not-ported) |
 
 Device-clock fault injection requires a separate manual run: [Paykit clock changes](paykit-clock-changes.md).
 
