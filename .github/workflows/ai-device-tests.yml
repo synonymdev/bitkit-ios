@@ -66,7 +66,7 @@ jobs:
         run: |
           xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
 
-      - name: Start regtest and Trezor emulator
+      - name: Start remote Docker
         run: |
           awk '{ print } /^  trezor-user-env-mac:$/ { print "    extra_hosts:\n      - \"host.docker.internal:host-gateway\"" }' \
             bitkit-docker/docker-compose.yml > /tmp/docker-compose.yml
@@ -74,9 +74,13 @@ jobs:
           mkdir -p bitkit-docker/lnd bitkit-docker/.trezor-user-env/{trezor-suite,logs/screens,logs/mcp-screenshots,firmware/user_downloaded}
           .github/scripts/namespace-stack.sh up bitkit-docker
           .github/scripts/namespace-stack.sh forward 43782 39388 60001 21325 21328 9001 23902
-          (cd bitkit-docker && docker compose up -d bitcoind bitcoinsetup electrs darkhttpd lnd ldk-backup-server)
-          (cd bitkit-docker && ./scripts/trezor-emulator start)
-          (cd bitkit-docker && ./scripts/trezor-emulator status)
+
+      - name: Start regtest and Trezor emulator
+        working-directory: bitkit-docker
+        run: |
+          docker compose up -d bitcoind bitcoinsetup electrs darkhttpd lnd ldk-backup-server
+          ./scripts/trezor-emulator start
+          ./scripts/trezor-emulator status
 
       - name: Boot simulator
         env:

@@ -2,7 +2,8 @@
 # Runs a Docker Compose stack for a Namespace macOS runner on a separate Namespace Linux
 # instance. macOS runners are VMs without nested virtualization, so Docker cannot run on them.
 #
-#   namespace-stack.sh up <compose-dir>   create the instance, point docker at it, copy <compose-dir> over
+#   namespace-stack.sh up <compose-dir>   create the instance, point docker at it, copy <compose-dir> over;
+#                                         later steps get a docker wrapper that runs exec on the instance
 #   namespace-stack.sh forward <port>...  expose instance ports on the runner's 127.0.0.1 under the same numbers
 #   namespace-stack.sh down               destroy the instance
 set -euo pipefail
@@ -39,6 +40,23 @@ up() {
     fi
     sleep 5
   done
+
+  # `docker exec` through the attached context returns no output, drops stdin and always exits 0.
+  # The same command run on the instance over `nsc ssh` behaves normally, except that any failure
+  # exits 1 rather than with the command's own code, so exec is routed there.
+  mkdir -p "$state_dir/bin"
+  cat > "$state_dir/bin/docker" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == exec ]]; then
+  exec nsc ssh -T "\$(cat "$instance_file")" -- \\
+    "\$(python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' docker "\$@")"
+fi
+exec "$(command -v docker)" "\$@"
+EOF
+  chmod +x "$state_dir/bin/docker"
+  if [[ -n "${GITHUB_PATH:-}" ]]; then
+    echo "$state_dir/bin" >> "$GITHUB_PATH"
+  fi
 
   # Bind mounts resolve on the instance, so the compose directory has to exist there at the same path.
   docker create --name namespace-stack-seed -v "$compose_dir:/seed" alpine:3 true >/dev/null
