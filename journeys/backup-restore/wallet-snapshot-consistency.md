@@ -26,6 +26,10 @@ On iOS, place fixture gates at `BackupService` wallet capture/upload and
 `PaykitSdkService` export. Include the `WalletBackupRestoreGate` pending-restore
 check and `PaykitPaymentProofService` active-attempt guard. Use a dedicated
 simulator through XcodeBuildMCP; do not reset or reuse another test's simulator.
+Also repeat the held-upload check for settings, widgets, activity, metadata and
+Blocktank backups, including a scheduled backup overlapping a manual upload.
+Each category must upload its pending changes after release without another
+mutation. A genuine capture/upload failure must not enter an automatic retry loop.
 
 Record the tested commit, gate locations, attempts and upload counts, and the
 restored state. Unit coverage does not establish a device pass or a maximum

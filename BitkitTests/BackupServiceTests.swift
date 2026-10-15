@@ -54,6 +54,38 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
+    func testScheduledBackupUploadsChangesFromEveryCategory() async throws {
+        for category in BackupCategory.allCases where category != .lightningConnections {
+            let suite = "BackupServiceTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let completed = expectation(description: "Latest \(category.rawValue) state backed up")
+            var state = Data("initial".utf8)
+            var uploads: [Data] = []
+            var service: BackupService!
+            service = BackupService(defaults: defaults, backupData: { _ in state }, uploadBackup: { key, data in
+                XCTAssertEqual(key, category.rawValue)
+                uploads.append(data)
+                if uploads.count == 1 {
+                    state = Data("updated".utf8)
+                    service.markBackupRequired(category: category, schedule: false)
+                }
+            }, waitForBackupDelay: { await Task.yield() })
+            let subscription = service.backupStatusesPublisher
+                .filter { $0[category].map { !$0.isRequired && !$0.running } == true }
+                .first()
+                .sink { _ in completed.fulfill() }
+            defer { subscription.cancel() }
+
+            service.markBackupRequired(category: category)
+            await fulfillment(of: [completed], timeout: 2)
+            XCTAssertEqual(uploads, [Data("initial".utf8), Data("updated".utf8)], category.rawValue)
+            XCTAssertFalse(service.getBackupStatus(category: category).isRequired, category.rawValue)
+            service.setWiping(true)
+            await service.stopObservingBackups()
+        }
+    }
+
     func testAutomaticBackupRetriesContentionAndChangesDuringUpload() async throws {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -129,88 +161,92 @@ final class BackupServiceTests: XCTestCase {
 
     func testAutomaticBackupDoesNotRepeatUnrelatedFailures() async throws {
         let firstAttempts = expectation(description: "Scheduled backups attempted")
-        firstAttempts.expectedFulfillmentCount = 3
+        firstAttempts.expectedFulfillmentCount = 6
         let repeatedAttempt = expectation(description: "Unrelated failure retried")
         repeatedAttempt.isInverted = true
-        var services: [BackupService] = []
+        var services: [(BackupService, BackupCategory)] = []
         var suites: [(UserDefaults, String)] = []
         defer { suites.forEach { $0.0.removePersistentDomain(forName: $0.1) } }
-        for failure in 0 ..< 3 {
-            let suite = "BackupServiceTests.\(UUID().uuidString)"
-            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-            suites.append((defaults, suite))
-            var attempts = 0
-            let service = BackupService(defaults: defaults, backupData: { _ in
-                attempts += 1
-                if attempts == 1 { firstAttempts.fulfill() } else { repeatedAttempt.fulfill() }
-                if failure == 0 { throw PubkyServiceError.identityChanged }
-                if failure == 1 { throw OnchainSendAttemptError.unresolved }
-                return Data("snapshot".utf8)
-            }, uploadBackup: { _, _ in throw URLError(.notConnectedToInternet) })
-            services.append(service)
-            service.markBackupRequired(category: .wallet)
+        for category in [BackupCategory.wallet, .settings] {
+            for failure in 0 ..< 3 {
+                let suite = "BackupServiceTests.\(UUID().uuidString)"
+                let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+                suites.append((defaults, suite))
+                var attempts = 0
+                let service = BackupService(defaults: defaults, backupData: { _ in
+                    attempts += 1
+                    if attempts == 1 { firstAttempts.fulfill() } else { repeatedAttempt.fulfill() }
+                    if failure == 0 { throw PubkyServiceError.identityChanged }
+                    if failure == 1 { throw OnchainSendAttemptError.unresolved }
+                    return Data("snapshot".utf8)
+                }, uploadBackup: { _, _ in throw URLError(.notConnectedToInternet) })
+                services.append((service, category))
+                service.markBackupRequired(category: category)
+            }
         }
 
         await fulfillment(of: [firstAttempts], timeout: 8)
         await fulfillment(of: [repeatedAttempt], timeout: 6)
-        for service in services {
-            XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
-            XCTAssertFalse(service.getBackupStatus(category: .wallet).running)
+        for (service, category) in services {
+            XCTAssertTrue(service.getBackupStatus(category: category).isRequired)
+            XCTAssertFalse(service.getBackupStatus(category: category).running)
             service.setWiping(true)
             await service.stopObservingBackups()
         }
     }
 
     func testScheduledBackupRetainsFollowupWhileManualUploadIsBusy() async throws {
-        let suite = "BackupServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let manualUploadStarted = expectation(description: "Manual upload held")
-        let firstDelayStarted = expectation(description: "Scheduled backup held")
-        let secondDelayStarted = expectation(description: "Busy scheduled backup retained")
-        let followupUploaded = expectation(description: "Newer state uploaded")
-        let (manualUpload, releaseManualUpload) = AsyncStream<Void>.makeStream()
-        let (firstDelay, releaseFirstDelay) = AsyncStream<Void>.makeStream()
-        let (secondDelay, releaseSecondDelay) = AsyncStream<Void>.makeStream()
-        defer {
-            releaseManualUpload.finish()
+        for category in [BackupCategory.wallet, .settings] {
+            let suite = "BackupServiceTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let manualUploadStarted = expectation(description: "Manual upload held")
+            let firstDelayStarted = expectation(description: "Scheduled backup held")
+            let secondDelayStarted = expectation(description: "Busy scheduled backup retained")
+            let followupUploaded = expectation(description: "Newer state uploaded")
+            let (manualUpload, releaseManualUpload) = AsyncStream<Void>.makeStream()
+            let (firstDelay, releaseFirstDelay) = AsyncStream<Void>.makeStream()
+            let (secondDelay, releaseSecondDelay) = AsyncStream<Void>.makeStream()
+            defer {
+                releaseManualUpload.finish()
+                releaseFirstDelay.finish()
+                releaseSecondDelay.finish()
+            }
+            var uploads = 0
+            var delays = 0
+            let service = BackupService(defaults: defaults, backupData: { _ in Data("snapshot".utf8) }, uploadBackup: { _, _ in
+                uploads += 1
+                if uploads == 1 {
+                    manualUploadStarted.fulfill()
+                    for await _ in manualUpload {}
+                } else {
+                    followupUploaded.fulfill()
+                }
+            }, waitForBackupDelay: {
+                delays += 1
+                if delays == 1 {
+                    firstDelayStarted.fulfill()
+                    for await _ in firstDelay {}
+                } else {
+                    secondDelayStarted.fulfill()
+                    for await _ in secondDelay {}
+                }
+            })
+            let manual = Task { await service.triggerBackup(category: category) }
+            await fulfillment(of: [manualUploadStarted], timeout: 2)
+            service.markBackupRequired(category: category)
+            await fulfillment(of: [firstDelayStarted], timeout: 2)
             releaseFirstDelay.finish()
+            await fulfillment(of: [secondDelayStarted], timeout: 2)
+            releaseManualUpload.finish()
+            _ = await manual.value
+            XCTAssertTrue(service.getBackupStatus(category: category).isRequired)
             releaseSecondDelay.finish()
+            await fulfillment(of: [followupUploaded], timeout: 2)
+            XCTAssertEqual(uploads, 2)
+            service.setWiping(true)
+            await service.stopObservingBackups()
         }
-        var uploads = 0
-        var delays = 0
-        let service = BackupService(defaults: defaults, backupData: { _ in Data("snapshot".utf8) }, uploadBackup: { _, _ in
-            uploads += 1
-            if uploads == 1 {
-                manualUploadStarted.fulfill()
-                for await _ in manualUpload {}
-            } else {
-                followupUploaded.fulfill()
-            }
-        }, waitForBackupDelay: {
-            delays += 1
-            if delays == 1 {
-                firstDelayStarted.fulfill()
-                for await _ in firstDelay {}
-            } else {
-                secondDelayStarted.fulfill()
-                for await _ in secondDelay {}
-            }
-        })
-        let manual = Task { await service.triggerBackup(category: .wallet) }
-        await fulfillment(of: [manualUploadStarted], timeout: 2)
-        service.markBackupRequired(category: .wallet)
-        await fulfillment(of: [firstDelayStarted], timeout: 2)
-        releaseFirstDelay.finish()
-        await fulfillment(of: [secondDelayStarted], timeout: 2)
-        releaseManualUpload.finish()
-        _ = await manual.value
-        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
-        releaseSecondDelay.finish()
-        await fulfillment(of: [followupUploaded], timeout: 2)
-        XCTAssertEqual(uploads, 2)
-        service.setWiping(true)
-        await service.stopObservingBackups()
     }
 
     func testCancellationWinsOverFinalSnapshotContention() async {

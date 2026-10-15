@@ -98,7 +98,7 @@ class BackupService {
         case busy
         case failed
 
-        var canRetryPendingWalletBackup: Bool {
+        var canRetryPendingBackup: Bool {
             self == .completed || self == .snapshotChanged || self == .busy
         }
     }
@@ -687,13 +687,13 @@ class BackupService {
             }
             guard getBackupStatus(category: category).isRequired && !shouldSkipBackup() else { break }
             outcome = await triggerBackup(category: category)
-            if category != .wallet || !outcome.canRetryPendingWalletBackup || !getBackupStatus(category: category).isRequired { break }
+            if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired { break }
         }
         _ = try? await ServiceQueue.background(.backup) { self.backupJobs.removeValue(forKey: category) }
         updateBackupStatus(category: category) { status in
             BackupItemStatus(synced: status.synced, required: status.required, running: false)
         }
-        if category == .wallet, outcome.canRetryPendingWalletBackup, !Task.isCancelled,
+        if outcome.canRetryPendingBackup, !Task.isCancelled,
            getBackupStatus(category: category).isRequired, !shouldSkipBackup()
         {
             await scheduleBackup(category: category)
