@@ -1699,7 +1699,7 @@
 "btcpay__missing_result" = "A loja não retornou um resultado de configuração Bitcoin.";
 "btcpay__rejected_descriptor" = "A loja rejeitou o descritor Bitcoin.";
 "btcpay__unknown_host" = "Host desconhecido";
-"widgets__onboarding__swipe" = "Deslize para baixo\npara encontrar seus\n<accent>widgets</accent>";
+"widgets__onboarding__swipe" = "Arraste para ver\nseus <accent>widgets</accent>";
 "widgets__onboarding__title" = "Olá,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Aproveite os feeds descentralizados de seus serviços da web favoritos, adicionando widgets divertidos e úteis à sua carteira Bitkit.";
 "widgets__onboarding__view_organize" = "Ver e Organizar";

@@ -955,7 +955,7 @@
 "settings__addr__no_addrs_str" = "No se encontraron direcciones al buscar \"{searchTxt}\"";
 "settings__addr__rescan_error" = "Fallo en la reexploración";
 "settings__addr__rescan_error_description" = "Bitkit no ha podido comprobar los saldos de las direcciones.";
-"settings__addr__spend_number" = "Gastar ({count}) direcciones seleccionadas";
+"settings__addr__spend_number" = "{count, plural, one {Gastar ₿ {fundsToSpend} de # dirección} other {Gastar ₿ {fundsToSpend} de # direcciones}}";
 "settings__addr__index" = "Índice: {index}";
 "settings__addr__path" = "Ruta: {path}";
 "settings__addr__private_hide" = "Ocultar clave privada";

@@ -855,7 +855,7 @@
 "settings__quickpay__intro__title" = "<accent>Reibungslos</accent>\nZahlungen";
 "settings__quickpay__intro__description" = "Bitkit QuickPay beschleunigt den Bezahlvorgang, indem es QR-Codes beim Scannen automatisch bezahlt.";
 "settings__quickpay__settings__toggle" = "QuickPay aktivieren";
-"settings__quickpay__settings__text" = "Wenn diese Option aktiviert ist, werden gescannte Rechnungen unter ${Betrag} automatisch bezahlt, ohne dass Sie eine Bestätigung oder PIN* benötigen.";
+"settings__quickpay__settings__text" = "Wenn diese Option aktiviert ist, werden gescannte Rechnungen unter ${amount} automatisch bezahlt, ohne dass Sie eine Bestätigung oder PIN* benötigen.";
 "settings__quickpay__settings__label" = "Quickpay-Schwelle";
 "settings__quickpay__settings__daily_label" = "Tägliches QuickPay-Limit";
 "settings__quickpay__settings__daily_text" = "Zahle bis zu ${limit} pro Tag, ohne deine PIN einzugeben. Danach bestätigst du jede Zahlung.";

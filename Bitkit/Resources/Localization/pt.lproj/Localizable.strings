@@ -1372,7 +1372,7 @@
 "btcpay__missing_result" = "A loja não devolveu um resultado de configuração Bitcoin.";
 "btcpay__rejected_descriptor" = "A loja rejeitou o descritor Bitcoin.";
 "btcpay__unknown_host" = "Anfitrião desconhecido";
-"widgets__onboarding__swipe" = "Deslize para baixo\npara encontrar os seus\n<accent>widgets</accent>";
+"widgets__onboarding__swipe" = "Arraste para ver\nos seus <accent>widgets</accent>";
 "widgets__onboarding__view_organize" = "Ver e organizar";
 "widgets__nav_title" = "Widgets";
 "widgets__list__button" = "Ativar nas Definições";

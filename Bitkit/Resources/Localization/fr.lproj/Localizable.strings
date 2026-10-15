@@ -852,8 +852,8 @@
 "settings__notifications__settings__privacy__text" = "Inclure le montant dans les notifications";
 "settings__notifications__settings__notifications__label" = "Notifications";
 "settings__notifications__settings__notifications__text" = "Pour activer les paiements en arrière-plan, veuillez activer les notifications dans les paramètres iOS Bitkit.";
-"settings__notifications__settings__button__enabled" = "Personnaliser dans {plateforme} Paramètres Bitkit";
-"settings__notifications__settings__button__disabled" = "Activer dans {plateforme} Paramètres Bitkit";
+"settings__notifications__settings__button__enabled" = "Personnaliser dans {platform} Paramètres Bitkit";
+"settings__notifications__settings__button__disabled" = "Activer dans {platform} Paramètres Bitkit";
 "settings__quickpay__nav_title" = "QuickPay";
 "settings__quickpay__intro__title" = "<accent>Sans friction</accent>\npaiements";
 "settings__quickpay__intro__description" = "Bitkit QuickPay accélère le passage à la caisse en payant automatiquement les QR codes lorsqu\'ils sont scannés.";
