@@ -86,6 +86,7 @@ class PubkyProfileManager: ObservableObject {
     @Published private var readOnlyProfile: (publicKey: String, profile: PubkyProfile?, revision: UUID)?
     @Published var isLoadingProfile = false
     @Published private(set) var isRestoringSession = false
+    @Published private(set) var isDeletingProfile = false
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
@@ -976,6 +977,20 @@ class PubkyProfileManager: ObservableObject {
         return true
     }
 
+    func performProfileDeletion(_ operation: () async throws -> Void) async rethrows {
+        guard !isDeletingProfile else { return }
+        isDeletingProfile = true
+        defer { isDeletingProfile = false }
+        await PrivatePaykitService.shared.beginProfileDeletion()
+        do {
+            try await operation()
+        } catch {
+            await PrivatePaykitService.shared.endProfileDeletion()
+            throw error
+        }
+        await PrivatePaykitService.shared.endProfileDeletion()
+    }
+
     func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true) async throws {
         if cleanPrivatePaykitEndpoints {
             await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
@@ -1634,6 +1649,11 @@ class PubkyProfileManager: ObservableObject {
     var currentSession: SignedInSession? {
         guard let publicKey, Self.sessionMutationCount == 0 else { return nil }
         return SignedInSession(publicKey: publicKey, revision: Self.sessionRevision)
+    }
+
+    var automaticPaykitSession: SignedInSession? {
+        guard authState == .authenticated, !isDeletingProfile else { return nil }
+        return currentSession
     }
 
     var hasLocalSecretKeyForCurrentProfile: Bool {

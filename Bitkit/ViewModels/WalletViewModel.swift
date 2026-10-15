@@ -1437,7 +1437,7 @@ class WalletViewModel: ObservableObject {
     }
 
     private func syncPublicPaykitEndpointsAfterChannelBecameUsable() async {
-        guard isPaykitUIActive else { return }
+        guard isPaykitUIActive, await !PrivatePaykitService.shared.isDeletingProfile else { return }
 
         do {
             try await PublicPaykitService.syncPublishedEndpoints(wallet: self, publish: true)
@@ -1450,7 +1450,7 @@ class WalletViewModel: ObservableObject {
         await refreshAndSyncState()
         try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false, reportsError: false)
 
-        guard isPaykitUIActive else { return }
+        guard isPaykitUIActive, await !PrivatePaykitService.shared.isDeletingProfile else { return }
 
         if sharesPublicPaykitEndpoints {
             do {
@@ -1586,7 +1586,9 @@ class WalletViewModel: ObservableObject {
             receiveCommitID = UUID()
             isReceiveInvoiceUpdating = false
 
-            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints {
+            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints,
+               await !PrivatePaykitService.shared.isDeletingProfile
+            {
                 do {
                     try await syncReceivePublicPaykitEndpoints()
                 } catch {
@@ -1628,6 +1630,7 @@ class WalletViewModel: ObservableObject {
     }
 
     func syncReceivePublicPaykitEndpoints() async throws {
+        guard await !PrivatePaykitService.shared.isDeletingProfile else { return }
         try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
     }
 

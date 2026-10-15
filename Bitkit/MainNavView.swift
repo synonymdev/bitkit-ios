@@ -29,6 +29,7 @@ struct MainNavView: View {
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
     @State private var isPreparingPendingContactDeepLink = false
+    @State private var retryPendingContactAfterDeletion = false
     init(canHandleDeepLinks: Bool = true) {
         self.canHandleDeepLinks = canHandleDeepLinks
     }
@@ -431,6 +432,17 @@ struct MainNavView: View {
             }
             .onChange(of: app.pendingDeepLinkURL) { _, url in
                 guard canHandleDeepLinks, url != nil else { return }
+                Task { await handlePendingDeepLink() }
+            }
+            .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
+                guard !isDeleting, canHandleDeepLinks,
+                      let url = app.pendingDeepLinkURL, PubkyContactLink.matches(url)
+                else { return }
+                retryPendingContactAfterDeletion = true
+                Task { await handlePendingDeepLink() }
+            }
+            .onChange(of: isPreparingPendingContactDeepLink) { _, isPreparing in
+                guard !isPreparing, retryPendingContactAfterDeletion, !pubkyProfile.isDeletingProfile else { return }
                 Task { await handlePendingDeepLink() }
             }
             .task(id: scenePhase == .active) {
@@ -851,6 +863,7 @@ struct MainNavView: View {
 
     private func handlePendingDeepLink() async {
         guard !isPreparingPendingContactDeepLink else { return }
+        retryPendingContactAfterDeletion = false
         var contactsReady = true
         await prepareAndRoutePendingDeepLink {
             contactsReady = await loadContactsForPendingDeepLinkIfNeeded()
@@ -874,6 +887,7 @@ struct MainNavView: View {
               let contactPublicKey = PubkyContactLink.publicKey(from: url)
         else { return true }
 
+        guard !pubkyProfile.isDeletingProfile else { return false }
         let session = pubkyProfile.currentSession
         let contactsOwnerPublicKey = pubkyProfile.publicKey ?? contactPublicKey
         isPreparingPendingContactDeepLink = true
@@ -885,7 +899,7 @@ struct MainNavView: View {
             } else {
                 try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
             }
-            return pubkyProfile.currentSession == session && !Task.isCancelled
+            return !pubkyProfile.isDeletingProfile && pubkyProfile.currentSession == session && !Task.isCancelled
         } catch is CancellationError {
             return false
         } catch {

@@ -42,6 +42,29 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
     }
 
+    func testDeletionDefersPublicationAfterInvoiceCreationWithoutDiscardingInvoice() async throws {
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let wallet = GatedReceiveWallet()
+        wallet.invoiceAmountSats = 1000
+        let refresh = Task { try await wallet.refreshBip21(forceRefreshBolt11: true) }
+        await fulfillment(of: [wallet.olderStarted], timeout: 5)
+        await PrivatePaykitService.shared.beginProfileDeletion()
+        wallet.releaseOlderInvoice()
+        do {
+            try await refresh.value
+            XCTAssertTrue(wallet.hasCoherentReceiveInvoice)
+            XCTAssertEqual(wallet.endpointSyncCount, 0)
+        } catch {
+            await PrivatePaykitService.shared.endProfileDeletion()
+            throw error
+        }
+        await PrivatePaykitService.shared.endProfileDeletion()
+        wallet.invoiceAmountSats = 2000
+        try await wallet.refreshBip21(forceRefreshBolt11: true)
+        XCTAssertEqual(wallet.endpointSyncCount, 1)
+    }
+
     func testRefreshUsesCapturedInputsAndPreservesEditsMadeWhileWaiting() async throws {
         let wallet = GatedReceiveWallet()
         wallet.invoiceAmountSats = 1000
@@ -431,6 +454,7 @@ private final class GatedReceiveWallet: WalletViewModel {
 
     var reusableInvoice: Bool?
     var gateEndpointSync = false
+    var endpointSyncCount = 0
     let endpointSyncStarted = XCTestExpectation(description: "Public endpoint sync suspended")
     private var endpointSync: CheckedContinuation<Void, Never>?
 
@@ -440,6 +464,7 @@ private final class GatedReceiveWallet: WalletViewModel {
     }
 
     override func syncReceivePublicPaykitEndpoints() async throws {
+        endpointSyncCount += 1
         if gateEndpointSync {
             await withCheckedContinuation {
                 endpointSync = $0

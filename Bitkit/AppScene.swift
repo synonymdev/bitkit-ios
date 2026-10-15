@@ -511,22 +511,18 @@ struct AppScene: View {
             .task(id: foregroundContactSession) {
                 shopContactImport?.task.cancel()
                 shopContactImport = nil
-                guard let session = foregroundContactSession else { return }
-                startShopContactImport()
-                do {
-                    try await contactsManager.refreshContacts(for: session.publicKey)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    Logger.warn("Failed to refresh shared contacts: \(error)", context: "AppScene")
-                }
+                await refreshForegroundContacts()
             }
             .task(id: publicPaykitForegroundSession) {
-                guard let session = publicPaykitForegroundSession else { return }
-                await foregroundWalletSync?.value
-                guard !Task.isCancelled else { return }
-                await wallet.refreshPublicPaykitEndpointsOnForeground {
-                    !Task.isCancelled && isPaykitSceneActive && pubkyProfile.currentSession == session
+                await refreshForegroundPublicPaykitEndpoints()
+            }
+            .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
+                guard !isDeleting, isPaykitSceneActive else { return }
+                Task {
+                    await refreshForegroundContacts()
+                    await refreshForegroundPublicPaykitEndpoints()
+                    await prepareSavedPaykitContacts()
+                    await refreshIncomingPaykitPaymentRequests(onlyWhileActive: true)
                 }
             }
             .task { await handlePendingPaykitSubscriptionNotification() }
@@ -605,7 +601,11 @@ struct AppScene: View {
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
                     Task {
+                        guard let session = pubkyProfile.automaticPaykitSession,
+                              PubkyPublicKeyFormat.matches(pk, session.publicKey)
+                        else { return }
                         await handlePendingPaykitSubscriptionNotification()
+                        guard pubkyProfile.automaticPaykitSession == session else { return }
                         try? await contactsManager.loadContacts(for: pk)
                         if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
                             await retryPendingPaykitEndpointRemoval()
@@ -640,7 +640,7 @@ struct AppScene: View {
                 }
             }
             .onReceive(PrivatePaykitService.contactLinkCompletedPublisher.receive(on: DispatchQueue.main)) { completion in
-                guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                guard isPaykitSceneActive, pubkyProfile.automaticPaykitSession != nil,
                       PubkyPublicKeyFormat.matches(completion.identity, pubkyProfile.publicKey),
                       contactsManager.contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, completion.publicKey) })
                 else { return }
@@ -658,7 +658,7 @@ struct AppScene: View {
                     try await PaykitPaymentActivity.shared.waitUntilIdle()
                 } catch { return }
                 guard !Task.isCancelled, request == pendingPaykitProofRefresh else { return }
-                await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true)
+                await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true, automatic: false)
                 guard !Task.isCancelled else { return }
                 paykitProofRefresh.complete(request)
             }
@@ -1319,11 +1319,35 @@ struct AppScene: View {
         return pubkyProfile.currentSession
     }
 
+    private func refreshForegroundContacts() async {
+        guard let session = foregroundContactSession, pubkyProfile.automaticPaykitSession == session else { return }
+        startShopContactImport()
+        do {
+            try await contactsManager.refreshContacts(for: session.publicKey)
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.warn("Failed to refresh shared contacts: \(error)", context: "AppScene")
+        }
+    }
+
+    private func refreshForegroundPublicPaykitEndpoints() async {
+        guard let session = publicPaykitForegroundSession, pubkyProfile.automaticPaykitSession == session else { return }
+        await foregroundWalletSync?.value
+        guard !Task.isCancelled, pubkyProfile.automaticPaykitSession == session else { return }
+        await wallet.refreshPublicPaykitEndpointsOnForeground {
+            !Task.isCancelled && isPaykitSceneActive && pubkyProfile.automaticPaykitSession == session
+        }
+    }
+
     private func refreshPrivateOnlyPaykitApp() async {
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
-        guard privateSharingEnabled, !publicSharingEnabled else { return }
+        guard privateSharingEnabled, !publicSharingEnabled,
+              let session = pubkyProfile.automaticPaykitSession
+        else { return }
         guard await PubkyService.currentPublicKey() != nil else { return }
+        guard pubkyProfile.automaticPaykitSession == session else { return }
 
         do {
             try await PublicPaykitService.syncPaykitApp()
@@ -1333,13 +1357,13 @@ struct AppScene: View {
     }
 
     private func prepareSavedPaykitContacts(expectedIdentity: String? = nil) async {
-        guard let session = pubkyProfile.currentSession,
+        guard let session = pubkyProfile.automaticPaykitSession,
               expectedIdentity == nil || PubkyPublicKeyFormat.matches(expectedIdentity, session.publicKey)
         else { return }
         let snapshot = contactsManager.savedContactsSnapshot()
         await PrivatePaykitService.shared.prepareSavedContacts(
             snapshot.publicKeys, wallet: wallet, isSessionCurrent: {
-                pubkyProfile.authState == .authenticated && pubkyProfile.currentSession == session && snapshot.isCurrent()
+                pubkyProfile.automaticPaykitSession == session && snapshot.isCurrent()
             }
         )
     }
@@ -1350,7 +1374,8 @@ struct AppScene: View {
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .ordered,
-        onlyWhileActive: Bool = false
+        onlyWhileActive: Bool = false,
+        automatic: Bool = true
     ) async -> Bool {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
@@ -1360,15 +1385,22 @@ struct AppScene: View {
             return false
         }
 
-        guard !Task.isCancelled, !onlyWhileActive || isPaykitSceneActive else { return false }
+        guard let session = pubkyProfile.currentSession else { return false }
+        let canRefresh = {
+            !Task.isCancelled && (!onlyWhileActive || isPaykitSceneActive) &&
+                (automatic ? pubkyProfile.automaticPaykitSession : pubkyProfile.currentSession) == session
+        }
+        guard canRefresh() else { return false }
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
             await PaykitUsdtPaymentService.shared.reconcile(wallet: wallet.usdtWallet)
         }
-        guard !Task.isCancelled, !onlyWhileActive || isPaykitSceneActive else { return false }
-        guard let identity = pubkyProfile.publicKey else { return false }
-        let refreshed = await paykitPaymentRequestManager.refresh(mode: mode, forceFresh: forceFresh, messagePriority: messagePriority)
+        guard canRefresh() else { return false }
+        let identity = session.publicKey
+        let refreshed = await paykitPaymentRequestManager.refresh(
+            mode: mode, forceFresh: forceFresh, messagePriority: messagePriority, canRefresh: canRefresh
+        )
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return false }
@@ -1384,10 +1416,10 @@ struct AppScene: View {
         } catch {
             Logger.warn("Failed to attribute received Paykit payments: \(error)", context: "AppScene")
         }
-        if presentItems {
+        if presentItems, canRefresh(), pubkyProfile.automaticPaykitSession == session {
             await presentNextIncomingPaykitItem()
         }
-        if mode == .full, !onlyWhileActive || isPaykitSceneActive {
+        if mode == .full, canRefresh() {
             await paykitPaymentRequestManager.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
         }
         return refreshed
@@ -1438,7 +1470,9 @@ struct AppScene: View {
     private func pollIncomingPaykitPaymentRequests() async {
         guard scenePhase == .active, network.isConnected else { return }
 
-        await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+        if let session = pubkyProfile.automaticPaykitSession {
+            await PubkyService.republishIdentityIfNeeded(publicKey: session.publicKey)
+        }
         await refreshIncomingPaykitPaymentRequests(messagePriority: .background, onlyWhileActive: true)
         var schedule = PaykitPaymentRequestPollingSchedule()
         while !Task.isCancelled {
@@ -1448,7 +1482,8 @@ struct AppScene: View {
                 return
             }
             guard !isWalletBackupRestoreRunning,
-                  !BackupService.shared.hasPendingWalletRestore()
+                  !BackupService.shared.hasPendingWalletRestore(),
+                  let session = pubkyProfile.automaticPaykitSession
             else { continue }
             let mode: PaykitPaymentRequestRefreshMode
             switch schedule.takeRound(isConnected: network.isConnected) {
@@ -1459,7 +1494,6 @@ struct AppScene: View {
             case .refreshInboxAndMaintenance:
                 mode = .full
             }
-            let session = pubkyProfile.currentSession
             startShopContactImport()
             if mode == .full {
                 await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
@@ -1471,7 +1505,7 @@ struct AppScene: View {
                   scenePhase == .active,
                   network.isConnected,
                   PaykitFeatureFlags.isUIEnabled,
-                  let session, session == pubkyProfile.currentSession,
+                  session == pubkyProfile.automaticPaykitSession,
                   !app.showDrawer,
                   sheets.activeSheetConfiguration == nil,
                   !sheets.isReplacingSheet,
@@ -1485,13 +1519,15 @@ struct AppScene: View {
     }
 
     private func startShopContactImport() {
-        guard shopContactImport == nil, let session = foregroundContactSession else { return }
+        guard shopContactImport == nil, let session = foregroundContactSession,
+              pubkyProfile.automaticPaykitSession == session
+        else { return }
         let id = UUID()
         let task = Task {
             defer { if shopContactImport?.id == id { shopContactImport = nil } }
             do {
                 try await contactsManager.importShopContacts(for: session.publicKey) {
-                    foregroundContactSession == session
+                    foregroundContactSession == session && pubkyProfile.automaticPaykitSession == session
                 }
             } catch is CancellationError {
                 return
@@ -1506,7 +1542,7 @@ struct AppScene: View {
         guard scenePhase == .active,
               isPinVerified || !settings.pinEnabled,
               PaykitFeatureFlags.isUIEnabled,
-              pubkyProfile.currentSession != nil,
+              pubkyProfile.automaticPaykitSession != nil,
               !app.showDrawer,
               sheets.activeSheetConfiguration == nil || canRetryIncomingPaymentRequestPreparation,
               !sheets.isReplacingSheet,
@@ -1817,7 +1853,7 @@ struct AppScene: View {
               pubkyProfile.authState == .authenticated
         else { return }
         guard let target = PaykitSubscriptionNotificationTargetStore.load() else { return }
-        guard let session = pubkyProfile.currentSession else { return }
+        guard let session = pubkyProfile.automaticPaykitSession else { return }
         guard target.matches(identity: session.publicKey) else {
             PaykitSubscriptionNotificationTargetStore.clear()
             return
@@ -1827,7 +1863,7 @@ struct AppScene: View {
         ) else { return }
         guard await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
               !Task.isCancelled,
-              pubkyProfile.currentSession == session,
+              pubkyProfile.automaticPaykitSession == session,
               PaykitSubscriptionNotificationTargetStore.load() == target,
               IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
                   manager: paykitPaymentRequestManager, app: app, sheets: sheets
@@ -1855,6 +1891,7 @@ struct AppScene: View {
 
     private func presentNextIncomingPaykitItem() async {
         guard scenePhase == .active,
+              pubkyProfile.automaticPaykitSession != nil,
               isPinVerified || !settings.pinEnabled
         else { return }
         await IncomingPaykitPaymentRequestPresentationDispatcher.presentNextItem(
@@ -1867,7 +1904,9 @@ struct AppScene: View {
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
+        guard let session = pubkyProfile.automaticPaykitSession else { return }
         await ContactPaymentsService.reconcilePendingEndpoints {
+            guard pubkyProfile.automaticPaykitSession == session else { return }
             let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
             await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
                 wallet: wallet,
@@ -1877,11 +1916,13 @@ struct AppScene: View {
                 PublicPaykitService.setCleanupPending(true)
             }
 
-            if PublicPaykitService.isCleanupPending {
+            if PublicPaykitService.isCleanupPending, pubkyProfile.automaticPaykitSession == session {
                 do {
                     switch PublicPaykitService.pendingReconciliationMode() {
                     case .publishEndpoints:
-                        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet)
+                        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet) {
+                            pubkyProfile.automaticPaykitSession == session
+                        }
                     case .removePublishedState:
                         try await PublicPaykitService.removePublishedEndpoints()
                         try await PublicPaykitService.syncPaykitApp()
@@ -1941,8 +1982,8 @@ struct AppScene: View {
                 async let sessionRecovery: Void = pubkyProfile.restoreSessionIfNeeded()
                 await currency.refresh()
                 await sessionRecovery
-                if scenePhase == .active {
-                    await PubkyService.republishIdentityIfNeeded(publicKey: pubkyProfile.publicKey)
+                if scenePhase == .active, let session = pubkyProfile.automaticPaykitSession {
+                    await PubkyService.republishIdentityIfNeeded(publicKey: session.publicKey)
                 }
                 await retryPendingPaykitEndpointRemoval()
                 if PaykitFeatureFlags.isUIEnabled {
