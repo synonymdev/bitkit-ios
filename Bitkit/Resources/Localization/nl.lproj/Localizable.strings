@@ -1238,7 +1238,7 @@
 "profile__pay_contacts_nav_title" = "Contacten betalen";
 "profile__pay_contacts_title" = "Laat uw contacten\n<accent>u betalen</accent>";
 "profile__pay_contacts_description" = "Gebruik Bitkit met uw contacten om direct betalingen te versturen, altijd en overal.";
-"profile__pay_contacts_toggle" = "Betalingen met contacten inschakelen";
+"profile__pay_contacts_toggle" = "Betalen met contacten";
 "profile__add_link_title" = "Link toevoegen";
 "profile__add_link_label" = "LABEL";
 "profile__add_link_label_placeholder" = "Bijvoorbeeld 'Website'";

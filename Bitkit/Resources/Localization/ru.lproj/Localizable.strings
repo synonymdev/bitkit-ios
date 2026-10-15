@@ -1228,7 +1228,7 @@
 "profile__pay_contacts_nav_title" = "Платежи Контактам";
 "profile__pay_contacts_title" = "Пусть ваши контакты\n<accent>платят вам</accent>";
 "profile__pay_contacts_description" = "Используйте Bitkit, чтобы отправлять платежи контактам напрямую — когда угодно и где угодно.";
-"profile__pay_contacts_toggle" = "Включить платежи с контактами";
+"profile__pay_contacts_toggle" = "Платежи с контактами";
 "profile__add_link_title" = "Добавить Ссылку";
 "profile__add_link_label" = "НАЗВАНИЕ";
 "profile__add_link_label_placeholder" = "Например, 'Сайт'";

@@ -728,7 +728,7 @@
 "settings__security_title" = "Seguretat i privadesa";
 "settings__backup_title" = "Còpia de seguretat o restauració";
 "settings__advanced_title" = "Avançat";
-"settings__data_backups_nav_title" = "Còpies de seguretat de dades";
+"settings__data_backups_nav_title" = "Còpies de seguretat";
 "settings__about_title" = "Sobre";
 "settings__support_title" = "Suport";
 "settings__about__title" = "Sobre Bitkit";
@@ -1126,7 +1126,7 @@
 "profile__pay_contacts_nav_title" = "Pagar contactes";
 "profile__pay_contacts_title" = "Deixa que els teus contactes\n<accent>et paguin</accent>";
 "profile__pay_contacts_description" = "Utilitza Bitkit amb els teus contactes per enviar pagaments directament, en qualsevol moment i a qualsevol lloc.";
-"profile__pay_contacts_toggle" = "Activar pagaments amb contactes";
+"profile__pay_contacts_toggle" = "Pagaments amb contactes";
 "profile__add_link_title" = "Afegir enllaç";
 "profile__add_link_label" = "ETIQUETA";
 "profile__add_link_label_placeholder" = "Per exemple 'Website'";

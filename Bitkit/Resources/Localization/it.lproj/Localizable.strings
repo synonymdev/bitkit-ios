@@ -1209,7 +1209,7 @@
 "profile__pay_contacts_nav_title" = "Paga Contatti";
 "profile__pay_contacts_title" = "Lascia che i tuoi contatti\n<accent>ti paghino</accent>";
 "profile__pay_contacts_description" = "Usa Bitkit con i tuoi contatti per inviare pagamenti direttamente, in qualsiasi momento, ovunque.";
-"profile__pay_contacts_toggle" = "Attiva i pagamenti con i contatti";
+"profile__pay_contacts_toggle" = "Pagamenti con i contatti";
 "profile__add_link_title" = "Aggiungi Link";
 "profile__add_link_label" = "ETICHETTA";
 "profile__add_link_label_placeholder" = "Per esempio 'Sito web'";

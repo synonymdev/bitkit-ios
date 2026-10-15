@@ -737,7 +737,7 @@
 "settings__widgets__reset_widgets_dialog_title" = "Repor widgets?";
 "settings__widgets__reset_widgets_dialog_description" = "Tem certeza de que deseja repor os widgets? O conjunto padrão de widgets com configurações padrão será exibido.";
 "settings__widgets__reset_suggestions" = "Repor cartões de sugestões";
-"settings__notifications__nav_title" = "Pagamentos em Segundo Plano";
+"settings__notifications__nav_title" = "Pagar em segundo plano";
 "settings__notifications__intro__title" = "Receba pagamentos\n<accent>passivamente</accent>";
 "settings__notifications__intro__text" = "Ative as notificações para receber pagamentos, mesmo quando a Bitkit está fechada.";
 "settings__notifications__intro__button" = "Ativar";
@@ -1005,7 +1005,7 @@
 "profile__pay_contacts_nav_title" = "Pagar a contactos";
 "profile__pay_contacts_title" = "Deixe os seus contactos\n<accent>pagar-lhe</accent>";
 "profile__pay_contacts_description" = "Use a Bitkit com os seus contactos para enviar pagamentos diretamente, a qualquer hora, em qualquer lugar.";
-"profile__pay_contacts_toggle" = "Ativar pagamentos com contactos";
+"profile__pay_contacts_toggle" = "Pagamentos com contactos";
 "profile__add_link_title" = "Adicionar link";
 "profile__add_link_label" = "ETIQUETA";
 "profile__add_link_label_placeholder" = "Por exemplo, «Website»";

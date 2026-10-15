@@ -1027,7 +1027,7 @@
 "profile__pay_contacts_nav_title" = "Πληρωμή Επαφών";
 "profile__pay_contacts_title" = "Αφήστε τις επαφές σας\n<accent>να σας πληρώνουν</accent>";
 "profile__pay_contacts_description" = "Χρησιμοποίησε το Bitkit με τις επαφές σου για να στέλνεις πληρωμές απευθείας, οποτεδήποτε, οπουδήποτε.";
-"profile__pay_contacts_toggle" = "Ενεργοποίηση πληρωμών με επαφές";
+"profile__pay_contacts_toggle" = "Πληρωμές με επαφές";
 "profile__add_link_title" = "Προσθήκη Συνδέσμου";
 "profile__add_link_label" = "ΕΤΙΚΕΤΑ";
 "profile__add_link_label_placeholder" = "Για παράδειγμα «Ιστότοπος»";
