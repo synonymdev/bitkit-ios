@@ -12,6 +12,7 @@ final class UsdtSupportDetailsTests: XCTestCase {
             fee: 10, isIncoming: false, status: .bridgeNeedsAttention, timestamp: 1
         )
         XCTAssertTrue(transfer.supportDetails.contains("Bridge: USDT0"))
+        XCTAssertTrue(transfer.supportDetails.contains("Status: \(transfer.status.label) (bridgeNeedsAttention)"))
         XCTAssertTrue(transfer.supportDetails.contains("LayerZero message: message-id"))
         XCTAssertFalse(transfer.supportDetails.contains("Destination transaction:"))
 
@@ -37,6 +38,7 @@ final class UsdtSupportDetailsTests: XCTestCase {
         detail.order = UsdtDepositOrder(status: "refunded", amountIn: 100, amountOut: nil,
                                         destinationTx: nil, refundTx: "order-refund", code: nil)
         let details = detail.supportDetails
+        XCTAssertTrue(details.contains("Status: \(t("usdt__deposit_refunded")) (refunded)"))
         for value in ["Orchestra", "tron", "Arbitrum One", "deposit-id", "source-tx", "refunded", "order-refund"] {
             XCTAssertTrue(details.contains(value), value)
         }

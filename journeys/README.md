@@ -111,6 +111,13 @@ script, and there is no iOS copy yet — #694 tracks porting it. The relative pa
 journeys already reach for `../bitkit-docker` the same way. If you do not have that clone, fund the
 wallet however you normally do against regtest and skip the helper.
 
+### USDT full-balance errors
+
+`usdt-payment-links-and-scans.xml` accepts either the insufficient-balance message or the paymaster
+fee-collection message when the entire balance is entered manually. iOS has reached fee collection
+first while Android has reported insufficient balance; the failing validation determines the message.
+Both must keep payment review closed and allow the user to reduce the amount.
+
 ## Identifiers
 
 iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabulary is shared, so a
