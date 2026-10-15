@@ -44,19 +44,20 @@ struct PaykitAcceptedMethods: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(title, textColor: .white64)
-            HStack(spacing: 8) {
+            CaptionMText(title, textColor: .white64, lineHeight: 18)
+            WrappingHStack(spacing: 8) {
                 ForEach(PaykitPaymentOption.allCases, id: \.self) { option in
                     let endpoints = option.endpoints(in: available)
                     if !endpoints.isEmpty {
                         let isSelected = endpoints.contains(where: selected.contains)
                         NumberPadActionButton(
                             text: option.title,
-                            trailingImageName: isSelected ? "x-mark" : nil,
+                            trailingImageName: isSelected ? "x-mark" : "plus",
                             titleKerning: 1, titleLineHeight: 18,
-                            color: isSelected ? option.color : .white32,
+                            color: option.color,
                             variant: .secondary
                         ) { onSelect(option) }
+                            .opacity(isSelected ? 1 : 0.5)
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                             .accessibilityIdentifier("\(identifierPrefix)Accept-\(option.rawValue)")
                     }

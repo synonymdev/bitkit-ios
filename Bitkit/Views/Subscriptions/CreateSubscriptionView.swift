@@ -88,7 +88,7 @@ struct CreateSubscriptionView: View {
 
     private var amount: some View {
         VStack(alignment: .leading, spacing: 16) {
-            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64, lineHeight: 18)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
                     if draft.amount.asset == .btc { MoneyText(
@@ -149,7 +149,7 @@ struct CreateSubscriptionView: View {
 
     private var frequency: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64, lineHeight: 18)
             SegmentedControl(
                 selectedTab: Binding(
                     get: { SubscriptionFrequencyOption.allCases.first { $0.unit == draft.frequency } ?? .month },
@@ -158,14 +158,14 @@ struct CreateSubscriptionView: View {
                 tabItems: SubscriptionFrequencyOption.allCases.map {
                     TabItem($0, accessibilityIdentifier: "Tab-\($0.rawValue)")
                 },
-                inactiveColor: .white.opacity(0.5)
+                inactiveColor: .white.opacity(0.5), labelKerning: 0, labelLineHeight: 18
             )
         }
     }
 
     private var name: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__name").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__name").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             TextField(
                 t("subscriptions__name_placeholder"),
                 text: $draft.name,
@@ -177,7 +177,7 @@ struct CreateSubscriptionView: View {
 
     private var description: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__description").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__description").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             NoteTextEditor(
                 text: $draft.description,
                 placeholder: t("subscriptions__description_placeholder"),
@@ -192,7 +192,7 @@ struct CreateSubscriptionView: View {
 
     private var customIcon: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                 Group {
                     if let iconImage {

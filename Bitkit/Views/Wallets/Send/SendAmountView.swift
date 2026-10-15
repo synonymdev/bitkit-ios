@@ -441,7 +441,7 @@ struct SendAmountView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
-                            CaptionMText(fundingSourceLabel(source)).lineLimit(1)
+                            CaptionMText(fundingSourceLabel(source), kerning: 1, lineHeight: 18).lineLimit(1)
                             if case let .hardware(walletId) = source,
                                let hardwareWallet = hwWalletManager.wallets.first(where: { $0.walletId == walletId })
                             {
@@ -452,14 +452,11 @@ struct SendAmountView: View {
                         HStack(spacing: 8) {
                             Image(fundingSourceIcon(source)).resizable().scaledToFit().frame(width: 24, height: 24)
                             if source == .usdt {
-                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—")
+                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—",
+                                            kerning: 0, lineHeight: 22)
                             } else {
                                 MoneyText(sats: Int(fundingSourceBalance(source)), forceUnit: .bitcoin, size: .bodyMSB,
-                                          symbol: false, enableHide: true, fillsWidth: false)
-                            }
-                            if source == .spending {
-                                Image("arrow-up-down").resizable().scaledToFit().frame(width: 16, height: 16)
-                                    .foregroundStyle(Color.white64)
+                                          symbol: false, enableHide: true, fillsWidth: false, kerning: 0, lineHeight: 22)
                             }
                             Spacer(minLength: 0)
                             if source == selectedFundingSource {
@@ -471,7 +468,7 @@ struct SendAmountView: View {
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NoAnimationButtonStyle())
                 .disabled(!enabled || hwSend.isFundingSourceLoading)
                 .opacity(enabled ? 1 : 0.30)
                 .accessibilityIdentifier("SendFundingSource-\(index)")

@@ -19,7 +19,9 @@ struct PaykitAmountText: View {
             MoneyText(sats: Int(clamping: amount.atomic), size: size, symbol: true,
                       prefix: prefix, color: color, symbolColor: .textSecondary, fillsWidth: false)
         } else if size == .display {
-            NumberPadAmountText(value: prefix + displayValue, symbol: "$")
+            DisplayText("<accent>\(prefix)$</accent> " + displayValue, textColor: color,
+                        accentColor: .textSecondary, accentFont: Fonts.extraBold, fillsWidth: false)
+                .lineLimit(1).minimumScaleFactor(0.5)
         } else {
             BodyMSBText(prefix + "$" + displayValue, textColor: color)
         }

@@ -35,6 +35,7 @@ struct UsdtSendView: View {
     @State private var submitted = false
     @State private var paymentComplete = false
     @State private var showDetails = false
+    @State private var showFullRecipient = false
     @State private var warning: String?
     @State private var confirmedWarnings: Set<String> = []
     @State private var swipeProgress: CGFloat = 0
@@ -467,7 +468,14 @@ struct UsdtSendView: View {
             HStack(alignment: .top, spacing: 16) {
                 SendSectionView(t("wallet__activity_address"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
                     BodySSBText(quote.recipient, kerning: 0, lineHeight: 20)
-                        .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                        .lineLimit(showFullRecipient ? nil : 1).truncationMode(.middle)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                        .contentShape(Rectangle())
+                        .onTapGesture { showFullRecipient.toggle() }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint(t(showFullRecipient ? "common__hide_details" : "common__show_details"))
+                        .accessibilityIdentifier("UsdtReviewAddress")
                 }
                 if quote.destination != .arbitrum {
                     UsdtDetailCell(title: t("usdt__recipient_network"), value: quote.destination.label, icon: "usdt-network")
