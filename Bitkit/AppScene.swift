@@ -1215,6 +1215,7 @@ struct AppScene: View {
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         isPaykitSceneActive = newPhase == .active
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
+        BackupService.shared.setAppActive(newPhase == .active)
 
         let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
 
