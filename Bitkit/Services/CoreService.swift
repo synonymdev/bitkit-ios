@@ -34,6 +34,12 @@ struct AccountAddresses {
 
 // MARK: - Activity Service
 
+enum ReceiveTagMutation {
+    case add([String])
+    case remove([String])
+    case reset
+}
+
 class ActivityService {
     private let coreService: CoreService
     private static let detachedContactsKey = "activityDetachedContacts"
@@ -1643,6 +1649,31 @@ class ActivityService {
     func addPreActivityMetadata(_ preActivityMetadata: BitkitCore.PreActivityMetadata) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.addPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+            self.metadataChangedSubject.send()
+        }
+    }
+
+    func mutateReceiveMetadataTags(paymentId: String?, address: String, mutation: ReceiveTagMutation) async throws {
+        try await ServiceQueue.background(.core) {
+            var metadata: BitkitCore.PreActivityMetadata?
+            if let paymentId, !paymentId.isEmpty {
+                metadata = try BitkitCore.getPreActivityMetadata(walletId: WalletScope.default, searchKey: paymentId, searchByAddress: false)
+            }
+            if metadata == nil, !address.isEmpty {
+                metadata = try BitkitCore.getPreActivityMetadata(walletId: WalletScope.default, searchKey: address, searchByAddress: true)
+            }
+            guard let metadata else { throw AppError(
+                message: "Receive metadata not available",
+                debugMessage: "No metadata for the committed receive invoice or address"
+            ) }
+            switch mutation {
+            case let .add(tags):
+                try BitkitCore.addPreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId, tags: tags)
+            case let .remove(tags):
+                try BitkitCore.removePreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId, tags: tags)
+            case .reset:
+                try BitkitCore.resetPreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId)
+            }
             self.metadataChangedSubject.send()
         }
     }

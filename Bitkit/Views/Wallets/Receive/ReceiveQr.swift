@@ -112,7 +112,7 @@ struct ReceiveQr: View {
     }
 
     private var canShowUnifiedReceive: Bool {
-        !wallet.bolt11.isEmpty && cjitInvoice == nil
+        (wallet.canCreateReceiveLightningInvoice || wallet.hasCoherentReceiveInvoice) && cjitInvoice == nil
     }
 
     private var selectedTabBinding: Binding<ReceiveTab> {
@@ -287,7 +287,7 @@ struct ReceiveQr: View {
             }
         }
         .onChange(of: wallet.bolt11) { _, bolt11 in
-            if bolt11.isEmpty && selectedTab == .unified {
+            if bolt11.isEmpty && !wallet.canCreateReceiveLightningInvoice && selectedTab == .unified {
                 selectedTab = .savings
             }
 
@@ -350,6 +350,8 @@ struct ReceiveQr: View {
                 }
             } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
                 cjitOnboarding
+            } else if receiveUnavailable(for: tab) {
+                receiveRefreshStatus(for: tab)
             } else if showDetails {
                 detailsContent(for: tab)
             } else {
@@ -403,10 +405,38 @@ struct ReceiveQr: View {
                         { navigationPath.append(route) }
                     }
                 )
+                .id(config.uri)
             } else {
                 ProgressView()
             }
         }
+    }
+
+    private func receiveUnavailable(for tab: ReceiveTab) -> Bool {
+        guard cjitInvoice == nil, tab == .unified || tab == .spending else { return false }
+        return wallet.isReceiveInvoiceUpdating || wallet.receiveInvoiceError != nil ||
+            (tab == .unified && !wallet.hasCoherentReceiveInvoice)
+    }
+
+    @ViewBuilder
+    private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {
+        VStack(spacing: 16) {
+            if !wallet.isReceiveInvoiceUpdating, let error = wallet.receiveInvoiceError {
+                BodyMText(error, textColor: .textSecondary)
+                    .multilineTextAlignment(.center)
+                CustomButton(title: t("common__try_again"), variant: .tertiary) {
+                    await refreshBip21()
+                }
+                .accessibilityIdentifier("ReceiveRetry")
+            }
+            QrArea(
+                uri: "", imageAsset: nil, accentColor: tab == .spending ? .purpleAccent : .brandAccent,
+                onEdit: editRoute(for: tab).map { route in
+                    { navigationPath.append(route) }
+                }
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func qrConfig(for tab: ReceiveTab) -> (uri: String, imageAsset: String, accentColor: Color) {
@@ -419,7 +449,7 @@ struct ReceiveQr: View {
             )
         case .unified:
             return (
-                uri: wallet.bip21,
+                uri: wallet.hasCoherentReceiveInvoice ? wallet.bip21 : "",
                 imageAsset: "btc-and-ln",
                 accentColor: .brandAccent
             )
