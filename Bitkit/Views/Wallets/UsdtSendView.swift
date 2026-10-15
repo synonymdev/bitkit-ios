@@ -24,6 +24,7 @@ struct UsdtSendView: View {
     @State private var destinations = Env.usdtDestinations
     @State private var quote: UsdtQuote?
     @State private var maximumQuote: UsdtQuote?
+    @State private var preparedQuote: UsdtPreparedQuote?
     @State private var isMaximumAmount = false
     @State private var preparingMaximum = false
     @State private var editingRecipient = false
@@ -115,7 +116,7 @@ struct UsdtSendView: View {
         }
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onAppear { usdt.isSendPresented = true }
-        .onDisappear { usdt.isSendPresented = false }
+        .onDisappear { usdt.isSendPresented = false; preparedQuote = nil }
         .task(id: settings.isUsdtEnabled) {
             if !embedded {
                 do { destinations = try await usdt.sendDestinations() }
@@ -127,7 +128,7 @@ struct UsdtSendView: View {
                   (try? parsePaykitAmountInput(asset: .usdt, value: amount)) != nil else { return }
             busy = true
             defer { busy = false }
-            do { quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination) }
+            do { quote = try await prepareQuote() }
             catch { self.error = UsdtWalletManager.message(for: error) }
         }
     }
@@ -324,7 +325,7 @@ struct UsdtSendView: View {
                         quote = prepared
                         amount = usdtFormatAmount(amount: prepared.amount)
                     } else {
-                        quote = try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+                        quote = try await prepareQuote()
                     }
                     showDetails = false
                     confirmedWarnings = []
@@ -559,10 +560,22 @@ struct UsdtSendView: View {
         error = nil
     }
 
+    private func prepareQuote() async throws -> UsdtQuote {
+        if let preparedQuote, preparedQuote.matches(recipient: recipient, amount: amount, destination: destination, sender: usdt.address) {
+            return preparedQuote.quote
+        }
+        preparedQuote = nil
+        let sender = usdt.address
+        let result = try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+        preparedQuote = UsdtPreparedQuote(quote: result, amount: amount, sender: sender)
+        return result
+    }
+
     private func useMaximum() async {
         guard !busy, !embedded else { return }
         busy = true
         preparingMaximum = true
+        preparedQuote = nil
         error = nil
         defer { busy = false; preparingMaximum = false }
         do {
@@ -624,6 +637,7 @@ struct UsdtSendView: View {
         busy = true
         error = nil
         maximumQuote = nil
+        preparedQuote = nil
         defer { if !submitted { busy = false } }
         do {
             if let sendPayment { try await sendPayment(quote) }
