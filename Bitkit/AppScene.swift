@@ -1265,6 +1265,7 @@ struct AppScene: View {
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()
+            OnchainConnectionMonitor.shared.appDidEnterBackground()
         }
 
         // `.inactive` is left alone: the iOS Bluetooth pairing alert puts the app there mid-connect.
@@ -1280,6 +1281,7 @@ struct AppScene: View {
                     return
                 }
                 nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
+                OnchainConnectionMonitor.shared.appDidBecomeActive { try await LightningService.shared.sync() }
                 let foregroundSync = Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()
