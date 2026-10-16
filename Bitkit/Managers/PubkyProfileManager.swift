@@ -1656,6 +1656,15 @@ class PubkyProfileManager: ObservableObject {
         return currentSession
     }
 
+    func storedIdentityGuard() -> (@MainActor () -> Bool)? {
+        guard !isAuthenticated, Self.sessionMutationCount == 0, (try? Self.hasStoredIdentity()) == true else { return nil }
+        let revision = Self.sessionRevision
+        // Restoration keeps this revision; identity replacement and sign-out invalidate it.
+        return { [weak self] in
+            self != nil && Self.sessionMutationCount == 0 && Self.sessionRevision == revision
+        }
+    }
+
     var hasLocalSecretKeyForCurrentProfile: Bool {
         Self.hasLocalSecretKey(for: publicKey)
     }

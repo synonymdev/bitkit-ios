@@ -326,6 +326,7 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
     ) async throws {
+        if publish { wallet.preparePendingPublicPaykitInvoiceRefresh() }
         let invoiceRevision = wallet.publicPaykitInvoiceRevision
         var desiredEndpoints: [Endpoint]?
         try await syncPublishedEndpoints(
@@ -396,6 +397,7 @@ enum PublicPaykitService {
         syncApp: () async throws -> Void = { try await syncPaykitApp() },
         applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
     ) async throws {
+        wallet.preparePendingPublicPaykitInvoiceRefresh()
         let invoiceRevision = wallet.publicPaykitInvoiceRevision
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
         try await syncPublishedEndpoints(

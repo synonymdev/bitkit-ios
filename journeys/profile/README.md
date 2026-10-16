@@ -22,6 +22,8 @@ Repeat the held snapshot check while enabling contact payments and while a faile
 
 On iOS, these channel-refresh checks cover public endpoints. Private endpoint preparation retains its existing cleanup and reconciliation behavior.
 
+Hold initial session restoration before sign-in completes, make a Lightning channel usable or ready, then release restoration while public publication remains blocked. Restore readiness or connectivity without another channel event. Normal public maintenance must retain the forced invoice refresh for the restored identity, including after a deferred or failed restoration and a skipped or failed publication. Work retained for the stored identity or an existing signed-in session must not transfer to a replacement identity or a new session for the same key. These checks require restoration, channel and publication gates beyond the journey runner capabilities.
+
 `signup-create-profile.xml` verifies that signup through staging.pubky.app can finish profile creation without a false Profile Error toast. Use a fresh, unfunded test wallet and keep the app process alive. The profile must use the same public key as the authorized signup.
 
 Delayed or failed session restoration requires network fault injection, which is not a journey-runner capability; see the PR manual checks.

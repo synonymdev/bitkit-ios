@@ -34,6 +34,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("publicPaykitBolt11PaymentHash") var publicPaykitBolt11PaymentHash = ""
     @AppStorage("publicPaykitBolt11ExpiresAt") var publicPaykitBolt11ExpiresAt = 0.0
     private(set) var publicPaykitInvoiceRevision = UUID()
+    private var pendingPublicPaykitInvoiceRefresh: (@MainActor () -> Bool)?
     @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better anticipate the receive flow UI
 
     // Send flow
@@ -1456,11 +1457,17 @@ class WalletViewModel: ObservableObject {
 
     func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
         if forceRefreshLightning, !Task.isCancelled, isPaykitUIActive, sharesPublicPaykitEndpoints,
-           PublicPaykitService.isLightningPaymentOptionEnabled(),
-           pubkyProfile?.authState == .authenticated, pubkyProfile?.currentSession != nil
+           PublicPaykitService.isLightningPaymentOptionEnabled()
         {
-            invalidatePublicPaykitInvoice()
-            PublicPaykitService.setCleanupPending(true)
+            if pubkyProfile?.authState == .authenticated, pubkyProfile?.currentSession != nil {
+                pendingPublicPaykitInvoiceRefresh = nil
+                invalidatePublicPaykitInvoice()
+                PublicPaykitService.setCleanupPending(true)
+            } else if let profile = pubkyProfile, let isCurrent = profile.storedIdentityGuard() {
+                pendingPublicPaykitInvoiceRefresh = { [weak self, weak profile] in
+                    self?.pubkyProfile === profile && isCurrent()
+                }
+            }
         }
         let isSessionCurrent = publicPaykitPublicationAdmission()
         await refreshAndSyncState()
@@ -1481,6 +1488,20 @@ class WalletViewModel: ObservableObject {
             reason: reason,
             forceRefreshLightning: forceRefreshLightning
         )
+    }
+
+    func preparePendingPublicPaykitInvoiceRefresh() {
+        guard let isCurrent = pendingPublicPaykitInvoiceRefresh else { return }
+        guard isCurrent() else {
+            pendingPublicPaykitInvoiceRefresh = nil
+            return
+        }
+        guard !Task.isCancelled, isPaykitUIActive, sharesPublicPaykitEndpoints,
+              PublicPaykitService.isLightningPaymentOptionEnabled(), pubkyProfile?.automaticPaykitSession != nil
+        else { return }
+        pendingPublicPaykitInvoiceRefresh = nil
+        invalidatePublicPaykitInvoice()
+        PublicPaykitService.setCleanupPending(true)
     }
 
     private func hasReusablePublicPaykitInvoice() async -> Bool {

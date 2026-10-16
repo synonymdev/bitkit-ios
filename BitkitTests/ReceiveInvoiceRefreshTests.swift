@@ -111,6 +111,113 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertFalse(PublicPaykitService.isCleanupPending)
     }
 
+    func testStartupChannelRefreshSurvivesRestorationAndPublicationRetry() async throws {
+        snapshotAppDefaultsDomain()
+        let owner = "pubky" + String(repeating: "y", count: 52)
+        enum FirstPublication: CaseIterable { case skipped, preparationFailed, publicationFailed }
+        for restoration in [PubkyProfileManager.SessionInitializationResult.restored(publicKey: owner), .restorationDeferred, .restorationFailed] {
+            for firstPublication in FirstPublication.allCases {
+                AdoptedPubkyReference.current = ("startup-test", owner)
+                let profile = StartupPublicationProfile()
+                let (_, wallet) = publicationWallet(route: .channelUsable, profile: profile)
+                profile.clearAuthenticatedStateForTesting()
+                wallet.replaceEmptyPublicInvoice = true
+                PublicPaykitService.setCleanupPending(false)
+                var published: [String] = []
+                wallet.applyPublicEndpoints = { published = $0.map(\.value) }
+                let started = expectation(description: "Initial restoration held")
+                let (stream, continuation) = AsyncStream<Void>.makeStream()
+                let startup = Task {
+                    await profile.initialize {
+                        started.fulfill()
+                        for await _ in stream {}
+                        return restoration
+                    }
+                }
+                await fulfillment(of: [started], timeout: 5)
+                await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
+                XCTAssertTrue(published.isEmpty)
+                XCTAssertEqual(wallet.publicPaykitBolt11, "ln-public")
+                continuation.finish()
+                await startup.value
+                if profile.automaticPaykitSession == nil {
+                    await profile.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: owner) }
+                }
+                let session = try XCTUnwrap(profile.automaticPaykitSession)
+                let isCurrent = { profile.automaticPaykitSession == session }
+                switch firstPublication {
+                case .skipped:
+                    do {
+                        try await profile.performProfileDeletion {
+                            do {
+                                try await PublicPaykitService.syncCurrentPublishedEndpoints(
+                                    wallet: wallet, isSessionCurrent: isCurrent, syncApp: {}, applyEndpoints: { published = $0.map(\.value) }
+                                )
+                                XCTFail("Expected deletion to block publication")
+                            } catch PubkyServiceError.sessionNotActive {}
+                            throw PublicPaykitError.publicationFailed
+                        }
+                    } catch PublicPaykitError.publicationFailed {}
+                case .preparationFailed, .publicationFailed:
+                    wallet.failPublicEndpointRefresh = firstPublication == .preparationFailed
+                    do {
+                        try await PublicPaykitService.syncCurrentPublishedEndpoints(
+                            wallet: wallet, isSessionCurrent: isCurrent, syncApp: {},
+                            applyEndpoints: { _ in throw PublicPaykitError.publicationFailed }
+                        )
+                        XCTFail("Expected first publication to fail")
+                    } catch {}
+                    XCTAssertTrue(PublicPaykitService.isCleanupPending)
+                    wallet.failPublicEndpointRefresh = false
+                }
+                try await PublicPaykitService.syncCurrentPublishedEndpoints(
+                    wallet: wallet, isSessionCurrent: isCurrent, syncApp: {}, applyEndpoints: { published = $0.map(\.value) }
+                )
+                XCTAssertEqual(published, ["ln-current"], "\(restoration), \(firstPublication)")
+                XCTAssertFalse(PublicPaykitService.isCleanupPending)
+            }
+        }
+    }
+
+    func testStartupChannelRefreshCannotTransferToAnotherIdentityOrIneligibleCaller() async throws {
+        snapshotAppDefaultsDomain()
+        enum State: CaseIterable { case replacement, sameKeyNewSession, cancelled, sharingDisabled, noStoredIdentity }
+        let owner = "pubky" + String(repeating: "y", count: 52)
+        for state in State.allCases {
+            AdoptedPubkyReference.current = state == .noStoredIdentity ? nil : ("startup-test", owner)
+            let profile = StartupPublicationProfile()
+            let (_, wallet) = publicationWallet(route: .channelUsable, profile: profile)
+            profile.clearAuthenticatedStateForTesting()
+            wallet.replaceEmptyPublicInvoice = true
+            wallet.applyPublicEndpoints = { _ in XCTFail("Startup must not publish") }
+            if state == .sharingDisabled { UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey) }
+            await Task {
+                if state == .cancelled { withUnsafeCurrentTask { $0?.cancel() } }
+                await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
+            }.value
+            if state == .replacement || state == .sameKeyNewSession {
+                do {
+                    try await profile.signOut(performSessionCleanup: { throw PublicPaykitError.publicationFailed })
+                } catch PublicPaykitError.publicationFailed {}
+            }
+            let restoredOwner = state == .replacement ? "pubky" + String(repeating: "z", count: 52) : owner
+            await profile.restoreSessionIfNeeded(hasStoredIdentity: { true }) { .restored(publicKey: restoredOwner) }
+            UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+            PublicPaykitService.setCleanupPending(false)
+            wallet.publicPaykitBolt11 = "ln-current-owner"
+            let revision = wallet.publicPaykitInvoiceRevision
+            let session = try XCTUnwrap(profile.automaticPaykitSession)
+            var published: [String] = []
+            try await PublicPaykitService.syncCurrentPublishedEndpoints(
+                wallet: wallet, isSessionCurrent: { profile.automaticPaykitSession == session }, syncApp: {},
+                applyEndpoints: { published = $0.map(\.value) }
+            )
+            XCTAssertEqual(published, ["ln-current-owner"], "\(state)")
+            XCTAssertEqual(wallet.publicPaykitInvoiceRevision, revision, "\(state)")
+            XCTAssertFalse(PublicPaykitService.isCleanupPending, "\(state)")
+        }
+    }
+
     func testOlderPublicInvoiceCreationCannotRestoreForcedInvalidation() async throws {
         let (profile, wallet) = publicationWallet(route: .channelUsable)
         wallet.stubPublicEndpoints = false
@@ -408,12 +515,14 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         }
     }
 
-    private func publicationWallet(route: AutomaticPublicationRoute) -> (PubkyProfileManager, GatedReceiveWallet) {
+    private func publicationWallet(
+        route: AutomaticPublicationRoute, profile: PubkyProfileManager? = nil
+    ) -> (PubkyProfileManager, GatedReceiveWallet) {
         UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
-        let profile = PubkyProfileManager()
+        let profile = profile ?? PubkyProfileManager()
         profile.publicKey = "pubky" + String(repeating: "y", count: 52)
         profile.authState = .authenticated
         let wallet = GatedReceiveWallet(pubkyProfile: profile)
@@ -954,6 +1063,12 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
 }
 
 @MainActor
+private final class StartupPublicationProfile: PubkyProfileManager {
+    override func loadProfile() async {}
+    override func checkAdoptedSource() async {}
+}
+
+@MainActor
 private final class GatedReceiveWallet: WalletViewModel {
     let olderStarted = XCTestExpectation(description: "Older invoice suspended")
     private var olderInvoice: CheckedContinuation<String, Never>?
@@ -993,6 +1108,7 @@ private final class GatedReceiveWallet: WalletViewModel {
     }
 
     override func publishPublicPaykitEndpoints(refreshIfNeeded: Bool, isSessionCurrent: @escaping @MainActor () -> Bool) async throws {
+        guard isSessionCurrent() else { return }
         guard let applyPublicEndpoints else {
             return try await super.publishPublicPaykitEndpoints(refreshIfNeeded: refreshIfNeeded, isSessionCurrent: isSessionCurrent)
         }
