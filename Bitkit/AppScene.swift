@@ -535,6 +535,10 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
+            .onReceive(OnchainSendRebroadcaster.onchainSyncCompleted.receive(on: DispatchQueue.main)) { _ in
+                guard wallet.nodeLifecycleState == .running else { return }
+                Task { await OnchainSendRebroadcaster.shared.rebroadcastIfNeeded(paymentRequests: paykitPaymentRequestManager) }
+            }
             .onOpenURL { url in app.retainDeepLink(url) }
             // Bridge the vendor managers' device state into the watch-only manager without coupling them:
             // each bumps devicesRevision on any device or connection change.

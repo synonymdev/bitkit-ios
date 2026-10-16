@@ -329,6 +329,9 @@ class WalletViewModel: ObservableObject {
                         self.isSyncingWallet = false
                         self.currentBlockHeight = syncedBlockHeight
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+                        if syncType == .onchainWallet {
+                            OnchainSendRebroadcaster.onchainSyncCompleted.send()
+                        }
                         Task {
                             await self.refreshAndSyncState()
                         }

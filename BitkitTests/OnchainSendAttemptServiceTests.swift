@@ -141,6 +141,40 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(sender.broadcasts, 1)
     }
 
+    func testRebroadcastOnlyResendsAnUnknownOriginalAtItsApprovedFee() {
+        let input = OnchainSendInput(txid: String(repeating: "ef", count: 32), vout: 0)
+        var attempt = OnchainSendAttempt(
+            id: UUID(), walletId: walletId, requestId: nil, orderId: nil, address: "bcrt1qoriginal", amountSats: 1000,
+            isMaxAmount: false, status: .unknown, txid: txid,
+            recoveryContext: OnchainSendRecoveryContext(
+                inputs: [input], satsPerVbyte: 2, paymentIdentity: nil, candidateTxids: [txid],
+                candidateFeeSats: [txid: 300]
+            )
+        )
+        XCTAssertTrue(OnchainSendRebroadcaster.shouldRebroadcast(attempt))
+        XCTAssertEqual(OnchainSendRebroadcaster.approvedFee(attempt), 300)
+
+        var accepted = attempt
+        accepted.status = .accepted
+        XCTAssertFalse(OnchainSendRebroadcaster.shouldRebroadcast(accepted))
+        let transfer = OnchainSendAttempt(
+            id: attempt.id, walletId: walletId, requestId: nil, orderId: "order", address: attempt.address,
+            amountSats: 1000, isMaxAmount: false, status: .unknown, txid: txid, recoveryContext: attempt.recoveryContext
+        )
+        XCTAssertFalse(OnchainSendRebroadcaster.shouldRebroadcast(transfer))
+        attempt.recoveryContext?.candidateTxids.append(String(repeating: "cd", count: 32))
+        XCTAssertFalse(OnchainSendRebroadcaster.shouldRebroadcast(attempt))
+    }
+
+    func testRebroadcastRetriesAfterAThrottleWhenATryStoppedBeforeDispatch() {
+        let triedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(OnchainSendRebroadcaster.isDue(lastTriedAt: nil, now: triedAt))
+        XCTAssertFalse(OnchainSendRebroadcaster.isDue(lastTriedAt: triedAt, now: triedAt.addingTimeInterval(30)))
+        XCTAssertTrue(OnchainSendRebroadcaster.isDue(
+            lastTriedAt: triedAt, now: triedAt.addingTimeInterval(OnchainSendRebroadcaster.retryInterval)
+        ))
+    }
+
     func testOriginalRetryChecksDeadlineAfterAuthorizationBeforeNativeDispatch() async throws {
         for expired in [false, true] {
             let store = MemoryAttemptStore()
