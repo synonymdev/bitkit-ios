@@ -44,7 +44,9 @@ struct ContactPaymentContext: Equatable {
         isUsdtEnabled: Bool = true
     ) -> Bool {
         guard endpoints.contains(where: { $0.methodId == .usdtArbitrum }) else { return false }
-        if !endpoints.contains(where: { $0.methodId != .usdtArbitrum }) { return true }
+        if !endpoints.contains(where: { $0.methodId != .usdtArbitrum }) {
+            return true
+        }
         guard isUsdtEnabled else { return false }
         if let request = incomingPaymentRequest, request.amount.asset != .btc {
             let now = Date()
@@ -148,7 +150,9 @@ class AppViewModel: ObservableObject {
 
     var fixedLightningAmountSats: UInt64? {
         guard !paykitUsesUsdt, selectedWalletToPayFrom == .lightning else { return nil }
-        if let amount = scannedLightningInvoice?.amountSatoshis, amount > 0 { return amount }
+        if let amount = scannedLightningInvoice?.amountSatoshis, amount > 0 {
+            return amount
+        }
         return lnurlPayData?.isFixedAmount == true ? lnurlPayData?.minSendableSat : nil
     }
 
@@ -157,6 +161,11 @@ class AppViewModel: ObservableObject {
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
     @Published private(set) var pendingDeepLinkURL: URL?
+    /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
+    /// delegate replay), and the startup gates can route the first delivery before the second arrives.
+    private var lastRoutedDeepLink: (url: URL, date: Date)?
+    static let duplicateDeepLinkWindow: TimeInterval = 3
+    var currentDate: () -> Date = Date.init
 
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
@@ -222,6 +231,12 @@ class AppViewModel: ObservableObject {
     }
 
     func retainDeepLink(_ url: URL) {
+        if let lastRoutedDeepLink, lastRoutedDeepLink.url == url,
+           currentDate().timeIntervalSince(lastRoutedDeepLink.date) < Self.duplicateDeepLinkWindow
+        {
+            Logger.debug("Ignoring duplicate delivery of a routed deep link", context: "AppViewModel")
+            return
+        }
         pendingDeepLinkURL = url
     }
 
@@ -239,6 +254,7 @@ class AppViewModel: ObservableObject {
             return
         }
         pendingDeepLinkURL = nil
+        lastRoutedDeepLink = (url, currentDate())
         await handler(url)
     }
 
@@ -642,7 +658,9 @@ extension AppViewModel {
 
 extension AppViewModel {
     var paykitPaymentMethod: PublicPaykitService.MethodId {
-        if paykitUsesUsdt { return .usdtArbitrum }
+        if paykitUsesUsdt {
+            return .usdtArbitrum
+        }
         return paykitBitcoinMethod(for: selectedWalletToPayFrom)
     }
 
@@ -1326,7 +1344,9 @@ extension AppViewModel {
             let valid = (try? resolveUsdtPaymentRoute(input: normalized)) != nil
             manualEntryValidationResult = valid ? .valid : .invalid
             isManualEntryInputValid = valid
-            if !valid { showValidationErrorToast(for: .invalid) }
+            if !valid {
+                showValidationErrorToast(for: .invalid)
+            }
             return
         }
 

@@ -95,6 +95,34 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
     }
 
     @MainActor
+    func testColdStartDuplicateDeliveryOfRoutedURLRoutesOnce() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        var now = Date()
+        app.currentDate = { now }
+        let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=/pub/locks.app/:rw" +
+                "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)"))
+        var routeCount = 0
+
+        // onOpenURL delivers the link and the startup gate routes it.
+        app.retainDeepLink(url)
+        await app.routePendingDeepLinkIfReady(true) { _ in routeCount += 1 }
+
+        // The scene delegate replays the same link 350 ms later.
+        now += 0.35
+        app.retainDeepLink(url)
+        XCTAssertNil(app.pendingDeepLinkURL)
+        await app.routePendingDeepLinkIfReady(true) { _ in routeCount += 1 }
+        XCTAssertEqual(routeCount, 1)
+
+        // Opening the same link again later still routes it.
+        now += AppViewModel.duplicateDeepLinkWindow
+        app.retainDeepLink(url)
+        await app.routePendingDeepLinkIfReady(true) { _ in routeCount += 1 }
+        XCTAssertEqual(routeCount, 2)
+    }
+
+    @MainActor
     func testNonNodeDeepLinksReleaseAfterStartupGatesWithoutWaitingForLDK() async throws {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
         let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +

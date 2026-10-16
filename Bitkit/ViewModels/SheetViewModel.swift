@@ -128,6 +128,19 @@ class SheetViewModel: ObservableObject {
         hideSheet(reason: reason, file: file, function: function, line: line)
     }
 
+    /// Hides the sheet only while this presentation is still the active one, so a replaced sheet's dismiss
+    /// cannot hide the newer sheet that took its place, even when both share a sheet ID.
+    func hideSheetIfActive(presentationID: UUID, reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        guard activeSheetConfiguration?.presentationID == presentationID else {
+            let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
+            let reasonText = " reason: \(reason ?? fallback)"
+            let activeId = activeSheetConfiguration?.id.rawValue ?? "none"
+            Logger.debug("hideSheetIfActive skipped for a replaced presentation (active: \(activeId))\(reasonText)", context: "SheetViewModel")
+            return
+        }
+        hideSheet(reason: reason, file: file, function: function, line: line)
+    }
+
     var isAnySheetOpen: Bool {
         return activeSheetConfiguration != nil
     }
@@ -278,7 +291,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
             let pubkyConfig = config.data as? PubkyAuthApprovalConfig
             guard let request = pubkyConfig?.request else { return nil }
-            return PubkyAuthApprovalSheetItem(request: request)
+            return PubkyAuthApprovalSheetItem(request: request, presentationID: config.presentationID)
         }
         set {
             if newValue == nil {
@@ -328,7 +341,11 @@ class SheetViewModel: ObservableObject {
             guard activeSheetConfiguration?.id == .usdtIntro else { return nil }
             return UsdtIntroSheetItem()
         }
-        set { if newValue == nil { activeSheetConfiguration = nil } }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
     }
 
     var quickpaySheetItem: QuickpaySheetItem? {
