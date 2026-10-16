@@ -546,7 +546,11 @@ actor PaykitPaymentProofService {
         guard let record = try await sdk.paymentRequests().first(where: {
             $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
                 PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
-        }), record.paymentProofs.isEmpty else { return false }
+        }) else { return false }
+        if requestId.billingPeriodStartsAt != nil {
+            return try await recurringPeriodHasEnded(record, requestId: requestId, payer: payer, now: now)
+        }
+        guard record.paymentProofs.isEmpty else { return false }
         switch record.state {
         case .proposalExpired, .rejected, .canceled:
             return true
@@ -558,6 +562,27 @@ actor PaykitPaymentProofService {
             })?.conversionQuoteId
             guard quoteId != nil, let deadline = try? request.submissionDeadline(quoteId: quoteId) else { return false }
             return deadline < PaykitPreciseInstant(date: now)
+        default:
+            return false
+        }
+    }
+
+    private func recurringPeriodHasEnded(
+        _ record: Paykit.PaymentRequestRecord, requestId: PaykitPaymentRequest.ID, payer: String, now: Date
+    ) async throws -> Bool {
+        guard let period = try await loadProofs().last(where: {
+            PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
+        })?.billingPeriod,
+            !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: period) })
+        else { return false }
+        switch record.state {
+        case .canceled, .rejected:
+            return true
+        case .activeRecurring:
+            guard let subscription = PaykitSubscription(record: record) else { return false }
+            return subscription.isExpired(at: now) ||
+                PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+                .isExpired(at: now)
         default:
             return false
         }

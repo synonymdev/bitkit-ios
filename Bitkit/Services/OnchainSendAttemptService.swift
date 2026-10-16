@@ -68,7 +68,7 @@ extension LightningService {
         let requestedAt = UInt64(Date().timeIntervalSince1970)
         Task { try? await self.sync() }
         let deadline = ContinuousClock.now + syncTimeout
-        while (node.status().latestOnchainWalletSyncTimestamp ?? 0) <= requestedAt {
+        while (node.status().latestOnchainWalletSyncTimestamp ?? 0) < requestedAt {
             guard ContinuousClock.now < deadline else { throw OnchainSendAbandonError.syncUnavailable }
             try await Task.sleep(for: .seconds(1))
         }
@@ -189,6 +189,8 @@ struct OnchainSendAttempt: Codable, Equatable {
     var followupContext: OnchainSendFollowupContext? = nil
     var transferContext: OnchainSendTransferContext? = nil
     var recoveryContext: OnchainSendRecoveryContext? = nil
+    /// Set on an attempt restored from a backup, which may not hold evidence that its transaction was broadcast.
+    var restoredFromBackup: Bool? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -214,7 +216,7 @@ struct OnchainSendAttempt: Codable, Equatable {
     /// A Paykit payment from the node wallet that the network never confirmed accepting. Once its request
     /// has ended and no candidate reached the network, it can be released instead of blocking every send.
     var canBeAbandoned: Bool {
-        requestId != nil && orderId == nil && status != .accepted && txid != nil &&
+        requestId != nil && orderId == nil && status != .accepted && txid != nil && restoredFromBackup != true &&
             walletId.hasPrefix("node:") && recoveryContext?.inputs.isEmpty == false
     }
 
@@ -423,11 +425,14 @@ actor OnchainSendAttemptService {
             // Exact fee evidence is local and absent from the shared backup record.
             previous.recoveryContext?.candidateFeeSats = nil
             incoming.recoveryContext?.candidateFeeSats = nil
+            previous.restoredFromBackup = nil
             guard previous == incoming else { throw OnchainSendAttemptError.unresolved }
             return
         }
-        try store.save(attempt.map { [$0] } ?? [])
-        knownAttempt = attempt
+        var restored = attempt
+        restored?.restoredFromBackup = true
+        try store.save(restored.map { [$0] } ?? [])
+        knownAttempt = restored
     }
 
     func send(
