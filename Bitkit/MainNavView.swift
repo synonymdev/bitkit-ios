@@ -149,10 +149,11 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.pubkyAuthApprovalSheetItem,
             onDismiss: {
-                sheets.hideSheetIfActive(.pubkyAuthApproval, reason: "Pubky auth approval sheet dismissed")
+                sheets.hideDismissedSheet(reason: "Pubky auth approval sheet dismissed")
             }
-        ) {
-            config in PubkyAuthApprovalSheet(config: config)
+        ) { config in
+            PubkyAuthApprovalSheet(config: config)
+                .onAppear { sheets.markSheetShown(presentationID: config.presentationID) }
         }
         .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
@@ -321,7 +322,9 @@ struct MainNavView: View {
             .task(id: scenePhase) {
                 guard usdt.isConfigured, scenePhase == .active else { return }
                 while !Task.isCancelled {
-                    if usdt.shouldRefresh(enabled: settings.isUsdtEnabled) { await usdt.refresh(includeHistory: true) }
+                    if usdt.shouldRefresh(enabled: settings.isUsdtEnabled) {
+                        await usdt.refresh(includeHistory: true)
+                    }
                     let pending = usdt.transfers.contains { $0.status == .pending }
                     try? await Task.sleep(for: .seconds(pending ? 10 : 30))
                 }
@@ -332,10 +335,14 @@ struct MainNavView: View {
                 presentUsdtReceipt()
             }
             .onChange(of: canPresentUsdtReceipt) { _, ready in
-                if ready { presentUsdtReceipt() }
+                if ready {
+                    presentUsdtReceipt()
+                }
             }
             .onChange(of: wallet.isRestoringWallet) { _, restoring in
-                if restoring { usdtReceipts.removeAll() }
+                if restoring {
+                    usdtReceipts.removeAll()
+                }
             }
             .onReceive(hwWalletManager.receivedTxPublisher) { tx in
                 // New inbound transaction to a watched hardware wallet — show the received celebration.

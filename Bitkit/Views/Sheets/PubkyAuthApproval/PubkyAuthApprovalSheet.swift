@@ -38,7 +38,9 @@ func pubkyAuthLiteralText(_ value: String) -> String {
     var text = String(String.UnicodeScalarView(value.unicodeScalars.filter { !hidden.contains($0.properties.generalCategory) }))
     while true {
         let stripped = text.replacingOccurrences(of: "<accent>", with: "").replacingOccurrences(of: "</accent>", with: "")
-        if stripped == text { return text }
+        if stripped == text {
+            return text
+        }
         text = stripped
     }
 }
@@ -64,6 +66,7 @@ struct PubkyAuthApprovalSheetItem: SheetItem {
     let id: SheetID = .pubkyAuthApproval
     let size: SheetSize = .large
     let request: PubkyAuthRequest
+    let presentationID: UUID
 }
 
 // MARK: - Sheet View
@@ -100,7 +103,9 @@ struct PubkyAuthApprovalSheet: View {
         mutating func updateUsdtAvailability(isEnabled: Bool, claim: PubkyAuthClaim?, shareUsdt: inout Bool) {
             if !isEnabled {
                 shareUsdt = false
-                if self == .watchOnlyConsent, claim?.sharesBitcoin != true { self = .authorize }
+                if self == .watchOnlyConsent, claim?.sharesBitcoin != true {
+                    self = .authorize
+                }
             } else if self == .authorize, claim?.requiresUsdtAddress == true {
                 self = .watchOnlyConsent
             }
@@ -184,7 +189,9 @@ struct PubkyAuthApprovalSheet: View {
         }
         .task(id: settings.isUsdtEnabled) {
             state.updateUsdtAvailability(isEnabled: settings.isUsdtEnabled, claim: config.request.bitkitClaim, shareUsdt: &shareUsdt)
-            if !settings.isUsdtEnabled { usdtAddress = nil }
+            if !settings.isUsdtEnabled {
+                usdtAddress = nil
+            }
             await loadUsdtAddress()
         }
         .interactiveDismissDisabled(!state.canDismiss)
@@ -480,7 +487,9 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var introDescriptionKey: String {
-        if config.request.bitkitClaim?.sharesBitcoin == true { return "pubky_auth__watch_only_intro_description" }
+        if config.request.bitkitClaim?.sharesBitcoin == true {
+            return "pubky_auth__watch_only_intro_description"
+        }
         return config.request.bitkitClaim?.requiresUsdtAddress == true
             ? "pubky_auth__usdt_intro_description" : "pubky_auth__usdt_intro_optional"
     }
@@ -500,7 +509,9 @@ struct PubkyAuthApprovalSheet: View {
             let address = try await usdt.paymentEndpoint().value
             guard settings.isUsdtEnabled else { return }
             usdtAddress = address
-            if config.request.bitkitClaim?.requiresUsdtAddress == true { shareUsdt = true }
+            if config.request.bitkitClaim?.requiresUsdtAddress == true {
+                shareUsdt = true
+            }
         } catch {
             usdtAddress = nil
             usdtUnavailable = true
