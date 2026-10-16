@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// Rebroadcasts an on-chain payment whose broadcast outcome is unknown once the wallet syncs
@@ -11,6 +12,8 @@ final class OnchainSendRebroadcaster {
     static let shared = OnchainSendRebroadcaster()
 
     nonisolated static let retryInterval: TimeInterval = 60
+    /// Background syncs report only their completion, so this, not `isSyncingWallet`, marks a working connection.
+    nonisolated static let onchainSyncCompleted = PassthroughSubject<Void, Never>()
 
     private var lastTriedAt: [UUID: Date] = [:]
     private var isRunning = false
