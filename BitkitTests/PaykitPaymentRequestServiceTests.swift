@@ -11,6 +11,24 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentRequestServiceTests: XCTestCase {
+    func testPreparationUsesAcceptedMethodsBeforeWalletSelection() throws {
+        let usdt = PublicPaykitService.MethodId.usdtArbitrum.rawValue
+        let bitcoin = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
+        for (endpoints, accent): ([String], Color) in [([usdt], .usdtAccent), ([usdt, bitcoin], .textSecondary)] {
+            let record = try paymentRequestRecord(amount: "5", asset: "usd",
+                                                  conversion: .fixed(rates: [.init(asset: "btc", value: "0.00001"),
+                                                                             .init(asset: "usdt", value: "1")]),
+                                                  endpoints: endpoints)
+            let request = try PaykitPaymentRequest.parseIncoming(record: record, now: Date(), network: .regtest).get()
+            let view = SendConfirmationView(
+                navigationPath: .constant([]), isSubmittingPayment: .constant(false), hwSend: HwSendCoordinator(),
+                requestPinCheck: { false }, prepareIncomingPaymentRequest: {}, routingCacheResetAttempted: false,
+                preparingRequest: request
+            )
+            XCTAssertEqual(view.accentColor, accent)
+        }
+    }
+
     func testDollarRequestsPreferUsdtOnlyWhenTheQuotedAmountIsCovered() throws {
         let bitcoin = PublicPaykitService.Endpoint(
             methodId: .regtestOnchainP2wpkh,

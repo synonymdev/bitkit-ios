@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refine Earn and USDT payment layouts, support plain USDT addresses in scanning and manual entry, and let requests and subscriptions choose individual receiving methods. #942
 
 ### Fixed
+- Use USDT labels and styling when preparing and entering payments, with readable messages for bridge issues. #948
+- Keep wallet backups consistent during Paykit activity and preserve pending changes until they are backed up. #950
 - Incoming on-chain transactions that confirm before being seen in the mempool now show the received notification. #588
 - Payment requests now provide safe failure diagnostics and show an error when requested payment details remain unavailable. #721
 - Fixed the transfer to spending flow creating a Blocktank order every time you tapped Continue, so an order is now only created when you confirm the transfer. #738

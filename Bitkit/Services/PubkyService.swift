@@ -422,6 +422,16 @@ actor PaykitSdkService {
         let backupRevision: String
     }
 
+    struct BackupExport {
+        let state: String
+        let version: UInt64
+    }
+
+    struct BackupIdentity: Equatable {
+        let runtimeGeneration: UInt64
+        let walletGeneration: Int
+    }
+
     static let shared = PaykitSdkService()
     /// Maximum plaintext size accepted by Paykit's pubky-noise transport.
     static let maximumMessageBytes = 1000
@@ -449,6 +459,8 @@ actor PaykitSdkService {
     private var sdk: PaykitSdk?
     private var cachedPaykitKey: (publicKey: String, generation: UInt64)?
     private var cachedBackupState: BackupStateSnapshot?
+    private(set) var backupStateVersion: UInt64 = 0
+    private var runtimeGeneration: UInt64 = 0
 
     init(
         sdkFactory: (() throws -> PaykitSdk)? = nil,
@@ -1248,17 +1260,33 @@ actor PaykitSdkService {
     }
 
     func exportBackupState(priority: PaykitSdkOperationLock.Priority = .background) async throws -> String {
+        try await exportBackupSnapshot(priority: priority).state
+    }
+
+    func backupIdentity() throws -> BackupIdentity {
+        try BackupIdentity(runtimeGeneration: runtimeGeneration, walletGeneration: operationLock.walletGeneration())
+    }
+
+    func validateBackupSnapshot(version: UInt64, identity: BackupIdentity) async throws {
+        try await operationLock.withLock(priority: .interactive) {
+            guard try backupIdentity() == identity else { throw PubkyServiceError.identityChanged }
+            guard backupStateVersion == version else { throw WalletBackupSnapshotError.changed }
+        }
+    }
+
+    func exportBackupSnapshot(priority: PaykitSdkOperationLock.Priority = .background) async throws -> BackupExport {
         let generation = try operationLock.walletGeneration()
         let instance = try handle()
         while true {
             if priority == .background { try await PaykitPaymentActivity.shared.waitUntilIdle() }
-            let exported: String? = try await withSdk(priority: priority) { sdk in
+            let exported: BackupExport? = try await withSdk(priority: priority) { sdk in
                 guard sdk === instance, try operationLock.walletGeneration() == generation else {
                     throw PubkyServiceError.identityChanged
                 }
                 // Payment may have started while this export waited for the SDK lock.
                 if priority == .background, await PaykitPaymentActivity.shared.isActive { return nil }
-                return try await sdk.exportBackupString()
+                let state = try await sdk.exportBackupString()
+                return BackupExport(state: state, version: backupStateVersion)
             }
             if let exported { return exported }
         }
@@ -1477,10 +1505,12 @@ actor PaykitSdkService {
     }
 
     private func markWalletBackupDataChanged() {
+        backupStateVersion &+= 1
         Self.walletBackupDataChangedSubject.send()
     }
 
     private func resetRuntime() {
+        runtimeGeneration &+= 1
         sdk = nil
         cachedPaykitKey = nil
         cachedBackupState = nil

@@ -65,9 +65,21 @@ final class LocalizationPluralTests: XCTestCase {
     func testEnglishFallbackUsesEnglishPluralRulesForMissingTranslations() {
         for language in ["ar", "pt", "unsupported"] {
             selectLanguage(language)
-            XCTAssertEqual(tPlural("settings__addr__spend_all", arguments: ["count": 0]), "Spend All Funds From 0 addresses", language)
-            XCTAssertEqual(tPlural("settings__addr__spend_all", arguments: ["count": 1]), "Spend All Funds From 1 address", language)
-            XCTAssertEqual(tPlural("settings__addr__spend_all", arguments: ["count": 21]), "Spend All Funds From 21 addresses", language)
+            XCTAssertEqual(
+                tPlural("wallet__reorg_msg_begin", arguments: ["count": 0]),
+                "0 of your transactions are no longer confirmed. Please wait.",
+                language
+            )
+            XCTAssertEqual(
+                tPlural("wallet__reorg_msg_begin", arguments: ["count": 1]),
+                "1 of your transactions is no longer confirmed. Please wait.",
+                language
+            )
+            XCTAssertEqual(
+                tPlural("wallet__reorg_msg_begin", arguments: ["count": 21]),
+                "21 of your transactions are no longer confirmed. Please wait.",
+                language
+            )
         }
     }
 

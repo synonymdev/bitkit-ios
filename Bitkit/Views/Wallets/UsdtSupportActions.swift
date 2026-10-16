@@ -30,7 +30,7 @@ extension UsdtTransfer {
             "Bridge: \(orchestra == nil ? "USDT0" : "Orchestra")",
             "Source network: Arbitrum One",
             "Recipient network: \(destination.label)",
-            "Status: \(status)",
+            "Status: \(status.label) (\(status))",
         ]
         if let reference = orchestra?.quoteId { lines.append("Bridge reference: \(reference)") }
         if let txHash { lines.append("Source transaction: \(txHash)") }
@@ -49,7 +49,7 @@ extension UsdtDepositDetail {
             "Source network: \(deposit.network)",
             "Recipient network: Arbitrum One",
             "Deposit reference: \(deposit.id)",
-            "Status: \(order?.status ?? deposit.status)",
+            "Status: \(statusText) (\(order?.status ?? deposit.status))",
             "Source transaction: \(deposit.sourceTx)",
         ]
         if let statusCode { lines.append("Status code: \(statusCode)") }
