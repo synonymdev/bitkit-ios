@@ -297,6 +297,18 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         XCTAssertEqual(routed, [newerURL])
     }
 
+    @MainActor
+    func testPendingPubkyAuthSheetStaysTrackedWhenAnotherSheetShowsDuringItsReplacement() {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send)
+        sheets.showSheet(.pubkyAuthApproval)
+        XCTAssertTrue(sheets.isPubkyAuthApprovalShownOrPending)
+
+        sheets.showSheet(.receivedTx)
+
+        XCTAssertTrue(sheets.isPubkyAuthApprovalShownOrPending)
+    }
+
     private func signinLink(caps: String = "/pub/locks.app/:rw") throws -> URL {
         try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=\(caps)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +

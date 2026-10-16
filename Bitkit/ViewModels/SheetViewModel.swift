@@ -39,6 +39,9 @@ struct SheetConfiguration {
 }
 
 class SheetViewModel: ObservableObject {
+    /// How long a closing sheet animates out before the next sheet may be shown.
+    static let replacementDelaySeconds: TimeInterval = 0.7
+
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
@@ -60,10 +63,12 @@ class SheetViewModel: ObservableObject {
             replacingSheetID = id
             hideSheet()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
                 guard let self else { return }
                 isReplacingSheet = false
-                replacingSheetID = nil
+                if replacingSheetID == id {
+                    replacingSheetID = nil
+                }
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
@@ -75,7 +80,6 @@ class SheetViewModel: ObservableObject {
             }
         } else {
             isReplacingSheet = false
-            replacingSheetID = nil
             // If no sheet is open, show the new sheet immediately
             Logger.debug("Showing sheet \(id.rawValue)", context: "SheetViewModel")
             activeSheetConfiguration = SheetConfiguration(id: id, data: data)
@@ -117,7 +121,7 @@ class SheetViewModel: ObservableObject {
 
         isReplacingSheet = true
         hideSheet(reason: reason)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
             guard let self else { return }
             isReplacingSheet = false
             guard activeSheetConfiguration == nil else { return }

@@ -442,7 +442,10 @@ struct MainNavView: View {
             }
             .onChange(of: sheets.isPubkyAuthApprovalShownOrPending) { _, isShownOrPending in
                 guard canHandleDeepLinks, !isShownOrPending else { return }
-                Task { await handlePendingDeepLink() }
+                Task {
+                    try? await Task.sleep(for: .seconds(SheetViewModel.replacementDelaySeconds))
+                    await handlePendingDeepLink()
+                }
             }
             .task(id: scenePhase == .active) {
                 guard scenePhase == .active, canHandleDeepLinks,
