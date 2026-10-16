@@ -11,6 +11,8 @@ to break the next request:
              a call is waiting. The file is removed once used.
   blackhole  every request is swallowed and never answered, so a broadcast's outcome is lost.
              Remove the file to bring the connection back.
+  lose-reply broadcasts are forwarded to the server but their replies are dropped, so the
+             transaction reaches the mempool while Bitkit cannot tell. Remove the file to stop.
 
 Usage:
   python3 scripts/electrum-bridge.py [--port 50099] [--upstream electrs.bitkit.stag0.blocktank.to:9999]
@@ -18,6 +20,7 @@ Usage:
 """
 import argparse
 import asyncio
+import json
 import os
 import ssl
 import time
@@ -49,6 +52,7 @@ def main():
             host, int(port), ssl=context, server_hostname=host
         )
         log("open", peer)
+        lost_reply_ids = set()
 
         async def up():
             while line := await client_reader.readline():
@@ -76,6 +80,10 @@ def main():
                 if flag("blackhole"):
                     log("blackhole:", line[:80])
                     continue
+                if flag("lose-reply") and b"blockchain.transaction.broadcast" in line:
+                    request_id = json.loads(line).get("id")
+                    lost_reply_ids.add(request_id)
+                    log("lose-reply: forwarding broadcast", request_id, "and dropping its reply")
                 upstream_writer.write(line)
                 await upstream_writer.drain()
             upstream_writer.close()
@@ -84,6 +92,15 @@ def main():
             while line := await upstream_reader.readline():
                 if client_writer.is_closing():
                     return
+                if lost_reply_ids:
+                    try:
+                        reply_id = json.loads(line).get("id")
+                    except ValueError:
+                        reply_id = None
+                    if reply_id in lost_reply_ids:
+                        lost_reply_ids.discard(reply_id)
+                        log("lose-reply: dropped reply", line[:120])
+                        continue
                 client_writer.write(line)
                 await client_writer.drain()
             client_writer.close()
