@@ -73,4 +73,18 @@ final class OnchainConnectionMonitorTests: XCTestCase {
         monitor.onchainSyncDidComplete()
         XCTAssertTrue(monitor.isReconnecting)
     }
+
+    func testReconnectWaitCoversOnlyTheStepsBeforeSending() {
+        let context = OnchainSendPendingContext(attemptId: UUID(), walletId: "node:regtest:default:0", txid: nil)
+        for route in [SendRoute.amount, .confirm, .feeRate, .options] {
+            XCTAssertTrue(SendSheet.waitsForReconnect(route: route, isSubmittingPayment: false))
+            XCTAssertFalse(SendSheet.waitsForReconnect(route: route, isSubmittingPayment: true))
+        }
+        for route in [
+            SendRoute.success(paymentId: "txid"), .onchainPending(context), .onchainOperationPending(context, requestId: nil),
+            .pending(paymentHash: nil, retryRoute: .confirm, paymentRequest: nil),
+        ] {
+            XCTAssertFalse(SendSheet.waitsForReconnect(route: route, isSubmittingPayment: false))
+        }
+    }
 }

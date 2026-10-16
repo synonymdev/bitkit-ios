@@ -1282,7 +1282,15 @@ struct AppScene: View {
                     return
                 }
                 nodeRestarter.retryOnForeground(returnedFromBackground: returnedFromBackground)
-                OnchainConnectionMonitor.shared.appDidBecomeActive { try await LightningService.shared.sync() }
+                let resumedAt = UInt64(Date().timeIntervalSince1970)
+                OnchainConnectionMonitor.shared.appDidBecomeActive {
+                    // Shares the foreground sync instead of running a second one, but only an on-chain sync
+                    // that finished after the resume proves the connection works.
+                    try await wallet.sync()
+                    guard (LightningService.shared.latestOnchainWalletSyncTimestamp ?? 0) >= resumedAt else {
+                        throw OnchainConnectionMonitor.OnchainSyncPending()
+                    }
+                }
                 let foregroundSync = Task {
                     if pubkyProfile.isInitialized {
                         await pubkyProfile.checkAdoptedSource()

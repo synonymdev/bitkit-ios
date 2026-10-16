@@ -218,7 +218,19 @@ struct SendSheet: View {
 
         // After a long stay in the background, an on-chain payment waits until a sync proves the
         // connection works again. Without a target the sheet stays usable for scan, paste and Lightning.
-        return app.scannedOnchainInvoice != nil && OnchainConnectionMonitor.shared.isReconnecting
+        return app.scannedOnchainInvoice != nil && OnchainConnectionMonitor.shared.isReconnecting &&
+            Self.waitsForReconnect(route: navigationPath.last ?? currentRoot, isSubmittingPayment: isSubmittingPayment)
+    }
+
+    /// The reconnect wait guards only the steps before a payment is sent, never its outcome screens.
+    static func waitsForReconnect(route: SendRoute, isSubmittingPayment: Bool) -> Bool {
+        guard !isSubmittingPayment else { return false }
+        switch route {
+        case .success, .failure, .pending, .onchainPending, .onchainOperationPending, .hardwarePending:
+            return false
+        default:
+            return true
+        }
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible

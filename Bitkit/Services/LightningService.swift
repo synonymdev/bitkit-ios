@@ -481,6 +481,10 @@ class LightningService {
         }
     }
 
+    var latestOnchainWalletSyncTimestamp: UInt64? {
+        node?.status().latestOnchainWalletSyncTimestamp
+    }
+
     func sync() async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

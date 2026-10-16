@@ -11,6 +11,9 @@ final class OnchainConnectionMonitor {
 
     static let backgroundThreshold: TimeInterval = 30
 
+    /// A sync call that returned without an on-chain sync finishing after the resume.
+    struct OnchainSyncPending: Error {}
+
     private(set) var isReconnecting = false
 
     @ObservationIgnored private var backgroundedAt: Date?
