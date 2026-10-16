@@ -15,6 +15,20 @@ final class PubkyContactLinkTests: XCTestCase {
         }
     }
 
+    @MainActor
+    private final class SuspendedContactsManager: ContactsManager {
+        let started = XCTestExpectation(description: "Contact preparation started")
+        var finish: CheckedContinuation<Void, Never>?
+
+        override func refreshContacts(for publicKey: String) async throws {
+            await withCheckedContinuation {
+                finish = $0
+                started.fulfill()
+            }
+            throw PubkyServiceError.sessionNotActive
+        }
+    }
+
     func testAcceptsRawPrefixedAndEncodedKeys() throws {
         for value in [String(key.dropFirst(5)), key, key.uppercased(), key.replacingOccurrences(of: "pubky", with: "%70ubky")] {
             let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(value)"))
@@ -105,7 +119,8 @@ final class PubkyContactLinkTests: XCTestCase {
                 pubkyContactsAreReady: canRoutePubkyContactLink(
                     isPaykitUIActive: true,
                     isPubkyInitialized: profile.isInitialized,
-                    hasLoadedContacts: contacts.hasLoaded
+                    hasLoadedContacts: contacts.hasLoaded,
+                    hasSignedInIdentity: profile.isAuthenticated
                 )
             ) { routedURL in
                 XCTAssertEqual(routedURL, url)
@@ -130,31 +145,88 @@ final class PubkyContactLinkTests: XCTestCase {
     }
 
     @MainActor
-    func testContactLinkWaitsForSavedContactsWithoutPubkyIdentity() async throws {
-        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
-        let profile = PubkyProfileManager()
-        let contacts = ContactsManager()
-        let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(key)"))
-        app.retainDeepLink(url)
-        profile.isInitialized = true
-
-        func routePendingLink() async {
+    func testSignedOutContactLinkDoesNotWaitForPrivateContacts() async throws {
+        snapshotAppDefaultsDomain()
+        for restoringSession in [false, true] {
+            let navigation = NavigationViewModel()
+            let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: navigation)
+            let profile = PubkyProfileManager()
+            let contacts = ContactsManager(contactRecords: { throw PubkyServiceError.sessionNotActive })
+            let url = try XCTUnwrap(URL(string: "bitkit://contact?pubky=\(key)"))
+            app.retainDeepLink(url)
+            profile.isInitialized = true
+            let started = XCTestExpectation(description: "Session restoration started")
+            let (gate, finish) = AsyncStream<Void>.makeStream()
+            let restoration = Task {
+                guard restoringSession else { return }
+                await profile.restoreSessionIfNeeded(hasStoredIdentity: { true }) {
+                    started.fulfill()
+                    for await _ in gate {}
+                    return .restorationDeferred
+                }
+            }
+            if restoringSession { await fulfillment(of: [started], timeout: 2) }
+            XCTAssertEqual(profile.isRestoringSession, restoringSession)
+            let ready = try await preparePubkyContactLink(profile: profile, contacts: contacts)
+            XCTAssertTrue(ready)
             await app.routePendingDeepLinkIfReady(
                 true,
                 pubkyContactsAreReady: canRoutePubkyContactLink(
                     isPaykitUIActive: true,
                     isPubkyInitialized: profile.isInitialized,
-                    hasLoadedContacts: contacts.hasLoaded
+                    hasLoadedContacts: contacts.hasLoaded,
+                    hasSignedInIdentity: profile.isAuthenticated
                 )
-            ) { _ in }
+            ) { routedURL in
+                guard let publicKey = PubkyContactLink.publicKey(from: routedURL) else { return XCTFail("Expected contact key") }
+                XCTAssertTrue(routePublicContactIfSignedOut(publicKey: publicKey, profile: profile, navigation: navigation))
+            }
+            XCTAssertNil(app.pendingDeepLinkURL)
+            XCTAssertEqual(navigation.path, [.addContact(publicKey: key)])
+            XCTAssertFalse(contacts.hasLoaded)
+            XCTAssertFalse(profile.isAuthenticated)
+            XCTAssertNil(profile.currentSession)
+            await app.routePendingDeepLinkIfReady(true) { _ in XCTFail("Must not route twice") }
+            finish.finish()
+            await restoration.value
+            profile.publicKey = key
+            XCTAssertFalse(routePublicContactIfSignedOut(publicKey: key, profile: profile, navigation: navigation))
+            XCTAssertEqual(navigation.path, [.addContact(publicKey: key)])
         }
+    }
 
-        await routePendingLink()
-        XCTAssertEqual(app.pendingDeepLinkURL, url)
+    @MainActor
+    func testSignedOutContactPreparationDoesNotReadPrivateContacts() async throws {
+        let profile = PubkyProfileManager()
+        profile.isInitialized = true
+        let contacts = ContactsManager(contactRecords: {
+            throw PubkyServiceError.sessionNotActive
+        })
+        let ready = try await preparePubkyContactLink(profile: profile, contacts: contacts)
+        XCTAssertTrue(ready)
+        XCTAssertFalse(contacts.hasLoaded)
+        XCTAssertNil(contacts.loadErrorMessage)
+    }
 
-        contacts.hasLoaded = true
-        await routePendingLink()
-        XCTAssertNil(app.pendingDeepLinkURL)
+    @MainActor
+    func testContactPreparationDropsErrorsAfterSessionChangeOrCancellation() async throws {
+        for cancel in [false, true] {
+            let profile = PubkyProfileManager()
+            profile.isInitialized = true
+            profile.publicKey = key
+            profile.authState = .authenticated
+            let contacts = SuspendedContactsManager()
+            let preparation = Task { try await preparePubkyContactLink(profile: profile, contacts: contacts) }
+            await fulfillment(of: [contacts.started], timeout: 2)
+            if cancel {
+                preparation.cancel()
+            } else {
+                profile.publicKey = "pubky" + String(repeating: "y", count: 52)
+            }
+            contacts.finish?.resume()
+            let ready = try await preparation.value
+            XCTAssertFalse(ready)
+        }
     }
 
     @MainActor

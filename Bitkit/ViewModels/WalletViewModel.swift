@@ -1432,6 +1432,8 @@ class WalletViewModel: ObservableObject {
         } catch PubkyServiceError.sessionNotActive {
             return
         } catch {
+            guard !Task.isCancelled, isSessionCurrent(), isPaykitUIActive, sharesPublicPaykitEndpoints else { return }
+            PublicPaykitService.setCleanupPending(true)
             Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
         }
     }
@@ -1504,12 +1506,13 @@ class WalletViewModel: ObservableObject {
         publicPaykitBolt11ExpiresAt = 0
     }
 
-    private func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
+    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
         guard !publicPaykitBolt11PaymentHash.isEmpty,
               publicPaykitBolt11PaymentHash == paymentHash
         else { return }
 
         clearPublicPaykitBolt11()
+        if sharesPublicPaykitEndpoints { PublicPaykitService.setCleanupPending(true) }
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true, reportsError: Bool = true) async throws {

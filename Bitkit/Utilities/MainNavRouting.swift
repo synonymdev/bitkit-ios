@@ -3,9 +3,29 @@ import Foundation
 func canRoutePubkyContactLink(
     isPaykitUIActive: Bool,
     isPubkyInitialized: Bool,
-    hasLoadedContacts: Bool
+    hasLoadedContacts: Bool,
+    hasSignedInIdentity: Bool
 ) -> Bool {
-    !isPaykitUIActive || (isPubkyInitialized && hasLoadedContacts)
+    !isPaykitUIActive || (isPubkyInitialized && (!hasSignedInIdentity || hasLoadedContacts))
+}
+
+@MainActor
+func preparePubkyContactLink(
+    profile: PubkyProfileManager,
+    contacts: ContactsManager
+) async throws -> Bool {
+    guard profile.isInitialized, profile.initializationErrorMessage == nil,
+          !profile.isDeletingProfile, !Task.isCancelled
+    else { return false }
+    guard profile.isAuthenticated else { return true }
+    guard let session = profile.currentSession else { return false }
+    do {
+        try await contacts.refreshContacts(for: session.publicKey)
+    } catch {
+        guard !profile.isDeletingProfile, profile.currentSession == session, !Task.isCancelled else { return false }
+        throw error
+    }
+    return !profile.isDeletingProfile && profile.currentSession == session && !Task.isCancelled
 }
 
 func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) throws -> String? {
@@ -14,6 +34,13 @@ func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) thro
         throw ContactsManagerError.invalidPublicKey
     }
     return publicKey
+}
+
+@MainActor
+func routePublicContactIfSignedOut(publicKey: String, profile: PubkyProfileManager, navigation: NavigationViewModel) -> Bool {
+    guard !profile.isAuthenticated else { return false }
+    navigation.navigate(.addContact(publicKey: publicKey))
+    return true
 }
 
 @MainActor

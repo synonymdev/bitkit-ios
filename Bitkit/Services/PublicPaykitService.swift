@@ -374,15 +374,27 @@ enum PublicPaykitService {
     }
 
     @MainActor
-    static func syncCurrentPublishedEndpoints(wallet: WalletViewModel, isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
+    static func syncCurrentPublishedEndpoints(
+        wallet: WalletViewModel,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        syncApp: () async throws -> Void = { try await syncPaykitApp() },
+        applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
+    ) async throws {
         let desiredEndpoints = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
         try await syncPublishedEndpoints(
             publish: true,
             isSessionCurrent: isSessionCurrent,
             buildEndpoints: { desiredEndpoints },
-            syncApp: { try await syncPaykitApp() },
-            applyEndpoints: applyPublishedEndpointsLocked
+            syncApp: syncApp,
+            applyEndpoints: applyEndpoints
         )
+        // An admitted write may finish after a payment invalidates its invoice.
+        guard let isSessionCurrent, !Task.isCancelled, isSessionCurrent(),
+              pendingReconciliationMode() == .publishEndpoints,
+              !isLightningPaymentOptionEnabled() || wallet.publicPaykitBolt11 ==
+              (desiredEndpoints.first { $0.methodId == .bitcoinLightningBolt11 }?.value ?? "")
+        else { return }
+        setCleanupPending(false)
     }
 
     static func removePublishedEndpoints() async throws {

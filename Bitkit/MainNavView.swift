@@ -42,7 +42,8 @@ struct MainNavView: View {
         canRoutePubkyContactLink(
             isPaykitUIActive: isPaykitUIActive,
             isPubkyInitialized: pubkyProfile.isInitialized,
-            hasLoadedContacts: contactsManager.hasLoaded
+            hasLoadedContacts: contactsManager.hasLoaded,
+            hasSignedInIdentity: pubkyProfile.isAuthenticated
         )
     }
 
@@ -884,22 +885,15 @@ struct MainNavView: View {
               pubkyProfile.isInitialized,
               !isPreparingPendingContactDeepLink,
               let url = app.pendingDeepLinkURL,
-              let contactPublicKey = PubkyContactLink.publicKey(from: url)
+              PubkyContactLink.publicKey(from: url) != nil
         else { return true }
 
         guard !pubkyProfile.isDeletingProfile else { return false }
-        let session = pubkyProfile.currentSession
-        let contactsOwnerPublicKey = pubkyProfile.publicKey ?? contactPublicKey
         isPreparingPendingContactDeepLink = true
         defer { isPreparingPendingContactDeepLink = false }
 
         do {
-            if pubkyProfile.publicKey != nil {
-                try await contactsManager.refreshContacts(for: contactsOwnerPublicKey)
-            } else {
-                try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
-            }
-            return !pubkyProfile.isDeletingProfile && pubkyProfile.currentSession == session && !Task.isCancelled
+            return try await preparePubkyContactLink(profile: pubkyProfile, contacts: contactsManager)
         } catch is CancellationError {
             return false
         } catch {
@@ -933,8 +927,10 @@ struct MainNavView: View {
             if PubkyContactLink.matches(url) {
                 guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
                 guard pubkyProfile.initializationErrorMessage == nil,
-                      contactsManager.hasLoaded
+                      isContactDeepLinkReady
                 else { throw ContactsManagerError.invalidPublicKey }
+
+                if routePublicContactIfSignedOut(publicKey: publicKey, profile: pubkyProfile, navigation: navigation) { return }
 
                 scannerManager.configure(
                     app: app,

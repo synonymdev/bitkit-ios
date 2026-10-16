@@ -519,8 +519,8 @@ struct AppScene: View {
             .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
                 guard !isDeleting, isPaykitSceneActive else { return }
                 Task {
-                    await refreshForegroundContacts()
                     await refreshForegroundPublicPaykitEndpoints()
+                    await refreshForegroundContacts()
                     await prepareSavedPaykitContacts()
                     await refreshIncomingPaykitPaymentRequests(onlyWhileActive: true)
                 }
@@ -1926,8 +1926,8 @@ struct AppScene: View {
                     case .removePublishedState:
                         try await PublicPaykitService.removePublishedEndpoints()
                         try await PublicPaykitService.syncPaykitApp()
+                        PublicPaykitService.setCleanupPending(false)
                     }
-                    PublicPaykitService.setCleanupPending(false)
                 } catch {
                     Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")
                 }
