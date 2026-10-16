@@ -57,11 +57,58 @@ extension LightningService: OnchainSending {
     }
 }
 
+/// The wallet side of cancelling a payment: proving that none of its transactions reached the network, and spending
+/// its coins back to the wallet so that none of them can confirm later.
+protocol OnchainReleasing {
+    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool
+    func walletKnowsTransaction(_ txid: String) async -> Bool
+    func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch
+}
+
+extension LightningService: OnchainReleasing {
+    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        try await onchainCandidatesNeverReachedNetwork(attempt, syncTimeout: .seconds(30))
+    }
+
+    func walletKnowsTransaction(_ txid: String) async -> Bool {
+        guard let node = onchainDispatchNode as? Node else { return false }
+        return await (try? ServiceQueue.background(.ldk, wrapErrors: false) { node.getTransactionDetails(txid: txid) != nil }) ?? false
+    }
+
+    /// Spends the original's coins back to the wallet at a fee above every candidate's, so the release replaces any
+    /// copy of the original a node still holds, and no candidate can confirm once it does.
+    func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch {
+        guard attempt.walletId == OnchainSendAttemptService.walletId(index: currentWalletIndex),
+              let recovery = attempt.recoveryContext, !recovery.inputs.isEmpty
+        else { throw OnchainSendAttemptError.retryUnavailable }
+        let original = Set(recovery.inputs)
+        let utxos = try await listSpendableOutputs().filter {
+            original.contains(OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout))
+        }
+        guard !utxos.isEmpty else { throw OnchainSendAttemptError.retryUnavailable }
+        let total = utxos.reduce(UInt64(0)) { $0 + $1.valueSats }
+        var feeRate = max(recovery.satsPerVbyte, recovery.candidateFeeRates?.values.max() ?? 0) + 2
+        let address = try await newAddress()
+        for _ in 0 ..< 4 {
+            let prepared = try await prepareOnchainSend(
+                address: address, sats: total / 2, satsPerVbyte: feeRate, utxosToSpend: utxos, isMaxAmount: false,
+                expectedWalletIndex: currentWalletIndex, expectedNode: onchainDispatchNode, paymentDeadline: nil
+            )
+            guard !original.isDisjoint(with: prepared.inputs) else { throw OnchainSendAttemptError.retryConstruction }
+            if OnchainSendAttemptService.releaseOutbids(prepared, attempt) {
+                return prepared
+            }
+            feeRate *= 2
+        }
+        throw OnchainSendAttemptError.retryConstruction
+    }
+}
+
 extension LightningService {
     /// Syncs the on-chain wallet, then checks that the wallet knows none of the payment's transactions while it still
     /// knows the transactions its coins came from. A candidate that reached the mempool or the chain spends wallet
     /// coins, so a sync adds it to the wallet.
-    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt, syncTimeout: Duration = .seconds(30)) async throws -> Bool {
+    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt, syncTimeout: Duration) async throws -> Bool {
         guard attempt.walletId == OnchainSendAttemptService.walletId(index: currentWalletIndex),
               let node = onchainDispatchNode as? Node, let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
         else { return false }
@@ -153,6 +200,7 @@ enum OnchainSendAbandonError: LocalizedError {
     case requestOpen
     case mayStillConfirm
     case syncUnavailable
+    case releasePending
 
     var errorDescription: String? {
         switch self {
@@ -160,6 +208,8 @@ enum OnchainSendAbandonError: LocalizedError {
             t("wallet__onchain_abandon_refused")
         case .syncUnavailable:
             t("wallet__onchain_abandon_sync")
+        case .releasePending:
+            t("wallet__onchain_abandon_pending")
         }
     }
 }
@@ -194,6 +244,8 @@ struct OnchainSendAttempt: Codable, Equatable {
     var restoredFromBackup: Bool? = nil
     /// Set once its request was found ended, so a release cut short after its proof was removed can finish.
     var releaseApproved: Bool? = nil
+    /// The transaction spending the original's coins back to the wallet, saved before it is broadcast.
+    var releaseTxid: String? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -368,6 +420,16 @@ struct OnchainSendPendingContext: Hashable {
 actor OnchainSendAttemptService {
     static let shared = OnchainSendAttemptService()
 
+    /// A release must spend at least one of the original's coins, and pay more than any candidate, so it replaces a
+    /// candidate a node may still hold.
+    static func releaseOutbids(_ prepared: PreparedOnchainSendDispatch, _ attempt: OnchainSendAttempt) -> Bool {
+        guard let recovery = attempt.recoveryContext, let fee = prepared.miningFeeSats,
+              !Set(recovery.inputs).isDisjoint(with: prepared.inputs)
+        else { return false }
+        let candidateFee = max(recovery.candidateFeeSats?.values.max() ?? 0, attempt.followupContext?.feeSats ?? 0)
+        return fee > candidateFee
+    }
+
     /// A sync finished in the same second as the one read before a request is not a new sync.
     static func isOnchainSync(_ latest: UInt64?, after previous: UInt64) -> Bool {
         (latest ?? 0) > previous
@@ -434,8 +496,9 @@ actor OnchainSendAttemptService {
             previous.recoveryContext?.candidateFeeSats = nil
             incoming.recoveryContext?.candidateFeeSats = nil
             previous.restoredFromBackup = nil
-            // A local release approval is not part of the shared backup record.
+            // A local release approval and its transaction are not part of the shared backup record.
             previous.releaseApproved = nil
+            previous.releaseTxid = nil
             guard previous == incoming else { throw OnchainSendAttemptError.unresolved }
             return
         }
@@ -992,7 +1055,18 @@ actor OnchainSendAttemptService {
         return attempt
     }
 
-    /// Removes a payment the caller has shown never reached the network, so new sends can use its coins.
+    /// Saves the release transaction before it is broadcast, so a later cancel can find it in the wallet.
+    func recordRelease(_ expected: OnchainSendAttempt, txid: String) throws -> OnchainSendAttempt {
+        guard nativeDispatchInProgress == nil, var attempt = try currentAttempt(), attempt == expected,
+              attempt.canBeAbandoned, attempt.releaseApproved == true, !attempt.containsCandidate(txid)
+        else { throw OnchainSendAttemptError.unresolved }
+        attempt.releaseTxid = txid.lowercased()
+        try store.save([attempt])
+        knownAttempt = attempt
+        return attempt
+    }
+
+    /// Removes a payment whose coins were spent back to the wallet, so new sends can use them.
     func abandonUnbroadcast(_ expected: OnchainSendAttempt) throws {
         guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt == expected,
               attempt.canBeAbandoned

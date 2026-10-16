@@ -60,6 +60,7 @@ struct SendPendingScreen: View {
     @State private var retryingOnchain = false
     @State private var pendingOnchainProof: PendingPaykitPaymentProof?
     @State private var retryApprovalMessage: String?
+    @State private var retryApprovalTitle = t("wallet__onchain_retry_original")
     @State private var retryApprovalContinuation: CheckedContinuation<Bool, Never>?
     @State private var abandonableAttempt: OnchainSendAttempt?
     @State private var showingAbandonConfirmation = false
@@ -162,7 +163,7 @@ struct SendPendingScreen: View {
                 "fee": String(onchainAttempt?.recoveryContext?.satsPerVbyte ?? 1),
             ]))
         }
-        .alert(t("wallet__onchain_retry_original"), isPresented: Binding(
+        .alert(retryApprovalTitle, isPresented: Binding(
             get: { retryApprovalMessage != nil },
             set: { if !$0 { finishRetryApproval(false) } }
         )) {
@@ -377,11 +378,29 @@ struct SendPendingScreen: View {
         do {
             try await proofService.abandonUnbroadcastOnchainPayment(
                 context: OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid),
-                neverReachedNetwork: { try await LightningService.shared.onchainCandidatesNeverReachedNetwork($0) }
+                wallet: LightningService.shared,
+                approveRelease: { prepared in
+                    guard let fee = prepared.miningFeeSats else { throw OnchainSendAttemptError.retryUnavailable }
+                    retryApprovalTitle = t("wallet__onchain_abandon")
+                    defer { retryApprovalTitle = t("wallet__onchain_retry_original") }
+                    let message = t("wallet__onchain_abandon_release", variables: ["fee": CurrencyFormatter.formatSats(fee)])
+                    guard await requestRetryApproval(message) else { throw CancellationError() }
+                    if settings.requirePinForPayments && settings.pinEnabled {
+                        if settings.useBiometrics && BiometricAuth.isAvailable {
+                            guard case .success = await BiometricAuth.authenticate() else { throw CancellationError() }
+                        } else {
+                            guard await requestPinCheck() else { throw CancellationError() }
+                        }
+                    }
+                }
             )
             abandonableAttempt = nil
             app.toast(type: .success, title: t("wallet__onchain_abandon_done"))
             sheets.hideSheet()
+        } catch is CancellationError {
+            return
+        } catch OnchainSendAbandonError.releasePending {
+            app.toast(type: .info, title: t("wallet__onchain_abandon_pending"))
         } catch {
             Logger.warn("Could not release on-chain payment \(attempt.txid ?? ""): \(error)", context: "SendPendingScreen")
             app.toast(error)

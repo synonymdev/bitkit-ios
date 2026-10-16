@@ -595,24 +595,47 @@ actor PaykitPaymentProofService {
         }
     }
 
-    /// Releases an unresolved payment whose request has ended once `neverReachedNetwork` shows that none of its
-    /// transactions reached the mempool or the chain. The attempt records the approval before its started proof is
-    /// removed, and the proof goes before the attempt, so a crash
-    /// in between leaves an attempt that a later call can still release.
+    /// Cancels an unresolved payment whose request has ended. After a fresh sync shows that none of its transactions
+    /// reached the network, it spends the original's coins back to the wallet at a higher fee, so no candidate can
+    /// confirm. The guard and the started proof stay until that release is accepted or the wallet sees it.
     func abandonUnbroadcastOnchainPayment(
         context: OnchainSendPendingContext,
-        neverReachedNetwork: (OnchainSendAttempt) async throws -> Bool
+        wallet: any OnchainReleasing,
+        approveRelease: (PreparedOnchainSendDispatch) async throws -> Void
     ) async throws {
-        guard var attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned,
-              let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
+        guard var attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned
         else { throw OnchainSendAttemptError.unresolved }
         guard try await onchainRequestHasEnded(attempt) else { throw OnchainSendAbandonError.requestOpen }
-        guard try await neverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
+        if let releaseTxid = attempt.releaseTxid, await wallet.walletKnowsTransaction(releaseTxid) {
+            try await finishRelease(attempt, context: context)
+            return
+        }
+        guard try await wallet.onchainCandidatesNeverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
+        if attempt.releaseApproved != true {
+            attempt = try await attemptService.approveRelease(attempt)
+        }
+        let prepared = try await wallet.prepareRelease(attempt)
+        guard OnchainSendAttemptService.releaseOutbids(prepared, attempt) else { throw OnchainSendAttemptError.retryConstruction }
+        try await approveRelease(prepared)
+        attempt = try await attemptService.recordRelease(attempt, txid: prepared.txid)
+        switch try await prepared.broadcast() {
+        case .accepted:
+            try await finishRelease(attempt, context: context)
+        case .rejected:
+            // A conflicting candidate may be in a mempool; keep the guard until a sync resolves it.
+            throw OnchainSendAbandonError.mayStillConfirm
+        case .unknown:
+            throw OnchainSendAbandonError.releasePending
+        }
+    }
+
+    /// Removes the started proof, then the attempt, so a crash in between leaves an attempt a later cancel finishes.
+    private func finishRelease(_ attempt: OnchainSendAttempt, context: OnchainSendPendingContext) async throws {
+        guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
+            throw OnchainSendAttemptError.unresolved
+        }
         try await mutationLock.withLock {
             guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
-            if attempt.releaseApproved != true {
-                attempt = try await attemptService.approveRelease(attempt)
-            }
             let proofs = try await loadProofs()
             let remaining = proofs.filter { proof in
                 !(PubkyPublicKeyFormat.matches(proof.identity, payer) && proof.requestId == requestId && proof.kind == .onchain &&
@@ -629,7 +652,7 @@ actor PaykitPaymentProofService {
             }
         }
         Self.proofStateChangedSubject.send()
-        logInfo("Released on-chain payment \(attempt.txid ?? "") after its request ended without it reaching the network")
+        logInfo("Released on-chain payment \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "") after its request ended")
     }
 
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,

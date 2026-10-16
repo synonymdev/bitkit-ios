@@ -170,13 +170,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
     func testEndedRequestReleasesPaymentThatNeverReachedTheNetwork() async throws {
         for state in [PaymentRequestLifecycleState.canceled, .proposalExpired, .rejected] {
             let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: state)
-            var checked: [String] = []
-            try await service.abandonUnbroadcastOnchainPayment(context: context(attempt)) {
-                checked = Array($0.candidateTxids)
-                return true
-            }
-            let txid = try XCTUnwrap(attempt.txid)
-            XCTAssertEqual(checked, [txid])
+            let wallet = ReleaseWalletMock()
+            try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+            XCTAssertEqual(wallet.broadcasts, 1)
             XCTAssertTrue(attempts.snapshot().isEmpty)
             let saved = await proofs.snapshot()
             XCTAssertTrue(saved.isEmpty)
@@ -196,7 +192,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             )
             let before = await proofs.snapshot()
             do {
-                try await service.abandonUnbroadcastOnchainPayment(context: context(attempt)) { _ in neverReached }
+                let wallet = ReleaseWalletMock()
+                wallet.neverReached = neverReached
+                try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
                 XCTFail("Released a payment that must stay pending")
             } catch let error as OnchainSendAbandonError {
                 XCTAssertEqual(error, neverReached ? .requestOpen : .mayStillConfirm)
@@ -209,7 +207,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
     func testReleaseFinishesWhenTheProofWasAlreadyRemoved() async throws {
         let (service, attempts, _, attempt) = try await unknownRequestPayment(state: .canceled, seedProof: false)
-        try await service.abandonUnbroadcastOnchainPayment(context: context(attempt)) { _ in true }
+        try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: ReleaseWalletMock(), approveRelease: { _ in })
         XCTAssertTrue(attempts.snapshot().isEmpty)
     }
 
@@ -250,6 +248,49 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    func testRejectedOrUnknownReleaseKeepsTheGuardAndProof() async throws {
+        for result in ["rejected", "unknown"] {
+            let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: .canceled)
+            let before = await proofs.snapshot()
+            let wallet = ReleaseWalletMock()
+            wallet.result = result == "rejected" ? .rejected(txid: wallet.releaseTxid, reason: "conflict") : .unknown(txid: wallet.releaseTxid)
+            do {
+                try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+                XCTFail("Released a payment whose release was not accepted")
+            } catch let error as OnchainSendAbandonError {
+                XCTAssertEqual(error, result == "rejected" ? .mayStillConfirm : .releasePending)
+            }
+            let pending = try XCTUnwrap(attempts.snapshot().first)
+            XCTAssertEqual(pending.releaseTxid, wallet.releaseTxid)
+            XCTAssertTrue(pending.blocksNewSend, "A send with other coins must stay blocked while the release is unconfirmed")
+            let after = await proofs.snapshot()
+            XCTAssertEqual(after, before)
+
+            // Once a sync puts the release in the wallet, a later cancel finishes without a second release.
+            wallet.knownTxids = [wallet.releaseTxid]
+            try await service.abandonUnbroadcastOnchainPayment(context: context(pending), wallet: wallet, approveRelease: { _ in })
+            XCTAssertEqual(wallet.prepared, 1)
+            XCTAssertTrue(attempts.snapshot().isEmpty)
+            let finished = await proofs.snapshot()
+            XCTAssertTrue(finished.isEmpty)
+        }
+    }
+
+    func testReleaseMustSpendAnOriginalCoinAndOutbidEveryCandidate() async throws {
+        let (_, _, _, attempt) = try await unknownRequestPayment(state: .canceled)
+        let inputs = try XCTUnwrap(attempt.recoveryContext?.inputs)
+        let candidateFee = try XCTUnwrap(attempt.recoveryContext?.candidateFeeSats?.values.max() ?? attempt.followupContext?.feeSats)
+        func release(_ inputs: [OnchainSendInput], fee: UInt64) -> PreparedOnchainSendDispatch {
+            .init(txid: String(repeating: "77", count: 32), inputs: inputs, recipientAmountSats: 500, miningFeeSats: fee,
+                  broadcast: { .accepted(txid: String(repeating: "77", count: 32)) })
+        }
+        XCTAssertTrue(OnchainSendAttemptService.releaseOutbids(release(inputs, fee: candidateFee + 1), attempt))
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release(inputs, fee: candidateFee), attempt))
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(
+            release([OnchainSendInput(txid: String(repeating: "99", count: 32), vout: 7)], fee: candidateFee + 1), attempt
+        ))
+    }
+
     func testOnlyASyncFinishedAfterTheRequestCountsAsFresh() {
         XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(nil, after: 0))
         XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(1_800_000_000, after: 1_800_000_000))
@@ -281,7 +322,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let hasEnded = try await service.onchainRequestHasEnded(approved)
         XCTAssertTrue(hasEnded)
         try await service.abandonUnbroadcastOnchainPayment(context: .init(attemptId: approved.id, walletId: approved.walletId,
-                                                                          txid: approved.txid)) { _ in true }
+                                                                          txid: approved.txid),
+                                                           wallet: ReleaseWalletMock(), approveRelease: { _ in })
         XCTAssertTrue(attemptsStore.snapshot().isEmpty)
     }
 
@@ -307,7 +349,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             sdk: PaymentProofSdkMock(identity: identity, records: [canceled]), store: PaymentProofMemoryStore(), attemptService: attempts
         )
         try await service.abandonUnbroadcastOnchainPayment(context: .init(attemptId: attempt.id, walletId: attempt.walletId,
-                                                                          txid: attempt.txid)) { _ in true }
+                                                                          txid: attempt.txid),
+                                                           wallet: ReleaseWalletMock(), approveRelease: { _ in })
         XCTAssertTrue(attemptsStore.snapshot().isEmpty)
     }
 
@@ -3374,5 +3417,34 @@ private actor SuspendedHardwareShopFollowup {
 
     func saveCount() -> Int {
         saves
+    }
+}
+
+private final class ReleaseWalletMock: OnchainReleasing, @unchecked Sendable {
+    let releaseTxid = String(repeating: "77", count: 32)
+    var neverReached = true
+    var knownTxids: Set<String> = []
+    lazy var result: OnchainSendResult = .accepted(txid: releaseTxid)
+    var prepared = 0
+    var broadcasts = 0
+
+    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        neverReached
+    }
+
+    func walletKnowsTransaction(_ txid: String) async -> Bool {
+        knownTxids.contains(txid)
+    }
+
+    func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch {
+        prepared += 1
+        let fee = max(attempt.recoveryContext?.candidateFeeSats?.values.max() ?? 0, attempt.followupContext?.feeSats ?? 0) + 1
+        return PreparedOnchainSendDispatch(
+            txid: releaseTxid, inputs: attempt.recoveryContext?.inputs ?? [], recipientAmountSats: 500, miningFeeSats: fee,
+            broadcast: { [self] in
+                broadcasts += 1
+                return result
+            }
+        )
     }
 }
