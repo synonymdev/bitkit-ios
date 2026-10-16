@@ -537,6 +537,65 @@ actor PaykitPaymentProofService {
         return try (request, request.submissionDeadline(quoteId: proof.conversionQuoteId))
     }
 
+    /// Whether the request behind an unresolved payment can no longer be paid: the payee ended it, or its deadline
+    /// passed. A record that is missing, carries a proof or needs recovery never counts as ended.
+    func onchainRequestHasEnded(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws -> Bool {
+        guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
+        else { return false }
+        try await requireRecoveryPayer(payer)
+        guard let record = try await sdk.paymentRequests().first(where: {
+            $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
+        }), record.paymentProofs.isEmpty else { return false }
+        switch record.state {
+        case .proposalExpired, .rejected, .canceled:
+            return true
+        case .proposed, .accepted, .activeRecurring:
+            guard let request = PaykitPaymentRequest(historyRecord: record, now: now) else { return false }
+            if request.isExpired(at: now) { return true }
+            let quoteId = try await loadProofs().last(where: {
+                PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
+            })?.conversionQuoteId
+            guard quoteId != nil, let deadline = try? request.submissionDeadline(quoteId: quoteId) else { return false }
+            return deadline < PaykitPreciseInstant(date: now)
+        default:
+            return false
+        }
+    }
+
+    /// Releases an unresolved payment whose request has ended once `neverReachedNetwork` shows that none of its
+    /// transactions reached the mempool or the chain. Its started proof is removed before the attempt, so a crash
+    /// in between leaves an attempt that a later call can still release.
+    func abandonUnbroadcastOnchainPayment(
+        context: OnchainSendPendingContext,
+        neverReachedNetwork: (OnchainSendAttempt) async throws -> Bool
+    ) async throws {
+        guard let attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned,
+              let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
+        else { throw OnchainSendAttemptError.unresolved }
+        guard try await onchainRequestHasEnded(attempt) else { throw OnchainSendAbandonError.requestOpen }
+        guard try await neverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
+        try await mutationLock.withLock {
+            guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
+            let proofs = try await loadProofs()
+            let remaining = proofs.filter { proof in
+                !(PubkyPublicKeyFormat.matches(proof.identity, payer) && proof.requestId == requestId && proof.kind == .onchain &&
+                    !proof.hasUnsupportedOnchainWallet && proof.proofData == nil && proof.onchainAcceptanceVerified != true &&
+                    (proof.onchainWalletId == nil || proof.onchainWalletId == WalletScope.default) &&
+                    (proof.paymentIdentifier == nil || attempt.containsCandidate(proof.paymentIdentifier)))
+            }
+            if remaining != proofs { try await persist(remaining) }
+            do {
+                try await attemptService.abandonUnbroadcast(attempt)
+            } catch {
+                if remaining != proofs { try? await persist(proofs) }
+                throw error
+            }
+        }
+        Self.proofStateChangedSubject.send()
+        logInfo("Released on-chain payment \(attempt.txid ?? "") after its request ended without it reaching the network")
+    }
+
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
                                 context: OnchainSendPendingContext?) async -> PaykitOnchainPaymentResolution?
     {

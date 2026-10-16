@@ -57,6 +57,29 @@ extension LightningService: OnchainSending {
     }
 }
 
+extension LightningService {
+    /// Syncs the on-chain wallet, then checks that the wallet knows none of the payment's transactions while it still
+    /// knows the transactions its coins came from. A candidate that reached the mempool or the chain spends wallet
+    /// coins, so a sync adds it to the wallet.
+    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt, syncTimeout: Duration = .seconds(30)) async throws -> Bool {
+        guard attempt.walletId == OnchainSendAttemptService.walletId(index: currentWalletIndex),
+              let node = onchainDispatchNode as? Node, let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
+        else { return false }
+        let requestedAt = UInt64(Date().timeIntervalSince1970)
+        Task { try? await self.sync() }
+        let deadline = ContinuousClock.now + syncTimeout
+        while (node.status().latestOnchainWalletSyncTimestamp ?? 0) <= requestedAt {
+            guard ContinuousClock.now < deadline else { throw OnchainSendAbandonError.syncUnavailable }
+            try await Task.sleep(for: .seconds(1))
+        }
+        return try await ServiceQueue.background(.ldk, wrapErrors: false) {
+            guard self.onchainDispatchNode === node else { return false }
+            guard attempt.candidateTxids.allSatisfy({ node.getTransactionDetails(txid: $0) == nil }) else { return false }
+            return inputs.allSatisfy { node.getTransactionDetails(txid: $0.txid) != nil }
+        }
+    }
+}
+
 struct OnchainSendInput: Codable, Equatable, Hashable {
     let txid: String
     let vout: UInt32
@@ -125,6 +148,21 @@ enum OnchainSendAttemptError: LocalizedError {
     }
 }
 
+enum OnchainSendAbandonError: LocalizedError {
+    case requestOpen
+    case mayStillConfirm
+    case syncUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .requestOpen, .mayStillConfirm:
+            t("wallet__onchain_abandon_refused")
+        case .syncUnavailable:
+            t("wallet__onchain_abandon_sync")
+        }
+    }
+}
+
 struct OnchainSendAttempt: Codable, Equatable {
     enum Status: String, Codable {
         case pending
@@ -167,6 +205,17 @@ struct OnchainSendAttempt: Codable, Equatable {
             return self.txid
         }
         return recoveryContext?.candidateTxids.first { $0.caseInsensitiveCompare(txid) == .orderedSame }
+    }
+
+    var candidateTxids: Set<String> {
+        Set(([txid].compactMap { $0 } + (recoveryContext?.candidateTxids ?? [])).map { $0.lowercased() })
+    }
+
+    /// A Paykit payment from the node wallet that the network never confirmed accepting. Once its request
+    /// has ended and no candidate reached the network, it can be released instead of blocking every send.
+    var canBeAbandoned: Bool {
+        requestId != nil && orderId == nil && status != .accepted && txid != nil &&
+            walletId.hasPrefix("node:") && recoveryContext?.inputs.isEmpty == false
     }
 
     var canRetrySamePayment: Bool {
@@ -915,6 +964,15 @@ actor OnchainSendAttemptService {
         else { return nil }
         return OnchainSendLocalResolution(attemptId: attempt.id, walletId: attempt.walletId, txid: txid,
                                           amountSats: activity.value, contact: activity.contact, activity: activity)
+    }
+
+    /// Removes a payment the caller has shown never reached the network, so new sends can use its coins.
+    func abandonUnbroadcast(_ expected: OnchainSendAttempt) throws {
+        guard nativeDispatchInProgress == nil, let attempt = try currentAttempt(), attempt == expected,
+              attempt.canBeAbandoned
+        else { throw OnchainSendAttemptError.unresolved }
+        try store.save([])
+        knownAttempt = nil
     }
 
     func clearBeforeDispatch(attemptId: UUID) throws {
