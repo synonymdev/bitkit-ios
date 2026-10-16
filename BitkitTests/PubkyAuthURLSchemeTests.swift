@@ -309,6 +309,25 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         XCTAssertTrue(sheets.isPubkyAuthApprovalShownOrPending)
     }
 
+    @MainActor
+    func testLinksThatCrossedThePinLockRouteWithoutQuickpay() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let signinURL = try signinLink()
+        let lockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1lockedpayment"))
+        let unlockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1unlockedpayment"))
+        var routedFromLock: [URL: Bool] = [:]
+
+        app.retainDeepLink(lockedURL, whileLocked: true)
+        app.retainDeepLink(signinURL, whileLocked: true)
+        await app.routePendingDeepLinkIfReady(true) { routedFromLock[$0] = app.isRoutingDeepLinkFromLock }
+        await app.routePendingDeepLinkIfReady(true) { routedFromLock[$0] = app.isRoutingDeepLinkFromLock }
+        app.retainDeepLink(unlockedURL)
+        await app.routePendingDeepLinkIfReady(true) { routedFromLock[$0] = app.isRoutingDeepLinkFromLock }
+
+        XCTAssertEqual(routedFromLock, [signinURL: true, lockedURL: true, unlockedURL: false])
+        XCTAssertFalse(app.isRoutingDeepLinkFromLock)
+    }
+
     private func signinLink(caps: String = "/pub/locks.app/:rw") throws -> URL {
         try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=\(caps)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
