@@ -29,6 +29,7 @@ struct MainNavView: View {
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
     @State private var isPreparingPendingContactDeepLink = false
+    @State private var shownPubkyAuthPresentationID: UUID?
     init(canHandleDeepLinks: Bool = true) {
         self.canHandleDeepLinks = canHandleDeepLinks
     }
@@ -146,12 +147,16 @@ struct MainNavView: View {
         ) {
             config in LnurlAuthSheet(config: config)
         }
-        .sheet(item: $sheets.pubkyAuthApprovalSheetItem) { config in
+        .sheet(
+            item: $sheets.pubkyAuthApprovalSheetItem,
+            onDismiss: {
+                // A replaced sheet's dismiss can run after its successor became active; hide only the dismissed one.
+                guard let presentationID = shownPubkyAuthPresentationID else { return }
+                sheets.hideSheetIfActive(presentationID: presentationID, reason: "Pubky auth approval sheet dismissed")
+            }
+        ) { config in
             PubkyAuthApprovalSheet(config: config)
-                .onDisappear {
-                    // A replaced sheet disappears after its successor is shown; hide only this presentation.
-                    sheets.hideSheetIfActive(presentationID: config.presentationID, reason: "Pubky auth approval sheet dismissed")
-                }
+                .onAppear { shownPubkyAuthPresentationID = config.presentationID }
         }
         .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
