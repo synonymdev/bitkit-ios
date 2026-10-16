@@ -246,6 +246,152 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         } catch PublicPaykitError.publicationFailed {}
     }
 
+    func testEnablingContactPaymentsRetriesInvoiceSupersessionOnce() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(UsdtPreference.disabled.rawValue, forKey: UsdtPreference.key)
+        for duringCreation in [false, true] {
+            for invalidations in duringCreation ? [1, 2] : [1] {
+                let (profile, wallet) = publicationWallet(route: .channelUsable)
+                wallet.stubPublicEndpoints = false
+                UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+                UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
+                let session = try XCTUnwrap(profile.currentSession)
+                var preparations = 0
+                let invalidate = {
+                    preparations += 1
+                    if preparations <= invalidations {
+                        wallet.publicPaykitBolt11PaymentHash = "paid"
+                        wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
+                    }
+                }
+                wallet.beforeReceiveAddress = { if !duringCreation { invalidate() } }
+                wallet.invoiceCreation = {
+                    if duringCreation { invalidate() }
+                    return Self.invoiceWithRouteHints
+                }
+                var published: [String] = []
+                var removals = 0
+                let operations = ContactPaymentsService.Operations(
+                    syncPublicEndpoints: { publish, isCurrent in
+                        try await PublicPaykitService.syncPublishedEndpoints(
+                            wallet: wallet, publish: publish, isSessionCurrent: isCurrent, syncApp: {},
+                            applyEndpoints: {
+                                if !publish { removals += 1 }
+                                published = $0.map(\.value)
+                            }
+                        )
+                    },
+                    preparePrivateEndpoints: { _, _, _ in nil }, removePrivateEndpoints: { _ in },
+                    setPublicCleanupPending: PublicPaykitService.setCleanupPending,
+                    setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
+                )
+                do {
+                    let applied = try await ContactPaymentsService.setEnabled(
+                        true, pubkyProfile: profile, contactsManager: ContactsManager(),
+                        operations: operations, privatePaymentAccess: { _ in false }
+                    )
+                    XCTAssertEqual(invalidations, 1)
+                    XCTAssertTrue(applied)
+                    XCTAssertTrue(published.contains(Self.invoiceWithRouteHints))
+                } catch {
+                    XCTAssertEqual(invalidations, 2, "\(error), creation: \(duringCreation)")
+                    guard case PublicPaykitError.publicationFailed = error else {
+                        XCTFail("Expected publication failure, got \(error)")
+                        continue
+                    }
+                    XCTAssertEqual(preparations, 2)
+                    XCTAssertTrue(published.isEmpty)
+                }
+                XCTAssertEqual(profile.currentSession, session)
+                XCTAssertEqual(ContactPaymentsService.isEnabled(), invalidations == 1)
+                XCTAssertEqual(removals, invalidations == 1 ? 0 : 1)
+            }
+        }
+    }
+
+    func testInvoiceSupersessionDoesNotRetryCreationOrDecodeFailures() async throws {
+        for failsCreation in [false, true] {
+            let (_, wallet) = publicationWallet(route: .channelUsable)
+            wallet.stubPublicEndpoints = false
+            var creations = 0
+            wallet.invoiceCreation = {
+                creations += 1
+                wallet.publicPaykitBolt11PaymentHash = "paid"
+                wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
+                if failsCreation { throw PublicPaykitError.walletNotReady }
+                return "invalid-invoice"
+            }
+            do {
+                _ = try await wallet.refreshPublicPaykitEndpoints(includeOnchain: false)
+                XCTFail("Expected invoice failure")
+            } catch {
+                if failsCreation {
+                    guard case PublicPaykitError.walletNotReady = error else { return XCTFail("Unexpected error: \(error)") }
+                } else {
+                    XCTAssertFalse(error is PubkyServiceError)
+                    XCTAssertFalse(error is PublicPaykitError)
+                }
+            }
+            XCTAssertEqual(creations, 1)
+            XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
+        }
+    }
+
+    func testEnablingContactPaymentsRejectsDeletionBeforeOrDuringInvoiceRetry() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(UsdtPreference.disabled.rawValue, forKey: UsdtPreference.key)
+        for heldCreation in [1, 2] {
+            let (profile, wallet) = publicationWallet(route: .channelUsable)
+            wallet.stubPublicEndpoints = false
+            UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+            UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
+            let session = try XCTUnwrap(profile.currentSession)
+            let creation = PublicationGate("Public invoice creation before deletion")
+            var creations = 0
+            wallet.invoiceCreation = {
+                creations += 1
+                if creations == 1 {
+                    wallet.publicPaykitBolt11PaymentHash = "paid"
+                    wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
+                }
+                if creations == heldCreation { await creation.wait() }
+                return Self.invoiceWithRouteHints
+            }
+            let operations = ContactPaymentsService.Operations(
+                syncPublicEndpoints: { publish, isCurrent in
+                    try await PublicPaykitService.syncPublishedEndpoints(
+                        wallet: wallet, publish: publish, isSessionCurrent: isCurrent, syncApp: {},
+                        applyEndpoints: { XCTAssertTrue($0.isEmpty, "Deletion must not publish replacement endpoints") }
+                    )
+                },
+                preparePrivateEndpoints: { _, _, _ in nil }, removePrivateEndpoints: { _ in },
+                setPublicCleanupPending: PublicPaykitService.setCleanupPending,
+                setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
+            )
+            let change = Task {
+                try await ContactPaymentsService.setEnabled(
+                    true, pubkyProfile: profile, contactsManager: ContactsManager(),
+                    operations: operations, privatePaymentAccess: { _ in false }
+                )
+            }
+            await fulfillment(of: [creation.started], timeout: 5)
+            await profile.performProfileDeletion {
+                XCTAssertEqual(profile.currentSession, session)
+                creation.release()
+                do {
+                    _ = try await change.value
+                    XCTFail("Expected deletion to reject invoice retry")
+                } catch PubkyServiceError.sessionNotActive {
+                } catch {
+                    XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
+                XCTAssertFalse(ContactPaymentsService.isEnabled())
+                XCTAssertEqual(creations, heldCreation)
+            }
+        }
+    }
+
     func testAdmittedPublicWriteCannotAcknowledgeNewerChannelRefresh() async throws {
         for invoice in ["ln-public", ""] {
             let (profile, wallet) = publicationWallet(route: .channelUsable)
@@ -299,7 +445,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
     }
 
     func testSuspendedPublicInvoiceCreationCannotMutateChangedOwnerOrSharing() async throws {
-        enum State: CaseIterable { case replaced, sharingDisabled, cancelled }
+        enum State: CaseIterable { case replaced, sameKeyNewSession, sharingDisabled, uiDisabled, cancelled }
         for state in State.allCases {
             let (profile, wallet) = publicationWallet(route: .channelUsable)
             wallet.stubPublicEndpoints = false
@@ -310,9 +456,16 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             }
             let preparation = Task { try await wallet.refreshPublicPaykitEndpoints(includeOnchain: false) }
             await fulfillment(of: [creation.started], timeout: 5)
+            wallet.publicPaykitBolt11PaymentHash = "paid"
+            wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
             switch state {
             case .replaced: profile.publicKey = "pubky" + String(repeating: "z", count: 52)
+            case .sameKeyNewSession:
+                do {
+                    try await profile.signOut(performSessionCleanup: { throw PublicPaykitError.publicationFailed })
+                } catch PublicPaykitError.publicationFailed {}
             case .sharingDisabled: UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+            case .uiDisabled: UserDefaults.standard.set(false, forKey: PaykitFeatureFlags.uiEnabledKey)
             case .cancelled: preparation.cancel()
             }
             wallet.publicPaykitBolt11 = "ln-retained"
