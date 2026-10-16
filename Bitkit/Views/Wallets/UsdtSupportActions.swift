@@ -37,7 +37,7 @@ extension UsdtTransfer {
         if let bridgeGuid { lines.append("LayerZero message: \(bridgeGuid)") }
         if let hash = orchestra?.destinationTx { lines.append("Destination transaction: \(hash)") }
         if let hash = orchestra?.refundTx { lines.append("Refund transaction: \(hash)") }
-        return lines.joined(separator: "\n")
+        return lines.map(supportLine).joined(separator: "\n")
     }
 }
 
@@ -55,6 +55,17 @@ extension UsdtDepositDetail {
         if let statusCode { lines.append("Status code: \(statusCode)") }
         if let hash = order?.destinationTx { lines.append("Destination transaction: \(hash)") }
         if let hash = order?.refundTx ?? deposit.refundTx { lines.append("Refund transaction: \(hash)") }
-        return lines.joined(separator: "\n")
+        return lines.map(supportLine).joined(separator: "\n")
     }
+}
+
+private func supportLine(_ value: String) -> String {
+    value.unicodeScalars.map { scalar in
+        switch scalar.properties.generalCategory {
+        case .control, .format, .lineSeparator, .paragraphSeparator:
+            "\\u{\(String(scalar.value, radix: 16))}"
+        default:
+            String(scalar)
+        }
+    }.joined()
 }

@@ -317,6 +317,88 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testAllRestoredAttemptsProtectTheSameRequestRegardlessOfOrder() async throws {
+        let unstarted = unsubmittedUsdtAttempt()
+        let started = PaykitUsdtPaymentService.Attempt(quoteId: "started", wallet: unstarted.wallet, identity: identity,
+                                                       contact: unstarted.contact, requestId: unstarted.requestId,
+                                                       binding: nil, billingPeriod: nil, paymentStarted: true)
+        let replacement = PaykitUsdtPaymentService.Attempt(quoteId: "replacement", wallet: unstarted.wallet, identity: identity,
+                                                           contact: unstarted.contact, requestId: unstarted.requestId,
+                                                           binding: nil, billingPeriod: nil)
+        for status: UsdtTransferStatus in [.pending, .confirmed, .failed, .replaced] {
+            for attempts in [[unstarted, started], [started, unstarted]] {
+                try saveUsdtAttempts([])
+                let service = PaykitUsdtPaymentService()
+                let backup = PaykitUsdtStateBackup(attempts: attempts.map(PaykitUsdtStateBackup.Attempt.init), receipts: [])
+                try service.restoreBackup(backup)
+                try service.restoreBackup(backup)
+                let history: (String) async throws -> UsdtTransfer? = { id in
+                    guard id == started.quoteId else { return nil }
+                    return UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                                        recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                                        fee: nil, isIncoming: false, status: status, timestamp: 1)
+                }
+                await reconcileUsdt(service, storedTransfer: history)
+                let canReplace = status == .failed || status == .replaced
+                XCTAssertEqual(service.resumableRequests.isEmpty, !canReplace)
+                do {
+                    try await service.storeAttempt(replacement, storedTransfer: history)
+                    XCTAssertTrue(canReplace)
+                    XCTAssertEqual(try service.backupSnapshot().attempts.map { try $0.restored() }, [started, replacement])
+                } catch {
+                    XCTAssertFalse(canReplace)
+                    XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+                    XCTAssertEqual(try service.backupSnapshot().attempts.map { try $0.restored() }, attempts)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testPreparingTheSameQuotePreservesProofAndRestoredProgress() async throws {
+        let attempt = unsubmittedUsdtAttempt()
+        var funded = attempt
+        funded.paymentStarted = true
+        funded.proof = .init(UsdtPaymentProof(chainId: "42161", transactionHash: "transaction", receiptLogIndex: "0", signature: "signature"))
+        try saveUsdtAttempts([funded])
+        let service = PaykitUsdtPaymentService()
+        try await service.storeAttempt(attempt, storedTransfer: { _ in nil })
+        XCTAssertEqual(try service.backupSnapshot().attempts.map { try $0.restored() }, [funded])
+        let replacement = PaykitUsdtPaymentService.Attempt(quoteId: "replacement", wallet: attempt.wallet, identity: identity,
+                                                           contact: attempt.contact, requestId: attempt.requestId,
+                                                           binding: nil, billingPeriod: nil)
+        do {
+            try await service.storeAttempt(replacement, storedTransfer: { _ in nil })
+            XCTFail("A payment proof must retain its request binding")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+        XCTAssertEqual(try service.backupSnapshot().attempts.map { try $0.restored() }, [funded])
+    }
+
+    @MainActor
+    func testRestoreDuringReplacementKeepsEveryAttempt() async throws {
+        let attempt = unsubmittedUsdtAttempt()
+        try saveUsdtAttempts([attempt])
+        let service = PaykitUsdtPaymentService()
+        let replacement = PaykitUsdtPaymentService.Attempt(quoteId: "replacement", wallet: attempt.wallet, identity: identity,
+                                                           contact: attempt.contact, requestId: attempt.requestId,
+                                                           binding: nil, billingPeriod: nil)
+        var restored = replacement
+        restored.paymentStarted = true
+        do {
+            try await service.storeAttempt(replacement) { _ in
+                try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(restored)], receipts: []))
+                return nil
+            }
+            XCTFail("Changed payment state must invalidate the replacement")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+        XCTAssertEqual(try service.backupSnapshot().attempts.map { try $0.restored() }, [attempt, restored])
+    }
+
+    @MainActor
     private func saveUsdtAttempts(_ attempts: [PaykitUsdtPaymentService.Attempt]) throws {
         struct State: Encodable {
             let attempts: [PaykitUsdtPaymentService.Attempt]
