@@ -308,7 +308,7 @@ struct UsdtSendView: View {
                 type: .decimal,
                 decimalSeparator: Locale.current.decimalSeparator ?? ".",
                 isDisabled: busy || embedded,
-                onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false },
+                onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false; error = nil },
                 onPress: enterAmount
             )
             .frame(maxHeight: .infinity)
@@ -603,6 +603,7 @@ struct UsdtSendView: View {
         maximumQuote = nil
         isMaximumAmount = false
         amount = updated
+        error = nil
     }
 
     private func confirmPayment() async {

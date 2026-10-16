@@ -3,12 +3,16 @@ import SwiftUI
 
 struct UsdtSupportActions: View {
     let details: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
 
     var body: some View {
-        HStack(spacing: 16) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 16))
+            : AnyLayout(HStackLayout(spacing: 16))
+        layout {
             CustomButton(title: t("wallet__send_error_support"), size: .small, shouldExpand: true, titleKerning: 0, titleLineHeight: 13) {
                 sheets.hideSheet()
                 navigation.navigate(.reportIssue(ReportIssuePrefill(message: details)))
@@ -46,7 +50,7 @@ extension UsdtDepositDetail {
         var lines = [
             "Asset: \(deposit.asset)",
             "Bridge: Orchestra",
-            "Source network: \(deposit.network)",
+            "Source network: \(deposit.networkLabel)",
             "Recipient network: Arbitrum One",
             "Deposit reference: \(deposit.id)",
             "Status: \(statusText) (\(order?.status ?? deposit.status))",

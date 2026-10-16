@@ -757,7 +757,8 @@ struct MainNavView: View {
     }
 
     private func handleClipboardIfEnabled() {
-        guard settings.readClipboard, !showClipboardAlert else { return }
+        guard settings.readClipboard, !showClipboardAlert, !sheets.isAnySheetOpen, !sheets.isReplacingSheet,
+              !usdt.isSendPresented else { return }
 
         Task { @MainActor in
             let pasteboard = UIPasteboard.general
@@ -777,7 +778,8 @@ struct MainNavView: View {
                 false
             }
 
-            guard scenePhase == .active, settings.readClipboard, !showClipboardAlert else { return }
+            guard scenePhase == .active, settings.readClipboard, !showClipboardAlert,
+                  !sheets.isAnySheetOpen, !sheets.isReplacingSheet, !usdt.isSendPresented else { return }
             guard pasteboard.changeCount == changeCount else {
                 handleClipboardIfEnabled()
                 return

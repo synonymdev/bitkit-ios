@@ -40,6 +40,7 @@ final class UsdtWalletManager {
     private var nextHistoryRefresh = Date.distantPast
     private var historyRefreshRequested = false
     private var nextRefresh = Date.distantPast
+    private let now: () -> Date
     private var rateLimitedUntil = Date.distantPast
     private var idleWaiter: CheckedContinuation<Void, Never>?
 
@@ -106,6 +107,7 @@ final class UsdtWalletManager {
         storageDirectory: URL = Env.bitkitCoreStorage(walletIndex: 0),
         rpcUrl: String? = Env.usdtRpcUrl,
         bundlerUrl: String? = Env.usdtBundlerUrl,
+        now: @escaping () -> Date = Date.init,
         loadCredentials: @escaping @MainActor () async throws -> (String, String?) = {
             try await ServiceQueue.background(.core, wrapErrors: false) {
                 guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
@@ -113,6 +115,7 @@ final class UsdtWalletManager {
             }
         }
     ) {
+        self.now = now
         self.storageDirectory = storageDirectory
         self.rpcUrl = rpcUrl
         self.bundlerUrl = bundlerUrl
@@ -122,7 +125,7 @@ final class UsdtWalletManager {
     func refresh(includeHistory: Bool = false) async {
         guard isConfigured, !wiping else { return }
         historyRefreshRequested = historyRefreshRequested || includeHistory
-        guard !refreshing, Date() >= rateLimitedUntil else { return }
+        guard !refreshing, now() >= rateLimitedUntil else { return }
         let historyDue = historyRefreshRequested && !isSendPresented && Date() >= nextHistoryRefresh
         guard historyDue || Date() >= nextRefresh else { return }
         var refreshDelay: TimeInterval = 10
@@ -158,7 +161,7 @@ final class UsdtWalletManager {
             errorMessage = nil
         } catch is CancellationError {
         } catch {
-            if let error = error as? UsdtError, case .RateLimited = error { refreshDelay = 60; rateLimitedUntil = Date().addingTimeInterval(60) }
+            if let error = error as? UsdtError, case .RateLimited = error { refreshDelay = 60; rateLimitedUntil = now().addingTimeInterval(60) }
             errorMessage = Self.message(for: error)
             Logger.warn("Failed to refresh USDT: \(Self.message(for: error))", context: "UsdtWalletManager")
         }
@@ -173,22 +176,26 @@ final class UsdtWalletManager {
     func quote(recipient: String, amount: String, destination: UsdtDestination) async throws -> UsdtQuote {
         try beginOperation()
         defer { finishOperation() }
-        let value = try usdtParseAmount(value: amount.replacingOccurrences(of: Locale.current.decimalSeparator ?? ".", with: "."))
-        let wallet = try await wallet()
-        if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
-            throw UsdtWalletError.selfSend
+        return try await withRateLimit {
+            let value = try usdtParseAmount(value: amount.replacingOccurrences(of: Locale.current.decimalSeparator ?? ".", with: "."))
+            let wallet = try await wallet()
+            if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
+                throw UsdtWalletError.selfSend
+            }
+            return try await wallet.quoteTransfer(recipient: recipient, amount: value, destination: destination)
         }
-        return try await wallet.quoteTransfer(recipient: recipient, amount: value, destination: destination)
     }
 
     func quoteMaximum(recipient: String, destination: UsdtDestination) async throws -> UsdtQuote {
         try beginOperation()
         defer { finishOperation() }
-        let wallet = try await wallet()
-        if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
-            throw UsdtWalletError.selfSend
+        return try await withRateLimit {
+            let wallet = try await wallet()
+            if recipient.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(wallet.receiveAddress()) == .orderedSame {
+                throw UsdtWalletError.selfSend
+            }
+            return try await wallet.quoteMaxTransfer(recipient: recipient, destination: destination)
         }
-        return try await wallet.quoteMaxTransfer(recipient: recipient, destination: destination)
     }
 
     func backupSnapshot() async throws -> String? {
@@ -233,21 +240,23 @@ final class UsdtWalletManager {
     {
         try beginOperation()
         defer { finishOperation() }
-        let wallet = try await wallet()
-        let credentials = try await loadCredentials()
-        do {
-            let transfer = try await ServiceQueue.background(.core, wrapErrors: false) {
-                try await beforeSubmission()
-                return try await wallet.sendWithDeadline(
-                    quoteId: quote.id, mnemonic: credentials.0, passphrase: credentials.1,
-                    submissionDeadline: submissionDeadline?.timestamp
-                )
+        return try await withRateLimit {
+            let wallet = try await wallet()
+            let credentials = try await loadCredentials()
+            do {
+                let transfer = try await ServiceQueue.background(.core, wrapErrors: false) {
+                    try await beforeSubmission()
+                    return try await wallet.sendWithDeadline(
+                        quoteId: quote.id, mnemonic: credentials.0, passphrase: credentials.1,
+                        submissionDeadline: submissionDeadline?.timestamp
+                    )
+                }
+                transfers.removeAll { $0.id == transfer.id }
+                transfers.insert(transfer, at: 0)
+            } catch {
+                if let saved = try? await ServiceQueue.background(.core, wrapErrors: false, { try wallet.history() }) { transfers = saved }
+                throw error
             }
-            transfers.removeAll { $0.id == transfer.id }
-            transfers.insert(transfer, at: 0)
-        } catch {
-            if let saved = try? await ServiceQueue.background(.core, wrapErrors: false, { try wallet.history() }) { transfers = saved }
-            throw error
         }
     }
 
@@ -273,7 +282,7 @@ final class UsdtWalletManager {
     }
 
     func waitForTransfer(_ id: String) async {
-        guard isConfigured, !wiping, !refreshing, !Task.isCancelled, Date() >= rateLimitedUntil else { return }
+        guard isConfigured, !wiping, !refreshing, !Task.isCancelled, now() >= rateLimitedUntil else { return }
         refreshing = true
         defer { refreshing = false }
         do {
@@ -296,7 +305,7 @@ final class UsdtWalletManager {
         } catch is CancellationError {
         } catch {
             if let error = error as? UsdtError, case .RateLimited = error {
-                rateLimitedUntil = Date().addingTimeInterval(60)
+                rateLimitedUntil = now().addingTimeInterval(60)
                 nextRefresh = max(nextRefresh, rateLimitedUntil)
             }
             guard !Task.isCancelled else { return }
@@ -399,6 +408,17 @@ final class UsdtWalletManager {
         }
     }
 
+    private func withRateLimit<T>(_ operation: () async throws -> T) async throws -> T {
+        guard now() >= rateLimitedUntil else { throw UsdtError.RateLimited }
+        do { return try await operation() }
+        catch {
+            if let error = error as? UsdtError, case .RateLimited = error {
+                rateLimitedUntil = now().addingTimeInterval(60)
+            }
+            throw error
+        }
+    }
+
     private func beginOperation() throws {
         guard !wiping else { throw CancellationError() }
         activeOperations += 1
@@ -456,6 +476,13 @@ final class UsdtWalletManager {
         case .NotConfigured: return t("usdt__error_configuration")
         case .InvalidAmount: return t("usdt__error_amount")
         case .BridgeAmountTooSmall: return t("usdt__error_bridge_amount")
+        case let .BridgeAmountBelowMinimum(minUsdCents):
+            return minUsdCents.map { t("usdt__deposit_minimum", variables: ["amount": $0.usdCents]) }
+                ?? t("usdt__error_bridge_minimum")
+        case let .BridgeAmountAboveMaximum(maxUsdCents):
+            return maxUsdCents.map { t("usdt__deposit_maximum", variables: ["amount": $0.usdCents]) }
+                ?? t("usdt__error_bridge_maximum")
+        case .BridgeLiquidityUnavailable: return t("usdt__error_bridge_liquidity")
         case .InvalidAddress, .WrongNetwork: return t("usdt__error_address")
         case .InsufficientBalance: return t("usdt__error_balance")
         case .QuoteExpired: return t("usdt__error_expired")

@@ -538,7 +538,7 @@ struct SendAmountView: View {
                 let converted = try app.contactPaymentContext?.incomingPaymentRequest?
                     .payment(using: source == .usdt ? .usdtArbitrum : app.paykitBitcoinMethod(for: source == .spending ? .lightning : .onchain))
                     .amount ?? amountConversion.converted(value, to: target, rate: currency.paykitRate, at: Date())
-                if target == .usdt { usdtAmount = converted.atomic == 0 ? "" : converted.value }
+                if target == .usdt { usdtAmount = converted.atomic == 0 ? "" : converted.inputValue }
                 else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
             } catch { conversionError = t("wallet__payment_request_rate_unavailable"); return }
         }
@@ -583,7 +583,7 @@ struct SendAmountView: View {
             let terms = try request.payment(using: app.paykitPaymentMethod)
             guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
             let converted = terms.amount
-            if app.paykitUsesUsdt { usdtAmount = converted.value }
+            if app.paykitUsesUsdt { usdtAmount = converted.inputValue }
             else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
             conversionError = nil
         } catch { conversionError = t("wallet__payment_request_rate_unavailable") }
