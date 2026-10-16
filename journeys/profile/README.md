@@ -10,6 +10,10 @@ If public invoice replacement is deferred during deletion, make deletion fail an
 
 Hold invoice preparation or the final identity lookup before publication, begin deletion, then release it. New public/private endpoint rotation must stay deferred while matching paid-invoice invalidation and receipt attribution still complete. Already-admitted writes may finish, but an older publication must not acknowledge a newer paid-invoice invalidation. These checks require controlled payment events and SDK-admission gates beyond the journey runner capabilities.
 
+Hold endpoint preparation before publication admission, or queue a public publication behind SDK work. Begin deletion, complete endpoint removal while session revocation remains held, then release the queued preparation/publication. The removed endpoints must stay absent. Separately, let a publication enter its SDK write before deletion: cleanup must wait for it and remove its endpoints afterward, even if its caller is cancelled. This requires controlled operation gates beyond the journey runner capabilities.
+
+On iOS, public publication and endpoint removal share an endpoint lock. A publication already holding that lock while waiting for SDK work must finish or stop before removal can complete. Hold preparation before that lock to exercise removal before a stale publication is released. Explicit manual sharing settings are outside these automatic-publication checks.
+
 `signup-create-profile.xml` verifies that signup through staging.pubky.app can finish profile creation without a false Profile Error toast. Use a fresh, unfunded test wallet and keep the app process alive. The profile must use the same public key as the authorized signup.
 
 Delayed or failed session restoration requires network fault injection, which is not a journey-runner capability; see the PR manual checks.

@@ -322,14 +322,16 @@ enum PublicPaykitService {
         wallet: WalletViewModel,
         publish: Bool,
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
-        appSyncPriority: PaykitSdkOperationLock.Priority = .ordered
+        appSyncPriority: PaykitSdkOperationLock.Priority = .ordered,
+        syncApp: (() async throws -> Void)? = nil,
+        applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
     ) async throws {
         try await syncPublishedEndpoints(
             publish: publish,
             isSessionCurrent: isSessionCurrent,
             buildEndpoints: { try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true) },
-            syncApp: { try await syncPaykitApp(priority: appSyncPriority) },
-            applyEndpoints: applyPublishedEndpointsLocked
+            syncApp: syncApp ?? { try await syncPaykitApp(priority: appSyncPriority) },
+            applyEndpoints: applyEndpoints
         )
     }
 

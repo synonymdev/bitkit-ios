@@ -345,7 +345,7 @@ struct AppScene: View {
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
     @StateObject private var migrations = MigrationsService.shared
     @StateObject private var languageManager = LanguageManager.shared
-    @StateObject private var pubkyProfile = PubkyProfileManager()
+    @StateObject private var pubkyProfile: PubkyProfileManager
     @StateObject private var contactsManager = ContactsManager()
     @State private var keyboardManager = KeyboardManager()
     @State private var trezorManager: TrezorManager
@@ -407,10 +407,13 @@ struct AppScene: View {
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
         let feeEstimatesManager = FeeEstimatesManager()
+        let pubkyProfile = PubkyProfileManager()
+        _pubkyProfile = StateObject(wrappedValue: pubkyProfile)
         let walletVm = WalletViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
-            feeEstimatesManager: feeEstimatesManager
+            feeEstimatesManager: feeEstimatesManager,
+            pubkyProfile: pubkyProfile
         )
         _app = StateObject(wrappedValue: AppViewModel(
             sheetViewModel: sheetViewModel,
@@ -1921,7 +1924,8 @@ struct AppScene: View {
                     switch PublicPaykitService.pendingReconciliationMode() {
                     case .publishEndpoints:
                         try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet) {
-                            pubkyProfile.automaticPaykitSession == session
+                            !Task.isCancelled && pubkyProfile.automaticPaykitSession == session &&
+                                PublicPaykitService.pendingReconciliationMode() == .publishEndpoints
                         }
                     case .removePublishedState:
                         try await PublicPaykitService.removePublishedEndpoints()
