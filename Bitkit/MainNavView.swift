@@ -440,6 +440,10 @@ struct MainNavView: View {
                 guard canHandleDeepLinks, url != nil else { return }
                 Task { await handlePendingDeepLink() }
             }
+            .onChange(of: sheets.isPubkyAuthApprovalShownOrPending) { _, isShownOrPending in
+                guard canHandleDeepLinks, !isShownOrPending else { return }
+                Task { await handlePendingDeepLink() }
+            }
             .task(id: scenePhase == .active) {
                 guard scenePhase == .active, canHandleDeepLinks,
                       let url = app.pendingDeepLinkURL, PubkyContactLink.matches(url)
