@@ -255,9 +255,6 @@ struct SendPendingScreen: View {
                     } catch { onchainStateUnavailable = true }
                 }
             }
-            if paymentHash == nil, pendingHardwareWalletId == nil {
-                await loadAbandonableAttempt()
-            }
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
             await searchForActivity()
             // Completion events are one-shot. Keep the visible original operation in sync
@@ -268,6 +265,17 @@ struct SendPendingScreen: View {
                 do { try await Task.sleep(for: .seconds(2)) }
                 catch { return }
                 await refreshVisibleOrdinaryOutcome()
+            }
+        }
+        .task {
+            // The request can end, or a failed check recover, while this screen stays open.
+            while paymentHash == nil, abandonableAttempt == nil, !Task.isCancelled {
+                if pendingHardwareWalletId == nil {
+                    await loadAbandonableAttempt()
+                }
+                guard abandonableAttempt == nil else { return }
+                do { try await Task.sleep(for: .seconds(30)) }
+                catch { return }
             }
         }
         .onChange(of: app.sendSheetPendingResolution) { _, resolution in
