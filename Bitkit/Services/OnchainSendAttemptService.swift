@@ -65,10 +65,11 @@ extension LightningService {
         guard attempt.walletId == OnchainSendAttemptService.walletId(index: currentWalletIndex),
               let node = onchainDispatchNode as? Node, let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
         else { return false }
-        let requestedAt = UInt64(Date().timeIntervalSince1970)
+        // Only an on-chain sync that finishes after this call moves the timestamp past the one read here.
+        let previousSync = node.status().latestOnchainWalletSyncTimestamp ?? 0
         Task { try? await self.sync() }
         let deadline = ContinuousClock.now + syncTimeout
-        while (node.status().latestOnchainWalletSyncTimestamp ?? 0) < requestedAt {
+        while !OnchainSendAttemptService.isOnchainSync(node.status().latestOnchainWalletSyncTimestamp, after: previousSync) {
             guard ContinuousClock.now < deadline else { throw OnchainSendAbandonError.syncUnavailable }
             try await Task.sleep(for: .seconds(1))
         }
@@ -191,6 +192,8 @@ struct OnchainSendAttempt: Codable, Equatable {
     var recoveryContext: OnchainSendRecoveryContext? = nil
     /// Set on an attempt restored from a backup, which may not hold evidence that its transaction was broadcast.
     var restoredFromBackup: Bool? = nil
+    /// Set once its request was found ended, so a release cut short after its proof was removed can finish.
+    var releaseApproved: Bool? = nil
 
     var blocksNewSend: Bool {
         status.blocksNewSend || !localFollowupComplete
@@ -364,6 +367,11 @@ struct OnchainSendPendingContext: Hashable {
 
 actor OnchainSendAttemptService {
     static let shared = OnchainSendAttemptService()
+
+    /// A sync finished in the same second as the one read before a request is not a new sync.
+    static func isOnchainSync(_ latest: UInt64?, after previous: UInt64) -> Bool {
+        (latest ?? 0) > previous
+    }
 
     static func walletId(index: Int) -> String {
         "node:\(Env.networkName):\(WalletScope.default):\(index)"
@@ -969,6 +977,17 @@ actor OnchainSendAttemptService {
         else { return nil }
         return OnchainSendLocalResolution(attemptId: attempt.id, walletId: attempt.walletId, txid: txid,
                                           amountSats: activity.value, contact: activity.contact, activity: activity)
+    }
+
+    /// Records that the payment's request has ended before its proof is removed.
+    func approveRelease(_ expected: OnchainSendAttempt) throws -> OnchainSendAttempt {
+        guard nativeDispatchInProgress == nil, var attempt = try currentAttempt(), attempt == expected,
+              attempt.canBeAbandoned
+        else { throw OnchainSendAttemptError.unresolved }
+        attempt.releaseApproved = true
+        try store.save([attempt])
+        knownAttempt = attempt
+        return attempt
     }
 
     /// Removes a payment the caller has shown never reached the network, so new sends can use its coins.

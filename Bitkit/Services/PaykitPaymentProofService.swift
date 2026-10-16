@@ -543,6 +543,7 @@ actor PaykitPaymentProofService {
         guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
         else { return false }
         try await requireRecoveryPayer(payer)
+        if attempt.releaseApproved == true { return true }
         guard let record = try await sdk.paymentRequests().first(where: {
             $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
                 PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
@@ -570,38 +571,48 @@ actor PaykitPaymentProofService {
     private func recurringPeriodHasEnded(
         _ record: Paykit.PaymentRequestRecord, requestId: PaykitPaymentRequest.ID, payer: String, now: Date
     ) async throws -> Bool {
-        guard let period = try await loadProofs().last(where: {
+        let periodStartsAt = requestId.billingPeriodStartsAt
+        guard !record.paymentProofs.contains(where: {
+            $0.billingPeriod.flatMap { PaykitPreciseInstant(timestamp: $0.startsAt)?.date } == periodStartsAt
+        }) else { return false }
+        let proof = try await loadProofs().last(where: {
             PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
-        })?.billingPeriod,
-            !record.paymentProofs.contains(where: { Self.billingPeriod($0.billingPeriod, matches: period) })
-        else { return false }
+        })
         switch record.state {
         case .canceled, .rejected:
             return true
         case .activeRecurring:
-            guard let subscription = PaykitSubscription(record: record) else { return false }
-            return subscription.isExpired(at: now) ||
-                PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
-                .isExpired(at: now)
+            guard let proof, let period = proof.billingPeriod, let subscription = PaykitSubscription(record: record)
+            else { return false }
+            let request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+            if subscription.isExpired(at: now) || request.isExpired(at: now) { return true }
+            guard proof.conversionQuoteId != nil,
+                  let deadline = try? request.submissionDeadline(quoteId: proof.conversionQuoteId)
+            else { return false }
+            return deadline < PaykitPreciseInstant(date: now)
         default:
             return false
         }
     }
 
     /// Releases an unresolved payment whose request has ended once `neverReachedNetwork` shows that none of its
-    /// transactions reached the mempool or the chain. Its started proof is removed before the attempt, so a crash
+    /// transactions reached the mempool or the chain. The attempt records the approval before its started proof is
+    /// removed, and the proof goes before the attempt, so a crash
     /// in between leaves an attempt that a later call can still release.
     func abandonUnbroadcastOnchainPayment(
         context: OnchainSendPendingContext,
         neverReachedNetwork: (OnchainSendAttempt) async throws -> Bool
     ) async throws {
-        guard let attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned,
+        guard var attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned,
               let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
         else { throw OnchainSendAttemptError.unresolved }
         guard try await onchainRequestHasEnded(attempt) else { throw OnchainSendAbandonError.requestOpen }
         guard try await neverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
         try await mutationLock.withLock {
             guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
+            if attempt.releaseApproved != true {
+                attempt = try await attemptService.approveRelease(attempt)
+            }
             let proofs = try await loadProofs()
             let remaining = proofs.filter { proof in
                 !(PubkyPublicKeyFormat.matches(proof.identity, payer) && proof.requestId == requestId && proof.kind == .onchain &&
