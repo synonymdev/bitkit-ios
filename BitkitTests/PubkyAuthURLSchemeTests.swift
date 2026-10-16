@@ -328,6 +328,49 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         XCTAssertFalse(app.isRoutingDeepLinkFromLock)
     }
 
+    @MainActor
+    func testLockedLinkKeepsTheFromLockFlagWhileAnUnlockedLinkRoutesConcurrently() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let lockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1lockedpayment"))
+        let unlockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1unlockedpayment"))
+        var lockedContinuation: CheckedContinuation<Void, Never>?
+        var unlockedContinuation: CheckedContinuation<Void, Never>?
+        var lockedFlagAfterResume: Bool?
+        var unlockedFlagAfterResume: Bool?
+
+        app.retainDeepLink(lockedURL, whileLocked: true)
+        let lockedRoute = Task { @MainActor in
+            await app.routePendingDeepLinkIfReady(true) { _ in
+                XCTAssertTrue(app.isRoutingDeepLinkFromLock, "locked link must start routing from lock")
+                await withCheckedContinuation { lockedContinuation = $0 }
+                lockedFlagAfterResume = app.isRoutingDeepLinkFromLock
+            }
+        }
+        while lockedContinuation == nil {
+            await Task.yield()
+        }
+
+        app.retainDeepLink(unlockedURL)
+        let unlockedRoute = Task { @MainActor in
+            await app.routePendingDeepLinkIfReady(true) { _ in
+                await withCheckedContinuation { unlockedContinuation = $0 }
+                unlockedFlagAfterResume = app.isRoutingDeepLinkFromLock
+            }
+        }
+        while unlockedContinuation == nil {
+            await Task.yield()
+        }
+
+        unlockedContinuation?.resume()
+        await unlockedRoute.value
+        lockedContinuation?.resume()
+        await lockedRoute.value
+
+        XCTAssertNotNil(unlockedFlagAfterResume)
+        XCTAssertEqual(lockedFlagAfterResume, true, "locked link lost its from-lock flag to a concurrent unlocked route")
+        XCTAssertFalse(app.isRoutingDeepLinkFromLock)
+    }
+
     private func signinLink(caps: String = "/pub/locks.app/:rw") throws -> URL {
         try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=\(caps)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +

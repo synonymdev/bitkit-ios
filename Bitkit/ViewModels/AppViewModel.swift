@@ -164,8 +164,12 @@ class AppViewModel: ObservableObject {
     /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
     private var deepLinkAfterPubkyAuth: URL?
     private var deepLinksRetainedWhileLocked: Set<URL> = []
+    private var lockedDeepLinkRoutesInFlight = 0
     /// True while a deep link that arrived behind the PIN lock routes, so a payment opens for review instead of QuickPay.
-    private(set) var isRoutingDeepLinkFromLock = false
+    var isRoutingDeepLinkFromLock: Bool {
+        lockedDeepLinkRoutesInFlight > 0
+    }
+
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
     /// delegate replay), and the startup gates can route the first delivery before the second arrives.
     private var lastRoutedDeepLink: (url: URL, date: Date)?
@@ -285,9 +289,14 @@ class AppViewModel: ObservableObject {
         }
         pendingDeepLinkURL = nil
         lastRoutedDeepLink = (url, currentDate())
-        isRoutingDeepLinkFromLock = deepLinksRetainedWhileLocked.remove(url) != nil
+        let isFromLock = deepLinksRetainedWhileLocked.remove(url) != nil
+        if isFromLock {
+            lockedDeepLinkRoutesInFlight += 1
+        }
         await handler(url)
-        isRoutingDeepLinkFromLock = false
+        if isFromLock {
+            lockedDeepLinkRoutesInFlight -= 1
+        }
         deepLinksRetainedWhileLocked.formIntersection([pendingDeepLinkURL, deepLinkAfterPubkyAuth].compactMap { $0 })
         promoteDeepLinkAfterPubkyAuthIfIdle()
     }
