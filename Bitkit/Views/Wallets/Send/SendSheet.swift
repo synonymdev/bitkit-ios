@@ -216,7 +216,8 @@ struct SendSheet: View {
             return !wallet.hasUsableChannels
         }
 
-        return false
+        // After a long stay in the background, wait until a sync proves the on-chain connection works again.
+        return OnchainConnectionMonitor.shared.isReconnecting
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
@@ -262,8 +263,12 @@ struct SendSheet: View {
             guard shouldDismiss else { return }
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
         }
-        .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
+        .onChange(of: shouldShowSyncOverlay, initial: true) { wasShowing, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
+            // A deferred validation resumes once the wait ends, including the on-chain reconnect wait.
+            if wasShowing, !isShowing, !hasValidatedAfterSync, !isPreparingRequest, app.hasSendPaymentTarget {
+                validatePaymentAfterSync()
+            }
         }
         .task(id: config.preparation?.resolvedRoute) {
             if let preparation = config.preparation {
