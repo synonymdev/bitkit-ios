@@ -266,6 +266,10 @@ struct SendSheet: View {
         }
         .onChange(of: shouldShowSyncOverlay, initial: true) { wasShowing, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
+            // A reconnect wait can start over an already validated payment; it revalidates once the wait ends.
+            if !wasShowing, isShowing, OnchainConnectionMonitor.shared.isReconnecting {
+                hasValidatedAfterSync = false
+            }
             // A deferred validation resumes once the wait ends, including the on-chain reconnect wait.
             if wasShowing, !isShowing, !hasValidatedAfterSync, !isPreparingRequest, app.hasSendPaymentTarget {
                 validatePaymentAfterSync()

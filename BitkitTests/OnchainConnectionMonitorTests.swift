@@ -46,4 +46,31 @@ final class OnchainConnectionMonitorTests: XCTestCase {
         }
         XCTAssertFalse(monitor.isReconnecting)
     }
+
+    func testOnchainSyncEndsTheWaitWhileFullSyncKeepsFailing() async throws {
+        let monitor = OnchainConnectionMonitor(retryInterval: .milliseconds(10))
+        var attempts = 0
+        monitor.appDidEnterBackground(at: backgroundedAt)
+        monitor.appDidBecomeActive(at: backgroundedAt.addingTimeInterval(60)) {
+            attempts += 1
+            throw URLError(.timedOut)
+        }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertTrue(monitor.isReconnecting)
+
+        monitor.onchainSyncDidComplete()
+        XCTAssertFalse(monitor.isReconnecting)
+        let attemptsAfterClear = attempts
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(attempts, attemptsAfterClear)
+    }
+
+    func testOnchainSyncWhileBackgroundedKeepsTheWait() {
+        let monitor = OnchainConnectionMonitor(retryInterval: .milliseconds(10))
+        monitor.appDidEnterBackground(at: backgroundedAt)
+        monitor.appDidBecomeActive(at: backgroundedAt.addingTimeInterval(60)) { throw URLError(.timedOut) }
+        monitor.appDidEnterBackground(at: backgroundedAt.addingTimeInterval(61))
+        monitor.onchainSyncDidComplete()
+        XCTAssertTrue(monitor.isReconnecting)
+    }
 }

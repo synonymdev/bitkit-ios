@@ -536,6 +536,7 @@ struct AppScene: View {
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
             .onReceive(OnchainSendRebroadcaster.onchainSyncCompleted.receive(on: DispatchQueue.main)) { _ in
+                OnchainConnectionMonitor.shared.onchainSyncDidComplete()
                 guard wallet.nodeLifecycleState == .running else { return }
                 Task { await OnchainSendRebroadcaster.shared.rebroadcastIfNeeded(paymentRequests: paykitPaymentRequestManager) }
             }

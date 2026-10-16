@@ -49,4 +49,13 @@ final class OnchainConnectionMonitor {
             }
         }
     }
+
+    /// A successful on-chain sync proves the connection works, even while the full wallet sync
+    /// retried here keeps failing on an unrelated step.
+    func onchainSyncDidComplete() {
+        guard isReconnecting, backgroundedAt == nil else { return }
+        retryTask?.cancel()
+        retryTask = nil
+        isReconnecting = false
+    }
 }
