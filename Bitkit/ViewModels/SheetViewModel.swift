@@ -141,6 +141,22 @@ class SheetViewModel: ObservableObject {
         hideSheet(reason: reason, file: file, function: function, line: line)
     }
 
+    /// Presentations that appeared and are not dismissed yet, oldest first. SwiftUI dismisses them in the order
+    /// they appeared, but a replacement can appear before the replaced sheet's dismiss callback runs.
+    private var shownPresentationIDs: [UUID] = []
+
+    func markSheetShown(presentationID: UUID) {
+        guard !shownPresentationIDs.contains(presentationID) else { return }
+        shownPresentationIDs.append(presentationID)
+    }
+
+    /// Call from a sheet's onDismiss: hides the sheet only when the dismissed presentation is still the active one.
+    func hideDismissedSheet(reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        guard !shownPresentationIDs.isEmpty else { return }
+        let presentationID = shownPresentationIDs.removeFirst()
+        hideSheetIfActive(presentationID: presentationID, reason: reason, file: file, function: function, line: line)
+    }
+
     var isAnySheetOpen: Bool {
         return activeSheetConfiguration != nil
     }

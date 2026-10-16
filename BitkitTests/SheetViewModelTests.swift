@@ -54,4 +54,31 @@ final class SheetViewModelTests: XCTestCase {
 
         XCTAssertNil(sheets.activeSheetConfiguration)
     }
+
+    func testReplacedSheetDismissKeepsNewerSheetWhicheverCallbackRunsFirst() throws {
+        for replacementAppearsFirst in [false, true] {
+            let sheets = SheetViewModel()
+
+            sheets.showSheet(.pubkyAuthApproval)
+            let replaced = try XCTUnwrap(sheets.activeSheetConfiguration)
+            sheets.markSheetShown(presentationID: replaced.presentationID)
+            sheets.hideSheet(reason: "Same link handled again")
+            sheets.showSheet(.pubkyAuthApproval)
+            let current = try XCTUnwrap(sheets.activeSheetConfiguration)
+
+            if replacementAppearsFirst {
+                sheets.markSheetShown(presentationID: current.presentationID)
+                sheets.hideDismissedSheet(reason: "Replaced sheet dismissed")
+            } else {
+                sheets.hideDismissedSheet(reason: "Replaced sheet dismissed")
+                sheets.markSheetShown(presentationID: current.presentationID)
+            }
+            XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, current.presentationID)
+
+            // The current sheet appearing again, as after its PIN check closes, still dismisses once.
+            sheets.markSheetShown(presentationID: current.presentationID)
+            sheets.hideDismissedSheet(reason: "Current sheet dismissed")
+            XCTAssertNil(sheets.activeSheetConfiguration)
+        }
+    }
 }
