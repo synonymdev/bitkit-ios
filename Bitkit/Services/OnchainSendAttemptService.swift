@@ -434,6 +434,8 @@ actor OnchainSendAttemptService {
             previous.recoveryContext?.candidateFeeSats = nil
             incoming.recoveryContext?.candidateFeeSats = nil
             previous.restoredFromBackup = nil
+            // A local release approval is not part of the shared backup record.
+            previous.releaseApproved = nil
             guard previous == incoming else { throw OnchainSendAttemptError.unresolved }
             return
         }
