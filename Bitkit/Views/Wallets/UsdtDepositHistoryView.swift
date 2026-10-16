@@ -170,7 +170,9 @@ struct UsdtDepositHistoryView: View {
                 if detail.canRequestRefund, UsdtDepositNetwork.named(detail.deposit.network) == .tron {
                     BodySText(t("usdt__deposit_tron_refund_note"), textColor: .textSecondary)
                 }
-                if let code = detail.statusCode { BodySText(code, textColor: .textSecondary).textSelection(.enabled) }
+                if detail.statusText == t("usdt__deposit_needs_attention") {
+                    BodySText(t("usdt__deposit_attention"), textColor: .textSecondary)
+                }
                 if let tx = detail.order?.destinationTx {
                     SendSectionView(t("usdt__destination_tx"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
                         BodySSBText(tx, kerning: 0, lineHeight: 20).textSelection(.enabled)
