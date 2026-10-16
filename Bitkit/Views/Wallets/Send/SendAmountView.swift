@@ -134,7 +134,7 @@ struct SendAmountView: View {
     private var content: some View {
         VStack(spacing: 0) {
             SheetHeader(
-                title: t("wallet__send_amount"),
+                title: t(app.paykitUsesUsdt ? "usdt__amount" : "wallet__send_amount"),
                 showBackButton: true,
                 action: AnyView(SendContactHeaderAvatar()),
                 topPadding: app.paykitUsesUsdt ? 28 : 32,
