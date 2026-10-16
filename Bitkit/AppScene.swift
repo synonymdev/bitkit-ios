@@ -1867,7 +1867,7 @@ struct AppScene: View {
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
-        await ContactPaymentsService.reconcilePendingEndpoints {
+        await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
             let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
             await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
                 wallet: wallet,
@@ -1876,7 +1876,7 @@ struct AppScene: View {
             if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
                 PublicPaykitService.setCleanupPending(true)
             }
-
+        }) {
             if PublicPaykitService.isCleanupPending {
                 do {
                     switch PublicPaykitService.pendingReconciliationMode() {
