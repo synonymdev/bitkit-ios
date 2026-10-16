@@ -20,6 +20,7 @@
     <action>Verify the Hardware Wallets screen now lists the paired device as "Renamed Trezor"</action>
     <action>Tap the "Add Hardware Wallet" button near the bottom (id "AddHardwareWallet")</action>
     <action>Verify a sheet opens titled "Hardware Wallet" (id "HardwareWalletIntroScreen") showing hardware device illustrations, then tap Cancel (id "HardwareWalletIntroCancel") and verify the sheet closes back to the Hardware Wallets screen</action>
+    <action>On Android, reopen Add Hardware Wallet at font scale 2.0. Verify Cancel and Continue stack vertically with complete readable labels and working tap targets. Close with Cancel and restore the normal font scale; reopen and verify both buttons return to their original side-by-side row and 56dp height, then close with Cancel.</action>
     <action>Tap the trash (delete) icon on the device row</action>
     <action>Verify a confirm dialog appears (id "RemoveHwWalletDialog") explaining that your funds are safe and your coins won't be deleted</action>
     <action>Tap "Cancel" and verify the device is still listed on the Hardware Wallets screen</action>
