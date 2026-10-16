@@ -61,6 +61,9 @@ struct SendPendingScreen: View {
     @State private var pendingOnchainProof: PendingPaykitPaymentProof?
     @State private var retryApprovalMessage: String?
     @State private var retryApprovalContinuation: CheckedContinuation<Bool, Never>?
+    @State private var abandonableAttempt: OnchainSendAttempt?
+    @State private var showingAbandonConfirmation = false
+    @State private var abandoningOnchain = false
 
     private var pendingHardwareWalletId: String? {
         hardwareWalletId ?? pendingOnchainProof?.onchainWalletId.flatMap { $0 == WalletScope.default ? nil : $0 }
@@ -114,6 +117,14 @@ struct SendPendingScreen: View {
                 .padding(.bottom, 16)
             }
 
+            if abandonableAttempt != nil, pendingHardwareWalletId == nil, !ordinarySendResolved {
+                CustomButton(title: t("wallet__onchain_abandon"), variant: .secondary, isDisabled: abandoningOnchain) {
+                    showingAbandonConfirmation = true
+                }
+                .accessibilityIdentifier("AbandonExpiredOnchainPayment")
+                .padding(.bottom, 16)
+            }
+
             HStack(spacing: 16) {
                 CustomButton(
                     title: t("wallet__send_details"),
@@ -159,6 +170,14 @@ struct SendPendingScreen: View {
             Button(t("wallet__send_yes")) { finishRetryApproval(true) }
         } message: {
             Text(retryApprovalMessage ?? "")
+        }
+        .alert(t("wallet__onchain_abandon"), isPresented: $showingAbandonConfirmation) {
+            Button(t("common__cancel"), role: .cancel) {}
+            Button(t("common__continue")) {
+                Task { await abandonExpiredPayment() }
+            }
+        } message: {
+            Text(t("wallet__onchain_abandon_note"))
         }
         .onDisappear { finishRetryApproval(false) }
         .navigationBarHidden(true)
@@ -235,6 +254,9 @@ struct SendPendingScreen: View {
                         }
                     } catch { onchainStateUnavailable = true }
                 }
+            }
+            if paymentHash == nil, pendingHardwareWalletId == nil {
+                await loadAbandonableAttempt()
             }
             applyPendingResolutionIfNeeded(app.sendSheetPendingResolution)
             await searchForActivity()
@@ -334,6 +356,30 @@ struct SendPendingScreen: View {
     }
 
     @MainActor
+    private func loadAbandonableAttempt() async {
+        guard let attempt = try? await attemptService.blockingAttempt(), attempt.canBeAbandoned else { return }
+        let hasEnded = await (try? proofService.onchainRequestHasEnded(attempt)) ?? false
+        abandonableAttempt = hasEnded ? attempt : nil
+    }
+
+    private func abandonExpiredPayment() async {
+        guard !abandoningOnchain, let attempt = abandonableAttempt else { return }
+        abandoningOnchain = true
+        defer { abandoningOnchain = false }
+        do {
+            try await proofService.abandonUnbroadcastOnchainPayment(
+                context: OnchainSendPendingContext(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid),
+                neverReachedNetwork: { try await LightningService.shared.onchainCandidatesNeverReachedNetwork($0) }
+            )
+            abandonableAttempt = nil
+            app.toast(type: .success, title: t("wallet__onchain_abandon_done"))
+            sheets.hideSheet()
+        } catch {
+            Logger.warn("Could not release on-chain payment \(attempt.txid ?? ""): \(error)", context: "SendPendingScreen")
+            app.toast(error)
+        }
+    }
+
     private func requestRetryApproval(_ message: String) async -> Bool {
         guard !Task.isCancelled else { return false }
         return await withTaskCancellationHandler {
