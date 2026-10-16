@@ -14,6 +14,8 @@ Hold endpoint preparation before publication admission, or queue a public public
 
 On iOS, public publication and endpoint removal share an endpoint lock. A publication already holding that lock while waiting for SDK work must finish or stop before removal can complete. Hold preparation before that lock to exercise removal before a stale publication is released. Explicit manual sharing settings are outside these automatic-publication checks.
 
+Hold initial session restoration with public contact payments enabled, turn contact payments off, then release restoration. No automatic endpoint preparation or publication may resume, and pending cleanup must remain available. Repeat with publication waiting for SDK admission. If a write was already admitted, let it finish and verify it cannot clear the cleanup requested by disabling sharing. These checks require restoration and SDK-operation gates beyond the journey runner capabilities.
+
 `signup-create-profile.xml` verifies that signup through staging.pubky.app can finish profile creation without a false Profile Error toast. Use a fresh, unfunded test wallet and keep the app process alive. The profile must use the same public key as the authorized signup.
 
 Delayed or failed session restoration requires network fault injection, which is not a journey-runner capability; see the PR manual checks.
@@ -21,3 +23,5 @@ Delayed or failed session restoration requires network fault injection, which is
 For a saved identity, inject a temporary import failure (`concurrent_update`, `shared_state_busy`, or a transport failure) during cold start. Verify that no "Session expired" toast appears, the saved credentials remain, and recovery succeeds after the temporary failure ends. A genuinely invalid session must still produce the existing expiry feedback.
 
 For the reported background-resume case, verify returning directly to Profile with the process still alive, then repeat after the OS recreates the process. A delay in session recovery must keep the saved identity on the profile loading/retry screen rather than show profile onboarding.
+
+On iOS, open a saved contact's link while a stored identity's session restoration is held, deferred or failed. The link must stay pending without opening Add Contact, reading private contacts or showing a QR error. Restore the session and verify that the retained link opens the saved contact once contacts are ready, without opening the link again. With no stored identity, including after successful profile deletion, the public contact must still open read-only without granting authentication. A cached profile name alone is not a stored identity. These checks require restoration and network-failure gates beyond the journey runner capabilities.

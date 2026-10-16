@@ -48,7 +48,7 @@ struct MainNavView: View {
     }
 
     private var canPrepareContactDeepLink: Bool {
-        !isPaykitUIActive || pubkyProfile.isInitialized
+        !isPaykitUIActive || (pubkyProfile.isInitialized && !pubkyProfile.isRestoringSession)
     }
 
     private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {

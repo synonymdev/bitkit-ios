@@ -12,12 +12,13 @@ func canRoutePubkyContactLink(
 @MainActor
 func preparePubkyContactLink(
     profile: PubkyProfileManager,
-    contacts: ContactsManager
+    contacts: ContactsManager,
+    hasStoredIdentity: () throws -> Bool = { try PubkyProfileManager.hasStoredIdentity() }
 ) async throws -> Bool {
     guard profile.isInitialized, profile.initializationErrorMessage == nil,
-          !profile.isDeletingProfile, !Task.isCancelled
+          !profile.isRestoringSession, !profile.isDeletingProfile, !Task.isCancelled
     else { return false }
-    guard profile.isAuthenticated else { return true }
+    guard profile.isAuthenticated else { return (try? hasStoredIdentity()) == false }
     guard let session = profile.currentSession else { return false }
     do {
         try await contacts.refreshContacts(for: session.publicKey)
@@ -37,8 +38,15 @@ func pubkyContactPublicKeyForRouting(from url: URL, isPaykitUIActive: Bool) thro
 }
 
 @MainActor
-func routePublicContactIfSignedOut(publicKey: String, profile: PubkyProfileManager, navigation: NavigationViewModel) -> Bool {
-    guard !profile.isAuthenticated else { return false }
+func routePublicContactIfSignedOut(
+    publicKey: String,
+    profile: PubkyProfileManager,
+    navigation: NavigationViewModel,
+    hasStoredIdentity: () throws -> Bool = { try PubkyProfileManager.hasStoredIdentity() }
+) -> Bool {
+    guard !profile.isAuthenticated, !profile.isRestoringSession, !profile.isDeletingProfile, !Task.isCancelled,
+          (try? hasStoredIdentity()) == false
+    else { return false }
     navigation.navigate(.addContact(publicKey: publicKey))
     return true
 }
