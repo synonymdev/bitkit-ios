@@ -259,7 +259,7 @@ class BackupService {
         do {
             if category == .wallet {
                 try await PaykitPaymentActivity.shared.waitUntilIdle()
-                try await persistWalletBackup()
+                try await writeWalletBackup()
             } else {
                 let data = try await getBackupDataBytes(category: category)
                 try await uploadBackup(category.rawValue, data)
@@ -299,16 +299,22 @@ class BackupService {
 
     func persistWalletBackup(usdt: String? = nil) async throws {
         do {
-            try await walletBackupWriter.write {
-                guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
-                let data = try await self.getBackupDataBytes(category: .wallet, usdt: usdt)
-                try Task.checkCancellation()
-                guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
-                try await self.uploadBackup(BackupCategory.wallet.rawValue, data)
-            }
+            try await writeWalletBackup(usdt: usdt)
         } catch {
             markBackupRequired(category: .wallet, schedule: !(error is CancellationError))
             throw error
+        }
+    }
+
+    /// Writes the wallet backup. A scheduled backup calls this directly, so its own failure does not schedule another
+    /// attempt; `persistWalletBackup` marks the wallet required again for callers outside the scheduler.
+    private func writeWalletBackup(usdt: String? = nil) async throws {
+        try await walletBackupWriter.write {
+            guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
+            let data = try await self.getBackupDataBytes(category: .wallet, usdt: usdt)
+            try Task.checkCancellation()
+            guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
+            try await self.uploadBackup(BackupCategory.wallet.rawValue, data)
         }
     }
 
