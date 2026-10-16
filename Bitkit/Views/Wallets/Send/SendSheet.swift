@@ -216,8 +216,9 @@ struct SendSheet: View {
             return !wallet.hasUsableChannels
         }
 
-        // After a long stay in the background, wait until a sync proves the on-chain connection works again.
-        return OnchainConnectionMonitor.shared.isReconnecting
+        // After a long stay in the background, an on-chain payment waits until a sync proves the
+        // connection works again. Without a target the sheet stays usable for scan, paste and Lightning.
+        return app.scannedOnchainInvoice != nil && OnchainConnectionMonitor.shared.isReconnecting
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
