@@ -18,7 +18,7 @@ that Locks released its content. Follow `local-paykit-fallback.xml` after this s
   on that homeserver. Preserve existing identities. Use `../pubky-auth/grant-signup.xml` for a fresh
   `pubkyauth://signup_grant` URL naming that homeserver; invites and authorization URLs are secrets.
 - Record the app commit, built app executable hash and installed bundle identifier. iOS uses
-  `Debug`, `to.bitkit`, Paykit `0.1.0-rc72` and native LDK `0.7.0-rc.74`. Use normal Debug with
+  `Debug`, `to.bitkit`, Paykit `0.1.0-rc72` and native LDK `0.7.0-rc.76`. Use normal Debug with
   `E2E` unset and without `E2E_BUILD`, or explicitly network-backed E2E with
   `E2E_BACKEND=network E2E_NETWORK=regtest`. The local E2E default selects a different chain endpoint.
 - Both wallets and the server must use `ssl://electrs.bitkit.stag0.blocktank.to:9999`, the regtest
