@@ -1808,9 +1808,11 @@
 
 "wallet__onchain_retry_max_note" = "Retry {amount} sats to {address} using the same original coins and original fee rate of {fee} sat/vB. Send-all leaves no coins for a higher fee without reducing the recipient amount. The amount stays unchanged. This cannot create a separate payment.";
 "wallet__onchain_abandon" = "Cancel expired payment";
-"wallet__onchain_abandon_note" = "This payment's request has ended. Bitkit first syncs with the network and cancels the payment only if it never reached it. Its coins then become available again.";
-"wallet__onchain_abandon_done" = "Payment cancelled. Its coins are available again.";
+"wallet__onchain_abandon_note" = "This payment's request has ended. Bitkit first checks the network, then sends the payment's coins back to your wallet so the original payment can never confirm. This costs a network fee.";
+"wallet__onchain_abandon_done" = "Payment cancelled. Its coins are back in your wallet.";
 "wallet__onchain_abandon_refused" = "This payment may still reach the network, so it cannot be cancelled.";
+"wallet__onchain_abandon_pending" = "The cancellation was sent but is not confirmed yet. Open this payment again later to finish it.";
+"wallet__onchain_abandon_release" = "Send this payment's coins back to your wallet? Network fee: {fee} sats.";
 "wallet__onchain_abandon_sync" = "Bitkit could not sync with the network. Check your connection and try again.";
 // USDT
 "usdt__activity" = "Activity";

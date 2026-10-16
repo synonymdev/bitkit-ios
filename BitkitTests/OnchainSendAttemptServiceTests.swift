@@ -1429,8 +1429,9 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                                    requestId: .init(paymentRequestId: "request", counterparty: "payee"), paymentIdentity: "payer")
         let attempt = try XCTUnwrap(store.snapshot().first)
         let approved = try await service.approveRelease(attempt)
+        let releasing = try await service.recordRelease(approved, txid: String(repeating: "77", count: 32))
         try await service.restoreBackup(attempt)
-        XCTAssertEqual(store.snapshot(), [approved])
+        XCTAssertEqual(store.snapshot(), [releasing])
     }
 
     func testOrdinaryPaymentIsNeverAbandoned() async throws {
