@@ -250,8 +250,15 @@ struct UsdtSendView: View {
                     RectangleButton(
                         icon: "clipboard", iconColor: .usdtAccent, title: t("common__paste"), testID: "UsdtPaste"
                     ) {
-                        if let value = UIPasteboard.general.string, !value.isEmpty { useRecipient(value) }
-                        else { error = t("wallet__send_clipboard_empty_text") }
+                        if let value = UIPasteboard.general.string, !value.isEmpty {
+                            _ = ClipboardPromptHistory().recordInspection(
+                                changeCount: UIPasteboard.general.changeCount,
+                                supportedValue: value.trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
+                            useRecipient(value)
+                        } else {
+                            error = t("wallet__send_clipboard_empty_text")
+                        }
                     }
                     RectangleButton(
                         icon: "pencil", iconColor: .usdtAccent, title: t("wallet__recipient_manual"), testID: "UsdtManual"

@@ -18,6 +18,13 @@ final class PaykitAmountTests: XCTestCase {
             let amount = try PaykitAmount(asset: asset, value: value)
             XCTAssertEqual(amount.inputValue, expected)
             XCTAssertEqual(try PaykitAmount(asset: asset, value: amount.inputValue), amount)
+            if asset == .usdt {
+                XCTAssertEqual(usdtInputAmount(amount.inputValue, locale: Locale(identifier: "en_US")), expected)
+                XCTAssertEqual(
+                    usdtInputAmount(amount.inputValue, locale: Locale(identifier: "de_DE")),
+                    expected.replacingOccurrences(of: ".", with: ",")
+                )
+            }
         }
         XCTAssertEqual(try PaykitAmount(asset: .usdt, value: "150.50").value, "150.5")
     }

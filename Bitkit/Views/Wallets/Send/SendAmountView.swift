@@ -346,7 +346,7 @@ struct SendAmountView: View {
             if app.paykitUsesUsdt {
                 guard let recipient = app.contactPaymentContext?.endpoints.first(where: { $0.methodId == .usdtArbitrum })?.value else { return }
                 let amount = try parsePaykitAmountInput(asset: .usdt, value: usdtAmount)
-                navigationPath.append(.usdt(recipient: recipient, amount: amount.value))
+                navigationPath.append(.usdt(recipient: recipient, amount: amount.inputValue))
                 return
             }
             wallet.sendAmountSats = amountSats
