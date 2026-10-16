@@ -1436,6 +1436,23 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         )
     }
 
+    func testRestoredPaymentIsNeverAbandoned() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await service.send(using: sender, address: "bcrt1qrequest", amountSats: sender.amount, satsPerVbyte: 2,
+                                   utxosToSpend: nil, isMaxAmount: false,
+                                   requestId: .init(paymentRequestId: "request", counterparty: "payee"), paymentIdentity: "payer")
+        let attempt = try XCTUnwrap(store.snapshot().first)
+        XCTAssertTrue(attempt.canBeAbandoned)
+        let restoredService = OnchainSendAttemptService(store: MemoryAttemptStore())
+        try await restoredService.restoreBackup(attempt)
+        let restored = try await restoredService.blockingAttempt()
+        XCTAssertEqual(restored?.restoredFromBackup, true)
+        XCTAssertEqual(restored?.canBeAbandoned, false)
+    }
+
     func testOrdinaryPaymentIsNeverAbandoned() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
