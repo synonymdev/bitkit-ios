@@ -33,6 +33,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("publicPaykitBolt11") var publicPaykitBolt11 = ""
     @AppStorage("publicPaykitBolt11PaymentHash") var publicPaykitBolt11PaymentHash = ""
     @AppStorage("publicPaykitBolt11ExpiresAt") var publicPaykitBolt11ExpiresAt = 0.0
+    private(set) var publicPaykitInvoiceRevision = UUID()
     @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better anticipate the receive flow UI
 
     // Send flow
@@ -1399,6 +1400,13 @@ class WalletViewModel: ObservableObject {
             return ("", "")
         }
 
+        let invoiceRevision = publicPaykitInvoiceRevision
+        let session = pubkyProfile?.currentSession
+        let wasSharing = sharesPublicPaykitEndpoints
+        let canCommitInvoice = {
+            !Task.isCancelled && self.isPaykitUIActive && self.publicPaykitInvoiceRevision == invoiceRevision &&
+                self.pubkyProfile?.currentSession == session && self.sharesPublicPaykitEndpoints == wasSharing
+        }
         let receiveID = receiveRefreshID
         let commitID = receiveCommitID
         let previousAddress = onchainAddress
@@ -1409,10 +1417,11 @@ class WalletViewModel: ObservableObject {
 
         if includeLightning, hasUsableChannels {
             let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
+            guard canCommitInvoice() else { throw PubkyServiceError.sessionNotActive }
             let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
             if shouldRefreshBolt11 {
                 do {
-                    try await refreshPublicPaykitBolt11()
+                    try await refreshPublicPaykitBolt11(canCommitInvoice: canCommitInvoice)
                 } catch let error as PublicPaykitError {
                     guard case .routeHintsUnavailable = error else {
                         throw error
@@ -1421,6 +1430,7 @@ class WalletViewModel: ObservableObject {
                 }
             }
         } else if includeLightning {
+            guard canCommitInvoice() else { throw PubkyServiceError.sessionNotActive }
             clearPublicPaykitBolt11()
         }
 
@@ -1445,6 +1455,13 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: String, forceRefreshLightning: Bool = false) async {
+        if forceRefreshLightning, !Task.isCancelled, isPaykitUIActive, sharesPublicPaykitEndpoints,
+           PublicPaykitService.isLightningPaymentOptionEnabled(),
+           pubkyProfile?.authState == .authenticated, pubkyProfile?.currentSession != nil
+        {
+            invalidatePublicPaykitInvoice()
+            PublicPaykitService.setCleanupPending(true)
+        }
         let isSessionCurrent = publicPaykitPublicationAdmission()
         await refreshAndSyncState()
         try? await refreshBip21(forceRefreshBolt11: forceRefreshLightning, syncPublicPaykit: false, reportsError: false)
@@ -1477,9 +1494,11 @@ class WalletViewModel: ObservableObject {
             PublicPaykitService.hasLightningRouteHints(bolt11: publicPaykitBolt11)
     }
 
-    private func refreshPublicPaykitBolt11() async throws {
+    private func refreshPublicPaykitBolt11(canCommitInvoice: () -> Bool) async throws {
         let invoice = try await createInvoice(amountSats: nil, note: "")
-        guard case let .lightning(lightningInvoice) = try await decode(invoice: invoice) else {
+        let decodedInvoice = try await decode(invoice: invoice)
+        guard canCommitInvoice() else { throw PubkyServiceError.sessionNotActive }
+        guard case let .lightning(lightningInvoice) = decodedInvoice else {
             clearPublicPaykitBolt11()
             throw PublicPaykitError.invalidPayload
         }
@@ -1499,12 +1518,17 @@ class WalletViewModel: ObservableObject {
         publicPaykitBolt11ExpiresAt = 0
     }
 
+    private func invalidatePublicPaykitInvoice() {
+        publicPaykitInvoiceRevision = UUID()
+        clearPublicPaykitBolt11()
+    }
+
     func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
         guard !publicPaykitBolt11PaymentHash.isEmpty,
               publicPaykitBolt11PaymentHash == paymentHash
         else { return }
 
-        clearPublicPaykitBolt11()
+        invalidatePublicPaykitInvoice()
         if sharesPublicPaykitEndpoints { PublicPaykitService.setCleanupPending(true) }
     }
 

@@ -16,6 +16,12 @@ On iOS, public publication and endpoint removal share an endpoint lock. A public
 
 Hold initial session restoration with public contact payments enabled, turn contact payments off, then release restoration. No automatic endpoint preparation or publication may resume, and pending cleanup must remain available. Repeat with publication waiting for SDK admission. If a write was already admitted, let it finish and verify it cannot clear the cleanup requested by disabling sharing. These checks require restoration and SDK-operation gates beyond the journey runner capabilities.
 
+While deletion is held, make a Lightning channel usable or ready, then fail deletion while retaining the same identity. Public endpoint preparation must refresh the invoice rather than reuse its old route hints, even if an older invoice creation finishes after the channel change. A skipped or failed publication must leave reconciliation pending; an older admitted write must not acknowledge a newer channel refresh. Sign-out, identity replacement, cancellation or disabled sharing must not let older preparation refill the invalidated cache. Also hold an older public endpoint snapshot before publication, pay its invoice and publish the replacement, then release the older snapshot. The replacement must become pending again and be republished by normal reconciliation. These checks require channel, failure and publication gates beyond the journey runner capabilities.
+
+Repeat the held snapshot check while enabling contact payments and while a failed enable restores the previous sharing preference. A late stale publication must remain pending for repair; a successful current publication must acknowledge earlier pending work. Explicit disabling must still remove endpoints and retain failed cleanup for retry.
+
+On iOS, these channel-refresh checks cover public endpoints. Private endpoint preparation retains its existing cleanup and reconciliation behavior.
+
 `signup-create-profile.xml` verifies that signup through staging.pubky.app can finish profile creation without a false Profile Error toast. Use a fresh, unfunded test wallet and keep the app process alive. The profile must use the same public key as the authorized signup.
 
 Delayed or failed session restoration requires network fault injection, which is not a journey-runner capability; see the PR manual checks.
