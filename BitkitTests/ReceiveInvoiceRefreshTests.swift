@@ -258,9 +258,11 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 UserDefaults.standard.set(false, forKey: ContactPaymentsService.confirmedPreferenceKey)
                 let session = try XCTUnwrap(profile.currentSession)
                 var preparations = 0
+                var endpointRefreshes = 0
+                wallet.beforePublicEndpointRefresh = { endpointRefreshes += 1 }
                 let invalidate = {
                     preparations += 1
-                    if preparations <= invalidations {
+                    if !duringCreation || preparations <= invalidations {
                         wallet.publicPaykitBolt11PaymentHash = "paid"
                         wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
                     }
@@ -307,7 +309,51 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 XCTAssertEqual(profile.currentSession, session)
                 XCTAssertEqual(ContactPaymentsService.isEnabled(), invalidations == 1)
                 XCTAssertEqual(removals, invalidations == 1 ? 0 : 1)
+                XCTAssertEqual(endpointRefreshes, 1)
+                XCTAssertEqual(wallet.addressCallCount, 1)
+                if !duringCreation { XCTAssertEqual(preparations, 1) }
             }
+        }
+    }
+
+    func testForcedPublicationUsesOneInvoiceRetryBudget() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(UsdtPreference.disabled.rawValue, forKey: UsdtPreference.key)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        for invalidatesRetry in [false, true] {
+            let (profile, wallet) = publicationWallet(route: .channelUsable)
+            wallet.stubPublicEndpoints = false
+            let session = try XCTUnwrap(profile.automaticPaykitSession)
+            var preparations = 0
+            var creations = 0
+            wallet.beforePublicEndpointRefresh = { preparations += 1 }
+            let invalidate = {
+                wallet.publicPaykitBolt11PaymentHash = "paid"
+                wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
+            }
+            wallet.beforeReceiveAddress = { invalidate() }
+            wallet.invoiceCreation = {
+                creations += 1
+                if invalidatesRetry { invalidate() }
+                return Self.invoiceWithRouteHints
+            }
+            var published: [String] = []
+            wallet.applyPublicEndpoints = { published = $0.map(\.value) }
+            do {
+                try await wallet.publishPublicPaykitEndpoints(refreshIfNeeded: true) { profile.automaticPaykitSession == session }
+                XCTAssertFalse(invalidatesRetry)
+                XCTAssertTrue(published.contains(Self.invoiceWithRouteHints))
+                XCTAssertFalse(PublicPaykitService.isCleanupPending)
+            } catch PublicPaykitError.publicationFailed {
+                XCTAssertTrue(invalidatesRetry)
+                XCTAssertTrue(published.isEmpty)
+                XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
+                XCTAssertTrue(PublicPaykitService.isCleanupPending)
+            }
+            XCTAssertEqual(preparations, 1)
+            XCTAssertEqual(wallet.addressCallCount, 1)
+            XCTAssertEqual(creations, 1)
+            XCTAssertEqual(profile.automaticPaykitSession, session)
         }
     }
 
@@ -512,10 +558,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             let (profile, wallet) = publicationWallet(route: .channelUsable)
             let session = try XCTUnwrap(profile.automaticPaykitSession)
             let preparation = PublicationGate("Older endpoint snapshot")
-            var snapshots = 0
             wallet.afterPublicEndpointSnapshot = {
-                snapshots += 1
-                guard snapshots == (forceRefresh ? 2 : 1) else { return }
                 wallet.afterPublicEndpointSnapshot = nil
                 await preparation.wait()
             }
@@ -557,10 +600,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 PublicPaykitService.setCleanupPending(!replacesInvoice)
                 let contacts = ContactsManager()
                 let preparation = PublicationGate("Explicit endpoint snapshot")
-                var snapshots = 0
                 wallet.afterPublicEndpointSnapshot = {
-                    snapshots += 1
-                    guard snapshots == 2 else { return }
                     wallet.afterPublicEndpointSnapshot = nil
                     await preparation.wait()
                 }

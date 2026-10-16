@@ -577,16 +577,10 @@ enum PublicPaykitService {
             guard isNodeReady || lifecycleState == .running else {
                 throw PublicPaykitError.walletNotReady
             }
-
-            _ = try await wallet.refreshPublicPaykitEndpoints(
-                forceRefreshBolt11: includeLightning,
-                includeOnchain: includeOnchain,
-                includeLightning: includeLightning
-            )
         }
 
         let publicEndpoints = try await wallet.refreshPublicPaykitEndpoints(
-            forceRefreshBolt11: false,
+            forceRefreshBolt11: refreshIfNeeded && includeLightning,
             includeOnchain: includeOnchain,
             includeLightning: includeLightning
         )
