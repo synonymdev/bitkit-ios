@@ -1,0 +1,19 @@
+<journey name="logging after wallet wipe">
+  <description>
+    Precondition: a disposable, unfunded regtest wallet without a PIN, with Dev Settings visible,
+    on an English device. This deletes the wallet. Keep Bitkit running throughout the journey;
+    its cached session log path must survive the wipe. This checks the iOS logger's recovery
+    after regtest wallet reset removes the log directory.
+  </description>
+  <actions>
+    <action>Open Settings, select Advanced (id "Tab-advanced"), open Dev Settings (id "DevSettings"), and tap Show Logs</action>
+    <action>Verify Log Files contains the current foreground session log and record its file name</action>
+    <action>Return to Settings and select Security (id "Tab-security")</action>
+    <action>Open Reset wallet (id "ResetAndRestore"), tap Reset Wallet, and confirm with Yes, Reset</action>
+    <action>Wait for Terms of Use, tap Continue, tap Skip Intro, and tap New Wallet (id "NewWallet")</action>
+    <action>Wait for Home; if offered security setup for the new wallet, tap Later</action>
+    <action>Open Settings, select Advanced (id "Tab-advanced"), open Dev Settings (id "DevSettings"), and tap Show Logs</action>
+    <action>Verify Log Files contains the session log with the same file name recorded before the wipe</action>
+    <action>Open that session log and verify it contains the new wallet's initialization messages, including Node started, rather than an empty file or Log file not found</action>
+  </actions>
+</journey>
