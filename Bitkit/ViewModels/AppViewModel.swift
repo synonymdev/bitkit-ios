@@ -161,6 +161,15 @@ class AppViewModel: ObservableObject {
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
     @Published private(set) var pendingDeepLinkURL: URL?
+    /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
+    private var deepLinkAfterPubkyAuth: URL?
+    private var deepLinksRetainedWhileLocked: Set<URL> = []
+    private var lockedDeepLinkRoutesInFlight = 0
+    /// True while a deep link that arrived behind the PIN lock routes, so a payment opens for review instead of QuickPay.
+    var isRoutingDeepLinkFromLock: Bool {
+        lockedDeepLinkRoutesInFlight > 0
+    }
+
     /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
     /// delegate replay), and the startup gates can route the first delivery before the second arrives.
     private var lastRoutedDeepLink: (url: URL, date: Date)?
@@ -230,11 +239,31 @@ class AppViewModel: ObservableObject {
         appStatusInit = true
     }
 
-    func retainDeepLink(_ url: URL) {
+    func retainDeepLink(_ url: URL, whileLocked: Bool = false) {
         if let lastRoutedDeepLink, lastRoutedDeepLink.url == url,
            currentDate().timeIntervalSince(lastRoutedDeepLink.date) < Self.duplicateDeepLinkWindow
         {
             Logger.debug("Ignoring duplicate delivery of a routed deep link", context: "AppViewModel")
+            return
+        }
+        if whileLocked {
+            deepLinksRetainedWhileLocked.insert(url)
+        }
+        let isPubkyAuth = Self.isPubkyAuthDeepLink(url)
+        if let pending = pendingDeepLinkURL, pending != url {
+            let pendingIsPubkyAuth = Self.isPubkyAuthDeepLink(pending)
+            if pendingIsPubkyAuth, !isPubkyAuth {
+                deepLinkAfterPubkyAuth = url
+                Logger.debug("Holding a deep link until the pending sign-in link is handled", context: "AppViewModel")
+                return
+            }
+            if !pendingIsPubkyAuth, isPubkyAuth {
+                deepLinkAfterPubkyAuth = pending
+                pendingDeepLinkURL = url
+                return
+            }
+        } else if pendingDeepLinkURL == nil, deepLinkAfterPubkyAuth != nil, !isPubkyAuth {
+            deepLinkAfterPubkyAuth = url
             return
         }
         pendingDeepLinkURL = url
@@ -246,7 +275,12 @@ class AppViewModel: ObservableObject {
         pubkyContactsAreReady: Bool = true,
         handler: (URL) async -> Void
     ) async {
-        guard isReady, let url = pendingDeepLinkURL else { return }
+        guard isReady else { return }
+        promoteDeepLinkAfterPubkyAuthIfIdle()
+        guard let url = pendingDeepLinkURL else { return }
+        if sheetViewModel.isPubkyAuthApprovalShownOrPending, !Self.isPubkyAuthDeepLink(url) {
+            return
+        }
         if PubkyContactLink.publicKey(from: url) != nil, !pubkyContactsAreReady {
             return
         }
@@ -255,7 +289,28 @@ class AppViewModel: ObservableObject {
         }
         pendingDeepLinkURL = nil
         lastRoutedDeepLink = (url, currentDate())
+        let isFromLock = deepLinksRetainedWhileLocked.remove(url) != nil
+        if isFromLock {
+            lockedDeepLinkRoutesInFlight += 1
+        }
         await handler(url)
+        if isFromLock {
+            lockedDeepLinkRoutesInFlight -= 1
+        }
+        deepLinksRetainedWhileLocked.formIntersection([pendingDeepLinkURL, deepLinkAfterPubkyAuth].compactMap { $0 })
+        promoteDeepLinkAfterPubkyAuthIfIdle()
+    }
+
+    private func promoteDeepLinkAfterPubkyAuthIfIdle() {
+        guard pendingDeepLinkURL == nil, !sheetViewModel.isPubkyAuthApprovalShownOrPending,
+              let next = deepLinkAfterPubkyAuth
+        else { return }
+        deepLinkAfterPubkyAuth = nil
+        pendingDeepLinkURL = next
+    }
+
+    private static func isPubkyAuthDeepLink(_ url: URL) -> Bool {
+        PubkyAuthRequest.isProtocolURL(url.absoluteString.removingLightningSchemes())
     }
 
     private static func requiresLightningNode(_ url: URL) -> Bool {
