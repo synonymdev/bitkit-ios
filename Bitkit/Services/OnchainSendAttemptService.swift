@@ -94,7 +94,13 @@ extension LightningService: OnchainReleasing {
               let recovery = attempt.recoveryContext, !recovery.inputs.isEmpty
         else { throw OnchainSendAttemptError.retryUnavailable }
         let original = Set(recovery.inputs)
-        let inputSets = OnchainSendAttemptService.releaseInputSets(spendable: try await listSpendableOutputs(), original: original)
+        let confirmedTxids = Set(await listPayments()?.compactMap { payment -> String? in
+            guard case let .onchain(txid, .confirmed) = payment.kind else { return nil }
+            return txid
+        } ?? [])
+        let inputSets = try await OnchainSendAttemptService.releaseInputSets(
+            spendable: listSpendableOutputs(), original: original, confirmedTxids: confirmedTxids
+        )
         guard let originalCount = inputSets.first?.count else { throw OnchainSendAttemptError.retryUnavailable }
         let address = try await newAddress()
         var lastError: Error = OnchainSendAttemptError.retryConstruction
@@ -458,11 +464,15 @@ actor OnchainSendAttemptService {
     /// The coin sets a release tries, smallest first: the original's coins alone, then with the wallet's largest other
     /// coin, then with all of them. A small payment's coins may not cover the release's output and higher fee, and
     /// any set that spends an original coin still makes every candidate unconfirmable.
-    static func releaseInputSets(spendable: [SpendableUtxo], original: Set<OnchainSendInput>) -> [[SpendableUtxo]] {
+    /// Only confirmed coins join the original's: nodes holding a candidate refuse a replacement that adds an unconfirmed
+    /// input (BIP125 rule 2), and an unconfirmed parent can still be replaced or evicted.
+    static func releaseInputSets(
+        spendable: [SpendableUtxo], original: Set<OnchainSendInput>, confirmedTxids: Set<String>
+    ) -> [[SpendableUtxo]] {
         let isOriginal = { (utxo: SpendableUtxo) in original.contains(OnchainSendInput(txid: utxo.outpoint.txid, vout: utxo.outpoint.vout)) }
         let originals = spendable.filter(isOriginal)
         guard !originals.isEmpty else { return [] }
-        let others = spendable.filter { !isOriginal($0) }.sorted { $0.valueSats > $1.valueSats }
+        let others = spendable.filter { !isOriginal($0) && confirmedTxids.contains($0.outpoint.txid) }.sorted { $0.valueSats > $1.valueSats }
         // Each set starts with every original coin, so a release spends them all.
         var sets = [originals]
         if let largest = others.first {

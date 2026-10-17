@@ -13,9 +13,12 @@ struct HourglassLoadingView: View {
         Image("hourglass")
             .resizable()
             .scaledToFit()
-            .frame(width: size, height: size)
+            // Shrinks when the screen needs the room, so the text above never truncates.
+            .frame(minHeight: 0, maxHeight: size)
+            .frame(width: size)
             .rotationEffect(.degrees(rotation))
             .frame(maxWidth: .infinity)
+            .layoutPriority(1)
             .onAppear {
                 withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
                     rotation = 16
@@ -95,9 +98,11 @@ struct SendPendingScreen: View {
 
             if paymentHash == nil {
                 BodyMText(onchainPendingMessage)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let txid = pendingTransactionId {
                     BodySSBText(t("wallet__onchain_transaction_id", variables: ["txid": txid]))
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 BodyMText(t("wallet__send_pending_note"))
@@ -126,6 +131,7 @@ struct SendPendingScreen: View {
                 .padding(.bottom, abandoningOnchain ? 8 : 16)
                 if abandoningOnchain {
                     BodySText(t("wallet__onchain_abandon_checking"))
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 16)
                 }
             }
