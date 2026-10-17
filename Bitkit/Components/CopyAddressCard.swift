@@ -17,6 +17,7 @@ struct CopyAddressCard: View {
     @Binding var navigationPath: [ReceiveRoute]
     var editRoute: ReceiveRoute?
     var accentColor: Color?
+    var onShare: (() -> Void)?
     @State private var showTooltipForIndex: Int? = nil
 
     var body: some View {
@@ -56,16 +57,26 @@ struct CopyAddressCard: View {
                                 onCopy(address: pair.address, index: index)
                             }
 
-                            ShareLink(
-                                item: pair.shareText ?? pair.address,
-                                preview: SharePreview(pair.address, image: Image("app-icon-orange"))
-                            ) {
+                            if let onShare {
                                 CustomButton(
                                     title: t("common__share"),
                                     size: .small,
                                     icon: Image("share").foregroundColor(buttonAccentColor(for: pair)),
-                                    shouldExpand: true
+                                    shouldExpand: true,
+                                    action: onShare
                                 )
+                            } else {
+                                ShareLink(
+                                    item: pair.shareText ?? pair.address,
+                                    preview: SharePreview(pair.address, image: Image("app-icon-orange"))
+                                ) {
+                                    CustomButton(
+                                        title: t("common__share"),
+                                        size: .small,
+                                        icon: Image("share").foregroundColor(buttonAccentColor(for: pair)),
+                                        shouldExpand: true
+                                    )
+                                }
                             }
                         }
                     }

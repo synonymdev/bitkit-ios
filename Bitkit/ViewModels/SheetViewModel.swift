@@ -39,9 +39,17 @@ struct SheetConfiguration {
 }
 
 class SheetViewModel: ObservableObject {
+    /// How long a closing sheet animates out before the next sheet may be shown.
+    static let replacementDelaySeconds: TimeInterval = 0.7
+
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
+    @Published private(set) var replacingSheetID: SheetID?
+
+    var isPubkyAuthApprovalShownOrPending: Bool {
+        activeSheetConfiguration?.id == .pubkyAuthApproval || replacingSheetID == .pubkyAuthApproval
+    }
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
         if activeSheetConfiguration?.id == .send, id == .receivedTx {
@@ -52,11 +60,15 @@ class SheetViewModel: ObservableObject {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
             isReplacingSheet = true
+            replacingSheetID = id
             hideSheet()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
                 guard let self else { return }
                 isReplacingSheet = false
+                if replacingSheetID == id {
+                    replacingSheetID = nil
+                }
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
@@ -109,7 +121,7 @@ class SheetViewModel: ObservableObject {
 
         isReplacingSheet = true
         hideSheet(reason: reason)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
             guard let self else { return }
             isReplacingSheet = false
             guard activeSheetConfiguration == nil else { return }

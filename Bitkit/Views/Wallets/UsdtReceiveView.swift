@@ -57,6 +57,7 @@ struct UsdtReceiveView: View {
                     address: deposit?.address ?? usdt.address,
                     uri: deposit?.uri ?? receiveUri,
                     network: networkName,
+                    amount: amount,
                     error: error ?? usdt.errorMessage,
                     onEdit: { draftAmount = amount; page = .amount },
                     onNetwork: { page = .networks }
@@ -163,17 +164,19 @@ struct UsdtReceiveAddressContent: View {
     let address: String
     let uri: String
     let network: String
+    var amount = ""
     var error: String?
     let onEdit: () -> Void
     let onNetwork: () -> Void
     @State private var showDetails = false
+    @State private var showShareSheet = false
 
     private var networkTitle: String {
         t("usdt__receive_network", variables: ["network": network])
     }
 
-    private var shareText: String {
-        networkTitle + "\n" + uri
+    var shareText: String {
+        [networkTitle, address, amount.isEmpty ? nil : "\(amount) USDT"].compactMap { $0 }.joined(separator: "\n")
     }
 
     var body: some View {
@@ -185,13 +188,14 @@ struct UsdtReceiveAddressContent: View {
                                                     shareText: shareText)],
                         navigationPath: .constant([]),
                         editRoute: nil,
-                        accentColor: .usdtAccent
+                        accentColor: .usdtAccent,
+                        onShare: { showShareSheet = true }
                     )
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtReceiveAddress")
                 } else {
                     QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: uri, shareText: shareText, onEdit: onEdit)
+                           copyValue: address, shareText: shareText, onEdit: onEdit)
                 }
             } else if let error { BodySText(error, textColor: .brandAccent) }
             else { ProgressView() }
@@ -212,6 +216,9 @@ struct UsdtReceiveAddressContent: View {
                      icon: showDetails ? Image("qr").resizable().frame(width: 16, height: 16) : nil, shouldExpand: true,
                      titleKerning: 0, titleLineHeight: 20)
         { showDetails.toggle() }.accessibilityIdentifier("UsdtReceiveDetails")
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(activityItems: [shareText] + (QR.shareImage(content: uri).map { [$0] } ?? []))
+            }
     }
 }
 

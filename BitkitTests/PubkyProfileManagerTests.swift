@@ -12,6 +12,60 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileDeletionPausesAutomaticWorkWithoutEndingTheSession() async throws {
+        for outcome in ["success", "failure", "cancellation"] {
+            let manager = PubkyProfileManager()
+            manager.publicKey = "pubky" + String(repeating: "y", count: 52)
+            manager.authState = .authenticated
+            let session = try XCTUnwrap(manager.currentSession)
+            let started = expectation(description: "Deletion started")
+            let (resume, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let deletion = Task {
+                try await manager.performProfileDeletion {
+                    started.fulfill()
+                    for await _ in resume {}
+                    XCTAssertEqual(manager.currentSession, session)
+                    if outcome == "failure" { throw KeychainError.failedToDelete }
+                    try Task.checkCancellation()
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            XCTAssertNil(manager.automaticPaykitSession, outcome)
+            XCTAssertEqual(manager.currentSession, session, "Explicit cleanup retains its session")
+            let deleting = await PrivatePaykitService.shared.isDeletingProfile
+            XCTAssertTrue(deleting)
+            if outcome == "cancellation" { deletion.cancel() }
+            continuation.finish()
+            do {
+                try await deletion.value
+                XCTAssertEqual(outcome, "success")
+            } catch {
+                XCTAssertNotEqual(outcome, "success")
+                if outcome == "cancellation" { XCTAssertTrue(error is CancellationError) }
+            }
+            XCTAssertEqual(manager.automaticPaykitSession, session, outcome)
+            let stillDeleting = await PrivatePaykitService.shared.isDeletingProfile
+            XCTAssertFalse(stillDeleting)
+        }
+    }
+
+    @MainActor
+    func testEndingDeletionDoesNotRestoreAnEndedOrChangedSession() async {
+        let manager = PubkyProfileManager()
+        manager.publicKey = "pubky" + String(repeating: "y", count: 52)
+        manager.authState = .authenticated
+        let original = manager.automaticPaykitSession
+        await manager.performProfileDeletion {
+            manager.publicKey = "pubky" + String(repeating: "o", count: 52)
+            XCTAssertNil(manager.automaticPaykitSession)
+        }
+        XCTAssertNotEqual(manager.automaticPaykitSession, original)
+        await manager.performProfileDeletion { manager.authState = .idle }
+        XCTAssertNil(manager.automaticPaykitSession)
+    }
+
+    @MainActor
     func testNavigationLookupReadsStoredIdentityWithoutCachedMetadata() async throws {
         let key = "5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
         let request = try PubkyAuthRequest.parse(

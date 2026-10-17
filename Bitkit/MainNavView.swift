@@ -29,6 +29,7 @@ struct MainNavView: View {
     @State private var clipboardUri: String?
     @State private var didResumePendingPubkyProfileSetup = false
     @State private var isPreparingPendingContactDeepLink = false
+    @State private var retryPendingContactAfterDeletion = false
     init(canHandleDeepLinks: Bool = true) {
         self.canHandleDeepLinks = canHandleDeepLinks
     }
@@ -41,12 +42,13 @@ struct MainNavView: View {
         canRoutePubkyContactLink(
             isPaykitUIActive: isPaykitUIActive,
             isPubkyInitialized: pubkyProfile.isInitialized,
-            hasLoadedContacts: contactsManager.hasLoaded
+            hasLoadedContacts: contactsManager.hasLoaded,
+            hasSignedInIdentity: pubkyProfile.isAuthenticated
         )
     }
 
     private var canPrepareContactDeepLink: Bool {
-        !isPaykitUIActive || pubkyProfile.isInitialized
+        !isPaykitUIActive || (pubkyProfile.isInitialized && !pubkyProfile.isRestoringSession)
     }
 
     private var pendingProfileSetupResumeState: PendingProfileSetupResumeState {
@@ -439,6 +441,24 @@ struct MainNavView: View {
             .onChange(of: app.pendingDeepLinkURL) { _, url in
                 guard canHandleDeepLinks, url != nil else { return }
                 Task { await handlePendingDeepLink() }
+            }
+            .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
+                guard !isDeleting, canHandleDeepLinks,
+                      let url = app.pendingDeepLinkURL, PubkyContactLink.matches(url)
+                else { return }
+                retryPendingContactAfterDeletion = true
+                Task { await handlePendingDeepLink() }
+            }
+            .onChange(of: isPreparingPendingContactDeepLink) { _, isPreparing in
+                guard !isPreparing, retryPendingContactAfterDeletion, !pubkyProfile.isDeletingProfile else { return }
+                Task { await handlePendingDeepLink() }
+            }
+            .onChange(of: sheets.isPubkyAuthApprovalShownOrPending) { _, isShownOrPending in
+                guard canHandleDeepLinks, !isShownOrPending else { return }
+                Task {
+                    try? await Task.sleep(for: .seconds(SheetViewModel.replacementDelaySeconds))
+                    await handlePendingDeepLink()
+                }
             }
             .task(id: scenePhase == .active) {
                 guard scenePhase == .active, canHandleDeepLinks,
@@ -858,6 +878,7 @@ struct MainNavView: View {
 
     private func handlePendingDeepLink() async {
         guard !isPreparingPendingContactDeepLink else { return }
+        retryPendingContactAfterDeletion = false
         var contactsReady = true
         await prepareAndRoutePendingDeepLink {
             contactsReady = await loadContactsForPendingDeepLinkIfNeeded()
@@ -878,21 +899,15 @@ struct MainNavView: View {
               pubkyProfile.isInitialized,
               !isPreparingPendingContactDeepLink,
               let url = app.pendingDeepLinkURL,
-              let contactPublicKey = PubkyContactLink.publicKey(from: url)
+              PubkyContactLink.publicKey(from: url) != nil
         else { return true }
 
-        let session = pubkyProfile.currentSession
-        let contactsOwnerPublicKey = pubkyProfile.publicKey ?? contactPublicKey
+        guard !pubkyProfile.isDeletingProfile else { return false }
         isPreparingPendingContactDeepLink = true
         defer { isPreparingPendingContactDeepLink = false }
 
         do {
-            if pubkyProfile.publicKey != nil {
-                try await contactsManager.refreshContacts(for: contactsOwnerPublicKey)
-            } else {
-                try await contactsManager.loadContactsIfNeeded(for: contactsOwnerPublicKey)
-            }
-            return pubkyProfile.currentSession == session && !Task.isCancelled
+            return try await preparePubkyContactLink(profile: pubkyProfile, contacts: contactsManager)
         } catch is CancellationError {
             return false
         } catch {
@@ -926,8 +941,10 @@ struct MainNavView: View {
             if PubkyContactLink.matches(url) {
                 guard let publicKey = try pubkyContactPublicKeyForRouting(from: url, isPaykitUIActive: isPaykitUIActive) else { return }
                 guard pubkyProfile.initializationErrorMessage == nil,
-                      contactsManager.hasLoaded
+                      isContactDeepLinkReady
                 else { throw ContactsManagerError.invalidPublicKey }
+
+                if routePublicContactIfSignedOut(publicKey: publicKey, profile: pubkyProfile, navigation: navigation) { return }
 
                 scannerManager.configure(
                     app: app,

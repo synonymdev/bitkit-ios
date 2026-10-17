@@ -334,6 +334,39 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestPresentation(request))
     }
 
+    func testAutomaticRefreshPausesWithoutCancellingAdmittedWorkAndResumes() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        var canRefresh = true
+        await sdk.pauseNextPaymentRequestList()
+        let admitted = Task { await manager.refresh(canRefresh: { canRefresh }) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        let waiting = expectation(description: "Fresh refresh waiting for admitted work")
+        let queued = Task {
+            waiting.fulfill()
+            return await manager.refresh(forceFresh: true, canRefresh: { canRefresh })
+        }
+        await fulfillment(of: [waiting], timeout: 1)
+        canRefresh = false
+        await sdk.resumePaymentRequestList()
+        let admittedResult = await admitted.value
+        let queuedResult = await queued.value
+        let pausedResult = await manager.refresh(canRefresh: { canRefresh })
+        XCTAssertTrue(admittedResult)
+        XCTAssertFalse(queuedResult)
+        XCTAssertFalse(pausedResult)
+        let paused = await sdk.snapshot()
+        XCTAssertEqual(paused.paymentRequestListCallCount, 1)
+
+        let explicitResult = await manager.refresh(mode: .stored, forceFresh: true)
+        XCTAssertTrue(explicitResult, "Explicit proof refresh is not paused")
+        canRefresh = true
+        let resumedResult = await manager.refresh(canRefresh: { canRefresh })
+        XCTAssertTrue(resumedResult)
+        let resumed = await sdk.snapshot()
+        XCTAssertEqual(resumed.paymentRequestListCallCount, 3)
+    }
+
     func testFreshRefreshRereadsRequestsChangedAfterSnapshot() async throws {
         let record = try paymentRequestRecord()
         let sdk = PaymentRequestSdkMock(records: [record])

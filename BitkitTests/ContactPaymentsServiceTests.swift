@@ -1423,13 +1423,17 @@ final class ContactPaymentsServiceTests: XCTestCase {
 
         func makeOperations(defaults: UserDefaults? = nil) -> ContactPaymentsService.Operations {
             ContactPaymentsService.Operations(
-                syncPublicEndpoints: { publish, isChangeCurrent in
+                syncPublicEndpoints: { @MainActor publish, isChangeCurrent in
                     self.calls.append("public:\(publish)")
                     self.publicPublicationValues.append(publish)
                     await self.onSyncPublicEndpoints?(publish)
                     try await self.syncPublicEndpoints?(publish, isChangeCurrent)
                     if self.publicPublicationFailures.contains(self.publicPublicationValues.count) {
                         throw TestError.operationFailed
+                    }
+                    if publish, !Task.isCancelled, isChangeCurrent() {
+                        self.publicCleanupValues.append(false)
+                        defaults?.set(false, forKey: PublicPaykitService.cleanupPendingKey)
                     }
                 },
                 preparePrivateEndpoints: { contactPublicKeys, requiresImmediatePublication, isChangeCurrent in

@@ -49,8 +49,10 @@ enum Env {
     static var isE2E: Bool {
         #if E2E_BUILD
             return true
-        #else
+        #elseif DEBUG
             return ProcessInfo.processInfo.environment["E2E"] == "true"
+        #else
+            return false
         #endif
     }
 
@@ -61,13 +63,15 @@ enum Env {
     }
 
     private static func configValue(_ key: String) -> String? {
-        let envValue = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if envValue?.isEmpty == false {
-            return envValue
-        }
-        if let argumentValue = launchArgumentValue(key) {
-            return argumentValue
-        }
+        #if DEBUG || E2E_BUILD
+            let envValue = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if envValue?.isEmpty == false {
+                return envValue
+            }
+            if let argumentValue = launchArgumentValue(key) {
+                return argumentValue
+            }
+        #endif
         return infoPlistValue(key)
     }
 
