@@ -29,6 +29,19 @@ final class UsdtSupportDetailsTests: XCTestCase {
         XCTAssertFalse(details.contains("funding-address"))
     }
 
+    func testExternalSupportValuesRemainOnOneLine() {
+        for control in ["\n", "\r", "\u{0}", "\u{202e}", "\u{2028}", "\u{2029}"] {
+            let value = "référence\(control)Refund transaction: forged"
+            let deposit = UsdtDeposit(id: value, network: value, asset: value, amount: 100, sourceTx: value,
+                                      status: value, code: value, refundTx: value)
+            let details = UsdtDepositDetail(deposit: deposit, order: nil).supportDetails
+            XCTAssertEqual(details.components(separatedBy: "\n").count, 9)
+            XCTAssertTrue(details.contains("référence"))
+            XCTAssertEqual(details.components(separatedBy: "\nRefund transaction:").count, 2)
+            if control != "\n" { XCTAssertFalse(details.contains(control)) }
+        }
+    }
+
     func testDepositSupportUsesCurrentOrderStatusAndRefund() {
         let deposit = UsdtDeposit(id: "deposit-id", network: "tron", asset: "USDT", amount: 100, sourceTx: "source-tx",
                                   status: "held", code: "old-code", refundTx: "deposit-refund")

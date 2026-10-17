@@ -3,6 +3,7 @@
 This suite covers the uniquely targetable `bitkit://pubky-auth/setup` and `bitkit://pubky-auth/signin` OS handoffs into Bitkit. Both carry the grant-auth requester fields and normalize to `pubkyauth://signin_grant`; `/setup` is Paykit setup and requires a Bitkit claim, `/signin` is a plain grant sign-in (`open-signin-link.xml`). They are the only Pubky requests accepted from an OS link. `lightning:`/`lnurl*:`-prefixed raw Pubky auth and signup requests are rejected before authorization.
 It stops at explicit watch-only consent and never authorizes or exports account material.
 Bitkit retains links delivered during startup, restoration, or PIN entry and presents consent only after the main wallet UI is available.
+A sign-in link keeps its place when another link arrives: `signin-with-second-link.xml` checks that a payment link opened on the PIN screen in either order, or over the open authorization sheet, opens only after that sheet closes.
 
 ## Preconditions
 

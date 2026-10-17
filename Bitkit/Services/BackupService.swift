@@ -230,9 +230,13 @@ class BackupService {
 
     @discardableResult
     func triggerBackup(category: BackupCategory) async -> BackupOutcome {
+        await triggerBackup(category: category, isScheduled: false)
+    }
+
+    private func triggerBackup(category: BackupCategory, isScheduled: Bool) async -> BackupOutcome {
         let backupTask = try? await ServiceQueue.background(.backup) { [self] () -> Task<BackupOutcome, Never>? in
             guard runningBackupTasks[category] == nil else { return nil }
-            let backupTask = Task { await self.runBackup(category: category) }
+            let backupTask = Task { await self.runBackup(category: category, isScheduled: isScheduled) }
             runningBackupTasks[category] = backupTask
             return backupTask
         }
@@ -245,7 +249,7 @@ class BackupService {
         }
     }
 
-    private func runBackup(category: BackupCategory) async -> BackupOutcome {
+    private func runBackup(category: BackupCategory, isScheduled: Bool) async -> BackupOutcome {
         Logger.debug("Backup starting for: '\(category.rawValue)'", context: "BackupService")
         var outcome = BackupOutcome.failed
         var requiredAtStart: UInt64 = 0
@@ -259,7 +263,11 @@ class BackupService {
         do {
             if category == .wallet {
                 try await PaykitPaymentActivity.shared.waitUntilIdle()
-                try await persistWalletBackup()
+                if isScheduled {
+                    try await writeWalletBackup()
+                } else {
+                    try await persistWalletBackup()
+                }
             } else {
                 let data = try await getBackupDataBytes(category: category)
                 try await uploadBackup(category.rawValue, data)
@@ -299,16 +307,22 @@ class BackupService {
 
     func persistWalletBackup(usdt: String? = nil) async throws {
         do {
-            try await walletBackupWriter.write {
-                guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
-                let data = try await self.getBackupDataBytes(category: .wallet, usdt: usdt)
-                try Task.checkCancellation()
-                guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
-                try await self.uploadBackup(BackupCategory.wallet.rawValue, data)
-            }
+            try await writeWalletBackup(usdt: usdt)
         } catch {
             markBackupRequired(category: .wallet, schedule: !(error is CancellationError))
             throw error
+        }
+    }
+
+    /// Writes the wallet backup. The scheduler calls this directly and retries by its own rules, so its failure does not
+    /// schedule another attempt; `persistWalletBackup` marks the wallet required again for every other caller.
+    private func writeWalletBackup(usdt: String? = nil) async throws {
+        try await walletBackupWriter.write {
+            guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
+            let data = try await self.getBackupDataBytes(category: .wallet, usdt: usdt)
+            try Task.checkCancellation()
+            guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
+            try await self.uploadBackup(BackupCategory.wallet.rawValue, data)
         }
     }
 
@@ -686,7 +700,7 @@ class BackupService {
                 break
             }
             guard getBackupStatus(category: category).isRequired && !shouldSkipBackup() else { break }
-            outcome = await triggerBackup(category: category)
+            outcome = await triggerBackup(category: category, isScheduled: true)
             if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired { break }
         }
         _ = try? await ServiceQueue.background(.backup) { self.backupJobs.removeValue(forKey: category) }

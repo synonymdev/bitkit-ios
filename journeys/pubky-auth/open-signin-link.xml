@@ -5,6 +5,7 @@
     <action>Run `xcrun simctl openurl &lt;UDID&gt; "bitkit://pubky-auth/signin?caps=/pub/locks.app/:rw&amp;relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F&amp;secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s&amp;cid=locks.test&amp;cpk=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"`</action>
     <action>If the simulator asks to open the link in Bitkit, tap Open</action>
     <action>Verify the authorize button (id "PubkyAuthAuthorize") is visible</action>
+    <action>Wait 5 seconds, then verify the authorize button (id "PubkyAuthAuthorize") is still visible</action>
     <action>Verify the relay origin (id "PubkyAuthRelayOrigin") shows "https://httprelay.pubky.app"</action>
     <action>Verify the Paykit access row (id "PubkyAuthPaykitAccess") is not visible</action>
     <action>Tap Cancel (id "PubkyAuthCancel")</action>

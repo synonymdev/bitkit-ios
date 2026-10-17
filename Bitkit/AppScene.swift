@@ -534,7 +534,7 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
-            .onOpenURL { url in app.retainDeepLink(url) }
+            .onOpenURL { url in app.retainDeepLink(url, whileLocked: isLockedForDeepLinks) }
             // Bridge the vendor managers' device state into the watch-only manager without coupling them:
             // each bumps devicesRevision on any device or connection change.
             .onChange(of: trezorManager.devicesRevision) { _, _ in pushHardwareDevices() }
@@ -733,7 +733,7 @@ struct AppScene: View {
                 }
 
                 if let url = DeepLinkRouter.shared.consume() {
-                    app.retainDeepLink(url)
+                    app.retainDeepLink(url, whileLocked: isLockedForDeepLinks)
                 }
 
                 // Listen for quick action notifications
@@ -763,12 +763,16 @@ struct AppScene: View {
 
     private func handleDeepLinkNotification(_ notification: Notification) {
         if let retainedURL = DeepLinkRouter.shared.consume() {
-            app.retainDeepLink(retainedURL)
+            app.retainDeepLink(retainedURL, whileLocked: isLockedForDeepLinks)
             return
         }
         if let receivedURL = notification.object as? URL {
-            app.retainDeepLink(receivedURL)
+            app.retainDeepLink(receivedURL, whileLocked: isLockedForDeepLinks)
         }
+    }
+
+    private var isLockedForDeepLinks: Bool {
+        settings.pinEnabled && !isPinVerified
     }
 
     private var mainContent: some View {
