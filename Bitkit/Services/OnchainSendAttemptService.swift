@@ -449,7 +449,12 @@ actor OnchainSendAttemptService {
         guard let recovery = attempt.recoveryContext, let fee = prepared.miningFeeSats,
               !Set(recovery.inputs).isDisjoint(with: prepared.inputs)
         else { return false }
-        let candidateFee = max(recovery.candidateFeeSats?.values.max() ?? 0, attempt.followupContext?.feeSats ?? 0)
+        // A backup without per-candidate fees still bounds a retry's fee: it spends the same coins to the same output,
+        // so it has the original's size at its own rate.
+        let originalFee = attempt.followupContext?.feeSats ?? 0
+        let originalRate = UInt64(max(recovery.satsPerVbyte, 1))
+        let scaledFee = (recovery.candidateFeeRates?.values.max()).map { (originalFee * UInt64($0) + originalRate - 1) / originalRate } ?? 0
+        let candidateFee = max(recovery.candidateFeeSats?.values.max() ?? 0, originalFee, scaledFee)
         return fee > candidateFee
     }
 

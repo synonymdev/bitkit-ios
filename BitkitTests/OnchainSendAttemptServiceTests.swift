@@ -117,6 +117,39 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(restored.canRetrySamePayment)
     }
 
+    func testReleaseMustOutbidARetryCandidateAfterARestore() async throws {
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        let retry = String(repeating: "ef", count: 32)
+        let input = OnchainSendInput(txid: String(repeating: "cd", count: 32), vout: 0)
+        // Original at 10 sat/vB and a retry of it at 30 sat/vB, both 141 vB: P2WPKH input, P2TR payee output, change.
+        let live = try OnchainSendAttempt(
+            id: UUID(), walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: nil,
+            address: "bcrt1poriginal", amountSats: 10000, isMaxAmount: false, status: .unknown, txid: retry,
+            followupContext: .init(feeSats: 1410, feeRate: 10, tags: [], contact: nil, createdAt: 123),
+            recoveryContext: .init(inputs: [input], satsPerVbyte: 10, paymentIdentity: nil, candidateTxids: [txid, retry],
+                                   candidateFeeRates: [txid: 10, retry: 30], candidateFeeSats: [txid: 1410, retry: 4230])
+        )
+        let store = MemoryAttemptStore()
+        try store.save([live])
+        let snapshot = try await OnchainSendAttemptService(store: store).backupSnapshot(wallet: wallet, proofs: [])
+        let (restored, _) = try XCTUnwrap(snapshot).restored(wallet: wallet, proofs: [])
+        XCTAssertEqual(restored.recoveryContext?.candidateFeeSats?[retry], 4230, "The backup carries each candidate's fee")
+        // The release's first try: 2 sat/vB over the retry, on a 129 vB tx (P2WPKH output to the wallet, change).
+        let release = PreparedOnchainSendDispatch(
+            txid: String(repeating: "77", count: 32), inputs: [input], recipientAmountSats: 1000, miningFeeSats: 32 * 129,
+            broadcast: { .accepted(txid: String(repeating: "77", count: 32)) }
+        )
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release, live))
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release, restored),
+                       "A release paying less than the 4230-sat retry outbids it once a restore drops the local fee evidence")
+        // An older backup without the fees still bounds the retry from its rate.
+        var olderBackup = restored
+        olderBackup.recoveryContext?.candidateFeeSats = nil
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release, olderBackup))
+    }
+
     func testRestoringTheBackupOfAPendingAttemptKeepsTheLocalAttempt() async throws {
         let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
             kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
