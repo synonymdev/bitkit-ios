@@ -9,7 +9,8 @@ final class UsdtReceiveSharingTests: XCTestCase {
         for (network, amount) in [("Arbitrum One", ""), ("Arbitrum One", "1.234567"), ("Polygon", "3.5")] {
             let view = UsdtReceiveAddressContent(address: address, uri: "ethereum:token/transfer", network: network,
                                                  amount: amount, onEdit: {}, onNetwork: {})
-            let expected = "Network: \(network)\n\(address)" + (amount.isEmpty ? "" : "\n\(amount) USDT")
+            let networkTitle = t("usdt__receive_network", variables: ["network": network])
+            let expected = "\(networkTitle)\n\(address)" + (amount.isEmpty ? "" : "\n\(amount) USDT")
             XCTAssertEqual(view.shareText, expected)
         }
     }
