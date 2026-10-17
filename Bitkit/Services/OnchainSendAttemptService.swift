@@ -94,24 +94,36 @@ extension LightningService: OnchainReleasing {
               let recovery = attempt.recoveryContext, !recovery.inputs.isEmpty
         else { throw OnchainSendAttemptError.retryUnavailable }
         let original = Set(recovery.inputs)
-        let utxos = try await listSpendableOutputs().filter {
-            original.contains(OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout))
-        }
-        guard !utxos.isEmpty else { throw OnchainSendAttemptError.retryUnavailable }
-        var feeRate = max(recovery.satsPerVbyte, recovery.candidateFeeRates?.values.max() ?? 0) + 2
+        let inputSets = OnchainSendAttemptService.releaseInputSets(spendable: try await listSpendableOutputs(), original: original)
+        guard let originalCount = inputSets.first?.count else { throw OnchainSendAttemptError.retryUnavailable }
         let address = try await newAddress()
-        for _ in 0 ..< 4 {
-            let prepared = try await prepareOnchainSend(
-                address: address, sats: Self.releaseAmountSats, satsPerVbyte: feeRate, utxosToSpend: utxos, isMaxAmount: false,
-                expectedWalletIndex: currentWalletIndex, expectedNode: onchainDispatchNode, paymentDeadline: nil
-            )
-            guard !original.isDisjoint(with: prepared.inputs) else { throw OnchainSendAttemptError.retryConstruction }
-            if OnchainSendAttemptService.releaseOutbids(prepared, attempt) {
-                return prepared
+        var lastError: Error = OnchainSendAttemptError.retryConstruction
+        for utxos in inputSets {
+            var feeRate = max(recovery.satsPerVbyte, recovery.candidateFeeRates?.values.max() ?? 0) + 2
+            for _ in 0 ..< 4 {
+                let prepared: PreparedOnchainSendDispatch
+                do {
+                    prepared = try await prepareOnchainSend(
+                        address: address, sats: Self.releaseAmountSats, satsPerVbyte: feeRate, utxosToSpend: utxos,
+                        isMaxAmount: false, expectedWalletIndex: currentWalletIndex, expectedNode: onchainDispatchNode,
+                        paymentDeadline: nil
+                    )
+                } catch {
+                    // These coins cannot fund the release at this fee; try the next, larger set.
+                    lastError = error
+                    break
+                }
+                // Every spendable original coin must go, so no candidate can still confirm.
+                guard Set(utxos.prefix(originalCount).map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
+                    .isSubset(of: prepared.inputs)
+                else { throw OnchainSendAttemptError.retryConstruction }
+                if OnchainSendAttemptService.releaseOutbids(prepared, attempt) {
+                    return prepared
+                }
+                feeRate *= 2
             }
-            feeRate *= 2
         }
-        throw OnchainSendAttemptError.retryConstruction
+        throw lastError
     }
 }
 
@@ -442,6 +454,25 @@ struct OnchainSendPendingContext: Hashable {
 
 actor OnchainSendAttemptService {
     static let shared = OnchainSendAttemptService()
+
+    /// The coin sets a release tries, smallest first: the original's coins alone, then with the wallet's largest other
+    /// coin, then with all of them. A small payment's coins may not cover the release's output and higher fee, and
+    /// any set that spends an original coin still makes every candidate unconfirmable.
+    static func releaseInputSets(spendable: [SpendableUtxo], original: Set<OnchainSendInput>) -> [[SpendableUtxo]] {
+        let isOriginal = { (utxo: SpendableUtxo) in original.contains(OnchainSendInput(txid: utxo.outpoint.txid, vout: utxo.outpoint.vout)) }
+        let originals = spendable.filter(isOriginal)
+        guard !originals.isEmpty else { return [] }
+        let others = spendable.filter { !isOriginal($0) }.sorted { $0.valueSats > $1.valueSats }
+        // Each set starts with every original coin, so a release spends them all.
+        var sets = [originals]
+        if let largest = others.first {
+            sets.append(originals + [largest])
+        }
+        if others.count > 1 {
+            sets.append(originals + others)
+        }
+        return sets
+    }
 
     /// A release must spend at least one of the original's coins, and pay more than any candidate, so it replaces a
     /// candidate a node may still hold.

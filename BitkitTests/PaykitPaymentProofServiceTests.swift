@@ -344,6 +344,22 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(attemptsStore.snapshot().isEmpty, "The send block stayed after the proof was removed")
     }
 
+    func testReleaseAddsWalletCoinsWhenTheOriginalCoinsFallShort() {
+        func utxo(_ byte: String, _ value: UInt64) -> SpendableUtxo {
+            SpendableUtxo(outpoint: OutPoint(txid: Txid(String(repeating: byte, count: 32)), vout: 0), valueSats: value)
+        }
+        let original = utxo("11", 1200)
+        let small = utxo("22", 5000)
+        let large = utxo("33", 90000)
+        let sets = OnchainSendAttemptService.releaseInputSets(
+            spendable: [small, original, large], original: [OnchainSendInput(txid: String(repeating: "11", count: 32), vout: 0)]
+        )
+        XCTAssertEqual(sets.map { $0.map(\.valueSats) }, [[1200], [1200, 90000], [1200, 90000, 5000]])
+        XCTAssertTrue(OnchainSendAttemptService.releaseInputSets(
+            spendable: [small, large], original: [OnchainSendInput(txid: String(repeating: "11", count: 32), vout: 0)]
+        ).isEmpty, "A release without an original coin is never built")
+    }
+
     func testReleaseMustSpendAnOriginalCoinAndOutbidEveryCandidate() async throws {
         let (_, _, _, attempt) = try await unknownRequestPayment(state: .canceled)
         let inputs = try XCTUnwrap(attempt.recoveryContext?.inputs)
