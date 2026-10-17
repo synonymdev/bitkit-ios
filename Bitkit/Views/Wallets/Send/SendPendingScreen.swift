@@ -123,7 +123,11 @@ struct SendPendingScreen: View {
                     showingAbandonConfirmation = true
                 }
                 .accessibilityIdentifier("AbandonExpiredOnchainPayment")
-                .padding(.bottom, 16)
+                .padding(.bottom, abandoningOnchain ? 8 : 16)
+                if abandoningOnchain {
+                    BodySText(t("wallet__onchain_abandon_checking"))
+                        .padding(.bottom, 16)
+                }
             }
 
             HStack(spacing: 16) {
