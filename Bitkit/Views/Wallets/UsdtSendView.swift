@@ -203,9 +203,10 @@ struct UsdtSendView: View {
         Button { recipientFocused = false; showingNetworks = true } label: {
             HStack(spacing: 8) {
                 Image("usdt-network").resizable().scaledToFit().frame(width: 16, height: 16).foregroundColor(.usdtAccent)
-                CaptionBText(destination.label, kerning: 0, lineHeight: 13).lineLimit(1).minimumScaleFactor(0.8)
+                CaptionBText(destination.label, kerning: 0, lineHeight: 13)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 12).frame(height: 28)
+            .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 28)
             .background(Color.white01, in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white16, lineWidth: 1))
         }
@@ -235,26 +236,38 @@ struct UsdtSendView: View {
     }
 
     private var recipientContent: some View {
-        VStack(spacing: 8) {
-            networkSelector.padding(.bottom, 8)
-            Scanner(
-                accentColor: .usdtAccent,
-                permissionDescription: t("usdt__camera_permission"),
-                onScan: { payload in if let value = payload.string { useRecipient(value) } },
-                onImageSelection: readImage
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            RectangleButton(
-                icon: "clipboard", iconColor: .usdtAccent, title: t("common__paste"), testID: "UsdtPaste"
-            ) {
-                if let value = UIPasteboard.general.string, !value.isEmpty { useRecipient(value) }
-                else { error = t("wallet__send_clipboard_empty_text") }
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 8) {
+                    networkSelector.padding(.bottom, 8)
+                    Scanner(
+                        accentColor: .usdtAccent,
+                        permissionDescription: t("usdt__camera_permission"),
+                        onScan: { payload in if let value = payload.string { useRecipient(value) } },
+                        onImageSelection: readImage
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
+                    RectangleButton(
+                        icon: "clipboard", iconColor: .usdtAccent, title: t("common__paste"), testID: "UsdtPaste"
+                    ) {
+                        if let value = UIPasteboard.general.string, !value.isEmpty {
+                            _ = ClipboardPromptHistory().recordInspection(
+                                changeCount: UIPasteboard.general.changeCount,
+                                supportedValue: value.trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
+                            useRecipient(value)
+                        } else {
+                            error = t("wallet__send_clipboard_empty_text")
+                        }
+                    }
+                    RectangleButton(
+                        icon: "pencil", iconColor: .usdtAccent, title: t("wallet__recipient_manual"), testID: "UsdtManual"
+                    ) { editingRecipient = true }
+                    if let error { BodySText(error, textColor: .brandAccent) }
+                    BodySText(t("usdt__network_warning"), textColor: .textSecondary).padding(.top, 8)
+                }
+                .frame(minHeight: geometry.size.height)
             }
-            RectangleButton(
-                icon: "pencil", iconColor: .usdtAccent, title: t("wallet__recipient_manual"), testID: "UsdtManual"
-            ) { editingRecipient = true }
-            if let error { BodySText(error, textColor: .brandAccent) }
-            BodySText(t("usdt__network_warning"), textColor: .textSecondary).padding(.top, 8)
         }
     }
 
@@ -308,7 +321,7 @@ struct UsdtSendView: View {
                 type: .decimal,
                 decimalSeparator: Locale.current.decimalSeparator ?? ".",
                 isDisabled: busy || embedded,
-                onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false },
+                onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false; error = nil },
                 onPress: enterAmount
             )
             .frame(maxHeight: .infinity)
@@ -603,6 +616,7 @@ struct UsdtSendView: View {
         maximumQuote = nil
         isMaximumAmount = false
         amount = updated
+        error = nil
     }
 
     private func confirmPayment() async {

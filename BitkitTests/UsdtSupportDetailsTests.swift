@@ -52,7 +52,7 @@ final class UsdtSupportDetailsTests: XCTestCase {
                                         destinationTx: nil, refundTx: "order-refund", code: nil)
         let details = detail.supportDetails
         XCTAssertTrue(details.contains("Status: \(t("usdt__deposit_refunded")) (refunded)"))
-        for value in ["Orchestra", "tron", "Arbitrum One", "deposit-id", "source-tx", "refunded", "order-refund"] {
+        for value in ["Orchestra", "Tron", "Arbitrum One", "deposit-id", "source-tx", "refunded", "order-refund"] {
             XCTAssertTrue(details.contains(value), value)
         }
         XCTAssertFalse(details.contains("old-code"))
