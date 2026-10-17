@@ -1,0 +1,48 @@
+# Notifications (permission, push registration, notification extension)
+
+Scope: notification settings and permission flow, the one-shot background-payments prompt, APNs registration with Blocktank, and the `BitkitNotification` service extension that renders pushes for CJIT / incoming HTLC / order / close / timeout events. Paykit subscription local notifications: see `subscriptions.md`.
+
+## What it does
+- One setting, `settings.enableNotifications` (`@AppStorage("enableNotifications")`, default off), drives everything. Three toggles bind to it directly: Settings -> Notifications, Receive CJIT confirm and CJIT liquidity screens, Transfer spending confirm (`ReceiveCjitConfirmation`, `ReceiveCjitLearnMore`, `SpendingConfirm`).
+- `MainNavView` reacts to changes (`Bitkit/MainNavView.swift` ~line 366-420): setting turns on -> `PushNotificationManager.requestPermission()` (system alert only while status is `notDetermined`) and, if a device token exists, `registerWithBackend`; turns off -> `unregister()` (only `unregisterForRemoteNotifications`; server unregister is a TODO in code). `authorizationStatus` change to anything but `.authorized` sets the setting to false; `.authorized` sets it true. Status refreshes on every foreground (`scenePhase == .active`).
+- App launch (`AppDelegate.didFinishLaunchingWithOptions`) re-registers with APNs when already authorized; `didRegisterForRemoteNotificationsWithDeviceToken` stores the token, which triggers `registerWithBackend`: waits for node running (30 s), signs `bitkit-notifications<token><iso timestamp>`, creates a new keypair stored in the keychain (`pushNotificationPrivateKey`), and registers token + public key + features with Blocktank. Features: `incomingHtlc`, `mutualClose`, `orderPaymentConfirmed`, `cjitPaymentArrived`, `wakeToTimeout` (`Env.pushNotificationFeatures`). Skipped entirely when `Env.isE2E` (logs "Skipped push registration in E2E build").
+- Extension `BitkitNotification/NotificationService.swift`: returns early, without decrypting or setting content or calling the content handler, if the app holds the `.lightning` lock (app in foreground; `serviceExtensionTimeWillExpire` later hands the unmodified best-attempt content to the system); otherwise decrypts the payload (shared secret from the keychain private key) and sets fixed copy per type: `cjitPaymentArrived` and `incomingHtlc` = "Incoming Payment" / "Open Bitkit now to receive your payment"; `orderPaymentConfirmed` = "Spending Balance Ready"; `mutualClose` = "Spending Balance Expired"; `wakeToTimeout` = "Payment Pending"; decrypt failure = fallback "Bitkit" / "Open Bitkit to check for new activity". No amount is ever added, no node is started.
+- Foreground presentation (`willPresent`) shows banner, badge, sound. Tapping a push only logs (`handleNotification`, a TODO in `BitkitApp.swift` says tap does not open the transaction). On foreground, `AppScene.clearDeliveredNotifications()` removes delivered notifications.
+- Prompt: `NotificationsTimedSheet` (priority medium) opens `NotificationsSheet` (`SheetID.notifications`, id `BackgroundPayments`) when notifications are off, `hasSeenNotificationsIntro` is false and `totalLightningSats > 0`. "Later" (`BackgroundPaymentsCancel`) or Enable (`BackgroundPaymentsContinue`) mark it seen; Enable calls `requestPermission()`.
+- Settings screen `NotificationsSettings`: toggle, preview card (`NotificationPreview`), second toggle `enableNotificationsAmount` (show amount; the extension never reads it), button to iOS Settings (`NotificationsOpenSystemSettings`, label differs when status is `.denied`; toggle disabled when denied).
+
+## How a user reaches it
+- Settings: `HeaderMenu` -> `DrawerSettings` -> General -> `NotificationsSettings` row. First visit (`hasSeenNotificationsIntro` false) opens `NotificationsIntro` (`NotificationsIntro`, button `NotificationsIntro-button`) which requests permission and navigates to settings; later visits go straight to `NotificationsSettings`. The settings toggle has no accessibility id.
+- Receive: `Receive` -> `Tab-spending` -> "Receive Lightning funds" -> `ReceiveCjitAmount` (`ReceiveCjitAmountNumberField`, `ReceiveCjitAmountContinue`) -> `ReceiveCjitConfirm` with `ReceiveConfirmNotificationSwitch`; "Learn More" -> `ReceiveCjitLiquidity` with `ReceiveLiquidityNotificationSwitch`.
+- Transfer: `ActivitySavings` -> `TransferToSpending` -> `SpendingAmount` -> `SpendingAmountContinue` -> confirm with `SpendingConfirmNotificationSwitch`.
+- Dev: Advanced -> `DevSettings` -> "Test Push Notification" (`PushNotificationManager.sendTestNotification`, needs a device token; asks Blocktank to send an `orderPaymentConfirmed` push).
+
+## Code
+- `Bitkit/Managers/PushNotificationManager.swift`, `Bitkit/BitkitApp.swift` (`AppDelegate`, notification delegate), `Bitkit/MainNavView.swift`, `Bitkit/AppScene.swift`, `Bitkit/Models/BlocktankNotificationType.swift`, `Bitkit/Constants/Env.swift` (`pushNotificationFeatures`).
+- `BitkitNotification/NotificationService.swift`, `BitkitNotification/Info.plist`, `BitkitNotification/BitkitNotification.entitlements`; `Bitkit/Bitkit.entitlements` (`aps-environment` = `development`, App Group `group.bitkit`). Crypto/keychain/`StateLocker` shared with the app.
+- `Bitkit/Views/Settings/Notifications/NotificationsSettings.swift`, `NotificationsIntro.swift`, `Bitkit/Views/Sheets/NotificationsSheet.swift`, `Bitkit/Managers/TimedSheets/NotificationsTimedSheet.swift`, `Bitkit/Components/NotificationPreview.swift`.
+- Routes: `Route.notifications`, `Route.notificationsIntro`; sheet: `SheetID.notifications` (`NotificationsSheetItem`).
+- Manual tooling: `test-push-server/` (Node + APNs key, `README.md`) sends a push to a device token.
+
+## How to drive it
+- Journeys `journeys/notification-permission/` (README there): `receive-cjit-confirm-notification-toggle.xml`, `receive-cjit-liquidity-notification-toggle.xml`, `transfer-spending-confirm-notification-toggle.xml` (all "... requests notification permission"), `toggle-off-and-system-settings-route.xml` ("notification toggle off unregisters and settings routes to system"). Preconditions: onboarded wallet connected to the LSP (CJIT quote), authorization `notDetermined` (reinstall: `xcrun simctl uninstall <device> to.bitkit`, rebuild), setting off; transfer journey needs positive on-chain savings. Run one journey per app state because the three toggles share one setting.
+- Journeys `journeys/cjit-notifications/` (README there): `cjit-background-notification.xml`, `cjit-push-single-notification.xml`, `non-cjit-channel-no-payment-notification.xml`. Need a physical device with real APNs, regtest LSP, "Get paid when Bitkit is closed" enabled, and a funded CJIT entry paid via `../bitkit-android/lsp POST /regtest/lightning/pay` (iOS copy of `lsp` is pending, issue 694). Read results in Notification Center or Console.app (filter on the bell emoji, info level).
+- Related in-app sheet journeys `journeys/onchain-receive/` (`confirmed-only-received-sheet.xml`, `mempool-then-confirmed-single-sheet.xml`, `restore-recent-receive-stays-silent.xml`): these test the in-app received sheet (`ReceivedTransaction`, `ReceivedTransactionButton`), not push; see `receive.md`. iOS posts no local notification for onchain receives (journeys README).
+- e2e: no spec exercises notifications. `bitkit-e2e-tests/test/helpers/actions.ts` `dismissBackgroundPaymentsTimedSheet` / `tryDismissBackgroundPaymentsIfVisible` only dismiss the prompt (iOS ids `BackgroundPaymentsDescription`, `BackgroundPaymentsCancel`); used by lightning, lnurl, multiaddress, migration, transfer specs. `Env.isE2E` also disables push registration.
+- Unit tests: none for `PushNotificationManager` or the extension found in `BitkitTests/`.
+
+## What proves it
+- Permission journeys: system alert text "... Would Like to Send You Notifications", tap Allow, then the switch id reads on. Toggle-off journey: switch turns off, no alert, app stays foreground; `NotificationsOpenSystemSettings` opens iOS Settings on the Bitkit entry.
+- CJIT journeys: exactly one Notification Center entry titled "Incoming Payment" with body "Open Bitkit now to receive your payment", log line "Configured notification" with `type=cjitPaymentArrived`; tapping opens the app and the received amount shows. Non-CJIT: toast `SpendingBalanceReadyToast`, no "Incoming Payment".
+
+## Not covered by tests
+- Journeys are manual, physical-device only and not run automatically; no e2e. Not exercised anywhere: denied-permission state (`isDenied` UI, disabled toggle), `NotificationsIntro` first-visit route, the amount toggle, `NotificationsSheet` Enable path, backend registration success/failure toast (`other__notification_registration_failed_title`), token re-registration on change, `incomingHtlc`, `mutualClose`, `wakeToTimeout` copy, decrypt-failure fallback, foreground lock early return, `sendTestNotification`.
+- `onchain-receive/confirmed-only-background-notification.xml` is not ported (no foreground node service on iOS).
+
+## Gotchas
+- The OS prompt is one-shot; reinstall resets it (re-onboarding needed). Simulator cannot do the APNs round trip.
+- Turning the toggle off does not open iOS Settings and does not unregister server-side (TODO); status `.denied` forces `enableNotifications` false.
+- Toggle label differs: "Enable background setup" (Receive) vs "Set up in background" (Transfer); ids are stable.
+- Extension logs through `os_log` at info level (not the app log files); no verified one-liner for streaming from a device.
+- `aps-environment` is `development` in the checked-in entitlements.
+- The `enableNotificationsAmount` setting is stored and backed up (`SettingsBackupConfig`) but has no effect on pushes in code read.

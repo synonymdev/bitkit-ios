@@ -167,6 +167,13 @@ hardware wallet pairing and transfers. Nothing in `.github/workflows` runs them;
 ones a PR lists. Read `journeys/README.md` before running or writing one, and see the Journeys
 section under Code Style & Conventions.
 
+### Feature map
+
+`Docs/features/` has one file per feature: what it does, how a user reaches it, the code that owns it, the journeys and
+e2e specs that drive it, what proves it and what no test covers. Read `Docs/features/<feature>.md` before changing or
+testing a feature, and update it in the same PR when a flow, route, identifier or precondition changes. `node scripts/validate-feature-map.js` (CI: Validate Feature Map) fails when a file names a path that no longer exists. The index is
+`Docs/features/README.md`; file names match the Android repo's `docs/features/`.
+
 ## Architecture
 
 ### SwiftUI Patterns (CRITICAL)
