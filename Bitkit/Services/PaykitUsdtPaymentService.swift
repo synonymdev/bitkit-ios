@@ -124,7 +124,7 @@ final class PaykitUsdtPaymentService {
               wallet: UsdtWalletManager, authorize: @escaping @MainActor () async throws -> Void) async throws
     {
         let submissionDeadline = try context.incomingPaymentRequest?.submissionDeadline(quoteId: paymentTerms?.quoteId)
-        guard !sending else { throw PaykitPaymentRequestError.operationInProgress }
+        guard !sending, !preparing else { throw PaykitPaymentRequestError.operationInProgress }
         sending = true
         stateGeneration += 1
         defer { sending = false }
@@ -271,7 +271,7 @@ final class PaykitUsdtPaymentService {
     func prepare(context: ContactPaymentContext, quote: UsdtQuote, wallet: UsdtWalletManager,
                  amount: PaykitAmount?, paymentTerms: PaykitRequestPricing.Payment?) async throws
     {
-        guard !preparing else { throw PaykitPaymentRequestError.operationInProgress }
+        guard !preparing, !sending else { throw PaykitPaymentRequestError.operationInProgress }
         preparing = true
         defer { preparing = false }
         guard quote.destination == .arbitrum, quote.amount > 0,
@@ -292,15 +292,6 @@ final class PaykitUsdtPaymentService {
         let owner = wallet.address.lowercased()
         activeWallet = owner
         activeIdentity = identity
-        if let previous = try load().attempts.first(where: {
-            $0.wallet == owner && $0.identity == identity && request != nil && $0.requestId == request?.id
-        }), previous.quoteId != quote.id {
-            // Only an unstarted or definitively unexecuted payment may be replaced by a fresh quote.
-            let transfer = try await wallet.storedTransfer(previous.quoteId)
-            guard (transfer == nil && !previous.paymentStarted) || transfer?.status == .failed || transfer?.status == .replaced else {
-                throw PaykitPaymentRequestError.operationInProgress
-            }
-        }
         let binding: UsdtPaymentProofBinding?
         if let request {
             guard let privateContext = context.privatePaymentContext else {
@@ -315,12 +306,37 @@ final class PaykitUsdtPaymentService {
         if let binding { try Self.validateProofSize(binding: binding) }
         let attempt = Attempt(quoteId: quote.id, wallet: owner, identity: identity, contact: context.publicKey,
                               requestId: request?.id, binding: binding, billingPeriod: request?.billingPeriod)
-        var state = try load()
-        state.attempts.removeAll {
-            $0.wallet == owner && $0.identity == identity && ($0.quoteId == quote.id || (request != nil && $0.requestId == request?.id))
+        try await storeAttempt(attempt, storedTransfer: { try await wallet.storedTransfer($0) })
+    }
+
+    func storeAttempt(_ attempt: Attempt, storedTransfer: (String) async throws -> UsdtTransfer?) async throws {
+        guard !sending else { throw PaykitPaymentRequestError.operationInProgress }
+        let generation = stateGeneration
+        let state = try load()
+        let existing = state.attempts.first { $0.wallet == attempt.wallet && $0.quoteId == attempt.quoteId }
+        if let existing, existing.bindingState != attempt.bindingState {
+            throw PaykitPaymentRequestError.operationInProgress
         }
-        state.attempts.append(attempt)
-        try save(state)
+        var removable: [Attempt] = []
+        for previous in state.attempts where previous.wallet == attempt.wallet && previous.identity == attempt.identity &&
+            attempt.requestId != nil && previous.requestId == attempt.requestId && previous.quoteId != attempt.quoteId
+        {
+            guard previous.proof == nil, !previous.proofQueued else { throw PaykitPaymentRequestError.operationInProgress }
+            let transfer = try await storedTransfer(previous.quoteId)
+            guard (transfer == nil && !previous.paymentStarted) || transfer?.status == .failed || transfer?.status == .replaced else {
+                throw PaykitPaymentRequestError.operationInProgress
+            }
+            if transfer == nil, !previous.paymentStarted { removable.append(previous) }
+        }
+        var current = try load()
+        guard stateGeneration == generation, !sending, current.attempts == state.attempts else {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
+        current.attempts.removeAll { removable.contains($0) }
+        if existing == nil { current.attempts.append(attempt) }
+        releasedAttempts = []
+        resumableRequests = []
+        try save(current)
     }
 
     func reconcile(wallet: UsdtWalletManager) async {
@@ -352,7 +368,7 @@ final class PaykitUsdtPaymentService {
         paymentRequests: () async throws -> [Paykit.PaymentRequestRecord],
         verifyPayment: (UsdtPaymentProofBinding, UsdtPaymentProof) async throws -> UsdtVerifiedPayment?
     ) async {
-        guard !reconciling, !sending else { return }
+        guard !reconciling, !sending, !preparing else { return }
         let generation = stateGeneration
         reconciling = true
         defer { reconciling = false }
@@ -362,11 +378,11 @@ final class PaykitUsdtPaymentService {
         do {
             try Task.checkCancellation()
             guard let (owner, identity) = try await context() else { return }
+            guard stateGeneration == generation else { return }
             activeWallet = owner
             activeIdentity = identity
             let state = try load()
             publish(state)
-            var resumable: [Attempt] = []
             var released: [Attempt] = []
             for var attempt in state.attempts where attempt.wallet == owner && attempt.identity == identity {
                 guard let requestId = attempt.requestId else { continue }
@@ -382,7 +398,6 @@ final class PaykitUsdtPaymentService {
                         try save(current)
                     }
                     let unexecuted = (transfer == nil && !attempt.paymentStarted) || transfer?.status == .failed || transfer?.status == .replaced
-                    if unexecuted { resumable.append(attempt) }
                     if unexecuted, attempt.proof == nil, !attempt.proofQueued {
                         released.append(attempt)
                     }
@@ -392,6 +407,7 @@ final class PaykitUsdtPaymentService {
                     if let saved = attempt.proof { proof = saved }
                     else {
                         guard let signed = try await paymentProof(attempt.quoteId, binding) else { continue }
+                        guard stateGeneration == generation else { return }
                         proof = Proof(signed)
                         var current = try load()
                         guard let index = current.attempts.firstIndex(where: { $0.quoteId == attempt.quoteId && $0.wallet == owner })
@@ -409,6 +425,7 @@ final class PaykitUsdtPaymentService {
                                                             paymentIdentifier: attempt.quoteId, proofData: data,
                                                             conversionQuoteId: binding.conversionQuoteId.isEmpty ? nil : binding.conversionQuoteId)
                     if await submitProof(pending) {
+                        guard stateGeneration == generation else { return }
                         var current = try load()
                         if let index = current.attempts.firstIndex(where: { $0.quoteId == attempt.quoteId && $0.wallet == owner }) {
                             current.attempts[index].proofQueued = true
@@ -424,11 +441,15 @@ final class PaykitUsdtPaymentService {
             }
             guard stateGeneration == generation, activeWallet == owner, activeIdentity == identity else { return }
             let currentState = try load()
-            resumableRequests = Set(resumable.filter { currentState.attempts.contains($0) }.compactMap(\.requestId))
             releasedAttempts = released.filter { currentState.attempts.contains($0) }
+            let protected = currentState.attempts.filter {
+                $0.wallet == owner && $0.identity == identity && !releasedAttempts.contains($0)
+            }
+            resumableRequests = Set(releasedAttempts.compactMap(\.requestId)).subtracting(protected.compactMap(\.requestId))
             publish(currentState)
             try Task.checkCancellation()
             for record in try await paymentRequests() where record.localRole == .payee {
+                guard stateGeneration == generation else { return }
                 for submission in record.paymentProofs
                     where submission.paymentEndpointIdentifier == PublicPaykitService.MethodId.usdtArbitrum.rawValue
                 {
@@ -452,7 +473,9 @@ final class PaykitUsdtPaymentService {
                         period: submission.billingPeriod
                     )
                     do {
-                        guard let payment = try await verifyPayment(binding, proof.coreValue) else {
+                        let verified = try await verifyPayment(binding, proof.coreValue)
+                        guard stateGeneration == generation else { return }
+                        guard let payment = verified else {
                             try invalidateReceipt(proofEventId: submission.eventId, requestId: request.id, owner: owner, identity: identity)
                             continue
                         }
@@ -473,6 +496,7 @@ final class PaykitUsdtPaymentService {
                         current.receipts.append(receipt)
                         try save(current)
                     } catch let error as UsdtError {
+                        guard stateGeneration == generation else { return }
                         if case .InvalidPaymentProof = error {
                             try invalidateReceipt(proofEventId: submission.eventId, requestId: request.id, owner: owner, identity: identity)
                             continue
@@ -500,5 +524,15 @@ final class PaykitUsdtPaymentService {
     private func currentIdentity() async throws -> String? {
         guard let status = try await PaykitSdkService.shared.identityStatus(), status.capability == .privateLinkCapable else { return nil }
         return status.publicKey.flatMap(PubkyPublicKeyFormat.normalized)
+    }
+}
+
+private extension PaykitUsdtPaymentService.Attempt {
+    var bindingState: Self {
+        var value = self
+        value.proof = nil
+        value.proofQueued = false
+        value.paymentStarted = false
+        return value
     }
 }
