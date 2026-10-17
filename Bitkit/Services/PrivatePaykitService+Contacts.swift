@@ -332,19 +332,27 @@ extension PrivatePaykitService {
         )
     }
 
-    func removePublishedEndpoints(for publicKeys: [String]? = nil, isSessionCurrent: (@MainActor () -> Bool)? = nil) async throws {
-        try await removePublishedEndpoints(for: publicKeys, isSessionCurrent: isSessionCurrent, operations: EndpointCleanupOperations(
-            linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
-            clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0, isSessionCurrent: isSessionCurrent) },
-            drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
-            pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
-            syncApp: { try await PublicPaykitService.syncPaykitApp() }
-        ))
+    func removePublishedEndpoints(
+        for publicKeys: [String]? = nil, isSessionCurrent: (@MainActor () -> Bool)? = nil, deferAppSync: Bool = false
+    ) async throws {
+        try await removePublishedEndpoints(
+            for: publicKeys,
+            isSessionCurrent: isSessionCurrent,
+            deferAppSync: deferAppSync,
+            operations: EndpointCleanupOperations(
+                linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
+                clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0, isSessionCurrent: isSessionCurrent) },
+                drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
+                pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
+                syncApp: { try await PublicPaykitService.syncPaykitApp() }
+            )
+        )
     }
 
     func removePublishedEndpoints(
         for publicKeys: [String]? = nil,
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        deferAppSync: Bool = false,
         operations: EndpointCleanupOperations
     ) async throws {
         let revision = publicKeys != nil && isSessionCurrent != nil ? savedContactsRevision : nil
@@ -358,7 +366,8 @@ extension PrivatePaykitService {
             try await withPublicationLock {
                 if let isSessionCurrent, await !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
                 try await removePublishedEndpointsLocked(
-                    for: publicKeys, isSessionCurrent: isSessionCurrent, revision: revision, generation: generation, operations: operations
+                    for: publicKeys, isSessionCurrent: isSessionCurrent, revision: revision, generation: generation,
+                    deferAppSync: deferAppSync, operations: operations
                 )
             }
         } catch {
@@ -371,7 +380,7 @@ extension PrivatePaykitService {
 
     private func removePublishedEndpointsLocked(
         for publicKeys: [String]?, isSessionCurrent: (@MainActor () -> Bool)?, revision: Int?, generation: Int,
-        operations: EndpointCleanupOperations
+        deferAppSync: Bool, operations: EndpointCleanupOperations
     ) async throws {
         let peers = try await operations.linkedPeers()
         let linkedPublicKeys = Set(peers
@@ -461,7 +470,12 @@ extension PrivatePaykitService {
         if let firstError {
             throw firstError
         }
-        try await operations.syncApp()
+        if deferAppSync {
+            // Final profile cleanup synchronizes the registry; retain repair if deletion stops before it.
+            PublicPaykitService.setCleanupPending(true)
+        } else {
+            try await operations.syncApp()
+        }
     }
 
     func privatePaymentListCleanupKeys(_ publicKeys: [String], linkedPublicKeys: Set<String>) -> [String] {

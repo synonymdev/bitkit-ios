@@ -993,7 +993,7 @@ class PubkyProfileManager: ObservableObject {
 
     func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true) async throws {
         if cleanPrivatePaykitEndpoints {
-            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile", deferAppSync: true)
         }
         do {
             try await Task.detached {
@@ -1410,9 +1410,9 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    static func removePrivatePaykitEndpoints(context: String) async throws {
+    static func removePrivatePaykitEndpoints(context: String, deferAppSync: Bool = false) async throws {
         do {
-            try await PrivatePaykitService.shared.removePublishedEndpoints()
+            try await PrivatePaykitService.shared.removePublishedEndpoints(deferAppSync: deferAppSync)
             PrivatePaykitService.setContactSharingCleanupPending(false)
         } catch {
             PrivatePaykitService.setContactSharingCleanupPending(true)
@@ -1421,9 +1421,9 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    static func removePrivatePaykitEndpointsBestEffort(context: String) async {
+    static func removePrivatePaykitEndpointsBestEffort(context: String, deferAppSync: Bool = false) async {
         do {
-            try await removePrivatePaykitEndpoints(context: context)
+            try await removePrivatePaykitEndpoints(context: context, deferAppSync: deferAppSync)
             PrivatePaykitService.setContactSharingCleanupPending(false)
         } catch {
             PrivatePaykitService.setContactSharingCleanupPending(true)

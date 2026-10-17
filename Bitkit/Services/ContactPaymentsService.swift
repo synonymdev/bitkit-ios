@@ -247,10 +247,12 @@ enum ContactPaymentsService {
     }
 
     @MainActor
-    static func reconcilePendingEndpoints(_ reconcile: () async -> Void) async {
+    static func reconcilePendingEndpoints(reconcilePrivate: () async -> Void = {}, _ reconcile: () async -> Void) async {
         guard !isOperationActive, !Task.isCancelled else { return }
         isOperationActive = true
         defer { releaseOperation() }
+        await reconcilePrivate()
+        guard await !PrivatePaykitService.shared.isDeletingProfile, !Task.isCancelled else { return }
         await reconcile()
     }
 

@@ -1912,7 +1912,7 @@ struct AppScene: View {
 
     private func retryPendingPaykitEndpointRemoval() async {
         guard let session = pubkyProfile.automaticPaykitSession else { return }
-        await ContactPaymentsService.reconcilePendingEndpoints {
+        await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
             guard pubkyProfile.automaticPaykitSession == session else { return }
             let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
             await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
@@ -1922,7 +1922,7 @@ struct AppScene: View {
             if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
                 PublicPaykitService.setCleanupPending(true)
             }
-
+        }) {
             if PublicPaykitService.isCleanupPending, pubkyProfile.automaticPaykitSession == session {
                 do {
                     switch PublicPaykitService.pendingReconciliationMode() {

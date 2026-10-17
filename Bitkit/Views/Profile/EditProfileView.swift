@@ -174,7 +174,7 @@ struct EditProfileView: View {
     }
 
     private func performDeleteProfile() async throws {
-        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "EditProfileView.deleteProfile")
+        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "EditProfileView.deleteProfile", deferAppSync: true)
         await contactsManager.deleteAllContactsBestEffort()
         try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false)
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
