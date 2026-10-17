@@ -4,6 +4,7 @@ import UIKit
 struct DevSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(ToastWindowManager.disableAllToastsKey) private var disableAllToasts = false
     @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
 
     @EnvironmentObject var app: AppViewModel
@@ -58,6 +59,13 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Trezor Hardware Wallet")
                     }
                     .accessibilityIdentifier("Trezor")
+
+                    SettingsRow(
+                        title: "Disable All Toasts",
+                        rightIcon: nil,
+                        toggle: $disableAllToasts,
+                        testIdentifier: "DisableAllToastsToggle"
+                    )
 
                     SettingsSectionHeader("SWAPS")
                         .padding(.top, 16)
