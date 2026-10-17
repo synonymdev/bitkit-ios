@@ -499,6 +499,9 @@ actor OnchainSendAttemptService {
             // A local release approval and its transaction are not part of the shared backup record.
             previous.releaseApproved = nil
             previous.releaseTxid = nil
+            // The backup stamps its own follow-up time, which the live attempt never stores.
+            previous.followupContext?.backupCreatedAtMillis = nil
+            incoming.followupContext?.backupCreatedAtMillis = nil
             guard previous == incoming else { throw OnchainSendAttemptError.unresolved }
             return
         }

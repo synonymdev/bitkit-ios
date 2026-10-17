@@ -117,6 +117,33 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(restored.canRetrySamePayment)
     }
 
+    func testRestoringTheBackupOfAPendingAttemptKeepsTheLocalAttempt() async throws {
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        let store = MemoryAttemptStore()
+        var original = try OnchainSendAttempt(
+            id: UUID(), walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: nil,
+            address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false, status: .unknown, txid: txid,
+            followupContext: .init(feeSats: 100, feeRate: 1, tags: [], contact: nil, createdAt: 123),
+            recoveryContext: .init(inputs: [.init(txid: String(repeating: "cd", count: 32), vout: 0)],
+                                   satsPerVbyte: 1, paymentIdentity: nil, candidateTxids: [txid])
+        )
+        try store.save([original])
+        let service = OnchainSendAttemptService(store: store)
+        let snapshot = try await service.backupSnapshot(wallet: wallet, proofs: [])
+        let wire = try XCTUnwrap(snapshot)
+        let (restored, _) = try wire.restored(wallet: wallet, proofs: [])
+        XCTAssertNotNil(restored.followupContext?.backupCreatedAtMillis)
+        // Local-only release state the backup never carries.
+        original.releaseApproved = true
+        original.releaseTxid = String(repeating: "77", count: 32)
+        try store.save([original])
+        let reopened = OnchainSendAttemptService(store: store)
+        try await reopened.restoreBackup(restored)
+        XCTAssertEqual(store.snapshot(), [original])
+    }
+
     func testInitialQueuedExpiryReleasesDefinitelyUnsentAttempt() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
