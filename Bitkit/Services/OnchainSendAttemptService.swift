@@ -66,6 +66,10 @@ protocol OnchainReleasing {
 }
 
 extension LightningService: OnchainReleasing {
+    /// The release pays a small fixed amount to a new wallet address; the rest of the coins return as change, so the
+    /// fee comes out of the whole input value however small the payment was.
+    static let releaseAmountSats: UInt64 = 1000
+
     func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool {
         try await onchainCandidatesNeverReachedNetwork(attempt, syncTimeout: .seconds(30))
     }
@@ -86,12 +90,11 @@ extension LightningService: OnchainReleasing {
             original.contains(OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout))
         }
         guard !utxos.isEmpty else { throw OnchainSendAttemptError.retryUnavailable }
-        let total = utxos.reduce(UInt64(0)) { $0 + $1.valueSats }
         var feeRate = max(recovery.satsPerVbyte, recovery.candidateFeeRates?.values.max() ?? 0) + 2
         let address = try await newAddress()
         for _ in 0 ..< 4 {
             let prepared = try await prepareOnchainSend(
-                address: address, sats: total / 2, satsPerVbyte: feeRate, utxosToSpend: utxos, isMaxAmount: false,
+                address: address, sats: Self.releaseAmountSats, satsPerVbyte: feeRate, utxosToSpend: utxos, isMaxAmount: false,
                 expectedWalletIndex: currentWalletIndex, expectedNode: onchainDispatchNode, paymentDeadline: nil
             )
             guard !original.isDisjoint(with: prepared.inputs) else { throw OnchainSendAttemptError.retryConstruction }
@@ -112,13 +115,25 @@ extension LightningService {
         guard attempt.walletId == OnchainSendAttemptService.walletId(index: currentWalletIndex),
               let node = onchainDispatchNode as? Node, let inputs = attempt.recoveryContext?.inputs, !inputs.isEmpty
         else { return false }
-        // Only an on-chain sync that finishes after this call moves the timestamp past the one read here.
+        // The requested sync runs on the serial LDK queue after any sync already in flight, so its success proves a
+        // fresh view. Failing that, an on-chain sync that finishes later than the one read here also counts.
         let previousSync = node.status().latestOnchainWalletSyncTimestamp ?? 0
-        Task { try? await self.sync() }
+        let requestedSync = RequestedSyncResult()
+        Task {
+            if (try? await self.sync()) != nil {
+                await requestedSync.markSucceeded()
+            }
+        }
         let deadline = ContinuousClock.now + syncTimeout
-        while !OnchainSendAttemptService.isOnchainSync(node.status().latestOnchainWalletSyncTimestamp, after: previousSync) {
+        while true {
+            let requestedSyncSucceeded = await requestedSync.succeeded
+            if OnchainSendAttemptService.isOnchainSync(
+                node.status().latestOnchainWalletSyncTimestamp, after: previousSync, requestedSyncSucceeded: requestedSyncSucceeded
+            ) {
+                break
+            }
             guard ContinuousClock.now < deadline else { throw OnchainSendAbandonError.syncUnavailable }
-            try await Task.sleep(for: .seconds(1))
+            try await Task.sleep(for: .milliseconds(500))
         }
         return try await ServiceQueue.background(.ldk, wrapErrors: false) {
             guard self.onchainDispatchNode === node else { return false }
@@ -430,9 +445,10 @@ actor OnchainSendAttemptService {
         return fee > candidateFee
     }
 
-    /// A sync finished in the same second as the one read before a request is not a new sync.
-    static func isOnchainSync(_ latest: UInt64?, after previous: UInt64) -> Bool {
-        (latest ?? 0) > previous
+    /// The sync requested for a check proves a fresh view once it succeeds. Otherwise only a sync that finished later
+    /// than the one read before the request counts; one finished in the same second may predate it.
+    static func isOnchainSync(_ latest: UInt64?, after previous: UInt64, requestedSyncSucceeded: Bool = false) -> Bool {
+        requestedSyncSucceeded || (latest ?? 0) > previous
     }
 
     static func walletId(index: Int) -> String {
@@ -1184,5 +1200,14 @@ actor OnchainSendAttemptService {
         knownAttempt = attempt
         try store.save([attempt])
         return true
+    }
+}
+
+/// Records whether the sync a check requested has succeeded, so the check can stop waiting on it.
+private actor RequestedSyncResult {
+    private(set) var succeeded = false
+
+    func markSucceeded() {
+        succeeded = true
     }
 }

@@ -295,6 +295,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(nil, after: 0))
         XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(1_800_000_000, after: 1_800_000_000))
         XCTAssertTrue(OnchainSendAttemptService.isOnchainSync(1_800_000_001, after: 1_800_000_000))
+        // The requested sync's own success counts even when it finished in the same second.
+        XCTAssertTrue(OnchainSendAttemptService.isOnchainSync(1_800_000_000, after: 1_800_000_000, requestedSyncSucceeded: true))
     }
 
     func testApprovedReleaseFinishesAfterItsProofWasRemoved() async throws {
