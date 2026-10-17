@@ -148,9 +148,9 @@ struct EditProfileView: View {
         guard !isDeleting else { return }
 
         isDeleting = true
-        await PrivatePaykitService.shared.beginProfileDeletion()
-        await deleteProfileWithSessionRetry()
-        await PrivatePaykitService.shared.endProfileDeletion()
+        await pubkyProfile.performProfileDeletion {
+            await deleteProfileWithSessionRetry()
+        }
         isDeleting = false
     }
 

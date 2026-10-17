@@ -283,6 +283,36 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
     }
 
     @MainActor
+    func testHeldContactLinkIsPromotedWithoutRoutingSoItsPreparationRuns() async throws {
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        let contactURL = try XCTUnwrap(URL(string: "bitkit://contact?pubky=pubky\(String(repeating: "y", count: 52))"))
+        XCTAssertNotNil(PubkyContactLink.publicKey(from: contactURL))
+        let signinURL = try signinLink()
+        var routed: [URL] = []
+
+        // A contact link the app is holding while a sign-in link arrives waits behind it.
+        app.retainDeepLink(contactURL)
+        app.retainDeepLink(signinURL)
+        await app.routePendingDeepLinkIfReady(true) { url in
+            routed.append(url)
+            sheets.showSheet(.pubkyAuthApproval)
+        }
+        XCTAssertEqual(routed, [signinURL])
+        XCTAssertNil(app.pendingDeepLinkURL, "The contact link stays held while the sign-in sheet is open")
+
+        // When the sheet closes, the next call promotes the held contact link without routing it, so the view's
+        // restore or deletion preparation sees it before it opens.
+        sheets.hideSheet()
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        XCTAssertEqual(routed, [signinURL])
+        XCTAssertEqual(app.pendingDeepLinkURL, contactURL)
+
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        XCTAssertEqual(routed, [signinURL, contactURL])
+    }
+
+    @MainActor
     func testNewerSignInLinkReplacesAnOlderPendingOne() async throws {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
         let olderURL = try signinLink(caps: "/pub/older/:rw")

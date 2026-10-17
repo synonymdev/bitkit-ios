@@ -291,7 +291,6 @@ enum ContactPaymentsService {
         try await operations.syncPublicEndpoints(true, isChangeCurrent)
 
         guard isChangeCurrent() else { return }
-        operations.setPublicCleanupPending(false)
         if canUsePrivatePayments {
             operations.setPrivateCleanupPending(false)
         }
@@ -373,7 +372,7 @@ enum ContactPaymentsService {
 
         do {
             try await operations.syncPublicEndpoints(state.sharesPublicEndpoints, isChangeCurrent)
-            if isChangeCurrent() {
+            if !state.sharesPublicEndpoints, isChangeCurrent() {
                 operations.setPublicCleanupPending(state.publicCleanupPending)
             }
         } catch {

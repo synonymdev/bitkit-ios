@@ -29,7 +29,10 @@ final class WalletViewModelReceiveTests: XCTestCase {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
-        let wallet = ReceiveWalletSpy()
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky" + String(repeating: "y", count: 52)
+        profile.authState = .authenticated
+        let wallet = ReceiveWalletSpy(pubkyProfile: profile)
         let address = "receive-\(UUID().uuidString)"
         wallet.onchainAddress = address
         wallet.bolt11 = "stale-invoice"
@@ -49,6 +52,13 @@ final class WalletViewModelReceiveTests: XCTestCase {
 
         XCTAssertEqual(wallet.bip21, expectedBip21)
         XCTAssertEqual(wallet.metadataPersistenceCount, 2)
+        XCTAssertEqual(wallet.publicEndpointRefreshCount, 1)
+
+        profile.authState = .idle
+        try await wallet.refreshBip21()
+
+        XCTAssertEqual(wallet.bip21, expectedBip21)
+        XCTAssertEqual(wallet.metadataPersistenceCount, 3)
         XCTAssertEqual(wallet.publicEndpointRefreshCount, 1)
     }
 

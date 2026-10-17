@@ -276,8 +276,10 @@ class AppViewModel: ObservableObject {
         handler: (URL) async -> Void
     ) async {
         guard isReady else { return }
-        promoteDeepLinkAfterPubkyAuthIfIdle()
-        guard let url = pendingDeepLinkURL else { return }
+        // A link held behind a sign-in link whose sheet has just closed is only promoted here. Its change of
+        // `pendingDeepLinkURL` routes it through the caller's own preparation, such as a contact link waiting for a
+        // restore or a deletion.
+        guard !promoteDeepLinkAfterPubkyAuthIfIdle(), let url = pendingDeepLinkURL else { return }
         if sheetViewModel.isPubkyAuthApprovalShownOrPending, !Self.isPubkyAuthDeepLink(url) {
             return
         }
@@ -301,12 +303,14 @@ class AppViewModel: ObservableObject {
         promoteDeepLinkAfterPubkyAuthIfIdle()
     }
 
-    private func promoteDeepLinkAfterPubkyAuthIfIdle() {
+    @discardableResult
+    private func promoteDeepLinkAfterPubkyAuthIfIdle() -> Bool {
         guard pendingDeepLinkURL == nil, !sheetViewModel.isPubkyAuthApprovalShownOrPending,
               let next = deepLinkAfterPubkyAuth
-        else { return }
+        else { return false }
         deepLinkAfterPubkyAuth = nil
         pendingDeepLinkURL = next
+        return true
     }
 
     private static func isPubkyAuthDeepLink(_ url: URL) -> Bool {

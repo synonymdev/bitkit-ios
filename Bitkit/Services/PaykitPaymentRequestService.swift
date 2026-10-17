@@ -1796,13 +1796,15 @@ final class PaykitPaymentRequestManager {
     func refresh(
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        canRefresh: @escaping @MainActor () -> Bool = { true }
     ) async -> Bool {
         await refresh(
             excludingProtectedRequestId: nil,
             mode: mode,
             forceFresh: forceFresh,
-            messagePriority: forceFresh ? .ordered : messagePriority
+            messagePriority: forceFresh ? .ordered : messagePriority,
+            canRefresh: canRefresh
         )
     }
 
@@ -1829,14 +1831,19 @@ final class PaykitPaymentRequestManager {
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered
+        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        canRefresh: @escaping @MainActor () -> Bool = { true }
     ) async -> Bool {
+        guard canRefresh() else { return false }
         if let refreshTask {
             let generation = stateGeneration
             let refreshed = await refreshTask.task.value
-            guard generation == stateGeneration, !Task.isCancelled else { return false }
+            guard generation == stateGeneration, !Task.isCancelled, canRefresh() else { return false }
             if forceFresh || mode > refreshTask.mode {
-                return await refresh(excludingProtectedRequestId: excludingProtectedRequestId, mode: mode, messagePriority: messagePriority)
+                return await refresh(
+                    excludingProtectedRequestId: excludingProtectedRequestId, mode: mode,
+                    messagePriority: messagePriority, canRefresh: canRefresh
+                )
             }
             return refreshed
         }
@@ -1845,6 +1852,8 @@ final class PaykitPaymentRequestManager {
         let generation = refreshGeneration
         let task = Task { [weak self] in
             guard let self else { return false }
+            defer { if generation == refreshGeneration { refreshTask = nil } }
+            guard canRefresh() else { return false }
             let refreshed = await performRefresh(
                 generation: generation,
                 excludingProtectedRequestId: excludingProtectedRequestId,
@@ -1852,7 +1861,6 @@ final class PaykitPaymentRequestManager {
                 messagePriority: messagePriority
             )
             guard generation == refreshGeneration else { return false }
-            refreshTask = nil
             return refreshed
         }
         refreshTask = (mode, task)
