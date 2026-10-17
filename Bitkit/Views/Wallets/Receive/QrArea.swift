@@ -1,4 +1,3 @@
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 struct QrArea: View {
@@ -15,7 +14,7 @@ struct QrArea: View {
 
     private var shareItems: [Any] {
         // If image is not available, generate it on-demand
-        let image = shareQRImage ?? generateShareQrImage()
+        let image = shareQRImage ?? QR.shareImage(content: uri)
         return [shareText ?? uri, image ?? UIImage()]
     }
 
@@ -76,50 +75,8 @@ struct QrArea: View {
         }
         .onChange(of: uri, initial: true) {
             // Generate the QR image for sharing
-            shareQRImage = generateShareQrImage()
+            shareQRImage = QR.shareImage(content: uri)
         }
-    }
-
-    private func generateShareQrImage() -> UIImage? {
-        let context = CIContext()
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(uri.utf8)
-
-        if let outputImage = filter.outputImage {
-            // Generate padded QR image for sharing
-            let fixedSize = 400
-            let padding: CGFloat = 16
-            let qrSize = CGFloat(fixedSize) - (padding * 2)
-
-            // Scale the QR code to fit exactly in the available space
-            let scale = qrSize / outputImage.extent.width
-            let transform = CGAffineTransform(scaleX: scale, y: scale)
-            let scaledOutputImage = outputImage.transformed(by: transform)
-
-            if let cgImage = context.createCGImage(scaledOutputImage, from: scaledOutputImage.extent) {
-                UIGraphicsBeginImageContextWithOptions(CGSize(width: fixedSize, height: fixedSize), false, 0)
-                defer { UIGraphicsEndImageContext() }
-
-                // Fill background with white
-                UIColor.white.setFill()
-                UIRectFill(CGRect(origin: .zero, size: CGSize(width: fixedSize, height: fixedSize)))
-
-                // Calculate position to center the QR code with padding
-                let qrRect = CGRect(
-                    x: padding,
-                    y: padding,
-                    width: qrSize,
-                    height: qrSize
-                )
-
-                // Draw the QR code in the padded area
-                UIImage(cgImage: cgImage).draw(in: qrRect)
-
-                return UIGraphicsGetImageFromCurrentImageContext()
-            }
-        }
-
-        return nil
     }
 
     private func onCopy() {
