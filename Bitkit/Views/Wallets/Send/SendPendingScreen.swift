@@ -110,7 +110,7 @@ struct SendPendingScreen: View {
             Spacer()
 
             if pendingHardwareWalletId == nil, onchainAttempt?.canRetrySamePayment == true, !ordinarySendResolved, !onchainStateUnavailable {
-                CustomButton(title: t("wallet__onchain_retry_original"), isDisabled: retryingOnchain) {
+                CustomButton(title: t("wallet__onchain_retry_original"), isDisabled: retryingOnchain || abandoningOnchain) {
                     retryFeeRate = String(onchainAttempt?.recoveryContext?.satsPerVbyte ?? 1)
                     showingRetryConfirmation = true
                 }
@@ -119,7 +119,7 @@ struct SendPendingScreen: View {
             }
 
             if abandonableAttempt != nil, pendingHardwareWalletId == nil, !ordinarySendResolved {
-                CustomButton(title: t("wallet__onchain_abandon"), variant: .secondary, isDisabled: abandoningOnchain) {
+                CustomButton(title: t("wallet__onchain_abandon"), variant: .secondary, isDisabled: abandoningOnchain || retryingOnchain) {
                     showingAbandonConfirmation = true
                 }
                 .accessibilityIdentifier("AbandonExpiredOnchainPayment")

@@ -611,6 +611,12 @@ actor PaykitPaymentProofService {
             return
         }
         guard try await wallet.onchainCandidatesNeverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
+        // No candidate is known, yet a coin is spent: an earlier release, or another transaction, already made the
+        // original unconfirmable, including one whose ID a restart or a restore lost.
+        if try await wallet.originalCoinSpentElsewhere(attempt) {
+            try await finishRelease(attempt, context: context)
+            return
+        }
         if attempt.releaseApproved != true {
             attempt = try await attemptService.approveRelease(attempt)
         }

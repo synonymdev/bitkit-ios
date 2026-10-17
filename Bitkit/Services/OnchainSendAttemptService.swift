@@ -62,6 +62,8 @@ extension LightningService: OnchainSending {
 protocol OnchainReleasing {
     func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool
     func walletKnowsTransaction(_ txid: String) async -> Bool
+    /// Whether a transaction that is not a candidate already spent one of the original's coins.
+    func originalCoinSpentElsewhere(_ attempt: OnchainSendAttempt) async throws -> Bool
     func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch
 }
 
@@ -72,6 +74,12 @@ extension LightningService: OnchainReleasing {
 
     func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool {
         try await onchainCandidatesNeverReachedNetwork(attempt, syncTimeout: .seconds(30))
+    }
+
+    func originalCoinSpentElsewhere(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        guard let original = attempt.recoveryContext?.inputs, !original.isEmpty else { return false }
+        let spendable = try await Set(listSpendableOutputs().map { OnchainSendInput(txid: $0.outpoint.txid, vout: $0.outpoint.vout) })
+        return original.contains { !spendable.contains($0) }
     }
 
     func walletKnowsTransaction(_ txid: String) async -> Bool {
@@ -286,7 +294,7 @@ struct OnchainSendAttempt: Codable, Equatable {
     /// A Paykit payment from the node wallet that the network never confirmed accepting. Once its request
     /// has ended and no candidate reached the network, it can be released instead of blocking every send.
     var canBeAbandoned: Bool {
-        requestId != nil && orderId == nil && status != .accepted && txid != nil && restoredFromBackup != true &&
+        requestId != nil && orderId == nil && status != .accepted && txid != nil &&
             walletId.hasPrefix("node:") && recoveryContext?.inputs.isEmpty == false
     }
 

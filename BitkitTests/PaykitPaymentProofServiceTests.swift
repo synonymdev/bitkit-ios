@@ -276,6 +276,17 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    func testACoinAlreadySpentElsewhereFinishesTheCancelWithoutAnotherRelease() async throws {
+        let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: .canceled)
+        let wallet = ReleaseWalletMock()
+        wallet.spentElsewhere = true
+        try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+        XCTAssertEqual(wallet.prepared, 0)
+        XCTAssertTrue(attempts.snapshot().isEmpty)
+        let saved = await proofs.snapshot()
+        XCTAssertTrue(saved.isEmpty)
+    }
+
     func testReleaseMustSpendAnOriginalCoinAndOutbidEveryCandidate() async throws {
         let (_, _, _, attempt) = try await unknownRequestPayment(state: .canceled)
         let inputs = try XCTUnwrap(attempt.recoveryContext?.inputs)
@@ -3425,6 +3436,7 @@ private actor SuspendedHardwareShopFollowup {
 private final class ReleaseWalletMock: OnchainReleasing, @unchecked Sendable {
     let releaseTxid = String(repeating: "77", count: 32)
     var neverReached = true
+    var spentElsewhere = false
     var knownTxids: Set<String> = []
     lazy var result: OnchainSendResult = .accepted(txid: releaseTxid)
     var prepared = 0
@@ -3436,6 +3448,10 @@ private final class ReleaseWalletMock: OnchainReleasing, @unchecked Sendable {
 
     func walletKnowsTransaction(_ txid: String) async -> Bool {
         knownTxids.contains(txid)
+    }
+
+    func originalCoinSpentElsewhere(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        spentElsewhere
     }
 
     func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch {

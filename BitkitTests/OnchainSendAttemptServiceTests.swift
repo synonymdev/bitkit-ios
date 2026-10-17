@@ -1429,7 +1429,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         )
     }
 
-    func testRestoredPaymentIsNeverAbandoned() async throws {
+    func testRestoredPaymentCanBeCancelledAfterAWipe() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
         let sender = PreparedAttemptNodeMock()
@@ -1443,7 +1443,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         try await restoredService.restoreBackup(attempt)
         let restored = try await restoredService.blockingAttempt()
         XCTAssertEqual(restored?.restoredFromBackup, true)
-        XCTAssertEqual(restored?.canBeAbandoned, false)
+        // The release transaction, not the restore marker, keeps a restored attempt safe to cancel.
+        XCTAssertEqual(restored?.canBeAbandoned, true)
     }
 
     func testRestoreKeepsALocalReleaseApproval() async throws {
