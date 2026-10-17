@@ -2131,6 +2131,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let key = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         for sharingEnabled in [false, true] {
             for deferAppSync in [false, true] {
+                UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
                 UserDefaults.standard.set(sharingEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
                 PublicPaykitService.setCleanupPending(false)
                 let service = PrivatePaykitService()
