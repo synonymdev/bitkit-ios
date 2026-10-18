@@ -461,9 +461,9 @@ struct OnchainSendPendingContext: Hashable {
 actor OnchainSendAttemptService {
     static let shared = OnchainSendAttemptService()
 
-    /// The coin sets a release tries, smallest first: the original's coins alone, then with the wallet's largest other
-    /// coin, then with all of them. A small payment's coins may not cover the release's output and higher fee, and
-    /// any set that spends an original coin still makes every candidate unconfirmable.
+    /// The coin sets a release tries, smallest first: the original's coins alone, then with the wallet's other coins
+    /// added one at a time, largest first. A small payment's coins may not cover the release's output and higher fee;
+    /// growing one coin at a time stops at the first set that can pay, so dust coins join only when nothing smaller would.
     /// Only confirmed coins join the original's: nodes holding a candidate refuse a replacement that adds an unconfirmed
     /// input (BIP125 rule 2), and an unconfirmed parent can still be replaced or evicted.
     static func releaseInputSets(
@@ -474,14 +474,7 @@ actor OnchainSendAttemptService {
         guard !originals.isEmpty else { return [] }
         let others = spendable.filter { !isOriginal($0) && confirmedTxids.contains($0.outpoint.txid) }.sorted { $0.valueSats > $1.valueSats }
         // Each set starts with every original coin, so a release spends them all.
-        var sets = [originals]
-        if let largest = others.first {
-            sets.append(originals + [largest])
-        }
-        if others.count > 1 {
-            sets.append(originals + others)
-        }
-        return sets
+        return (0 ... others.count).map { originals + others.prefix($0) }
     }
 
     /// A release must spend at least one of the original's coins, and pay more than any candidate, so it replaces a

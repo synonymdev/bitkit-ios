@@ -351,14 +351,15 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let original = utxo("11", 1200)
         let small = utxo("22", 5000)
         let large = utxo("33", 90000)
+        let medium = utxo("55", 20000)
         let unconfirmed = utxo("44", 500_000)
         let originalInput: Set = [OnchainSendInput(txid: String(repeating: "11", count: 32), vout: 0)]
-        let confirmed: Set = [String(repeating: "22", count: 32), String(repeating: "33", count: 32)]
+        let confirmed = Set(["22", "33", "55"].map { String(repeating: $0, count: 32) })
         let sets = OnchainSendAttemptService.releaseInputSets(
-            spendable: [small, original, unconfirmed, large], original: originalInput, confirmedTxids: confirmed
+            spendable: [small, original, unconfirmed, large, medium], original: originalInput, confirmedTxids: confirmed
         )
         // The original's own coin stays even unconfirmed; an unconfirmed extra coin is never added (BIP125 rule 2).
-        XCTAssertEqual(sets.map { $0.map(\.valueSats) }, [[1200], [1200, 90000], [1200, 90000, 5000]])
+        XCTAssertEqual(sets.map { $0.map(\.valueSats) }, [[1200], [1200, 90000], [1200, 90000, 20000], [1200, 90000, 20000, 5000]])
         XCTAssertTrue(OnchainSendAttemptService.releaseInputSets(
             spendable: [small, large], original: originalInput, confirmedTxids: confirmed
         ).isEmpty, "A release without an original coin is never built")
