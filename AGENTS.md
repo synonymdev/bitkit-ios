@@ -9,6 +9,12 @@ This file is symlinked for cross-agents compatibility to the following paths:
 
 Durable shared agent command specs live in `.agents/commands/`. For PR creation, follow `.agents/commands/pr.md`; `.claude/commands` is a compatibility symlink and Cursor command entries under `.cursor/commands/` resolve to the same files.
 
+### Review Findings
+
+When addressing review feedback on any PR, release PRs included, the author's agent or babysitter keeps the PR in scope:
+- Fix in the PR only critical findings and reachable correctness bugs. MEDIUM findings are a judgment call.
+- Re-triage each LOW or non-blocking finding. If it is still LOW, leave the code unchanged: file an issue in the next release's milestone, add an Out of Scope bullet linking the issue and the thread (see `.agents/commands/pr.md`), reply in the thread `out of scope: tracked in #N, because …`, and resolve it.
+
 ## Project Overview
 
 Bitkit iOS is a native Swift implementation of a Bitcoin and Lightning Network wallet. This is a work-in-progress repository that is **NOT** the live production app. The production app uses React Native and is at github.com/synonymdev/bitkit.
