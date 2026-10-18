@@ -100,9 +100,10 @@ struct SendPendingScreen: View {
                 BodyMText(onchainPendingMessage)
                     .fixedSize(horizontal: false, vertical: true)
                 if let txid = pendingTransactionId {
-                    BodySSBText(t("wallet__onchain_transaction_id", variables: ["txid": txid]))
+                    BodyMText(t("wallet__onchain_transaction_id", variables: ["txid": txid]))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
                 }
             } else {
                 BodyMText(t("wallet__send_pending_note"))
@@ -115,7 +116,9 @@ struct SendPendingScreen: View {
             Spacer()
 
             if pendingHardwareWalletId == nil, onchainAttempt?.canRetrySamePayment == true, !ordinarySendResolved, !onchainStateUnavailable {
-                CustomButton(title: t("wallet__onchain_retry_original"), isDisabled: retryingOnchain || abandoningOnchain) {
+                CustomButton(
+                    title: t("wallet__onchain_retry_original"), variant: .secondary, isDisabled: retryingOnchain || abandoningOnchain
+                ) {
                     retryFeeRate = String(onchainAttempt?.recoveryContext?.satsPerVbyte ?? 1)
                     showingRetryConfirmation = true
                 }
@@ -130,7 +133,7 @@ struct SendPendingScreen: View {
                 .accessibilityIdentifier("AbandonExpiredOnchainPayment")
                 .padding(.bottom, abandoningOnchain ? 8 : 16)
                 if abandoningOnchain {
-                    BodySText(t("wallet__onchain_abandon_checking"))
+                    BodyMText(t("wallet__onchain_abandon_checking"))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 16)
                 }
