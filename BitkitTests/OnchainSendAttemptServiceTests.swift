@@ -117,6 +117,66 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertTrue(restored.canRetrySamePayment)
     }
 
+    func testReleaseMustOutbidARetryCandidateAfterARestore() async throws {
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        let retry = String(repeating: "ef", count: 32)
+        let input = OnchainSendInput(txid: String(repeating: "cd", count: 32), vout: 0)
+        // Original at 10 sat/vB and a retry of it at 30 sat/vB, both 141 vB: P2WPKH input, P2TR payee output, change.
+        let live = try OnchainSendAttempt(
+            id: UUID(), walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: nil,
+            address: "bcrt1poriginal", amountSats: 10000, isMaxAmount: false, status: .unknown, txid: retry,
+            followupContext: .init(feeSats: 1410, feeRate: 10, tags: [], contact: nil, createdAt: 123),
+            recoveryContext: .init(inputs: [input], satsPerVbyte: 10, paymentIdentity: nil, candidateTxids: [txid, retry],
+                                   candidateFeeRates: [txid: 10, retry: 30], candidateFeeSats: [txid: 1410, retry: 4230])
+        )
+        let store = MemoryAttemptStore()
+        try store.save([live])
+        let snapshot = try await OnchainSendAttemptService(store: store).backupSnapshot(wallet: wallet, proofs: [])
+        let (restored, _) = try XCTUnwrap(snapshot).restored(wallet: wallet, proofs: [])
+        XCTAssertEqual(restored.recoveryContext?.candidateFeeSats?[retry], 4230, "The backup carries each candidate's fee")
+        // The release's first try: 2 sat/vB over the retry, on a 129 vB tx (P2WPKH output to the wallet, change).
+        let release = PreparedOnchainSendDispatch(
+            txid: String(repeating: "77", count: 32), inputs: [input], recipientAmountSats: 1000, miningFeeSats: 32 * 129,
+            broadcast: { .accepted(txid: String(repeating: "77", count: 32)) }
+        )
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release, live))
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release, restored),
+                       "A release paying less than the 4230-sat retry outbids it once a restore drops the local fee evidence")
+        // An older backup without the fees still bounds the retry from its rate.
+        var olderBackup = restored
+        olderBackup.recoveryContext?.candidateFeeSats = nil
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release, olderBackup))
+    }
+
+    func testRestoringTheBackupOfAPendingAttemptKeepsTheLocalAttempt() async throws {
+        let wallet = PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet(
+            kind: "software", network: "regtest", binding: String(repeating: "12", count: 32), sourceIndex: "0"
+        )
+        let store = MemoryAttemptStore()
+        var original = try OnchainSendAttempt(
+            id: UUID(), walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: nil,
+            address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false, status: .unknown, txid: txid,
+            followupContext: .init(feeSats: 100, feeRate: 1, tags: [], contact: nil, createdAt: 123),
+            recoveryContext: .init(inputs: [.init(txid: String(repeating: "cd", count: 32), vout: 0)],
+                                   satsPerVbyte: 1, paymentIdentity: nil, candidateTxids: [txid])
+        )
+        try store.save([original])
+        let service = OnchainSendAttemptService(store: store)
+        let snapshot = try await service.backupSnapshot(wallet: wallet, proofs: [])
+        let wire = try XCTUnwrap(snapshot)
+        let (restored, _) = try wire.restored(wallet: wallet, proofs: [])
+        XCTAssertNotNil(restored.followupContext?.backupCreatedAtMillis)
+        // Local-only release state the backup never carries.
+        original.releaseApproved = true
+        original.releaseTxid = String(repeating: "77", count: 32)
+        try store.save([original])
+        let reopened = OnchainSendAttemptService(store: store)
+        try await reopened.restoreBackup(restored)
+        XCTAssertEqual(store.snapshot(), [original])
+    }
+
     func testInitialQueuedExpiryReleasesDefinitelyUnsentAttempt() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
@@ -1400,6 +1460,55 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             amountSats: 1000,
             isMaxAmount: false
         )
+    }
+
+    func testRestoredPaymentCanBeCancelledAfterAWipe() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await service.send(using: sender, address: "bcrt1qrequest", amountSats: sender.amount, satsPerVbyte: 2,
+                                   utxosToSpend: nil, isMaxAmount: false,
+                                   requestId: .init(paymentRequestId: "request", counterparty: "payee"), paymentIdentity: "payer")
+        let attempt = try XCTUnwrap(store.snapshot().first)
+        XCTAssertTrue(attempt.canBeAbandoned)
+        let restoredService = OnchainSendAttemptService(store: MemoryAttemptStore())
+        try await restoredService.restoreBackup(attempt)
+        let restored = try await restoredService.blockingAttempt()
+        XCTAssertEqual(restored?.restoredFromBackup, true)
+        // The release transaction, not the restore marker, keeps a restored attempt safe to cancel.
+        XCTAssertEqual(restored?.canBeAbandoned, true)
+    }
+
+    func testRestoreKeepsALocalReleaseApproval() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await service.send(using: sender, address: "bcrt1qrequest", amountSats: sender.amount, satsPerVbyte: 2,
+                                   utxosToSpend: nil, isMaxAmount: false,
+                                   requestId: .init(paymentRequestId: "request", counterparty: "payee"), paymentIdentity: "payer")
+        let attempt = try XCTUnwrap(store.snapshot().first)
+        let approved = try await service.approveRelease(attempt)
+        let releasing = try await service.recordRelease(approved, txid: String(repeating: "77", count: 32))
+        try await service.restoreBackup(attempt)
+        XCTAssertEqual(store.snapshot(), [releasing])
+    }
+
+    func testOrdinaryPaymentIsNeverAbandoned() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await service.send(using: sender, address: "bcrt1qordinary", amountSats: sender.amount,
+                                   satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false)
+        let attempt = try XCTUnwrap(store.snapshot().first)
+        XCTAssertFalse(attempt.canBeAbandoned)
+        do {
+            try await service.abandonUnbroadcast(attempt)
+            XCTFail("Released an ordinary payment")
+        } catch {}
+        XCTAssertEqual(store.snapshot(), [attempt])
     }
 }
 

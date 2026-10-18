@@ -216,6 +216,8 @@ struct PaykitPaymentStateBackup: Codable {
         let candidateTxids: [String]
         let feeRateSatsPerVByte: String
         let candidateFeeRates: [String: String]?
+        /// Lets a release after a restore still outbid every candidate's absolute fee.
+        let candidateMiningFees: [String: String]?
         let followup: Followup?
         let transfer: Transfer?
 
@@ -247,6 +249,10 @@ struct PaykitPaymentStateBackup: Codable {
                 candidateFeeRates = rates.mapValues { String($0) }
             } else {
                 candidateFeeRates = nil
+            }
+            candidateMiningFees = attempt.recoveryContext?.candidateFeeSats.flatMap { fees in
+                let owned = fees.filter { receiptCandidates.contains($0.key.lowercased()) }
+                return owned.isEmpty ? nil : Dictionary(uniqueKeysWithValues: owned.map { ($0.key.lowercased(), String($0.value)) })
             }
             feeRateSatsPerVByte = String(attempt.recoveryContext?.satsPerVbyte ?? attempt.followupContext?.feeRate ?? 0)
             guard attempt.followupContext?.createdAt.multipliedReportingOverflow(by: 1000).overflow != true else {
@@ -302,6 +308,12 @@ struct PaykitPaymentStateBackup: Codable {
             guard rates?.keys.allSatisfy({ validTxid($0) && candidateTxids.contains($0) }) != false else {
                 throw invalidBackup("Candidate fee does not belong to this operation")
             }
+            let miningFees = try candidateMiningFees.map { values in
+                try values.mapValues { value -> UInt64 in try number(value) }
+            }
+            guard miningFees?.keys.allSatisfy({ validTxid($0) && candidateTxids.contains($0) }) != false else {
+                throw invalidBackup("Candidate mining fee does not belong to this operation")
+            }
             guard candidateTxids.dropFirst().allSatisfy({ rates?[$0] != nil }) else {
                 throw invalidBackup("Missing successor candidate fee rate")
             }
@@ -351,7 +363,8 @@ struct PaykitPaymentStateBackup: Codable {
                                              followupContext: context, transferContext: orderContext,
                                              recoveryContext: OnchainSendRecoveryContext(inputs: inputs ?? [], satsPerVbyte: rate,
                                                                                          paymentIdentity: payerIdentity,
-                                                                                         candidateTxids: candidateTxids, candidateFeeRates: rates))
+                                                                                         candidateTxids: candidateTxids, candidateFeeRates: rates,
+                                                                                         candidateFeeSats: miningFees))
             return (attempt, restoredProofs)
         }
 

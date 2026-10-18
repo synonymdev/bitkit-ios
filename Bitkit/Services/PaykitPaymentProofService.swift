@@ -537,6 +537,131 @@ actor PaykitPaymentProofService {
         return try (request, request.submissionDeadline(quoteId: proof.conversionQuoteId))
     }
 
+    /// Whether the request behind an unresolved payment can no longer be paid: the payee ended it, or its deadline
+    /// passed. A record that is missing, carries a proof or needs recovery never counts as ended.
+    func onchainRequestHasEnded(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws -> Bool {
+        guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
+        else { return false }
+        try await requireRecoveryPayer(payer)
+        if attempt.releaseApproved == true { return true }
+        guard let record = try await sdk.paymentRequests().first(where: {
+            $0.localRole == .payer && $0.paymentRequestId == requestId.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.counterparty, requestId.counterparty)
+        }) else { return false }
+        if requestId.billingPeriodStartsAt != nil {
+            return try await recurringPeriodHasEnded(record, requestId: requestId, payer: payer, now: now)
+        }
+        guard record.paymentProofs.isEmpty else { return false }
+        switch record.state {
+        case .proposalExpired, .rejected, .canceled:
+            return true
+        case .proposed, .accepted, .activeRecurring:
+            guard let request = PaykitPaymentRequest(historyRecord: record, now: now) else { return false }
+            if request.isExpired(at: now) { return true }
+            let quoteId = try await loadProofs().last(where: {
+                PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
+            })?.conversionQuoteId
+            guard quoteId != nil, let deadline = try? request.submissionDeadline(quoteId: quoteId) else { return false }
+            return deadline < PaykitPreciseInstant(date: now)
+        default:
+            return false
+        }
+    }
+
+    private func recurringPeriodHasEnded(
+        _ record: Paykit.PaymentRequestRecord, requestId: PaykitPaymentRequest.ID, payer: String, now: Date
+    ) async throws -> Bool {
+        let periodStartsAt = requestId.billingPeriodStartsAt
+        guard !record.paymentProofs.contains(where: {
+            $0.billingPeriod.flatMap { PaykitPreciseInstant(timestamp: $0.startsAt)?.date } == periodStartsAt
+        }) else { return false }
+        let proof = try await loadProofs().last(where: {
+            PubkyPublicKeyFormat.matches($0.identity, payer) && $0.requestId == requestId && $0.kind == .onchain
+        })
+        switch record.state {
+        case .canceled, .rejected:
+            return true
+        case .activeRecurring:
+            guard let proof, let period = proof.billingPeriod, let subscription = PaykitSubscription(record: record)
+            else { return false }
+            let request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+            if subscription.isExpired(at: now) || request.isExpired(at: now) { return true }
+            guard proof.conversionQuoteId != nil,
+                  let deadline = try? request.submissionDeadline(quoteId: proof.conversionQuoteId)
+            else { return false }
+            return deadline < PaykitPreciseInstant(date: now)
+        default:
+            return false
+        }
+    }
+
+    /// Cancels an unresolved payment whose request has ended. After a fresh sync shows that none of its transactions
+    /// reached the network, it spends the original's coins back to the wallet at a higher fee, so no candidate can
+    /// confirm. The guard and the started proof stay until that release is accepted or the wallet sees it.
+    func abandonUnbroadcastOnchainPayment(
+        context: OnchainSendPendingContext,
+        wallet: any OnchainReleasing,
+        approveRelease: (PreparedOnchainSendDispatch) async throws -> Void
+    ) async throws {
+        guard var attempt = try await attemptService.pendingAttempt(context: context), attempt.canBeAbandoned
+        else { throw OnchainSendAttemptError.unresolved }
+        guard try await onchainRequestHasEnded(attempt) else { throw OnchainSendAbandonError.requestOpen }
+        if let releaseTxid = attempt.releaseTxid, await wallet.walletKnowsTransaction(releaseTxid) {
+            try await finishRelease(attempt, context: context)
+            return
+        }
+        guard try await wallet.onchainCandidatesNeverReachedNetwork(attempt) else { throw OnchainSendAbandonError.mayStillConfirm }
+        // Approve before anything changes, so a cancel cut short after the proof is removed can still finish.
+        if attempt.releaseApproved != true {
+            attempt = try await attemptService.approveRelease(attempt)
+        }
+        // No candidate is known, yet a coin is spent: an earlier release, or another transaction, already made the
+        // original unconfirmable, including one whose ID a restart or a restore lost.
+        if try await wallet.originalCoinSpentElsewhere(attempt) {
+            try await finishRelease(attempt, context: context)
+            return
+        }
+        let prepared = try await wallet.prepareRelease(attempt)
+        guard OnchainSendAttemptService.releaseOutbids(prepared, attempt) else { throw OnchainSendAttemptError.retryConstruction }
+        try await approveRelease(prepared)
+        attempt = try await attemptService.recordRelease(attempt, txid: prepared.txid)
+        switch try await prepared.broadcast() {
+        case .accepted:
+            try await finishRelease(attempt, context: context)
+        case .rejected:
+            // A conflicting candidate may be in a mempool; keep the guard until a sync resolves it.
+            throw OnchainSendAbandonError.mayStillConfirm
+        case .unknown:
+            throw OnchainSendAbandonError.releasePending
+        }
+    }
+
+    /// Removes the started proof, then the attempt, so a crash in between leaves an attempt a later cancel finishes.
+    private func finishRelease(_ attempt: OnchainSendAttempt, context: OnchainSendPendingContext) async throws {
+        guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
+            throw OnchainSendAttemptError.unresolved
+        }
+        try await mutationLock.withLock {
+            guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
+            let proofs = try await loadProofs()
+            let remaining = proofs.filter { proof in
+                !(PubkyPublicKeyFormat.matches(proof.identity, payer) && proof.requestId == requestId && proof.kind == .onchain &&
+                    !proof.hasUnsupportedOnchainWallet && proof.proofData == nil && proof.onchainAcceptanceVerified != true &&
+                    (proof.onchainWalletId == nil || proof.onchainWalletId == WalletScope.default) &&
+                    (proof.paymentIdentifier == nil || attempt.containsCandidate(proof.paymentIdentifier)))
+            }
+            if remaining != proofs { try await persist(remaining) }
+            do {
+                try await attemptService.abandonUnbroadcast(attempt)
+            } catch {
+                if remaining != proofs { try? await persist(proofs) }
+                throw error
+            }
+        }
+        Self.proofStateChangedSubject.send()
+        logInfo("Released on-chain payment \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "") after its request ended")
+    }
+
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
                                 context: OnchainSendPendingContext?) async -> PaykitOnchainPaymentResolution?
     {
