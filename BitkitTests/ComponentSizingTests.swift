@@ -40,13 +40,20 @@ final class ComponentSizingTests: XCTestCase {
                                   sourceTx: "0x" + String(repeating: "ab", count: 32), status: "held",
                                   code: "standing_route_unavailable", refundTx: nil)
         let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
-        let normal = height(of: row, width: 320, size: .large)
-        let accessible = height(of: row, width: 320, size: .accessibility5)
-        XCTAssertGreaterThan(accessible, normal * 2)
-        let status = BodyMSBText(deposit.networkLabel).fixedSize(horizontal: false, vertical: true)
-        let amount = BodyMSBText("50.000001 USDT").fixedSize(horizontal: false, vertical: true)
-        XCTAssertGreaterThan(accessible, height(of: status, width: 288, size: .accessibility5)
-            + height(of: amount, width: 288, size: .accessibility5))
+        let amount = usdtOverviewAmount(50_000_001)
+        for width: CGFloat in [280, 320] {
+            let textWidth = width - 32
+            let networkHeight = height(of: BodyMSBText(deposit.networkLabel, kerning: 0, lineHeight: 22)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let statusHeight = height(of: CaptionBText(deposit.statusText, kerning: 0, lineHeight: 18)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let amountHeight = height(of: BodyMSBText(amount + " USDT", kerning: 0, lineHeight: 22)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let fiatHeight = height(of: CaptionBText("$" + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let contentHeight = 40 + networkHeight + statusHeight + amountHeight + fiatHeight
+            XCTAssertEqual(height(of: row, width: width, size: .accessibility5), contentHeight + 64, accuracy: 1)
+        }
     }
 
     private func height(of view: some View, width: CGFloat, size: DynamicTypeSize) -> CGFloat {
