@@ -88,18 +88,20 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
     var titleLineHeight: CGFloat?
     var subtitleLineHeight: CGFloat?
     var textSpacing: CGFloat = 2
+    var stacked = false
     @ViewBuilder var icon: () -> Icon
     @ViewBuilder var amount: () -> Amount
 
     var body: some View {
-        HStack(spacing: 16) {
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(spacing: 16))
+        layout {
             icon()
             VStack(alignment: .leading, spacing: textSpacing) {
-                BodyMSBText(title, kerning: textKerning, lineHeight: titleLineHeight).lineLimit(1)
-                CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(1)
+                BodyMSBText(title, kerning: textKerning, lineHeight: titleLineHeight).lineLimit(stacked ? nil : 1)
+                CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(stacked ? nil : 1)
             }
             .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+            if !stacked { Spacer(minLength: 0) }
             amount()
         }
     }

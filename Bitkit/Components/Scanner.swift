@@ -239,7 +239,7 @@ struct Scanner: View {
         ZStack {
             if cameraManager.hasPermission {
                 #if targetEnvironment(simulator)
-                    Color.black
+                    Color.black.allowsHitTesting(false)
                 #else
                     ScannerCamera(
                         isTorchOn: isTorchOn,
@@ -247,6 +247,7 @@ struct Scanner: View {
                             await onScan(payload)
                         }
                     )
+                    .allowsHitTesting(false)
                 #endif
 
                 ScannerCornerButtons(
@@ -264,6 +265,7 @@ struct Scanner: View {
             }
         }
         .cornerRadius(16)
+        .contentShape(Rectangle())
         .onAppear {
             guard !cameraManager.hasPermission else { return }
             cameraManager.requestPermissionIfNeeded()

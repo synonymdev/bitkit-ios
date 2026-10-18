@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import SwiftUI
 import XCTest
 
@@ -32,6 +33,20 @@ final class ComponentSizingTests: XCTestCase {
         XCTAssertGreaterThan(height(of: sheet, width: 280, size: .accessibility5), height(of: sheet, width: 280, size: .large))
         let permission = ScannerPermissionRequest(onRequestPermission: {}).fixedSize(horizontal: false, vertical: true)
         XCTAssertGreaterThan(height(of: permission, width: 280, size: .accessibility5), height(of: permission, width: 280, size: .large))
+    }
+
+    func testDepositRowsGrowToShowNetworkStatusAndAmountAtAccessibilitySizes() {
+        let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
+                                  sourceTx: "0x" + String(repeating: "ab", count: 32), status: "held",
+                                  code: "standing_route_unavailable", refundTx: nil)
+        let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
+        let normal = height(of: row, width: 320, size: .large)
+        let accessible = height(of: row, width: 320, size: .accessibility5)
+        XCTAssertGreaterThan(accessible, normal * 2)
+        let status = BodyMSBText(deposit.networkLabel).fixedSize(horizontal: false, vertical: true)
+        let amount = BodyMSBText("50.000001 USDT").fixedSize(horizontal: false, vertical: true)
+        XCTAssertGreaterThan(accessible, height(of: status, width: 288, size: .accessibility5)
+            + height(of: amount, width: 288, size: .accessibility5))
     }
 
     private func height(of view: some View, width: CGFloat, size: DynamicTypeSize) -> CGFloat {

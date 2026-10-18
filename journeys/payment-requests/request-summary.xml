@@ -15,5 +15,6 @@
     <action>On the requester, send the payer contact a Payment Request for 5,000 sats with no note</action>
     <action>On the payer, verify the Payment Request confirmation screen (id "PaymentRequestConfirm") appears automatically with 5,000 sats</action>
     <action>Verify From (id "PaymentRequestFrom") shows the requester's contact name and For (id "PaymentRequestFor") shows "Not specified"</action>
+    <action>Open existing USDT payment request history with a verified receipt containing an exact six-decimal amount. With enlarged text and a long translated verification status, verify the contact name stays readable and the complete status wraps within the amount column. Repeat for a BTC-denominated request paid in USDT.</action>
   </actions>
 </journey>
