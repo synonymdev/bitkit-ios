@@ -350,6 +350,43 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(calls, ["build", "app"])
     }
 
+    @MainActor
+    func testUsdtPreparationFailurePreservesPublicationUntilRecoveryOrDisable() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var available = false
+        var enabled = true
+        let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+            guard available else { throw PublicPaykitError.walletNotReady }
+            return ("test test test test test test test test test test test junk", nil)
+        })
+        let bitcoin = endpoint(.regtestOnchainP2wpkh, value: "bcrt1qendpoint")
+        var publications = [[PublicPaykitService.MethodId]]()
+        let publish = {
+            try await PublicPaykitService.syncPublishedEndpoints(
+                publish: true,
+                buildEndpoints: {
+                    var endpoints = [bitcoin]
+                    if enabled { try await endpoints.append(manager.paymentEndpoint()) }
+                    return endpoints
+                },
+                syncApp: {},
+                applyEndpoints: { publications.append($0.map(\.methodId)) }
+            )
+        }
+        do {
+            try await publish()
+            XCTFail("Incomplete method sets must not replace advertised endpoints")
+        } catch PublicPaykitError.walletNotReady {}
+        XCTAssertTrue(publications.isEmpty)
+        available = true
+        try await publish()
+        enabled = false
+        try await publish()
+        XCTAssertEqual(publications, [[.regtestOnchainP2wpkh, .usdtArbitrum], [.regtestOnchainP2wpkh]])
+    }
+
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(
             methodId: methodId,

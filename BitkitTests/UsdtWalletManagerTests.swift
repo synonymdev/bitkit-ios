@@ -27,14 +27,16 @@ final class UsdtWalletManagerTests: XCTestCase {
         } catch UsdtError.NotConfigured {}
     }
 
-    func testEndpointPublicationOmitsUnavailableUsdtAndPropagatesCancellation() async throws {
+    func testEndpointPreparationPropagatesFailureAndCancellation() async throws {
         try XCTSkipUnless(Env.isUsdtEnabled)
         let unavailable = UsdtWalletManager(loadCredentials: { throw UsdtError.InvalidCredentials })
-        let endpoint = try await unavailable.paymentEndpointForPublishing()
-        XCTAssertNil(endpoint)
+        do {
+            _ = try await unavailable.paymentEndpoint()
+            XCTFail("Unavailable endpoints must stop publication")
+        } catch UsdtError.InvalidCredentials {}
         let cancelled = UsdtWalletManager(loadCredentials: { throw CancellationError() })
         do {
-            _ = try await cancelled.paymentEndpointForPublishing()
+            _ = try await cancelled.paymentEndpoint()
             XCTFail("Cancelled endpoint publication must stop")
         } catch is CancellationError {}
     }

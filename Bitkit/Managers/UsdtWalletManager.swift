@@ -216,18 +216,6 @@ final class UsdtWalletManager {
         return try PaykitUsdt.endpoint(address: wallet.receiveAddress())
     }
 
-    func paymentEndpointForPublishing() async throws -> PublicPaykitService.Endpoint? {
-        do {
-            return try await paymentEndpoint()
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            try Task.checkCancellation()
-            Logger.warn("Unable to prepare USDT payment endpoint: \(Self.message(for: error))", context: "UsdtWalletManager")
-            return nil
-        }
-    }
-
     func send(_ quote: UsdtQuote, submissionDeadline: PaykitPreciseInstant? = nil,
               beforeSubmission: @escaping @MainActor () async throws -> Void = {}) async throws
     {
