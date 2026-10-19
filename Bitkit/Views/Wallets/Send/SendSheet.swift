@@ -859,7 +859,10 @@ struct SendSheet: View {
                     if let request = context.incomingPaymentRequest { try await paykitPaymentRequestManager.ensurePaymentAllowed(request) }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
-            }, onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+            }, onBack: {
+                if navigationPath.isEmpty { sheets.hideSheet() }
+                else { navigationPath.removeLast() }
+            }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
@@ -1321,7 +1324,13 @@ struct SendSheet: View {
                 return
             }
         }
-        pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
+        } else {
+            pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        }
         hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }
         validatePaymentAfterSync()

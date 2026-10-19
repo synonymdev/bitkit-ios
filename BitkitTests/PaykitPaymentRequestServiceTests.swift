@@ -54,6 +54,42 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 100_000, usdtBalance: 0))
     }
 
+    func testInitialUsdtSubscriptionAuthorizationRequiresUnchangedTermsAndSingleMethod() throws {
+        let now = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T08:00:00Z"))
+        let period = PaykitBillingPeriod(startsAt: now, endsAt: now.addingTimeInterval(3600))
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let bitcoin = PublicPaykitService.Endpoint(methodId: .regtestOnchainP2wpkh, value: "bcrt1qexample",
+                                                   min: nil, max: nil, rawPayload: "bcrt1qexample")
+        let cases: [(String, PaymentConversion?, Bool)] = [
+            ("usdt", nil, true),
+            ("usd", .fixed(rates: [.init(asset: "usdt", value: "1")]), true),
+            ("usd", .fixed(rates: [.init(asset: "usdt", value: "1.0")]), true),
+            ("usd", .fixed(rates: [.init(asset: "usdt", value: "1"), .init(asset: "usdt-arbitrum", value: "2")]), false),
+            ("usd", .fixed(rates: [.init(asset: "usdt", value: "2")]), false),
+            ("usdt", .fixed(rates: [.init(asset: "usdt", value: "2")]), false),
+            ("usd", .perPeriod, false),
+            ("btc", .fixed(rates: [.init(asset: "usdt", value: "100000")]), false),
+        ]
+        for (asset, conversion, eligible) in cases {
+            let record = try paymentRequestRecord(state: .activeRecurring, amount: "1", asset: asset, conversion: conversion,
+                                                  paymentDeadline: .periodStart(seconds: 60),
+                                                  recurrence: .init(every: 1, unit: "month", startsAt: "2027-01-01T08:00:00Z",
+                                                                    anchor: "2027-01-01T08:00:00Z", endsAt: nil),
+                                                  endpoints: [usdt.methodId.rawValue])
+            let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+            let request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .accepted)
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request,
+                                                isInitialSubscriptionPayment: true, endpoints: [usdt])
+            XCTAssertEqual(context.initialUsdtSubscriptionPayment(at: now) != nil, eligible)
+            XCTAssertNil(context.initialUsdtSubscriptionPayment(at: now.addingTimeInterval(61)))
+            let recurring = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [usdt])
+            XCTAssertNil(recurring.initialUsdtSubscriptionPayment(at: now))
+            let multipleMethods = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request,
+                                                        isInitialSubscriptionPayment: true, endpoints: [usdt, bitcoin])
+            XCTAssertNil(multipleMethods.initialUsdtSubscriptionPayment(at: now))
+        }
+    }
+
     func testMonthlyCostCombinesAssetsUsingTheWalletRate() {
         let now = Date()
         let amounts = [

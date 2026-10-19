@@ -754,8 +754,16 @@ struct SubscriptionSheet: View {
             return
         }
 
-        let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-        route = .payment(sendRoute)
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(),
+           let recipient = context.endpoints.first?.value
+        {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            route = .payment(.usdt(recipient: recipient, amount: terms.amount.value))
+        } else {
+            let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            route = .payment(sendRoute)
+        }
     }
 
     @MainActor
@@ -891,7 +899,9 @@ struct SubscriptionSuccessView: View {
 
     var body: some View {
         ZStack {
-            if let animation = confettiAnimation {
+            if paymentProofKind == .usdt {
+                PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent, isUsdt: true)
+            } else if let animation = confettiAnimation {
                 LottieView(animation: animation)
                     .playing(loopMode: .loop)
                     .scaleEffect(1.9)

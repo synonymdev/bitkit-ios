@@ -33,6 +33,7 @@ struct UsdtSendView: View {
     @State private var error: String?
     @State private var pin = false
     @State private var submitted = false
+    @State private var hasStartedInitialPayment = false
     @State private var paymentComplete = false
     @State private var showDetails = false
     @State private var showFullRecipient = false
@@ -113,8 +114,33 @@ struct UsdtSendView: View {
                 UsdtIntroContent(isEnablePrompt: true, onDecline: {
                     if let onClose { onClose() } else { dismiss() }
                 }, onEnable: { settings.usdtPreference = .enabled })
+            } else if paymentContext?.isInitialSubscriptionPayment == true, submitted, !busy, submittedStatus == .confirmed {
+                SubscriptionSuccessView(paymentProofKind: .usdt) {
+                    if let onClose { onClose() } else { dismiss() }
+                }
             } else if embedded { content }
             else { NavigationStack { content } }
+        }
+        .task(id: "\(scenePhase == .active)-\(submitted)") {
+            guard scenePhase == .active, submitted else { return }
+            if busy, let quote {
+                if quote.destination == .arbitrum { await usdt.waitForTransfer(quote.id) }
+                if submittedStatus == .confirmed {
+                    paymentComplete = true
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+                busy = false
+            }
+            while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
+                await usdt.refresh()
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+            }
+            await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
+        }
+        .overlay {
+            if paymentContext?.isInitialSubscriptionPayment == true, busy {
+                InitialSubscriptionPaymentProgress()
+            }
         }
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onAppear { usdt.isSendPresented = true }
@@ -128,10 +154,13 @@ struct UsdtSendView: View {
                   editingAmount, !showingNetworks,
                   !initialRecipient.isEmpty, recipient == initialRecipient, amount == initialAmount, destination == .arbitrum,
                   (try? parsePaykitAmountInput(asset: .usdt, value: amount)) != nil else { return }
+            let automaticPayment = !hasStartedInitialPayment && paymentContext?.initialUsdtSubscriptionPayment()?.amount.value == amount
+            hasStartedInitialPayment = true
             busy = true
-            defer { busy = false }
             do { quote = try await prepareQuote() }
             catch { self.error = UsdtWalletManager.message(for: error) }
+            busy = false
+            if automaticPayment, !Task.isCancelled, quote != nil { await confirmPayment() }
         }
     }
 
@@ -162,22 +191,6 @@ struct UsdtSendView: View {
                 pin = false
                 Task { await send() }
             })
-        }
-        .task(id: "\(scenePhase == .active)-\(submitted)") {
-            guard scenePhase == .active, submitted else { return }
-            if busy, let quote {
-                if quote.destination == .arbitrum { await usdt.waitForTransfer(quote.id) }
-                if submittedStatus == .confirmed {
-                    paymentComplete = true
-                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                }
-                busy = false
-            }
-            while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
-                await usdt.refresh()
-                do { try await Task.sleep(for: .seconds(10)) } catch { return }
-            }
-            await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
         }
         .interactiveDismissDisabled(busy || pin)
         .alert(t("common__are_you_sure"), isPresented: Binding(
