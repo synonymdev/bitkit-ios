@@ -60,6 +60,8 @@ struct CustomButton: View {
     }
 
     let title: String
+    let titleKerning: CGFloat
+    let titleLineHeight: CGFloat?
     let variant: Variant
     let size: Size
     let icon: AnyView?
@@ -67,6 +69,7 @@ struct CustomButton: View {
     let isLoading: Bool
     let shouldExpand: Bool
     let background: AnyView?
+    let showsHighlightShadow: Bool
     let action: (() async -> Void)?
     let destination: AnyView?
 
@@ -85,9 +88,14 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
-        background: (any View)? = nil
+        background: (any View)? = nil,
+        showsHighlightShadow: Bool = true,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
@@ -95,6 +103,7 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.background = background.map { AnyView($0) }
+        self.showsHighlightShadow = showsHighlightShadow
         action = nil
         destination = nil
     }
@@ -109,9 +118,14 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        showsHighlightShadow: Bool = true,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil,
         action: @escaping () async -> Void
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
@@ -119,6 +133,7 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.background = background.map { AnyView($0) }
+        self.showsHighlightShadow = showsHighlightShadow
         self.action = action
         destination = nil
     }
@@ -133,9 +148,14 @@ struct CustomButton: View {
         isLoading: Bool = false,
         shouldExpand: Bool = false,
         background: (any View)? = nil,
+        showsHighlightShadow: Bool = true,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil,
         destination: some View
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
@@ -143,6 +163,7 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.background = background.map { AnyView($0) }
+        self.showsHighlightShadow = showsHighlightShadow
         action = nil
         self.destination = AnyView(destination)
     }
@@ -152,17 +173,22 @@ struct CustomButton: View {
         case .primary:
             AnyView(PrimaryButtonView(
                 title: title,
+                titleKerning: titleKerning,
+                titleLineHeight: titleLineHeight,
                 size: size,
                 icon: icon,
                 isDisabled: effectiveIsDisabled,
                 isLoading: isLoading,
                 isPressed: isPressed,
                 shouldExpand: shouldExpand,
-                background: background
+                background: background,
+                showsHighlightShadow: showsHighlightShadow
             ))
         case .secondary:
             AnyView(SecondaryButtonView(
                 title: title,
+                titleKerning: titleKerning,
+                titleLineHeight: titleLineHeight,
                 size: size,
                 icon: icon,
                 isDisabled: effectiveIsDisabled,
@@ -173,6 +199,8 @@ struct CustomButton: View {
         case .tertiary:
             AnyView(TertiaryButtonView(
                 title: title,
+                titleKerning: titleKerning,
+                titleLineHeight: titleLineHeight,
                 icon: icon,
                 isPressed: isPressed
             ))

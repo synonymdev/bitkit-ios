@@ -11,7 +11,7 @@ struct ActivityListFilter: View {
                 .resizable()
                 .frame(width: 24, height: 24)
                 .foregroundColor(!viewModel.searchText.isEmpty ? .brandAccent : .white64)
-            TextField("Search", text: $viewModel.searchText, backgroundColor: .clear, font: .custom(Fonts.regular, size: 17))
+            TextField(t("common__search"), text: $viewModel.searchText, backgroundColor: .clear, font: .custom(Fonts.regular, size: 17))
                 .frame(width: 120)
                 .offset(x: -5)
 

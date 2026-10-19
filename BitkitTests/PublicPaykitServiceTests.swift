@@ -267,6 +267,89 @@ final class PublicPaykitServiceTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testPublicationSyncsAppBeforeApplyingPreparedEndpoints() async throws {
+        let desiredEndpoints = [endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")]
+        var calls: [String] = []
+
+        try await PublicPaykitService.syncPublishedEndpoints(
+            publish: true,
+            buildEndpoints: {
+                calls.append("build")
+                return desiredEndpoints
+            },
+            syncApp: { calls.append("app") },
+            applyEndpoints: {
+                calls.append("apply")
+                XCTAssertEqual($0, desiredEndpoints)
+            }
+        )
+
+        XCTAssertEqual(calls, ["build", "app", "apply"])
+    }
+
+    @MainActor
+    func testPublicationFinishesAdmittedAppWriteButSkipsEndpointsAfterSessionEnds() async throws {
+        for cancelTask in [false, true] {
+            var isCurrent = true
+            var calls: [String] = []
+            var finishWrite: CheckedContinuation<Void, Never>?
+            let admitted = expectation(description: "App write admitted")
+            let publication = Task {
+                try await PublicPaykitService.syncPublishedEndpoints(
+                    publish: true,
+                    isSessionCurrent: { isCurrent && !Task.isCancelled },
+                    buildEndpoints: { [self.endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress")] },
+                    syncApp: {
+                        calls.append("app")
+                        await withCheckedContinuation {
+                            finishWrite = $0
+                            admitted.fulfill()
+                        }
+                        calls.append("app-finished")
+                    },
+                    applyEndpoints: { _ in calls.append("endpoints") }
+                )
+            }
+            await fulfillment(of: [admitted], timeout: 2)
+            if cancelTask {
+                publication.cancel()
+            } else {
+                isCurrent = false
+            }
+            finishWrite?.resume()
+            do {
+                try await publication.value
+                XCTFail("Expected the ended session to stop the next write")
+            } catch PubkyServiceError.sessionNotActive {}
+            XCTAssertEqual(calls, ["app", "app-finished"])
+        }
+    }
+
+    @MainActor
+    func testPublicationSyncsAppWhenEndpointBuildFails() async {
+        var calls: [String] = []
+
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(
+                publish: true,
+                buildEndpoints: {
+                    calls.append("build")
+                    throw PublicPaykitError.walletNotReady
+                },
+                syncApp: { calls.append("app") },
+                applyEndpoints: { _ in XCTFail("Failed endpoint construction must not publish endpoints") }
+            )
+            XCTFail("Expected endpoint construction to fail")
+        } catch {
+            guard case PublicPaykitError.walletNotReady = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        XCTAssertEqual(calls, ["build", "app"])
+    }
+
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
         PublicPaykitService.Endpoint(
             methodId: methodId,

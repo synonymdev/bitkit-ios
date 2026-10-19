@@ -37,6 +37,7 @@ enum SettingsBackupConfig {
     ]
 
     static let settingsKeyTypes: [String: SettingKeyType] = [
+        UsdtPreference.key: .string(optional: true),
         "primaryDisplay": .string(optional: true),
         "bitcoinDisplayUnit": .string(optional: true),
         "selectedCurrency": .string(optional: true),

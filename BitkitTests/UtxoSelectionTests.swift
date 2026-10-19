@@ -165,12 +165,16 @@ final class UtxoSelectionTests: XCTestCase {
         let feeRate: UInt32 = 1 // 1 sat/vbyte
 
         Logger.test("Sending \(sendAmount) sats to \(destinationAddress) using specific UTXOs", context: "UtxoSelectionTests")
-        let txId = try await lightning.send(
+        let sendResult = try await lightning.send(
             address: destinationAddress,
             sats: sendAmount,
             satsPerVbyte: feeRate,
             utxosToSpend: utxosToSpend
         )
+        guard case let .accepted(txId) = sendResult else {
+            XCTFail("Selected UTXO broadcast was not accepted: \(sendResult)")
+            return
+        }
 
         XCTAssertFalse(txId.isEmpty, "Transaction ID should not be empty")
         Logger.test("Transaction sent successfully with txid: \(txId)", context: "UtxoSelectionTests")

@@ -1,4 +1,5 @@
 #if DEBUG
+    import Paykit
     import SwiftUI
 
     struct ContactImportUITestFixture: View {
@@ -18,6 +19,12 @@
                 }
                 .disabled(!manager.isSavePending)
                 .accessibilityIdentifier("ContactImportFixtureFinishSave")
+                CustomButton(title: "Leave import", size: .small) {
+                    // In the app, AppScene discards the pending import when the user leaves the import flow.
+                    manager.clearPendingImport()
+                    navigation.path = []
+                }
+                .accessibilityIdentifier("ContactImportFixtureLeave")
 
                 NavigationStack(path: $navigation.path) {
                     ContactImportOverviewView(profile: manager.fixtureProfile, contacts: manager.fixtureContacts)
@@ -64,17 +71,17 @@
 
         override func importContacts(
             contacts selected: [PubkyContact],
-            saveContact: (String, String) async throws -> Void
+            saveContacts: ([ContactUpdate], String?) async throws -> Void
         ) async throws {
             importCount += 1
-            try await super.importContacts(contacts: selected) { key, _ in
+            try await super.importContacts(contacts: selected) { updates, _ in
                 if self.savedKeys.isEmpty {
                     await withCheckedContinuation { continuation in
                         self.pendingSave = continuation
                         self.isSavePending = true
                     }
                 }
-                self.savedKeys.append(key)
+                self.savedKeys.append(contentsOf: updates.map(\.publicKey))
             }
         }
 

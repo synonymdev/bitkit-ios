@@ -1,6 +1,16 @@
 import SwiftUI
 
 enum PaymentRequestDisplay {
+    static func status(for request: PaykitPaymentRequest, isActionable: Bool, receipt: PaykitUsdtPaymentService.Receipt?) -> String {
+        if request.direction == .outgoing, request.paymentProofKind == .usdt {
+            guard let receipt, receipt.proofEventId == request.paymentProofEventId else {
+                return t("wallet__payment_request_status_pending")
+            }
+            return receipt.statusText
+        }
+        return t(statusKey(for: request, isActionable: isActionable))
+    }
+
     static func paymentDirection(for request: PaykitPaymentRequest) -> PaykitPaymentRequest.Direction? {
         request.lifecycleState == .proofSubmitted ? request.direction : nil
     }
@@ -33,7 +43,7 @@ enum PaymentRequestDisplay {
         case .canceled:
             return "wallet__payment_request_status_canceled"
         case .proofSubmitted:
-            return "wallet__payment_request_status_paid"
+            return "wallet__payment_request_status_proof_submitted"
         case .recoveryRequired:
             return "wallet__payment_request_status_action_required"
         case .invalidConflict, .activeRecurring, .unknown:
@@ -56,7 +66,6 @@ struct PaymentRequestCard: View {
     var status: String?
     var isHighlighted = true
     var isActionDisabled = false
-    var showsAmountSymbol = true
     var paymentDirection: PaykitPaymentRequest.Direction?
     var amountStatus: String?
     var onOpen: (() -> Void)?
@@ -64,6 +73,10 @@ struct PaymentRequestCard: View {
     var onReject: (() async -> Void)?
 
     @State private var isRejecting = false
+
+    private var receipt: PaykitUsdtPaymentService.Receipt? {
+        PaykitUsdtPaymentService.shared.receipt(for: request)
+    }
 
     private var contact: PubkyContact? {
         contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, request.counterparty) }
@@ -115,21 +128,23 @@ struct PaymentRequestCard: View {
                 .padding(16)
             } else if onPay != nil || onReject != nil {
                 HStack(spacing: 16) {
-                    CustomButton(
-                        title: t("wallet__payment_request_dismiss"),
-                        variant: .secondary,
-                        size: .small,
-                        icon: Image("x-mark").resizable().frame(width: 16, height: 16),
-                        isDisabled: isActionDisabled,
-                        isLoading: isRejecting,
-                        shouldExpand: true
-                    ) {
-                        guard !isRejecting else { return }
-                        isRejecting = true
-                        await onReject?()
-                        isRejecting = false
+                    if let onReject {
+                        CustomButton(
+                            title: t("wallet__payment_request_dismiss"),
+                            variant: .secondary,
+                            size: .small,
+                            icon: Image("x-mark").resizable().frame(width: 16, height: 16),
+                            isDisabled: isActionDisabled,
+                            isLoading: isRejecting,
+                            shouldExpand: true
+                        ) {
+                            guard !isRejecting else { return }
+                            isRejecting = true
+                            await onReject()
+                            isRejecting = false
+                        }
+                        .accessibilityIdentifier("PaymentRequestDismiss-\(request.paymentRequestId)")
                     }
-                    .accessibilityIdentifier("PaymentRequestDismiss-\(request.paymentRequestId)")
 
                     CustomButton(
                         title: t("common__pay"),
@@ -169,21 +184,15 @@ struct PaymentRequestCard: View {
 
             Spacer(minLength: 8)
 
-            if let amountStatus {
+            if let amountStatus = receipt?.statusText ?? amountStatus ??
+                (request.direction == .outgoing && request.paymentProofKind == .usdt ? t("wallet__payment_request_status_pending") : nil)
+            {
                 VStack(alignment: .trailing, spacing: 2) {
-                    MoneyText(
-                        sats: Int(clamping: request.amountSats),
-                        unitType: .primary,
-                        size: .bodyMSB,
-                        symbol: showsAmountSymbol,
-                        prefix: amountPrefix,
-                        color: .textPrimary,
-                        symbolColor: .textSecondary
-                    )
+                    PaykitAmountText(amount: request.amount, prefix: amountPrefix)
                     CaptionText(amountStatus, textColor: .white64)
                 }
             } else {
-                MoneyCell(sats: Int(clamping: request.amountSats), prefix: amountPrefix, symbol: showsAmountSymbol)
+                PaykitAmountText(amount: request.amount, prefix: amountPrefix)
             }
         }
         .padding(16)
@@ -300,9 +309,9 @@ struct PaymentRequestsSheet: View {
                     _ = paymentRequests.requestPresentation(request)
                 }
             },
-            onReject: {
+            onReject: paymentRequests.canDismiss(request) ? {
                 await dismiss(request)
-            }
+            } : nil
         )
     }
 
@@ -448,7 +457,8 @@ struct PaymentRequestsView: View {
     }
 
     private func status(for request: PaykitPaymentRequest) -> String {
-        t(PaymentRequestDisplay.statusKey(for: request, isActionable: isActionable(request)))
+        PaymentRequestDisplay.status(for: request, isActionable: isActionable(request),
+                                     receipt: PaykitUsdtPaymentService.shared.receipt(for: request))
     }
 
     @ViewBuilder
@@ -459,7 +469,7 @@ struct PaymentRequestsView: View {
                 isActionDisabled: paymentRequests.requestedPresentationId == request.id,
                 onOpen: { navigation.navigate(.paymentRequestDetail(request.id)) },
                 onPay: { _ = paymentRequests.requestPresentation(request) },
-                onReject: { await dismiss(request) }
+                onReject: paymentRequests.canDismiss(request) ? { await dismiss(request) } : nil
             )
         } else if request.direction == .outgoing {
             PaymentRequestCard(
@@ -531,6 +541,7 @@ struct PaymentRequestDetailView: View {
                         counterparty(request)
                         if isActionable(request) {
                             tags
+                                .disabled(paymentRequests.requestedPresentationId == request.id)
                         }
 
                         if let note = request.note, !note.isEmpty {
@@ -578,24 +589,15 @@ struct PaymentRequestDetailView: View {
         let paymentDirection = PaymentRequestDisplay.paymentDirection(for: request)
 
         return VStack(alignment: .leading, spacing: 8) {
-            MoneyText(
-                sats: Int(clamping: request.amountSats),
-                unitType: .secondary,
-                size: .caption,
-                symbol: true,
-                color: .white64
-            )
+            CaptionMText(t("wallet__payment_request_requested_amount"), textColor: .white64)
+            if request.amount.asset == .btc {
+                MoneyText(sats: Int(clamping: request.amount.atomic), unitType: .secondary, size: .caption,
+                          symbol: true, color: .white64)
+            }
             HStack(spacing: 16) {
-                MoneyText(
-                    sats: Int(clamping: request.amountSats),
-                    unitType: .primary,
-                    size: .display,
-                    symbol: true,
-                    prefix: paymentDirection == .incoming ? "-" : paymentDirection == .outgoing ? "+" : "",
-                    color: .textPrimary,
-                    symbolColor: .textSecondary
-                )
-                .accessibilityIdentifier("PaymentRequestDetailsAmount")
+                PaykitAmountText(amount: request.amount, size: .display,
+                                 prefix: paymentDirection == .incoming ? "-" : paymentDirection == .outgoing ? "+" : "")
+                    .accessibilityIdentifier("PaymentRequestDetailsAmount")
                 Spacer()
                 if let paymentDirection {
                     CircularIcon(
@@ -611,7 +613,8 @@ struct PaymentRequestDetailView: View {
                 }
             }
             BodyMText(
-                t(PaymentRequestDisplay.statusKey(for: request, isActionable: isActionable(request))),
+                PaymentRequestDisplay.status(for: request, isActionable: isActionable(request),
+                                             receipt: PaykitUsdtPaymentService.shared.receipt(for: request)),
                 textColor: .white64
             )
             .accessibilityIdentifier("PaymentRequestDetailsStatus")
@@ -623,12 +626,14 @@ struct PaymentRequestDetailView: View {
             LabeledDetailCell(
                 title: t("wallet__payment_request_date"),
                 value: request.createdAt.map(Self.dateFormatter.string) ?? "–",
-                icon: "calendar"
+                icon: "calendar",
+                iconColor: request.paymentProofKind == .usdt ? .usdtAccent : .purpleAccent
             )
             LabeledDetailCell(
                 title: t("wallet__payment_request_time"),
                 value: request.createdAt.map(Self.timeFormatter.string) ?? "–",
-                icon: "clock"
+                icon: "clock",
+                iconColor: request.paymentProofKind == .usdt ? .usdtAccent : .purpleAccent
             )
         }
     }
@@ -670,27 +675,31 @@ struct PaymentRequestDetailView: View {
 
     private func actions(_ request: PaykitPaymentRequest) -> some View {
         HStack(spacing: 16) {
-            CustomButton(
-                title: t("wallet__payment_request_dismiss"),
-                variant: .secondary,
-                icon: Image("x-mark").resizable().frame(width: 16, height: 16)
-            ) {
-                do {
-                    try await paymentRequests.dismiss(request)
-                    navigation.navigateBack()
-                } catch {
-                    app.toast(error)
+            if paymentRequests.canDismiss(request) {
+                CustomButton(
+                    title: t("wallet__payment_request_dismiss"),
+                    variant: .secondary,
+                    icon: Image("x-mark").resizable().frame(width: 16, height: 16),
+                    isDisabled: paymentRequests.requestedPresentationId == request.id
+                ) {
+                    do {
+                        try await paymentRequests.dismiss(request)
+                        navigation.navigateBack()
+                    } catch {
+                        app.toast(error)
+                    }
                 }
             }
 
             CustomButton(
                 title: t("common__pay"),
-                icon: Image("coins").resizable().frame(width: 16, height: 16)
+                icon: Image("coins").resizable().frame(width: 16, height: 16),
+                isLoading: paymentRequests.requestedPresentationId == request.id
             ) {
                 guard paymentRequests.requestPresentation(request) else { return }
                 tagManager.preserveSelectedTags(for: request.id)
-                navigation.navigateBack()
             }
+            .accessibilityIdentifier("PaymentRequestDetailsPay")
         }
         .padding(.bottom, 16)
     }
@@ -716,8 +725,19 @@ struct PaymentRequestDetailView: View {
 
 private extension PaykitPaymentRequest {
     var paymentRailColors: (icon: Color, background: Color) {
-        paymentProofKind == .lightning
-            ? (.purpleAccent, .purple16)
-            : (.brandAccent, .brand16)
+        switch paymentProofKind {
+        case .usdt: (.usdtAccent, .usdtAccent.opacity(0.16))
+        case .lightning: (.purpleAccent, .purple16)
+        default: (.brandAccent, .brand16)
+        }
+    }
+}
+
+private extension PaykitUsdtPaymentService.Receipt {
+    var statusText: String {
+        let key = !verified ? "wallet__payment_request_status_pending" :
+            underpaid ? "wallet__payment_request_underpaid" :
+            afterExpiry ? "wallet__payment_request_after_expiry" : "wallet__payment_request_payment_verified"
+        return t(key) + " · " + usdtExactAmount(amount.atomic) + " USDT"
     }
 }

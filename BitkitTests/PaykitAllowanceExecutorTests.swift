@@ -727,7 +727,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             isAutomatic: true,
             requestId: request.id,
             allowanceId: Fixtures.walletAllowanceId,
-            amountSats: request.amountSats,
+            amountSats: request.allowanceAmountSats,
             paymentEndpointIdentifier: Fixtures.lightningIdentifier,
             paymentHash: paymentHash,
             onchainAddress: nil,
@@ -1166,7 +1166,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         return record
     }
 
-    func acceptAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
         throw AllowanceMockError.unsupported
     }

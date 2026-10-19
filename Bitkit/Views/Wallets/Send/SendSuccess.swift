@@ -1,5 +1,4 @@
 import BitkitCore
-import Lottie
 import SwiftUI
 
 struct SendSuccess: View {
@@ -45,18 +44,6 @@ struct SendSuccess: View {
         return nil
     }
 
-    /// Load the confetti animation
-    private var confettiAnimation: LottieAnimation? {
-        let animationName = paymentProofKind == .onchain ? "confetti-orange" : "confetti-purple"
-
-        guard let filepathURL = Bundle.main.url(forResource: animationName, withExtension: "json") else {
-            print("Could not find \(animationName).json in bundle")
-            return nil
-        }
-
-        return LottieAnimation.filepath(filepathURL.path)
-    }
-
     var body: some View {
         Group {
             if isInitialSubscriptionPayment {
@@ -76,14 +63,7 @@ struct SendSuccess: View {
     private var standardSuccess: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
-                // Background confetti animation
-                if let animation = confettiAnimation {
-                    LottieView(animation: animation)
-                        .playing(loopMode: .loop)
-                        // Scale the animation to fill the sheet
-                        .scaleEffect(1.9)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                PaymentCelebration(isOnchain: app.selectedWalletToPayFrom == .onchain, isReceived: false)
 
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: t("wallet__send_sent"), showBackButton: false)

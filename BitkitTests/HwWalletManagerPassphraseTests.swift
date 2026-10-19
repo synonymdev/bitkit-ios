@@ -9,11 +9,12 @@ import XCTest
 final class HwWalletManagerPassphraseTests: XCTestCase {
     // MARK: - Fake session
 
-    private final class MockHwDeviceSession: HwDeviceSessioning {
-        var storedDevices: [TrezorKnownDevice] = []
+    private final class MockTrezorSession: TrezorSessioning {
+        var storedDevices: [HwKnownDevice] = []
         var connectedDeviceId: String?
         var connectedWalletId: String?
         var connectedFeatures: TrezorFeatures?
+        var isSessionActive = false
 
         /// Wallet id the next `connectWithWalletMode` resolves to, per mode. A hidden open that is
         /// not listed here resolves to `openedWalletIdOnHidden`, standing in for the different wallet
@@ -22,7 +23,7 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         var openedWalletIdOnStandard: String?
         /// An entry the device writes when a hidden open reads a wallet Bitkit has never seen,
         /// mirroring how reading accounts persists the wallet before anything can reject it.
-        var writesEntryOnHiddenOpen: TrezorKnownDevice?
+        var writesEntryOnHiddenOpen: HwKnownDevice?
 
         var ensureConnectedError: Error?
         var connectWithWalletModeError: Error?
@@ -35,6 +36,9 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         private(set) var staleDisconnects: [String] = []
         private(set) var forgottenWalletIds: [String] = []
         private(set) var warmUpCalls: [String] = []
+        private(set) var releaseCalls = 0
+        private(set) var startAutoReconnectCalls = 0
+        private(set) var renameCalls: [(walletId: String, newName: String)] = []
 
         func ensureConnected(deviceId: String) async throws {
             ensureCalls.append(deviceId)
@@ -99,6 +103,21 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
                 connectedWalletId = nil
             }
         }
+
+        func releaseSession() async {
+            releaseCalls += 1
+            isSessionActive = false
+        }
+
+        func startAutoReconnect() {
+            startAutoReconnectCalls += 1
+        }
+
+        func resetForWipe() async {}
+
+        func renameWallet(walletId: String, newName: String) {
+            renameCalls.append((walletId, newName))
+        }
     }
 
     private final class NoopWatcher: OnChainWatcherServicing, @unchecked Sendable {
@@ -107,12 +126,12 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         func stopAllWatchers() {}
     }
 
-    private var session = MockHwDeviceSession()
+    private var session = MockTrezorSession()
     private var deletedWalletIds: [String] = []
 
     override func setUp() {
         super.setUp()
-        session = MockHwDeviceSession()
+        session = MockTrezorSession()
         deletedWalletIds = []
     }
 
@@ -587,7 +606,7 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         addressProvider: @escaping HwWalletManager.AddressProvider = { _ in throw TrezorError.DeviceDisconnected }
     ) -> HwWalletManager {
         HwWalletManager(
-            session: session,
+            trezorSession: session,
             watcherService: NoopWatcher(),
             monitoredTypes: { ["nativeSegwit"] },
             electrumUrl: { "ssl://test:1" },
@@ -611,8 +630,8 @@ final class HwWalletManagerPassphraseTests: XCTestCase {
         xpubs: [String: String] = ["nativeSegwit": "zStandard"],
         walletId: String,
         passphraseProtected: Bool = false
-    ) -> TrezorKnownDevice {
-        TrezorKnownDevice(
+    ) -> HwKnownDevice {
+        HwKnownDevice(
             id: id,
             name: "Trezor",
             path: "ble://\(id)",

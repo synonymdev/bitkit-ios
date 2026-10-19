@@ -176,8 +176,9 @@ struct ContactImportOverviewView: View {
 
         do {
             try await contactsManager.importContacts(contacts: contacts)
-            contactsManager.clearPendingImport()
-            navigation.path = [.payContacts]
+            if contactsManager.completePendingImport() {
+                navigation.path = [.payContacts]
+            }
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }

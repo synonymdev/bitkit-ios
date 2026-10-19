@@ -112,6 +112,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
         try? StateLocker.unlock(.lightning)
+        // A Jade left holding a link when the process ends can drop its Bluetooth bond.
+        JadeTransport.shared.releaseAllImmediately()
     }
 }
 
@@ -173,7 +175,7 @@ struct BitkitApp: App {
     init() {
         UIWindow.appearance().overrideUserInterfaceStyle = .dark
         if Env.shouldResetTrezorEmulatorState {
-            TrezorKnownDeviceStorage.removeAll()
+            HwKnownDeviceStorage.removeAll()
             TrezorCredentialStorage.deleteAll()
         }
         _ = ToastWindowManager.shared
@@ -184,6 +186,8 @@ struct BitkitApp: App {
             #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-contact-import-ui-test") {
                     ContactImportUITestFixture()
+                } else if ProcessInfo.processInfo.arguments.contains("-profile-recovery-ui-test") {
+                    ProfileRecoveryUITestFixture()
                 } else {
                     appContent
                 }

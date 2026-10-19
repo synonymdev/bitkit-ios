@@ -59,6 +59,21 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
+    func testContactPaymentErrorsDoNotExposeSdkDetails() {
+        for error: Error in [
+            PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "peer operation in progress"),
+            PaykitError.SharedStateBusy(code: "shared_state_busy", context: "pending write"),
+            PaykitError.Transport(code: "transport", context: "private request failed"),
+        ] {
+            XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), t("other__try_again"))
+            XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(Bitkit.AppError(error: error)), t("other__try_again"))
+        }
+        XCTAssertNil(PaymentNavigationHelper.contactPaymentErrorDescription(CancellationError()))
+        XCTAssertNil(PaymentNavigationHelper.contactPaymentErrorDescription(Bitkit.AppError(error: CancellationError())))
+        let error = PrivatePaykitError.invalidPublicKey
+        XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), error.localizedDescription)
+    }
+
     func testEligibleInvoiceUsesQuickpayUnderDailyCap() {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
@@ -173,6 +188,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
         )
 
         XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+    }
+
+    func testContactWithUsdtLocksOnlyFixedLightningFunding() {
+        let app = appWithInvoice(paymentHash: "fixed", amountSatoshis: 10000)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [
+            .init(methodId: .usdtArbitrum, value: "0x1111111111111111111111111111111111111111", min: nil, max: nil, rawPayload: ""),
+        ])
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 10000)
+        app.paykitUsesUsdt = true
+        XCTAssertNil(app.fixedLightningAmountSats)
+        app.paykitUsesUsdt = false
+        app.selectedWalletToPayFrom = .onchain
+        XCTAssertNil(app.fixedLightningAmountSats)
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 10000)
+        app.scannedLightningInvoice = appWithInvoice(paymentHash: "amountless", amountSatoshis: 0).scannedLightningInvoice
+        XCTAssertNil(app.fixedLightningAmountSats)
     }
 
     func testReserveRaceFallsBackToConfirm() {

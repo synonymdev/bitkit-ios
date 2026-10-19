@@ -185,7 +185,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64)
+                    CaptionMText(t("contacts__nav_title").localizedUppercase, textColor: .white64, lineHeight: 18)
                         .padding(.bottom, 16)
                     CustomDivider()
                     if recipientTargets.isEmpty {
@@ -219,7 +219,7 @@ struct PaykitRecipientPicker<Header: View, Footer: View>: View {
 
     private var recipientInput: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64, lineHeight: 18)
 
             HStack(spacing: 8) {
                 TextField(
@@ -308,8 +308,18 @@ struct PaymentRequestAmountView: View {
     let onContinue: (PaykitPaymentRequestDraft) -> Void
     var onBack: (() -> Void)?
     var testIdentifierPrefix = "PaymentRequest"
+    var allowedAssets: [PaykitAsset] = [.btc, .usd]
 
     @State private var amountViewModel = AmountInputViewModel()
+    @State private var asset: PaykitAsset = .btc
+    @State private var dollarAmount = ""
+    @State private var conversionError = false
+    @State private var didLoadAmount = false
+    @State private var entryConversion = PaykitAmountEntryConversion()
+
+    private var amount: PaykitAmount? {
+        asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? parsePaykitAmountInput(asset: .usd, value: dollarAmount)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -320,41 +330,63 @@ struct PaymentRequestAmountView: View {
                 onBack: onBack
             )
 
-            NumberPadTextField(
-                viewModel: amountViewModel,
-                showEditButton: false,
-                isFocused: true,
-                testIdentifier: "\(testIdentifierPrefix)AmountField"
-            )
+            if asset == .usd {
+                NumberPadAmountText(value: usdtInputAmount(dollarAmount.isEmpty ? "0" : dollarAmount), symbol: "$")
+                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
+            } else {
+                NumberPadTextField(viewModel: amountViewModel, showEditButton: false, isFocused: true,
+                                   testIdentifier: "\(testIdentifierPrefix)AmountField")
+            }
 
             Spacer()
 
             HStack {
                 Spacer()
-                NumberPadActionButton(
-                    text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                    imageName: "arrow-up-down",
-                    color: .brandAccent
-                ) {
-                    withAnimation {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                ForEach(allowedAssets, id: \.self) { choice in
+                    NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
+                                          variant: asset == choice ? .primary : .secondary)
+                    {
+                        guard choice != asset else { return }
+                        do {
+                            let converted = try entryConversion.converted(amount, to: choice, rate: currency.paykitRate, at: Date())
+                            if choice == .usd { dollarAmount = converted.atomic == 0 ? "" : converted.value }
+                            else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
+                            asset = choice
+                            conversionError = false
+                        } catch { conversionError = true }
                     }
+                    .accessibilityIdentifier("\(testIdentifierPrefix)Asset-\(choice.rawValue)")
                 }
-                .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
+                if asset == .btc {
+                    NumberPadActionButton(
+                        text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
+                        imageName: "arrow-up-down", color: .brandAccent
+                    ) {
+                        withAnimation { amountViewModel.togglePrimaryDisplay(currency: currency) }
+                    }
+                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
+                }
             }
             .padding(.bottom, 12)
 
+            if conversionError {
+                BodySText(t("wallet__payment_request_rate_unavailable"), textColor: .white64)
+            }
             NumberPad(
-                type: amountViewModel.getNumberPadType(currency: currency),
+                type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
+                decimalSeparator: asset == .usd ? Locale.current.decimalSeparator ?? "." : ".",
                 errorKey: amountViewModel.errorKey
             ) { key in
-                amountViewModel.handleNumberPadInput(key, currency: currency)
+                entryConversion.reset()
+                if asset == .usd { dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2) }
+                else { amountViewModel.handleNumberPadInput(key, currency: currency) }
             }
 
-            CustomButton(title: t("common__continue"), isDisabled: amountViewModel.amountSats == 0) {
+            CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
+                guard allowedAssets.contains(asset), let amount else { return }
                 onContinue(
                     PaykitPaymentRequestDraft(
-                        amountSats: amountViewModel.amountSats,
+                        amount: amount, acceptedPaymentEndpointIdentifiers: initialDraft.acceptedPaymentEndpointIdentifiers,
                         note: initialDraft.note,
                         expiresAt: initialDraft.expiresAt
                     )
@@ -366,7 +398,15 @@ struct PaymentRequestAmountView: View {
         .sheetBackground()
         .navigationBarHidden(true)
         .task {
-            amountViewModel.updateFromSats(initialDraft.amountSats, currency: currency)
+            guard !didLoadAmount else { return }
+            didLoadAmount = true
+            asset = initialDraft.amount.asset == .btc ? .btc : .usd
+            guard allowedAssets.contains(asset) else {
+                asset = allowedAssets.first ?? .btc
+                return
+            }
+            if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
+            else { dollarAmount = initialDraft.amount.value }
         }
     }
 
@@ -393,6 +433,8 @@ struct PaymentRequestDetailsView: View {
     let onSent: (PaykitPaymentRequest) -> Void
 
     @State private var note = ""
+    @EnvironmentObject private var wallet: WalletViewModel
+    @State private var restrictedEndpoints: [String]?
     @State private var expiration = PaymentRequestExpiration.week
     @FocusState private var isNoteFocused: Bool
 
@@ -402,21 +444,26 @@ struct PaymentRequestDetailsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request"), showBackButton: true)
+            SheetHeader(title: t("wallet__payment_request"), showBackButton: true,
+                        topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 32) {
                     amount
                     noteInput
                     recipient
                     expirationPicker
+                    acceptedMethods
                 }
+                .padding(.bottom, 24)
             }
 
             CustomButton(
                 title: t("wallet__payment_request_send_request"),
-                icon: Image("airplane").resizable().frame(width: 16, height: 16),
-                isLoading: paymentRequests.isCreatingRequest
+                icon: Image("paper-plane-tilt").resizable().frame(width: 16, height: 16),
+                isDisabled: selectedEnabledEndpoints.isEmpty,
+                isLoading: paymentRequests.isCreatingRequest,
+                titleKerning: 0, titleLineHeight: 20
             ) {
                 await sendRequest()
             }
@@ -424,10 +471,12 @@ struct PaymentRequestDetailsView: View {
             .accessibilityIdentifier("PaymentRequestSend")
         }
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .navigationBarHidden(true)
         .interactiveDismissDisabled(paymentRequests.isCreatingRequest)
         .task {
+            restrictedEndpoints = initialDraft.acceptedPaymentEndpointIdentifiers
             note = initialDraft.note
             if initialDraft.expiresAt > Date() {
                 expiration = .closest(to: initialDraft.expiresAt, from: Date())
@@ -441,66 +490,79 @@ struct PaymentRequestDetailsView: View {
     }
 
     private var amount: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            MoneyText(
-                sats: Int(clamping: initialDraft.amountSats),
-                unitType: .secondary,
-                size: .caption,
-                symbol: true,
-                color: .white64
-            )
-            Button {
-                onEditAmount(currentDraft)
-            } label: {
-                HStack(spacing: 8) {
-                    MoneyText(
-                        sats: Int(clamping: initialDraft.amountSats),
-                        unitType: .primary,
-                        size: .display,
-                        symbol: true,
-                        color: .textPrimary,
-                        symbolColor: .textSecondary
-                    )
-                    Image("pencil")
-                        .resizable()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(.textPrimary)
+        VStack(alignment: .leading, spacing: 16) {
+            CaptionMText(t("wallet__payment_request_amount"), textColor: .white64, lineHeight: 18)
+            Button { onEditAmount(currentDraft) } label: {
+                HStack(spacing: 16) {
+                    if initialDraft.amount.asset == .btc {
+                        MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
+                                  symbol: true, color: .textPrimary, symbolColor: .textSecondary, fillsWidth: false)
+                    } else { PaykitAmountText(amount: initialDraft.amount, size: .display) }
+                    Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("PaymentRequestEditAmount")
+        }
+    }
+
+    private var enabledEndpoints: [String] {
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+    }
+
+    private var selectedEnabledEndpoints: [String] {
+        enabledEndpoints.filter { restrictedEndpoints?.contains($0) ?? true }
+    }
+
+    private var acceptedMethods: some View {
+        PaykitAcceptedMethods(
+            title: t("wallet__payment_request_accepted_methods"), available: enabledEndpoints,
+            selected: selectedEnabledEndpoints, identifierPrefix: "PaymentRequest"
+        ) { option in
+            let endpoints = option.endpoints(in: enabledEndpoints)
+            let selected = selectedEnabledEndpoints
+            restrictedEndpoints = endpoints.contains(where: selected.contains)
+                ? selected.filter { !endpoints.contains($0) }
+                : selected + endpoints.filter { !selected.contains($0) }
         }
     }
 
     private var noteInput: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__note").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__note").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             NoteTextEditor(
                 text: $note,
                 placeholder: t("wallet__receive_note_placeholder"),
                 testIdentifier: "PaymentRequestNote",
-                isFocused: $isNoteFocused
+                isFocused: $isNoteFocused,
+                minHeight: 20,
+                maxHeight: 20,
+                backgroundColor: .white10,
+                textKerning: 0.4, textLineHeight: 20
             )
         }
     }
 
     private var recipient: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64)
+            CaptionMText(t("wallet__payment_request_recipient").localizedUppercase, textColor: .white64, lineHeight: 18)
             HStack(spacing: 16) {
                 if let contact {
                     PubkyContactAvatar(contact: contact, size: 40)
                 } else {
                     ContactAvatarLetter(source: target.publicKey, size: 40)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    BodyMSBText(contact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(target.publicKey))
+                VStack(alignment: .leading, spacing: 0) {
+                    BodyMSBText(contact?.displayName ?? PubkyPublicKeyFormat.displayTruncated(target.publicKey),
+                                kerning: 0, lineHeight: 22)
                     if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        CaptionText(note, textColor: .white64)
+                        CaptionBText(note, textColor: .white64, kerning: 0, lineHeight: 18)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 8)
-                MoneyCell(sats: Int(clamping: initialDraft.amountSats), prefix: "")
+                if initialDraft.amount.asset == .btc { MoneyCell(sats: Int(clamping: initialDraft.amount.atomic), prefix: "") }
+                else { PaykitAmountText(amount: initialDraft.amount) }
             }
             .padding(16)
             .background(Color.gray6)
@@ -510,14 +572,15 @@ struct PaymentRequestDetailsView: View {
 
     private var expirationPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__payment_request_expires").localizedUppercase, textColor: .white64)
-            SegmentedControl(selectedTab: $expiration, tabs: PaymentRequestExpiration.allCases)
+            CaptionMText(t("wallet__payment_request_expires").localizedUppercase, textColor: .white64, lineHeight: 18)
+            SegmentedControl(selectedTab: $expiration, tabs: PaymentRequestExpiration.allCases,
+                             inactiveColor: .white.opacity(0.5), labelKerning: 0, labelLineHeight: 18)
         }
     }
 
     private var currentDraft: PaykitPaymentRequestDraft {
         PaykitPaymentRequestDraft(
-            amountSats: initialDraft.amountSats,
+            amount: initialDraft.amount, acceptedPaymentEndpointIdentifiers: restrictedEndpoints,
             note: note.trimmingCharacters(in: .whitespacesAndNewlines),
             expiresAt: expiration.date(from: Date())
         )
@@ -541,7 +604,9 @@ struct PaymentRequestSentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("wallet__payment_request_sent_title"))
+            SheetHeader(title: t(request.deliveryStatus == .sent
+                    ? "wallet__payment_request_sent_title"
+                    : "subscriptions__proposal_queued_title"))
 
             Spacer(minLength: 8)
 

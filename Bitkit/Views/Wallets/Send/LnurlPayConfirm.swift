@@ -11,6 +11,7 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var settings: SettingsViewModel
 
     @Binding var navigationPath: [SendRoute]
+    @Binding var isSubmittingPayment: Bool
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
@@ -40,14 +41,17 @@ struct LnurlPayConfirm: View {
         return try await send()
     }
 
-    var uri: String {
-        app.lnurlPayData!.uri
+    private var shouldAutomaticallyPay: Bool {
+        app.contactPaymentContext?.isInitialSubscriptionPayment == true &&
+            app.contactPaymentContext?.incomingPaymentRequest?.pricing.conversion == nil
     }
 
     var body: some View {
         ZStack {
-            confirmationContent
-            if app.contactPaymentContext?.isInitialSubscriptionPayment == true {
+            if let lnurlPayData = app.lnurlPayData {
+                confirmationContent(lnurlPayData: lnurlPayData)
+            }
+            if shouldAutomaticallyPay {
                 InitialSubscriptionPaymentProgress()
             }
         }
@@ -80,7 +84,7 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private var confirmationContent: some View {
+    private func confirmationContent(lnurlPayData: LnurlPayData) -> some View {
         VStack {
             SheetHeader(
                 title: reviewTitle,
@@ -90,7 +94,7 @@ struct LnurlPayConfirm: View {
 
             VStack(alignment: .leading) {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendableSat),
+                    sats: Int(wallet.sendAmountSats ?? lnurlPayData.minSendableSat),
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )
@@ -100,7 +104,7 @@ struct LnurlPayConfirm: View {
                     VStack(alignment: .leading) {
                         CaptionMText(t("wallet__send_invoice"))
                             .padding(.bottom, 8)
-                        BodySSBText(uri)
+                        BodySSBText(lnurlPayData.uri)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -127,7 +131,7 @@ struct LnurlPayConfirm: View {
 
                     Divider()
 
-                    if let commentAllowed = app.lnurlPayData?.commentAllowed, commentAllowed > 0 {
+                    if let commentAllowed = lnurlPayData.commentAllowed, commentAllowed > 0 {
                         VStack(alignment: .leading) {
                             CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
                                 .padding(.bottom, 8)
@@ -162,7 +166,8 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
-                isLoading: hasStartedAutomaticPayment
+                isLoading: hasStartedAutomaticPayment,
+                isSubmitted: hasStartedAutomaticPayment
             ) {
                 try await submitPayment()
             }
@@ -178,7 +183,8 @@ struct LnurlPayConfirm: View {
 
     @MainActor
     private func startAutomaticPaymentIfNeeded() async {
-        guard app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+        guard let lnurlPayData = app.lnurlPayData,
+              shouldAutomaticallyPay,
               !hasStartedAutomaticPayment
         else { return }
         hasStartedAutomaticPayment = true
@@ -197,7 +203,7 @@ struct LnurlPayConfirm: View {
                 error: error,
                 retryRoute: .lnurlPayConfirm,
                 routingCacheResetAttempted: routingCacheResetAttempted,
-                paymentRequest: "LNURL: \(uri)",
+                paymentRequest: "LNURL: \(lnurlPayData.uri)",
                 contactPaymentContext: app.contactPaymentContext
             )))
         }
@@ -259,13 +265,21 @@ struct LnurlPayConfirm: View {
     }
 
     private func performPayment() async throws {
+        isSubmittingPayment = true
+        defer { isSubmittingPayment = false }
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
-        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
+        let reviewedAmount = wallet.sendAmountSats ?? lnurlPayData.minSendableSat
+        guard lnurlPayData.accepts(amountSats: reviewedAmount) else {
+            throw PaykitPaymentRequestError.amountMismatch
+        }
+        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: reviewedAmount)
         let contactPaymentContext = app.contactPaymentContext
         let incomingPaymentRequest = contactPaymentContext?.incomingPaymentRequest
+        let paymentActivity = PaykitPaymentActivity.shared.begin()
+        defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         var bolt11Invoice: String?
         var lightningPaymentHash: String?
         var shouldCancelPaymentProof = false
@@ -283,7 +297,8 @@ struct LnurlPayConfirm: View {
                     request: incomingPaymentRequest,
                     paymentAppId: privateContext.paymentAppId(for: endpointIdentifier),
                     paymentEndpointIdentifier: endpointIdentifier,
-                    kind: .lightning
+                    kind: .lightning,
+                    paymentTerms: app.paykitPaymentTerms
                 )
                 shouldCancelPaymentProof = true
             }
@@ -322,6 +337,7 @@ struct LnurlPayConfirm: View {
                 try await wallet.sendWithTimeout(
                     bolt11: bolt11,
                     sats: nil,
+                    paymentDeadline: incomingPaymentRequest?.submissionDeadline(quoteId: app.paykitPaymentTerms?.quoteId),
                     afterListening: { _ in lightningPaymentSubmitted = true },
                     onTimeout: { timedOutHash in
                         app.addPendingPaymentHash(timedOutHash, contactPaymentContext: contactPaymentContext)
@@ -387,11 +403,13 @@ struct LnurlPayConfirm: View {
 
     private func validateIncomingPaymentRequest(_ context: ContactPaymentContext?, amountMsats: UInt64) throws {
         guard let context, let request = context.incomingPaymentRequest else { return }
-        guard !request.isExpired(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+        guard !request.isExpired(at: Date()) || paykitPaymentRequestManager.isApprovedForPayment(request) else {
+            throw PaykitPaymentRequestError.requestExpired
+        }
         guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
         guard let amountSats = wallet.sendAmountSats,
-              request.acceptsPaymentAmount(amountSats),
-              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats)
+              request.acceptsPaymentAmount(amountSats, method: .bitcoinLightningLnurl, paymentTerms: app.paykitPaymentTerms),
+              request.acceptsLightningInvoiceAmount(milliSatoshis: amountMsats, paymentTerms: app.paykitPaymentTerms)
         else {
             throw PaykitPaymentRequestError.amountMismatch
         }
