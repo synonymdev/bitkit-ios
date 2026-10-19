@@ -405,7 +405,8 @@ struct UsdtSendView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
-                            .contentShape(Rectangle()).onTapGesture { if !busy { goBack() } }
+                            .contentShape(Rectangle()).onTapGesture(perform: goBack)
+                            .allowsHitTesting(!busy && !embedded)
                         Spacer().frame(height: 24)
                         if showDetails {
                             quoteDetails(quote)
