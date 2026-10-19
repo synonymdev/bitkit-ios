@@ -131,8 +131,9 @@ protocol PaykitAllowancePaying: Sendable {
     func associateLightningPayment(_ request: PaykitPaymentRequest, paymentHash: String) async throws
     func markOnchainPaymentStarted(_ request: PaykitPaymentRequest, address: String) async throws
     func payLightning(bolt11: String, sats: UInt64?) async throws
-    func payOnchain(address: String, sats: UInt64) async throws -> String
-    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentAppId: String, paymentEndpointIdentifier: String) async
+    /// Throws only before anything was broadcast, after rolling back the started proof.
+    func payOnchain(_ request: PaykitPaymentRequest, address: String, sats: UInt64, paymentIdentity: String) async throws -> OnchainSendResult
+    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentAppId: String, paymentEndpointIdentifier: String) async -> Bool
     func failLightningPayment(paymentHash: String) async
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async
 }
@@ -213,12 +214,37 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         _ = try await LightningService.shared.send(bolt11: bolt11, sats: sats)
     }
 
-    func payOnchain(address: String, sats: UInt64) async throws -> String {
-        let feeRate = await (try? CoreService.shared.blocktank.fees(refresh: false))?.mid ?? 2
-        return try await String(describing: LightningService.shared.send(address: address, sats: sats, satsPerVbyte: max(feeRate, 1)))
+    func payOnchain(_ request: PaykitPaymentRequest, address: String, sats: UInt64, paymentIdentity: String) async throws -> OnchainSendResult {
+        let feeRate = await max((try? CoreService.shared.blocktank.fees(refresh: false))?.mid ?? 2, 1)
+        do {
+            return try await OnchainSendAttemptService.shared.send(
+                using: LightningService.shared,
+                address: address,
+                amountSats: sats,
+                satsPerVbyte: feeRate,
+                utxosToSpend: nil,
+                isMaxAmount: false,
+                requestId: request.id,
+                paymentIdentity: paymentIdentity,
+                followupContext: OnchainSendFollowupContext(
+                    feeSats: 0, feeRate: feeRate, tags: [], contact: request.counterparty,
+                    createdAt: UInt64(Date().timeIntervalSince1970)
+                ),
+                paymentDeadline: request.paymentDeadline,
+                onPreDispatchFailure: { _ in
+                    guard await PaykitPaymentProofService.shared.failOnchainPayment(request, paymentIdentity: paymentIdentity)
+                    else { throw OnchainSendAttemptError.preDispatchCleanupFailed }
+                }
+            )
+        } catch {
+            _ = await PaykitPaymentProofService.shared.failOnchainPayment(request, paymentIdentity: paymentIdentity)
+            throw error
+        }
     }
 
-    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentAppId: String, paymentEndpointIdentifier: String) async {
+    func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentAppId: String,
+                                paymentEndpointIdentifier: String) async -> Bool
+    {
         await PaykitPaymentProofService.shared.completeOnchainPayment(
             request,
             txid: txid,
@@ -500,6 +526,13 @@ actor PaykitAllowanceExecutor {
         else {
             let reasons = candidates.compactMap { $0.blocked.map { String(describing: $0) } }
             Logger.info("No eligible allowance for an incoming request: \(reasons)", context: "PaykitAllowance")
+            // The SDK blocks a request above the per-payment limit before the capacity check below can notify.
+            if allowances.contains(where: {
+                $0.isAllower && $0.lifecycleState == .accepted && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) &&
+                    $0.perPaymentMaxSats.map { request.allowanceAmountSats > $0 } == true
+            }) {
+                notifyLimitReached(request, identity: identity)
+            }
             return .manual
         }
 
@@ -645,6 +678,7 @@ actor PaykitAllowanceExecutor {
         identity: String
     ) async throws -> PaykitAllowanceAutoPayResult {
         do {
+            try setStageDurably(.sending, attemptId: attemptId, identity: identity)
             try await payer.associateLightningPayment(request, paymentHash: paymentHash)
         } catch {
             await payer.cancelProofPreparation(request)
@@ -653,7 +687,6 @@ actor PaykitAllowanceExecutor {
             throw error
         }
 
-        setStage(.sending, attemptId: attemptId, identity: identity)
         do {
             try await payer.payLightning(bolt11: payment.endpoint.value, sats: payment.lightningInvoiceHasAmount ? nil : request.allowanceAmountSats)
         } catch {
@@ -679,6 +712,7 @@ actor PaykitAllowanceExecutor {
     ) async throws -> PaykitAllowanceAutoPayResult {
         let address = payment.endpoint.value
         do {
+            try setStageDurably(.sending, attemptId: attemptId, identity: identity)
             try await payer.markOnchainPaymentStarted(request, address: address)
         } catch {
             await payer.cancelProofPreparation(request)
@@ -687,33 +721,45 @@ actor PaykitAllowanceExecutor {
             throw error
         }
 
-        setStage(.sending, attemptId: attemptId, identity: identity)
-        let txid: String
+        let result: OnchainSendResult
         do {
-            txid = try await payer.payOnchain(address: address, sats: request.allowanceAmountSats)
+            result = try await payer.payOnchain(request, address: address, sats: request.allowanceAmountSats, paymentIdentity: identity)
         } catch {
-            if PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error) {
-                await payer.cancelProofPreparation(request)
-                await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
-                try await record(attemptId: attemptId, outcome: .failed, identity: identity)
-            } else {
-                await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
-                try await record(attemptId: attemptId, outcome: .unknown, identity: identity)
-            }
+            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
+            try await record(attemptId: attemptId, outcome: .failed, identity: identity)
             throw error
         }
 
+        let txid: String
+        switch result {
+        case let .accepted(acceptedTxid):
+            txid = acceptedTxid
+        case .rejected, .unknown:
+            // The durable send attempt keeps the request from being paid again until its outcome resolves.
+            Logger.warn("Automatic on-chain allowance payment outcome is uncertain: \(result)", context: "PaykitAllowance")
+            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
+            try await record(attemptId: attemptId, outcome: .unknown, identity: identity)
+            return .started
+        }
+
+        // Recovery reads a journaled transaction as paid, so only an accepted broadcast is journaled.
         updateLocalState(identity: identity) { state in
             guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
             state.journal[index].transactionId = txid
         }
         await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .succeeded)
-        await payer.completeOnchainPayment(
+        let proofSaved = await payer.completeOnchainPayment(
             request,
             txid: txid,
             paymentAppId: paymentAppId,
             paymentEndpointIdentifier: payment.endpoint.methodId.rawValue
         )
+        guard proofSaved else {
+            // The proof service retries the accepted send's proof; recovery records the payment once it settles.
+            Logger.warn("Automatic on-chain allowance payment proof is not saved yet", context: "PaykitAllowance")
+            try await record(attemptId: attemptId, outcome: .unknown, identity: identity)
+            return .started
+        }
         try await record(attemptId: attemptId, outcome: .succeeded, identity: identity)
         Self.eventSubject.send(.paidAutomatically(counterparty: request.counterparty, amountSats: request.allowanceAmountSats, paymentId: txid))
         return .completed
@@ -848,6 +894,16 @@ actor PaykitAllowanceExecutor {
                 state.journal.removeFirst(state.journal.count - 200)
             }
         }
+    }
+
+    /// Recovery reads an entry still at `.submitted` as never sent, so the send must not start before `.sending` is saved.
+    private func setStageDurably(_ stage: PaykitAllowanceLocalState.Stage, attemptId: String, identity: String) throws {
+        var state = try store.load(identity: identity)
+        guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else {
+            throw PaykitAllowanceError.unavailable
+        }
+        state.journal[index].stage = stage
+        try store.save(state, identity: identity)
     }
 
     private func setStage(_ stage: PaykitAllowanceLocalState.Stage, attemptId: String, identity: String) {
