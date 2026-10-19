@@ -9,7 +9,7 @@ struct UsdtIntroTimedSheet: TimedSheetItem {
 
     @MainActor
     func shouldShow() async -> Bool {
-        Env.isUsdtEnabled && wallet.walletExists == true && settings.usdtPreference == .undecided
+        Env.isUsdtEnabled && wallet.walletExists == true && settings.usdtPreference == .undecided && !settings.hasSeenUsdtIntro
     }
 
     func onShown() {}

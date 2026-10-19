@@ -100,6 +100,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .normal
     @AppStorage("hideBalance") var hideBalance: Bool = false
     @AppStorage(UsdtPreference.key) var usdtPreference: UsdtPreference = .undecided
+    @AppStorage("hasSeenUsdtIntro") var hasSeenUsdtIntro = false
 
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
@@ -216,6 +217,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaultTransactionSpeed = .normal
         hideBalance = false
         usdtPreference = .undecided
+        hasSeenUsdtIntro = false
         hideBalanceOnOpen = false
         readClipboard = false
         warnWhenSendingOver100 = false
@@ -878,6 +880,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
     private func syncAppStorageFromDefaults() {
         usdtPreference = UsdtPreference(rawValue: defaults.string(forKey: UsdtPreference.key) ?? "") ?? .undecided
+        hasSeenUsdtIntro = defaults.bool(forKey: "hasSeenUsdtIntro")
         _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
         defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "")
         hideBalance = defaults.bool(forKey: "hideBalance")

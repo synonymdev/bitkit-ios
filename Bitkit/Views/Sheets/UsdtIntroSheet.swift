@@ -6,6 +6,7 @@ struct UsdtIntroSheetItem: SheetItem {
 }
 
 struct UsdtIntroSheet: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
@@ -20,6 +21,9 @@ struct UsdtIntroSheet: View {
                 settings.usdtPreference = .enabled
                 sheets.hideSheet()
             })
+        }
+        .task(id: scenePhase) {
+            if scenePhase == .active { settings.hasSeenUsdtIntro = true }
         }
     }
 }

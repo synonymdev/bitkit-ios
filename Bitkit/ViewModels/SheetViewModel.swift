@@ -72,11 +72,6 @@ class SheetViewModel: ObservableObject {
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
-
-                // Notify timed sheet manager
-                Task { @MainActor in
-                    TimedSheetManager.shared.onSheetShown()
-                }
             }
         } else {
             isReplacingSheet = false
@@ -84,11 +79,6 @@ class SheetViewModel: ObservableObject {
             Logger.debug("Showing sheet \(id.rawValue)", context: "SheetViewModel")
             activeSheetConfiguration = SheetConfiguration(id: id, data: data)
             playHaptics(for: id)
-
-            // Notify timed sheet manager
-            Task { @MainActor in
-                TimedSheetManager.shared.onSheetShown()
-            }
         }
     }
 
@@ -106,11 +96,6 @@ class SheetViewModel: ObservableObject {
             Logger.debug("hideSheet called with no active sheet\(reasonText)", context: "SheetViewModel")
         }
         activeSheetConfiguration = nil
-
-        // Notify timed sheet manager
-        Task { @MainActor in
-            TimedSheetManager.shared.onSheetDismissed()
-        }
     }
 
     func hideSheetBeforePerforming(reason: String, action: @escaping () -> Void) {
