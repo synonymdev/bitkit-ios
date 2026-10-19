@@ -7,6 +7,7 @@ import Paykit
 import SwiftUI
 import UIKit
 import UserNotifications
+import Vision
 import XCTest
 
 @MainActor
@@ -189,6 +190,77 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
     }
 
+    func testInitialUsdtProgressRequiresAutomaticAuthorization() async throws {
+        for automatic in [false, true] {
+            let started = expectation(description: "Quote started")
+            let gate = AsyncStream<Void>.makeStream()
+            defer { gate.continuation.finish() }
+            var authorizations = 0
+            let window = try hostInitialUsdtPayment(automatic: automatic, quotePayment: { _, _, _ in
+                started.fulfill()
+                for await _ in gate.stream {
+                    break
+                }
+                return self.initialUsdtQuote
+            }, authenticatePayment: {
+                authorizations += 1
+                return false
+            }, sendPayment: { _ in XCTFail("Preparation must not send a payment") })
+            defer { window.isHidden = true; window.rootViewController = nil }
+            await fulfillment(of: [started], timeout: 3)
+            try await Task.sleep(for: .milliseconds(200))
+            let labels = try initialPaymentSnapshot(window, name: automatic ? "automatic-preparation" : "manual-preparation")
+            XCTAssertEqual(labels.contains(t("subscriptions__review_and_subscribe")), automatic, "\(labels)")
+            gate.continuation.yield(())
+            try await Task.sleep(for: .milliseconds(300))
+            XCTAssertEqual(authorizations, automatic ? 1 : 0)
+            let review = try initialPaymentSnapshot(window, name: automatic ? "automatic-cancelled" : "manual-review")
+            XCTAssertTrue(review.contains(t("wallet__send_swipe")), "\(review)")
+        }
+    }
+
+    func testInitialUsdtSuccessCannotNavigateBackToPaidAmount() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mnemonic = "test test test test test test test test test test test junk"
+        let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, loadCredentials: { (mnemonic, nil) })
+        let address = try usdtAddress(mnemonic: mnemonic, passphrase: nil)
+        let snapshot = """
+        {"identity":"42161:\(address)","transfers":[{"transfer":{
+        "id":"subscription-quote","recipient":"\(initialUsdtQuote.recipient)","destination":"Arbitrum",
+        "amount":1000000,"received_amount":1000000,"fee":20,"is_incoming":false,"status":"Confirmed","timestamp":1
+        }}]}
+        """
+        let sent = expectation(description: "Confirmed initial payment")
+        let window = try hostInitialUsdtPayment(manager: manager, pushed: true, quotePayment: { _, _, _ in self.initialUsdtQuote },
+                                                authenticatePayment: { true }, sendPayment: { _ in
+                                                    try await manager.restoreBackup(snapshot)
+                                                    sent.fulfill()
+                                                })
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await fulfillment(of: [sent], timeout: 3)
+        try await Task.sleep(for: .milliseconds(1500))
+        let labels = try initialPaymentSnapshot(window, name: "subscription-success")
+        XCTAssertTrue(labels.contains(t("subscriptions__subscribed")), "\(labels)")
+        XCTAssertFalse(labels.contains("Back"), "\(labels)")
+        XCTAssertFalse(SwipeBackState.allowSwipeBack)
+    }
+
+    private func initialPaymentSnapshot(_ window: UIWindow, name: String) throws -> [String] {
+        let view = try XCTUnwrap(window.rootViewController?.view)
+        let image = UIGraphicsImageRenderer(bounds: view.bounds).image { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage)).perform([request])
+        return request.results?.compactMap { $0.topCandidates(1).first?.string } ?? []
+    }
+
     private var initialUsdtQuote: UsdtQuote {
         UsdtQuote(bridgeProvider: nil, id: "subscription-quote", recipient: "0x1111111111111111111111111111111111111111",
                   destination: .arbitrum, amount: 1_000_000, receivedAmount: 1_000_000, maximumFee: 20,
@@ -196,6 +268,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     private func hostInitialUsdtPayment(
+        automatic: Bool = true,
+        manager: UsdtWalletManager? = nil,
+        pushed: Bool = false,
         quotePayment: @escaping (String, String, UsdtDestination) async throws -> UsdtQuote,
         authenticatePayment: @escaping () async -> Bool,
         sendPayment: @escaping (UsdtQuote) async throws -> Void
@@ -212,7 +287,10 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             state: .activeRecurring, amount: "1", asset: "usdt",
             recurrence: .init(every: 1, unit: "month", startsAt: "2026-01-01T08:00:00Z",
                               anchor: "2026-01-01T08:00:00Z", endsAt: nil),
-            endpoints: [endpoint.methodId.rawValue]
+            endpoints: automatic ? [endpoint.methodId.rawValue] : [
+                endpoint.methodId.rawValue,
+                PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            ]
         )
         let subscription = try XCTUnwrap(PaykitSubscription(record: record))
         let request = PaykitPaymentRequest(subscription: subscription,
@@ -220,8 +298,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                                            lifecycleState: .accepted)
         let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request,
                                             isInitialSubscriptionPayment: true, endpoints: [endpoint])
-        XCTAssertNotNil(context.initialUsdtSubscriptionPayment())
-        let manager = UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw UsdtError.InvalidCredentials })
+        XCTAssertEqual(context.initialUsdtSubscriptionPayment() != nil, automatic)
+        let manager = manager ?? UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw UsdtError.InvalidCredentials })
         let view = UsdtSendView(onDetails: { _ in }, initialRecipient: endpoint.value, initialAmount: "1", embedded: true,
                                 paymentContext: context, quotePayment: quotePayment, authenticatePayment: authenticatePayment,
                                 sendPayment: sendPayment)
@@ -231,8 +309,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             .environmentObject(ContactsManager())
             .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
             .environmentObject(settings)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        window.rootViewController = UIHostingController(rootView: view)
+            .environment(\.scenePhase, .active)
+            .preferredColorScheme(.dark)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive })
+        let previousKeyWindow = scene.keyWindow
+        addTeardownBlock {
+            await MainActor.run { previousKeyWindow?.makeKey() }
+        }
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = UIHostingController(rootView: NavigationStack(path: .constant(pushed ? [1] : [])) {
+            if pushed {
+                Color.black.navigationDestination(for: Int.self) { _ in view }
+            } else { view }
+        })
         window.makeKeyAndVisible()
         window.rootViewController?.view.layoutIfNeeded()
         return window

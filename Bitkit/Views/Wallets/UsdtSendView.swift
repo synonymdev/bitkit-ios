@@ -36,6 +36,7 @@ struct UsdtSendView: View {
     @State private var pin = false
     @State private var submitted = false
     @State private var hasStartedInitialPayment = false
+    @State private var automaticPayment = false
     @State private var paymentComplete = false
     @State private var showDetails = false
     @State private var showFullRecipient = false
@@ -124,6 +125,8 @@ struct UsdtSendView: View {
                 SubscriptionSuccessView(paymentProofKind: .usdt) {
                     if let onClose { onClose() } else { dismiss() }
                 }
+                .navigationBarHidden(true)
+                .allowSwipeBack(false)
             } else if embedded { content }
             else { NavigationStack { content } }
         }
@@ -144,7 +147,7 @@ struct UsdtSendView: View {
             await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
         }
         .overlay {
-            if paymentContext?.isInitialSubscriptionPayment == true, busy {
+            if automaticPayment, busy {
                 InitialSubscriptionPaymentProgress()
             }
         }
@@ -160,7 +163,7 @@ struct UsdtSendView: View {
                   editingAmount, !showingNetworks,
                   !initialRecipient.isEmpty, recipient == initialRecipient, amount == initialAmount, destination == .arbitrum,
                   (try? parsePaykitAmountInput(asset: .usdt, value: amount)) != nil else { return }
-            let automaticPayment = !hasStartedInitialPayment && paymentContext?.initialUsdtSubscriptionPayment()?.amount.value == amount
+            automaticPayment = !hasStartedInitialPayment && paymentContext?.initialUsdtSubscriptionPayment()?.amount.value == amount
             hasStartedInitialPayment = true
             busy = true
             do { quote = try await prepareQuote() }
@@ -335,6 +338,7 @@ struct UsdtSendView: View {
                          isLoading: busy && !preparingMaximum, titleKerning: 0, titleLineHeight: 20)
             {
                 guard !busy, quote == nil else { return }
+                automaticPayment = false
                 busy = true
                 error = nil
                 defer { busy = false }
@@ -433,6 +437,7 @@ struct UsdtSendView: View {
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
                 isLoading: busy, isSubmitted: submitted, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
+                automaticPayment = false
                 await confirmPayment()
                 if !submitted { throw CancellationError() }
             }
