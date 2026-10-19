@@ -1,0 +1,29 @@
+<journey name="receive tabs wraparound">
+  <description>
+    On the Receive sheet, tab swipes wrap around: a swipe to the right on the first tab selects the
+    last tab, and a swipe to the left on the last tab selects the first. A sideways swipe never closes
+    the Receive sheet, also when it is released above the sheet, and a tap on a QR still copies it.
+
+    Precondition: onboarded dev wallet with USDT enabled (introductory sheet or Settings, General,
+    Payments), no CJIT invoice pending and no hardware wallet paired, so the tabs are Savings,
+    Spending and USDT. Start on the wallet home screen. The USDT address loads without funding; wait
+    for the QR before swiping.
+
+    Swipe with AXe across the middle of the QR, about 60% of its width, in 300 ms (`axe swipe
+    --start-x 80 --start-y 440 --end-x 330 --end-y 440 --duration 0.3 --udid <udid>` to the right on a
+    402 pt wide simulator).
+
+    iOS: the paged `TabView` holds an extra page before the first tab and after the last one; paging
+    onto either selects the tab at the other end.
+  </description>
+  <actions>
+    <action>Tap Receive (id "Receive") and verify the Savings tab (id "Tab-savings") is selected</action>
+    <action>Swipe right across the Savings QR; verify the USDT tab (id "Tab-usdt") is selected and wait until the USDT QR is visible</action>
+    <action>Swipe left across the USDT QR; verify the Savings tab is selected</action>
+    <action>Swipe left across the Savings QR in 600 ms (`axe swipe --start-x 330 --start-y 440 --end-x 80 --end-y 440 --duration 0.6`); verify the Spending tab (id "Tab-spending") is selected</action>
+    <action>Swipe left across the Spending content in 600 ms; verify the USDT tab is selected and wait until its QR is visible</action>
+    <action>Swipe left from the top right of the USDT QR to above the sheet (`axe swipe --start-x 360 --start-y 300 --end-x 30 --end-y 60 --duration 0.3`); verify the Receive sheet is still open and the Savings tab is selected</action>
+    <action>Swipe right from the top left of the Savings QR to above the sheet (`axe swipe --start-x 40 --start-y 300 --end-x 380 --end-y 60 --duration 0.3`); verify the Receive sheet is still open and the USDT tab is selected</action>
+    <action>Swipe left across the USDT QR, then tap the Savings QR once; verify the "copied" tooltip appears</action>
+  </actions>
+</journey>

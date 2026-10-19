@@ -235,6 +235,10 @@ after staging signup. Android also supports this signup flow, but this journey h
 `contacts/contacts-entry-points.xml` covers onboarding without an identity and the
 authenticated Contacts list. It has not yet been ported to Android.
 
+`receive/receive-tabs-wraparound.xml` has a matching Android journey with the same name and actions.
+On Android a swipe that starts at the screen edge is the system back gesture, which closes the sheet on
+every tab; start the swipes away from the edge.
+
 `payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
