@@ -1409,9 +1409,11 @@ actor PaykitSdkService {
         operationName: StaticString = #function,
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
-        let trace = UUID().uuidString
-        let clock = ContinuousClock()
-        let started = clock.now
+        #if DEBUG
+            let trace = UUID().uuidString
+            let clock = ContinuousClock()
+            let started = clock.now
+        #endif
         let generation = deferDuringPayment ? try operationLock.walletGeneration() : nil
         let instance = deferDuringPayment ? try handle() : nil
         while true {
@@ -1419,13 +1421,15 @@ actor PaykitSdkService {
                 try await PaykitPaymentActivity.shared.waitUntilIdle()
             }
             let result: T? = try await operationLock.withLock(priority: priority) {
-                let admitted = clock.now
-                defer {
-                    Logger.debug(
-                        "Finished Paykit operation \(operationName) trace=\(trace) queue=\(started.duration(to: admitted)) work=\(admitted.duration(to: clock.now))",
-                        context: "PaykitSdkService"
-                    )
-                }
+                #if DEBUG
+                    let admitted = clock.now
+                    defer {
+                        Logger.debug(
+                            "Finished Paykit operation \(operationName) trace=\(trace) queue=\(started.duration(to: admitted)) work=\(admitted.duration(to: clock.now))",
+                            context: "PaykitSdkService"
+                        )
+                    }
+                #endif
                 if let instance {
                     guard sdk === instance, try operationLock.walletGeneration() == generation else {
                         throw PubkyServiceError.identityChanged
@@ -1435,9 +1439,16 @@ actor PaykitSdkService {
                 }
                 do {
                     return try await withSdkErrorHandling {
-                        let keyStarted = clock.now
+                        #if DEBUG
+                            let keyStarted = clock.now
+                        #endif
                         try await refreshPaykitKey()
-                        Logger.debug("Prepared Paykit key trace=\(trace) duration=\(keyStarted.duration(to: clock.now))", context: "PaykitSdkService")
+                        #if DEBUG
+                            Logger.debug(
+                                "Prepared Paykit key trace=\(trace) duration=\(keyStarted.duration(to: clock.now))",
+                                context: "PaykitSdkService"
+                            )
+                        #endif
                         return try await .some(operation(handle()))
                     }
                 } catch OperationDeferral.paymentActive {
@@ -1475,11 +1486,13 @@ actor PaykitSdkService {
         try await withSdk(priority: priority, deferDuringPayment: deferDuringPayment, operationName: operationName) { sdk in
             return try await Self.withBackupStateRevisionTracking(
                 readRevision: {
-                    let clock = ContinuousClock()
-                    let started = clock.now
-                    defer {
-                        Logger.debug("Read Paykit backup revision duration=\(started.duration(to: clock.now))", context: "PaykitSdkService")
-                    }
+                    #if DEBUG
+                        let clock = ContinuousClock()
+                        let started = clock.now
+                        defer {
+                            Logger.debug("Read Paykit backup revision duration=\(started.duration(to: clock.now))", context: "PaykitSdkService")
+                        }
+                    #endif
                     return try await self.withSdkErrorHandling { try await sdk.backupStateRevision() }
                 },
                 readStateRevision: { try sdk.stateRevision() },

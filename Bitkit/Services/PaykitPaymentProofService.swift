@@ -1652,14 +1652,17 @@ actor PaykitPaymentProofService {
                 )
                 logInfo("Queued a Paykit payment proof for private delivery")
             }
-            do {
-                _ = try await sdk.processOutboundPrivateMessages(
-                    counterparty: pendingProof.requestId.counterparty,
-                    priority: .interactive,
-                    expectedIdentity: pendingProof.identity
-                )
-            } catch {
-                logWarning("Paykit payment proof remains queued for private delivery: \(error)")
+            // The SDK queue is durable; delivery must not hold the proof submission lock.
+            Task { [sdk, logWarning] in
+                do {
+                    _ = try await sdk.processOutboundPrivateMessages(
+                        counterparty: pendingProof.requestId.counterparty,
+                        priority: .background,
+                        expectedIdentity: pendingProof.identity
+                    )
+                } catch {
+                    logWarning("Paykit payment proof remains queued for private delivery: \(error)")
+                }
             }
             if pendingProof.kind != .usdt {
                 await removeRequestProofs(pendingProof)

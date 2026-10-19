@@ -1237,6 +1237,33 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    func testDurableLightningProofDoesNotWaitForTransport() async throws {
+        let record = try paymentRequestRecord()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let service = paymentProofService(sdk: sdk, store: store)
+        await store.seed([PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
+        )])
+        await sdk.suspendDelivery()
+        let completed = expectation(description: "Durably queued proof releases completion before transport")
+        let task = Task {
+            await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+            completed.fulfill()
+        }
+        await sdk.waitForDelivery(count: 1)
+        await fulfillment(of: [completed], timeout: 1)
+        let submissions = await sdk.submissionCount()
+        XCTAssertEqual(submissions, 1)
+        let remaining = await store.snapshot()
+        XCTAssertTrue(remaining.isEmpty)
+        await sdk.resumeDelivery()
+        await task.value
+    }
+
     func testCompletedLightningPaymentRetriesAfterRestartPastPaymentDeadline() async throws {
         var record = try paymentRequestRecord()
         let deadline = Date().addingTimeInterval(-60)
@@ -1279,6 +1306,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             ["data": preimage, "type": PaykitPaymentProofKind.lightning.rawValue]
         )
         let remainingProofs = await store.snapshot()
+        await sdk.waitForDelivery(count: 1)
         let processCallCount = await sdk.processCallCount()
         XCTAssertTrue(remainingProofs.isEmpty)
         XCTAssertEqual(processCallCount, 1)
@@ -1325,6 +1353,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )])
         await sdk.setDeliveryFailure(true)
         await service.reconcile()
+        await sdk.waitForDelivery(count: 1)
         await sdk.setDeliveryFailure(false)
         // A recovered local record must retry the durable SDK queue without submitting again.
         await store.seed([PendingPaykitPaymentProof(
@@ -1336,6 +1365,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
 
         let submissionCount = await sdk.submissionCount()
         let remainingProofs = await store.snapshot()
+        await sdk.waitForDelivery(count: 2)
         let recipients = await sdk.deliveryRecipients()
         XCTAssertEqual(recipients, [counterparty, counterparty])
         XCTAssertEqual(submissionCount, 0)
@@ -3320,6 +3350,9 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var privateMessageProcessCallCount = 0
     private var shouldFailDelivery = false
     private var deliveredCounterparties: [String] = []
+    private var deliveryWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    private var shouldSuspendDelivery = false
+    private var deliveryContinuation: CheckedContinuation<Void, Never>?
     private var identityStatusCalls = 0
     private var isIdentityAvailable = true
     private var shouldSuspendIdentityStatus = false
@@ -3396,12 +3429,33 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func processOutboundPrivateMessages(
         counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
-    ) throws -> OutboundPrivateSendReport {
+    ) async throws -> OutboundPrivateSendReport {
         guard PubkyPublicKeyFormat.matches(identity, expectedIdentity) else { throw PubkyServiceError.identityChanged }
         privateMessageProcessCallCount += 1
         deliveredCounterparties.append(counterparty)
+        let completedWaiters = deliveryWaiters.filter { $0.0 <= privateMessageProcessCallCount }
+        deliveryWaiters.removeAll { $0.0 <= privateMessageProcessCallCount }
+        completedWaiters.forEach { $0.1.resume() }
+        if shouldSuspendDelivery {
+            await withCheckedContinuation { deliveryContinuation = $0 }
+        }
         if shouldFailDelivery { throw PaymentProofSdkMockError.submission }
         return OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
+    }
+
+    func waitForDelivery(count: Int) async {
+        guard privateMessageProcessCallCount < count else { return }
+        await withCheckedContinuation { deliveryWaiters.append((count, $0)) }
+    }
+
+    func suspendDelivery() {
+        shouldSuspendDelivery = true
+    }
+
+    func resumeDelivery() {
+        shouldSuspendDelivery = false
+        deliveryContinuation?.resume()
+        deliveryContinuation = nil
     }
 
     func setDeliveryFailure(_ value: Bool) {
