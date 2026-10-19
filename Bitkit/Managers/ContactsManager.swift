@@ -178,7 +178,7 @@ class ContactsManager: ObservableObject {
     private let currentDate: @Sendable () -> Date
 
     init(
-        contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = PubkyService.contactRecords,
+        contactRecords: @escaping @Sendable () async throws -> [ContactRecord] = { try await PubkyService.contactRecords() },
         observedContactRecords: @escaping @Sendable (String) async throws -> [ContactRecord] = {
             try await PubkyService.observedContactRecords(expectedIdentity: $0)
         },

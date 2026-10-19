@@ -11,7 +11,7 @@ import Foundation
 /// manager rather than a dev-screen ViewModel, keeping dependencies pointing Manager→Manager→Service.
 @Observable
 @MainActor
-final class TrezorManager {
+final class TrezorManager: Sendable {
     // MARK: - Network Configuration
 
     /// Independent of the app's global network — scoped to the Trezor dashboard.

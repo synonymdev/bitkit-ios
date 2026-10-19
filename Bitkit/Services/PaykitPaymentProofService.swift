@@ -319,8 +319,9 @@ actor PaykitPaymentProofService {
         store: any PaykitPaymentProofStoring = PaykitPaymentProofStore(),
         lightningPaymentLookup: any PaykitLightningPaymentProofLookingUp = PaykitLightningPaymentProofLookup(),
         hardwareTransactionLookup: any PaykitHardwareTransactionLookingUp = PaykitHardwareTransactionLookup(),
-        hardwareFollowup: @escaping @Sendable (PendingPaykitPaymentProof, TransactionDetail?) async throws -> Void = PaykitPaymentProofService
-            .restoreHardwareActivity,
+        hardwareFollowup: @escaping @Sendable (PendingPaykitPaymentProof, TransactionDetail?) async throws -> Void = {
+            try await PaykitPaymentProofService.restoreHardwareActivity($0, detail: $1)
+        },
         attemptService: OnchainSendAttemptService = .shared,
         logInfo: @escaping @Sendable (String) -> Void = {
             Logger.info($0, context: "PaykitPaymentProof")

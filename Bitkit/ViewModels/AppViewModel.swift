@@ -1714,7 +1714,7 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-            Task {
+            _ = Task {
                 // Use channelCache instead of cachedChannels array, as it's updated immediately
                 if let channel = await lightningService.getChannelFromCache(channelId: channelId) {
                     let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)

@@ -446,7 +446,7 @@ struct SendPendingScreen: View {
     @MainActor
     private func refreshOriginalOutcome(context: OnchainSendPendingContext) async throws {
         onchainAttempt = try await attemptService.pendingAttempt(context: context)
-        guard let original = onchainAttempt, original.status == .accepted, let txid = original.txid else { return }
+        guard let original = onchainAttempt, original.status == .accepted, original.txid != nil else { return }
         if let requestId = original.requestId {
             await proofService.reconcile()
             if let payer = original.recoveryContext?.paymentIdentity,

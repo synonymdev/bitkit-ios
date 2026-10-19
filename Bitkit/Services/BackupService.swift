@@ -532,7 +532,8 @@ class BackupService {
     }
 
     private func startDataStoreListeners() {
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             // SETTINGS
             SettingsViewModel.shared.settingsPublisher
                 .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
@@ -540,7 +541,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup() else { return }
                     markBackupRequired(category: .settings)
                 }
-                .store(in: &self.cancellables)
+                .store(in: &cancellables)
 
             // WIDGETS
             SettingsViewModel.shared.widgetsPublisher
@@ -549,7 +550,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup() else { return }
                     markBackupRequired(category: .widgets)
                 }
-                .store(in: &self.cancellables)
+                .store(in: &cancellables)
         }
 
         // Record requirements synchronously; the scheduled upload already has a debounce.
@@ -590,14 +591,15 @@ class BackupService {
             .store(in: &cancellables)
 
         // APP STATE (UserDefaults changes, etc.)
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             SettingsViewModel.shared.appStatePublisher
                 .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
                 .sink { [weak self] _ in
                     guard let self, !self.shouldSkipBackup() else { return }
                     markBackupRequired(category: .metadata)
                 }
-                .store(in: &self.cancellables)
+                .store(in: &cancellables)
         }
 
         // BLOCKTANK

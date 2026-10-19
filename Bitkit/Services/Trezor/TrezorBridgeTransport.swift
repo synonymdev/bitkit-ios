@@ -2,7 +2,9 @@ import BitkitCore
 import Foundation
 
 /// Dev/E2E-only transport for talking to the Trezor Bridge exposed by bitkit-docker.
-final class TrezorBridgeTransport {
+///
+/// `@unchecked`: called from Rust FFI threads; the session maps are guarded by `sessionLock`.
+final class TrezorBridgeTransport: @unchecked Sendable {
     static let shared = TrezorBridgeTransport()
 
     private static let pathPrefix = "bridge:"

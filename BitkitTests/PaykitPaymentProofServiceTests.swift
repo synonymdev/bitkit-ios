@@ -1182,7 +1182,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await store.resumeSave()
         await completion.value
         try await marking.value
-        let proofs = try await store.load()
+        let proofs = await store.load()
         XCTAssertEqual(proofs.first(where: { $0.requestId == request.id })?.paymentStarted, true)
         XCTAssertEqual(proofs.first(where: { $0.requestId == lightningId })?.proofData, preimage)
     }

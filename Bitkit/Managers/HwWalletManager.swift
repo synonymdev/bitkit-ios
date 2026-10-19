@@ -22,7 +22,7 @@ import Foundation
 /// other vendor's session first, so the two never compete for the radio.
 @Observable
 @MainActor
-final class HwWalletManager {
+final class HwWalletManager: Sendable {
     typealias AccountInfoProvider = @MainActor (
         String,
         String,

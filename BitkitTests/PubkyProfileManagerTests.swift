@@ -1470,7 +1470,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertEqual(manager.profile?.tags, ["friend", "work"], "Nor does it clear the profile while the save runs")
 
             await publications.release()
-            try await save.value
+            _ = try await save.value
 
             let defaults = UserDefaults.standard
             XCTAssertEqual(manager.profile?.tags, ["friend"], "The edited profile shows")
@@ -1537,7 +1537,7 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertTrue(manager.isProfileSetupPending)
 
             await publications.release()
-            try await save.value
+            _ = try await save.value
 
             XCTAssertEqual(manager.publicKey, ringKeyB)
             XCTAssertTrue(manager.isProfileSetupPending, "The next identity still sets its profile up")

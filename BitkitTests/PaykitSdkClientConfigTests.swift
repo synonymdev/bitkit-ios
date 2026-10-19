@@ -725,10 +725,10 @@ final class PaykitSdkClientConfigTests: XCTestCase {
 
     func testApprovalBootstrapUsesExternalRequesterClientID() async throws {
         var configuredClientID: String?
-        let service = PaykitSdkService { clientID, _ in
+        let service = PaykitSdkService(bootstrapFactory: { clientID, _ in
             configuredClientID = clientID
             return PubkySessionBootstrap(noPointer: .init())
-        }
+        })
 
         _ = try await service.approvalBootstrap(
             authUrl: externalAuthURL,
@@ -740,10 +740,10 @@ final class PaykitSdkClientConfigTests: XCTestCase {
 
     func testApprovalBootstrapRejectsMismatchedClientID() async {
         var didCreateBootstrap = false
-        let service = PaykitSdkService { _, _ in
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in
             didCreateBootstrap = true
             return PubkySessionBootstrap(noPointer: .init())
-        }
+        })
 
         do {
             _ = try await service.approvalBootstrap(

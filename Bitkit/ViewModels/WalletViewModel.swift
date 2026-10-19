@@ -376,12 +376,12 @@ class WalletViewModel: ObservableObject {
         }
 
         Task { @MainActor in
-            try await refreshBip21(syncPublicPaykit: false)
+            try? await refreshBip21(syncPublicPaykit: false)
         }
 
         // Always sync on start but don't need to wait for this
         Task { @MainActor in
-            try await sync()
+            try? await sync()
         }
     }
 
@@ -685,7 +685,7 @@ class WalletViewModel: ObservableObject {
 
         if case .accepted = result {
             Task {
-                try await sync()
+                try? await sync()
             }
         }
 
@@ -724,7 +724,7 @@ class WalletViewModel: ObservableObject {
     }
 
     static let feeRateLoadAttempts = 2
-    static let feeRateRetryDelay: Duration = .seconds(2)
+    nonisolated static let feeRateRetryDelay: Duration = .seconds(2)
 
     /// Loads the send flow's fee rate, retrying a failed fetch once. Sets `feeRateLoadFailed` when it still fails.
     func loadFeeRateWithRetry(
