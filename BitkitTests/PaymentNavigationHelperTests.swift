@@ -242,7 +242,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
-    func testExpiredDollarRequestCannotPrepareConfirmationTerms() async throws {
+    func testExpiredDollarRequestOpensRateReview() async throws {
         settings.usdtPreference = .disabled
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
         let method = PublicPaykitService.onchainMethodId(for: address)
@@ -257,12 +257,32 @@ final class PaymentNavigationHelperTests: XCTestCase {
             .init(methodId: method, value: address, min: nil, max: nil, rawPayload: ""),
         ])
         XCTAssertTrue(app.claimContactPaymentContext(context))
-        do {
-            try await app.handleScannedData(address, claimedContactPaymentContext: context)
-            XCTFail("Expired terms must not enter confirmation")
-        } catch PaykitAmountError.rateUnavailable {}
+        try await app.handleScannedData(address, claimedContactPaymentContext: context)
         XCTAssertNil(app.paykitPaymentTerms)
         XCTAssertNil(app.paykitReviewedAmount)
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+    }
+
+    func testDollarRequestWithoutConversionOpensRateReview() async throws {
+        settings.usdtPreference = .disabled
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let method = PublicPaykitService.onchainMethodId(for: address)
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: method.rawValue,
+            amount: PaymentRequestAmount(value: "2.50", asset: "usd")
+        )
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+            .init(methodId: method, value: address, min: nil, max: nil, rawPayload: ""),
+        ])
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        try await app.handleScannedData(address, claimedContactPaymentContext: context)
+        XCTAssertNil(app.paykitPaymentTerms)
+        XCTAssertNil(app.paykitReviewedAmount)
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+        XCTAssertThrowsError(try request.payment(using: method)) { error in
+            XCTAssertEqual(error as? PaykitAmountError, .rateUnavailable)
+        }
     }
 
     func testContactWithUsdtLocksOnlyFixedLightningFunding() {

@@ -780,10 +780,14 @@ extension AppViewModel {
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
             let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
             if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
-                let terms = try request.payment(using: paykitPaymentMethod)
-                guard terms.isValid(at: Date()) else { throw PaykitAmountError.rateUnavailable }
-                paykitPaymentTerms = terms
-                paykitReviewedAmount = terms.amount
+                do {
+                    let terms = try request.payment(using: paykitPaymentMethod)
+                    guard terms.isValid(at: Date()) else { return }
+                    paykitPaymentTerms = terms
+                    paykitReviewedAmount = terms.amount
+                } catch PaykitAmountError.rateUnavailable {
+                    return
+                }
             }
             return
         }
