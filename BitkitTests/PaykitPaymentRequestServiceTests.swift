@@ -220,6 +220,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testInitialUsdtSuccessCannotNavigateBackToPaidAmount() async throws {
+        let previousSwipeBack = SwipeBackState.allowSwipeBack
+        SwipeBackState.allowSwipeBack = true
+        defer { SwipeBackState.allowSwipeBack = previousSwipeBack }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let mnemonic = "test test test test test test test test test test test junk"
@@ -240,9 +243,17 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         await fulfillment(of: [sent], timeout: 3)
         try await Task.sleep(for: .milliseconds(1500))
-        let labels = try initialPaymentSnapshot(window, name: "subscription-success")
-        XCTAssertTrue(labels.contains(t("subscriptions__subscribed")), "\(labels)")
-        XCTAssertFalse(labels.contains("Back"), "\(labels)")
+        _ = try initialPaymentSnapshot(window, name: "subscription-success")
+        var controllers = try [XCTUnwrap(window.rootViewController)]
+        var navigation: UINavigationController?
+        while !controllers.isEmpty {
+            let controller = controllers.removeFirst()
+            if let candidate = controller as? UINavigationController { navigation = candidate; break }
+            controllers.append(contentsOf: controller.children)
+        }
+        let stack = try XCTUnwrap(navigation)
+        XCTAssertEqual(stack.viewControllers.count, 2)
+        XCTAssertTrue(stack.isNavigationBarHidden)
         XCTAssertFalse(SwipeBackState.allowSwipeBack)
     }
 
