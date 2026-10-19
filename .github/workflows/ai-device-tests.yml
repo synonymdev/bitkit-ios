@@ -79,6 +79,7 @@ jobs:
         working-directory: bitkit-docker
         run: |
           docker compose up -d bitcoind bitcoinsetup electrs darkhttpd lnd ldk-backup-server
+          until docker exec bitcoin bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass -generate 101; do sleep 2; done
           ./scripts/trezor-emulator start
           ./scripts/trezor-emulator status
 
