@@ -15,7 +15,7 @@ install_compose() {
   docker compose version >/dev/null 2>&1 && return
   mkdir -p ~/.docker/cli-plugins
   curl -fsSL -o ~/.docker/cli-plugins/docker-compose \
-    https://github.com/docker/compose/releases/latest/download/docker-compose-darwin-aarch64
+    https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-darwin-aarch64
   chmod +x ~/.docker/cli-plugins/docker-compose
 }
 
