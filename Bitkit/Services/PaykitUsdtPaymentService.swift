@@ -339,7 +339,7 @@ final class PaykitUsdtPaymentService {
         try save(current)
     }
 
-    func reconcile(wallet: UsdtWalletManager) async {
+    func reconcile(wallet: UsdtWalletManager, sdk: PaykitSdkService = .shared) async {
         guard wallet.isConfigured, UsdtPreference.isEnabled() || (try? wallet.hasStoredWallet) == true else {
             boundRequestIds = nil
             releasedAttempts = []
@@ -348,14 +348,14 @@ final class PaykitUsdtPaymentService {
         }
         await reconcile(
             context: {
-                guard let identity = try await self.currentIdentity() else { return nil }
-                _ = try await wallet.paymentEndpoint()
-                return (wallet.address.lowercased(), identity)
+                guard let identity = try await self.currentIdentity(sdk: sdk) else { return nil }
+                let endpoint = try await wallet.paymentEndpoint()
+                return (endpoint.value.lowercased(), identity)
             },
             storedTransfer: { try await wallet.storedTransfer($0) },
             paymentProof: { try await wallet.paymentProof(quoteId: $0, binding: $1) },
             submitProof: { await PaykitPaymentProofService.shared.submitUsdtProof($0) },
-            paymentRequests: { try await PaykitSdkService.shared.paymentRequests() },
+            paymentRequests: { try await sdk.paymentRequests() },
             verifyPayment: { try await wallet.verifyPayment(binding: $0, proof: $1) }
         )
     }
@@ -521,8 +521,8 @@ final class PaykitUsdtPaymentService {
         try save(current)
     }
 
-    private func currentIdentity() async throws -> String? {
-        guard let status = try await PaykitSdkService.shared.identityStatus(), status.capability == .privateLinkCapable else { return nil }
+    private func currentIdentity(sdk: PaykitSdkService = .shared) async throws -> String? {
+        guard let status = try await sdk.identityStatus(), status.capability == .privateLinkCapable else { return nil }
         return status.publicKey.flatMap(PubkyPublicKeyFormat.normalized)
     }
 }
