@@ -1316,6 +1316,9 @@ struct SendConfirmationView: View {
                     onAuthorized: { _ in
                         onchainPaymentStarted = true
                         privatePaymentListOutcome = .uncertain
+                        if let manualAllowanceAttemptId {
+                            await PaykitAllowanceExecutor.shared.manualOnchainPaymentSending(attemptId: manualAllowanceAttemptId)
+                        }
                     },
                     send: { beforeBroadcastAttempt in
                         try await wallet.send(

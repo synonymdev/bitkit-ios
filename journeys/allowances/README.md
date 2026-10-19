@@ -12,9 +12,10 @@ user requires one, while automatic payments never prompt.
 Run Bitkit against regtest with Paykit UI enabled on two instances that have each other saved as
 contacts and linked, exactly as for [`../subscriptions/README.md`](../subscriptions/README.md). One
 instance plays the payer (the one that sets the allowance), the other the payee (the one that sends
-requests). Automatic payments pay the payee's private Lightning invoice first and an on-chain
-address otherwise, so the payer needs a spending balance above 50,000 sats with a usable channel,
-and the payee needs receiving capacity; fund both through the staging LSP.
+requests). Automatic payments pay only the payee's private Lightning invoice; a request the payee
+can take only on-chain asks as an ordinary Payment Request. The payer needs a spending balance
+above 50,000 sats with a usable channel, and the payee needs receiving capacity; fund both through
+the staging LSP.
 
 Allow notifications for Bitkit on both instances when it asks: the payer's "Payment Executed" and
 "Limit Reached" events and the payee's "Allowance Added" event post a local notification when they can, and fall back to an in-app toast that the
