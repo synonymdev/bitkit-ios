@@ -4958,6 +4958,30 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         )
     }
 
+    func testUnpaidSubscriptionPeriodShowsWaitingOnlyWhilePayable() throws {
+        let start = "2027-01-01T00:00:00Z"
+        let now = try XCTUnwrap(PaykitPaymentRequest.parseDate(start))
+        let period = try XCTUnwrap(PaykitBillingPeriod(sdkPeriod: BillingPeriod(
+            startsAt: start, endsAt: "2027-02-01T00:00:00Z"
+        )))
+        let record = try paymentRequestRecord(
+            state: .activeRecurring, amount: "2", asset: "usdt", paymentDeadline: .periodStart(seconds: 60),
+            recurrence: PaymentRequestRecurrence(every: 1, unit: "month", startsAt: start, anchor: start, endsAt: nil),
+            endpoints: ["usdt-arbitrum"]
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = PaykitPaymentRequest(subscription: subscription, billingPeriod: period, lifecycleState: .activeRecurring)
+
+        XCTAssertEqual(PaymentRequestDisplay.statusKey(for: request, isActionable: true, now: now), "wallet__payment_request_waiting")
+        XCTAssertEqual(PaymentRequestDisplay.statusKey(for: request, isActionable: false, now: now), "wallet__payment_request_status_unavailable")
+        XCTAssertEqual(
+            PaymentRequestDisplay.statusKey(for: request, isActionable: true, now: now.addingTimeInterval(61)),
+            "wallet__payment_request_status_expired"
+        )
+        let paidRequest = request.updatingLifecycleState(.proofSubmitted, paymentProofKind: .usdt)
+        XCTAssertEqual(PaymentRequestDisplay.statusKey(for: paidRequest, isActionable: false), "wallet__payment_request_status_proof_submitted")
+    }
+
     func testBelowMinimumOnchainRequestShowsMinimumAndRemainsRetryable() async throws {
         for nodeIsRunning in [false, true] {
             for amount in ["0.00000001", "0.000001", "0.00000546"] {
