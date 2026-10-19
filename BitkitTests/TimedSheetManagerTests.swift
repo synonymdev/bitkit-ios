@@ -23,6 +23,30 @@ final class TimedSheetManagerTests: XCTestCase {
         XCTAssertTrue(manager.getQueueStatus().isEmpty)
     }
 
+    func testDismissingAPromptRetriesOnlyTheIntro() async throws {
+        let sheets = SheetViewModel()
+        let manager = TimedSheetManager(sheetViewModel: sheets, checkDelay: 0.01)
+        defer { manager.onPrimaryScreenExited() }
+        let backupShown = expectation(description: "Backup presented first")
+        let introShown = expectation(description: "Only USDT retried after dismissal")
+        manager.registerSheet(TestTimedSheet(id: .backup, priority: .high, onShown: { backupShown.fulfill() }))
+        manager.registerSheet(TestTimedSheet(id: .highBalance, onShown: {}))
+        manager.registerSheet(TestTimedSheet(onShown: { introShown.fulfill() }))
+        manager.onPrimaryScreenEntered()
+        await fulfillment(of: [backupShown], timeout: 1)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .backup)
+
+        sheets.hideSheet()
+        await fulfillment(of: [introShown], timeout: 1)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .usdtIntro)
+        XCTAssertEqual(manager.getQueueStatus().map(\.id), [.highBalance])
+
+        sheets.hideSheet()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertNil(sheets.activeSheetConfiguration)
+        XCTAssertEqual(manager.getQueueStatus().map(\.id), [.highBalance])
+    }
+
     func testInterruptedEligibilityCannotReplaceAnotherSheetAndRetriesLater() async {
         let sheets = SheetViewModel()
         let manager = TimedSheetManager(sheetViewModel: sheets, checkDelay: 0.01)
@@ -196,7 +220,7 @@ final class TimedSheetManagerTests: XCTestCase {
 
 private final class TestTimedSheet: TimedSheetItem {
     let id: SheetID
-    let priority = TimedSheetPriority.medium
+    let priority: TimedSheetPriority
     var sheetItem: any SheetItem {
         id == .usdtIntro ? UsdtIntroSheetItem() : QuickpaySheetItem()
     }
@@ -204,8 +228,14 @@ private final class TestTimedSheet: TimedSheetItem {
     var eligibility: () async -> Bool
     private let shown: () -> Void
 
-    init(id: SheetID = .usdtIntro, onShown: @escaping () -> Void, shouldShow: @escaping () async -> Bool = { true }) {
+    init(
+        id: SheetID = .usdtIntro,
+        priority: TimedSheetPriority = .medium,
+        onShown: @escaping () -> Void,
+        shouldShow: @escaping () async -> Bool = { true }
+    ) {
         self.id = id
+        self.priority = priority
         shown = onShown
         eligibility = shouldShow
     }

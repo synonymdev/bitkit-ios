@@ -168,17 +168,17 @@ class TimedSheetManager: ObservableObject {
         checkTask?.cancel()
         checkTask = Task { [weak self] in
             guard await intro.shouldShow(), !Task.isCancelled else { return }
-            self?.reevaluate()
+            self?.scheduleSettleCheck(only: .usdtIntro)
         }
     }
 
     /// (Re)start the settle timer that runs the queue check after a short delay.
-    private func scheduleSettleCheck() {
+    private func scheduleSettleCheck(only id: SheetID? = nil) {
         checkTask?.cancel()
         checkTask = Task { [weak self, checkDelay] in
             do {
                 try await Task.sleep(for: .seconds(checkDelay))
-                await self?.checkAndShowNextSheet()
+                await self?.checkAndShowNextSheet(only: id)
             } catch is CancellationError {
                 return
             } catch {
@@ -188,7 +188,7 @@ class TimedSheetManager: ObservableObject {
     }
 
     /// Check the queue and show the highest priority sheet that should be shown
-    private func checkAndShowNextSheet() async {
+    private func checkAndShowNextSheet(only id: SheetID? = nil) async {
         guard let sheetViewModel else {
             Logger.error("SheetViewModel not configured for TimedSheetManager")
             return
@@ -207,7 +207,7 @@ class TimedSheetManager: ObservableObject {
         }
 
         // Find the highest priority sheet that should be shown
-        for sheet in queuedSheets {
+        for sheet in queuedSheets where id == nil || sheet.id == id {
             let eligible = await sheet.shouldShow()
             guard !Task.isCancelled, isOnPrimaryScreen,
                   !sheetViewModel.isAnySheetOpen, !sheetViewModel.isReplacingSheet else { return }
