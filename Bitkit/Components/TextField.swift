@@ -3,6 +3,8 @@ import SwiftUI
 struct TextField: View {
     let placeholder: String
     let backgroundColor: Color
+    let placeholderColor: Color
+    let minContentHeight: CGFloat?
     let font: Font
     let axis: Axis
     let testIdentifier: String?
@@ -18,9 +20,13 @@ struct TextField: View {
         axis: Axis = .horizontal,
         testIdentifier: String? = nil,
         submitLabel: SubmitLabel = .return,
-        contentPadding: CGFloat = 16
+        contentPadding: CGFloat = 16,
+        placeholderColor: Color = .secondary,
+        minContentHeight: CGFloat? = nil
     ) {
         self.placeholder = placeholder
+        self.placeholderColor = placeholderColor
+        self.minContentHeight = minContentHeight
         self.backgroundColor = backgroundColor
         self.font = font
         self.axis = axis
@@ -34,7 +40,7 @@ struct TextField: View {
         ZStack(alignment: .leading) {
             if text.isEmpty {
                 Text(placeholder)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(placeholderColor)
                     .font(font)
             }
 
@@ -44,6 +50,7 @@ struct TextField: View {
                 .submitLabel(submitLabel)
                 .accessibilityIdentifierIfPresent(testIdentifier)
         }
+        .frame(minHeight: minContentHeight)
         .padding(contentPadding)
         .background(backgroundColor)
         .cornerRadius(8)

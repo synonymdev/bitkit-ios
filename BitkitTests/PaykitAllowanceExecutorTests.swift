@@ -457,6 +457,19 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(log.contains("beginPaymentExecution"))
     }
 
+    func testManualPaymentOfARequestNotPricedInBitcoinStaysOutOfTheLedger() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest(amount: "5.00", asset: PaykitAsset.usd.rawValue)
+
+        let attemptId = try await harness.executor.beginManualPayment(request, paymentEndpointIdentifier: Fixtures.lightningIdentifier)
+
+        XCTAssertNil(attemptId)
+        XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal, [])
+    }
+
     func testManualPaymentIsJournaledAndSubmittedWhenReady() async throws {
         let harness = AllowanceHarness()
         await harness.executor.activate(identity: Fixtures.identityKey)
@@ -605,6 +618,31 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         XCTAssertTrue(try manager.coversRequest(Fixtures.paymentRequest()), "One Encrypted Link per identity: no folder is part of coverage")
         XCTAssertFalse(try manager.coversRequest(Fixtures.paymentRequest(counterparty: Fixtures.otherCounterpartyKey)))
+    }
+
+    @MainActor
+    func testManagerLeavesRequestsNotPricedInBitcoinManual() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms(), lastEventAt: "2026-09-24T09:00:00Z")])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let usdRequest = try Fixtures.paymentRequest(amount: "5.00", asset: PaykitAsset.usd.rawValue)
+        XCTAssertFalse(usdRequest.isAllowancePayable)
+        XCTAssertFalse(manager.coversRequest(usdRequest))
+        let isHandling = await manager.isAutomaticallyHandling(usdRequest)
+        XCTAssertFalse(isHandling, "A USD request reaches the Send sheet instead of waiting for an automatic payment")
+
+        let convertedRequest = try Fixtures.paymentRequest(conversion: .fixed(rates: [.init(asset: "usdt", value: "100000")]))
+        XCTAssertFalse(convertedRequest.isAllowancePayable, "A bitcoin request that offers a conversion stays manual")
+        XCTAssertFalse(manager.coversRequest(convertedRequest))
+    }
+
+    @MainActor
+    func testGrantsNameOnlyBitcoinPaymentEndpoints() {
+        XCTAssertFalse(PaykitAllowanceManager.allowedPaymentEndpointIdentifiers.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue))
+        XCTAssertTrue(PaykitAllowanceManager.allowedPaymentEndpointIdentifiers.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue))
     }
 
     // MARK: Granting
@@ -794,7 +832,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             isAutomatic: true,
             requestId: request.id,
             allowanceId: Fixtures.walletAllowanceId,
-            amountSats: request.amountSats,
+            amountSats: request.allowanceAmountSats,
             paymentEndpointIdentifier: Fixtures.lightningIdentifier,
             paymentHash: paymentHash,
             onchainAddress: nil,
@@ -1234,7 +1272,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         return record
     }
 
-    func acceptAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+    func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
         guard let index = records.firstIndex(where: { $0.allowanceId == allowanceId })
         else { throw AllowanceMockError.unsupported }

@@ -38,6 +38,8 @@ struct PaykitAllowance: Identifiable, Hashable {
     let expiresAt: Date?
     let allowedPaymentEndpointIdentifiers: [String]?
     let lastEventAt: Date?
+    /// The proposal's stream item as displayed; acceptance names it so a re-sent proposal asks again.
+    let proposalStreamItemId: UInt64?
 
     var counterparty: String { id.counterparty }
     var allowanceId: String { id.allowanceId }
@@ -61,6 +63,7 @@ struct PaykitAllowance: Identifiable, Hashable {
         expiresAt = terms.expiresAt().flatMap(PaykitAllowanceTime.parse)
         allowedPaymentEndpointIdentifiers = terms.allowedPaymentEndpointIdentifiers()
         lastEventAt = record.lastEventAt.flatMap(PaykitAllowanceTime.parse)
+        proposalStreamItemId = record.proposalStreamItemId
     }
 
     init(
@@ -74,7 +77,8 @@ struct PaykitAllowance: Identifiable, Hashable {
         activeFrom: Date? = nil,
         expiresAt: Date? = nil,
         allowedPaymentEndpointIdentifiers: [String]? = nil,
-        lastEventAt: Date? = nil
+        lastEventAt: Date? = nil,
+        proposalStreamItemId: UInt64? = nil
     ) {
         self.id = id
         self.role = role
@@ -87,6 +91,7 @@ struct PaykitAllowance: Identifiable, Hashable {
         self.expiresAt = expiresAt
         self.allowedPaymentEndpointIdentifiers = allowedPaymentEndpointIdentifiers
         self.lastEventAt = lastEventAt
+        self.proposalStreamItemId = proposalStreamItemId
     }
 
     func status(at now: Date) -> Status {
@@ -287,4 +292,12 @@ enum PaykitAllowanceCapacity {
             )
         }
     }
+}
+
+extension PaykitPaymentRequest {
+    /// Allowances cover only requests priced in bitcoin without a conversion; any other request always asks.
+    var isAllowancePayable: Bool { amount.asset == .btc && pricing.conversion == nil }
+
+    /// The requested amount in sats, read only for a request where `isAllowancePayable` holds.
+    var allowanceAmountSats: UInt64 { amount.atomic }
 }

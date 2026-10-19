@@ -1,5 +1,6 @@
 @testable import Bitkit
 import CryptoKit
+import Paykit
 import UIKit
 import XCTest
 
@@ -19,7 +20,7 @@ final class PubkyImageCacheTests: XCTestCase {
         let diskPath = pubkyImageDiskPath(for: uri, directory: directory)
 
         await cache.clear()
-        cache.store(image, data: imageData, for: uri)
+        cache.store(image, data: imageData, for: uri, generation: cache.generation)
 
         XCTAssertNotNil(cache.memoryImage(for: uri))
 
@@ -30,8 +31,53 @@ final class PubkyImageCacheTests: XCTestCase {
 
         XCTAssertNil(cache.memoryImage(for: uri))
         XCTAssertFalse(FileManager.default.fileExists(atPath: diskPath.path))
-        let diskImage = await cache.image(for: uri)
+        let diskImage = await cache.image(for: uri, generation: cache.generation)
         XCTAssertNil(diskImage)
+    }
+
+    func testStoreCapturedBeforeClearIsDroppedFromMemoryAndDisk() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = PubkyImageCache(diskDirectory: directory)
+        let staleURI = "pubky://previous-user/pub/bitkit.to/blobs/avatar.jpg"
+        let currentURI = "pubky://current-user/pub/bitkit.to/blobs/avatar.jpg"
+        let avatar = image(color: .red)
+        let imageData = try XCTUnwrap(avatar.pngData())
+        let stalePath = pubkyImageDiskPath(for: staleURI, directory: directory)
+        let currentPath = pubkyImageDiskPath(for: currentURI, directory: directory)
+        let generationBeforeClear = cache.generation
+
+        await cache.clear()
+        cache.store(avatar, data: imageData, for: staleURI, generation: generationBeforeClear)
+        cache.store(avatar, data: imageData, for: currentURI, generation: cache.generation)
+
+        XCTAssertNil(cache.memoryImage(for: staleURI))
+        XCTAssertNotNil(cache.memoryImage(for: currentURI))
+        // The disk queue is serial, so once the later write lands the stale one has already been skipped.
+        let currentFileStored = await waitForFile(at: currentPath)
+        XCTAssertTrue(currentFileStored)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stalePath.path))
+    }
+
+    func testDiskPromotionCapturedBeforeClearIsNotKeptInMemory() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = PubkyImageCache(diskDirectory: directory)
+        let uri = "pubky://previous-user/pub/bitkit.to/blobs/avatar.jpg"
+        let imageData = try XCTUnwrap(image(color: .red).pngData())
+        let generationBeforeClear = cache.generation
+
+        await cache.clear()
+        // Stands in for a disk read that started before the clear and still found the previous identity's file.
+        try imageData.write(to: pubkyImageDiskPath(for: uri, directory: directory))
+        let staleImage = await cache.image(for: uri, generation: generationBeforeClear)
+
+        XCTAssertNotNil(staleImage)
+        XCTAssertNil(cache.memoryImage(for: uri))
+
+        let currentImage = await cache.image(for: uri, generation: cache.generation)
+        XCTAssertNotNil(currentImage)
+        XCTAssertNotNil(cache.memoryImage(for: uri))
     }
 
     func testDecoderDownsamplesLargeImagesBeforeCaching() throws {
@@ -77,11 +123,11 @@ final class PubkyImageCacheTests: XCTestCase {
         let firstPath = pubkyImageDiskPath(for: firstURI, directory: directory)
         let secondPath = pubkyImageDiskPath(for: secondURI, directory: directory)
 
-        cache.store(image, data: imageData, for: firstURI)
+        cache.store(image, data: imageData, for: firstURI, generation: cache.generation)
         let storedFirstFile = await waitForFile(at: firstPath)
         XCTAssertTrue(storedFirstFile)
         try FileManager.default.setAttributes([.modificationDate: Date.distantPast], ofItemAtPath: firstPath.path)
-        cache.store(image, data: imageData, for: secondURI)
+        cache.store(image, data: imageData, for: secondURI, generation: cache.generation)
 
         let storedSecondFile = await waitForFile(at: secondPath)
         let removedFirstFile = await waitForMissingFile(at: firstPath)
@@ -107,11 +153,11 @@ final class PubkyImageCacheTests: XCTestCase {
             diskByteLimit: imageData.count * 3
         )
 
-        cache.store(firstImage, data: imageData, for: firstURI)
-        cache.store(replacementImage, data: imageData, for: firstURI)
+        cache.store(firstImage, data: imageData, for: firstURI, generation: cache.generation)
+        cache.store(replacementImage, data: imageData, for: firstURI, generation: cache.generation)
         XCTAssertEqual(cache.memoryImage(for: firstURI)?.pngData(), replacementImage.pngData())
 
-        cache.store(firstImage, data: imageData, for: secondURI)
+        cache.store(firstImage, data: imageData, for: secondURI, generation: cache.generation)
         XCTAssertNil(cache.memoryImage(for: firstURI))
         XCTAssertNotNil(cache.memoryImage(for: secondURI))
     }
@@ -137,7 +183,7 @@ final class PubkyImageCacheTests: XCTestCase {
         )
 
         let removedFirstFile = await waitForMissingFile(at: firstPath)
-        let remainingImage = await cache.image(for: secondURI)
+        let remainingImage = await cache.image(for: secondURI, generation: cache.generation)
         XCTAssertTrue(removedFirstFile)
         XCTAssertNotNil(remainingImage)
     }
@@ -151,10 +197,105 @@ final class PubkyImageCacheTests: XCTestCase {
         let cache = PubkyImageCache(diskDirectory: directory, maxFileBytes: 3, memoryCostLimit: 1024, diskByteLimit: 1024)
         try Data([0, 1, 2, 3]).write(to: path)
 
-        let image = await cache.image(for: uri)
+        let image = await cache.image(for: uri, generation: cache.generation)
         XCTAssertNil(image)
         XCTAssertFalse(FileManager.default.fileExists(atPath: path.path))
     }
+
+    /// Contacts refetched each avatar that cannot load every time it appeared: 4 failing URIs, 5 times each, 2 reads a time.
+    func testPermanentFailureSkipsTheNetworkUntilTheCacheIsCleared() async throws {
+        // `PaykitError.Protocol` would name the metatype, so the case is spelled with a contextual type.
+        let oversize: PaykitError = .Protocol(code: "protocol_error", context: "fetch Pubky file: resource exceeds maximum size of 1048576 bytes")
+        let permanentErrors: [Error] = [
+            PubkyServiceError.profileNotFound,
+            PaykitError.NotFound(code: "not_found", context: "fetch Pubky file"),
+            oversize,
+        ]
+        for error in permanentErrors {
+            let directory = try temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let clock = TestClock()
+            let cache = PubkyImageCache(diskDirectory: directory, currentDate: { clock.now() })
+            let fetches = FileFetchStub(failingWith: error)
+            let load = { try await PubkyImage.loadImageOffMain(uri: self.avatarURI, cache: cache, fetchFile: { try await fetches.fetch($0, $1) }) }
+
+            _ = try? await load()
+            _ = try? await load()
+            clock.advance(by: 24 * 60 * 60)
+            _ = try? await load()
+            var count = await fetches.count
+            XCTAssertEqual(count, 1, "\(error): a missing or oversize image is not fetched again")
+
+            await cache.clear()
+            _ = try? await load()
+            count = await fetches.count
+            XCTAssertEqual(count, 2, "\(error): clearing the image cache, as sign-out does, forgets the failure")
+        }
+    }
+
+    func testTransientFailureIsFetchedAgainOnlyAfterItsWindow() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clock = TestClock()
+        let cache = PubkyImageCache(diskDirectory: directory, currentDate: { clock.now() })
+        let fetches = FileFetchStub(failingWith: PaykitError.Transport(code: "transport_error", context: "fetch Pubky file"))
+        let load = { try await PubkyImage.loadImageOffMain(uri: self.avatarURI, cache: cache, fetchFile: { try await fetches.fetch($0, $1) }) }
+
+        _ = try? await load()
+        clock.advance(by: PubkyImagePolicy.transientFailureTTL - 1)
+        _ = try? await load()
+        var count = await fetches.count
+        XCTAssertEqual(count, 1, "A failed fetch is not repeated within its window")
+
+        clock.advance(by: 1)
+        _ = try? await load()
+        count = await fetches.count
+        XCTAssertEqual(count, 2, "A failure that can pass is fetched again once its window ends")
+
+        await cache.clear()
+        _ = try? await load()
+        count = await fetches.count
+        XCTAssertEqual(count, 3, "Clearing the image cache forgets a transient failure too")
+    }
+
+    func testFailureOfAFetchThatAClearOrCancellationOvertookIsNotRemembered() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = PubkyImageCache(diskDirectory: directory)
+        let notFound = PubkyServiceError.profileNotFound
+
+        // A sign-out clears the cache while the fetch runs.
+        _ = try? await PubkyImage.loadImageOffMain(uri: avatarURI, cache: cache, fetchFile: { _, _ in
+            await cache.clear()
+            throw notFound
+        })
+        XCTAssertFalse(cache.hasRecentFailure(for: avatarURI), "A failure from before the clear belongs to the previous identity")
+
+        // The fetch is cancelled, and the read reports cancellation either as such or as an ordinary error.
+        let errorsOnceCancelled: [Error] = [CancellationError(), notFound]
+        for errorOnceCancelled in errorsOnceCancelled {
+            let started = expectation(description: "Fetch started")
+            let load = Task {
+                try await PubkyImage.loadImageOffMain(uri: self.avatarURI, cache: cache, fetchFile: { _, _ in
+                    started.fulfill()
+                    try? await Task.sleep(for: .seconds(30))
+                    throw errorOnceCancelled
+                })
+            }
+            await fulfillment(of: [started], timeout: 2)
+            load.cancel()
+            _ = await load.result
+            XCTAssertFalse(cache.hasRecentFailure(for: avatarURI), "A cancelled fetch (\(errorOnceCancelled)) is not remembered")
+        }
+
+        let fetches = FileFetchStub(failingWith: notFound)
+        _ = try? await PubkyImage.loadImageOffMain(uri: avatarURI, cache: cache, fetchFile: { try await fetches.fetch($0, $1) })
+        let count = await fetches.count
+        XCTAssertEqual(count, 1, "The next appearance fetches the image again")
+        XCTAssertTrue(cache.hasRecentFailure(for: avatarURI))
+    }
+
+    private let avatarURI = "pubky://test-user/pub/pubky.app/files/0033ABCDEFGHJ"
 
     private func pubkyImageDiskPath(for uri: String, directory: URL? = nil) -> URL {
         let caches = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -194,5 +335,38 @@ final class PubkyImageCacheTests: XCTestCase {
             context.cgContext.setFillColor(color.cgColor)
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         }
+    }
+}
+
+/// Counts file fetches and fails each one with `error`.
+private actor FileFetchStub {
+    private let error: Error
+    private(set) var count = 0
+
+    init(failingWith error: Error) {
+        self.error = error
+    }
+
+    func fetch(_: String, _: UInt64) throws -> Data {
+        count += 1
+        throw error
+    }
+}
+
+/// A clock the test moves by hand.
+private final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSince1970: 1_790_000_000)
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return current
+    }
+
+    func advance(by interval: TimeInterval) {
+        lock.lock()
+        current += interval
+        lock.unlock()
     }
 }

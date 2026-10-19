@@ -1,4 +1,5 @@
 import Foundation
+import enum Paykit.PaykitError
 import struct Paykit.PubkySessionBootstrapResult
 import SwiftUI
 
@@ -23,38 +24,115 @@ enum PubkySignupError: Error {
     case inProgress
 }
 
+/// Counts the choice-screen loads still waiting on one Ring row lookup, starting with the load that started it. A load
+/// leaves from its cancellation handler, which runs off the main actor, so the count is locked.
+private final class RingIdentityLookupLoaders: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 1
+
+    /// Fails once every load has left, since the lookup is then being cancelled.
+    func join() -> Bool {
+        lock.withLock {
+            guard count > 0 else { return false }
+            count += 1
+            return true
+        }
+    }
+
+    /// True for the last load to leave, which cancels the lookup.
+    func leave() -> Bool {
+        lock.withLock {
+            count -= 1
+            return count == 0
+        }
+    }
+}
+
 @MainActor
 class PubkyProfileManager: ObservableObject {
     enum SessionInitializationResult: Equatable {
         case noSession
         case restored(publicKey: String)
+        case restorationDeferred
         case restorationFailed
     }
+
+    typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
+    typealias ProfilePublisher = @Sendable (_ profile: PubkyProfileData, _ expectedIdentity: String?) async throws -> Void
+    typealias AvatarUploader = @Sendable (_ jpegData: Data, _ expectedIdentity: String?) async throws -> String
 
     private enum SessionInitializationMode {
         case userVisible
         case automaticRecovery
     }
 
+    /// A remote read of the signed-in profile. It applies its result only while `profileWriteGeneration` still equals
+    /// `generation`.
+    private struct ProfileRead {
+        enum Kind {
+            case load
+            case reusedRingProfileRefresh(adoptionRevision: UUID)
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let publicKey: String
+        let generation: Int
+    }
+
     @Published var authState: PubkyAuthState = .idle
     @Published var profile: PubkyProfile?
     @Published var publicKey: String?
+    @Published private var readOnlyProfile: (publicKey: String, profile: PubkyProfile?, revision: UUID)?
     @Published var isLoadingProfile = false
     @Published private(set) var isRestoringSession = false
+    @Published private(set) var isDeletingProfile = false
     @Published var isInitialized = false
     @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
     @Published var adoptedSourceLost = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
+    /// The pubky the cached name and avatar were written for. Nil for a cache written before the owner was stored.
+    @Published private var cachedProfileOwner: String?
     @Published private(set) var isProfileSetupPending: Bool
+    /// Public profiles found for the Pubky Ring rows on the choice screen, keyed by normalized pubky. Display-only.
+    @Published private(set) var ringIdentityProfiles: [String: PubkyProfile] = [:]
+    /// Ring rows whose lookup is still running, keyed like `ringIdentityProfiles`. A stopped lookup leaves without waiting
+    /// for its task to end.
+    @Published private(set) var ringIdentityLookupsInFlight: Set<String> = []
+    /// Covers a Ring adoption from before its reference is written, which already makes `hasExistingIdentity` true, until
+    /// it succeeds, fails or is cancelled.
+    @Published private(set) var isAdoptingRingIdentity = false
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
+    private var completedRecoveryVersion = 0
+    private var sessionRestorationDeferred = false
+    private var readOnlySignOutRevision: UUID?
     private var savedIdentityLookup: (revision: UUID, exists: Bool)?
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
     private static var sessionMutationCount = 0
+    private let remoteProfileResolver: RemoteProfileResolver
+    private let profilePublisher: ProfilePublisher
+    private let avatarUploader: AvatarUploader
+    /// Bumped whenever a profile save starts, `profile` is written or the identity changes, so a remote read that started
+    /// earlier is dropped.
+    private var profileWriteGeneration = 0
+    /// The last profile read started, until it ends. Only a read whose result can still apply holds back another, so a
+    /// read that a write dropped never stops the read that replaces it.
+    private var profileReadInFlight: ProfileRead?
+    /// Profile saves started and not returned yet.
+    private var profileSavesInFlight = 0
+    /// A profile read a save dropped, with the session it was for, which runs again once the last save in flight fails.
+    /// A published profile makes it moot.
+    private var profileReadAwaitingSaves: (read: ProfileRead, session: SignedInSession)?
+    /// Ring rows whose lookup found nothing. The SDK reports a missing record and an offline failure alike, so a miss
+    /// only stops repeat lookups and must never drive sign-up or profile-setup decisions.
+    private var ringIdentityMisses: Set<String> = []
+    private typealias RingIdentityLookup = (id: UUID, task: Task<Void, Never>, loaders: RingIdentityLookupLoaders)
+    private var ringIdentityLookups: [String: RingIdentityLookup] = [:]
 
     private static func beginSessionMutation() {
         sessionRevision = UUID()
@@ -65,9 +143,21 @@ class PubkyProfileManager: ObservableObject {
         sessionMutationCount -= 1
     }
 
-    init() {
+    init(
+        remoteProfileResolver: @escaping RemoteProfileResolver = { try await PubkyProfileManager.resolveRemoteProfile(publicKey: $0) },
+        profilePublisher: @escaping ProfilePublisher = {
+            try await PubkyService.publishPaykitProfile($0.toPaykitProfile(), expectedIdentity: $1)
+        },
+        avatarUploader: @escaping AvatarUploader = {
+            try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
+        }
+    ) {
+        self.remoteProfileResolver = remoteProfileResolver
+        self.profilePublisher = profilePublisher
+        self.avatarUploader = avatarUploader
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
+        cachedProfileOwner = UserDefaults.standard.string(forKey: Self.cachedProfileOwnerKey)
         isProfileSetupPending = UserDefaults.standard.bool(forKey: Self.profileSetupPendingKey)
     }
 
@@ -121,6 +211,7 @@ class PubkyProfileManager: ObservableObject {
         }
         guard Self.sessionMutationCount == 0 else { return }
         isRestoringSession = true
+        let revision = Self.sessionRevision
         let task = Task {
             defer {
                 initializationTask = nil
@@ -128,6 +219,9 @@ class PubkyProfileManager: ObservableObject {
             }
             guard Self.sessionMutationCount == 0 else { return }
             await initializeSessionState(mode: mode, initializeSession: initializeSession)
+            if case .automaticRecovery = mode, revision == Self.sessionRevision {
+                completedRecoveryVersion += 1
+            }
         }
         initializationTask = task
         await task.value
@@ -140,9 +234,12 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyProfileManager.initializePersistedSession()
         }
     ) async {
+        let recoveryVersion = completedRecoveryVersion
+        let revision = Self.sessionRevision
         if let initializationTask {
             await initializationTask.value
         }
+        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision { return }
         guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
@@ -163,16 +260,27 @@ class PubkyProfileManager: ObservableObject {
     ) async {
         // A usable connection can return without a new network-path event.
         let maximumDelay = Duration.seconds(180)
+        let revision = Self.sessionRevision
         var delay = retryDelay
-        while !Task.isCancelled {
+        var deferredRetries = 0
+        while !Task.isCancelled, revision == Self.sessionRevision {
             await restoreSessionIfNeeded(hasStoredIdentity: hasStoredIdentity, initializeSession: initializeSession)
-            guard !isAuthenticated, (try? hasStoredIdentity()) != false else { return }
+            guard !Task.isCancelled, revision == Self.sessionRevision,
+                  !isAuthenticated, (try? hasStoredIdentity()) != false
+            else { return }
+            let nextDelay: Duration
+            if sessionRestorationDeferred, deferredRetries < 8 {
+                deferredRetries += 1
+                nextDelay = min(retryDelay, .seconds(5))
+            } else {
+                nextDelay = delay
+                delay = min(delay * 2, maximumDelay)
+            }
             do {
-                try await sleep(min(delay * jitter(), maximumDelay))
+                try await sleep(min(nextDelay * jitter(), maximumDelay))
             } catch {
                 return
             }
-            delay = min(delay * 2, maximumDelay)
         }
     }
 
@@ -197,12 +305,18 @@ class PubkyProfileManager: ObservableObject {
                 isInitialized = true
                 return
             }
-            Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
-            authState = .idle
-            if case .userVisible = mode {
-                initializationErrorMessage = error.localizedDescription
+            if Self.isTemporarySessionRestorationError(error) {
+                result = .restorationDeferred
+            } else {
+                Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
+                authState = .idle
+                sessionRestorationDeferred = false
+                readOnlyProfile = nil
+                if case .userVisible = mode {
+                    initializationErrorMessage = error.localizedDescription
+                }
+                return
             }
-            return
         }
 
         guard revision == Self.sessionRevision else {
@@ -214,10 +328,16 @@ class PubkyProfileManager: ObservableObject {
 
         switch result {
         case .noSession:
+            sessionRestorationDeferred = false
             clearAuthenticatedState()
             sessionRestorationFailed = false
             Logger.debug("No saved paykit session found", context: "PubkyProfileManager")
         case let .restored(pk):
+            sessionRestorationDeferred = false
+            invalidateProfileLoads()
+            if !hasReadOnlyProfileIdentity || !PubkyPublicKeyFormat.matches(readOnlyProfile?.publicKey, pk) {
+                readOnlyProfile = nil
+            }
             reloadCachedProfileMetadata()
             publicKey = pk
             authState = .authenticated
@@ -225,10 +345,15 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed:
+            sessionRestorationDeferred = false
             clearAuthenticatedState(clearCachedProfile: false)
             if case .userVisible = mode {
                 sessionRestorationFailed = true
             }
+        case .restorationDeferred:
+            clearAuthenticatedState(clearCachedProfile: false, clearReadOnlyProfile: false)
+            sessionRestorationFailed = false
+            sessionRestorationDeferred = true
         }
 
         await checkAdoptedSource()
@@ -292,11 +417,12 @@ class PubkyProfileManager: ObservableObject {
         return try decoder.decode(HomegateResponse.self, from: data)
     }
 
-    /// Upload an avatar image to the user's homeserver blob storage. Returns the `pubky://` URI.
-    func uploadAvatar(image: UIImage) async throws -> String {
+    /// Upload an avatar image to the user's homeserver blob storage. Returns the `pubky://` URI. With `expectedIdentity`,
+    /// the upload writes nothing and throws `identityChanged` unless that identity is still signed in when it runs.
+    func uploadAvatar(image: UIImage, expectedIdentity: String? = nil) async throws -> String {
         _ = try activeSessionSecret()
         let imageData = try compressAvatar(image)
-        return try await PubkyService.uploadProfileAvatar(bytes: imageData, contentType: "image/jpeg")
+        return try await avatarUploader(imageData, expectedIdentity)
     }
 
     private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) throws -> Data {
@@ -436,6 +562,7 @@ class PubkyProfileManager: ObservableObject {
         Self.beginSessionMutation()
         defer {
             Self.isRingAdoptionInFlight = false
+            isAdoptingRingIdentity = false
             Self.endSessionMutation()
         }
         let sourceApp = SharedPubkyKeychain.ringSourceApp
@@ -444,6 +571,7 @@ class PubkyProfileManager: ObservableObject {
         }
 
         let previousAdoptedIdentity = AdoptedPubkyReference.current
+        isAdoptingRingIdentity = true
         AdoptedPubkyReference.current = (sourceApp, pubky)
         let adoptedPublicKey: String
         do {
@@ -462,26 +590,90 @@ class PubkyProfileManager: ObservableObject {
             throw error
         }
 
+        return try await completeRingAdoption(publicKey: adoptedPublicKey, fetchProfile: fetchProfile)
+    }
+
+    private func completeRingAdoption(
+        publicKey adoptedPublicKey: String,
+        fetchProfile: (@Sendable (String) async -> PubkyProfile?)? = nil
+    ) async throws -> PubkyProfile? {
+        invalidateProfileLoads()
         reloadCachedProfileMetadata()
         publicKey = adoptedPublicKey
         authState = .authenticated
         Self.notifyAppStateBackupChanged()
 
         let adoptionRevision = Self.sessionRevision
-        let adoptedProfile = if let fetchProfile {
-            await fetchProfile(adoptedPublicKey)
-        } else {
-            await fetchRemoteProfile(publicKey: adoptedPublicKey)
+        // Read only after sign-in: when lookups are contended, the tapped row's result lands after the tap. Only a found
+        // row profile for this key is reused; anything else takes the fetch that decides profile setup.
+        let rowKey = PubkyPublicKeyFormat.normalized(adoptedPublicKey)
+        var adoptedProfile = rowKey.flatMap { ringIdentityProfiles[$0] }
+        if adoptedProfile == nil, let rowKey, let lookup = ringIdentityLookups[rowKey], !lookup.task.isCancelled {
+            // The row's lookup is already ahead of a fresh fetch for the same key.
+            await lookup.task.value
+            adoptedProfile = ringIdentityProfiles[rowKey]
+        }
+        let reusesRowProfile = PubkyPublicKeyFormat.matches(adoptedProfile?.publicKey, adoptedPublicKey)
+        if !reusesRowProfile {
+            adoptedProfile = if let fetchProfile {
+                await fetchProfile(adoptedPublicKey)
+            } else {
+                await fetchRemoteProfile(publicKey: adoptedPublicKey)
+            }
         }
         guard adoptionRevision == Self.sessionRevision, publicKey == adoptedPublicKey else {
             throw CancellationError()
         }
+        clearRingIdentityProfiles()
+
         setProfileSetupPending(adoptedProfile == nil)
         if let adoptedProfile {
-            profile = adoptedProfile
-            cacheProfileMetadata(adoptedProfile)
+            commitProfile(adoptedProfile)
+        }
+        if reusesRowProfile {
+            // A row profile can be from earlier in the session, so it is refreshed behind navigation.
+            let generation = profileWriteGeneration
+            Task {
+                await refreshReusedRingProfile(publicKey: adoptedPublicKey, generation: generation, adoptionRevision: adoptionRevision)
+            }
         }
         return adoptedProfile
+    }
+
+    /// Only a definitive not-found undoes the reused profile, leaving the key as adopting one without a profile does so
+    /// routing prompts profile setup. Any other failure may just mean offline and keeps it. Dropped if the identity
+    /// changed or a newer profile write landed.
+    private func refreshReusedRingProfile(publicKey adoptedPublicKey: String, generation: Int, adoptionRevision: UUID) async {
+        guard let read = beginProfileRead(
+            .reusedRingProfileRefresh(adoptionRevision: adoptionRevision),
+            publicKey: adoptedPublicKey,
+            generation: generation
+        ) else { return }
+        defer { endProfileRead(read) }
+        let resolve = remoteProfileResolver
+        func isStillCurrent() -> Bool {
+            adoptionRevision == Self.sessionRevision && publicKey == adoptedPublicKey && profileWriteGeneration == generation
+        }
+
+        do {
+            let refreshedProfile = try await Task.detached {
+                try await resolve(adoptedPublicKey)
+            }.value
+            guard isStillCurrent() else { return }
+            profile = refreshedProfile
+            cacheProfileMetadata(refreshedProfile)
+        } catch PubkyServiceError.profileNotFound {
+            guard isStillCurrent() else { return }
+            Logger.info("Adopted Pubky Ring profile no longer exists, starting profile setup", context: "PubkyProfileManager")
+            invalidateProfileLoads()
+            profile = nil
+            if PubkyPublicKeyFormat.matches(cachedProfileOwner, adoptedPublicKey) {
+                clearCachedProfileMetadata()
+            }
+            setProfileSetupPending(true)
+        } catch {
+            Logger.warn("Failed to refresh the adopted Pubky Ring profile: \(error)", context: "PubkyProfileManager")
+        }
     }
 
     private nonisolated static func signInWithRingKey(_ secretKeyHex: String) async throws {
@@ -547,13 +739,12 @@ class PubkyProfileManager: ObservableObject {
         )
         self.publicKey = publicKey
         authState = .authenticated
-        profile = createdProfile
-        cacheProfileMetadata(createdProfile)
+        commitProfile(createdProfile)
         setProfileSetupPending(false)
     }
 
     func approveSignupAuth(request: PubkyAuthRequest) async throws {
-        guard request.isSignup, let homeserver = request.homeserverPublicKey else {
+        guard request.isSignup, request.bitkitClaim == nil, let homeserver = request.homeserverPublicKey else {
             throw PubkyServiceError.invalidAuthUrl
         }
         guard publicKey == nil, try !Self.hasStoredIdentity() else {
@@ -577,9 +768,7 @@ class PubkyProfileManager: ObservableObject {
                 )
             },
             approveAuth: {
-                if let authorizationUrl = request.authorizationUrl {
-                    try await PubkyService.approveRingAuth(authUrl: authorizationUrl, secretKeyHex: secretKeyHex)
-                }
+                try await PubkyService.approveSignupAuthorization(request: request, secretKeyHex: secretKeyHex)
             },
             activateIdentity: { try await PubkyService.activateRegisteredIdentity($0) }
         )
@@ -658,28 +847,124 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    /// Saves an edit to the signed-in profile, uploading `avatarImage` first when there is one, and returns whether it was
+    /// saved. The edit belongs to the session it was started in, bound before it uploads anything. Once that session ends
+    /// or changes, or nothing is signed in, it stops quietly and returns false: it reports no error, the upload and the
+    /// publication each write nothing once another identity is signed in, and the profile and setup state stay as they are.
+    @discardableResult
     func saveProfile(
         name: String,
         bio: String,
         links: [PubkyProfileLink],
         tags: [String] = [],
-        newImageUrl: String? = nil
-    ) async throws {
+        avatarImage: UIImage? = nil
+    ) async throws -> Bool {
+        guard let session = currentSession else { return false }
         _ = try activeSessionSecret()
+        return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+    }
 
+    /// Starting the edit drops every profile read that started before it, ahead of the avatar upload, so a refresh that finds
+    /// the profile missing while the edit uploads or publishes can no longer clear the profile or start profile setup. The
+    /// dropped read waits for every save in flight, as edits from Profile and Edit Profile can overlap: a published profile
+    /// makes it moot, and once the last save in flight fails with an error while its session is still signed in, nothing
+    /// was saved, so the read runs again rather than leaving the profile unchecked. It never runs while another save is in
+    /// flight, which would publish over a profile that read cleared. A save dropped because its session ended or another
+    /// identity is signed in runs nothing again, as that read belonged to a session the user has left.
+    private func saveProfileEdit(
+        name: String,
+        bio: String,
+        links: [PubkyProfileLink],
+        tags: [String],
+        avatarImage: UIImage?,
+        session: SignedInSession
+    ) async throws -> Bool {
+        if profileReadAwaitingSaves?.session != session {
+            profileReadAwaitingSaves = applicableProfileRead.map { (read: $0, session: session) }
+        }
+        invalidateProfileLoads()
+        profileSavesInFlight += 1
+        do {
+            let isSaved = try await uploadAndPublishProfileEdit(
+                name: name,
+                bio: bio,
+                links: links,
+                tags: tags,
+                avatarImage: avatarImage,
+                session: session
+            )
+            profileSavesInFlight -= 1
+            return isSaved
+        } catch {
+            profileSavesInFlight -= 1
+            rerunProfileReadAwaitingSaves(afterFailedSaveIn: session)
+            throw error
+        }
+    }
+
+    private func uploadAndPublishProfileEdit(
+        name: String,
+        bio: String,
+        links: [PubkyProfileLink],
+        tags: [String],
+        avatarImage: UIImage?,
+        session: SignedInSession
+    ) async throws -> Bool {
+        var newImageUrl: String?
+        if let avatarImage {
+            do {
+                newImageUrl = try await avatarUploader(compressAvatar(avatarImage), session.publicKey)
+            } catch PubkyServiceError.identityChanged {
+                Logger.info("Dropped a profile save whose avatar upload was for another identity", context: "PubkyProfileManager")
+                return false
+            } catch {
+                guard currentSession == session else { return false }
+                throw error
+            }
+            guard currentSession == session else {
+                Logger.info("Dropped a profile save that a session change overtook during its avatar upload", context: "PubkyProfileManager")
+                return false
+            }
+        }
+        return try await publishProfileEdit(name: name, bio: bio, links: links, tags: tags, newImageUrl: newImageUrl, session: session)
+    }
+
+    /// A published profile ends any pending setup. The SDK publishes only while the session's identity is still signed in,
+    /// and a save that a sign-out or another identity overtakes changes nothing here, as it belongs to a session the user
+    /// has left. Returns whether the edit was saved.
+    private func publishProfileEdit(
+        name: String,
+        bio: String,
+        links: [PubkyProfileLink],
+        tags: [String],
+        newImageUrl: String?,
+        session: SignedInSession
+    ) async throws -> Bool {
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
-        try await writeProfile(
-            name: name,
-            bio: bio,
-            imageUrl: resolvedImageUrl,
-            links: links,
-            tags: tags
-        )
+        do {
+            try await writeProfile(
+                name: name,
+                bio: bio,
+                imageUrl: resolvedImageUrl,
+                links: links,
+                tags: tags,
+                expectedIdentity: session.publicKey
+            )
+        } catch PubkyServiceError.identityChanged {
+            Logger.info("Dropped a profile save for an identity that is no longer signed in", context: "PubkyProfileManager")
+            return false
+        } catch {
+            guard currentSession == session else { return false }
+            throw error
+        }
+        guard currentSession == session else {
+            Logger.info("Dropped a profile save that a session change overtook", context: "PubkyProfileManager")
+            return false
+        }
 
-        let pk = publicKey ?? ""
         let updatedProfile = PubkyProfile(
-            publicKey: pk,
+            publicKey: session.publicKey,
             name: name,
             bio: bio,
             imageUrl: resolvedImageUrl,
@@ -687,12 +972,29 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             status: profile?.status
         )
-        profile = updatedProfile
-        cacheProfileMetadata(updatedProfile)
+        commitProfile(updatedProfile)
+        setProfileSetupPending(false)
+        return true
     }
 
-    func deleteProfile() async throws {
-        await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+    func performProfileDeletion(_ operation: () async throws -> Void) async rethrows {
+        guard !isDeletingProfile else { return }
+        isDeletingProfile = true
+        defer { isDeletingProfile = false }
+        await PrivatePaykitService.shared.beginProfileDeletion()
+        do {
+            try await operation()
+        } catch {
+            await PrivatePaykitService.shared.endProfileDeletion()
+            throw error
+        }
+        await PrivatePaykitService.shared.endProfileDeletion()
+    }
+
+    func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true) async throws {
+        if cleanPrivatePaykitEndpoints {
+            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+        }
         do {
             try await Task.detached {
                 try await PubkyService.deletePaykitProfile()
@@ -705,6 +1007,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
         }
 
+        invalidateProfileLoads()
         Self.clearPaykitSharingAfterProfileDeletion()
         try await signOut(cleanPrivatePaykitEndpoints: false)
     }
@@ -714,7 +1017,8 @@ class PubkyProfileManager: ObservableObject {
         bio: String,
         imageUrl: String?,
         links: [PubkyProfileLink],
-        tags: [String] = []
+        tags: [String] = [],
+        expectedIdentity: String? = nil
     ) async throws {
         let profileData = PubkyProfileData(
             name: name,
@@ -724,8 +1028,9 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
 
+        let publish = profilePublisher
         try await Task.detached {
-            try await PubkyService.publishPaykitProfile(profileData.toPaykitProfile())
+            try await publish(profileData, expectedIdentity)
         }.value
     }
 
@@ -786,36 +1091,96 @@ class PubkyProfileManager: ObservableObject {
                 forgetSessionAccess: forgetSessionAccess
             )
         }
+
+        func completeRingAdoptionForTesting(publicKey: String) async throws -> PubkyProfile? {
+            try await completeRingAdoption(publicKey: publicKey)
+        }
+
+        /// `saveProfile` without its check for a stored session secret.
+        @discardableResult
+        func saveProfileForTesting(
+            name: String,
+            bio: String,
+            links: [PubkyProfileLink],
+            tags: [String],
+            avatarImage: UIImage? = nil
+        ) async throws -> Bool {
+            guard let session = currentSession else { return false }
+            return try await saveProfileEdit(name: name, bio: bio, links: links, tags: tags, avatarImage: avatarImage, session: session)
+        }
+
+        func clearAuthenticatedStateForTesting() {
+            clearAuthenticatedState()
+        }
     #endif
 
     // MARK: - Profile
 
     func loadProfile() async {
-        guard let pk = publicKey, !isLoadingProfile else { return }
-
-        isLoadingProfile = true
+        if !isInitialized, let initializationTask {
+            await initializationTask.value
+            guard !Task.isCancelled else { return }
+        }
+        guard publicKey != nil else {
+            await loadReadOnlyProfile()
+            return
+        }
+        guard let pk = publicKey, let read = beginProfileRead(.load, publicKey: pk, generation: profileWriteGeneration) else { return }
+        defer { endProfileRead(read) }
+        let resolve = remoteProfileResolver
 
         do {
             let loadedProfile = try await Task.detached {
-                try await Self.resolveRemoteProfile(publicKey: pk)
+                try await resolve(pk)
             }.value
-            if publicKey == pk {
+            if publicKey == pk, profileWriteGeneration == read.generation {
                 profile = loadedProfile
+                readOnlyProfile = nil
                 cacheProfileMetadata(loadedProfile)
             }
         } catch {
             Logger.error("Failed to load profile: \(error)", context: "PubkyProfileManager")
         }
+    }
 
-        isLoadingProfile = false
+    private func loadReadOnlyProfile() async {
+        guard sessionRestorationDeferred, Self.sessionMutationCount == 0 else { return }
+        let revision = Self.sessionRevision
+        let pk = await Task.detached {
+            Self.activeSecretKeyHex().flatMap { try? Self.publicKeyFromSecretKey($0) }
+        }.value
+        guard revision == Self.sessionRevision, Self.sessionMutationCount == 0,
+              sessionRestorationDeferred, publicKey == nil
+        else { return }
+        guard let pk else {
+            readOnlyProfile = nil
+            return
+        }
+        if readOnlyProfile?.publicKey != pk || readOnlyProfile?.revision != revision {
+            readOnlyProfile = (pk, nil, revision)
+        }
+        guard readOnlyProfile?.profile == nil,
+              let read = beginProfileRead(.load, publicKey: pk, generation: profileWriteGeneration)
+        else { return }
+        defer { endProfileRead(read) }
+        let resolve = remoteProfileResolver
+        do {
+            let loaded = try await Task.detached { try await resolve(pk) }.value
+            guard revision == Self.sessionRevision, Self.sessionMutationCount == 0,
+                  sessionRestorationDeferred, publicKey == nil, profileWriteGeneration == read.generation
+            else { return }
+            readOnlyProfile = (pk, loaded, revision)
+        } catch {
+            Logger.warn("Failed to load read-only Pubky profile: \(error)", context: "PubkyProfileManager")
+        }
     }
 
     /// Fetch a remote profile by public key. Returns nil if no profile exists.
     func fetchRemoteProfile(publicKey: String) async -> PubkyProfile? {
         do {
-            return try await Self.resolveRemoteProfile(publicKey: publicKey)
+            return try await remoteProfileResolver(publicKey)
         } catch {
-            Logger.debug("No remote profile found for \(publicKey): \(error)", context: "PubkyProfileManager")
+            Logger.debug("No remote profile found for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "PubkyProfileManager")
             return nil
         }
     }
@@ -827,6 +1192,153 @@ class PubkyProfileManager: ObservableObject {
         }
 
         throw PubkyServiceError.profileNotFound
+    }
+
+    /// Sets a profile this device just wrote or chose, dropping any remote read that started before it, including one
+    /// that waits for saves in flight.
+    private func commitProfile(_ newProfile: PubkyProfile) {
+        invalidateProfileLoads()
+        profileReadAwaitingSaves = nil
+        profile = newProfile
+        cacheProfileMetadata(newProfile)
+    }
+
+    private func invalidateProfileLoads() {
+        profileWriteGeneration += 1
+    }
+
+    /// The running read whose result can still apply, which the next write drops.
+    private var applicableProfileRead: ProfileRead? {
+        profileReadInFlight.flatMap { $0.generation == profileWriteGeneration ? $0 : nil }
+    }
+
+    /// Nil, starting nothing, while a read whose result can still apply runs, or once a write since `generation` has
+    /// already dropped this one.
+    private func beginProfileRead(_ kind: ProfileRead.Kind, publicKey: String, generation: Int) -> ProfileRead? {
+        guard generation == profileWriteGeneration, applicableProfileRead == nil else { return nil }
+        let read = ProfileRead(kind: kind, publicKey: publicKey, generation: generation)
+        profileReadInFlight = read
+        isLoadingProfile = true
+        return read
+    }
+
+    private func endProfileRead(_ read: ProfileRead) {
+        guard profileReadInFlight?.id == read.id else { return }
+        profileReadInFlight = nil
+        isLoadingProfile = false
+    }
+
+    /// Runs the read that saves dropped again once no save is in flight, as long as the failed save's session is still signed
+    /// in. A save that starts before it runs takes the read over instead.
+    private func rerunProfileReadAwaitingSaves(afterFailedSaveIn session: SignedInSession) {
+        Task {
+            guard profileSavesInFlight == 0,
+                  currentSession == session,
+                  let awaiting = profileReadAwaitingSaves,
+                  awaiting.session == session
+            else { return }
+            profileReadAwaitingSaves = nil
+            switch awaiting.read.kind {
+            case .load:
+                await loadProfile()
+            case let .reusedRingProfileRefresh(adoptionRevision):
+                await refreshReusedRingProfile(
+                    publicKey: awaiting.read.publicKey,
+                    generation: profileWriteGeneration,
+                    adoptionRevision: adoptionRevision
+                )
+            }
+        }
+    }
+
+    // MARK: - Pubky Ring Choice Rows
+
+    /// Looks up the rows that have no cached result, joining the live lookup of a row that has one. Cancelling the caller
+    /// cancels each of its lookups that no other caller still waits on, so a screen the user has left stops queueing for
+    /// read slots without stopping rows another choice screen still shows.
+    func loadRingIdentityProfiles(_ pubkys: [String]) async {
+        let lookups = Set(pubkys.compactMap(PubkyPublicKeyFormat.normalized)).compactMap { joinRingIdentityLookup($0) }
+
+        await withTaskCancellationHandler {
+            for lookup in lookups {
+                await lookup.task.value
+            }
+        } onCancel: {
+            for lookup in lookups where lookup.loaders.leave() {
+                lookup.task.cancel()
+            }
+            // This handler runs off the main actor, so the stopped rows leave the published set on it.
+            Task { @MainActor [weak self] in self?.publishRingIdentityLookupsInFlight() }
+        }
+    }
+
+    /// Forgets the misses on returning to the app, since the user may have just published that pubky in Pubky Ring.
+    func forgetRingIdentityMisses() {
+        ringIdentityMisses.removeAll()
+    }
+
+    /// Stops every row lookup but `pubky`'s, whose result adoption can still reuse if it lands before sign-in finishes.
+    /// A stopped lookup records no miss, so the next load looks that row up again.
+    func cancelRingIdentityLookups(except pubky: String) {
+        let keptKey = PubkyPublicKeyFormat.normalized(pubky)
+        for (key, lookup) in ringIdentityLookups where key != keptKey {
+            lookup.task.cancel()
+        }
+        publishRingIdentityLookupsInFlight()
+    }
+
+    private func joinRingIdentityLookup(_ key: String) -> RingIdentityLookup? {
+        guard ringIdentityProfiles[key] == nil, !ringIdentityMisses.contains(key) else { return nil }
+        // A cancelled lookup records no miss when it fails, so it cannot stand in for a live one, and one every caller
+        // has left is being cancelled.
+        if let lookup = ringIdentityLookups[key], !lookup.task.isCancelled, lookup.loaders.join() {
+            return lookup
+        }
+        return startRingIdentityLookup(key)
+    }
+
+    private func startRingIdentityLookup(_ key: String) -> RingIdentityLookup {
+        let id = UUID()
+        let resolve = remoteProfileResolver
+        let task = Task {
+            var foundProfile: PubkyProfile?
+            do {
+                foundProfile = try await resolve(key)
+            } catch {
+                Logger.debug("No profile found for Pubky Ring key \(PubkyPublicKeyFormat.redacted(key)): \(error)", context: "PubkyProfileManager")
+            }
+            finishRingIdentityLookup(key, id: id, foundProfile: foundProfile)
+        }
+        let lookup = (id: id, task: task, loaders: RingIdentityLookupLoaders())
+        ringIdentityLookups[key] = lookup
+        publishRingIdentityLookupsInFlight()
+        return lookup
+    }
+
+    /// Runs on the lookup's own task, so `Task.isCancelled` is that lookup's cancellation.
+    private func finishRingIdentityLookup(_ key: String, id: UUID, foundProfile: PubkyProfile?) {
+        // A newer lookup or a cache clear has replaced this one, so its result may be stale.
+        guard ringIdentityLookups[key]?.id == id else { return }
+        ringIdentityLookups[key] = nil
+
+        if let foundProfile {
+            ringIdentityProfiles[key] = foundProfile
+        } else if !Task.isCancelled {
+            ringIdentityMisses.insert(key)
+        }
+        publishRingIdentityLookupsInFlight()
+    }
+
+    private func clearRingIdentityProfiles() {
+        ringIdentityLookups.values.forEach { $0.task.cancel() }
+        ringIdentityLookups.removeAll()
+        ringIdentityMisses.removeAll()
+        ringIdentityProfiles.removeAll()
+        publishRingIdentityLookupsInFlight()
+    }
+
+    private func publishRingIdentityLookupsInFlight() {
+        ringIdentityLookupsInFlight = Set(ringIdentityLookups.filter { !$0.value.task.isCancelled }.keys)
     }
 
     // MARK: - Sign Out
@@ -933,8 +1445,16 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
+        let retainedProfile = hasReadOnlyProfileIdentity ? readOnlyProfile : nil
         Self.beginSessionMutation()
-        defer { Self.endSessionMutation() }
+        if let retainedProfile {
+            readOnlySignOutRevision = Self.sessionRevision
+            readOnlyProfile = (retainedProfile.publicKey, retainedProfile.profile, Self.sessionRevision)
+        }
+        defer {
+            readOnlySignOutRevision = nil
+            Self.endSessionMutation()
+        }
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
 
@@ -995,6 +1515,7 @@ class PubkyProfileManager: ObservableObject {
     private static let cachedNameKey = "pubky_profile_name"
     private static let cachedIdentityKey = "pubky_profile_identity"
     private static let cachedImageUriKey = "pubky_profile_image_uri"
+    private static let cachedProfileOwnerKey = "pubky_profile_owner"
     private static let profileSetupPendingKey = "pubky_profile_setup_pending"
 
     var displayName: String? {
@@ -1005,12 +1526,42 @@ class PubkyProfileManager: ObservableObject {
         profile?.imageUrl ?? cachedImageUri
     }
 
+    /// A saved credential proves display ownership only, never authentication or permission to write.
+    var profileForDisplay: PubkyProfile? {
+        profile ?? (hasReadOnlyProfileIdentity ? readOnlyProfile?.profile : nil)
+    }
+
+    var publicKeyForDisplay: String? {
+        publicKey ?? (hasReadOnlyProfileIdentity ? readOnlyProfile?.publicKey : nil)
+    }
+
+    private var hasReadOnlyProfileIdentity: Bool {
+        guard readOnlyProfile?.revision == Self.sessionRevision else { return false }
+        // Only this Disconnect may retain display ownership; any other identity mutation invalidates it.
+        return Self.sessionMutationCount == 0 ||
+            (Self.sessionMutationCount == 1 && readOnlySignOutRevision == Self.sessionRevision)
+    }
+
+    /// The cached name and avatar for the authenticated or credential-verified display identity. It has no bio, links
+    /// or tags, so it must never stand in for `profile`. Nil before initialization and when the cache has no matching owner.
+    var cachedProfilePreview: PubkyProfile? {
+        guard isInitialized,
+              let publicKey = publicKeyForDisplay,
+              let cachedName,
+              PubkyPublicKeyFormat.matches(cachedProfileOwner, publicKey)
+        else { return nil }
+
+        return .forDisplay(publicKey: publicKey, name: cachedName, imageUrl: cachedImageUri)
+    }
+
     private func cacheProfileMetadata(_ profile: PubkyProfile) {
         cachedName = profile.name
         cachedImageUri = profile.imageUrl
+        cachedProfileOwner = profile.publicKey
         UserDefaults.standard.set(profile.name, forKey: Self.cachedNameKey)
         UserDefaults.standard.set(profile.imageUrl, forKey: Self.cachedImageUriKey)
-        UserDefaults.standard.set(publicKey, forKey: Self.cachedIdentityKey)
+        UserDefaults.standard.set(profile.publicKey, forKey: Self.cachedIdentityKey)
+        UserDefaults.standard.set(profile.publicKey, forKey: Self.cachedProfileOwnerKey)
     }
 
     static func activateCachedIdentity(publicKey: String, previousPublicKey: String?) {
@@ -1025,6 +1576,7 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: cachedIdentityKey)
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        UserDefaults.standard.removeObject(forKey: cachedProfileOwnerKey)
         ContactsManager.restoreContactProfileOverrides(nil)
     }
 
@@ -1032,14 +1584,17 @@ class PubkyProfileManager: ObservableObject {
         profile = nil
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
+        cachedProfileOwner = UserDefaults.standard.string(forKey: Self.cachedProfileOwnerKey)
     }
 
     private func clearCachedProfileMetadata() {
         cachedName = nil
         cachedImageUri = nil
+        cachedProfileOwner = nil
         UserDefaults.standard.removeObject(forKey: Self.cachedNameKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedImageUriKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedIdentityKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedProfileOwnerKey)
     }
 
     private func setProfileSetupPending(_ pending: Bool) {
@@ -1047,12 +1602,23 @@ class PubkyProfileManager: ObservableObject {
         UserDefaults.standard.set(pending, forKey: Self.profileSetupPendingKey)
     }
 
-    private func clearAuthenticatedState(clearCachedProfile: Bool = true) {
+    private func clearAuthenticatedState(clearCachedProfile: Bool = true, clearReadOnlyProfile: Bool = true) {
+        // Automatic recovery also lands here while nothing is signed in, which must not discard the choice rows.
+        let wasAuthenticated = isAuthenticated
+        if clearReadOnlyProfile || wasAuthenticated {
+            invalidateProfileLoads()
+        }
         publicKey = nil
         profile = nil
         authState = .idle
+        if clearReadOnlyProfile {
+            readOnlyProfile = nil
+        }
         if clearCachedProfile {
             clearCachedProfileMetadata()
+        }
+        if wasAuthenticated {
+            clearRingIdentityProfiles()
         }
     }
 
@@ -1069,6 +1635,34 @@ class PubkyProfileManager: ObservableObject {
 
     var isAuthenticated: Bool {
         publicKey != nil
+    }
+
+    /// The signed-in session as work that started for it saw it. Work that waits compares it with `currentSession`
+    /// afterwards to tell whether that session ended or changed meanwhile.
+    struct SignedInSession: Equatable {
+        let publicKey: String
+        fileprivate let revision: UUID
+    }
+
+    /// Nil while signed out, and from the moment a sign-in, sign-out or other session change starts until it ends, so
+    /// before that change clears any state. The session after a change compares different from the one before.
+    var currentSession: SignedInSession? {
+        guard let publicKey, Self.sessionMutationCount == 0 else { return nil }
+        return SignedInSession(publicKey: publicKey, revision: Self.sessionRevision)
+    }
+
+    var automaticPaykitSession: SignedInSession? {
+        guard authState == .authenticated, !isDeletingProfile else { return nil }
+        return currentSession
+    }
+
+    func storedIdentityGuard() -> (@MainActor () -> Bool)? {
+        guard !isAuthenticated, Self.sessionMutationCount == 0, (try? Self.hasStoredIdentity()) == true else { return nil }
+        let revision = Self.sessionRevision
+        // Restoration keeps this revision; identity replacement and sign-out invalidate it.
+        return { [weak self] in
+            self != nil && Self.sessionMutationCount == 0 && Self.sessionRevision == revision
+        }
     }
 
     var hasLocalSecretKeyForCurrentProfile: Bool {
@@ -1118,6 +1712,32 @@ class PubkyProfileManager: ObservableObject {
             return false
         }
 
+        let prefixedPublicKey = rawPublicKey.hasPrefix("pubky") ? rawPublicKey : "pubky\(rawPublicKey)"
+        return PubkyPublicKeyFormat.matches(prefixedPublicKey, publicKey)
+    }
+
+    nonisolated static func hasPrivatePaymentAccess(
+        for publicKey: String?,
+        loadKeychainString: (KeychainEntryType) throws -> String? = {
+            guard let data = try Keychain.load(key: $0) else { return nil }
+            guard let value = String(data: data, encoding: .utf8) else { throw KeychainError.failedToLoad }
+            return value
+        },
+        adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current,
+        loadSharedSecret: (String, String) throws -> String? = {
+            try SharedPubkyKeychain.readSecret(sourceApp: $0, pubky: $1)
+        }
+    ) throws -> Bool {
+        guard let publicKey else { return false }
+        let secretKeyHex: String? = if let localSecret = try loadKeychainString(.pubkySecretKey), !localSecret.isEmpty {
+            localSecret
+        } else if let adopted {
+            try loadSharedSecret(adopted.sourceApp, adopted.pubky)
+        } else {
+            nil
+        }
+        guard let secretKeyHex else { return false }
+        let rawPublicKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
         let prefixedPublicKey = rawPublicKey.hasPrefix("pubky") ? rawPublicKey : "pubky\(rawPublicKey)"
         return PubkyPublicKeyFormat.matches(prefixedPublicKey, publicKey)
     }
@@ -1308,6 +1928,10 @@ class PubkyProfileManager: ObservableObject {
                 let publicKey = try await importSession(savedSessionSecret)
                 return .restored(publicKey: publicKey)
             } catch {
+                if isTemporarySessionRestorationError(error) {
+                    Logger.warn("Deferred session restoration, keeping saved session", context: "PubkyProfileManager")
+                    return .restorationDeferred
+                }
                 Logger.warn("Failed to import saved session, attempting re-sign-in: \(error)", context: "PubkyProfileManager")
             }
         }
@@ -1333,7 +1957,16 @@ class PubkyProfileManager: ObservableObject {
             return .restored(publicKey: publicKey)
         } catch {
             Logger.warn("Re-sign-in failed, keeping saved session for retry: \(error)", context: "PubkyProfileManager")
-            return .restorationFailed
+            return isTemporarySessionRestorationError(error) ? .restorationDeferred : .restorationFailed
+        }
+    }
+
+    private nonisolated static func isTemporarySessionRestorationError(_ error: Error) -> Bool {
+        switch error {
+        case is CancellationError, PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport:
+            return true
+        default:
+            return false
         }
     }
 }

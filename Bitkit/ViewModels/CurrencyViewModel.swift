@@ -9,6 +9,11 @@ enum PrimaryDisplay: String {
 @MainActor
 class CurrencyViewModel: ObservableObject {
     @Published private(set) var rates: [FxRate] = []
+
+    var paykitRate: PaykitExchangeRate? {
+        rates.first { $0.quote == "USD" }.map { PaykitExchangeRate(price: $0.lastPrice, timestamp: $0.timestamp) }
+    }
+
     @Published private(set) var error: Error?
     @Published private(set) var hasStaleData: Bool = false
     @Published private(set) var isRefreshing = false

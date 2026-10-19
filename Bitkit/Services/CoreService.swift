@@ -34,6 +34,12 @@ struct AccountAddresses {
 
 // MARK: - Activity Service
 
+enum ReceiveTagMutation {
+    case add([String])
+    case remove([String])
+    case reset
+}
+
 class ActivityService {
     private let coreService: CoreService
     private static let detachedContactsKey = "activityDetachedContacts"
@@ -46,8 +52,27 @@ class ActivityService {
     func setContactDetached(_ detached: Bool, activityId: String, walletId: String) {
         var entries = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
         var ids = Set(entries[walletId] ?? [])
+        guard ids.contains(activityId) != detached else { return }
         if detached { ids.insert(activityId) } else { ids.remove(activityId) }
         entries[walletId] = ids.isEmpty ? nil : Array(ids)
+        UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
+        metadataChangedSubject.send()
+    }
+
+    func detachedContactsBackupSnapshot() -> Set<String> {
+        let entries = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
+        return Set(entries.flatMap { walletId, ids in ids.map { "\(walletId):\($0)" } })
+    }
+
+    func restoreDetachedContacts(_ scopedIds: Set<String>) {
+        var entries: [String: [String]] = [:]
+        for scopedId in scopedIds {
+            guard let separator = scopedId.lastIndex(of: ":") else { continue }
+            let walletId = String(scopedId[..<separator])
+            let activityId = String(scopedId[scopedId.index(after: separator)...])
+            guard !walletId.isEmpty, !activityId.isEmpty else { continue }
+            entries[walletId, default: []].append(activityId)
+        }
         UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
     }
 
@@ -83,6 +108,7 @@ class ActivityService {
     // MARK: - Constants
 
     private let addressSearchCoordinator: AddressSearchCoordinator
+    private let channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)?
 
     // MARK: - BoostTxIds Cache
 
@@ -374,8 +400,12 @@ class ActivityService {
         return activity.doesExist && !activity.isBoosted
     }
 
-    init(coreService: CoreService) {
+    init(
+        coreService: CoreService,
+        channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil
+    ) {
         self.coreService = coreService
+        self.channelLookup = channelLookup
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
@@ -558,163 +588,159 @@ class ActivityService {
         transactionDetails: BitkitCore.TransactionDetails? = nil
     ) async throws {
         guard case let .onchain(txid, txStatus) = payment.kind else { return }
-
         let paymentTimestamp = payment.latestUpdateTimestamp
-
-        // Look for existing activity by id first, then by txid (for migrated activities)
-        var existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
-        if existingActivity == nil {
-            existingActivity = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txid).map { .onchain($0) }
-        }
-
-        // Determine if confirmation status is changing
-        let ldkConfirmed = if case .confirmed = txStatus {
-            true
-        } else {
-            false
-        }
-
-        // Skip if existing activity has newer timestamp, unless confirmation status is changing
-        if let existingActivity, case let .onchain(existing) = existingActivity {
-            let existingUpdatedAt = existing.updatedAt ?? 0
-            let confirmationStatusChanging = existing.confirmed != ldkConfirmed
-            let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
-
-            if existingUpdatedAt > paymentTimestamp && !confirmationStatusChanging && !needsPrivateContactAttribution {
-                return
-            }
-        }
-
-        // Determine confirmation status from payment's txStatus
-        var blockTimestamp: UInt64?
-        let isConfirmed: Bool
-        if case let .onchain(_, txStatus) = payment.kind,
-           case let .confirmed(_, _, bts) = txStatus
+        let snapshot = try await getOnchainActivityByTxId(txid: txid)
+        let ldkConfirmed = if case .confirmed = txStatus { true } else { false }
+        if let snapshot, (snapshot.updatedAt ?? 0) > paymentTimestamp,
+           snapshot.confirmed == ldkConfirmed,
+           !(snapshot.contact == nil && payment.direction == .inbound)
         {
-            isConfirmed = true
-            blockTimestamp = bts
+            return
+        }
+        let resolvedChannelId: String? = if snapshot?.channelId == nil || snapshot?.isTransfer != true {
+            await findChannelForTransaction(txid: txid, direction: payment.direction, transactionDetails: transactionDetails)
         } else {
-            isConfirmed = false
+            nil
         }
-
-        // Extract existing activity data
-        let existingOnchain: OnchainActivity? = {
-            if let existingActivity, case let .onchain(existing) = existingActivity {
-                return existing
-            }
-            return nil
-        }()
-
-        let isBoosted = existingOnchain?.isBoosted ?? false
-        let boostTxIds = existingOnchain?.boostTxIds ?? []
-        var isTransfer = existingOnchain?.isTransfer ?? false
-        var channelId = existingOnchain?.channelId
-        let transferTxId = existingOnchain?.transferTxId
-        var contact = existingOnchain?.contact
-        let feeRate = existingOnchain?.feeRate ?? 1
-        let preservedAddress = existingOnchain?.address ?? "Loading..."
-        let doesExist = existingOnchain?.doesExist ?? true
-        let seenAt = existingOnchain?.seenAt
-
-        // Preserve existing value if it's larger than what LDK reports
-        let ldkValue = payment.amountSats ?? 0
-        let value: UInt64 = if let existingValue = existingOnchain?.value, existingValue > ldkValue {
-            existingValue
-        } else {
-            ldkValue
-        }
-
-        // Check if this transaction is a channel transfer
-        if channelId == nil || !isTransfer {
-            let foundChannelId = await findChannelForTransaction(
-                txid: txid,
-                direction: payment.direction,
-                transactionDetails: transactionDetails
-            )
-            if let foundChannelId {
-                channelId = foundChannelId
-                isTransfer = true
-            }
-        }
-
-        // Find receiving address for inbound transactions
-        var address = preservedAddress
+        var resolvedAddress: String?
+        var resolvedContact: String?
         if payment.direction == .inbound {
             do {
-                if let foundAddress = try await findReceivingAddress(
+                resolvedAddress = try await findReceivingAddress(
                     for: txid,
-                    value: value,
+                    value: max(snapshot?.value ?? 0, payment.amountSats ?? 0),
                     transactionDetails: transactionDetails
-                ) {
-                    address = foundAddress
-                }
+                )
             } catch {
                 Logger.error("Failed to find address for txid \(txid): \(error)", context: "CoreService.processOnchainPayment")
             }
-
-            if contact == nil, !isContactDetached(activityId: payment.id, walletId: WalletScope.default) {
+            if snapshot?.contact == nil,
+               !isContactDetached(activityId: snapshot?.id ?? payment.id, walletId: WalletScope.default)
+            {
                 let details: BitkitCore.TransactionDetails? = if let transactionDetails {
                     transactionDetails
                 } else {
                     await fetchTransactionDetails(txid: txid)
                 }
                 if let details {
-                    contact = await privateOnchainAddressContactResolver?(address, details.outputs.compactMap(\.scriptpubkeyAddress))
+                    resolvedContact = await privateOnchainAddressContactResolver?(
+                        resolvedAddress ?? snapshot?.address ?? "Loading...",
+                        details.outputs.compactMap(\.scriptpubkeyAddress)
+                    )
                 }
             }
         }
 
-        // Build and save the activity
-        let finalDoesExist = isConfirmed ? true : doesExist
-
-        let activityTimestamp: UInt64 = {
-            let baseTimestamp = existingOnchain?.timestamp ?? paymentTimestamp
-
-            if let bts = blockTimestamp, bts < baseTimestamp {
-                return bts
+        try await ServiceQueue.background(.core) {
+            // Look for existing activity by id first, then by txid (for migrated activities)
+            var existingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id)
+            if existingActivity == nil {
+                existingActivity = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txid).map { .onchain($0) }
             }
-            return baseTimestamp
-        }()
 
-        let onchain = OnchainActivity(
-            walletId: WalletScope.default,
-            id: payment.id,
-            txType: payment.direction == .outbound ? .sent : .received,
-            txId: txid,
-            value: value,
-            fee: (payment.feePaidMsat ?? 0) / 1000,
-            feeRate: feeRate,
-            address: address,
-            confirmed: isConfirmed,
-            timestamp: activityTimestamp,
-            isBoosted: isBoosted,
-            boostTxIds: boostTxIds,
-            isTransfer: isTransfer,
-            doesExist: finalDoesExist,
-            confirmTimestamp: blockTimestamp,
-            channelId: channelId,
-            transferTxId: transferTxId,
-            contact: contact,
-            createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
-            updatedAt: paymentTimestamp,
-            seenAt: seenAt
-        )
+            // Determine if confirmation status is changing
+            let ldkConfirmed = if case .confirmed = txStatus {
+                true
+            } else {
+                false
+            }
 
-        if let existingActivity, case let .onchain(existing) = existingActivity {
-            try await ServiceQueue.background(.core) {
-                var updated = onchain
-                if case let .onchain(latest)? = try getActivityById(walletId: existing.walletId, activityId: existing.id),
-                   latest.contact != existing.contact
-                {
-                    updated.contact = latest.contact
+            // Skip if existing activity has newer timestamp, unless confirmation status is changing
+            if let existingActivity, case let .onchain(existing) = existingActivity {
+                let existingUpdatedAt = existing.updatedAt ?? 0
+                let confirmationStatusChanging = existing.confirmed != ldkConfirmed
+                let needsPrivateContactAttribution = existing.contact == nil && payment.direction == .inbound
+
+                if existingUpdatedAt > paymentTimestamp && !confirmationStatusChanging && !needsPrivateContactAttribution {
+                    return
                 }
-                if self.isContactDetached(activityId: existing.id, walletId: existing.walletId) { updated.contact = nil }
-                try updateActivity(activityId: existing.id, activity: .onchain(updated))
-                self.updateBoostTxIdsCache(for: .onchain(updated))
-                self.activitiesChangedSubject.send()
             }
-        } else {
-            try await upsert(.onchain(onchain))
+
+            // Determine confirmation status from payment's txStatus
+            var blockTimestamp: UInt64?
+            let isConfirmed: Bool
+            if case let .onchain(_, txStatus) = payment.kind,
+               case let .confirmed(_, _, bts) = txStatus
+            {
+                isConfirmed = true
+                blockTimestamp = bts
+            } else {
+                isConfirmed = false
+            }
+
+            // Extract existing activity data
+            let existingOnchain: OnchainActivity? = {
+                if let existingActivity, case let .onchain(existing) = existingActivity {
+                    return existing
+                }
+                return nil
+            }()
+
+            let isBoosted = existingOnchain?.isBoosted ?? false
+            let boostTxIds = existingOnchain?.boostTxIds ?? []
+            let isTransfer = (existingOnchain?.isTransfer ?? false) || resolvedChannelId != nil
+            let channelId = existingOnchain?.channelId ?? resolvedChannelId
+            let transferTxId = existingOnchain?.transferTxId
+            var contact = existingOnchain?.contact ?? resolvedContact
+            let feeRate = existingOnchain?.feeRate ?? 1
+            let address = resolvedAddress ?? existingOnchain?.address ?? "Loading..."
+            let doesExist = existingOnchain?.doesExist ?? true
+            let seenAt = existingOnchain?.seenAt
+
+            // Preserve existing value if it's larger than what LDK reports
+            let ldkValue = payment.amountSats ?? 0
+            let value: UInt64 = if let existingValue = existingOnchain?.value, existingValue > ldkValue {
+                existingValue
+            } else {
+                ldkValue
+            }
+
+            let activityId = existingOnchain?.id ?? payment.id
+            if self.isContactDetached(activityId: activityId, walletId: WalletScope.default) { contact = nil }
+
+            // Build and save the activity
+            let finalDoesExist = isConfirmed ? true : doesExist
+
+            let activityTimestamp: UInt64 = {
+                let baseTimestamp = existingOnchain?.timestamp ?? paymentTimestamp
+
+                if let bts = blockTimestamp, bts < baseTimestamp {
+                    return bts
+                }
+                return baseTimestamp
+            }()
+
+            let onchain = OnchainActivity(
+                walletId: WalletScope.default,
+                id: activityId,
+                txType: payment.direction == .outbound ? .sent : .received,
+                txId: txid,
+                value: value,
+                fee: (payment.feePaidMsat ?? 0) / 1000,
+                feeRate: feeRate,
+                address: address,
+                confirmed: isConfirmed,
+                timestamp: activityTimestamp,
+                isBoosted: isBoosted,
+                boostTxIds: boostTxIds,
+                isTransfer: isTransfer,
+                doesExist: finalDoesExist,
+                confirmTimestamp: blockTimestamp,
+                channelId: channelId,
+                transferTxId: transferTxId,
+                contact: contact,
+                createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
+                updatedAt: paymentTimestamp,
+                seenAt: seenAt
+            )
+
+            if let existingOnchain {
+                try updateActivity(activityId: existingOnchain.id, activity: .onchain(onchain))
+            } else {
+                try upsertActivity(activity: .onchain(onchain))
+            }
+            self.updateBoostTxIdsCache(for: .onchain(onchain))
+            self.activitiesChangedSubject.send()
         }
     }
 
@@ -1031,6 +1057,7 @@ class ActivityService {
         direction: PaymentDirection,
         transactionDetails: BitkitCore.TransactionDetails? = nil
     ) async -> String? {
+        if let channelLookup { return await channelLookup(txid, direction, transactionDetails) }
         switch direction {
         case .inbound:
             // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
@@ -1299,6 +1326,7 @@ class ActivityService {
     /// `walletId` scopes the row: a transfer funded from a watch-only hardware wallet is written
     /// under that wallet's id, so the merged activity list shows one hardware-owned transfer row
     /// rather than a main-wallet row plus a hardware duplicate.
+    @discardableResult
     func createSentOnchainActivityFromSendResult(
         txid: String,
         address: String,
@@ -1307,17 +1335,25 @@ class ActivityService {
         feeRate: UInt32,
         isTransfer: Bool = false,
         contact: String? = nil,
-        walletId: String = WalletScope.default
-    ) async {
+        walletId: String = WalletScope.default,
+        feeIsExact: Bool = false,
+        preserveExistingContact: Bool = false
+    ) async -> Bool {
         let normalizedContact = contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
         do {
-            try await ServiceQueue.background(.core) {
+            return try await ServiceQueue.background(.core) {
                 if let existing = try? BitkitCore.getActivityByTxId(walletId: walletId, txId: txid) {
                     var updated = existing
+                    if feeIsExact {
+                        updated.fee = fee
+                        updated.feeRate = UInt64(feeRate)
+                    }
                     if isTransfer {
                         updated.isTransfer = true
                     }
-                    if let normalizedContact {
+                    let preserveContact = preserveExistingContact && existing.txType == .sent
+                        && (existing.contact != nil || self.isContactDetached(activityId: existing.id, walletId: existing.walletId))
+                    if let normalizedContact, !preserveContact {
                         updated.contact = normalizedContact
                     }
                     if updated != existing {
@@ -1325,7 +1361,7 @@ class ActivityService {
                         self.activitiesChangedSubject.send()
                     }
                     Logger.debug("Activity already exists for txid \(txid), skipping immediate creation", context: "ActivityService")
-                    return
+                    return true
                 }
                 let now = UInt64(Date().timeIntervalSince1970)
                 let onchain = OnchainActivity(
@@ -1355,9 +1391,11 @@ class ActivityService {
                 self.updateBoostTxIdsCache(for: .onchain(onchain))
                 self.activitiesChangedSubject.send()
                 Logger.info("Created sent onchain activity for txid \(txid) from send result", context: "ActivityService")
+                return true
             }
         } catch {
             Logger.error("Failed to create sent onchain activity for txid \(txid): \(error)", context: "ActivityService")
+            return false
         }
     }
 
@@ -1611,6 +1649,31 @@ class ActivityService {
     func addPreActivityMetadata(_ preActivityMetadata: BitkitCore.PreActivityMetadata) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.addPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+            self.metadataChangedSubject.send()
+        }
+    }
+
+    func mutateReceiveMetadataTags(paymentId: String?, address: String, mutation: ReceiveTagMutation) async throws {
+        try await ServiceQueue.background(.core) {
+            var metadata: BitkitCore.PreActivityMetadata?
+            if let paymentId, !paymentId.isEmpty {
+                metadata = try BitkitCore.getPreActivityMetadata(walletId: WalletScope.default, searchKey: paymentId, searchByAddress: false)
+            }
+            if metadata == nil, !address.isEmpty {
+                metadata = try BitkitCore.getPreActivityMetadata(walletId: WalletScope.default, searchKey: address, searchByAddress: true)
+            }
+            guard let metadata else { throw AppError(
+                message: "Receive metadata not available",
+                debugMessage: "No metadata for the committed receive invoice or address"
+            ) }
+            switch mutation {
+            case let .add(tags):
+                try BitkitCore.addPreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId, tags: tags)
+            case let .remove(tags):
+                try BitkitCore.removePreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId, tags: tags)
+            case .reset:
+                try BitkitCore.resetPreActivityMetadataTags(walletId: WalletScope.default, paymentId: metadata.paymentId)
+            }
             self.metadataChangedSubject.send()
         }
     }

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct TertiaryButtonView: View {
     let title: String
+    var titleKerning: CGFloat = 0.4
+    var titleLineHeight: CGFloat?
     let icon: AnyView?
     let isPressed: Bool
 
@@ -11,7 +13,7 @@ struct TertiaryButtonView: View {
                 icon
             }
 
-            BodySSBText(title, textColor: textColor)
+            BodySSBText(title, textColor: textColor, kerning: titleKerning, lineHeight: titleLineHeight)
         }
         .frame(maxWidth: .infinity)
         .frame(height: CustomButton.Size.large.height)

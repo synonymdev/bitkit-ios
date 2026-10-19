@@ -11,7 +11,7 @@ protocol PaykitAllowanceSdkHandling: Sendable {
         localRole: Paykit.AllowanceLocalRole,
         terms: Paykit.AllowanceTerms
     ) async throws -> Paykit.AllowanceRecord
-    func acceptAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord
+    func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord
     func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord
     func endAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord
     @discardableResult
@@ -461,6 +461,7 @@ actor PaykitAllowanceExecutor {
     ) async -> PaykitAllowanceAutoPayResult {
         guard request.direction == .incoming,
               request.billingPeriod == nil,
+              request.isAllowancePayable,
               request.lifecycleState == .proposed,
               !inFlightRequestIds.contains(request.id),
               allowances.contains(where: {
@@ -503,7 +504,7 @@ actor PaykitAllowanceExecutor {
         }
 
         let attempts = await automaticAttempts()
-        guard PaykitAllowanceCapacity.fits(amountSats: request.amountSats, allowance: allowance, attempts: attempts, now: now()) else {
+        guard PaykitAllowanceCapacity.fits(amountSats: request.allowanceAmountSats, allowance: allowance, attempts: attempts, now: now()) else {
             Logger.info("Allowance monthly limit reached; the request stays on the manual flow", context: "PaykitAllowance")
             notifyLimitReached(request, identity: identity)
             return .manual
@@ -566,7 +567,7 @@ actor PaykitAllowanceExecutor {
                 isAutomatic: true,
                 requestId: request.id,
                 allowanceId: prepared.allowanceId,
-                amountSats: request.amountSats,
+                amountSats: request.allowanceAmountSats,
                 paymentEndpointIdentifier: endpointIdentifier,
                 paymentHash: payment.lightningPaymentHash,
                 onchainAddress: payment.endpoint.methodId.onchainNetwork == nil ? nil : payment.endpoint.value,
@@ -654,7 +655,7 @@ actor PaykitAllowanceExecutor {
 
         setStage(.sending, attemptId: attemptId, identity: identity)
         do {
-            try await payer.payLightning(bolt11: payment.endpoint.value, sats: payment.lightningInvoiceHasAmount ? nil : request.amountSats)
+            try await payer.payLightning(bolt11: payment.endpoint.value, sats: payment.lightningInvoiceHasAmount ? nil : request.allowanceAmountSats)
         } catch {
             // LDK rejected the payment before routing it.
             await payer.failLightningPayment(paymentHash: paymentHash)
@@ -689,7 +690,7 @@ actor PaykitAllowanceExecutor {
         setStage(.sending, attemptId: attemptId, identity: identity)
         let txid: String
         do {
-            txid = try await payer.payOnchain(address: address, sats: request.amountSats)
+            txid = try await payer.payOnchain(address: address, sats: request.allowanceAmountSats)
         } catch {
             if PaykitPaymentProofService.isDefiniteOnchainPreBroadcastFailure(error) {
                 await payer.cancelProofPreparation(request)
@@ -714,7 +715,7 @@ actor PaykitAllowanceExecutor {
             paymentEndpointIdentifier: payment.endpoint.methodId.rawValue
         )
         try await record(attemptId: attemptId, outcome: .succeeded, identity: identity)
-        Self.eventSubject.send(.paidAutomatically(counterparty: request.counterparty, amountSats: request.amountSats, paymentId: txid))
+        Self.eventSubject.send(.paidAutomatically(counterparty: request.counterparty, amountSats: request.allowanceAmountSats, paymentId: txid))
         return .completed
     }
 
@@ -744,7 +745,9 @@ actor PaykitAllowanceExecutor {
     /// Reports a user-approved payment of an incoming request to the shared ledger before it leaves the wallet.
     /// Throws `alreadyRecorded` when another live attempt exists for the request, so the same request is never paid twice.
     func beginManualPayment(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String) async throws -> String? {
-        guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming else { return nil }
+        guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming,
+              request.isAllowancePayable
+        else { return nil }
         do {
             try await ensureReconciled(identity: identity)
             let scope = Paykit.PaymentRequestScope(
@@ -769,7 +772,7 @@ actor PaykitAllowanceExecutor {
                     isAutomatic: false,
                     requestId: request.id,
                     allowanceId: nil,
-                    amountSats: request.amountSats,
+                    amountSats: request.allowanceAmountSats,
                     paymentEndpointIdentifier: paymentEndpointIdentifier,
                     paymentHash: nil,
                     onchainAddress: nil,
@@ -825,7 +828,9 @@ actor PaykitAllowanceExecutor {
     // MARK: Helpers
 
     private func checks(_ request: PaykitPaymentRequest, endpointIdentifier: String, trustedTime: String) throws -> Paykit.PaymentExecutionChecks {
-        try Paykit.PaymentExecutionChecks(
+        // The ledger counts bitcoin only; a USD or USDT amount must never reach it as sats.
+        guard request.isAllowancePayable else { throw PaykitAllowanceError.unavailable }
+        return try Paykit.PaymentExecutionChecks(
             trustedTime: trustedTime,
             paymentEndpointIdentifier: endpointIdentifier,
             actualAmount: Paykit.AccountingAmount(value: request.amountValue, asset: PaykitIssuerInterop.bitcoinAsset),
@@ -858,7 +863,7 @@ actor PaykitAllowanceExecutor {
             isNew = state.notifiedRequestIds.insert(request.paymentRequestId).inserted
         }
         if isNew {
-            Self.eventSubject.send(.limitReached(counterparty: request.counterparty, amountSats: request.amountSats))
+            Self.eventSubject.send(.limitReached(counterparty: request.counterparty, amountSats: request.allowanceAmountSats))
         }
     }
 }

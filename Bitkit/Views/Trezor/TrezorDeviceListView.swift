@@ -166,7 +166,7 @@ struct TrezorDeviceListView: View {
         }
     }
 
-    private func connectToKnownDevice(_ knownDevice: TrezorKnownDevice) {
+    private func connectToKnownDevice(_ knownDevice: HwKnownDevice) {
         connectingDevicePath = knownDevice.path
 
         Task {

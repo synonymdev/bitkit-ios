@@ -17,6 +17,28 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         )
     }
 
+    func testRequestAddressNormalizationPreservesValidationAndAmbiguity() async throws {
+        let uppercase = receivingAddress.uppercased()
+        try await assertAttribution(contacts: contacts(address: uppercase, counterparty: alice), reservations: [:], expected: alice)
+
+        for mixedCase in ["B" + receivingAddress.dropFirst(), "b" + uppercase.dropFirst()] {
+            XCTAssertTrue(try contacts(address: mixedCase, counterparty: alice).isEmpty)
+        }
+
+        let legacy = "n31ZLqqyfoYu4fjd16u7ZQaSqgGfrmw8wC"
+        let legacyContacts = try PaykitReceivedPaymentContacts(
+            records: [record(address: legacy, counterparty: alice, identifier: "btc-regtest-p2pkh")], network: .regtest
+        )
+        XCTAssertEqual(legacyContacts.contact(onchainAddresses: [legacy]), alice)
+        XCTAssertNil(legacyContacts.contact(onchainAddresses: [legacy.lowercased()]))
+
+        let ambiguous = try PaykitReceivedPaymentContacts(
+            records: [record(address: uppercase, counterparty: alice), record(address: receivingAddress, counterparty: bob)],
+            network: .regtest
+        )
+        try await assertAttribution(contacts: ambiguous, reservations: [receivingAddress: alice], expected: nil)
+    }
+
     func testConflictingRequestsAndReservationsRejectLiveAndHistoryAttribution() async throws {
         let receivingRequest = try contacts(address: receivingAddress, counterparty: alice)
         let otherRequest = try contacts(address: otherAddress, counterparty: bob)
@@ -171,14 +193,38 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         let afterSkippedScan = try await service.getActivity(id: activity.activityId)
         XCTAssertEqual(afterSkippedScan, persisted)
 
-        defer { service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default) }
+        let hardwareWalletId = try HwWalletId.derive(xpubs: ["nativeSegwit": "xpub-\(UUID().uuidString)"])
+        defer {
+            service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default)
+            service.setContactDetached(false, activityId: activity.activityId, walletId: hardwareWalletId)
+        }
+        let backupRequired = expectation(description: "Detachment marks metadata backup required")
+        let metadataChanges = service.metadataChangedPublisher.sink { backupRequired.fulfill() }
         try await service.setContact(nil, forActivity: activity.activityId)
-        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: cache, reservations: reservations) { true }
+        await fulfillment(of: [backupRequired], timeout: 1)
+        metadataChanges.cancel()
+        service.setContactDetached(true, activityId: activity.activityId, walletId: hardwareWalletId)
+        let backup = try await MainActor.run { try JSONEncoder().encode(SettingsViewModel.shared.getAppCacheData()) }
+        let restored = try JSONDecoder().decode(AppCacheData.self, from: backup)
+        let defaultMarker = "\(WalletScope.default):\(activity.activityId)"
+        let hardwareMarker = "\(hardwareWalletId):\(activity.activityId)"
+        XCTAssertTrue(restored.detachedActivityContacts.isSuperset(of: [defaultMarker, hardwareMarker]))
+        XCTAssertTrue(try JSONDecoder().decode(AppCacheData.self, from: Data("{}".utf8)).detachedActivityContacts.isEmpty)
+
+        service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default)
+        service.setContactDetached(false, activityId: activity.activityId, walletId: hardwareWalletId)
+        XCTAssertFalse(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
+        try await MainActor.run { try SettingsViewModel.shared.restoreAppCacheData(restored) }
+        XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
+        XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: hardwareWalletId))
+        let restoredCache = PaykitReceivedPaymentBackfillCache(activityChanges: service.activitiesChangedPublisher)
+        try await service.backfillReceivedPaykitContacts(contacts, identity: alice, cache: restoredCache, reservations: reservations) { true }
         let detached = try await service.getActivity(id: activity.activityId)
         guard case let .onchain(detachedPayment) = detached else { return XCTFail("Expected the detached payment") }
         XCTAssertNil(detachedPayment.contact)
         try await service.setContact(bob, forActivity: activity.activityId)
         XCTAssertFalse(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
+        XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: hardwareWalletId))
     }
 
     func testUnavailableReservationsCannotCacheNegativeMatch() async {
@@ -253,7 +299,7 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         try PaykitReceivedPaymentContacts(records: [record(address: address, counterparty: counterparty)], network: .regtest)
     }
 
-    private func record(address: String, counterparty: String) throws -> PaymentRequestRecord {
+    private func record(address: String, counterparty: String, identifier: String = "btc-regtest-p2wpkh") throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty, paymentRequestId: "550e8400-e29b-41d4-a716-446655440000", localRole: .payee,
             state: .proposed, proposalStreamItemId: 1, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
@@ -261,8 +307,8 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"), paymentReference: PaymentReference(text: "invoice-123"),
-                proposalExpiresAt: nil, recurrence: nil, acceptedPaymentEndpointIdentifiers: ["btc-regtest-p2wpkh"],
-                paymentEndpoints: ["btc-regtest-p2wpkh": PublicPaykitService.serializePayload(value: address)],
+                proposalExpiresAt: nil, recurrence: nil, acceptedPaymentEndpointIdentifiers: [identifier],
+                paymentEndpoints: [identifier: PublicPaykitService.serializePayload(value: address)],
                 requiredAppId: nil, conversion: nil, paymentDeadline: nil, metadata: PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,

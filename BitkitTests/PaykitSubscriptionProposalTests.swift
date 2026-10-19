@@ -46,18 +46,22 @@ final class PaykitSubscriptionProposalTests: XCTestCase {
         XCTAssertEqual(try PaykitSubscriptionProposal.encodedSize(request), base + 2)
     }
 
-    func testUnsupportedSubscriptionFieldsAreNotSilentlyExcludedFromSize() throws {
+    func testSubscriptionSizeIncludesConversionAndDeadlineAndRejectsUnmodeledEndpoints() throws {
         var boundEndpoints = try terms(description: "")
         boundEndpoints.paymentEndpoints = ["btc-regtest-p2wpkh": #"{"address":"bcrt1qexample"}"#]
+        XCTAssertThrowsError(try PaykitSubscriptionProposal.validate(boundEndpoints)) { error in
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
         var conversion = try terms(description: "")
         conversion.conversion = .perPeriod
         var deadline = try terms(description: "")
         deadline.paymentDeadline = .periodStart(seconds: 3600)
-        for request in [boundEndpoints, conversion, deadline] {
-            XCTAssertThrowsError(try PaykitSubscriptionProposal.validate(request)) { error in
-                XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
-            }
-        }
+        let base = try PaykitSubscriptionProposal.encodedSize(terms(description: ""))
+        XCTAssertEqual(try PaykitSubscriptionProposal.encodedSize(conversion), base + #","conversion":{"type":"per_period"}"#.utf8.count)
+        XCTAssertEqual(
+            try PaykitSubscriptionProposal.encodedSize(deadline),
+            base + #","payment_deadline":{"type":"period_start","seconds":3600}"#.utf8.count
+        )
     }
 
     func testSizeCountsUTF8AndJSONEscapingRatherThanCharacters() throws {

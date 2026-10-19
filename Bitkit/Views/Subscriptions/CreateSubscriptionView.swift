@@ -3,12 +3,16 @@ import SwiftUI
 
 struct CreateSubscriptionView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     @Binding var draft: PaykitSubscriptionDraft
     let onEditAmount: () -> Void
     let onChooseRecipient: () -> Void
 
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var entryConversion = PaykitAmountEntryConversion()
     @FocusState private var isNameFocused: Bool
     @FocusState private var isDescriptionFocused: Bool
 
@@ -22,7 +26,7 @@ struct CreateSubscriptionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("subscriptions__create_subscription"))
+            SheetHeader(title: t("subscriptions__create_subscription"), topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
 
             ScrollViewReader { proxy in
                 GeometryReader { geometry in
@@ -30,12 +34,28 @@ struct CreateSubscriptionView: View {
                         VStack(alignment: .leading, spacing: 24) {
                             amount
                             frequency
+                            acceptedPayments
                             name
-                            description
-                                .id("SubscriptionDescription")
-                            customIcon
+                            HStack(alignment: .top, spacing: 16) {
+                                description
+                                customIcon
+                            }
+                            .id("SubscriptionDescription")
                         }
                         .padding(.bottom, 24)
+                    }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        CustomButton(
+                            title: t("subscriptions__choose_recipient"),
+                            isDisabled: draft.amount.atomic == 0 ||
+                                draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                isLoadingIcon || acceptedEndpoints.isEmpty,
+                            titleKerning: 0, titleLineHeight: 20
+                        ) {
+                            onChooseRecipient()
+                        }
+                        .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
+                        .accessibilityIdentifier("SubscriptionChooseRecipient")
                     }
                     .onChange(of: isDescriptionFocused ? geometry.size.height : nil) { _, focusedHeight in
                         if focusedHeight != nil {
@@ -46,20 +66,10 @@ struct CreateSubscriptionView: View {
                     }
                 }
             }
-
-            CustomButton(
-                title: t("subscriptions__choose_recipient"),
-                isDisabled: draft.amountSats == 0 ||
-                    draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    isLoadingIcon
-            ) {
-                onChooseRecipient()
-            }
-            .buttonBottomPadding(isFocused: isNameFocused || isDescriptionFocused)
-            .accessibilityIdentifier("SubscriptionChooseRecipient")
         }
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: .gray7, applyGradient: false))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .navigationBarHidden(true)
         .onChange(of: draft.name) { _, value in
             if value.count > 256 {
@@ -79,12 +89,12 @@ struct CreateSubscriptionView: View {
     }
 
     private var amount: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64)
+        VStack(alignment: .leading, spacing: 16) {
+            CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64, lineHeight: 18)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
-                    MoneyText(
-                        sats: Int(clamping: draft.amountSats),
+                    if draft.amount.asset == .btc { MoneyText(
+                        sats: Int(clamping: draft.amount.atomic),
                         unitType: .primary,
                         size: .display,
                         symbol: true,
@@ -94,6 +104,7 @@ struct CreateSubscriptionView: View {
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
+                    } else { PaykitAmountText(amount: draft.amount, size: .display) }
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -105,9 +116,42 @@ struct CreateSubscriptionView: View {
         }
     }
 
+    private var availableEndpoints: [String] {
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+            .filter { settings.isUsdtEnabled || $0 != PublicPaykitService.MethodId.usdtArbitrum.rawValue }
+    }
+
+    private var acceptedEndpoints: [String] {
+        PaykitRequestPricing.subscriptionEndpoints(
+            requested: draft.amount.asset, available: availableEndpoints, selected: draft.acceptedPaymentEndpointIdentifiers
+        )
+    }
+
+    private var acceptedPayments: some View {
+        PaykitAcceptedMethods(
+            title: t("subscriptions__accepted_payments"), available: availableEndpoints,
+            selected: acceptedEndpoints, identifierPrefix: "Subscription"
+        ) { option in
+            let endpoints = option.endpoints(in: availableEndpoints)
+            do {
+                if draft.amount.asset != option.asset {
+                    draft.amount = try entryConversion.converted(draft.amount, to: option.asset, rate: currency.paykitRate, at: Date())
+                    draft.acceptedPaymentEndpointIdentifiers = endpoints
+                } else {
+                    let selected = acceptedEndpoints
+                    draft.acceptedPaymentEndpointIdentifiers = endpoints.contains(where: selected.contains)
+                        ? selected.filter { !endpoints.contains($0) }
+                        : selected + endpoints.filter { !selected.contains($0) }
+                }
+            } catch {
+                app.toast(type: .error, title: t("common__error"), description: t("wallet__payment_request_rate_unavailable"))
+            }
+        }
+    }
+
     private var frequency: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__frequency").localizedUppercase, textColor: .white64, lineHeight: 18)
             SegmentedControl(
                 selectedTab: Binding(
                     get: { SubscriptionFrequencyOption.allCases.first { $0.unit == draft.frequency } ?? .month },
@@ -116,63 +160,63 @@ struct CreateSubscriptionView: View {
                 tabItems: SubscriptionFrequencyOption.allCases.map {
                     TabItem($0, accessibilityIdentifier: "Tab-\($0.rawValue)")
                 },
-                inactiveColor: .white.opacity(0.5)
+                inactiveColor: .white.opacity(0.5), labelKerning: 0, labelLineHeight: 18
             )
         }
     }
 
     private var name: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__name").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__name").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             TextField(
                 t("subscriptions__name_placeholder"),
                 text: $draft.name,
-                testIdentifier: "SubscriptionName"
+                testIdentifier: "SubscriptionName",
+                minContentHeight: 20
             )
+            .kerning(0.4)
+            .environment(\._lineHeightMultiple, 20 / (UIFont(name: Fonts.semiBold, size: 15)?.lineHeight ?? 20))
             .focused($isNameFocused)
         }
     }
 
     private var description: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__description").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__description").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             NoteTextEditor(
                 text: $draft.description,
                 placeholder: t("subscriptions__description_placeholder"),
                 testIdentifier: "SubscriptionDescription",
                 isFocused: $isDescriptionFocused,
-                minHeight: 60,
-                maxHeight: 60,
-                backgroundColor: .white10
+                minHeight: 80,
+                maxHeight: 80,
+                backgroundColor: .white10,
+                textKerning: 0.4, textLineHeight: 20
             )
         }
     }
 
     private var customIcon: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64)
+            CaptionMText(t("subscriptions__custom_icon").localizedUppercase, textColor: .white64, kerning: 1, lineHeight: 18)
             PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                HStack(spacing: 16) {
-                    Group {
-                        if let iconImage {
-                            Image(uiImage: iconImage)
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            SubscriptionDefaultIcon(size: 40)
-                        }
+                Group {
+                    if let iconImage {
+                        Image(uiImage: iconImage)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        SubscriptionDefaultIcon(size: 40)
                     }
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                    CaptionBText(t("subscriptions__custom_icon_description"), textColor: .white64)
-                    Spacer()
                 }
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
                 .padding(16)
                 .background(Color.white10)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .disabled(isLoadingIcon)
+            .accessibilityLabel(t("subscriptions__custom_icon_description"))
             .accessibilityIdentifier("SubscriptionIconPicker")
         }
     }
@@ -197,19 +241,22 @@ struct CreateSubscriptionView: View {
 }
 
 struct SubscriptionAmountView: View {
-    let initialAmountSats: UInt64
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    let initialAmount: PaykitAmount
     let onBack: () -> Void
-    let onContinue: (UInt64) -> Void
+    let onContinue: (PaykitAmount) -> Void
 
     var body: some View {
         PaymentRequestAmountView(
-            initialDraft: PaykitPaymentRequestDraft(amountSats: initialAmountSats, note: "", expiresAt: .distantFuture),
+            initialDraft: PaykitPaymentRequestDraft(amount: initialAmount, note: "", expiresAt: .distantFuture),
             target: nil,
-            onContinue: { onContinue($0.amountSats) },
+            onContinue: { onContinue($0.amount) },
             onBack: onBack,
             // Android tags this step PaymentRequest* on the subscription flow too; the journeys
             // share the vocabulary, so keep the odd-reading prefix rather than diverging.
-            testIdentifierPrefix: "PaymentRequest"
+            testIdentifierPrefix: "PaymentRequest",
+            allowedAssets: settings.isUsdtEnabled ? [.btc, .usd] : [.btc]
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SubscriptionAmount")
@@ -371,5 +418,34 @@ private enum SubscriptionFrequencyOption: String, CaseIterable, CustomStringConv
         case .month: t("subscriptions__monthly")
         case .year: t("subscriptions__yearly")
         }
+    }
+}
+
+struct SubscriptionPaymentMethods: View {
+    let title: String
+    let endpoints: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(title, textColor: .white64)
+            HStack(spacing: 16) {
+                if endpoints.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue) {
+                    BodyMSBText("USDT", textColor: .usdtAccent)
+                }
+                if endpoints.contains(where: { PublicPaykitService.MethodId(rawValue: $0)?.onchainNetwork != nil }) {
+                    BodyMSBText(t("lightning__savings"), textColor: .brandAccent)
+                }
+                if endpoints.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue) ||
+                    endpoints.contains(PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue)
+                {
+                    BodyMSBText(t("lightning__spending"), textColor: .purpleAccent)
+                }
+                if endpoints.isEmpty {
+                    BodySText(t("wallet__payment_request_status_unavailable"), textColor: .white64)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SubscriptionAcceptedMethods")
     }
 }

@@ -50,17 +50,29 @@ struct SheetHeader: View {
     let title: String
     let showBackButton: Bool
     let action: AnyView?
+    let topPadding: CGFloat
+    let bottomPadding: CGFloat
+    let dragIndicatorTopPadding: CGFloat?
+    let titleKerning: CGFloat
     let onBack: (() -> Void)?
 
     init(
         title: String,
         showBackButton: Bool = false,
         action: AnyView? = nil,
+        topPadding: CGFloat = 32,
+        bottomPadding: CGFloat = 24,
+        dragIndicatorTopPadding: CGFloat? = nil,
+        titleKerning: CGFloat = 0.4,
         onBack: (() -> Void)? = nil
     ) {
         self.title = title
         self.showBackButton = showBackButton
         self.action = action
+        self.topPadding = topPadding
+        self.bottomPadding = bottomPadding
+        self.dragIndicatorTopPadding = dragIndicatorTopPadding
+        self.titleKerning = titleKerning
         self.onBack = onBack
     }
 
@@ -86,7 +98,7 @@ struct SheetHeader: View {
                     .frame(width: 24, height: 24)
             }
 
-            SubtitleText(title)
+            SubtitleText(title, kerning: titleKerning)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             if let action {
@@ -96,8 +108,9 @@ struct SheetHeader: View {
                     .frame(width: 24, height: 24)
             }
         }
-        .padding(.top, 32) // Make room for the drag indicator
-        .padding(.bottom, 24)
+        .padding(.top, topPadding)
+        .padding(.bottom, bottomPadding)
+        .preference(key: SheetDragIndicatorInsetPreferenceKey.self, value: dragIndicatorTopPadding)
     }
 }
 
@@ -110,9 +123,12 @@ protocol SheetItem: Identifiable {
 
 struct Sheet<Content: View>: View {
     @EnvironmentObject private var sheets: SheetViewModel
+    @State private var contentBackground: Color?
+    @State private var contentDragIndicatorInset: CGFloat?
     let configuration: SheetConfiguration
     let backgroundColor: Color
     let applyGradient: Bool
+    let dragIndicatorInset: CGFloat?
     let content: () -> Content
 
     init(
@@ -120,11 +136,13 @@ struct Sheet<Content: View>: View {
         data: (any SheetItem)? = nil,
         backgroundColor: Color = .black,
         applyGradient: Bool = true,
+        dragIndicatorInset: CGFloat? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) {
         configuration = SheetConfiguration(id: id, data: data)
         self.backgroundColor = backgroundColor
         self.applyGradient = applyGradient
+        self.dragIndicatorInset = dragIndicatorInset
         self.content = content
     }
 
@@ -138,19 +156,23 @@ struct Sheet<Content: View>: View {
     var body: some View {
         ZStack(alignment: .top) {
             content()
-                .modifier(SheetBackgroundModifier(base: backgroundColor, applyGradient: applyGradient))
+                .modifier(SheetBackgroundModifier(base: contentBackground ?? backgroundColor,
+                                                  applyGradient: contentBackground == nil && applyGradient))
                 .bottomSafeAreaPadding()
 
             // Custom drag indicator - always on top
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color.white32)
                 .frame(width: 32, height: 4)
-                .padding(.top, 12)
+                .padding(.top, dragIndicatorInset ?? contentDragIndicatorInset ?? 12)
         }
+        .onPreferenceChange(SheetBackgroundPreferenceKey.self) { contentBackground = $0 }
+        .onPreferenceChange(SheetDragIndicatorInsetPreferenceKey.self) { contentDragIndicatorInset = $0 }
         .presentationBackgroundInteraction(.disabled)
-        .presentationDetents([.height(sheetSize.height)])
+        // The system adds the bottom safe area to a fixed-height detent.
+        .presentationDetents([.height(sheetSize.height - windowSafeAreaInsets.bottom)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(32)
-        .presentationBackground { backgroundColor }
+        .presentationBackground { contentBackground ?? backgroundColor }
     }
 }

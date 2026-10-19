@@ -4,6 +4,7 @@ struct LabeledDetailCell: View {
     let title: String
     let value: String
     let icon: String
+    var iconColor: Color = .purpleAccent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -11,7 +12,7 @@ struct LabeledDetailCell: View {
             HStack(spacing: 4) {
                 Image(icon)
                     .resizable()
-                    .foregroundColor(.purpleAccent)
+                    .foregroundColor(iconColor)
                     .frame(width: 16, height: 16)
                 BodySSBText(value)
                     .lineLimit(2)

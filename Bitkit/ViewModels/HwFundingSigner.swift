@@ -1,6 +1,12 @@
 import BitkitCore
 import Observation
 
+struct RetainedHardwareOnchainPayment {
+    let signedTx: HwFundingSignedTx
+    let hasAttemptedBroadcast: Bool
+    var isRefusedForNavigation: Bool = false
+}
+
 /// Orchestrates an on-chain payment from a hardware wallet: reconnect the device, compose the exact
 /// payment, sign it on-device, and broadcast. Owns the per-phase timeouts and fee-reserve math.
 ///
@@ -19,7 +25,7 @@ struct HwFundingSigner {
     let feeRateProvider: () async -> UInt64?
     /// Provides a fee-estimation destination address (an app receive address); never broadcast to.
     let addressProvider: () async throws -> String
-    let timeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double)
+    let timeouts: (compose: Double, sign: Double, broadcast: Double)
 
     /// Conservative vbyte reserve, used only as a fallback when the real coin-selection estimate
     /// (a `sendMax` compose) is unavailable.
@@ -66,11 +72,13 @@ struct HwFundingSigner {
     }
 
     /// Reconnects, composes and signs the funding transaction without broadcasting it.
+    /// `onConnectingDevice` brackets every reconnect, as in `prepareSignedPayment`.
     func prepareSignedFunding(
         order: IBtOrder,
         walletId: String,
         address: String,
-        onComposed: (HwFundingTransaction) -> Void = { _ in }
+        onComposed: (HwFundingTransaction) -> Void = { _ in },
+        onConnectingDevice: (Bool) -> Void = { _ in }
     ) async throws -> HwFundingSignedTx {
         let satsPerVByte = await resolvedSatsPerVByte()
         return try await prepareSignedPayment(
@@ -78,27 +86,40 @@ struct HwFundingSigner {
             address: address,
             sats: order.feeSat,
             satsPerVByte: satsPerVByte,
-            onComposed: onComposed
+            onComposed: onComposed,
+            onConnectingDevice: onConnectingDevice
         )
     }
 
     /// Reconnects, composes and signs a normal on-chain payment without broadcasting it.
+    /// `onConnectingDevice` brackets every reconnect (true before it, false once it returns or throws),
+    /// including the one before a sign retry: the phases a caller may abandon because nothing is on the
+    /// device to sign yet.
     func prepareSignedPayment(
         walletId: String,
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
-        onComposed: (HwFundingTransaction) -> Void = { _ in }
+        onComposed: (HwFundingTransaction) -> Void = { _ in },
+        onConnectingDevice: (Bool) -> Void = { _ in }
     ) async throws -> HwFundingSignedTx {
-        try await ensureConnected(walletId: walletId)
+        do {
+            onConnectingDevice(true)
+            defer { onConnectingDevice(false) }
+            try await ensureConnected(walletId: walletId)
+        }
         let tx = try await compose(walletId: walletId, address: address, sats: sats, satsPerVByte: satsPerVByte)
         onComposed(tx)
-        return try await signStep(walletId: walletId, funding: tx)
+        return try await signStep(walletId: walletId, funding: tx, onConnectingDevice: onConnectingDevice)
     }
 
     /// Broadcasts a signed funding transaction without requiring the hardware device.
-    func broadcastSignedFunding(_ signed: HwFundingSignedTx) async throws -> HwFundingBroadcastResult {
-        let txId = try await broadcastStep(serializedTx: signed.serializedTx)
+    func broadcastSignedFunding(
+        _ signed: HwFundingSignedTx,
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void = {}
+    ) async throws -> HwFundingBroadcastResult {
+        let txId = try await broadcastStep(serializedTx: signed.serializedTx, paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch)
         return HwFundingBroadcastResult(
             txId: txId,
             miningFeeSats: signed.miningFeeSats,
@@ -127,7 +148,7 @@ struct HwFundingSigner {
 
     private func ensureConnected(walletId: String) async throws {
         do {
-            try await withTimeout(timeouts.reconnect) {
+            try await withTimeout(connecting.reconnectTimeout(walletId: walletId)) {
                 try await connecting.ensureConnected(walletId: walletId)
             }
         } catch is CancellationError {
@@ -136,7 +157,7 @@ struct HwFundingSigner {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         } catch {
-            if error.isTrezorUserCancellation() {
+            if error.isHwUserCancellation() {
                 throw error
             }
             // Swift has no cause chain, so this must be rethrown explicitly: the catch-all below
@@ -145,8 +166,16 @@ struct HwFundingSigner {
             if let passphrase = error as? HwPassphraseError {
                 throw passphrase
             }
-            if error.isTrezorDeviceBusy() {
-                throw HwTransferError.deviceBusy
+            if error is HwWalletMismatchError {
+                throw HwTransferError.walletMismatch
+            }
+            if let vendor = error.hwBusyVendor {
+                throw HwTransferError.deviceBusy(vendor)
+            }
+            // A Jade that refuses to open (wrong PIN, unreachable PIN server, wrong network) says why
+            // in words the user can act on, which the reconnect copy would hide.
+            if error.underlyingJadeError != nil, !error.isJadeSessionFailure() {
+                throw HwTransferError.generic(HwErrorPresenter.userMessage(from: error))
             }
             throw HwTransferError.reconnect(isBluetooth: connecting.isKnownBluetoothDevice(walletId: walletId))
         }
@@ -173,13 +202,28 @@ struct HwFundingSigner {
         } catch is Timeout {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.signingTimeout
+        } catch where error.underlyingJadeError != nil {
+            // A Jade compose reconnects to read the fingerprint, so it fails the way a reconnect does
+            // and is reported the same way instead of with the raw core description.
+            if error.isJadeUserCancellation() {
+                throw error
+            }
+            if error.isJadeDeviceBusy() {
+                throw HwTransferError.deviceBusy(.blockstream)
+            }
+            let message = HwErrorPresenter.userMessage(from: error)
+            throw error.isJadeSessionFailure() ? HwTransferError.funding(message) : HwTransferError.generic(message)
         } catch {
             let message = (error as? AppError)?.debugMessage ?? (error as? AppError)?.message ?? error.localizedDescription
             throw HwTransferError.funding(message)
         }
     }
 
-    private func signStep(walletId: String, funding tx: HwFundingTransaction) async throws -> HwFundingSignedTx {
+    private func signStep(
+        walletId: String,
+        funding tx: HwFundingTransaction,
+        onConnectingDevice: (Bool) -> Void = { _ in }
+    ) async throws -> HwFundingSignedTx {
         do {
             return try await signOnce(walletId: walletId, funding: tx)
         } catch is CancellationError {
@@ -188,10 +232,14 @@ struct HwFundingSigner {
             disconnectAfterTimeout(walletId: walletId)
             throw HwTransferError.signingTimeout
         } catch {
-            guard error.isTrezorSessionFailure() else { throw error }
+            guard error.isHwSessionFailure() else { throw error }
 
             await connecting.disconnectStaleSession(walletId: walletId)
-            try await ensureConnected(walletId: walletId)
+            do {
+                onConnectingDevice(true)
+                defer { onConnectingDevice(false) }
+                try await ensureConnected(walletId: walletId)
+            }
 
             do {
                 return try await signOnce(walletId: walletId, funding: tx)
@@ -199,7 +247,7 @@ struct HwFundingSigner {
                 disconnectAfterTimeout(walletId: walletId)
                 throw HwTransferError.signingTimeout
             } catch {
-                if error.isTrezorSessionFailure() {
+                if error.isHwSessionFailure() {
                     await connecting.disconnectStaleSession(walletId: walletId)
                 }
                 throw error
@@ -217,10 +265,14 @@ struct HwFundingSigner {
     /// already been handed to the network must never be reported as a signing timeout, so a timeout
     /// here surfaces `.broadcastUncertain` (the funding tx may still confirm) without tearing down the
     /// device session.
-    private func broadcastStep(serializedTx: String) async throws -> String {
+    private func broadcastStep(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
+    ) async throws -> String {
         do {
             return try await withTimeout(timeouts.broadcast) {
-                try await funding.broadcastFunding(serializedTx: serializedTx)
+                try await funding.broadcastFunding(serializedTx: serializedTx, paymentDeadline: paymentDeadline, beforeDispatch: beforeDispatch)
             }
         } catch is CancellationError {
             throw CancellationError()
@@ -316,6 +368,7 @@ final class HwSendCoordinator {
     private(set) var isFundingSourceLoading = false
     private(set) var isPreviewLoading = false
     private(set) var isSigning = false
+    private(set) var isConnectingDevice = false
     private(set) var isBroadcastUnresolved = false
     private(set) var isPassphraseRequired = false
     private(set) var isVerifyingPassphrase = false
@@ -323,6 +376,12 @@ final class HwSendCoordinator {
     private var pendingPayment: PendingPayment?
     private var operationTask: Task<HwFundingBroadcastResult, Error>?
     private var operationRequest: PaymentRequest?
+    private var operationSession: OperationSession?
+    private var isRetainingSignedPayment = false
+    private var isAuthorizingPayment = false
+    /// Bumped by every sign attempt and every cancel. A cancelled task can keep running until its
+    /// device call returns, and must not write over the state of an attempt started after it.
+    private var signingAttempt = 0
     private var availabilityRequestId = 0
     private var previewRequestId = 0
     private let signerFactory: @MainActor (HwWalletManager, String, UInt64) -> HwFundingSigner
@@ -333,6 +392,13 @@ final class HwSendCoordinator {
 
     var hasPendingBroadcast: Bool {
         pendingPayment != nil
+    }
+
+    /// Whether the sign screen may be left. Reaching the device (a Jade may wait minutes for its PIN)
+    /// can be abandoned, and leaving cancels it. An uncertain broadcast keeps navigation locked;
+    /// a definite refusal permits leaving while the original signed Shop payment stays retained.
+    var canLeave: Bool {
+        (!isSigning || isConnectingDevice) && !isBroadcastUnresolved
     }
 
     init(
@@ -349,9 +415,14 @@ final class HwSendCoordinator {
         self.signerFactory = signerFactory
     }
 
-    func seedAvailable(walletId: String, availableSats: UInt64) {
+    func seedAvailable(walletId: String, availableSats: UInt64, retainedFeeSats: UInt64? = nil) {
         guard self.walletId == walletId else { return }
         self.availableSats = availableSats
+        if let retainedFeeSats {
+            previewFeeSats = retainedFeeSats
+            isFundingSourceLoading = false
+            isPreviewLoading = false
+        }
     }
 
     func selectWallet(
@@ -371,6 +442,7 @@ final class HwSendCoordinator {
         isFundingSourceLoading = walletId != nil && showsLoading
         isPreviewLoading = false
         isSigning = false
+        isConnectingDevice = false
         isBroadcastUnresolved = false
         isPassphraseRequired = false
         isVerifyingPassphrase = false
@@ -454,8 +526,14 @@ final class HwSendCoordinator {
         address: String,
         sats: UInt64,
         satsPerVByte: UInt64,
-        beforeFirstBroadcast: @escaping () async throws -> Void = {},
+        paymentDeadline: PaykitPreciseInstant? = nil,
+        paymentRequestId: PaykitPaymentRequest.ID? = nil,
+        loadSignedPayment: @escaping () async throws -> RetainedHardwareOnchainPayment? = { nil },
+        beforeFirstBroadcast: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
         beforeBroadcastAttempt: @escaping () async throws -> Void = {},
+        retainSignedPayment: @escaping (HwFundingSignedTx) async throws -> Void = { _ in },
+        markSignedPaymentRefused: @escaping (HwFundingSignedTx, Bool) async throws -> Void = { _, _ in },
+        clearSignedPaymentBeforeDispatch: @escaping (HwFundingSignedTx) async -> Bool = { _ in true },
         afterBroadcast: @escaping (HwFundingBroadcastResult) async -> Void = { _ in },
         afterFailure: @escaping (PrivatePaymentListSendOutcome) async -> Void = { _ in }
     ) async throws -> HwFundingBroadcastResult {
@@ -463,16 +541,37 @@ final class HwSendCoordinator {
             throw AppError(message: "Unknown hardware wallet", debugMessage: "The send flow has no wallet id")
         }
         let request = PaymentRequest(address: address, sats: sats, satsPerVByte: satsPerVByte)
+        if let pendingPayment,
+           isBroadcastUnresolved || (pendingPayment.paymentRequestId != nil && pendingPayment.hasBroadcastAttempted)
+        {
+            guard pendingPayment.request == request, pendingPayment.paymentRequestId == paymentRequestId else {
+                throw PaykitPaymentRequestError.operationInProgress
+            }
+        }
         if let operationTask {
-            guard operationRequest == request else { throw HwTransferError.deviceBusy }
+            guard operationRequest == request else { throw HwTransferError.deviceBusy(manager.vendor(walletId: walletId)) }
             return try await operationTask.value
         }
 
-        let task = Task { @MainActor in
-            isSigning = true
-            defer { isSigning = false }
+        signingAttempt += 1
+        let attempt = signingAttempt
+        let signer = signerFactory(manager, address, satsPerVByte)
+        isSigning = true
 
-            let signer = signerFactory(manager, address, satsPerVByte)
+        let task = Task { @MainActor in
+            defer {
+                if signingAttempt == attempt {
+                    isSigning = false
+                    isConnectingDevice = false
+                }
+            }
+
+            if pendingPayment == nil, let restored = try await loadSignedPayment() {
+                pendingPayment = PendingPayment(request: request, signedTx: restored.signedTx, paymentRequestId: paymentRequestId)
+                pendingPayment?.isPreparedForBroadcast = true
+                pendingPayment?.hasBroadcastAttempted = restored.hasAttemptedBroadcast
+                isBroadcastUnresolved = restored.hasAttemptedBroadcast && !restored.isRefusedForNavigation
+            }
             let signed: HwFundingSignedTx
             if let pendingPayment, pendingPayment.request == request {
                 signed = pendingPayment.signedTx
@@ -482,52 +581,133 @@ final class HwSendCoordinator {
                     address: address,
                     sats: sats,
                     satsPerVByte: satsPerVByte,
-                    onComposed: { [weak self] in self?.previewFeeSats = $0.miningFeeSats }
+                    onComposed: { [weak self] composed in
+                        guard let self, signingAttempt == attempt else { return }
+                        previewFeeSats = composed.miningFeeSats
+                    },
+                    onConnectingDevice: { [weak self] isConnecting in
+                        guard let self, signingAttempt == attempt else { return }
+                        isConnectingDevice = isConnecting
+                    }
                 )
-                pendingPayment = PendingPayment(request: request, signedTx: signed)
+                try Task.checkCancellation()
+                pendingPayment = PendingPayment(request: request, signedTx: signed, paymentRequestId: paymentRequestId)
             }
 
             if pendingPayment?.isPreparedForBroadcast != true {
-                try await beforeFirstBroadcast()
+                try await beforeFirstBroadcast(signed)
+                try Task.checkCancellation()
                 pendingPayment?.isPreparedForBroadcast = true
             }
 
-            var broadcastWasAttempted = pendingPayment?.hasBroadcastAttempted == true
+            let hadPriorBroadcastAttempt = pendingPayment?.hasBroadcastAttempted == true
+            let priorBroadcastWasUnresolved = isBroadcastUnresolved
+            var broadcastWasAttempted = hadPriorBroadcastAttempt
+            isAuthorizingPayment = true
+            defer { isAuthorizingPayment = false }
             do {
                 do {
                     try await beforeBroadcastAttempt()
+                    try Task.checkCancellation()
+                    guard signingAttempt == attempt else { throw CancellationError() }
+                    try PaykitPaymentRequest.checkPaymentDeadline(paymentDeadline)
                 } catch {
+                    guard signingAttempt == attempt else { throw error }
                     if !broadcastWasAttempted {
                         pendingPayment = nil
                     }
                     throw error
                 }
 
+                do {
+                    // Cancellation keeps this operation's ownership until its receipt is either
+                    // retained for submission or durably cleared. No newer task may reuse it meanwhile.
+                    isRetainingSignedPayment = true
+                    defer { isRetainingSignedPayment = false }
+                    try await retainSignedPayment(signed)
+                    do {
+                        try Task.checkCancellation()
+                        guard signingAttempt == attempt else { throw CancellationError() }
+                    } catch {
+                        if !hadPriorBroadcastAttempt {
+                            let cleared = await clearSignedPaymentBeforeDispatch(signed)
+                            if !cleared {
+                                isBroadcastUnresolved = true
+                                broadcastWasAttempted = true
+                                pendingPayment?.hasBroadcastAttempted = true
+                            }
+                        }
+                        throw error
+                    }
+                }
                 isBroadcastUnresolved = true
                 broadcastWasAttempted = true
                 pendingPayment?.hasBroadcastAttempted = true
                 do {
-                    let result = try await signer.broadcastSignedFunding(signed)
+                    let result = try await signer.broadcastSignedFunding(signed, paymentDeadline: paymentDeadline) { [self] in
+                        try Task.checkCancellation()
+                        guard signingAttempt == attempt else { throw CancellationError() }
+                        try await markSignedPaymentRefused(signed, false)
+                        try Task.checkCancellation()
+                        guard signingAttempt == attempt else { throw CancellationError() }
+                    }
                     await afterBroadcast(result)
                     return result
                 } catch {
-                    isBroadcastUnresolved = false
-                    let outcomeIsUncertain = (error as? HwTransferError) == .broadcastUncertain
-                    if !outcomeIsUncertain, !error.isBroadcastConnectivityFailure() {
+                    // Navigation may unlock after a definite refusal; the receipt still guards funds.
+                    let underlying = (error as? AppError)?.underlyingError ?? error
+                    let notSubmitted = underlying as? PreparedOnchainSendNotSubmitted
+                    let failure = notSubmitted?.underlying ?? error
+                    let refused = failure.isHardwareBroadcastRefusal()
+                    if notSubmitted == nil, paymentRequestId != nil, refused {
+                        try? await markSignedPaymentRefused(signed, true)
+                    }
+                    let dispatchIsUncertain = notSubmitted == nil
+                    isBroadcastUnresolved = dispatchIsUncertain ? paymentRequestId != nil && !refused : priorBroadcastWasUnresolved
+                    if notSubmitted != nil {
+                        if hadPriorBroadcastAttempt, !priorBroadcastWasUnresolved, paymentRequestId != nil {
+                            try? await markSignedPaymentRefused(signed, true)
+                        }
+                        // A queued retry can expire without changing the uncertainty of an earlier attempt.
+                        let cleared: Bool
+                        if hadPriorBroadcastAttempt {
+                            cleared = false
+                        } else {
+                            cleared = await clearSignedPaymentBeforeDispatch(signed)
+                        }
+                        let retainsBroadcastAttempt = hadPriorBroadcastAttempt || !cleared
+                        isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared
+                        broadcastWasAttempted = retainsBroadcastAttempt
+                        pendingPayment?.hasBroadcastAttempted = retainsBroadcastAttempt
+                        if !retainsBroadcastAttempt {
+                            pendingPayment = nil
+                        }
+                        throw failure
+                    }
+                    let outcomeIsUncertain = (failure as? HwTransferError) == .broadcastUncertain
+                    if paymentRequestId == nil, !outcomeIsUncertain, !failure.isBroadcastConnectivityFailure() {
                         pendingPayment = nil
                     }
-                    throw error
+                    throw failure
                 }
             } catch {
+                guard signingAttempt == attempt else { throw error }
+                if !broadcastWasAttempted {
+                    pendingPayment = nil
+                }
                 await afterFailure(broadcastWasAttempted ? .uncertain : .definitePreBroadcastFailure)
                 throw error
             }
         }
         operationRequest = request
         operationTask = task
+        operationSession = OperationSession(walletId: walletId, connecting: signer.connecting)
         defer {
-            operationRequest = nil
-            operationTask = nil
+            if signingAttempt == attempt {
+                operationRequest = nil
+                operationTask = nil
+                operationSession = nil
+            }
         }
         return try await task.value
     }
@@ -552,6 +732,39 @@ final class HwSendCoordinator {
         isPassphraseRequired = false
     }
 
+    func completionRoute(
+        result: HwFundingBroadcastResult,
+        walletId: String,
+        requestId: PaykitPaymentRequest.ID?,
+        paymentIdentity: String?,
+        completeContactPayment: (String) async -> Bool
+    ) async -> SendRoute {
+        let verified = await completeContactPayment(result.txId)
+        if let requestId, !verified {
+            return .hardwarePending(requestId: requestId, walletId: walletId, transactionId: result.txId, paymentIdentity: paymentIdentity)
+        }
+        return .success(paymentId: result.txId, walletId: walletId)
+    }
+
+    func resolveObservedShopPayment(
+        _ resolution: PaykitOnchainPaymentResolution,
+        paymentIdentity: String?,
+        currentIdentity: String?
+    ) -> SendRoute? {
+        guard !isSigning, isBroadcastUnresolved,
+              let pendingPayment,
+              pendingPayment.hasBroadcastAttempted,
+              pendingPayment.paymentRequestId == resolution.requestId,
+              walletId == resolution.walletId,
+              PubkyPublicKeyFormat.matches(resolution.identity, paymentIdentity),
+              PubkyPublicKeyFormat.matches(resolution.identity, currentIdentity),
+              let txid = try? SignedTransactionId.fromHex(pendingPayment.signedTx.serializedTx),
+              txid.caseInsensitiveCompare(resolution.transactionId) == .orderedSame
+        else { return nil }
+        completeBroadcast()
+        return .success(paymentId: txid, walletId: resolution.walletId)
+    }
+
     func completeBroadcast() {
         pendingPayment = nil
         isBroadcastUnresolved = false
@@ -565,11 +778,26 @@ final class HwSendCoordinator {
         isVerifyingPassphrase = false
         isPassphraseRequired = false
         guard !isBroadcastUnresolved else { return }
+        let retainsSubmittedShopPayment = pendingPayment?.paymentRequestId != nil && pendingPayment?.hasBroadcastAttempted == true
+        let abandonedSession = operationSession
         operationTask?.cancel()
+        // Receipt persistence/cleanup is suspended work. Keep the cancelled operation registered
+        // until it finishes, so a concurrent send joins it instead of adopting its receipt.
+        guard !isRetainingSignedPayment, !isAuthorizingPayment else { return }
+        signingAttempt += 1
         operationTask = nil
         operationRequest = nil
-        pendingPayment = nil
+        operationSession = nil
+        if !retainsSubmittedShopPayment {
+            pendingPayment = nil
+        }
         isSigning = false
+        isConnectingDevice = false
+        // A Swift cancel never reaches the device, which would otherwise keep connecting (or wait for
+        // a PIN) for a payment nobody is waiting on. The next connect waits for this release.
+        if let abandonedSession {
+            abandonedSession.connecting.scheduleStaleSessionCleanup(walletId: abandonedSession.walletId)
+        }
     }
 
     private static func signer(
@@ -582,7 +810,7 @@ final class HwSendCoordinator {
             connecting: manager,
             feeRateProvider: { satsPerVByte },
             addressProvider: { address },
-            timeouts: (reconnect: 30, compose: 45, sign: 120, broadcast: 120)
+            timeouts: (compose: 45, sign: 120, broadcast: 120)
         )
     }
 
@@ -595,7 +823,13 @@ final class HwSendCoordinator {
     private struct PendingPayment {
         let request: PaymentRequest
         let signedTx: HwFundingSignedTx
+        let paymentRequestId: PaykitPaymentRequest.ID?
         var isPreparedForBroadcast = false
         var hasBroadcastAttempted = false
+    }
+
+    private struct OperationSession {
+        let walletId: String
+        let connecting: HwTransferConnecting
     }
 }

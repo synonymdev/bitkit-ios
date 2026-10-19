@@ -11,6 +11,7 @@ struct WalletBackupV1: Codable {
     let paykitSdkBackupState: String?
     let watchOnlyAccounts: [WatchOnlyAccountRecord]?
     let watchOnlyAccountAllocationState: WatchOnlyAccountAllocationState?
+    var usdtWallet: String? = nil
     var paykitPaymentState: PaykitPaymentStateBackup? = nil
 }
 
@@ -85,6 +86,7 @@ struct AppCacheData: Codable {
     let lastUsedTags: [String]
     let quickPayLedger: QuickPayLedger?
     let blocktankRefundAddress: BlocktankRefundAddress?
+    let detachedActivityContacts: Set<String>
 
     init(
         hasSeenContactsIntro: Bool,
@@ -104,7 +106,8 @@ struct AppCacheData: Codable {
         dismissedSuggestions: [String],
         lastUsedTags: [String],
         quickPayLedger: QuickPayLedger? = nil,
-        blocktankRefundAddress: BlocktankRefundAddress? = nil
+        blocktankRefundAddress: BlocktankRefundAddress? = nil,
+        detachedActivityContacts: Set<String> = []
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
         self.hasSeenProfileIntro = hasSeenProfileIntro
@@ -124,6 +127,7 @@ struct AppCacheData: Codable {
         self.lastUsedTags = lastUsedTags
         self.quickPayLedger = quickPayLedger
         self.blocktankRefundAddress = blocktankRefundAddress
+        self.detachedActivityContacts = detachedActivityContacts
     }
 
     init(from decoder: Decoder) throws {
@@ -146,6 +150,7 @@ struct AppCacheData: Codable {
         lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags) ?? []
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
         blocktankRefundAddress = try c.decodeIfPresent(BlocktankRefundAddress.self, forKey: .blocktankRefundAddress)
+        detachedActivityContacts = try c.decodeIfPresent(Set<String>.self, forKey: .detachedActivityContacts) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -156,6 +161,7 @@ struct AppCacheData: Codable {
         case dismissedSuggestions, lastUsedTags
         case quickPayLedger
         case blocktankRefundAddress
+        case detachedActivityContacts
     }
 }
 

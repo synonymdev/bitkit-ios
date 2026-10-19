@@ -13,10 +13,10 @@ struct RenameHardwareWalletSheetItem: SheetItem, Equatable {
 }
 
 /// Renames a paired hardware wallet: a single NAME field pre-filled with the current name and a Save
-/// button. Persists the custom name via `TrezorManager.renameWallet`, which re-pushes the device
-/// snapshot so `HwWallet.name` updates everywhere.
+/// button. Persists the custom name via `HwWalletManager.renameWallet`, which hands it to the wallet's
+/// vendor; that re-pushes the device snapshot so `HwWallet.name` updates everywhere.
 struct RenameHardwareWalletSheet: View {
-    @Environment(TrezorManager.self) private var trezorManager
+    @Environment(HwWalletManager.self) private var hwWalletManager
     @EnvironmentObject private var sheets: SheetViewModel
 
     let config: RenameHardwareWalletSheetItem
@@ -67,7 +67,7 @@ struct RenameHardwareWalletSheet: View {
 
     private func save() {
         guard !trimmedName.isEmpty else { return }
-        trezorManager.renameWallet(walletId: config.walletId, newName: trimmedName)
+        hwWalletManager.renameWallet(walletId: config.walletId, newName: trimmedName)
         sheets.hideSheet()
     }
 }

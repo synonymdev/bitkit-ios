@@ -28,11 +28,15 @@ struct PaykitReceivedPaymentContacts: Equatable {
                 else { continue }
 
                 if method.onchainNetwork == network {
-                    guard let address = try? validateBitcoinAddress(address: payload.value) else { continue }
+                    var value = payload.value
+                    if value == value.uppercased(), value.hasPrefix("BC1") || value.hasPrefix("TB1") || value.hasPrefix("BCRT1") {
+                        value = value.lowercased()
+                    }
+                    guard let address = try? validateBitcoinAddress(address: value) else { continue }
                     let addressNetwork = NetworkValidationHelper.convertNetworkType(address.network)
                     // Test networks share legacy address encodings; the endpoint identifies the intended network.
                     guard addressNetwork == network || (addressNetwork == .testnet && (network == .signet || network == .regtest)) else { continue }
-                    onchain[payload.value, default: []].insert(counterparty)
+                    onchain[address.address, default: []].insert(counterparty)
                 } else if method == .bitcoinLightningBolt11,
                           let invoice = try? Bolt11Invoice.fromStr(invoiceStr: payload.value),
                           invoice.currency() == Self.currency(for: network)

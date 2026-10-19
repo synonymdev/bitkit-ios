@@ -8,6 +8,7 @@ struct SpendingHwSign: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @Environment(HwWalletManager.self) private var hwWalletManager
 
     var body: some View {
         if transfer.uiState.feeSat > 0 {
@@ -23,11 +24,11 @@ struct SpendingHwSign: View {
     private func content() -> some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
-                .disabled(transfer.isSpendingBusy)
+                .disabled(!transfer.canLeaveHwSign)
                 .padding(.bottom, 16)
 
             ZStack(alignment: .top) {
-                trezorIllustration
+                deviceIllustration
 
                 belowNav()
             }
@@ -148,11 +149,7 @@ struct SpendingHwSign: View {
             Spacer()
 
             CustomButton(
-                title: t(
-                    transfer.hwSpending.hasPendingBroadcast
-                        ? "common__retry"
-                        : "lightning__transfer_hw__open_connect"
-                ),
+                title: transfer.hwSpending.hasPendingBroadcast ? t("common__retry") : vendor.transferSignButtonTitle,
                 isDisabled: isBusy,
                 isLoading: isBusy
             ) {
@@ -165,10 +162,14 @@ struct SpendingHwSign: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var trezorIllustration: some View {
+    private var vendor: HwWalletVendor {
+        hwWalletManager.wallets.first { $0.id == walletId }?.vendor ?? .trezor
+    }
+
+    private var deviceIllustration: some View {
         GeometryReader { geo in
             let side = geo.size.width * illustrationWidthRatio
-            Image("trezor-card")
+            Image(vendor.signImageName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: side, height: side)

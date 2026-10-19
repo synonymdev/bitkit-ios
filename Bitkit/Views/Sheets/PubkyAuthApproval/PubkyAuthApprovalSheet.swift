@@ -31,6 +31,33 @@ func pubkyAuthDisplayPublicKey(_ publicKey: String?) -> String {
     return "\(rawKey.prefix(4))...\(rawKey.suffix(4))"
 }
 
+/// Request data is shown literally: control and bidi characters are dropped so it cannot add lines or reorder the
+/// sentence, and accent tags inside it must not be read as markup by the text components.
+func pubkyAuthLiteralText(_ value: String) -> String {
+    let hidden: Set<Unicode.GeneralCategory> = [.control, .format, .lineSeparator, .paragraphSeparator]
+    var text = String(String.UnicodeScalarView(value.unicodeScalars.filter { !hidden.contains($0.properties.generalCategory) }))
+    while true {
+        let stripped = text.replacingOccurrences(of: "<accent>", with: "").replacingOccurrences(of: "</accent>", with: "")
+        if stripped == text {
+            return text
+        }
+        text = stripped
+    }
+}
+
+/// Fills each `{placeholder}` from the template only, so request data that itself contains a placeholder stays as it is.
+func pubkyAuthFilledText(_ template: String, variables: [String: String]) -> String {
+    var result = ""
+    var rest = Substring(template)
+    while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
+        let key = String(rest[rest.index(after: open) ..< close])
+        result += rest[..<open]
+        result += variables[key] ?? String(rest[open ... close])
+        rest = rest[rest.index(after: close)...]
+    }
+    return result + rest
+}
+
 struct PubkyAuthApprovalConfig {
     let request: PubkyAuthRequest
 }
@@ -39,11 +66,13 @@ struct PubkyAuthApprovalSheetItem: SheetItem {
     let id: SheetID = .pubkyAuthApproval
     let size: SheetSize = .large
     let request: PubkyAuthRequest
+    let presentationID: UUID
 }
 
 // MARK: - Sheet View
 
 struct PubkyAuthApprovalSheet: View {
+    @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
@@ -53,6 +82,13 @@ struct PubkyAuthApprovalSheet: View {
 
     @State private var state: ApprovalState
     @State private var isShowingAuthCheck = false
+    @State private var usdtAddress: String?
+    @State private var usdtUnavailable = false
+    @State private var shareUsdt = false
+
+    private var createsIdentity: Bool {
+        Self.requiresIdentityCreation(for: config.request, profile: pubkyProfile)
+    }
 
     enum ApprovalState: Equatable {
         case watchOnlyConsent
@@ -62,6 +98,17 @@ struct PubkyAuthApprovalSheet: View {
 
         var canDismiss: Bool {
             self != .authorizing
+        }
+
+        mutating func updateUsdtAvailability(isEnabled: Bool, claim: PubkyAuthClaim?, shareUsdt: inout Bool) {
+            if !isEnabled {
+                shareUsdt = false
+                if self == .watchOnlyConsent, claim?.sharesBitcoin != true {
+                    self = .authorize
+                }
+            } else if self == .authorize, claim?.requiresUsdtAddress == true {
+                self = .watchOnlyConsent
+            }
         }
 
         @MainActor
@@ -81,11 +128,21 @@ struct PubkyAuthApprovalSheet: View {
 
     init(config: PubkyAuthApprovalSheetItem) {
         self.config = config
-        _state = State(initialValue: Self.initialState(for: config.request))
+        let isUsdtEnabled = Env.isUsdtEnabled && UsdtPreference.isEnabled()
+        _state = State(initialValue: Self.initialState(for: config.request, isUsdtEnabled: isUsdtEnabled))
+        _shareUsdt = State(initialValue: config.request.bitkitClaim?.sharesUsdt == true && isUsdtEnabled)
     }
 
-    static func initialState(for request: PubkyAuthRequest) -> ApprovalState {
-        request.bitkitClaim?.includesWatchOnlyAccount == true ? .watchOnlyConsent : .authorize
+    static func initialState(
+        for request: PubkyAuthRequest,
+        isUsdtEnabled: Bool = Env.isUsdtEnabled && UsdtPreference.isEnabled()
+    ) -> ApprovalState {
+        let claim = request.bitkitClaim
+        return claim?.sharesBitcoin == true || (claim?.sharesUsdt == true && isUsdtEnabled) ? .watchOnlyConsent : .authorize
+    }
+
+    static func requiresIdentityCreation(for request: PubkyAuthRequest, profile: PubkyProfileManager) -> Bool {
+        request.requiresIdentityCreation(hasIdentity: profile.hasExistingIdentity)
     }
 
     private var headerTitle: String {
@@ -99,17 +156,43 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
+    private var hasReceivingDetails: Bool {
+        Self.initialState(for: config.request, isUsdtEnabled: settings.isUsdtEnabled) == .watchOnlyConsent
+    }
+
+    private var usdtAuthorizationUnavailable: Bool {
+        config.request.bitkitClaim?.requiresUsdtAddress == true && !settings.isUsdtEnabled
+    }
+
     private var showsBackButton: Bool {
         state == .authorize || state == .success
     }
 
     var body: some View {
-        Sheet(id: .pubkyAuthApproval, data: config) {
-            if state == .watchOnlyConsent {
+        Sheet(id: .pubkyAuthApproval, data: config, backgroundColor: .gray7, applyGradient: false) {
+            if usdtAuthorizationUnavailable {
+                VStack(alignment: .leading, spacing: 24) {
+                    SheetHeader(title: t("pubky_auth__title"), topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
+                    BodyMText(t("usdt__disabled"))
+                    Spacer()
+                    CustomButton(title: t("common__cancel")) { sheets.hideSheet() }
+                        .accessibilityIdentifier("PubkyAuthCancel")
+                }
+                .padding(.horizontal, 16)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("PubkyAuthUsdtUnavailable")
+            } else if state == .watchOnlyConsent {
                 watchOnlyConsentContent
             } else {
                 authorizationFlowContent
             }
+        }
+        .task(id: settings.isUsdtEnabled) {
+            state.updateUsdtAvailability(isEnabled: settings.isUsdtEnabled, claim: config.request.bitkitClaim, shareUsdt: &shareUsdt)
+            if !settings.isUsdtEnabled {
+                usdtAddress = nil
+            }
+            await loadUsdtAddress()
         }
         .interactiveDismissDisabled(!state.canDismiss)
         .fullScreenCover(isPresented: $isShowingAuthCheck) {
@@ -131,20 +214,102 @@ struct PubkyAuthApprovalSheet: View {
     // MARK: - Watch-Only Consent
 
     private var watchOnlyConsentContent: some View {
-        SheetIntro(
-            navTitle: t("pubky_auth__watch_only_intro_nav_title"),
-            title: t("pubky_auth__watch_only_intro_title"),
-            description: watchOnlyConsentDescription,
-            image: "coin-stack",
-            continueText: t("pubky_auth__watch_only_intro_approve"),
-            cancelText: t("common__cancel"),
-            accentColor: .blueAccent,
-            testID: "PubkyAuthWatchOnlyConsent",
-            cancelTestID: "PubkyAuthWatchOnlyCancel",
-            continueTestID: "PubkyAuthWatchOnlyApprove",
-            onCancel: { sheets.hideSheet() },
-            onContinue: { _ = state.approveWatchOnlyConsent() }
-        )
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(title: t("pubky_auth__watch_only_intro_nav_title"),
+                        topPadding: 28, bottomPadding: 0, dragIndicatorTopPadding: 8, titleKerning: 0)
+
+            ViewThatFits(in: .vertical) {
+                VStack(alignment: .leading, spacing: 32) {
+                    watchOnlyConsentArtwork
+                        .frame(minHeight: 0, idealHeight: 0, maxHeight: 256)
+                        .layoutPriority(-1)
+
+                    watchOnlyConsentIntroduction
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+                }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 32) {
+                        watchOnlyConsentArtwork
+                            .frame(height: 256)
+
+                        watchOnlyConsentIntroduction
+                    }
+                }
+                .scrollIndicators(.hidden)
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+
+            if config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled,
+               config.request.bitkitClaim?.requiresUsdtAddress != true || usdtAddress == nil
+            {
+                usdtSharingConsent
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 32)
+            }
+
+            HStack(spacing: 16) {
+                CustomButton(title: t("common__cancel"), variant: .secondary, titleKerning: 0, titleLineHeight: 20) { sheets.hideSheet() }
+                    .accessibilityIdentifier("PubkyAuthWatchOnlyCancel")
+                CustomButton(title: t("pubky_auth__watch_only_intro_approve"), isDisabled: receivingDetailsUnavailable,
+                             titleKerning: 0, titleLineHeight: 20)
+                {
+                    _ = state.approveWatchOnlyConsent()
+                }
+                .accessibilityIdentifier("PubkyAuthWatchOnlyApprove")
+            }
+            .padding(.top, 32)
+        }
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("PubkyAuthWatchOnlyConsent")
+    }
+
+    private var watchOnlyConsentArtwork: some View {
+        Image("coin-stack-4")
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(328.0 / 256.0)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+    }
+
+    private var watchOnlyConsentIntroduction: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DisplayText(t("pubky_auth__watch_only_intro_title"),
+                        accentColor: config.request.bitkitClaim?.sharesBitcoin == true ? .blueAccent : .usdtAccent)
+            BodyMText(t(introDescriptionKey), kerning: 0, lineHeight: 22)
+                .accessibilityIdentifier("PubkyAuthWatchOnlyConsentDescription")
+        }
+    }
+
+    private var receivingDetailsUnavailable: Bool {
+        (config.request.bitkitClaim?.requiresUsdtAddress == true || shareUsdt) && usdtAddress == nil
+    }
+
+    private var usdtSharingConsent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if config.request.bitkitClaim?.requiresUsdtAddress != true {
+                Toggle(isOn: $shareUsdt) {
+                    BodyMText(t(config.request.bitkitClaim?.sharesBitcoin == true
+                            ? "pubky_auth__share_usdt_optional" : "pubky_auth__share_usdt"), kerning: 0, lineHeight: 22)
+                }
+                .tint(.blueAccent)
+                .accessibilityIdentifier("PubkyAuthShareUsdt")
+            }
+            if shareUsdt || config.request.bitkitClaim?.requiresUsdtAddress == true {
+                if usdtUnavailable {
+                    BodySText(t("pubky_auth__usdt_unavailable"), textColor: .white64)
+                    Button(t("common__retry")) { Task { await loadUsdtAddress() } }
+                        .tint(.blueAccent)
+                } else if usdtAddress == nil {
+                    ProgressView()
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("PubkyAuthUsdtDetails")
     }
 
     // MARK: - Authorization
@@ -154,6 +319,7 @@ struct PubkyAuthApprovalSheet: View {
             SheetHeader(
                 title: headerTitle,
                 showBackButton: showsBackButton,
+                topPadding: 28, bottomPadding: state == .success ? 30 : 22, dragIndicatorTopPadding: 8,
                 onBack: onBack
             )
 
@@ -176,14 +342,15 @@ struct PubkyAuthApprovalSheet: View {
             approvalDetails
 
             HStack(spacing: 16) {
-                CustomButton(title: t("common__cancel"), variant: .secondary) {
+                CustomButton(title: t("common__cancel"), variant: .secondary, titleKerning: 0, titleLineHeight: 20) {
                     sheets.hideSheet()
                 }
                 .accessibilityIdentifier("PubkyAuthCancel")
 
-                CustomButton(title: t("pubky_auth__title")) {
+                CustomButton(title: t("pubky_auth__title"), titleKerning: 0, titleLineHeight: 20) {
                     await onAuthorize()
                 }
+                .disabled(receivingDetailsUnavailable || (config.request.bitkitClaim?.requiresUsdtAddress == true && !shareUsdt))
                 .accessibilityIdentifier("PubkyAuthAuthorize")
             }
         }
@@ -195,7 +362,7 @@ struct PubkyAuthApprovalSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             approvalDetails
 
-            BodyMSBText(t("pubky_auth__authorizing"), textColor: .white32)
+            BodySSBText(t("pubky_auth__authorizing"), textColor: .white32)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
         }
@@ -205,20 +372,30 @@ struct PubkyAuthApprovalSheet: View {
 
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            successDescriptionText
-                .padding(.bottom, 16)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        successDescriptionText
+                            .padding(.horizontal, 16)
+                            .accessibilityIdentifier("PubkyAuthSharedDetails")
 
-            Spacer()
+                        Spacer(minLength: 32)
 
-            Image("check")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 256, height: 256)
-                .frame(maxWidth: .infinity)
+                        Image("check")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 256, height: 256)
+                            .scaleEffect(Self.checkIllustrationScale)
+                            .frame(maxWidth: .infinity)
 
-            Spacer()
+                        Spacer(minLength: 16)
+                    }
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                }
+                .scrollIndicators(.hidden)
+            }
 
-            CustomButton(title: t("common__ok")) {
+            CustomButton(title: t("common__ok"), titleKerning: 0, titleLineHeight: 20) {
                 sheets.hideSheet()
             }
             .accessibilityIdentifier("PubkyAuthOK")
@@ -231,28 +408,19 @@ struct PubkyAuthApprovalSheet: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if config.request.isSignup {
+                    if createsIdentity {
                         BodyMText(t("pubky_auth__signup_description"))
                             .padding(.bottom, 16)
                     }
 
                     if !config.request.permissions.isEmpty {
                         descriptionText
-                            .padding(.bottom, 8)
-                    }
-
-                    if !config.request.clientID.isEmpty {
-                        BodySText(t("pubky_auth__requester", variables: ["clientId": config.request.clientID]))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
                             .padding(.bottom, 32)
-                    } else {
-                        Spacer().frame(height: 24)
                     }
 
                     if let relayOrigin = config.request.relayOrigin {
                         relayOriginSection(relayOrigin)
-                            .padding(.bottom, 24)
+                            .padding(.bottom, 32)
                     }
 
                     if !config.request.permissions.isEmpty {
@@ -261,11 +429,11 @@ struct PubkyAuthApprovalSheet: View {
 
                     if config.request.bitkitClaim?.includesPaykitAccess == true {
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionMText(t("pubky_auth__paykit_access_title"), textColor: .white64)
-                            BodySText(t("pubky_auth__paykit_access_description"))
+                            CaptionMText(t("pubky_auth__details"), textColor: .white64).frame(minHeight: 18)
+                            BodySText(t("pubky_auth__paykit_access_description"), textColor: .textPrimary, kerning: 0, lineHeight: 20)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 32)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("PubkyAuthPaykitAccess")
                     }
@@ -275,7 +443,7 @@ struct PubkyAuthApprovalSheet: View {
                     trustWarning
                         .padding(.bottom, 16)
 
-                    if let homeserver = config.request.homeserverPublicKey {
+                    if createsIdentity, let homeserver = config.request.homeserverPublicKey {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("pubky_auth__homeserver"), textColor: .white64)
                             BodyMSBText(homeserver)
@@ -290,7 +458,7 @@ struct PubkyAuthApprovalSheet: View {
                         .accessibilityIdentifier("PubkySignupHomeserver")
                     } else {
                         profileCard
-                            .padding(.bottom, 16)
+                            .padding(.bottom, 24)
                     }
                 }
                 .frame(minHeight: geometry.size.height, alignment: .top)
@@ -300,26 +468,55 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var serviceText: String {
-        config.request.serviceNames.joined(separator: " and ")
+        pubkyAuthLiteralText(config.request.serviceNames.joined(separator: t("profile__auth_approval_services_separator")))
+    }
+
+    private var requesterText: String {
+        pubkyAuthLiteralText(config.request.clientID)
     }
 
     private var descriptionText: some View {
         BodyMText(
-            t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix"),
+            requesterText.isEmpty
+                ? t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix")
+                : pubkyAuthFilledText(t("pubky_auth__description_named"), variables: ["clientId": requesterText, "service": serviceText]),
             accentColor: .textPrimary,
-            accentFont: Fonts.bold
+            accentFont: Fonts.bold,
+            kerning: 0, lineHeight: 22
         )
-        .lineSpacing(4)
     }
 
-    private var watchOnlyConsentDescription: String {
-        let description = t("pubky_auth__watch_only_intro_description")
-        guard let relayOrigin = config.request.relayOrigin else { return description }
+    private var introDescriptionKey: String {
+        if config.request.bitkitClaim?.sharesBitcoin == true {
+            return "pubky_auth__watch_only_intro_description"
+        }
+        return config.request.bitkitClaim?.requiresUsdtAddress == true
+            ? "pubky_auth__usdt_intro_description" : "pubky_auth__usdt_intro_optional"
+    }
 
-        return description + "\n\n" + t(
-            "pubky_auth__watch_only_intro_relay",
-            variables: ["relay": relayOrigin]
-        )
+    private var sharingSuccessKey: String {
+        if shareUsdt, usdtAddress != nil, config.request.bitkitClaim?.sharesUsdt == true {
+            return config.request.bitkitClaim?.sharesBitcoin == true ? "pubky_auth__shared_both" : "pubky_auth__shared_usdt"
+        }
+        return "pubky_auth__shared_bitcoin"
+    }
+
+    private func loadUsdtAddress() async {
+        guard config.request.bitkitClaim?.sharesUsdt == true, settings.isUsdtEnabled else { return }
+        usdtAddress = nil
+        usdtUnavailable = false
+        do {
+            let address = try await usdt.paymentEndpoint().value
+            guard settings.isUsdtEnabled else { return }
+            usdtAddress = address
+            if config.request.bitkitClaim?.requiresUsdtAddress == true {
+                shareUsdt = true
+            }
+        } catch {
+            usdtAddress = nil
+            usdtUnavailable = true
+            shareUsdt = false
+        }
     }
 
     private func relayOriginSection(_ relayOrigin: String) -> some View {
@@ -332,32 +529,41 @@ struct PubkyAuthApprovalSheet: View {
     }
 
     private var successDescriptionText: some View {
-        BodyMText(
-            t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
-                + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
-                + t("pubky_auth__success_suffix"),
+        let authorization = requesterText.isEmpty
+            ? t("pubky_auth__success_prefix") + "<accent>" + truncatedPublicKey + "</accent>"
+            + t("pubky_auth__success_middle") + "<accent>" + serviceText + "</accent>"
+            + t("pubky_auth__success_suffix")
+            : pubkyAuthFilledText(
+                t("pubky_auth__success_named"),
+                variables: ["pubky": truncatedPublicKey, "clientId": requesterText, "service": serviceText]
+            )
+        let sharedDetails = config.request.bitkitClaim?.sharesBitcoin == true || (shareUsdt && usdtAddress != nil)
+            ? "\n\n" + t(sharingSuccessKey) : ""
+        return BodyMText(
+            authorization + sharedDetails,
             accentColor: .textPrimary,
-            accentFont: Fonts.bold
+            accentFont: Fonts.bold,
+            kerning: 0, lineHeight: 22
         )
-        .lineSpacing(4)
     }
 
     private var permissionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("pubky_auth__requested_permissions"), textColor: .white64)
+            CaptionMText(t("pubky_auth__requested_permissions"), textColor: .white64).frame(minHeight: 18)
 
             ForEach(Array(config.request.permissions.enumerated()), id: \.offset) { _, permission in
                 permissionRow(permission)
             }
-
-            CustomDivider(color: .white10)
         }
     }
 
     private func permissionRow(_ permission: PubkyAuthPermission) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: "folder")
-                .font(.system(size: 14))
+            Image("permission-folder")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 13, height: 11)
+                .frame(width: 16, height: 16)
                 .foregroundColor(.white)
 
             BodySSBText(permission.displayPath)
@@ -366,51 +572,64 @@ struct PubkyAuthApprovalSheet: View {
             Spacer()
 
             CaptionMText(permission.displayAccess, textColor: .gray1)
-        }
+        }.frame(minHeight: 20)
     }
 
     private var trustWarning: some View {
-        BodySText(t("pubky_auth__trust_warning"))
-            .lineSpacing(4)
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("pubky_auth__before_you_continue"), textColor: .white64).frame(minHeight: 18)
+            BodySText(t("pubky_auth__trust_warning"), kerning: 0, lineHeight: 20)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var profileCard: some View {
-        VStack(spacing: 16) {
-            CaptionMText(
-                truncatedPublicKey.localizedUppercase,
-                textColor: .white64
-            )
-
+        HStack(spacing: 16) {
             if let imageUri = pubkyProfile.displayImageUri {
-                PubkyImage(uri: imageUri, size: 96)
+                PubkyImage(uri: imageUri, size: 48)
             } else {
                 Circle()
-                    .fill(Color.pubkyGreen)
-                    .frame(width: 96, height: 96)
+                    .fill(Color.gray5)
+                    .frame(width: 48, height: 48)
                     .overlay {
                         Image("user-square")
                             .resizable()
                             .scaledToFit()
                             .foregroundColor(.white32)
-                            .frame(width: 48, height: 48)
+                            .frame(width: 24, height: 24)
                     }
             }
 
-            HeadlineText(pubkyProfile.displayName ?? "")
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionMText(
+                    truncatedPublicKey.localizedUppercase,
+                    textColor: .white64, kerning: 1, lineHeight: 18
+                )
+                .lineLimit(1)
+
+                BodyMSBText(pubkyProfile.displayName ?? "", kerning: 0)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
         .background(Color.gray6)
         .cornerRadius(16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("PubkyAuthProfile")
     }
+
+    /// Figma draws the check illustration at 274pt inside its 256pt slot.
+    private static let checkIllustrationScale: CGFloat = 274.0 / 256.0
 
     // MARK: - Actions
 
     @MainActor
     private func onAuthorize() async {
-        guard state.beginAuthorization() else { return }
+        guard !usdtAuthorizationUnavailable, state.beginAuthorization() else { return }
 
         switch resolvePubkyApprovalLocalAuthMode(
             isPinEnabled: settings.pinEnabled,
@@ -445,7 +664,8 @@ struct PubkyAuthApprovalSheet: View {
     private func performAuthorization() async {
         guard state == .authorizing else { return }
         do {
-            if config.request.isSignup {
+            guard !usdtAuthorizationUnavailable else { throw PubkyAuthRequestError.invalidPaymentDetails }
+            if createsIdentity {
                 try await pubkyProfile.approveSignupAuth(request: config.request)
                 guard sheets.pubkyAuthApprovalSheetItem?.request.rawUrl == config.request.rawUrl else {
                     return
@@ -464,7 +684,10 @@ struct PubkyAuthApprovalSheet: View {
                 request: config.request,
                 authUrl: config.request.rawUrl,
                 accountName: watchOnlyAccountName,
-                secretKeyHex: secretKey
+                secretKeyHex: secretKey,
+                approvedUsdtAddress: shareUsdt && settings.isUsdtEnabled ? usdtAddress : nil,
+                usdtEndpoint: { try await usdt.paymentEndpoint() },
+                isUsdtEnabled: { settings.isUsdtEnabled }
             )
 
             state = .success
@@ -501,7 +724,7 @@ struct PubkyAuthApprovalSheet: View {
 
     private func onBack() {
         guard state.canDismiss else { return }
-        if state == .authorize, config.request.bitkitClaim?.includesWatchOnlyAccount == true {
+        if state == .authorize, hasReceivingDetails {
             state = .watchOnlyConsent
         } else {
             sheets.hideSheet()

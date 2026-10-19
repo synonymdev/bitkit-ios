@@ -17,6 +17,7 @@ enum SheetID: String, CaseIterable {
     case paymentRequests
     case subscription
     case quickpay
+    case usdtIntro
     case receive
     case receivedTx
     case btcpayConnection
@@ -38,9 +39,17 @@ struct SheetConfiguration {
 }
 
 class SheetViewModel: ObservableObject {
+    /// How long a closing sheet animates out before the next sheet may be shown.
+    static let replacementDelaySeconds: TimeInterval = 0.7
+
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
+    @Published private(set) var replacingSheetID: SheetID?
+
+    var isPubkyAuthApprovalShownOrPending: Bool {
+        activeSheetConfiguration?.id == .pubkyAuthApproval || replacingSheetID == .pubkyAuthApproval
+    }
 
     func showSheet(_ id: SheetID, data: Any? = nil) {
         if activeSheetConfiguration?.id == .send, id == .receivedTx {
@@ -51,11 +60,15 @@ class SheetViewModel: ObservableObject {
             // If any other sheet is open, close it and delay before showing the new sheet
             // to prevent the new sheet from closing immediately (bug)
             isReplacingSheet = true
+            replacingSheetID = id
             hideSheet()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
                 guard let self else { return }
                 isReplacingSheet = false
+                if replacingSheetID == id {
+                    replacingSheetID = nil
+                }
                 Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
@@ -81,6 +94,9 @@ class SheetViewModel: ObservableObject {
 
     func hideSheet(reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
         if let config = activeSheetConfiguration {
+            if !isReplacingSheet {
+                (config.data as? SendConfig)?.onDismiss?()
+            }
             let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
             let reasonText = " reason: \(reason ?? fallback)"
             Logger.debug("Hiding sheet \(config.id.rawValue)\(reasonText)", context: "SheetViewModel")
@@ -105,7 +121,7 @@ class SheetViewModel: ObservableObject {
 
         isReplacingSheet = true
         hideSheet(reason: reason)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.replacementDelaySeconds) { [weak self] in
             guard let self else { return }
             isReplacingSheet = false
             guard activeSheetConfiguration == nil else { return }
@@ -124,8 +140,41 @@ class SheetViewModel: ObservableObject {
         hideSheet(reason: reason, file: file, function: function, line: line)
     }
 
+    /// Hides the sheet only while this presentation is still the active one, so a replaced sheet's dismiss
+    /// cannot hide the newer sheet that took its place, even when both share a sheet ID.
+    func hideSheetIfActive(presentationID: UUID, reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        guard activeSheetConfiguration?.presentationID == presentationID else {
+            let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
+            let reasonText = " reason: \(reason ?? fallback)"
+            let activeId = activeSheetConfiguration?.id.rawValue ?? "none"
+            Logger.debug("hideSheetIfActive skipped for a replaced presentation (active: \(activeId))\(reasonText)", context: "SheetViewModel")
+            return
+        }
+        hideSheet(reason: reason, file: file, function: function, line: line)
+    }
+
+    /// Presentations that appeared and are not dismissed yet, oldest first. SwiftUI dismisses them in the order
+    /// they appeared, but a replacement can appear before the replaced sheet's dismiss callback runs.
+    private var shownPresentationIDs: [UUID] = []
+
+    func markSheetShown(presentationID: UUID) {
+        guard !shownPresentationIDs.contains(presentationID) else { return }
+        shownPresentationIDs.append(presentationID)
+    }
+
+    /// Call from a sheet's onDismiss: hides the sheet only when the dismissed presentation is still the active one.
+    func hideDismissedSheet(reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        guard !shownPresentationIDs.isEmpty else { return }
+        let presentationID = shownPresentationIDs.removeFirst()
+        hideSheetIfActive(presentationID: presentationID, reason: reason, file: file, function: function, line: line)
+    }
+
     var isAnySheetOpen: Bool {
         return activeSheetConfiguration != nil
+    }
+
+    var canPresentReceivedTx: Bool {
+        !isReplacingSheet && (activeSheetConfiguration == nil || activeSheetConfiguration?.id == .receive)
     }
 
     private func playHaptics(for sheetId: SheetID) {
@@ -270,7 +319,7 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
             let pubkyConfig = config.data as? PubkyAuthApprovalConfig
             guard let request = pubkyConfig?.request else { return nil }
-            return PubkyAuthApprovalSheetItem(request: request)
+            return PubkyAuthApprovalSheetItem(request: request, presentationID: config.presentationID)
         }
         set {
             if newValue == nil {
@@ -307,6 +356,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .subscription else { return nil }
             return config.data as? SubscriptionSheetItem
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var usdtIntroSheetItem: UsdtIntroSheetItem? {
+        get {
+            guard activeSheetConfiguration?.id == .usdtIntro else { return nil }
+            return UsdtIntroSheetItem()
         }
         set {
             if newValue == nil {
@@ -437,11 +498,15 @@ class SheetViewModel: ObservableObject {
             guard let config = activeSheetConfiguration, config.id == .send else { return nil }
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
-            return SendSheetItem(initialRoute: initialRoute, hardwareWalletId: sendConfig?.hardwareWalletId)
+            return SendSheetItem(
+                initialRoute: initialRoute,
+                hardwareWalletId: sendConfig?.hardwareWalletId,
+                preparation: sendConfig?.preparation
+            )
         }
         set {
             if newValue == nil {
-                activeSheetConfiguration = nil
+                hideSheet(reason: "Send sheet dismissed")
             }
         }
     }

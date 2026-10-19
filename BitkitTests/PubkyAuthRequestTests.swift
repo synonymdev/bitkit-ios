@@ -29,6 +29,53 @@ final class PubkyAuthRequestTests: XCTestCase {
         XCTAssertEqual(request.capabilities, PubkyAuthClaim.requiredCapabilities)
     }
 
+    func testProtocolUrlNormalizesBitkitSigninHandoffWithoutClaimMarker() throws {
+        let query = "caps=/pub/locks.app/:rw&relay=\(relay)&secret=\(secret)&cid=locks.test&cpk=\(publicKey)"
+        let url = "bitkit://pubky-auth/signin?\(query)"
+
+        XCTAssertTrue(PubkyAuthRequest.isProtocolURL(url))
+        XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), "pubkyauth://signin_grant?\(query)")
+
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertEqual(request.rawUrl, "pubkyauth://signin_grant?\(query)")
+        XCTAssertNil(request.bitkitClaim)
+        XCTAssertEqual(request.capabilities, "/pub/locks.app/:rw")
+        XCTAssertEqual(request.serviceNames, ["locks.app"])
+    }
+
+    func testProtocolUrlValidatesOptionalClaimOnBitkitSigninHandoff() throws {
+        let base = "bitkit://pubky-auth/signin?caps=\(PubkyAuthClaim.requiredCapabilities)" +
+            "&relay=\(relay)&secret=\(secret)&cid=paykit.test&cpk=\(publicKey)"
+
+        XCTAssertEqual(try PubkyAuthRequest.parse(url: base + "&x-bitkit-claim=watch-only-account-v1").bitkitClaim, .watchOnlyAccountV1)
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: base + "&x-bitkit-claim=unknown-v1")) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .unsupportedBitkitClaim("unknown-v1"))
+        }
+        XCTAssertThrowsError(try PubkyAuthRequest.parse(url: base.replacingOccurrences(of: "secret=", with: "secret=a&secret="))) {
+            XCTAssertEqual($0 as? PubkyAuthRequestError, .duplicateSecret)
+        }
+    }
+
+    func testProtocolUrlRejectsMalformedBitkitSigninHandoff() {
+        let query = "caps=/pub/locks.app/:rw&relay=\(relay)&secret=\(secret)"
+        let urls = [
+            "bitkit://pubky-auth/signin",
+            "bitkit://pubky-auth/signin?",
+            "bitkit://pubky-auth/signin??\(query)",
+            "bitkit://pubky-auth/signin?\(query)#ignored",
+            "bitkit://user@pubky-auth/signin?\(query)",
+            "bitkit://pubky-auth:123/signin?\(query)",
+            "bitkit://pubky-auth/signin/extra?\(query)",
+        ]
+
+        for url in urls {
+            XCTAssertFalse(PubkyAuthRequest.isProtocolURL(url), url)
+            XCTAssertEqual(PubkyAuthRequest.normalizedProtocolURL(url), url)
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: url), url)
+        }
+    }
+
     func testRelayOriginShowsOnlyTheAuthorizationDestination() throws {
         let url = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2FRelay.Example%3A8443%2Finbox%2F&secret=\(secret)" +
@@ -153,6 +200,32 @@ final class PubkyAuthRequestTests: XCTestCase {
             XCTAssertEqual(request.relay, "")
             XCTAssertEqual(request.capabilities, "")
             XCTAssertNil(request.authorizationUrl)
+        }
+    }
+
+    func testGrantSignupPreservesRegistrationAndAppAuthorization() throws {
+        let url = "pubkyauth://signup_grant?caps=/pub/pubky.app/:rw&relay=\(relay)&secret=\(secret)" +
+            "&hs=\(publicKey)&st=invite%20code&cid=shop.pubky.app&cpk=\(publicKey)"
+        let request = try PubkyAuthRequest.parse(url: url)
+
+        XCTAssertTrue(request.isSignup)
+        XCTAssertTrue(request.isGrantSignup)
+        XCTAssertEqual(request.kind, .signUp)
+        XCTAssertTrue(request.requiresIdentityCreation(hasIdentity: false))
+        XCTAssertFalse(request.requiresIdentityCreation(hasIdentity: true))
+        XCTAssertEqual(request.homeserverPublicKey, "pubky" + publicKey)
+        XCTAssertEqual(request.signupToken, "invite code")
+        XCTAssertEqual(request.clientID, "shop.pubky.app")
+        XCTAssertEqual(request.authorizationUrl, url)
+        XCTAssertEqual(request.permissions.first?.path, "/pub/pubky.app/")
+        XCTAssertEqual(request.permissions.first?.accessLevel, "rw")
+    }
+
+    func testGrantSignupRejectsInvalidOrAmbiguousRegistrationDetails() {
+        let prefix = "pubkyauth://signup_grant?caps=/pub/pubky.app/:rw&relay=\(relay)&secret=\(secret)" +
+            "&cid=shop.pubky.app&cpk=\(publicKey)"
+        for registration in ["", "&hs=invalid", "&hs=\(publicKey)&hs=\(publicKey)", "&hs=\(publicKey)&st=one&st=two"] {
+            XCTAssertThrowsError(try PubkyAuthRequest.parse(url: prefix + registration))
         }
     }
 

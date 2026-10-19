@@ -1,0 +1,25 @@
+name: e2e-retarget
+
+# e2e-tests runs only on PRs into master, and retargeting a stacked PR to master emits no event it listens to
+on:
+  pull_request:
+    types: [edited]
+    branches: [master]
+
+permissions:
+  actions: write
+
+jobs:
+  run-e2e:
+    if: >-
+      github.event.changes.base != null &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start E2E on the retargeted PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh workflow run e2e-tests.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" -f pr="$PR_NUMBER"
