@@ -402,7 +402,7 @@ struct PaymentRequestAmountView: View {
                 return
             }
             if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
-            else { dollarAmount = initialDraft.amount.value }
+            else { dollarAmount = initialDraft.amount.inputValue }
         }
     }
 
@@ -427,7 +427,7 @@ struct PaymentRequestAmountView: View {
                     guard choice != asset else { return }
                     do {
                         let converted = try entryConversion.converted(amount, to: choice, rate: currency.paykitRate, at: Date())
-                        if choice == .usd { dollarAmount = converted.atomic == 0 ? "" : converted.value }
+                        if choice == .usd { dollarAmount = converted.atomic == 0 ? "" : converted.inputValue }
                         else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
                         asset = choice
                         conversionError = false
