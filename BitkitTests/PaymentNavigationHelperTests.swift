@@ -26,7 +26,8 @@ final class PaymentNavigationHelperTests: XCTestCase {
             "quickpayAmount",
             "quickpayDailyLimitMultiplier",
             "pinEnabled",
-            "requirePinForPayments"
+            "requirePinForPayments",
+            "usdtPreference"
         )
 
         spendSuiteName = "PaymentNavigationHelperTests.\(UUID().uuidString)"
@@ -190,6 +191,80 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
     }
 
+    func testFixedDollarRequestPreparesExactBitcoinTermsForConfirmation() async throws {
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let method = PublicPaykitService.onchainMethodId(for: address)
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: method.rawValue,
+            amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+            conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001")])
+        )
+        for enabled in [false, true] {
+            settings.usdtPreference = enabled ? .enabled : .disabled
+            let app = AppViewModel()
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+                .init(methodId: method, value: address, min: nil, max: nil, rawPayload: ""),
+            ])
+            XCTAssertTrue(app.claimContactPaymentContext(context))
+            try await app.handleScannedData(address, claimedContactPaymentContext: context)
+
+            XCTAssertEqual(app.paykitPaymentTerms?.amount.atomic, 2500)
+            XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
+            XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+            XCTAssertFalse(app.paykitUsesUsdt)
+            XCTAssertTrue(request.acceptsPaymentAmount(2500, method: method, paymentTerms: app.paykitPaymentTerms))
+            XCTAssertFalse(request.acceptsPaymentAmount(2501, method: method, paymentTerms: app.paykitPaymentTerms))
+            app.resetSendState()
+            XCTAssertNil(app.paykitPaymentTerms)
+            XCTAssertNil(app.paykitReviewedAmount)
+        }
+    }
+
+    func testDollarRequestOffersAssetSelectionOnlyWhenUsdtIsEnabled() async throws {
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let method = PublicPaykitService.onchainMethodId(for: address)
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: method.rawValue,
+            amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+            conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001")])
+        )
+        for enabled in [false, true] {
+            settings.usdtPreference = enabled ? .enabled : .disabled
+            let app = AppViewModel()
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+                .init(methodId: method, value: address, min: nil, max: nil, rawPayload: ""),
+                .init(methodId: .usdtArbitrum, value: "0x1111111111111111111111111111111111111111", min: nil, max: nil, rawPayload: ""),
+            ])
+            XCTAssertTrue(app.claimContactPaymentContext(context))
+            try await app.handleScannedData(address, claimedContactPaymentContext: context)
+            XCTAssertEqual(contactPaymentRoute(for: app), enabled ? .amount : .confirm)
+            XCTAssertEqual(app.paykitPaymentTerms == nil, enabled)
+        }
+    }
+
+    func testExpiredDollarRequestCannotPrepareConfirmationTerms() async throws {
+        settings.usdtPreference = .disabled
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let method = PublicPaykitService.onchainMethodId(for: address)
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: method.rawValue,
+            amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+            conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001")]),
+            deadline: .at(timestamp: "2020-01-01T00:00:00Z")
+        )
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
+            .init(methodId: method, value: address, min: nil, max: nil, rawPayload: ""),
+        ])
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        do {
+            try await app.handleScannedData(address, claimedContactPaymentContext: context)
+            XCTFail("Expired terms must not enter confirmation")
+        } catch PaykitAmountError.rateUnavailable {}
+        XCTAssertNil(app.paykitPaymentTerms)
+        XCTAssertNil(app.paykitReviewedAmount)
+    }
+
     func testContactWithUsdtLocksOnlyFixedLightningFunding() {
         let app = appWithInvoice(paymentHash: "fixed", amountSatoshis: 10000)
         app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [
@@ -273,7 +348,12 @@ final class PaymentNavigationHelperTests: XCTestCase {
         return app
     }
 
-    private func incomingPaymentRequest(endpointIdentifier: String) throws -> PaykitPaymentRequest {
+    private func incomingPaymentRequest(
+        endpointIdentifier: String,
+        amount: PaymentRequestAmount = PaymentRequestAmount(value: "0.00001", asset: "btc"),
+        conversion: PaymentConversion? = nil,
+        deadline: PaymentDeadline? = nil
+    ) throws -> PaykitPaymentRequest {
         let record = try PaymentRequestRecord(
             counterparty: "pubkycontact",
             paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
@@ -287,15 +367,15 @@ final class PaymentNavigationHelperTests: XCTestCase {
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
-                amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
+                amount: amount,
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: [endpointIdentifier],
                 paymentEndpoints: nil,
                 requiredAppId: "bitkit",
-                conversion: nil,
-                paymentDeadline: nil,
+                conversion: conversion,
+                paymentDeadline: deadline,
                 metadata: PrivateJsonObject(text: "{}")
             ),
             acceptedEventId: nil,

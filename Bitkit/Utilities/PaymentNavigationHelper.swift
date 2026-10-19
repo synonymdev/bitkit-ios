@@ -45,6 +45,12 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) {
+        if app.contactPaymentContext?.incomingPaymentRequest != nil,
+           let route = contactPaymentRoute(app: app, currency: currency, settings: settings, spendStore: spendStore, coordinator: coordinator)
+        {
+            sheetViewModel.showSheet(.send, data: SendConfig(view: route))
+            return
+        }
         if app.contactPaymentContext?.requiresAssetSelection == true {
             sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
             return
