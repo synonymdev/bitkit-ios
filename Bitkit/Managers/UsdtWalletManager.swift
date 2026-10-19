@@ -1,5 +1,6 @@
 import BitkitCore
 import Combine
+import CryptoKit
 import Foundation
 import Observation
 
@@ -29,6 +30,7 @@ final class UsdtWalletManager {
     var errorMessage: String?
     var isSendPresented = false
     private var core: UsdtWallet?
+    private var paymentEndpointCache: (fingerprint: SHA256.Digest, endpoint: PublicPaykitService.Endpoint)?
     private let storageDirectory: URL
     private let rpcUrl: String?
     private let bundlerUrl: String?
@@ -212,20 +214,17 @@ final class UsdtWalletManager {
     func paymentEndpoint() async throws -> PublicPaykitService.Endpoint {
         try beginOperation()
         defer { finishOperation() }
-        let wallet = try await wallet()
-        return try PaykitUsdt.endpoint(address: wallet.receiveAddress())
-    }
-
-    func paymentEndpointForPublishing() async throws -> PublicPaykitService.Endpoint? {
-        do {
-            return try await paymentEndpoint()
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            try Task.checkCancellation()
-            Logger.warn("Unable to prepare USDT payment endpoint: \(Self.message(for: error))", context: "UsdtWalletManager")
-            return nil
+        let credentials = try await loadCredentials()
+        try Task.checkCancellation()
+        let fingerprint = SHA256.hash(data: Data("\(credentials.0.utf8.count):\(credentials.0)\(credentials.1 ?? "")".utf8))
+        if let cached = paymentEndpointCache, cached.fingerprint == fingerprint { return cached.endpoint }
+        paymentEndpointCache = nil
+        let endpoint = try await ServiceQueue.background(.core, wrapErrors: false) {
+            try PaykitUsdt.endpoint(address: usdtAddress(mnemonic: credentials.0, passphrase: credentials.1))
         }
+        try Task.checkCancellation()
+        paymentEndpointCache = (fingerprint, endpoint)
+        return endpoint
     }
 
     func send(_ quote: UsdtQuote, submissionDeadline: PaykitPreciseInstant? = nil,
@@ -380,6 +379,7 @@ final class UsdtWalletManager {
             await withCheckedContinuation { idleWaiter = $0 }
         }
         core = nil
+        paymentEndpointCache = nil
         balance = nil
         address = ""
         receiveUri = ""

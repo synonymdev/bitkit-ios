@@ -11,7 +11,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             "bolt11", "bip21", "onchainAddress", PublicPaykitService.publishingEnabledKey,
             PublicPaykitService.cleanupPendingKey, PaykitFeatureFlags.uiEnabledKey,
             "publicPaykitBolt11", "publicPaykitBolt11PaymentHash", "publicPaykitBolt11ExpiresAt",
-            PublicPaykitService.lightningPaymentOptionEnabledKey,
+            PublicPaykitService.lightningPaymentOptionEnabledKey, PublicPaykitService.usdtPaymentOptionEnabledKey,
             PrivatePaykitService.publishingEnabledKey,
         ].map { (
             $0,
@@ -20,6 +20,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         for (key, _) in stored {
             UserDefaults.standard.removeObject(forKey: key)
         }
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
     }
 
     override func tearDown() {
