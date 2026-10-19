@@ -427,7 +427,8 @@ enum PublicPaykitService {
         let publishedCurrentInvoice = !isLightningPaymentOptionEnabled() ||
             (wallet.publicPaykitInvoiceRevision == invoiceRevision && wallet.publicPaykitBolt11 ==
                 (endpoints.first { $0.methodId == .bitcoinLightningBolt11 }?.value ?? ""))
-        setCleanupPending(!publishedCurrentInvoice)
+        let publishedUsdt = !isUsdtPaymentOptionEnabled() || endpoints.contains { $0.methodId == .usdtArbitrum }
+        setCleanupPending(!publishedCurrentInvoice || !publishedUsdt)
     }
 
     static func removePublishedEndpoints() async throws {
@@ -615,7 +616,14 @@ enum PublicPaykitService {
         }
 
         if isUsdtPaymentOptionEnabled() {
-            try await endpoints.append(wallet.usdtWallet.paymentEndpoint())
+            do {
+                try await endpoints.append(wallet.usdtWallet.paymentEndpoint())
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try Task.checkCancellation()
+                Logger.warn("Deferred USDT endpoint preparation", context: "PublicPaykitService")
+            }
         }
 
         guard !endpoints.isEmpty || !requireEndpoint else {

@@ -95,7 +95,14 @@ extension PrivatePaykitService {
         }
 
         if PublicPaykitService.isUsdtPaymentOptionEnabled() {
-            try await endpoints.append(wallet.usdtWallet.paymentEndpoint())
+            do {
+                try await endpoints.append(wallet.usdtWallet.paymentEndpoint())
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try Task.checkCancellation()
+                Logger.warn("Deferred USDT endpoint preparation", context: "PrivatePaykit")
+            }
         }
 
         guard !endpoints.isEmpty else {
