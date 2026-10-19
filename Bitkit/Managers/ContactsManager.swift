@@ -271,6 +271,8 @@ class ContactsManager: ObservableObject {
 
                 Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
                 return
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 guard contactsRevision == revision else { continue }
                 if Self.isMissingContactsDataError(error) {
@@ -340,11 +342,10 @@ class ContactsManager: ObservableObject {
 
         do {
             _ = try await PubkyService.saveContact(publicKey: prefixedKey, label: contact.profile.name)
-            await PrivatePaykitService.shared.startInitialLinkBurst(
+            await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                 for: [prefixedKey],
                 savedPublicKeys: contacts.map(\.publicKey),
-                wallet: wallet,
-                reason: "contact link refresh"
+                wallet: wallet
             )
         } catch is CancellationError {
             return

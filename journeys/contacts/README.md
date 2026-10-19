@@ -1,6 +1,17 @@
 # Contacts
 
+`contacts-entry-points.xml` checks onboarding without an identity and the authenticated
+Contacts list. It has not yet been ported to Android. Saved-identity recovery from the
+drawer and Contacts intro, pending lookup, and leaving while lookup waits require storage
+or network fault injection, which the journey runner does not provide. Check those cases
+using the PR manual checks.
+
 Import journeys require a disposable identity with a known following list. They save local Bitkit contacts; payment sharing remains a separate step.
+
+Continue waits for public payment setup, not private linking with every imported contact.
+Private preparation runs in the background. Repeat Import All with a large following list containing
+unavailable profiles, then delete a contact while preparation is running. It must not be republished
+after deletion. Unavailable private-link lookups are retried after five minutes rather than on each refresh.
 
 Network and storage fault injection are outside journey-runner capabilities. Manually disable
 connectivity after the preview has loaded: importing the prepared contacts must still finish.

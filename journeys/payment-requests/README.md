@@ -29,6 +29,14 @@ The source wallet-leg run completed this path on regtest on 2026-08-22: Bitkit p
 
 That run established the issuer shapes captured by the fixture: lowercase `btc`, `btc-regtest-p2wpkh`, and a JSON object endpoint payload with a non-empty string `value`. The exact Debug binary SHA was not recorded, so the canonical fixture tests lock the same production gates on the current code.
 
+## Foreground synchronization
+
+Bitkit checks shared request state every 10 seconds while foregrounded and online.
+Private-message intake, outbound retries, endpoint publication, and target discovery run on startup,
+explicit refreshes, and maintenance rounds after 30 seconds, then every 60 seconds.
+Maintenance uses elapsed time, including slow requests; polling remains serialized and does not
+start catch-up rounds. New peer messages may wait for maintenance plus synchronization time.
+
 ## Accepting install
 
 Acceptance intent is saved before the remote operation and included in wallet backups.

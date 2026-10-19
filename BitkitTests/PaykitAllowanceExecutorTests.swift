@@ -541,6 +541,23 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(payerCalls, 0)
     }
 
+    // MARK: Trusted time vs subscription clock offset
+
+    func testAdmissionUsesInjectedTimeWhileSubscriptionClockIsOffset() async throws {
+        snapshotAppDefaults(SubscriptionClock.offsetDaysKey)
+        UserDefaults.standard.set(400, forKey: SubscriptionClock.offsetDaysKey)
+        try XCTSkipUnless(SubscriptionClock.offsetDays() == 400, "The subscription clock offset is unavailable in this build")
+        let harness = AllowanceHarness()
+        try await harness.sdk.setAccountingState(Self.stateNearTheMonthlyCap())
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual, "September's paid attempts must count; the subscription clock offset would have moved the window a year ahead")
+        let evaluatedTimes = await harness.sdk.evaluatedTrustedTimes
+        XCTAssertEqual(evaluatedTimes, [PaykitAllowanceTime.format(Fixtures.now)])
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+    }
+
     // MARK: Manager
 
     @MainActor
@@ -643,6 +660,22 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         }
         let proposals = await harness.sdk.proposals
         XCTAssertEqual(proposals.count, 0)
+    }
+
+    @MainActor
+    func testManagerCoverageUsesInjectedTimeWhileSubscriptionClockIsOffset() async throws {
+        snapshotAppDefaults(SubscriptionClock.offsetDaysKey)
+        UserDefaults.standard.set(400, forKey: SubscriptionClock.offsetDaysKey)
+        try XCTSkipUnless(SubscriptionClock.offsetDays() == 400, "The subscription clock offset is unavailable in this build")
+        let harness = AllowanceHarness()
+        let expiring = try Fixtures.customTerms(expiresAt: Fixtures.now.addingTimeInterval(30 * 24 * 60 * 60))
+        await harness.sdk.setRecords([Fixtures.record(terms: expiring)])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertTrue(try manager.coversRequest(Fixtures.paymentRequest()))
+        XCTAssertFalse(try manager.coversRequest(Fixtures.paymentRequest(counterparty: Fixtures.otherCounterpartyKey)))
     }
 
     @MainActor

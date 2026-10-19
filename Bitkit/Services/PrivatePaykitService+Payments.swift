@@ -131,7 +131,13 @@ extension PrivatePaykitService {
                 publicKey: publicKey,
                 paymentRequest: paymentRequest,
                 resolution: resolution,
-                validateEndpoints: { await self.privatePayableEndpoints(from: $0, publicKey: publicKey) }
+                validateEndpoints: { endpoints, allowUsedOnchainAddress in
+                    await self.privatePayableEndpoints(
+                        from: endpoints,
+                        publicKey: publicKey,
+                        allowUsedOnchainAddress: allowUsedOnchainAddress
+                    )
+                }
             )
             if case .opened = result { return result }
 
@@ -190,7 +196,7 @@ extension PrivatePaykitService {
         publicKey: String,
         paymentRequest: PaykitPaymentRequest?,
         resolution: PrivateContactPaymentResolution,
-        validateEndpoints: ([PublicPaykitService.Endpoint]) async -> [PublicPaykitService.Endpoint]
+        validateEndpoints: ([PublicPaykitService.Endpoint], Bool) async -> [PublicPaykitService.Endpoint]
     ) async -> PublicPaykitPaymentLaunchResult {
         let privateEndpoints = resolvedEndpoints(from: resolution)
         let paymentListVersion = resolution.privatePaymentListVersion
@@ -201,7 +207,9 @@ extension PrivatePaykitService {
         let acceptedEndpoints = privateEndpoints.filter { endpoint in
             acceptedIdentifiers?.contains(endpoint.methodId.rawValue) ?? true
         }
-        let payableEndpoints = await validateEndpoints(acceptedEndpoints)
+        // Request-bound endpoints have no list version; recurring terms may reuse their fixed address.
+        let allowUsedOnchainAddress = paymentRequest?.billingPeriod != nil && paymentListVersion == nil
+        let payableEndpoints = await validateEndpoints(acceptedEndpoints, allowUsedOnchainAddress)
         guard !payableEndpoints.isEmpty, paymentListVersion != nil || paymentRequest != nil else {
             return acceptedEndpoints.isEmpty ? .noEndpoint : .notOpened
         }
@@ -358,7 +366,12 @@ extension PrivatePaykitService {
         }
     }
 
-    func privatePayableEndpoints(from endpoints: [PublicPaykitService.Endpoint], publicKey: String) async -> [PublicPaykitService.Endpoint] {
+    func privatePayableEndpoints(
+        from endpoints: [PublicPaykitService.Endpoint],
+        publicKey: String,
+        allowUsedOnchainAddress: Bool = false,
+        isAddressUsed: (String) async throws -> Bool = { try await CoreService.shared.utility.isAddressUsed(address: $0) }
+    ) async -> [PublicPaykitService.Endpoint] {
         let payableEndpoints = await PublicPaykitService.payableEndpoints(from: endpoints)
         var reusableEndpoints: [PublicPaykitService.Endpoint] = []
         var staleLightningPaymentHashes = Set<String>()
@@ -380,13 +393,13 @@ extension PrivatePaykitService {
                 continue
             }
 
-            guard PublicPaykitService.MethodId.onchainPreferenceOrder.contains(endpoint.methodId) else {
+            guard PublicPaykitService.MethodId.onchainPreferenceOrder.contains(endpoint.methodId), !allowUsedOnchainAddress else {
                 reusableEndpoints.append(endpoint)
                 continue
             }
 
             do {
-                let isUsed = try await CoreService.shared.utility.isAddressUsed(address: endpoint.value)
+                let isUsed = try await isAddressUsed(endpoint.value)
                 if !isUsed {
                     reusableEndpoints.append(endpoint)
                 }

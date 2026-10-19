@@ -131,20 +131,18 @@ enum ContactPaymentsService {
         defaults.set(true, forKey: confirmedPreferenceKey)
 
         try await operations.syncPaykitApp(canUsePrivatePayments)
-        if canUsePrivatePayments,
-           let error = await operations.preparePrivateEndpoints(
-               contactPublicKeys,
-               true
-           )
-        {
-            throw error
-        }
-
         try await operations.syncPublicEndpoints(true)
-
         operations.setPublicCleanupPending(false)
         if canUsePrivatePayments {
             operations.setPrivateCleanupPending(false)
+        }
+        if canUsePrivatePayments,
+           let error = await operations.preparePrivateEndpoints(
+               contactPublicKeys,
+               false
+           )
+        {
+            throw error
         }
     }
 
@@ -207,7 +205,7 @@ enum ContactPaymentsService {
         if restoresPrivateEndpoints {
             if let error = await operations.preparePrivateEndpoints(
                 contactPublicKeys,
-                true
+                false
             ) {
                 operations.setPrivateCleanupPending(true)
                 Logger.warn("Failed to restore private contact payments: \(error)", context: "ContactPaymentsService")

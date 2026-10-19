@@ -21,15 +21,13 @@ extension PrivatePaykitService {
     }
 
     func restoreBackup(_ backup: String?) async throws {
+        invalidateContactPreparation()
+        unavailableLinkRetryAt.removeAll()
         let decoded = try backup.map { try JSONDecoder().decode(Backup.self, from: Data($0.utf8)) }
         if let decoded {
             // Wallet restore must not rewind the identity's live state or Noise counters.
             try Keychain.upsert(key: .paykitRecoveryBackup, data: Data(decoded.sdkState.utf8))
         }
-        initialLinkBurstTask?.cancel()
-        initialLinkBurstTask = nil
-        initialLinkBurstPublicKeys.removeAll()
-        initialLinkBurstGeneration += 1
         pendingMessageDrainRetryTask?.cancel()
         pendingMessageDrainRetryTask = nil
         pendingMessageDrainRetryKeys.removeAll()

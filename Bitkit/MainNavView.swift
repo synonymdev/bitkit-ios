@@ -531,20 +531,8 @@ struct MainNavView: View {
                 case .contacts:
                     if !isPaykitUIActive {
                         ComingSoonScreen()
-                    } else if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
-                        pubkyInitializationErrorView(message: initializationErrorMessage)
-                    } else if app.hasSeenContactsIntro || !contactsManager.contacts.isEmpty {
-                        if !pubkyProfile.isInitialized {
-                            pubkyLoadingView
-                        } else if pubkyProfile.isAuthenticated {
-                            ContactsListView()
-                        } else if app.hasSeenProfileIntro {
-                            PubkyChoiceView()
-                        } else {
-                            ProfileIntroView()
-                        }
                     } else {
-                        ContactsIntroView()
+                        ContactsDestinationView()
                     }
                 case .contactsIntro:
                     if isPaykitUIActive {

@@ -13,7 +13,10 @@ enum PaykitSubscriptionProposal {
     }
 
     static func encodedSize(_ terms: Paykit.PaymentRequestTerms) throws -> Int {
-        guard let recurrence = terms.recurrence else {
+        // Unmodeled fields must not silently reduce the estimated transport size.
+        guard let recurrence = terms.recurrence,
+              terms.paymentEndpoints == nil, terms.conversion == nil, terms.paymentDeadline == nil
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         let metadata = try JSONSerialization.jsonObject(with: Data(terms.metadata.exportText().utf8))
@@ -21,6 +24,7 @@ enum PaykitSubscriptionProposal {
         let wire: [String: Any] = [
             "version": 1,
             "kind": "paykit.payment_request",
+            "app_id": "bitkit",
             "event_id": uuid,
             "payment_request_id": uuid,
             "request": [
@@ -35,6 +39,7 @@ enum PaykitSubscriptionProposal {
                     "ends_at": recurrence.endsAt as Any? ?? NSNull(),
                 ],
                 "accepted_payment_endpoint_identifiers": terms.acceptedPaymentEndpointIdentifiers,
+                "required_app_id": terms.requiredAppId as Any? ?? NSNull(),
                 "metadata": metadata,
             ],
         ]

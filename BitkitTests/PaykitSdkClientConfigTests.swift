@@ -8,6 +8,33 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
         "&cid=paykit.test&cpk=5jsjx1o6fzu6aeeo697r3i5rx15zq41kikcye8wtwdqm4nb4tryo"
 
+    @MainActor
+    func testPrivateLinkCallsAdvanceOnceAndAllowPendingHandshakesToResume() async throws {
+        try await withCachedSessionKey { service, sdk, _ in
+            let pending = try await service.ensureLinkWithPeer("peer")
+            XCTAssertEqual(pending.state, .linking)
+            sdk.handshakeState = .linked
+            let linked = try await service.ensureLinkWithPeer("peer")
+            XCTAssertEqual(linked.state, .linked)
+
+            let preparations: [() async throws -> PreparedPrivateContactPayment] = [
+                { try await service.prepareAndResolvePrivateContactPayment(counterparty: "peer", afterPrivatePaymentListVersion: nil) },
+                {
+                    try await service.prepareAndResolvePrivatePaymentRequest(
+                        counterparty: "peer", paymentRequestId: "request", afterPrivatePaymentListVersion: nil
+                    )
+                },
+            ]
+            for prepare in preparations {
+                do {
+                    _ = try await prepare()
+                    XCTFail("Pending preparation must remain retryable")
+                } catch PaykitError.RecoveryRequired {}
+            }
+            XCTAssertEqual(sdk.handshakeAdvanceSteps, [1, 1, 1, 1])
+        }
+    }
+
     func testRegisteredIdentityCannotActivateAfterWalletWipe() async throws {
         let keys: [KeychainEntryType] = [.paykitSession]
         let saved = try keys.map { try Keychain.load(key: $0) }
@@ -669,6 +696,8 @@ private final class UnavailableProfileManager: PubkyProfileManager {
 }
 
 private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
+    var handshakeState: LinkedPeerState = .linking
+    var handshakeAdvanceSteps: [UInt32] = []
     var previousKey: String?
     var capability: PubkyIdentityCapability = .signedOut
     var registry: PaykitAppRegistry?
@@ -681,6 +710,25 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     var publicationError: Error?
     var publicationCalls = 0
     var backupError: Error?
+
+    override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps: UInt32) async throws -> LinkedPeerHandshakeReport {
+        handshakeAdvanceSteps.append(maxAdvanceSteps)
+        return LinkedPeerHandshakeReport(counterparty: counterparty, state: handshakeState, generation: 1, handshakeRole: nil)
+    }
+
+    override func prepareAndResolvePrivateContactPayment(
+        counterparty _: String, amount _: PaymentAmountContext?, afterPrivatePaymentListVersion _: UInt64?, maxAdvanceSteps: UInt32
+    ) async throws -> PreparedPrivateContactPayment {
+        handshakeAdvanceSteps.append(maxAdvanceSteps)
+        throw PaykitError.RecoveryRequired(code: "recovery_required", context: "Handshake pending")
+    }
+
+    override func prepareAndResolvePrivatePaymentRequest(
+        counterparty _: String, paymentRequestId _: String, afterPrivatePaymentListVersion _: UInt64?, maxAdvanceSteps: UInt32
+    ) async throws -> PreparedPrivateContactPayment {
+        handshakeAdvanceSteps.append(maxAdvanceSteps)
+        throw PaykitError.RecoveryRequired(code: "recovery_required", context: "Handshake pending")
+    }
 
     override func identityStatus() async throws -> IdentityStatus? {
         IdentityStatus(publicKey: previousKey, capability: capability)
