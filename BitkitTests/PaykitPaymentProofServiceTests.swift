@@ -1237,10 +1237,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
-    func testDurableLightningProofDoesNotWaitForTransport() async throws {
+    func testDurableLightningProofDoesNotWaitForRemoteEnqueueOrTransport() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "Local proof removed after durable submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty { proofRemoved.fulfill() }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
         await store.seed([PendingPaykitPaymentProof(
@@ -1248,14 +1251,20 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
         )])
+        await sdk.suspendSubmission()
         await sdk.suspendDelivery()
-        let completed = expectation(description: "Durably queued proof releases completion before transport")
+        let completed = expectation(description: "Durable proof releases completion before remote enqueue")
         let task = Task {
             await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
             completed.fulfill()
         }
-        await sdk.waitForDelivery(count: 1)
+        await sdk.waitForSubmissionStart()
         await fulfillment(of: [completed], timeout: 1)
+        let snapshot = try await service.backupSnapshot()
+        XCTAssertEqual(try snapshot.map { try $0.restored() }.first?.proofData, preimage)
+        await sdk.resumeSubmission()
+        await sdk.waitForDelivery(count: 1)
+        await fulfillment(of: [proofRemoved], timeout: 1)
         let submissions = await sdk.submissionCount()
         XCTAssertEqual(submissions, 1)
         let remaining = await store.snapshot()
@@ -1270,7 +1279,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         record.terms?.paymentDeadline = .at(timestamp: ISO8601DateFormatter().string(from: deadline))
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: deadline.addingTimeInterval(-1)))
         XCTAssertTrue(request.isPaymentDeadlineExpired(at: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "Local proof removed after durable submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty { proofRemoved.fulfill() }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         await sdk.setSubmissionFailure(true)
 
@@ -1281,6 +1293,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: nil
         )])
         await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+        await sdk.waitForSubmissionStart()
 
         let failedSubmissionCount = await sdk.submissionCount()
         let persistedProof = await store.snapshot().first
@@ -1296,6 +1309,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             lightningStatus: .succeeded(preimage: preimage)
         )
         await restartedService.reconcile()
+        await sdk.waitForDelivery(count: 1)
+        await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submittedProof = await sdk.lastSubmission()
         let submission = try XCTUnwrap(submittedProof)
@@ -1397,7 +1412,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
     func testCanceledLightningWaitPreservesCorrelationForLaterSettlement() async throws {
         let record = try paymentRequestRecord()
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "Local proof removed after durable submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.isEmpty { proofRemoved.fulfill() }
+        }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
 
@@ -1414,6 +1432,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(correlatedProof?.paymentIdentifier, paymentHash)
 
         await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+        await sdk.waitForDelivery(count: 1)
+        await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submissionCount = await sdk.submissionCount()
         let remainingProofs = await store.snapshot()
@@ -1431,7 +1451,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         for error in errors {
             let record = try paymentRequestRecord()
             let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
-            let store = PaymentProofMemoryStore()
+            let proofRemoved = expectation(description: "Local proof removed after durable submission")
+            let store = PaymentProofMemoryStore { proofs in
+                if proofs.isEmpty { proofRemoved.fulfill() }
+            }
             let sdk = PaymentProofSdkMock(identity: identity, records: [record])
             let service = paymentProofService(sdk: sdk, store: store)
             try await service.prepare(
@@ -1454,6 +1477,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             XCTAssertEqual(proof?.paymentIdentifier, paymentHash)
 
             await restartedService.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+            await sdk.waitForDelivery(count: 1)
+            await fulfillment(of: [proofRemoved], timeout: 1)
             let remainingProofs = await store.snapshot()
             let submissionCount = await sdk.submissionCount()
             XCTAssertTrue(remainingProofs.isEmpty)
@@ -2703,7 +2728,10 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             paymentIdentifier: paymentHash,
             proofData: nil
         )
-        let store = PaymentProofMemoryStore()
+        let proofRemoved = expectation(description: "Local proof removed after durable submission")
+        let store = PaymentProofMemoryStore { proofs in
+            if proofs.allSatisfy({ $0.kind == .onchain }) { proofRemoved.fulfill() }
+        }
         await store.seed([onchainProof, lightningProof])
         let sdk = PaymentProofSdkMock(identity: identity, records: [onchainRecord, lightningRecord])
         let service = paymentProofService(
@@ -2713,6 +2741,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
 
         await service.reconcile()
+        await sdk.waitForDelivery(count: 1)
+        await fulfillment(of: [proofRemoved], timeout: 1)
 
         let submissionCount = await sdk.submissionCount()
         let submittedEndpoint = await sdk.lastSubmission()?.paymentEndpointIdentifier
@@ -2899,6 +2929,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         try await service.associateLightningPayment(request, paymentHash: paymentHash)
         await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+        await sdk.waitForDelivery(count: 1)
 
         let submittedProof = await sdk.lastSubmission()
         let submission = try XCTUnwrap(submittedProof)
@@ -2940,6 +2971,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         try await service.associateLightningPayment(request, paymentHash: paymentHash)
         await service.completeLightningPayment(paymentHash: paymentHash, preimage: preimage)
+        await sdk.waitForDelivery(count: 1)
 
         let submissionCount = await sdk.submissionCount()
         let submission = await sdk.lastSubmission()

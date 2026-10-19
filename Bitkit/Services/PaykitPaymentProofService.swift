@@ -1075,7 +1075,7 @@ actor PaykitPaymentProofService {
         }
 
         do {
-            let completed: [PendingPaykitPaymentProof] = try await mutationLock.withLock {
+            let (completed, persisted) = try await mutationLock.withLock {
                 var proofs = try await loadProofs()
                 let indexes = proofs.indices
                     .filter { proofs[$0].kind == .lightning && proofs[$0].paymentIdentifier?.caseInsensitiveCompare(paymentHash) == .orderedSame }
@@ -1085,11 +1085,19 @@ actor PaykitPaymentProofService {
                 let completed = indexes.map { proofs[$0] }
                 if !completed.isEmpty {
                     do { try await persist(proofs) }
-                    catch { logWarning("Failed to persist completed Lightning proof; attempting immediate delivery: \(error)") }
+                    catch {
+                        logWarning("Failed to persist completed Lightning proof; attempting immediate delivery: \(error)")
+                        return (completed, false)
+                    }
                 }
-                return completed
+                return (completed, true)
             }
-            for proof in completed where await !submit(proof) {
+            for proof in completed {
+                if persisted {
+                    submitInBackground(proof)
+                    continue
+                }
+                guard await !submit(proof) else { continue }
                 try await mutationLock.withLock {
                     var proofs = try await loadProofs()
                     guard let index = proofs.firstIndex(where: {
