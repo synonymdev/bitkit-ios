@@ -11,7 +11,8 @@
     short; the time checks hold either way, and the ellipsis check applies only when the source and
     time do not fit side by side.
 
-    iOS: the source and time texts carry no identifiers, so the row checks read a screenshot. The
+    iOS: Widget Settings keeps its changes only through Preview; going back discards them, so the
+    journey leaves that screen with Preview. The source and time texts carry no identifiers, so the row checks read a screenshot. The
     largest text size is `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`
     and the default is `content_size large`. iOS words the time as a relative date ("last month",
     "5 months ago"), so the check is that the time is shown whole, not that it ends with "ago".
@@ -20,7 +21,7 @@
   <actions>
     <action>Tap the menu icon (id "HeaderMenu") and tap "Widgets"</action>
     <action>Tap "Add Widget" and tap the "Bitcoin Headlines" card (id "WidgetListItem-news"); this opens the widget's settings whether or not it is already on Home</action>
-    <action>Tap Widget Settings (id "WidgetEdit"). Verify from a screenshot that the source row (id "showSource_setting_row") and the date row (id "showDate_setting_row") are both checked; tap an unchecked one to turn it on, then go back</action>
+    <action>Tap Widget Settings (id "WidgetEdit"). Verify from a screenshot that the source row (id "showSource_setting_row") and the date row (id "showDate_setting_row") are both checked; tap an unchecked one to turn it on, then tap Preview (id "WidgetEditPreview")</action>
     <action>Swipe the size pager until its label reads "WIDE", tap "Save Widget" (id "WidgetSave") and go back to Home</action>
     <action>Scroll Home until the Bitcoin Headlines widget's source row is visible</action>
     <action>Verify from a screenshot that the source is at the left of the row and the time at the right, each on one line</action>
