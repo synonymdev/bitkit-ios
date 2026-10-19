@@ -4,6 +4,7 @@ import SwiftUI
 struct UsdtDepositHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
     @State private var deposits: [UsdtDeposit] = []
@@ -17,6 +18,7 @@ struct UsdtDepositHistoryView: View {
     @State private var pin = false
     @State private var busy = false
     @State private var error: String?
+    @State private var refundError: String?
     @State private var message: String?
 
     private var recoveryActive: Bool {
@@ -102,6 +104,7 @@ struct UsdtDepositHistoryView: View {
                 await loadDetail(id, isRefreshing: true)
             }
         }
+        .onChange(of: refundAddress) { _, _ in refundError = nil }
         .interactiveDismissDisabled(busy || pin)
     }
 
@@ -156,8 +159,14 @@ struct UsdtDepositHistoryView: View {
                               minContentHeight: 20)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
                         .environment(\._lineHeightMultiple, 20 / (UIFont(name: Fonts.semiBold, size: 15)?.lineHeight ?? 20))
+                    if let refundError {
+                        BodySText(refundError, textColor: .brandAccent).accessibilityIdentifier("UsdtRefundError")
+                    }
                 }
-                HStack(spacing: 16) {
+                let buttonLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 16))
+                    : AnyLayout(HStackLayout(spacing: 16))
+                buttonLayout {
                     if detail.canRequestRefund {
                         CustomButton(title: t("usdt__deposit_refund_action"), size: .small,
                                      icon: Image("coins").resizable().frame(width: 16, height: 16).foregroundColor(.usdtAccent),
@@ -228,6 +237,7 @@ struct UsdtDepositHistoryView: View {
         message = nil
         error = nil
         refundAddress = ""
+        refundError = nil
         approved = nil
         showDetails = false
     }
@@ -272,6 +282,7 @@ struct UsdtDepositHistoryView: View {
             error = nil
             if selected?.deposit.id != id {
                 refundAddress = ""
+                refundError = nil
                 approved = nil
                 message = nil
                 showDetails = false
@@ -309,7 +320,7 @@ struct UsdtDepositHistoryView: View {
             switch result {
             case .success: await refund()
             case .cancelled: break
-            case let .failed(message): error = message
+            case let .failed(message): refundError = message
             }
         } else { await refund() }
     }
@@ -317,7 +328,7 @@ struct UsdtDepositHistoryView: View {
     private func refund() async {
         guard !busy, let selected, let approved, selected.deposit.id == approved.deposit.id else { return }
         busy = true
-        error = nil
+        refundError = nil
         defer {
             busy = false
             self.approved = nil
@@ -331,7 +342,7 @@ struct UsdtDepositHistoryView: View {
             acknowledged.order?.code = nil
             updateSelection(acknowledged)
             message = t("usdt__deposit_refund_requested")
-        } catch { self.error = UsdtWalletManager.message(for: error) }
+        } catch { refundError = UsdtWalletManager.message(for: error) }
     }
 }
 

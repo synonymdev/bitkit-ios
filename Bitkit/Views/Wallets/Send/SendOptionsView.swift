@@ -112,6 +112,8 @@ struct SendOptionsView: View {
             return
         }
 
+        let value = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = ClipboardPromptHistory().recordInspection(changeCount: UIPasteboard.general.changeCount, supportedValue: value)
         Task {
             await scanner.handleSendScan(uri, scope: scanScope) { route in
                 if let route {

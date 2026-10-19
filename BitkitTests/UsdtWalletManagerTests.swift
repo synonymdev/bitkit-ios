@@ -4,6 +4,53 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testBridgeRejectionsDescribeLimitsAndLiquidity() {
+        let cases: [(UsdtError, String)] = [
+            (.BridgeAmountBelowMinimum(minUsdCents: "200"), t("usdt__deposit_minimum", variables: ["amount": "200".usdCents])),
+            (.BridgeAmountBelowMinimum(minUsdCents: nil), t("usdt__error_bridge_minimum")),
+            (.BridgeAmountAboveMaximum(maxUsdCents: "10000"), t("usdt__deposit_maximum", variables: ["amount": "10000".usdCents])),
+            (.BridgeAmountAboveMaximum(maxUsdCents: nil), t("usdt__error_bridge_maximum")),
+            (.BridgeLiquidityUnavailable, t("usdt__error_bridge_liquidity")),
+            (.InvalidAmount, t("usdt__error_amount")),
+        ]
+        for (error, expected) in cases {
+            XCTAssertEqual(UsdtWalletManager.message(for: error), expected)
+        }
+    }
+
+    func testQuoteRateLimitPausesPaymentRetriesAndRefreshUntilCooldownExpires() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        var attempts = 0
+        let manager = UsdtWalletManager(now: { now }, loadCredentials: {
+            attempts += 1
+            throw UsdtError.RateLimited
+        })
+        let quote = UsdtQuote(bridgeProvider: nil, id: "quote", recipient: "recipient", destination: .arbitrum,
+                              amount: 1_000_000, receivedAmount: 1_000_000, maximumFee: 20, expiresAt: UInt64.max)
+        do {
+            _ = try await manager.quoteMaximum(recipient: "recipient", destination: .arbitrum)
+            XCTFail("Expected rate limit")
+        } catch UsdtError.RateLimited {}
+        now.addTimeInterval(59)
+        do {
+            _ = try await manager.quote(recipient: "recipient", amount: "1", destination: .arbitrum)
+            XCTFail("Expected cooldown")
+        } catch UsdtError.RateLimited {}
+        do {
+            try await manager.send(quote) { XCTFail("Submission must not start during cooldown") }
+            XCTFail("Expected cooldown")
+        } catch UsdtError.RateLimited {}
+        await manager.refresh(includeHistory: true)
+        XCTAssertEqual(attempts, 1)
+        now.addTimeInterval(1)
+        do {
+            _ = try await manager.quoteMaximum(recipient: "recipient", destination: .arbitrum)
+            XCTFail("Expected provider rate limit after cooldown expired")
+        } catch UsdtError.RateLimited {}
+        XCTAssertEqual(attempts, 2)
+    }
+
     func testOfflineBackupDoesNotCreateAnUnusedWalletAndPreservesRestoredHistory() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

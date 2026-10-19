@@ -70,6 +70,8 @@ struct NavigationBar: View {
                 }
 
                 TitleText(title, kerning: titleKerning, lineHeight: titleLineHeight)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
@@ -94,7 +96,7 @@ struct NavigationBar: View {
                     .frame(width: 24, height: 24)
             }
         }
-        .frame(height: 48)
+        .frame(minHeight: 48)
         .background(LinearGradient(
             colors: [.black, .black.opacity(0)],
             startPoint: .top,
