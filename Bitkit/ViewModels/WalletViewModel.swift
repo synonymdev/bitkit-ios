@@ -4,7 +4,7 @@ import SwiftUI
 
 @MainActor
 class WalletViewModel: ObservableObject {
-    let usdtWallet = UsdtWalletManager()
+    let usdtWallet: UsdtWalletManager
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
@@ -121,8 +121,10 @@ class WalletViewModel: ObservableObject {
         sheetViewModel: SheetViewModel,
         feeEstimatesManager: FeeEstimatesManager,
         onchainAttemptService: OnchainSendAttemptService = .shared,
-        pubkyProfile: PubkyProfileManager? = nil
+        pubkyProfile: PubkyProfileManager? = nil,
+        usdtWallet: UsdtWalletManager? = nil
     ) {
+        self.usdtWallet = usdtWallet ?? UsdtWalletManager()
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
@@ -131,7 +133,7 @@ class WalletViewModel: ObservableObject {
         self.sheetViewModel = sheetViewModel
         self.feeEstimatesManager = feeEstimatesManager
         self.pubkyProfile = pubkyProfile
-        BackupService.shared.usdtWallet = usdtWallet
+        BackupService.shared.usdtWallet = self.usdtWallet
         balanceManager = BalanceManager(
             lightningService: lightningService,
             transferService: transferService,
@@ -162,14 +164,14 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Convenience initializer for previews and testing
-    convenience init(pubkyProfile: PubkyProfileManager? = nil) {
+    convenience init(pubkyProfile: PubkyProfileManager? = nil, usdtWallet: UsdtWalletManager? = nil) {
         let transferService = TransferService(
             lightningService: .shared,
             blocktankService: CoreService.shared.blocktank
         )
         self.init(
             transferService: transferService, sheetViewModel: SheetViewModel(),
-            feeEstimatesManager: FeeEstimatesManager(), pubkyProfile: pubkyProfile
+            feeEstimatesManager: FeeEstimatesManager(), pubkyProfile: pubkyProfile, usdtWallet: usdtWallet
         )
     }
 
@@ -1544,6 +1546,7 @@ class WalletViewModel: ObservableObject {
             throw PublicPaykitError.routeHintsUnavailable
         }
 
+        PublicPaykitService.setCleanupPending(true)
         publicPaykitBolt11 = invoice
         publicPaykitBolt11PaymentHash = lightningInvoice.paymentHash.hex
         publicPaykitBolt11ExpiresAt = Double(lightningInvoice.timestampSeconds + lightningInvoice.expirySeconds)

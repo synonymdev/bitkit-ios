@@ -351,27 +351,30 @@ final class PublicPaykitServiceTests: XCTestCase {
     }
 
     @MainActor
-    func testUsdtPreparationFailurePreservesPublicationUntilRecoveryOrDisable() async throws {
+    func testUsdtPreparationFailurePreservesRealBuildersUntilRecoveryOrDisable() async throws {
         try XCTSkipUnless(Env.isUsdtEnabled)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        UserDefaults.standard.set(UsdtPreference.enabled.rawValue, forKey: UsdtPreference.key)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         var available = false
-        var enabled = true
         let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
             guard available else { throw PublicPaykitError.walletNotReady }
             return ("test test test test test test test test test test test junk", nil)
         })
-        let bitcoin = endpoint(.regtestOnchainP2wpkh, value: "bcrt1qendpoint")
+        let wallet = EndpointPublicationWallet(usdtWallet: manager)
+        wallet.publicPaykitBolt11 = "old-advertised-invoice"
+        wallet.publicPaykitBolt11ExpiresAt = 0
+        PublicPaykitService.setCleanupPending(false)
         var publications = [[PublicPaykitService.MethodId]]()
         let publish = {
-            try await PublicPaykitService.syncPublishedEndpoints(
-                publish: true,
-                buildEndpoints: {
-                    var endpoints = [bitcoin]
-                    if enabled { try await endpoints.append(manager.paymentEndpoint()) }
-                    return endpoints
-                },
-                syncApp: {},
+            try await PublicPaykitService.syncCurrentPublishedEndpoints(
+                wallet: wallet, isSessionCurrent: { true }, syncApp: {},
                 applyEndpoints: { publications.append($0.map(\.methodId)) }
             )
         }
@@ -380,11 +383,26 @@ final class PublicPaykitServiceTests: XCTestCase {
             XCTFail("Incomplete method sets must not replace advertised endpoints")
         } catch PublicPaykitError.walletNotReady {}
         XCTAssertTrue(publications.isEmpty)
+        XCTAssertEqual(wallet.publicPaykitBolt11, EndpointPublicationWallet.invoice)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+
+        let privateService = PrivatePaykitService()
+        let contact = "pubky" + String(repeating: "y", count: 52)
+        do {
+            _ = try await privateService.buildLocalEndpoints(for: contact, wallet: wallet)
+            XCTFail("Private endpoint preparation must also fail before publication")
+        } catch PublicPaykitError.walletNotReady {}
+
         available = true
         try await publish()
-        enabled = false
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        let privateEndpoints = try await privateService.buildLocalEndpoints(for: contact, wallet: wallet)
+        XCTAssertEqual(privateEndpoints.map(\.methodId), [.bitcoinLightningBolt11, .usdtArbitrum])
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
         try await publish()
-        XCTAssertEqual(publications, [[.regtestOnchainP2wpkh, .usdtArbitrum], [.regtestOnchainP2wpkh]])
+        let disabledEndpoints = try await privateService.buildLocalEndpoints(for: contact, wallet: wallet)
+        XCTAssertEqual(disabledEndpoints.map(\.methodId), [.bitcoinLightningBolt11])
+        XCTAssertEqual(publications, [[.bitcoinLightningBolt11, .usdtArbitrum], [.bitcoinLightningBolt11]])
     }
 
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
@@ -413,5 +431,19 @@ final class PublicPaykitServiceTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         try body(defaults)
+    }
+}
+
+@MainActor
+private final class EndpointPublicationWallet: WalletViewModel {
+    static let invoice =
+        "lnbcrt200n1p5hn4c8dqqnp4qwrgh4a03djj2sl34465uwnxhva0gtpjm4u8kvzgc5jergrkm9syypp55lwcgfpkdwuknmekjgted72n0ddl5qtaha7knk7c9n7yrjr4auassp5jgqw0a9w33e2ta4j7gyjrvsvu0lv844w895305nd8spnknq3f2hq9qyysgqcqzp2xqyz5vqrzjq29gjy9sqjrrp48tz7hj2e5vm4l2dukc4csf2mn6qm32u3hted5leapyqqqqqqqtcsqqqqlgqqqqqqgq2qd2gk64eg2kfxtdaryrlh98hvu97jdaxz2ma7aeyuy2uy9vkn9x5qft47p9taju297xnrehva20xcfml7wacuv737xv3xjjzyrtplcxqpfpu9dt"
+
+    override var hasUsableChannels: Bool {
+        true
+    }
+
+    override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
+        Self.invoice
     }
 }
