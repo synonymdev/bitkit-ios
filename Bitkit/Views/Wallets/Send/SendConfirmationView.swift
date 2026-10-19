@@ -38,6 +38,7 @@ struct SendConfirmationView: View {
     @State private var hasStartedAutomaticPayment = false
     @State private var requiresPaymentConfirmation = false
     @State private var walletSwitchContext: ConfirmationContext?
+    @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var presentationID: UUID?
 
     private struct ConfirmationContext: Equatable {
@@ -431,12 +432,12 @@ struct SendConfirmationView: View {
             }
         }
         .onChange(of: app.selectedWalletToPayFrom) {
-            guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
+            guard preparingRequest == nil, !returnToAmountReviewIfNeeded(rebindMethod: !hwSend.isActive) else { return }
             ensureSendAmountFromScannedInvoicesIfNeeded()
             walletSwitchContext = sendContext
         }
-        .onChange(of: sendContext) { _, context in
-            if context != walletSwitchContext {
+        .onChange(of: sendContext) {
+            if sendContext != walletSwitchContext {
                 walletSwitchContext = nil
             }
         }
@@ -444,6 +445,8 @@ struct SendConfirmationView: View {
             guard let context = walletSwitchContext, !Task.isCancelled, confirmationContext == context else { return }
             if context.walletType == .lightning {
                 await calculateTransactionFee()
+                guard !Task.isCancelled, confirmationContext == context else { return }
+                await calculateRoutingFee()
             } else {
                 await onSwitchToOnchainWallet(context: context)
             }
@@ -1684,10 +1687,20 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func returnToAmountReviewIfNeeded() -> Bool {
+    private func returnToAmountReviewIfNeeded(rebindMethod: Bool = false) -> Bool {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.pricing.conversion != nil else { return false }
         let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
-        guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()) else {
+        let meetsMinimum = app.selectedWalletToPayFrom != .lightning ||
+            terms.map { $0.amount.atomic >= (app.lnurlPayData?.minSendableSat ?? 0) } == true
+        if rebindMethod, !app.paykitUsesUsdt, !isSubmittingPayment,
+           let previous = app.paykitPaymentTerms, previous.amount.asset == .btc, app.paykitReviewedAmount == previous.amount,
+           let terms, terms.amount.asset == .btc, terms.isValid(at: Date()), meetsMinimum
+        {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            wallet.sendAmountSats = terms.amount.atomic
+        }
+        guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()), meetsMinimum else {
             app.paykitPaymentTerms = nil
             app.paykitReviewedAmount = nil
             navigationPath = amountIsRoot ? [] : [.amount]
@@ -1715,7 +1728,8 @@ struct SendConfirmationView: View {
         guard app.contactPaymentContext?.incomingPaymentRequest != nil,
               app.selectedWalletToPayFrom == .onchain, !hwSend.isActive,
               wallet.selectedFeeRateSatsPerVByte != nil, wallet.selectedUtxos == nil,
-              let context = confirmationContext
+              let context = confirmationContext,
+              settings.coinSelectionMethod != .manual || manualCoinsRequestedContext != context
         else { return false }
         walletSwitchContext = context
         return true
@@ -1758,6 +1772,7 @@ struct SendConfirmationView: View {
                 do {
                     try await wallet.loadAvailableUtxos(isCurrentSend: isCurrentSend)
                     guard isCurrentSend() else { return }
+                    manualCoinsRequestedContext = context
                     navigationPath.append(.utxoSelection)
                 } catch {
                     guard isCurrentSend(), !(error is CancellationError) else { return }
