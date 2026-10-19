@@ -30,15 +30,19 @@ struct QR: View {
             }
 
             if let imageAsset {
-                ZStack {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 68, height: 68)
+                GeometryReader { geometry in
+                    let size = min(68, min(geometry.size.width, geometry.size.height) * 0.2)
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: size, height: size)
 
-                    Image(imageAsset)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 50, height: 50)
+                        Image(imageAsset)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: size * 50 / 68, height: size * 50 / 68)
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                 }
             }
         }
