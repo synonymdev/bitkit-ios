@@ -134,8 +134,10 @@ correctly prevents it from entering the presentation queue.
 The USDT history step in `request-summary.xml` requires both instances opted in, a payer funded with
 local test USDT, and two completed requests (one USD-denominated and one BTC-denominated), each paid
 in USDT with a verified receipt. Establish these using the local USDT fixture before the journey and
-record each payment's exact USDT amount from the payer's activity. Compare the receipt with that
-amount, preserving all its decimals; the two payments need not have equal amounts. The iOS layout
+record the USD request amount and each payer activity detail's rounded Payment value. The USD
+receipt matches the request amount. The BTC request's receipt retains up to six decimals and rounds
+to that Payment value (shown as less than 0.01 below one cent), not the fee-inclusive activity total.
+The two payments need not have equal amounts. The iOS layout
 check uses a supported 375-point-wide device with enlarged Dynamic Type, while Android uses 320 dp.
 `contact-request-or-pay.xml` also needs a third linked contact that publishes no payment endpoints,
 so the failure and retry steps are reproducible.
