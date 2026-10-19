@@ -527,6 +527,7 @@ enum PaykitAllowanceFixtures {
         counterparty: String = counterpartyKey,
         amount: String = "0.00001",
         asset: String = PaykitIssuerInterop.bitcoinAsset,
+        conversion: Paykit.PaymentConversion? = nil,
         createdAt: String = "2026-09-24T11:00:00Z"
     ) throws -> PaykitPaymentRequest {
         let record = try Paykit.PaymentRequestRecord(
@@ -549,7 +550,7 @@ enum PaykitAllowanceFixtures {
                 acceptedPaymentEndpointIdentifiers: [lightningIdentifier],
                 paymentEndpoints: nil,
                 requiredAppId: "bitkit",
-                conversion: nil,
+                conversion: conversion,
                 paymentDeadline: nil,
                 metadata: Paykit.PrivateJsonObject(text: "{}")
             ),

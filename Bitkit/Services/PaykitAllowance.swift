@@ -290,8 +290,8 @@ enum PaykitAllowanceCapacity {
 }
 
 extension PaykitPaymentRequest {
-    /// Allowances cover only requests priced in bitcoin; a USD or USDT request always asks.
-    var isAllowancePayable: Bool { amount.asset == .btc }
+    /// Allowances cover only requests priced in bitcoin without a conversion; any other request always asks.
+    var isAllowancePayable: Bool { amount.asset == .btc && pricing.conversion == nil }
 
     /// The requested amount in sats, read only for a request where `isAllowancePayable` holds.
     var allowanceAmountSats: UInt64 { amount.atomic }

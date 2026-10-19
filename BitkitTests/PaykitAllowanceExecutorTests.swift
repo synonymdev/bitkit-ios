@@ -633,6 +633,10 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(manager.coversRequest(usdRequest))
         let isHandling = await manager.isAutomaticallyHandling(usdRequest)
         XCTAssertFalse(isHandling, "A USD request reaches the Send sheet instead of waiting for an automatic payment")
+
+        let convertedRequest = try Fixtures.paymentRequest(conversion: .fixed(rates: [.init(asset: "usdt", value: "100000")]))
+        XCTAssertFalse(convertedRequest.isAllowancePayable, "A bitcoin request that offers a conversion stays manual")
+        XCTAssertFalse(manager.coversRequest(convertedRequest))
     }
 
     @MainActor
