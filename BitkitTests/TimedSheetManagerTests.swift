@@ -116,6 +116,28 @@ final class TimedSheetManagerTests: XCTestCase {
         add(attachment)
     }
 
+    func testIntroAppearanceSurvivesSettingsBackupAndOldBackupsRemainUnseen() throws {
+        snapshotAppDefaultsDomain()
+        let settings = SettingsViewModel.shared
+        XCTAssertTrue(SettingsBackupConfig.settingsKeys.contains("hasSeenUsdtIntro"))
+
+        for seen in [false, true] {
+            settings.usdtPreference = .undecided
+            settings.hasSeenUsdtIntro = seen
+            let data = try JSONSerialization.data(withJSONObject: settings.getSettingsDictionary())
+            let backup = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(backup["hasSeenUsdtIntro"] as? Bool, seen)
+
+            settings.hasSeenUsdtIntro = !seen
+            settings.restoreSettingsDictionary(backup)
+            XCTAssertEqual(settings.hasSeenUsdtIntro, seen)
+            XCTAssertEqual(settings.usdtPreference, .undecided)
+        }
+
+        settings.restoreSettingsDictionary([UsdtPreference.key: UsdtPreference.undecided.rawValue])
+        XCTAssertFalse(settings.hasSeenUsdtIntro)
+    }
+
     func testUnseenUpgradeRemainsEligibleButSeenOrDecidedIntroDoesNot() async {
         snapshotAppDefaultsDomain()
         let settings = SettingsViewModel.shared
