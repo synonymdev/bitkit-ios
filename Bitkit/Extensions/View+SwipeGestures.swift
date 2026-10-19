@@ -14,8 +14,10 @@ extension View {
     // MARK: Segmented tab swipes
 
     /// Swipe left/right to move between adjacent tabs (same order as `T.allCases` / `SegmentedControl`).
+    /// Pass `tabs` when the control shows only some cases, in its display order.
     func swipeSegmentedTabs<T: Hashable & CaseIterable>(
         selection: Binding<T>,
+        tabs visibleTabs: [T]? = nil,
         minimumDragDistance: CGFloat = 20,
         swipeThreshold: CGFloat = 50,
         animation: Animation = .easeInOut(duration: 0.2)
@@ -27,7 +29,7 @@ extension View {
                     let verticalAmount = value.translation.height
                     guard abs(horizontalAmount) > abs(verticalAmount) else { return }
 
-                    let tabs = Array(T.allCases)
+                    let tabs = visibleTabs ?? Array(T.allCases)
                     guard let currentIndex = tabs.firstIndex(of: selection.wrappedValue) else { return }
 
                     if horizontalAmount < -swipeThreshold, currentIndex < tabs.count - 1 {

@@ -62,6 +62,7 @@ struct UsdtReceiveView: View {
                     onEdit: { draftAmount = amount; page = .amount },
                     onNetwork: { page = .networks }
                 )
+                .swipeSegmentedTabs(selection: Binding(get: { .usdt }, set: onSelectTab), tabs: tabs.map(\.tab))
             case .networks:
                 networkList
             case .amount:
