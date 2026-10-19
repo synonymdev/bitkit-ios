@@ -335,10 +335,26 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
                          fee: nil, isIncoming: false, status: .failed, timestamp: 1)
         }
         XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
+        let entered = expectation(description: "reconciliation resolving owner")
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        let reconciliation = Task {
+            await service.reconcile(context: {
+                entered.fulfill()
+                for await _ in gate.stream {
+                    break
+                }
+                return (owner, self.identity)
+            }, storedTransfer: { _ in nil }, paymentProof: { _, _ in nil }, submitProof: { _ in false },
+            paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+        }
+        await fulfillment(of: [entered], timeout: 2)
         let quote = UsdtQuote(bridgeProvider: nil, id: "retry", recipient: owner, destination: .arbitrum,
                               amount: 50000, receivedAmount: 50000, maximumFee: 100, expiresAt: UInt64(Date().timeIntervalSince1970) + 100)
         do {
             try await service.send(quote, context: ContactPaymentContext(publicKey: requestId.counterparty), paymentTerms: nil, wallet: wallet) {
+                gate.continuation.yield(())
+                await reconciliation.value
                 XCTAssertEqual(try service.paymentProtection(identity: self.identity).inFlight, [requestId])
                 throw CancellationError()
             }
@@ -346,6 +362,53 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         } catch is CancellationError {}
         XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
         XCTAssertFalse(service.attempts.first { $0.quoteId == "retry" }?.paymentStarted ?? true)
+    }
+
+    @MainActor
+    func testInterruptedReconciliationPreservesOnlyCurrentOwnerFailureEvidence() async throws {
+        for reason in ["missing", "error", "cancel", "restore", "wipe", "other-wallet", "pending"] {
+            let service = PaykitUsdtPaymentService()
+            var attempt = unsubmittedUsdtAttempt()
+            attempt.paymentStarted = true
+            let requestId = try XCTUnwrap(attempt.requestId)
+            try saveUsdtAttempts([attempt])
+            await reconcileUsdt(service) { id in UsdtTransfer(
+                sender: nil,
+                id: id,
+                txHash: nil,
+                userOperationHash: nil,
+                bridgeGuid: nil,
+                orchestra: nil,
+                recipient: "recipient",
+                destination: .arbitrum,
+                amount: 50000,
+                receivedAmount: 50000,
+                fee: nil,
+                isIncoming: false,
+                status: .failed,
+                timestamp: 1
+            ) }
+            XCTAssertEqual(service.resumableRequests, [requestId])
+            await service.reconcile(context: {
+                switch reason {
+                case "missing": return nil
+                case "error": throw PaykitPaymentStateBackupTestError.restoreFailed
+                case "cancel": throw CancellationError()
+                case "restore":
+                    try service.restoreBackup(service.backupSnapshot())
+                    return nil
+                case "wipe":
+                    service.resetForWipe()
+                    return nil
+                case "other-wallet": return ("another-wallet", self.identity)
+                default: return ("wallet", self.identity)
+                }
+            }, storedTransfer: { id in UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                                                    recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                                                    fee: nil, isIncoming: false, status: .pending, timestamp: 1) }, paymentProof: { _, _ in nil },
+            submitProof: { _ in false }, paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+            XCTAssertEqual(service.resumableRequests.contains(requestId), ["missing", "error", "cancel"].contains(reason), reason)
+        }
     }
 
     @MainActor
