@@ -223,6 +223,14 @@ required to run the suite.
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
 
+`home/timed-reminders-do-not-interrupt.xml` pairs with synonymdev/bitkit-android#1575. Use a
+PIN-disabled wallet and an eligible reminder; the backup reminder works without USDT configuration.
+The file name, journey name and actions match Android. Android resumes Home after permission prompts
+and background/foreground; iOS instead uses primary-screen appearance/disappearance and explicit
+rechecks when app-update information arrives. A recheck while a sheet is open does not start a timer,
+and closing a sheet alone does not reschedule the queue. This journey covers those shared observable
+outcomes, not parity between the two scheduling implementations.
+
 Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
 spending maximum differently, `cjit-notifications` because the notification copy differs, and
 `pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
