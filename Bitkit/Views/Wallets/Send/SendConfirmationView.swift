@@ -389,7 +389,7 @@ struct SendConfirmationView: View {
         }
     }
 
-    private var confirmationContent: some View {
+    private var confirmationPresentation: some View {
         confirmationLayout
             .navigationBarHidden(true)
             .padding(.horizontal, 16)
@@ -398,6 +398,10 @@ struct SendConfirmationView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(preparingRequest == nil && app.contactPaymentContext?
                 .incomingPaymentRequest == nil ? "SendConfirm" : "PaymentRequestConfirm")
+    }
+
+    private var confirmationPreparation: some View {
+        confirmationPresentation
             .task(id: preparingRequest?.id) {
                 // A retiring confirmation must not adopt a replacement sheet's payment state.
                 if presentationID == nil {
@@ -440,6 +444,10 @@ struct SendConfirmationView: View {
                 ensureSendAmountFromScannedInvoicesIfNeeded()
                 walletSwitchContext = sendContext
             }
+    }
+
+    private var confirmationContent: some View {
+        confirmationPreparation
             .onChange(of: sendContext) {
                 if sendContext != walletSwitchContext {
                     walletSwitchContext = nil
