@@ -104,6 +104,7 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
             if !stacked { Spacer(minLength: 0) }
             amount()
         }
+        .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
     }
 }
 

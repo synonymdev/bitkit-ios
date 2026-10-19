@@ -56,6 +56,18 @@ final class ComponentSizingTests: XCTestCase {
         }
     }
 
+    func testDepositRowsUseTheFullAvailableWidthWithLargeText() {
+        for network in ["polygon", "tron"] {
+            let deposit = UsdtDeposit(id: "deposit", network: network, asset: "USDT", amount: 1_000_000,
+                                      sourceTx: "0x" + String(repeating: "ab", count: 32), status: "pending", code: nil, refundTx: nil)
+            let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
+            for width: CGFloat in [280, 320] {
+                let controller = UIHostingController(rootView: row.environment(\.dynamicTypeSize, .accessibility1))
+                XCTAssertEqual(controller.sizeThatFits(in: CGSize(width: width, height: 10000)).width, width, accuracy: 1)
+            }
+        }
+    }
+
     private func height(of view: some View, width: CGFloat, size: DynamicTypeSize) -> CGFloat {
         let controller = UIHostingController(rootView: view.environment(\.dynamicTypeSize, size))
         return controller.sizeThatFits(in: CGSize(width: width, height: 10000)).height
