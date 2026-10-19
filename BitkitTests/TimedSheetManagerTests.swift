@@ -79,6 +79,28 @@ final class TimedSheetManagerTests: XCTestCase {
         XCTAssertEqual(sheets.activeSheetConfiguration?.id, .usdtIntro)
     }
 
+    func testDismissalDoesNotAdvanceOtherIntrosWhenUsdtIsIneligible() async throws {
+        let sheets = SheetViewModel()
+        let manager = TimedSheetManager(sheetViewModel: sheets, checkDelay: 0.01)
+        defer { manager.onPrimaryScreenExited() }
+        let quickpay = expectation(description: "QuickPay waits for home entry")
+        manager.registerSheet(TestTimedSheet(onShown: {}, shouldShow: { false }))
+        manager.registerSheet(TestTimedSheet(id: .quickpay, onShown: { quickpay.fulfill() }))
+        sheets.showSheet(.receive)
+        manager.onPrimaryScreenEntered()
+        try await Task.sleep(for: .milliseconds(40))
+
+        sheets.hideSheet()
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertNil(sheets.activeSheetConfiguration)
+        XCTAssertEqual(manager.getQueueStatus().count, 2)
+
+        manager.onPrimaryScreenExited()
+        manager.onPrimaryScreenEntered()
+        await fulfillment(of: [quickpay], timeout: 1)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .quickpay)
+    }
+
     func testIntroRecordsSeenOnlyWhenItsViewAppears() async throws {
         snapshotAppDefaultsDomain()
         let settings = SettingsViewModel.shared
@@ -173,13 +195,17 @@ final class TimedSheetManagerTests: XCTestCase {
 }
 
 private final class TestTimedSheet: TimedSheetItem {
-    let id = SheetID.usdtIntro
+    let id: SheetID
     let priority = TimedSheetPriority.medium
-    let sheetItem: any SheetItem = UsdtIntroSheetItem()
+    var sheetItem: any SheetItem {
+        id == .usdtIntro ? UsdtIntroSheetItem() : QuickpaySheetItem()
+    }
+
     var eligibility: () async -> Bool
     private let shown: () -> Void
 
-    init(onShown: @escaping () -> Void, shouldShow: @escaping () async -> Bool = { true }) {
+    init(id: SheetID = .usdtIntro, onShown: @escaping () -> Void, shouldShow: @escaping () async -> Bool = { true }) {
+        self.id = id
         shown = onShown
         eligibility = shouldShow
     }

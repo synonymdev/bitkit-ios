@@ -164,7 +164,12 @@ class TimedSheetManager: ObservableObject {
             currentSheet.onDismissed()
             currentlyShowingSheet = nil
         }
-        reevaluate()
+        guard isOnPrimaryScreen, let intro = queuedSheets.first(where: { $0.id == .usdtIntro }) else { return }
+        checkTask?.cancel()
+        checkTask = Task { [weak self] in
+            guard await intro.shouldShow(), !Task.isCancelled else { return }
+            self?.reevaluate()
+        }
     }
 
     /// (Re)start the settle timer that runs the queue check after a short delay.
