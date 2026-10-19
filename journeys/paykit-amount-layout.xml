@@ -1,5 +1,5 @@
 <journey name="paykit amount layout">
-  <description>Use an onboarded wallet with an existing test contact and a current BTC/USD rate. Verify request denomination layout without sending or publishing a request.</description>
+  <description>Use an onboarded wallet with USDT enabled, an existing test contact and a current BTC/USD rate. Verify request denomination layout without sending or publishing a request.</description>
   <actions>
     <action>Open Payment Requests and create a request for the test contact. Open Amount.</action>
     <action>Select USD and enter 1.50. Verify the amount is leading-aligned near the header, the BTC/USD controls are trailing-aligned directly below it, and a divider separates them from the keypad.</action>
