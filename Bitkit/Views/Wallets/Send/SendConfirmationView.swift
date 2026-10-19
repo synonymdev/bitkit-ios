@@ -403,6 +403,7 @@ struct SendConfirmationView: View {
             if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                 showManualConfirmation(reason: "not automatic when opened")
             }
+            if prepareRequestCoinsIfNeeded() { return }
             await calculateTransactionFee()
             await calculateRoutingFee()
             guard !Task.isCancelled else { return }
@@ -419,7 +420,7 @@ struct SendConfirmationView: View {
             }
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
-            guard preparingRequest == nil else { return }
+            guard preparingRequest == nil, !prepareRequestCoinsIfNeeded() else { return }
             Task {
                 await calculateTransactionFee()
             }
@@ -1710,12 +1711,30 @@ struct SendConfirmationView: View {
         }
     }
 
+    private func prepareRequestCoinsIfNeeded() -> Bool {
+        guard app.contactPaymentContext?.incomingPaymentRequest != nil,
+              app.selectedWalletToPayFrom == .onchain, !hwSend.isActive,
+              wallet.selectedFeeRateSatsPerVByte != nil, wallet.selectedUtxos == nil,
+              let context = confirmationContext
+        else { return false }
+        walletSwitchContext = context
+        return true
+    }
+
     @MainActor
     private func onSwitchToOnchainWallet(context: ConfirmationContext) async {
         func isCurrentSend() -> Bool {
             !Task.isCancelled && confirmationContext == context
         }
         guard isCurrentSend(), context.walletType == .onchain, context.address != nil, context.hardwareWalletID == nil else { return }
+
+        func returnToFundingSelection() {
+            if app.contactPaymentContext?.incomingPaymentRequest == nil || app.scannedLightningInvoice != nil {
+                app.selectedWalletToPayFrom = .lightning
+            } else {
+                navigationPath = amountIsRoot ? [] : [.amount]
+            }
+        }
 
         if wallet.selectedSpeed == .instant {
             wallet.selectedSpeed = settings.defaultTransactionSpeed
@@ -1727,7 +1746,7 @@ struct SendConfirmationView: View {
             } catch {
                 guard isCurrentSend(), !(error is CancellationError) else { return }
                 Logger.error("Failed to set fee rate when switching to on-chain: \(error)")
-                app.selectedWalletToPayFrom = .lightning
+                returnToFundingSelection()
                 app.toast(type: .error, title: t("other__try_again"))
                 return
             }
@@ -1743,7 +1762,7 @@ struct SendConfirmationView: View {
                 } catch {
                     guard isCurrentSend(), !(error is CancellationError) else { return }
                     Logger.error("Failed to load UTXOs when switching to on-chain: \(error)")
-                    app.selectedWalletToPayFrom = .lightning
+                    returnToFundingSelection()
                     showManualCoinSelectionError()
                 }
                 return
@@ -1754,7 +1773,7 @@ struct SendConfirmationView: View {
             } catch {
                 guard isCurrentSend(), !(error is CancellationError) else { return }
                 Logger.error("Failed to set UTXO selection when switching to on-chain: \(error)")
-                app.selectedWalletToPayFrom = .lightning
+                returnToFundingSelection()
                 app.toast(
                     type: .error,
                     title: t("other__try_again"),
