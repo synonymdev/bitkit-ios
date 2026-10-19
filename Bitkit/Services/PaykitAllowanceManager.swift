@@ -198,10 +198,7 @@ final class PaykitAllowanceManager {
 
     func accept(_ entry: PaykitAllowanceEntry) async throws {
         try await respond(to: entry) { allowance in
-            // As the payer, only accept terms with both ceilings this wallet shows and enforces.
-            guard let proposalStreamItemId = allowance.proposalStreamItemId,
-                  allowance.role == .allowee || allowance.hasAmountCeiling
-            else { throw PaykitAllowanceError.unavailable }
+            guard let proposalStreamItemId = allowance.proposalStreamItemId else { throw PaykitAllowanceError.unavailable }
             return try await self.sdk.acceptAllowance(
                 counterparty: allowance.counterparty,
                 allowanceId: allowance.allowanceId,

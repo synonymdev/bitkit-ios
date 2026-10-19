@@ -52,6 +52,9 @@ struct PaykitAllowance: Identifiable, Hashable {
         else { return nil }
 
         let monthly = terms.periodLimits().first { Self.isMonthly($0.period()) }
+        // This wallet pays only under limits it can show: terms without a per-payment and a monthly cap are dropped.
+        let isBounded = terms.perPaymentAmount() != nil && monthly?.amountLimit() != nil
+        if role == .allower, !isBounded { return nil }
         id = ID(counterparty: record.counterparty, allowanceId: record.allowanceId)
         self.role = role
         lifecycleState = record.state
@@ -120,11 +123,6 @@ struct PaykitAllowance: Identifiable, Hashable {
         case .proposed: isProposedByMe
         default: false
         }
-    }
-
-    /// A per-payment maximum and an anchored monthly amount, the ceilings Bitkit shows and checks before paying.
-    var hasAmountCeiling: Bool {
-        perPaymentMaxSats != nil && monthlyLimitSats != nil && monthlyAnchor != nil
     }
 
     var isAnswerable: Bool {

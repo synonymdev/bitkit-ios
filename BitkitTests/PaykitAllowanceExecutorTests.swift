@@ -783,7 +783,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     // MARK: Helpers
 
     @MainActor
-    func testReceivedRequestWithoutAmountCeilingCannotBeAcceptedOrAutoPaid() async throws {
+    func testReceivedRequestWithoutAmountCeilingIsDropped() async throws {
         let harness = AllowanceHarness()
         // Valid for the SDK: an expiry alone satisfies "an amount ceiling or expiry".
         let uncapped = try Paykit.AllowanceTerms(
@@ -798,14 +798,10 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         await harness.sdk.setRecords([Fixtures.record(state: .proposed, terms: uncapped, proposedByMe: false)])
         let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now }, canPayNow: { true })
         await manager.activate(identity: Fixtures.identityKey)
-        let entry = try XCTUnwrap(manager.entries.first)
-        XCTAssertEqual(entry.role, .allower)
 
-        try? await manager.accept(entry)
-
-        XCTAssertFalse(harness.log.entries.contains("acceptAllowance"))
-        let accepted = try XCTUnwrap(PaykitAllowance(record: Fixtures.record(terms: uncapped, proposedByMe: false)))
-        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5_000_000, allowance: accepted, attempts: [], now: Fixtures.now))
+        XCTAssertEqual(manager.entries, [])
+        XCTAssertNil(PaykitAllowance(record: Fixtures.record(terms: uncapped, proposedByMe: false)))
+        XCTAssertNotNil(PaykitAllowance(record: Fixtures.record(localRole: .allowee, terms: uncapped, proposedByMe: false)))
     }
 
     @MainActor
