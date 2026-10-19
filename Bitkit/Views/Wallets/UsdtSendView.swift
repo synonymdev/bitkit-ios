@@ -196,6 +196,7 @@ struct UsdtSendView: View {
                     await usdt.waitForTransfer(quote.id)
                 }
                 if submittedStatus == .confirmed {
+                    Task { await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt) }
                     paymentComplete = true
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 }
@@ -203,6 +204,7 @@ struct UsdtSendView: View {
             }
             while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
                 await usdt.refresh()
+                guard [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) else { break }
                 do { try await Task.sleep(for: .seconds(10)) } catch { return }
             }
             await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)

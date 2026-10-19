@@ -9045,6 +9045,12 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         return processReports
     }
 
+    func processOutboundPrivateMessages(
+        counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
+    ) async throws -> OutboundPrivateSendReport {
+        try await processOutboundPrivateMessages(counterparty: counterparty, priority: priority)
+    }
+
     func processOutboundPrivateMessages(counterparty: String) async throws -> OutboundPrivateSendReport {
         processedCounterparties.append(counterparty)
         try await processMessages(counterparty: counterparty)

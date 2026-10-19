@@ -1323,10 +1323,21 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
             kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: preimage
         )])
+        await sdk.setDeliveryFailure(true)
+        await service.reconcile()
+        await sdk.setDeliveryFailure(false)
+        // A recovered local record must retry the durable SDK queue without submitting again.
+        await store.seed([PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id,
+            paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning, paymentStarted: true, paymentIdentifier: paymentHash, proofData: preimage
+        )])
         await service.reconcile()
 
         let submissionCount = await sdk.submissionCount()
         let remainingProofs = await store.snapshot()
+        let recipients = await sdk.deliveryRecipients()
+        XCTAssertEqual(recipients, [counterparty, counterparty])
         XCTAssertEqual(submissionCount, 0)
         XCTAssertTrue(remainingProofs.isEmpty)
     }
@@ -1610,9 +1621,15 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(persistedProof?.paymentIdentifier, txid)
         XCTAssertEqual(persistedProof?.proofData, txid)
         XCTAssertEqual(persistedProof?.onchainAcceptanceVerified, true)
+        let reconciliation = Task { await service.reconcile() }
+        let countDuringSubmission = await sdk.submissionCount()
+        XCTAssertEqual(countDuringSubmission, 1)
 
         await sdk.resumeSubmission()
         await completionTask.value
+        await reconciliation.value
+        let countAfterReconciliation = await sdk.submissionCount()
+        XCTAssertEqual(countAfterReconciliation, 1)
     }
 
     func testAcceptedOnchainCompletionWaitsForOriginalIdentityBeforeProofDelivery() async throws {
@@ -3291,6 +3308,8 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var submissions: [PaymentProofSubmission] = []
     private var shouldFailSubmission = false
     private var privateMessageProcessCallCount = 0
+    private var shouldFailDelivery = false
+    private var deliveredCounterparties: [String] = []
     private var identityStatusCalls = 0
     private var isIdentityAvailable = true
     private var shouldSuspendIdentityStatus = false
@@ -3364,9 +3383,22 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         paymentRequestFetchContinuation = nil
     }
 
-    func processPendingPrivateMessages() -> [OutboundPrivateCounterpartySendReport] {
+    func processOutboundPrivateMessages(
+        counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
+    ) throws -> OutboundPrivateSendReport {
+        guard PubkyPublicKeyFormat.matches(identity, expectedIdentity) else { throw PubkyServiceError.identityChanged }
         privateMessageProcessCallCount += 1
-        return []
+        deliveredCounterparties.append(counterparty)
+        if shouldFailDelivery { throw PaymentProofSdkMockError.submission }
+        return OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
+    }
+
+    func setDeliveryFailure(_ value: Bool) {
+        shouldFailDelivery = value
+    }
+
+    func deliveryRecipients() -> [String] {
+        deliveredCounterparties
     }
 
     func submitPaymentProof(

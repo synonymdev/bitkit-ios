@@ -162,7 +162,9 @@ struct PaykitPaymentProofStore: PaykitPaymentProofStoring {
 protocol PaykitPaymentProofSdkHandling: Sendable {
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
-    func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
+    func processOutboundPrivateMessages(
+        counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
+    ) async throws -> Paykit.OutboundPrivateSendReport
     func submitPaymentProof(
         counterparty: String,
         paymentRequestId: String,
@@ -247,6 +249,7 @@ actor PaykitPaymentProofService {
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
     private let mutationLock = PaykitProofMutationLock()
+    private let submissionLock = PaykitProofMutationLock()
     private struct HardwareCompletionKey: Hashable {
         let identity: String
         let requestId: PaykitPaymentRequest.ID
@@ -1605,6 +1608,10 @@ actor PaykitPaymentProofService {
 
     @discardableResult
     private func submit(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
+        await submissionLock.withLock { await submitReady(pendingProof) }
+    }
+
+    private func submitReady(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
         guard !pendingProof.hasUnsupportedOnchainWallet ||
             pendingProof.onchainWalletId.map({ hardwareTransactionLookup.hasWallet(walletId: $0) }) == true,
             let proofData = pendingProof.proofData,
@@ -1644,11 +1651,15 @@ actor PaykitPaymentProofService {
                     )
                 )
                 logInfo("Queued a Paykit payment proof for private delivery")
-                do {
-                    _ = try await sdk.processPendingPrivateMessages()
-                } catch {
-                    logWarning("Paykit payment proof remains queued for private delivery: \(error)")
-                }
+            }
+            do {
+                _ = try await sdk.processOutboundPrivateMessages(
+                    counterparty: pendingProof.requestId.counterparty,
+                    priority: .interactive,
+                    expectedIdentity: pendingProof.identity
+                )
+            } catch {
+                logWarning("Paykit payment proof remains queued for private delivery: \(error)")
             }
             if pendingProof.kind != .usdt {
                 await removeRequestProofs(pendingProof)
