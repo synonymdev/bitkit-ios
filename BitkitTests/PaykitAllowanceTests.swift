@@ -246,6 +246,27 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertTrue(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(), attempts: attempts, now: Fixtures.now))
     }
 
+    func testAllowerTermsWithADustPerPaymentMaximumAreDropped() throws {
+        let terms = try Paykit.AllowanceTerms(
+            asset: PaykitIssuerInterop.bitcoinAsset,
+            perPaymentAmount: Paykit.AllowanceAmountRange(minimum: "0", maximum: "0.000000001"),
+            periodLimits: [
+                Paykit.AllowancePeriodLimit(
+                    amountLimit: "0.0005",
+                    paymentCountLimit: nil,
+                    period: Paykit.AllowancePeriod(kind: "anchored", every: 1, unit: "month", anchor: "2026-09-01T00:00:00Z")
+                ),
+            ],
+            lifetimeAmountLimit: nil,
+            activeFrom: nil,
+            expiresAt: nil,
+            allowedPaymentEndpointIdentifiers: [Fixtures.lightningIdentifier]
+        )
+
+        XCTAssertNil(PaykitAllowance(record: Fixtures.record(terms: terms, proposedByMe: false)))
+        XCTAssertNotNil(PaykitAllowance(record: Fixtures.record(localRole: .allowee, terms: terms, proposedByMe: false)))
+    }
+
     func testAutomaticLightningRoutingFeeIsCappedAtOnePercent() {
         XCTAssertEqual(PaykitAllowanceLivePayer.routeParameters(amountSats: 1000).maxTotalRoutingFeeMsat, 10000)
         XCTAssertEqual(PaykitAllowanceLivePayer.routeParameters(amountSats: 1).maxTotalRoutingFeeMsat, 10)

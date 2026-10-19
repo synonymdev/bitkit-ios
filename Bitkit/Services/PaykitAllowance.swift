@@ -52,16 +52,18 @@ struct PaykitAllowance: Identifiable, Hashable {
         else { return nil }
 
         let monthly = terms.periodLimits().first { Self.isMonthly($0.period()) }
-        // This wallet pays only under limits it can show: terms without a per-payment and a monthly cap are dropped.
-        let isBounded = terms.perPaymentAmount() != nil && monthly?.amountLimit() != nil
-        if role == .allower, !isBounded { return nil }
+        let perPaymentMaxSats = terms.perPaymentAmount().flatMap { Self.sats(fromBitcoinAmount: $0.maximum()) }
+        let monthlyLimitSats = monthly?.amountLimit().flatMap { Self.sats(fromBitcoinAmount: $0) }
+        let monthlyAnchor = monthly?.period().anchor().flatMap(PaykitAllowanceTime.parse)
+        // This wallet pays only under limits it can show: terms whose caps don't parse to sats with a monthly anchor are dropped.
+        if role == .allower, perPaymentMaxSats == nil || monthlyLimitSats == nil || monthlyAnchor == nil { return nil }
         id = ID(counterparty: record.counterparty, allowanceId: record.allowanceId)
         self.role = role
         lifecycleState = record.state
         isProposedByMe = record.proposalOutboundMessageId != nil
-        perPaymentMaxSats = terms.perPaymentAmount().flatMap { Self.sats(fromBitcoinAmount: $0.maximum()) }
-        monthlyLimitSats = monthly?.amountLimit().flatMap { Self.sats(fromBitcoinAmount: $0) }
-        monthlyAnchor = monthly?.period().anchor().flatMap(PaykitAllowanceTime.parse)
+        self.perPaymentMaxSats = perPaymentMaxSats
+        self.monthlyLimitSats = monthlyLimitSats
+        self.monthlyAnchor = monthlyAnchor
         activeFrom = terms.activeFrom().flatMap(PaykitAllowanceTime.parse)
         expiresAt = terms.expiresAt().flatMap(PaykitAllowanceTime.parse)
         allowedPaymentEndpointIdentifiers = terms.allowedPaymentEndpointIdentifiers()
