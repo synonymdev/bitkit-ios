@@ -332,26 +332,26 @@ struct PaymentRequestAmountView: View {
                         onBack: onBack
                     )
 
-                    if asset == .usd {
-                        NumberPadAmountText(value: usdtInputAmount(dollarAmount.isEmpty ? "0" : dollarAmount), symbol: "$")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
-                    } else {
+                    ZStack(alignment: .bottomLeading) {
                         NumberPadTextField(viewModel: amountViewModel, showEditButton: false, isFocused: true,
                                            testIdentifier: "\(testIdentifierPrefix)AmountField")
+                            .opacity(asset == .btc ? 1 : 0)
+                            .accessibilityHidden(asset != .btc)
+                        if asset == .usd {
+                            NumberPadAmountText(value: usdtInputAmount(dollarAmount.isEmpty ? "0" : dollarAmount), symbol: "$")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
+                        }
                     }
 
                     Spacer().frame(height: 16)
 
-                    HStack {
-                        Spacer(minLength: 0)
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) { amountActions }
-                                .fixedSize(horizontal: true, vertical: false)
-                            VStack(alignment: .trailing, spacing: 8) { amountActions }
+                    amountControls(showUnit: allowedAssets.contains(.btc))
+                        .hidden()
+                        .overlay(alignment: .topTrailing) {
+                            amountControls(showUnit: asset == .btc)
                         }
-                    }
-                    .padding(.bottom, 16)
+                        .padding(.bottom, 16)
 
                     if conversionError {
                         BodySText(t("wallet__payment_request_rate_unavailable"), textColor: .white64)
@@ -406,8 +406,19 @@ struct PaymentRequestAmountView: View {
         }
     }
 
+    private func amountControls(showUnit: Bool) -> some View {
+        HStack {
+            Spacer(minLength: 0)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { amountActions(showUnit: showUnit) }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .trailing, spacing: 8) { amountActions(showUnit: showUnit) }
+            }
+        }
+    }
+
     @ViewBuilder
-    private var amountActions: some View {
+    private func amountActions(showUnit: Bool) -> some View {
         HStack(spacing: 8) {
             ForEach(allowedAssets, id: \.self) { choice in
                 NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
@@ -425,7 +436,7 @@ struct PaymentRequestAmountView: View {
                 .accessibilityIdentifier("\(testIdentifierPrefix)Asset-\(choice.rawValue)")
             }
         }
-        if asset == .btc {
+        if showUnit {
             NumberPadActionButton(
                 text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                 imageName: "arrow-up-down", color: .brandAccent
