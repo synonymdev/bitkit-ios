@@ -810,6 +810,57 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerRetriesAFailedOfferAcceptanceAndAnnouncesItOnce() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setAcceptAllowanceError(AllowanceMockError.unsupported)
+
+        let failed = await manager.acceptOffersFromAllowers()
+
+        XCTAssertTrue(failed.isEmpty, "A failed accept is not announced")
+        XCTAssertEqual(manager.entries.first?.status(at: Fixtures.now), .awaitingMyAnswer, "The offer stays open for the next refresh")
+        XCTAssertNil(manager.proposalForPresentation(), "A failed offer still never opens the review sheet")
+
+        await harness.sdk.setAcceptAllowanceError(nil)
+        let accepted = await manager.acceptOffersFromAllowers()
+        let acceptedAgain = await manager.acceptOffersFromAllowers()
+
+        XCTAssertEqual(accepted.map(\.counterparty), [Fixtures.counterpartyKey])
+        XCTAssertTrue(acceptedAgain.isEmpty)
+        let acceptedIds = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIds, [Fixtures.walletAllowanceId])
+    }
+
+    @MainActor
+    func testManagerAcceptsAndAnnouncesOffersOnlyWhileTheSessionIsCurrent() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let paused = await manager.acceptOffersFromAllowers { false }
+
+        XCTAssertTrue(paused.isEmpty)
+        XCTAssertFalse(harness.log.entries.contains("acceptAllowance"), "No accept while the session is paused or gone")
+
+        var checks = 0
+        let endedDuringAccept = await manager.acceptOffersFromAllowers {
+            checks += 1
+            return checks == 1
+        }
+
+        XCTAssertTrue(endedDuringAccept.isEmpty, "An accept that outlived its session is not announced")
+        let acceptedIds = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIds, [Fixtures.walletAllowanceId])
+    }
+
+    @MainActor
     func testManagerLeavesAnAskFromTheAlloweeForTheReviewSheet() async throws {
         let harness = AllowanceHarness()
         // The proposer took the allowee role, so this wallet is the allower and pays: the user decides.
@@ -1273,6 +1324,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private var manualReservation: Paykit.PaymentAttemptDecision?
     private var beginDecision: Paykit.PaymentAttemptDecision?
     private var acceptError: Error?
+    private var acceptAllowanceError: Error?
     private(set) var acceptedAllowanceIds: [String] = []
     private(set) var evaluatedTrustedTimes: [String] = []
     private(set) var selections: [Paykit.AllowanceSelectionInput] = []
@@ -1319,6 +1371,10 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         acceptError = error
     }
 
+    func setAcceptAllowanceError(_ error: Error?) {
+        acceptAllowanceError = error
+    }
+
     func linkedPeers() async throws -> [LinkedPeerRecord] {
         log.append("linkedPeers")
         return peers
@@ -1348,6 +1404,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
+        if let acceptAllowanceError { throw acceptAllowanceError }
         guard let index = records.firstIndex(where: { $0.allowanceId == allowanceId })
         else { throw AllowanceMockError.unsupported }
         records[index].state = .accepted

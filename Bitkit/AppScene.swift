@@ -1423,7 +1423,9 @@ struct AppScene: View {
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
-            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers()
+            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers {
+                canRefresh() && pubkyProfile.automaticPaykitSession == session && !pubkyProfile.isDeletingProfile
+            }
             announceAcceptedAllowanceOffers(acceptedOffers)
             let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
             let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()

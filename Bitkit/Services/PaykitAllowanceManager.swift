@@ -228,9 +228,11 @@ final class PaykitAllowanceManager {
     }
 
     /// Accepts the offers that make this wallet the allowee, and returns the ones now active so the caller can tell the
-    /// user. A failed accept stays unanswered and is tried again on the next refresh.
-    func acceptOffersFromAllowers() async -> [PaykitAllowanceEntry] {
-        guard identity != nil, !isAcceptingOffers else { return [] }
+    /// user. A failed accept stays unanswered and is tried again on the next refresh. Stops, and returns nothing to
+    /// announce, once the identity it started with is gone or `canContinue` turns false.
+    func acceptOffersFromAllowers(canContinue: @MainActor () -> Bool = { true }) async -> [PaykitAllowanceEntry] {
+        guard let identity, !isAcceptingOffers else { return [] }
+        func isCurrent() -> Bool { self.identity == identity && canContinue() }
         let offers = entries.filter { entry in
             let answerable = entry.allowances.filter(\.isAnswerable)
             return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
@@ -241,6 +243,7 @@ final class PaykitAllowanceManager {
         defer { isAcceptingOffers = false }
         var accepted: [PaykitAllowanceEntry] = []
         for offer in offers {
+            guard isCurrent() else { return [] }
             do {
                 try await accept(offer)
                 accepted.append(offer)
@@ -248,10 +251,11 @@ final class PaykitAllowanceManager {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
             }
         }
-        return accepted
+        return isCurrent() ? accepted : []
     }
 
     private func respond(to entry: PaykitAllowanceEntry, _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord) async throws {
+        let initiatingIdentity = identity
         isWorking = true
         defer { isWorking = false }
         var respondedAny = false
@@ -261,7 +265,7 @@ final class PaykitAllowanceManager {
             try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard respondedAny else { throw PaykitAllowanceError.unavailable }
-        if let identity {
+        if let identity, identity == initiatingIdentity {
             let ids = entry.allowances.map(\.allowanceId)
             await executor.updateLocalState(identity: identity) { $0.presentedProposalIds.formUnion(ids) }
         }
