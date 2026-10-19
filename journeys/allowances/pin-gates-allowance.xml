@@ -1,0 +1,20 @@
+<journey name="PIN Gates Allowance">
+  <description>
+    With a PIN set and "Require PIN for payments" on, the payer's allowance actions ask for the same
+    PIN or biometric check as a payment: saving a new allowance, accepting a requested one and ending
+    one. Cancelling the check leaves the allowance unchanged. The payee's answers never ask, and
+    automatic payments under an Active allowance never prompt: the checked grant authorises them.
+  </description>
+  <actions>
+    <action>Launch the E2E Bitkit app on two instances with linked Paykit contacts, per set-and-accept.xml</action>
+    <action>On the payer instance, open Settings, Security, set a PIN, and turn on "Require PIN for payments" (id "EnablePinForPayments") with biometrics off</action>
+    <action>On the payer instance, open Subscriptions, the Allowances tab, choose the payee and set a $5 a payment, $50 a month allowance; tap Save (id "AllowanceSave")</action>
+    <action>Verify the PIN entry opens instead of the allowance being proposed; go back</action>
+    <action>Verify the Set Allowance sheet (id "SetAllowance") is still shown and the Allowances list has no row for the payee</action>
+    <action>Tap Save again, enter the correct PIN, and verify the sheet dismisses and the payee's row reads as waiting for an answer</action>
+    <action>On the payee instance, accept the allowance from its review sheet (id "AllowanceReview") and verify no PIN entry opens</action>
+    <action>On the payee instance, send the payer a one-time Payment Request for $2 and verify the payer pays it automatically with no PIN entry, per auto-pay-under-limit.xml</action>
+    <action>On the payer instance, open the payee's row, swipe "Swipe To End Allowance", go back from the PIN entry, and verify the detail (id "AllowanceDetail") still shows the swipe control and the row is still Active</action>
+    <action>Swipe again, enter the correct PIN, and verify the row reads "Ended"</action>
+  </actions>
+</journey>

@@ -4,6 +4,8 @@ Cover the Paykit allowance lifecycle between two Bitkit instances: the payer set
 contact, the payee accepts it, requests within the limits are paid without asking, a request above a
 limit falls back to the normal Payment Request sheet, and either side ends it. The restart journey
 pins the one rule that must never break: a payment interrupted mid-flight is never paid twice.
+The PIN journey checks that the payer's grant, accept and end ask for the payment PIN when the
+user requires one, while automatic payments never prompt.
 
 ## Setup
 
