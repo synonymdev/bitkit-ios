@@ -416,14 +416,15 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(navigation.path, [.confirm, .feeRate])
 
             navigation.path.removeLast()
-            try await navigation.waitForAppearance(.confirm)
             await fulfillment(of: [wallet.started], timeout: 3)
             guard wallet.preparationCount > 0 else { continue }
             wallet.resume()
             await fulfillment(of: [wallet.finished], timeout: 3)
-            try await Task.sleep(for: .milliseconds(100))
+            try await navigation.waitForAppearance(operation == .manualUtxos ? .utxoSelection : .confirm)
 
-            XCTAssertEqual(wallet.preparationCount, 1)
+            XCTAssertEqual(wallet.successfulCoinPreparations, 1)
+            // SwiftUI can restart a cancelled task while the navigation transition settles.
+            if wallet.preparationCount > 1 { XCTAssertTrue(wallet.wasCancelled) }
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
             if operation == .selection { XCTAssertNotNil(wallet.selectedUtxos) }
@@ -844,6 +845,7 @@ private final class ControlledSendWallet: WalletViewModel {
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var wasCancelled = false
     private(set) var preparationCount = 0
+    private(set) var successfulCoinPreparations = 0
     private(set) var selectedAlgorithm: CoinSelectionAlgorithm?
     private(set) var feeUtxos: [SpendableUtxo]?
     private(set) var routingAmounts: [UInt64?] = []
@@ -867,6 +869,7 @@ private final class ControlledSendWallet: WalletViewModel {
     override func loadAvailableUtxos(isCurrentSend: () -> Bool = { true }) async throws {
         try await suspend()
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        successfulCoinPreparations += 1
         availableUtxos = []
     }
 
@@ -879,6 +882,7 @@ private final class ControlledSendWallet: WalletViewModel {
         selectedAlgorithm = coinSelectionAlgorythm
         if operation == .selection { try await suspend() }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        successfulCoinPreparations += 1
         selectedUtxos = []
     }
 
