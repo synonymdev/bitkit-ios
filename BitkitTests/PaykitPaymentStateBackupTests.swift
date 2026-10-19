@@ -310,6 +310,54 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testUsdtProtectionRefreshesAfterDefiniteFailureWithoutHidingAnotherPeriod() async throws {
+        let period = PaykitBillingPeriod(startsAt: Date(timeIntervalSince1970: 1_800_000_000),
+                                         endsAt: Date(timeIntervalSince1970: 1_800_086_400))
+        let id = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "counterparty",
+                                         billingPeriodStartsAt: period.startsAt)
+        let attempt = PaykitUsdtPaymentService.Attempt(quoteId: "quote", wallet: "wallet", identity: identity,
+                                                       contact: id.counterparty, requestId: id, binding: nil,
+                                                       billingPeriod: period, paymentStarted: true)
+        let otherWallet = PaykitUsdtPaymentService.Attempt(quoteId: "other", wallet: "other-wallet", identity: identity,
+                                                           contact: id.counterparty, requestId: .init(
+                                                               paymentRequestId: "other",
+                                                               counterparty: id.counterparty
+                                                           ),
+                                                           binding: nil, billingPeriod: nil, paymentStarted: true)
+        let service = PaykitUsdtPaymentService()
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [attempt, otherWallet].map(PaykitUsdtStateBackup.Attempt.init), receipts: []))
+        var changes = 0
+        let observation = PaykitUsdtPaymentService.walletBackupDataChangedPublisher.sink { changes += 1 }
+        defer { observation.cancel() }
+        await reconcileUsdt(service, storedTransfer: { quoteId in
+            UsdtTransfer(sender: nil, id: quoteId, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                         recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                         fee: nil, isIncoming: false, status: .pending, timestamp: 1)
+        })
+        XCTAssertEqual(try service.paymentProtection(identity: identity).inFlight, [id])
+        let next = PaykitPaymentRequest.ID(paymentRequestId: id.paymentRequestId, counterparty: id.counterparty,
+                                           billingPeriodStartsAt: period.endsAt)
+        XCTAssertFalse(try service.paymentProtection(identity: identity).inFlight.contains(next))
+        changes = 0
+        await reconcileUsdt(service, storedTransfer: { quoteId in
+            UsdtTransfer(sender: nil, id: quoteId, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                         recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                         fee: nil, isIncoming: false, status: .failed, timestamp: 1)
+        })
+        XCTAssertGreaterThan(changes, 0)
+        XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
+        XCTAssertEqual(service.resumableRequests, [id])
+        changes = 0
+        await reconcileUsdt(service, storedTransfer: { quoteId in
+            XCTAssertEqual(try service.paymentProtection(identity: self.identity).inFlight, [id])
+            return UsdtTransfer(sender: nil, id: quoteId, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                                recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                                fee: nil, isIncoming: false, status: .failed, timestamp: 1)
+        })
+        XCTAssertGreaterThan(changes, 0)
+    }
+
+    @MainActor
     private func unsubmittedUsdtAttempt() -> PaykitUsdtPaymentService.Attempt {
         let id = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "counterparty")
         return PaykitUsdtPaymentService.Attempt(quoteId: "quote", wallet: "wallet", identity: identity, contact: id.counterparty,

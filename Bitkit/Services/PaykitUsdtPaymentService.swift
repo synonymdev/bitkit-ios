@@ -79,7 +79,10 @@ final class PaykitUsdtPaymentService {
     private var preparing = false
     private var stateGeneration = 0
     private var sending = false
-    private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = []
+    private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = [] {
+        didSet { if !reconciling, oldValue != resumableRequests { Self.stateChanged.send() } }
+    }
+
     private var releasedAttempts: [Attempt] = []
     private var boundRequestIds: Set<PaykitPaymentRequest.ID>?
 
@@ -199,7 +202,9 @@ final class PaykitUsdtPaymentService {
     {
         var inFlight = Set<PaykitPaymentRequest.ID>()
         var completed: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:]
-        for attempt in try load().attempts where PubkyPublicKeyFormat.matches(attempt.identity, identity) && !attempt.proofQueued {
+        for attempt in try load().attempts where PubkyPublicKeyFormat.matches(attempt.identity, identity) &&
+            (activeWallet == nil || attempt.wallet == activeWallet) && !attempt.proofQueued
+        {
             guard let id = attempt.requestId,
                   attempt.wallet != activeWallet || !PubkyPublicKeyFormat.matches(activeIdentity, identity) || !resumableRequests.contains(id)
             else { continue }
@@ -370,8 +375,14 @@ final class PaykitUsdtPaymentService {
     ) async {
         guard !reconciling, !sending, !preparing else { return }
         let generation = stateGeneration
+        let previousProtection = (activeWallet, activeIdentity, resumableRequests)
         reconciling = true
-        defer { reconciling = false }
+        defer {
+            reconciling = false
+            if !previousProtection.2.isEmpty || previousProtection != (activeWallet, activeIdentity, resumableRequests) {
+                Self.stateChanged.send()
+            }
+        }
         boundRequestIds = nil
         releasedAttempts = []
         resumableRequests = []
