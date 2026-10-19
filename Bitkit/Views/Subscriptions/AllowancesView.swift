@@ -371,7 +371,9 @@ struct AllowanceContactView: View {
 struct SetAllowanceView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
     @Environment(PaykitAllowanceManager.self) private var allowances
+    @State private var authorization = PaymentAuthorization()
 
     let contact: PubkyContact
     let onBack: () -> Void
@@ -444,6 +446,7 @@ struct SetAllowanceView: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("SetAllowance")
+        .paymentAuthorization(authorization)
     }
 
     private func save() async {
@@ -459,6 +462,7 @@ struct SetAllowanceView: View {
             perPaymentSats: perPaymentSats,
             monthlySats: monthlySats
         )
+        guard await authorization.authorize(settings: settings) else { return }
         do {
             try await allowances.propose(to: contact, limits: limits)
             onSaved()
@@ -579,7 +583,9 @@ struct AllowanceReviewView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var settings: SettingsViewModel
     @Environment(PaykitAllowanceManager.self) private var allowances
+    @State private var authorization = PaymentAuthorization()
 
     let entry: PaykitAllowanceEntry
 
@@ -634,6 +640,7 @@ struct AllowanceReviewView: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("AllowanceReview")
+        .paymentAuthorization(authorization)
         .task {
             // Another sheet's dismissal can close this one right after it opens; only a sheet the user saw counts.
             try? await Task.sleep(for: .seconds(1))
@@ -643,6 +650,10 @@ struct AllowanceReviewView: View {
     }
 
     private func respond(accept: Bool) async {
+        // Accepting as the payer grants spending power, like a payment.
+        if accept, entry.role == .allower {
+            guard await authorization.authorize(settings: settings) else { return }
+        }
         do {
             if accept {
                 try await allowances.accept(entry)
@@ -662,7 +673,9 @@ struct AllowanceDetailView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
     @Environment(PaykitAllowanceManager.self) private var allowances
+    @State private var authorization = PaymentAuthorization()
 
     let entry: PaykitAllowanceEntry
 
@@ -703,6 +716,9 @@ struct AllowanceDetailView: View {
                     accentColor: .purpleAccent,
                     isLoading: allowances.isWorking
                 ) {
+                    if current.role == .allower {
+                        guard await authorization.authorize(settings: settings) else { throw CancellationError() }
+                    }
                     do {
                         try await allowances.end(current)
                         sheets.hideSheet(reason: "Allowance ended")
@@ -717,6 +733,7 @@ struct AllowanceDetailView: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("AllowanceDetail")
+        .paymentAuthorization(authorization)
     }
 
     private var explanation: String {

@@ -344,6 +344,36 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(harness.log.entries.contains("failLightningPayment"))
     }
 
+    func testUncertainLightningSubmissionErrorKeepsTheReservation() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setLightningError(AllowanceMockError.unsupported)
+        await harness.payer.setLightningErrorIsDefinite(false)
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .started)
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.uncertain])
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .unknown)])
+    }
+
+    func testSettlementDuringTheSendIsNotReplacedBySent() async throws {
+        let harness = AllowanceHarness()
+        let gate = await harness.payer.holdLightning()
+        let request = try Fixtures.paymentRequest()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        let caller = Task { await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("payLightning") }
+        await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: true)
+        gate.open()
+        _ = await caller.value
+
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.succeeded])
+    }
+
     // MARK: Cancellation
 
     func testLightningPaymentStillStartsWhenItsCallerIsCancelledDuringTheSend() async throws {
@@ -419,6 +449,34 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .failed)])
         let listOutcomes = await harness.payer.paymentListOutcomes
         XCTAssertEqual(listOutcomes, [.definitePreBroadcastFailure])
+    }
+
+    func testOnchainSendErrorAfterAdmissionStaysUncertain() async throws {
+        let harness = AllowanceHarness(payment: AllowanceHarness.onchainPayment())
+        await harness.payer.setOnchainError(OnchainSendAttemptError.outcomeNotSaved)
+        let request = try Fixtures.paymentRequest()
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .started)
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .unknown)])
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.uncertain])
+    }
+
+    func testOnchainRequestStaysManualWhileAnEarlierSendIsUnresolved() async throws {
+        let harness = AllowanceHarness(payment: AllowanceHarness.onchainPayment())
+        await harness.payer.setOnchainSendBlocked(true)
+        let request = try Fixtures.paymentRequest()
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(harness.log.entries.contains("claimForExecution"))
+        XCTAssertFalse(harness.log.entries.contains("payOnchain"))
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [])
     }
 
     func testAcceptedOnchainPaymentWithoutSavedProofIsNotRecordedAsSucceeded() async throws {
@@ -1147,6 +1205,8 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     private var onchainResult: OnchainSendResult = .accepted(txid: AllowanceHarness.onchainTxid)
     private var onchainError: Error?
     private var onchainProofSaved = true
+    private var onchainSendBlocked = false
+    private var lightningErrorIsDefinite = true
     private(set) var callCount = 0
     private(set) var claimedRequestIds: [PaykitPaymentRequest.ID] = []
     private(set) var acceptanceIntents: [PaykitPaymentRequest.ID] = []
@@ -1187,6 +1247,19 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
 
     func setOnchainProofSaved(_ saved: Bool) {
         onchainProofSaved = saved
+    }
+
+    func setLightningErrorIsDefinite(_ definite: Bool) {
+        lightningErrorIsDefinite = definite
+    }
+
+    func setOnchainSendBlocked(_ blocked: Bool) {
+        onchainSendBlocked = blocked
+    }
+
+    func isOnchainSendBlocked() async -> Bool {
+        called("isOnchainSendBlocked")
+        return onchainSendBlocked
     }
 
     /// Holds `payLightning` until the returned gate opens, so a test can act while the send is in progress.
@@ -1256,7 +1329,7 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         called("markOnchainPaymentStarted")
     }
 
-    func payLightning(bolt11: String, sats: UInt64?) async throws {
+    func payLightning(_ request: PaykitPaymentRequest, bolt11: String, sats: UInt64?) async throws {
         called("payLightning")
         lightningPayments.append(LightningPayment(bolt11: bolt11, sats: sats))
         if let lightningGate {
@@ -1284,8 +1357,9 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         return onchainProofSaved
     }
 
-    func failLightningPayment(paymentHash: String) async {
+    func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         called("failLightningPayment")
+        return lightningErrorIsDefinite
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {

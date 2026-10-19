@@ -523,9 +523,10 @@ extension PrivatePaykitService {
         else { return nil }
 
         let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersion
-        let prepared = try await PaykitSdkService.shared.prepareAndResolvePrivateContactPayment(
+        // Resolve through the request, as the manual flow does, so its required app and bound destination apply.
+        let prepared = try await PaykitSdkService.shared.prepareAndResolvePrivatePaymentRequest(
             counterparty: publicKey,
-            amount: PaymentAmountContext(value: request.amountValue, asset: PaykitIssuerInterop.bitcoinAsset),
+            paymentRequestId: request.paymentRequestId,
             afterPrivatePaymentListVersion: consumedVersion
         )
         if prepared.resolution.state == .recoveryPending || prepared.resolution.status == .waitingForUpdatedPaymentList {
@@ -533,7 +534,8 @@ extension PrivatePaykitService {
             schedulePrivatePaymentRecovery(for: publicKey)
             throw PaykitAllowanceError.paymentListPending
         }
-        guard let paymentListVersion = prepared.resolution.privatePaymentListVersion else { return nil }
+        // Request-bound endpoints carry no payment list version, so there is no list to consume for them.
+        let paymentListVersion = prepared.resolution.privatePaymentListVersion
 
         let eligible = Set(eligibleIdentifiers).intersection(request.acceptedPaymentEndpointIdentifiers)
         let candidates = resolvedEndpoints(from: prepared.resolution).filter {
