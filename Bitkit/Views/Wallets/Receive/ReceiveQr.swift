@@ -128,7 +128,8 @@ struct ReceiveQr: View {
     }
 
     /// A page of the receive `TabView`. The wrap pages sit before the first and after the last tab, so a swipe past
-    /// either end pages on and then selects the tab at the other end.
+    /// either end pages on and then selects the tab at the other end. They are hidden from accessibility, so their
+    /// copies of the end tab's buttons never match an identifier lookup.
     private enum ReceivePage: Hashable {
         case tab(ReceiveTab)
         case wrapToLast
@@ -375,6 +376,7 @@ struct ReceiveQr: View {
             Color.clear.tag(tag)
         } else {
             tabContent(for: tab, tag: tag)
+                .accessibilityHidden(true)
         }
     }
 
