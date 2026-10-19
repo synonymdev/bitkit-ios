@@ -197,8 +197,8 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
-    func accept(_ entry: PaykitAllowanceEntry) async throws {
-        try await respond(to: entry) { allowance in
+    func accept(_ entry: PaykitAllowanceEntry, showsProgress: Bool = true) async throws {
+        try await respond(to: entry, showsProgress: showsProgress) { allowance in
             guard let proposalStreamItemId = allowance.proposalStreamItemId else { throw PaykitAllowanceError.unavailable }
             return try await self.sdk.acceptAllowance(
                 counterparty: allowance.counterparty,
@@ -245,7 +245,8 @@ final class PaykitAllowanceManager {
         for offer in offers {
             guard isCurrent() else { return [] }
             do {
-                try await accept(offer)
+                // A background accept must not clear the progress flag of a proposal the user has in flight.
+                try await accept(offer, showsProgress: false)
                 accepted.append(offer)
             } catch {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
@@ -254,10 +255,14 @@ final class PaykitAllowanceManager {
         return isCurrent() ? accepted : []
     }
 
-    private func respond(to entry: PaykitAllowanceEntry, _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord) async throws {
+    private func respond(
+        to entry: PaykitAllowanceEntry,
+        showsProgress: Bool = true,
+        _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord
+    ) async throws {
         let initiatingIdentity = identity
-        isWorking = true
-        defer { isWorking = false }
+        if showsProgress { isWorking = true }
+        defer { if showsProgress { isWorking = false } }
         var respondedAny = false
         for allowance in entry.allowances where allowance.isAnswerable {
             _ = try await response(allowance)

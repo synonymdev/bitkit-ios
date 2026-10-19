@@ -861,6 +861,31 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testAutomaticOfferAcceptanceKeepsAManualProposalWorking() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        await harness.sdk.setPeers([Fixtures.linkedPeer(state: .linked)])
+        let gate = AllowanceGate()
+        await harness.sdk.setProposeGate(gate)
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let proposing = Task { @MainActor in try await manager.propose(to: Fixtures.contact(), limits: Fixtures.limits) }
+        while !harness.log.entries.contains("proposeAllowance") { await Task.yield() }
+        XCTAssertTrue(manager.isWorking)
+
+        let accepted = await manager.acceptOffersFromAllowers()
+
+        XCTAssertEqual(accepted.count, 1)
+        XCTAssertTrue(manager.isWorking, "A background accept must not re-enable Save while a proposal is in flight")
+        gate.open()
+        try await proposing.value
+        XCTAssertFalse(manager.isWorking)
+    }
+
+    @MainActor
     func testManagerLeavesAnAskFromTheAlloweeForTheReviewSheet() async throws {
         let harness = AllowanceHarness()
         // The proposer took the allowee role, so this wallet is the allower and pays: the user decides.
@@ -1325,6 +1350,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private var beginDecision: Paykit.PaymentAttemptDecision?
     private var acceptError: Error?
     private var acceptAllowanceError: Error?
+    private var proposeGate: AllowanceGate?
     private(set) var acceptedAllowanceIds: [String] = []
     private(set) var evaluatedTrustedTimes: [String] = []
     private(set) var selections: [Paykit.AllowanceSelectionInput] = []
@@ -1375,6 +1401,10 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         acceptAllowanceError = error
     }
 
+    func setProposeGate(_ gate: AllowanceGate?) {
+        proposeGate = gate
+    }
+
     func linkedPeers() async throws -> [LinkedPeerRecord] {
         log.append("linkedPeers")
         return peers
@@ -1391,6 +1421,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         terms: Paykit.AllowanceTerms
     ) async throws -> Paykit.AllowanceRecord {
         log.append("proposeAllowance")
+        if let proposeGate { await proposeGate.wait() }
         proposals.append(Proposal(counterparty: counterparty, localRole: localRole, terms: terms))
         let record = PaykitAllowanceFixtures.record(
             allowanceId: "proposed-\(proposals.count)",
