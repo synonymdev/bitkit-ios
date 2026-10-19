@@ -105,6 +105,8 @@ final class PaykitUsdtPaymentService {
     func restoreBackup(_ backup: PaykitUsdtStateBackup) throws {
         boundRequestIds = nil
         stateGeneration &+= 1
+        activeWallet = nil
+        activeIdentity = nil
         releasedAttempts = []
         resumableRequests = []
         var state = try load()
@@ -128,6 +130,17 @@ final class PaykitUsdtPaymentService {
         try save(state)
     }
 
+    func resetForWipe() {
+        stateGeneration &+= 1
+        activeWallet = nil
+        activeIdentity = nil
+        boundRequestIds = nil
+        releasedAttempts = []
+        resumableRequests = []
+        publish(State())
+        Self.paymentProtectionChanged.send()
+    }
+
     func send(_ quote: UsdtQuote, context: ContactPaymentContext, paymentTerms: PaykitRequestPricing.Payment?,
               wallet: UsdtWalletManager, authorize: @escaping @MainActor () async throws -> Void) async throws
     {
@@ -136,7 +149,7 @@ final class PaykitUsdtPaymentService {
         sending = true
         stateGeneration += 1
         defer { sending = false }
-        try setPaymentStarted(quoteId: quote.id, started: true)
+        let wasResumable = try setPaymentStarted(quoteId: quote.id, started: true)
         do {
             try await wallet.send(quote, submissionDeadline: submissionDeadline) {
                 do {
@@ -152,27 +165,34 @@ final class PaykitUsdtPaymentService {
                         else { throw PaykitPaymentRequestError.amountMismatch }
                     }
                 } catch {
-                    try? self.setPaymentStarted(quoteId: quote.id, started: false)
+                    try? self.setPaymentStarted(quoteId: quote.id, started: false, resumable: wasResumable)
                     throw error
                 }
             }
         } catch {
             // Core persists signed operations before broadcast. Only this completed send can establish non-submission.
             if !(error is CancellationError), await (try? wallet.storedTransfer(quote.id) == nil) == true {
-                try? setPaymentStarted(quoteId: quote.id, started: false)
+                try? setPaymentStarted(quoteId: quote.id, started: false, resumable: wasResumable)
             }
             throw error
         }
     }
 
-    private func setPaymentStarted(quoteId: String, started: Bool) throws {
+    @discardableResult
+    private func setPaymentStarted(quoteId: String, started: Bool, resumable: Bool = false) throws -> Bool {
         var state = try load()
         guard let index = state.attempts.firstIndex(where: {
             $0.quoteId == quoteId && $0.wallet == activeWallet && $0.identity == activeIdentity
         }) else { throw PaykitPaymentRequestError.requestUnavailable }
         state.attempts[index].paymentStarted = started
-        if started, let id = state.attempts[index].requestId { resumableRequests.remove(id) }
+        let requestId = state.attempts[index].requestId
+        let wasResumable = requestId.map { resumableRequests.contains($0) } ?? false
+        if let requestId {
+            if started { resumableRequests.remove(requestId) }
+            else if resumable { resumableRequests.insert(requestId) }
+        }
         try save(state)
+        return wasResumable
     }
 
     private func load() throws -> State {
@@ -301,6 +321,7 @@ final class PaykitUsdtPaymentService {
             else { throw PaykitPaymentRequestError.amountMismatch }
         }
         let owner = wallet.address.lowercased()
+        if activeWallet != owner || activeIdentity != identity { resumableRequests = [] }
         activeWallet = owner
         activeIdentity = identity
         let binding: UsdtPaymentProofBinding?
@@ -346,7 +367,6 @@ final class PaykitUsdtPaymentService {
         current.attempts.removeAll { removable.contains($0) }
         if existing == nil { current.attempts.append(attempt) }
         releasedAttempts = []
-        resumableRequests = []
         try save(current)
     }
 

@@ -281,6 +281,74 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testUsdtRestoreProtectsAnotherWalletUntilOwnerResolution() async throws {
+        let service = PaykitUsdtPaymentService()
+        await reconcileUsdt(service)
+        let attempt = PaykitUsdtPaymentService.Attempt(quoteId: "restored", wallet: "restored-wallet", identity: identity,
+                                                       contact: "counterparty", requestId: .init(
+                                                           paymentRequestId: "restored",
+                                                           counterparty: "counterparty"
+                                                       ),
+                                                       binding: nil, billingPeriod: nil, paymentStarted: true)
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [.init(attempt)], receipts: []))
+        for throwsError in [false, true] {
+            await service.reconcile(context: {
+                if throwsError { throw PaykitPaymentStateBackupTestError.restoreFailed }
+                return nil
+            }, storedTransfer: { _ in nil }, paymentProof: { _, _ in nil }, submitProof: { _ in false },
+            paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+            XCTAssertEqual(try service.paymentProtection(identity: identity).inFlight, try [XCTUnwrap(attempt.requestId)])
+        }
+        await reconcileUsdt(service)
+        XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
+        service.resetForWipe()
+        XCTAssertTrue(service.attempts.isEmpty)
+        XCTAssertTrue(service.receipts.isEmpty)
+        XCTAssertEqual(try service.paymentProtection(identity: identity).inFlight, try [XCTUnwrap(attempt.requestId)])
+    }
+
+    @MainActor
+    func testUnsubmittedRetryKeepsFailedUsdtRequestPayable() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let wallet = UsdtWalletManager(storageDirectory: directory, rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", loadCredentials: {
+            ("test test test test test test test test test test test junk", nil)
+        })
+        let endpoint = try await wallet.paymentEndpoint()
+        let owner = endpoint.value.lowercased()
+        let service = PaykitUsdtPaymentService()
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "retry-request", counterparty: "counterparty")
+        let failed = PaykitUsdtPaymentService.Attempt(quoteId: "failed", wallet: owner, identity: identity,
+                                                      contact: requestId.counterparty, requestId: requestId, binding: nil,
+                                                      billingPeriod: nil, paymentStarted: true)
+        try saveUsdtAttempts([failed])
+        await service.reconcile(context: { (owner, self.identity) }, storedTransfer: { id in
+            UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                         recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                         fee: nil, isIncoming: false, status: .failed, timestamp: 1)
+        }, paymentProof: { _, _ in nil }, submitProof: { _ in false }, paymentRequests: { [] }, verifyPayment: { _, _ in nil })
+        let retry = PaykitUsdtPaymentService.Attempt(quoteId: "retry", wallet: owner, identity: identity,
+                                                     contact: requestId.counterparty, requestId: requestId, binding: nil, billingPeriod: nil)
+        try await service.storeAttempt(retry) { id in
+            UsdtTransfer(sender: nil, id: id, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
+                         recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
+                         fee: nil, isIncoming: false, status: .failed, timestamp: 1)
+        }
+        XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
+        let quote = UsdtQuote(bridgeProvider: nil, id: "retry", recipient: owner, destination: .arbitrum,
+                              amount: 50000, receivedAmount: 50000, maximumFee: 100, expiresAt: UInt64(Date().timeIntervalSince1970) + 100)
+        do {
+            try await service.send(quote, context: ContactPaymentContext(publicKey: requestId.counterparty), paymentTerms: nil, wallet: wallet) {
+                XCTAssertEqual(try service.paymentProtection(identity: self.identity).inFlight, [requestId])
+                throw CancellationError()
+            }
+            XCTFail("Authorization cancellation must stop the send")
+        } catch is CancellationError {}
+        XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
+        XCTAssertFalse(service.attempts.first { $0.quoteId == "retry" }?.paymentStarted ?? true)
+    }
+
+    @MainActor
     func testUsdtRestoreInvalidatesSuspendedReconciliationEvidence() async throws {
         let service = PaykitUsdtPaymentService()
         let attempt = unsubmittedUsdtAttempt()
