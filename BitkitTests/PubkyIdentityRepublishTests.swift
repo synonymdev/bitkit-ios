@@ -117,7 +117,9 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         let deadline = ContinuousClock.now.advanced(by: .seconds(1))
         repeat {
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(3600))
-            if bootstrap.publicKeys.count == 2 { break }
+            if bootstrap.publicKeys.count == 2 {
+                break
+            }
             await Task.yield()
         } while ContinuousClock.now < deadline
         XCTAssertEqual(bootstrap.publicKeys.count, 2)

@@ -20,12 +20,10 @@ struct ScreenShotPreventMask: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 
     private func findAutoHideLayer(in view: UIView) -> CALayer? {
-        if let layers = view.layer.sublayers {
-            if let layer = layers.first(where: { layer in
-                layer.delegate.debugDescription.contains("UITextLayoutCanvasView")
-            }) {
-                return layer
-            }
+        if let layers = view.layer.sublayers, let layer = layers.first(where: { layer in
+            layer.delegate.debugDescription.contains("UITextLayoutCanvasView")
+        }) {
+            return layer
         }
 
         return nil

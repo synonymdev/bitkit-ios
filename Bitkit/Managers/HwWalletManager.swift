@@ -541,8 +541,7 @@ final class HwWalletManager {
     /// Starts timeout recovery without blocking the current UI operation. Any subsequent connect
     /// for the same physical device waits for this task before opening a new session.
     func scheduleStaleSessionCleanup(walletId: String) {
-        guard let deviceId = transportDeviceId(for: walletId) else { return }
-        guard staleSessionCleanupTasks[deviceId] == nil else { return }
+        guard let deviceId = transportDeviceId(for: walletId), staleSessionCleanupTasks[deviceId] == nil else { return }
         // Captured now: a removal landing before the task runs would leave nothing to read it from.
         let vendor = vendor(walletId: walletId)
 
@@ -581,9 +580,8 @@ final class HwWalletManager {
         // passphrase, which a warm-up has no way to ask for, and connecting without one opens the
         // standard wallet instead — a session the user did not ask for, on the device the transfer is
         // about to need. The prompt reopens it properly a moment later.
-        guard !needsPassphrase(walletId: walletId) else { return }
-        guard let deviceId = transportDeviceId(for: walletId) else { return }
-        guard staleSessionCleanupTasks[deviceId] == nil else { return }
+        guard !needsPassphrase(walletId: walletId), let deviceId = transportDeviceId(for: walletId),
+              staleSessionCleanupTasks[deviceId] == nil else { return }
         // Best effort only: taking the radio from the other vendor is left to an explicit connect.
         let vendor = vendor(walletId: walletId)
         guard !isOtherVendorActive(vendor) else { return }
@@ -682,8 +680,7 @@ final class HwWalletManager {
     /// Starts a silent Jade reconnect once Bluetooth is back on, when a Jade is paired, the Trezor is
     /// idle and the app is in the foreground.
     func onJadeBluetoothRestored() {
-        guard isAppActive, let jadeSession, !jadeSession.storedDevices.isEmpty else { return }
-        guard !isOtherVendorActive(.blockstream) else { return }
+        guard isAppActive, let jadeSession, !jadeSession.storedDevices.isEmpty, !isOtherVendorActive(.blockstream) else { return }
         jadeSession.startAutoReconnect()
     }
 
@@ -979,9 +976,8 @@ final class HwWalletManager {
         guard let previous else { return }
         let knownTxIds = onchainTxIds(in: previous.activities)
         for activity in activities {
-            guard case let .onchain(onchain) = activity, onchain.txType == .received else { continue }
-            guard !knownTxIds.contains(onchain.txId) else { continue }
-            guard emittedReceivedTxIds.insert(onchain.txId).inserted else { continue }
+            guard case let .onchain(onchain) = activity, onchain.txType == .received, !knownTxIds.contains(onchain.txId),
+                  emittedReceivedTxIds.insert(onchain.txId).inserted else { continue }
             receivedTxPublisher.send(HwWalletReceivedTx(txid: onchain.txId, sats: onchain.value))
         }
     }

@@ -321,17 +321,23 @@ class ContactsManager: ObservableObject {
         defer {
             waiter.cancel()
             continuation.finish()
-            if contactRefresh?.id == refresh.id, !Task.isCancelled || refresh.task.isCancelled { contactRefresh = nil }
+            if contactRefresh?.id == refresh.id, !Task.isCancelled || refresh.task.isCancelled {
+                contactRefresh = nil
+            }
         }
         try await withTaskCancellationHandler {
             for await result in completion {
                 try Task.checkCancellation()
                 return try result.get()
             }
-            if refresh.task.isCancelled { _ = await refresh.task.result }
+            if refresh.task.isCancelled {
+                _ = await refresh.task.result
+            }
             try Task.checkCancellation()
         } onCancel: {
-            if refresh.waiters.cancel() { refresh.task.cancel() }
+            if refresh.waiters.cancel() {
+                refresh.task.cancel()
+            }
             continuation.finish()
         }
     }
@@ -341,7 +347,9 @@ class ContactsManager: ObservableObject {
             try Task.checkCancellation()
             for await loading in $isLoading.values {
                 try Task.checkCancellation()
-                if !loading { break }
+                if !loading {
+                    break
+                }
             }
         }
         try Task.checkCancellation()

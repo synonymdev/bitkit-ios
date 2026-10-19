@@ -26,7 +26,9 @@ final class PubkyProfileManagerTests: XCTestCase {
                     started.fulfill()
                     for await _ in resume {}
                     XCTAssertEqual(manager.currentSession, session)
-                    if outcome == "failure" { throw KeychainError.failedToDelete }
+                    if outcome == "failure" {
+                        throw KeychainError.failedToDelete
+                    }
                     try Task.checkCancellation()
                 }
             }
@@ -35,14 +37,18 @@ final class PubkyProfileManagerTests: XCTestCase {
             XCTAssertEqual(manager.currentSession, session, "Explicit cleanup retains its session")
             let deleting = await PrivatePaykitService.shared.isDeletingProfile
             XCTAssertTrue(deleting)
-            if outcome == "cancellation" { deletion.cancel() }
+            if outcome == "cancellation" {
+                deletion.cancel()
+            }
             continuation.finish()
             do {
                 try await deletion.value
                 XCTAssertEqual(outcome, "success")
             } catch {
                 XCTAssertNotEqual(outcome, "success")
-                if outcome == "cancellation" { XCTAssertTrue(error is CancellationError) }
+                if outcome == "cancellation" {
+                    XCTAssertTrue(error is CancellationError)
+                }
             }
             XCTAssertEqual(manager.automaticPaykitSession, session, outcome)
             let stillDeleting = await PrivatePaykitService.shared.isDeletingProfile
@@ -239,8 +245,11 @@ final class PubkyProfileManagerTests: XCTestCase {
         defer {
             AdoptedPubkyReference.current = savedReference
             for (key, value) in zip(keys, savedValues) {
-                if let value { try? Keychain.upsert(key: key, data: value) }
-                else { try? Keychain.delete(key: key) }
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         for key in keys {
@@ -312,7 +321,9 @@ final class PubkyProfileManagerTests: XCTestCase {
                 jitter: { multiplier },
                 sleep: { delay in
                     delays.append(delay)
-                    if delays.count == 8 { throw CancellationError() }
+                    if delays.count == 8 {
+                        throw CancellationError()
+                    }
                 },
                 hasStoredIdentity: { true },
                 initializeSession: { .restorationFailed }
@@ -1047,8 +1058,11 @@ final class PubkyProfileManagerTests: XCTestCase {
         defer {
             ContactsManager.restoreContactProfileOverrides(savedOverrides)
             for (key, data) in zip(keys, saved) {
-                if let data { try? Keychain.upsert(key: key, data: data) }
-                else { try? Keychain.delete(key: key) }
+                if let data {
+                    try? Keychain.upsert(key: key, data: data)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         for key in keys {
@@ -1066,12 +1080,16 @@ final class PubkyProfileManagerTests: XCTestCase {
                 try await manager.completeSignupAuthenticationForTesting(
                     publicKey: "pubky_test",
                     registerIdentity: {
-                        if resetStep == "register" { await PubkyProfileManager.clearLocalState() }
+                        if resetStep == "register" {
+                            await PubkyProfileManager.clearLocalState()
+                        }
                         return session
                     },
                     approveAuth: {
                         XCTAssertNotEqual(resetStep, "register", "Late registration must not authorize after reset")
-                        if resetStep == "authorize" { await PubkyProfileManager.clearLocalState() }
+                        if resetStep == "authorize" {
+                            await PubkyProfileManager.clearLocalState()
+                        }
                     },
                     activateIdentity: { _ in
                         XCTAssertEqual(resetStep, "activate", "Late approval must not activate after reset")
@@ -2255,7 +2273,9 @@ final class PubkyProfileManagerTests: XCTestCase {
                         fetchProfile: { _ in nil }
                     )
                 }
-                if changeBeforeDisconnect { try await changeIdentity() }
+                if changeBeforeDisconnect {
+                    try await changeIdentity()
+                }
 
                 let started = expectation(description: "disconnect started")
                 let (stream, continuation) = AsyncStream<Void>.makeStream()
@@ -2268,7 +2288,9 @@ final class PubkyProfileManagerTests: XCTestCase {
                     }
                 }
                 await fulfillment(of: [started], timeout: 2)
-                if !changeBeforeDisconnect { try await changeIdentity() }
+                if !changeBeforeDisconnect {
+                    try await changeIdentity()
+                }
                 XCTAssertNil(manager.profileForDisplay)
                 continuation.finish()
                 await XCTAssertThrowsErrorAsync { try await disconnect.value }
@@ -2925,8 +2947,11 @@ final class PubkyProfileManagerTests: XCTestCase {
         defer {
             AdoptedPubkyReference.current = savedReference
             for (key, value) in zip(keys, savedCredentials) {
-                if let value { try? Keychain.upsert(key: key, data: value) }
-                else { try? Keychain.delete(key: key) }
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         try await withRestoredProfileDefaults {
@@ -4016,7 +4041,9 @@ private class KeyDerivationProbeProfileManager: PubkyProfileManager {
 
     override func deriveKeys() async throws -> (String, String) {
         didDeriveKeys = true
-        if let deriveKeysOperation { return try await deriveKeysOperation() }
+        if let deriveKeysOperation {
+            return try await deriveKeysOperation()
+        }
         throw PubkyServiceError.authFailed("key derivation probe")
     }
 }

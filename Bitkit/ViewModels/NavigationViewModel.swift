@@ -171,11 +171,7 @@ func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
 }
 
 func resolvePubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
-    guard PaykitFeatureFlags.isUIEnabled else {
-        return nil
-    }
-
-    guard let normalizedKey = PubkyPublicKeyFormat.normalized(input) else {
+    guard PaykitFeatureFlags.isUIEnabled, let normalizedKey = PubkyPublicKeyFormat.normalized(input) else {
         return nil
     }
 

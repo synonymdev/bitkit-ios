@@ -274,8 +274,12 @@ final class PaykitSdkClientConfigTests: XCTestCase {
                 }
                 let previousCalls = sdk.operationCalls
                 for attempt in 0 ..< 3 {
-                    if attempt > 0 { sdk.registry = nil }
-                    if attempt == 2 { sdk.registryError = PaykitError.Storage(code: "registry_unavailable", context: "unavailable") }
+                    if attempt > 0 {
+                        sdk.registry = nil
+                    }
+                    if attempt == 2 {
+                        sdk.registryError = PaykitError.Storage(code: "registry_unavailable", context: "unavailable")
+                    }
                     do {
                         _ = try await service.contactRecords()
                         XCTFail("An invalid registry must not reuse the cached key")
@@ -858,7 +862,9 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
 
     override func contactRecords() async throws -> [ContactRecord] {
         operationCalls += 1
-        if let operationError { throw operationError }
+        if let operationError {
+            throw operationError
+        }
         return []
     }
 
@@ -869,19 +875,25 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
 
     override func publishPaykitApp(displayName _: String, capabilities _: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
         publicationCalls += 1
-        if let publicationError { throw publicationError }
+        if let publicationError {
+            throw publicationError
+        }
         return registry ?? PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
     }
 
     override func publishPaykitNoiseKeyAuthorization() async throws -> PaykitNoiseKeyAuthorization {
         activationEvents.append("authorize")
-        if let authorizationError { throw authorizationError }
+        if let authorizationError {
+            throw authorizationError
+        }
         return PaykitNoiseKeyAuthorization(owner: "identity", noisePublicKey: "noise", noiseStaticPublicKey: "static", keyGeneration: 1)
     }
 
     override func backupStateRevision() async throws -> String {
         backupReads += 1
-        if let backupError { throw backupError }
+        if let backupError {
+            throw backupError
+        }
         return "unchanged"
     }
 

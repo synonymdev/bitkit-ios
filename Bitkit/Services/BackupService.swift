@@ -396,7 +396,9 @@ class BackupService {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
                     try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
-                    if let usdt = paymentState.usdt { try await PaykitUsdtPaymentService.shared.restoreBackup(usdt) }
+                    if let usdt = paymentState.usdt {
+                        try await PaykitUsdtPaymentService.shared.restoreBackup(usdt)
+                    }
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
@@ -701,7 +703,9 @@ class BackupService {
             }
             guard getBackupStatus(category: category).isRequired && !shouldSkipBackup() else { break }
             outcome = await triggerBackup(category: category, isScheduled: true)
-            if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired { break }
+            if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired {
+                break
+            }
         }
         _ = try? await ServiceQueue.background(.backup) { self.backupJobs.removeValue(forKey: category) }
         updateBackupStatus(category: category) { status in
@@ -855,7 +859,9 @@ class BackupService {
     }
 
     private func getBackupDataBytes(category: BackupCategory, usdt: String? = nil) async throws -> Data {
-        if let backupData { return try await backupData(category) }
+        if let backupData {
+            return try await backupData(category)
+        }
         switch category {
         case .settings:
             let settingsDict = await SettingsViewModel.shared.getSettingsDictionary()
@@ -1106,7 +1112,9 @@ final class WalletBackupChangeTracker {
             } catch WalletBackupSnapshotError.changed {
                 try Task.checkCancellation()
                 Logger.debug("Wallet snapshot changed during capture (attempt \(attempt)/3)", context: "BackupService")
-                if attempt == 3 { throw WalletBackupSnapshotError.changed }
+                if attempt == 3 {
+                    throw WalletBackupSnapshotError.changed
+                }
             }
         }
         throw WalletBackupSnapshotError.changed

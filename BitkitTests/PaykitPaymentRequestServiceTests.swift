@@ -1744,12 +1744,18 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let manager = paymentRequestManager(sdk: sdk, clock: clock)
             await manager.refresh()
             let request = try XCTUnwrap(manager.pendingRequests.first)
-            if stage == "before" { clock.advance(by: 2) }
-            if stage == "accept" { await sdk.pauseNextAccept() }
+            if stage == "before" {
+                clock.advance(by: 2)
+            }
+            if stage == "accept" {
+                await sdk.pauseNextAccept()
+            }
 
             let preparation = Task {
                 try await manager.prepareForPayment(request) {
-                    if stage == "consume" { clock.advance(by: 2) }
+                    if stage == "consume" {
+                        clock.advance(by: 2)
+                    }
                 }
             }
             if stage == "accept" {
@@ -1787,8 +1793,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 clock.advance(by: 10)
                 XCTAssertTrue(manager.isApprovedForPayment(request), "Acceptance survives proposal expiry")
                 // Fee calculation, PIN confirmation and LNURL retrieval all finish before this authorization.
-                if expiryStage == "preparation" { clock.advance(by: 0.001) }
-                else { await sdk.pauseNextLinkedPeers() }
+                if expiryStage == "preparation" {
+                    clock.advance(by: 0.001)
+                } else {
+                    await sdk.pauseNextLinkedPeers()
+                }
 
                 var sent = false
                 var authorizationFailed = false
@@ -1818,7 +1827,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 }
                 if expiryStage != "preparation" {
                     try await waitUntil { await sdk.linkedPeersIsPaused() }
-                    if expiryStage == "authorization" { clock.advance(by: 0.001) }
+                    if expiryStage == "authorization" {
+                        clock.advance(by: 0.001)
+                    }
                     await sdk.resumeLinkedPeers()
                 }
                 do {
@@ -3302,7 +3313,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         for subscription in manager.subscriptions {
             XCTAssertEqual(subscription.paidPeriods.count, 1)
             XCTAssertTrue(subscription.canCancel(at: now))
-            if subscription.isPayer { XCTAssertNotNil(subscription.paymentDueOnAcceptance(at: now)) }
+            if subscription.isPayer {
+                XCTAssertNotNil(subscription.paymentDueOnAcceptance(at: now))
+            }
         }
         let paid = try XCTUnwrap(manager.historyRequests.first)
         XCTAssertEqual(manager.historyRequests.count, 1)
@@ -4284,7 +4297,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let request = try XCTUnwrap(manager.requestsForPresentation().first)
 
         for isRequested in [false, true] {
-            if isRequested { XCTAssertTrue(manager.requestPresentation(request)) }
+            if isRequested {
+                XCTAssertTrue(manager.requestPresentation(request))
+            }
             let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.feedback(
                 deferring: request,
                 reason: .endpointNotPayable,
@@ -6115,7 +6130,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             await manager.refresh()
             let request = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "first" })
             let next = try XCTUnwrap(manager.pendingRequests.first { $0.paymentRequestId == "second" })
-            if manuallyRequested { XCTAssertTrue(manager.requestPresentation(request)) }
+            if manuallyRequested {
+                XCTAssertTrue(manager.requestPresentation(request))
+            }
             let profile = PubkyProfileManager()
             profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
             let session = try XCTUnwrap(profile.currentSession)
@@ -7026,7 +7043,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertTrue(snapshot.processedCounterparties.isEmpty)
             XCTAssertTrue(scheduledPeers.isEmpty)
 
-            if changesIdentity { manager.clear() }
+            if changesIdentity {
+                manager.clear()
+            }
             activity.end(payment)
             await fulfillment(of: [scheduled], timeout: changesIdentity ? 0.1 : 2)
             XCTAssertEqual(scheduledPeers, changesIdentity ? [] : [record.counterparty])
@@ -8012,7 +8031,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                         error: nil
                     )])
                 }
-                if processFails { await sdk.failNextProcess() }
+                if processFails {
+                    await sdk.failNextProcess()
+                }
                 await sdk.pauseNextProcess()
                 let service = PaykitPaymentRequestService(
                     sdk: sdk, now: { now }, isPrivatePaymentPublishingEnabled: { true },
@@ -8733,7 +8754,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                     context: { ("wallet", identity) },
                     storedTransfer: { id in self.usdtTransfer(id, status: .confirmed) },
                     paymentProof: { id, _ in
-                        if generationFails, id == "quote-0" { throw UsdtError.InvalidCredentials }
+                        if generationFails, id == "quote-0" {
+                            throw UsdtError.InvalidCredentials
+                        }
                         return proof
                     },
                     submitProof: { $0.paymentIdentifier != "quote-0" },
@@ -8748,7 +8771,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertTrue(try XCTUnwrap(service.attempts.first { $0.quoteId == "quote-1" }).proofQueued)
                 XCTAssertEqual(service.receipts.count, 1)
                 XCTAssertTrue(try XCTUnwrap(service.receipts.first).satisfied)
-                if iteration == 1 { XCTAssertEqual(backupChanges, 0) }
+                if iteration == 1 {
+                    XCTAssertEqual(backupChanges, 0)
+                }
             }
             XCTAssertEqual(verified, 2)
         }
@@ -8901,12 +8926,16 @@ private final class PaymentRequestPresentationMemoryStore: PaykitPaymentRequestI
     }
 
     func load(identity: String) throws -> Set<PaykitPaymentRequest.ID> {
-        if shouldFailLoad { throw PaymentRequestSdkMockError.process }
+        if shouldFailLoad {
+            throw PaymentRequestSdkMockError.process
+        }
         return states[identity] ?? []
     }
 
     func save(_ ids: Set<PaykitPaymentRequest.ID>, identity: String) throws {
-        if shouldFailSave { throw PaymentRequestSdkMockError.process }
+        if shouldFailSave {
+            throw PaymentRequestSdkMockError.process
+        }
         states[identity] = ids
     }
 }
@@ -9069,7 +9098,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             guard PubkyPublicKeyFormat.matches(identity, expectedIdentity) else { throw PubkyServiceError.identityChanged }
         }
         let peers = peerRecords
-        if let linkedPeersError { throw linkedPeersError }
+        if let linkedPeersError {
+            throw linkedPeersError
+        }
         let requests = await sharedPaymentRequests()
         return PaykitStateObservation(
             publicKey: identity, keyGeneration: 1, observedAt: "2027-01-15T08:00:00Z",
@@ -9098,7 +9129,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         guard PubkyPublicKeyFormat.matches(activeIdentity, expectedIdentity) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
-        if let paymentRequestListError { throw paymentRequestListError }
+        if let paymentRequestListError {
+            throw paymentRequestListError
+        }
         return await sharedPaymentRequests()
     }
 
@@ -9134,7 +9167,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             await withCheckedContinuation { linkedPeersContinuation = $0 }
             isLinkedPeersPaused = false
         }
-        if let error { throw error }
+        if let error {
+            throw error
+        }
         return snapshot
     }
 
@@ -9255,7 +9290,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
                 id: paymentRequestId
             )
         }
-        if let acceptanceResponseError { throw acceptanceResponseError }
+        if let acceptanceResponseError {
+            throw acceptanceResponseError
+        }
         if acceptFailuresAfterRemoval > 0 {
             acceptFailuresAfterRemoval -= 1
             throw PaymentRequestSdkMockError.process

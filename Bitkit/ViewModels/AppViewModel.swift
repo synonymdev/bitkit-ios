@@ -910,7 +910,7 @@ extension AppViewModel {
 
                     if lnNetworkMatch, !lightningInvoice.isExpired,
                        contactPaymentContext?.incomingPaymentRequest?
-                       .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
+                           .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
                     {
                         let nodeIsRunning = paymentState.isNodeRunning
 
@@ -965,8 +965,7 @@ extension AppViewModel {
             }
 
             // Fallback to on-chain if address is available
-            guard !invoice.address.isEmpty else { return }
-            guard validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
+            guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -1123,9 +1122,9 @@ extension AppViewModel {
         guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
               context.publicKey == request.counterparty,
               PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
-              let address = proof.onchainAddress, let amount = proof.onchainAmountSats
-        else { throw PaykitPaymentRequestError.requestUnavailable }
-        guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier) else {
+              let address = proof.onchainAddress, let amount = proof.onchainAmountSats,
+              let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         paykitPaymentTerms = try request.payment(using: method, quoteId: proof.conversionQuoteId)
@@ -1531,8 +1530,7 @@ extension AppViewModel {
     ) async {
         defer { isCompletingRestoreHold = false }
         let restoreStartedAt = SettingsViewModel.shared.pendingRestoreActivitySeenSince
-        guard restoreStartedAt > 0 else { return }
-        guard await markAllSeen(restoreStartedAt) else { return }
+        guard restoreStartedAt > 0, await markAllSeen(restoreStartedAt) else { return }
         SettingsViewModel.shared.restoreSyncedBlockHeight = syncedBlockHeight
         SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
 
@@ -1603,8 +1601,7 @@ extension AppViewModel {
         isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync,
         restoreSyncedBlockHeight: UInt32? = nil
     ) -> Bool {
-        guard !isMigrating else { return false }
-        guard blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
+        guard !isMigrating, blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
         let age = abs(now.timeIntervalSince1970 - TimeInterval(confirmationTime))
         return age <= maxConfirmedOnlyReceiveAge
     }
