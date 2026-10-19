@@ -296,7 +296,9 @@ class ScannerManager: ObservableObject {
             return
         }
 
-        await handleScan(uri.trimmingCharacters(in: .whitespacesAndNewlines), context: context)
+        let value = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = ClipboardPromptHistory().recordInspection(changeCount: UIPasteboard.general.changeCount, supportedValue: value)
+        await handleScan(value, context: context)
     }
 
     func handleImageSelection(

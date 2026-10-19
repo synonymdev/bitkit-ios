@@ -207,10 +207,21 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         try await PaykitPaymentProofService.shared.associateLightningPayment(request, paymentHash: paymentHash)
     }
 
+    /// Routing fees fall outside the allowance's limits, so an automatic payment may spend at most 1% of its amount on them.
+    static func routeParameters(amountSats: UInt64) -> RouteParametersConfig {
+        RouteParametersConfig(
+            maxTotalRoutingFeeMsat: amountSats * 10,
+            maxTotalCltvExpiryDelta: 1008,
+            maxPathCount: 10,
+            maxChannelSaturationPowerOfHalf: 2
+        )
+    }
+
     func payLightning(_ request: PaykitPaymentRequest, bolt11: String, sats: UInt64?) async throws {
         _ = try await LightningService.shared.send(
             bolt11: bolt11,
             sats: sats,
+            params: Self.routeParameters(amountSats: request.allowanceAmountSats),
             beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(request.paymentDeadline) }
         )
     }

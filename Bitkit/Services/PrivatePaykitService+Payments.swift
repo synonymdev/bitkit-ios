@@ -534,8 +534,8 @@ extension PrivatePaykitService {
             schedulePrivatePaymentRecovery(for: publicKey)
             throw PaykitAllowanceError.paymentListPending
         }
-        // Request-bound endpoints carry no payment list version, so there is no list to consume for them.
-        let paymentListVersion = prepared.resolution.privatePaymentListVersion
+        // Without a payment list version nothing limits how often the payee's endpoints can be paid, so the request asks.
+        guard let paymentListVersion = prepared.resolution.privatePaymentListVersion else { return nil }
 
         let eligible = Set(eligibleIdentifiers).intersection(request.acceptedPaymentEndpointIdentifiers)
         let candidates = resolvedEndpoints(from: prepared.resolution).filter {

@@ -15,8 +15,11 @@ struct TertiaryButtonView: View {
 
             BodySSBText(title, textColor: textColor, kerning: titleKerning, lineHeight: titleLineHeight)
         }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .frame(height: CustomButton.Size.large.height)
+        .frame(minHeight: CustomButton.Size.large.height)
         .padding(.horizontal, 16)
         .background(.clear)
         .contentShape(Rectangle())
