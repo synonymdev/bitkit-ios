@@ -607,6 +607,27 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(try manager.coversRequest(Fixtures.paymentRequest(counterparty: Fixtures.otherCounterpartyKey)))
     }
 
+    @MainActor
+    func testManagerLeavesRequestsNotPricedInBitcoinManual() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms(), lastEventAt: "2026-09-24T09:00:00Z")])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let usdRequest = try Fixtures.paymentRequest(amount: "5.00", asset: PaykitAsset.usd.rawValue)
+        XCTAssertFalse(usdRequest.isAllowancePayable)
+        XCTAssertFalse(manager.coversRequest(usdRequest))
+        let isHandling = await manager.isAutomaticallyHandling(usdRequest)
+        XCTAssertFalse(isHandling, "A USD request reaches the Send sheet instead of waiting for an automatic payment")
+    }
+
+    @MainActor
+    func testGrantsNameOnlyBitcoinPaymentEndpoints() {
+        XCTAssertFalse(PaykitAllowanceManager.allowedPaymentEndpointIdentifiers.contains(PublicPaykitService.MethodId.usdtArbitrum.rawValue))
+        XCTAssertTrue(PaykitAllowanceManager.allowedPaymentEndpointIdentifiers.contains(PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue))
+    }
+
     // MARK: Granting
 
     @MainActor

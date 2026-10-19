@@ -526,6 +526,28 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
         }
     }
 
+    func testAutomaticAllowancePaymentProofKeepsItsAllowanceIdThroughBackup() throws {
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "allowance-request", counterparty: identity),
+            paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            allowanceId: "allowance-1",
+            paymentStarted: true,
+            paymentIdentifier: "payment-hash",
+            proofData: nil
+        )
+        let encoded = try JSONEncoder().encode(PaykitPaymentStateBackup.Proof(proof))
+        let restored = try JSONDecoder().decode(PaykitPaymentStateBackup.Proof.self, from: encoded).restored()
+        XCTAssertEqual(restored.allowanceId, "allowance-1")
+
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacy.removeValue(forKey: "allowanceId")
+        let legacyProof = try JSONDecoder().decode(PaykitPaymentStateBackup.Proof.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(try legacyProof.restored().allowanceId, "Backups written before allowances still restore")
+    }
+
     func testHardwareBackupRequiresCompleteSignedReceipt() throws {
         let envelope = try JSONDecoder().decode(WalletBackupV1.self, from: Self.completeAttemptGolden())
         let proof = try XCTUnwrap(envelope.paykitPaymentState?.pendingProofs.first)

@@ -461,6 +461,7 @@ actor PaykitAllowanceExecutor {
     ) async -> PaykitAllowanceAutoPayResult {
         guard request.direction == .incoming,
               request.billingPeriod == nil,
+              request.isAllowancePayable,
               request.lifecycleState == .proposed,
               !inFlightRequestIds.contains(request.id),
               allowances.contains(where: {

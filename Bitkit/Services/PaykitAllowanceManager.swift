@@ -145,7 +145,8 @@ final class PaykitAllowanceManager {
     /// Whether an incoming request is covered by an active Allowance this wallet granted. A request created before the
     /// Allowance was accepted stays manual: it may already have been shown to the user for a decision.
     func coversRequest(_ request: PaykitPaymentRequest) -> Bool {
-        allowances.contains { allowance in
+        guard request.isAllowancePayable else { return false }
+        return allowances.contains { allowance in
             guard allowance.isAllower, allowance.status(at: now()) == .active,
                   PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty)
             else { return false }
@@ -307,7 +308,7 @@ final class PaykitAllowanceManager {
     static let acceptanceClockTolerance: TimeInterval = 30
 
     static let allowedPaymentEndpointIdentifiers: [String] = PaykitIssuerInterop.supportedEndpointIdentifiers(
-        PublicPaykitService.MethodId.publishableMethodIds.map(\.rawValue),
+        PublicPaykitService.MethodId.publishableMethodIds.filter { $0 != .usdtArbitrum }.map(\.rawValue),
         network: Env.network
     )
 }

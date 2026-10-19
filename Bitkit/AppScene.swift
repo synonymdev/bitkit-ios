@@ -1420,7 +1420,8 @@ struct AppScene: View {
         let refreshed = await paykitPaymentRequestManager.refresh(
             mode: mode, forceFresh: forceFresh, messagePriority: messagePriority, canRefresh: canRefresh
         )
-        if canRefresh(), pubkyProfile.automaticPaykitSession == session {
+        // Deleting the profile withdraws the payment lists an automatic payment would consume.
+        if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
             let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
             let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
