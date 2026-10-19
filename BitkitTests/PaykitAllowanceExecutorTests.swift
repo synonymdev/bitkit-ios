@@ -421,6 +421,34 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(listOutcomes, [.definitePreBroadcastFailure])
     }
 
+    func testOnchainSendErrorAfterAdmissionStaysUncertain() async throws {
+        let harness = AllowanceHarness(payment: AllowanceHarness.onchainPayment())
+        await harness.payer.setOnchainError(OnchainSendAttemptError.outcomeNotSaved)
+        let request = try Fixtures.paymentRequest()
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .started)
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .unknown)])
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.uncertain])
+    }
+
+    func testOnchainRequestStaysManualWhileAnEarlierSendIsUnresolved() async throws {
+        let harness = AllowanceHarness(payment: AllowanceHarness.onchainPayment())
+        await harness.payer.setOnchainSendBlocked(true)
+        let request = try Fixtures.paymentRequest()
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(harness.log.entries.contains("claimForExecution"))
+        XCTAssertFalse(harness.log.entries.contains("payOnchain"))
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [])
+    }
+
     func testAcceptedOnchainPaymentWithoutSavedProofIsNotRecordedAsSucceeded() async throws {
         let harness = AllowanceHarness(payment: AllowanceHarness.onchainPayment())
         await harness.payer.setOnchainProofSaved(false)
@@ -1080,6 +1108,7 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     private var onchainResult: OnchainSendResult = .accepted(txid: AllowanceHarness.onchainTxid)
     private var onchainError: Error?
     private var onchainProofSaved = true
+    private var onchainSendBlocked = false
     private(set) var callCount = 0
     private(set) var claimedRequestIds: [PaykitPaymentRequest.ID] = []
     private(set) var acceptanceIntents: [PaykitPaymentRequest.ID] = []
@@ -1120,6 +1149,15 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
 
     func setOnchainProofSaved(_ saved: Bool) {
         onchainProofSaved = saved
+    }
+
+    func setOnchainSendBlocked(_ blocked: Bool) {
+        onchainSendBlocked = blocked
+    }
+
+    func isOnchainSendBlocked() async -> Bool {
+        called("isOnchainSendBlocked")
+        return onchainSendBlocked
     }
 
     /// Holds `payLightning` until the returned gate opens, so a test can act while the send is in progress.
