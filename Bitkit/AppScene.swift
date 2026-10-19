@@ -650,7 +650,7 @@ struct AppScene: View {
                 paykitPaymentRequestManager.startEligibleTargetRefresh(publicKey: completion.publicKey)
             }
             .onReceive(PaykitPaymentProofService.proofStateChangedPublisher
-                .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
+                .merge(with: PaykitUsdtPaymentService.paymentProtectionChangedPublisher)
                 .receive(on: DispatchQueue.main))
             {
                 paykitProofRefresh.invalidate(session: pubkyProfile.currentSession)

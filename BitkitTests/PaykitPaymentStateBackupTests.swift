@@ -325,15 +325,23 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
                                                            ),
                                                            binding: nil, billingPeriod: nil, paymentStarted: true)
         let service = PaykitUsdtPaymentService()
-        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [attempt, otherWallet].map(PaykitUsdtStateBackup.Attempt.init), receipts: []))
         var changes = 0
-        let observation = PaykitUsdtPaymentService.walletBackupDataChangedPublisher.sink { changes += 1 }
-        defer { observation.cancel() }
+        var backupChanges = 0
+        let observation = PaykitUsdtPaymentService.paymentProtectionChangedPublisher.sink { changes += 1 }
+        let backupObservation = PaykitUsdtPaymentService.walletBackupDataChangedPublisher.sink { backupChanges += 1 }
+        defer { observation.cancel(); backupObservation.cancel() }
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [attempt, otherWallet].map(PaykitUsdtStateBackup.Attempt.init), receipts: []))
+        XCTAssertGreaterThan(changes, 0)
+        XCTAssertEqual(backupChanges, 1)
+        changes = 0
+        backupChanges = 0
         await reconcileUsdt(service, storedTransfer: { quoteId in
             UsdtTransfer(sender: nil, id: quoteId, txHash: nil, userOperationHash: nil, bridgeGuid: nil, orchestra: nil,
                          recipient: "recipient", destination: .arbitrum, amount: 50000, receivedAmount: 50000,
                          fee: nil, isIncoming: false, status: .pending, timestamp: 1)
         })
+        XCTAssertGreaterThan(changes, 0)
+        XCTAssertEqual(backupChanges, 0)
         XCTAssertEqual(try service.paymentProtection(identity: identity).inFlight, [id])
         let next = PaykitPaymentRequest.ID(paymentRequestId: id.paymentRequestId, counterparty: id.counterparty,
                                            billingPeriodStartsAt: period.endsAt)
@@ -345,6 +353,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
                          fee: nil, isIncoming: false, status: .failed, timestamp: 1)
         })
         XCTAssertGreaterThan(changes, 0)
+        XCTAssertEqual(backupChanges, 0)
         XCTAssertTrue(try service.paymentProtection(identity: identity).inFlight.isEmpty)
         XCTAssertEqual(service.resumableRequests, [id])
         changes = 0
@@ -355,6 +364,7 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
                                 fee: nil, isIncoming: false, status: .failed, timestamp: 1)
         })
         XCTAssertGreaterThan(changes, 0)
+        XCTAssertEqual(backupChanges, 0)
     }
 
     @MainActor

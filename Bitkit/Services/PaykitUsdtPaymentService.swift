@@ -80,7 +80,7 @@ final class PaykitUsdtPaymentService {
     private var stateGeneration = 0
     private var sending = false
     private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = [] {
-        didSet { if !reconciling, oldValue != resumableRequests { Self.stateChanged.send() } }
+        didSet { if !reconciling, oldValue != resumableRequests { Self.paymentProtectionChanged.send() } }
     }
 
     private var releasedAttempts: [Attempt] = []
@@ -89,6 +89,11 @@ final class PaykitUsdtPaymentService {
     private nonisolated(unsafe) static let stateChanged = PassthroughSubject<Void, Never>()
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         stateChanged.eraseToAnyPublisher()
+    }
+
+    private nonisolated(unsafe) static let paymentProtectionChanged = PassthroughSubject<Void, Never>()
+    nonisolated static var paymentProtectionChangedPublisher: AnyPublisher<Void, Never> {
+        paymentProtectionChanged.eraseToAnyPublisher()
     }
 
     func backupSnapshot() throws -> PaykitUsdtStateBackup {
@@ -180,6 +185,7 @@ final class PaykitUsdtPaymentService {
         try Keychain.upsert(key: .paykitUsdtPayments, data: JSONEncoder().encode(state))
         publish(state)
         Self.stateChanged.send()
+        Self.paymentProtectionChanged.send()
     }
 
     private func publish(_ state: State) {
@@ -380,7 +386,7 @@ final class PaykitUsdtPaymentService {
         defer {
             reconciling = false
             if !previousProtection.2.isEmpty || previousProtection != (activeWallet, activeIdentity, resumableRequests) {
-                Self.stateChanged.send()
+                Self.paymentProtectionChanged.send()
             }
         }
         boundRequestIds = nil
