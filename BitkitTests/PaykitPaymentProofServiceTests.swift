@@ -1600,7 +1600,11 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let record = try paymentRequestRecord(endpoints: [endpoint])
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
         let store = PaymentProofMemoryStore()
-        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        let duplicateSubmission = expectation(description: "No overlapping proof submission")
+        duplicateSubmission.isInverted = true
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record]) { count in
+            if count > 1 { duplicateSubmission.fulfill() }
+        }
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
         let completion = expectation(description: "On-chain proof state persisted")
@@ -1621,7 +1625,12 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(persistedProof?.paymentIdentifier, txid)
         XCTAssertEqual(persistedProof?.proofData, txid)
         XCTAssertEqual(persistedProof?.onchainAcceptanceVerified, true)
+        let reconciliationStarted = expectation(description: "Reconciliation loaded the persisted proof")
+        await store.pauseNextLoad { reconciliationStarted.fulfill() }
         let reconciliation = Task { await service.reconcile() }
+        await fulfillment(of: [reconciliationStarted], timeout: 1)
+        await store.resumePausedLoad()
+        await fulfillment(of: [duplicateSubmission], timeout: 0.5)
         let countDuringSubmission = await sdk.submissionCount()
         XCTAssertEqual(countDuringSubmission, 1)
 
@@ -3306,6 +3315,7 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var identity: String
     private var records: [PaymentRequestRecord]
     private var submissions: [PaymentProofSubmission] = []
+    private let onSubmission: @Sendable (Int) -> Void
     private var shouldFailSubmission = false
     private var privateMessageProcessCallCount = 0
     private var shouldFailDelivery = false
@@ -3322,9 +3332,10 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var paymentRequestFetchContinuation: CheckedContinuation<Void, Never>?
     private var paymentRequestFetchStartContinuations: [CheckedContinuation<Void, Never>] = []
 
-    init(identity: String, records: [PaymentRequestRecord]) {
+    init(identity: String, records: [PaymentRequestRecord], onSubmission: @escaping @Sendable (Int) -> Void = { _ in }) {
         self.identity = identity
         self.records = records
+        self.onSubmission = onSubmission
     }
 
     func identityStatus() async -> IdentityStatus? {
@@ -3407,9 +3418,10 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         proof: PaymentProofSubmission
     ) async throws -> PaymentRequestRecord {
         submissions.append(proof)
+        onSubmission(submissions.count)
         submissionStartContinuations.forEach { $0.resume() }
         submissionStartContinuations.removeAll()
-        if shouldSuspendSubmission {
+        if shouldSuspendSubmission, submissions.count == 1 {
             await withCheckedContinuation { continuation in
                 submissionContinuation = continuation
             }
