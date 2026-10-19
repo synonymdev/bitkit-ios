@@ -457,6 +457,19 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(log.contains("beginPaymentExecution"))
     }
 
+    func testManualPaymentOfARequestNotPricedInBitcoinStaysOutOfTheLedger() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest(amount: "5.00", asset: PaykitAsset.usd.rawValue)
+
+        let attemptId = try await harness.executor.beginManualPayment(request, paymentEndpointIdentifier: Fixtures.lightningIdentifier)
+
+        XCTAssertNil(attemptId)
+        XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal, [])
+    }
+
     func testManualPaymentIsJournaledAndSubmittedWhenReady() async throws {
         let harness = AllowanceHarness()
         await harness.executor.activate(identity: Fixtures.identityKey)

@@ -745,7 +745,9 @@ actor PaykitAllowanceExecutor {
     /// Reports a user-approved payment of an incoming request to the shared ledger before it leaves the wallet.
     /// Throws `alreadyRecorded` when another live attempt exists for the request, so the same request is never paid twice.
     func beginManualPayment(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String) async throws -> String? {
-        guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming else { return nil }
+        guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming,
+              request.isAllowancePayable
+        else { return nil }
         do {
             try await ensureReconciled(identity: identity)
             let scope = Paykit.PaymentRequestScope(
@@ -826,7 +828,9 @@ actor PaykitAllowanceExecutor {
     // MARK: Helpers
 
     private func checks(_ request: PaykitPaymentRequest, endpointIdentifier: String, trustedTime: String) throws -> Paykit.PaymentExecutionChecks {
-        try Paykit.PaymentExecutionChecks(
+        // The ledger counts bitcoin only; a USD or USDT amount must never reach it as sats.
+        guard request.isAllowancePayable else { throw PaykitAllowanceError.unavailable }
+        return try Paykit.PaymentExecutionChecks(
             trustedTime: trustedTime,
             paymentEndpointIdentifier: endpointIdentifier,
             actualAmount: Paykit.AccountingAmount(value: request.amountValue, asset: PaykitIssuerInterop.bitcoinAsset),
