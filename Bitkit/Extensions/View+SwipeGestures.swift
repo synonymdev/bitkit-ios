@@ -16,43 +16,49 @@ extension View {
     /// Swipe left/right to move between adjacent tabs (same order as `T.allCases` / `SegmentedControl`).
     /// Pass `tabs` when the control shows only some cases, in its display order.
     /// With `wrapAround`, a swipe past the first or last tab selects the tab at the other end.
+    /// Pass `simultaneous` inside a sheet, so a vertical drag still reaches the sheet's swipe-to-dismiss.
+    @ViewBuilder
     func swipeSegmentedTabs<T: Hashable & CaseIterable>(
         selection: Binding<T>,
         tabs visibleTabs: [T]? = nil,
         wrapAround: Bool = false,
         minimumDragDistance: CGFloat = 20,
         swipeThreshold: CGFloat = 50,
-        animation: Animation = .easeInOut(duration: 0.2)
+        animation: Animation = .easeInOut(duration: 0.2),
+        simultaneous: Bool = false
     ) -> some View {
-        highPriorityGesture(
-            DragGesture(minimumDistance: minimumDragDistance, coordinateSpace: .local)
-                .onEnded { value in
-                    let horizontalAmount = value.translation.width
-                    let verticalAmount = value.translation.height
-                    guard abs(horizontalAmount) > abs(verticalAmount) else { return }
+        let drag = DragGesture(minimumDistance: minimumDragDistance, coordinateSpace: .local)
+            .onEnded { value in
+                let horizontalAmount = value.translation.width
+                let verticalAmount = value.translation.height
+                guard abs(horizontalAmount) > abs(verticalAmount) else { return }
 
-                    let tabs = visibleTabs ?? Array(T.allCases)
-                    guard let currentIndex = tabs.firstIndex(of: selection.wrappedValue) else { return }
+                let tabs = visibleTabs ?? Array(T.allCases)
+                guard let currentIndex = tabs.firstIndex(of: selection.wrappedValue) else { return }
 
-                    if horizontalAmount < -swipeThreshold, currentIndex < tabs.count - 1 {
-                        withAnimation(animation) {
-                            selection.wrappedValue = tabs[currentIndex + 1]
-                        }
-                    } else if horizontalAmount < -swipeThreshold, wrapAround, let first = tabs.first {
-                        withAnimation(animation) {
-                            selection.wrappedValue = first
-                        }
-                    } else if horizontalAmount > swipeThreshold, currentIndex > 0 {
-                        withAnimation(animation) {
-                            selection.wrappedValue = tabs[currentIndex - 1]
-                        }
-                    } else if horizontalAmount > swipeThreshold, wrapAround, let last = tabs.last {
-                        withAnimation(animation) {
-                            selection.wrappedValue = last
-                        }
+                if horizontalAmount < -swipeThreshold, currentIndex < tabs.count - 1 {
+                    withAnimation(animation) {
+                        selection.wrappedValue = tabs[currentIndex + 1]
+                    }
+                } else if horizontalAmount < -swipeThreshold, wrapAround, let first = tabs.first {
+                    withAnimation(animation) {
+                        selection.wrappedValue = first
+                    }
+                } else if horizontalAmount > swipeThreshold, currentIndex > 0 {
+                    withAnimation(animation) {
+                        selection.wrappedValue = tabs[currentIndex - 1]
+                    }
+                } else if horizontalAmount > swipeThreshold, wrapAround, let last = tabs.last {
+                    withAnimation(animation) {
+                        selection.wrappedValue = last
                     }
                 }
-        )
+            }
+        if simultaneous {
+            simultaneousGesture(drag)
+        } else {
+            highPriorityGesture(drag)
+        }
     }
 }
 
