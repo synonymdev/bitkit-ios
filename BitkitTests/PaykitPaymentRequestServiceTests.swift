@@ -90,6 +90,154 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testInitialSubscriptionWithMultipleAcceptedMethodsStillRequiresSelection() throws {
+        let now = Date()
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let record = try paymentRequestRecord(
+            state: .activeRecurring, amount: "1", asset: "usd",
+            conversion: .fixed(rates: [.init(asset: "usdt", value: "1"), .init(asset: "btc", value: "0.00001")]),
+            recurrence: .init(every: 1, unit: "month", startsAt: "2026-01-01T08:00:00Z",
+                              anchor: "2026-01-01T08:00:00Z", endsAt: nil),
+            endpoints: [usdt.methodId.rawValue, PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue]
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = PaykitPaymentRequest(subscription: subscription,
+                                           billingPeriod: .init(startsAt: now, endsAt: now.addingTimeInterval(3600)),
+                                           lifecycleState: .accepted)
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request,
+                                            isInitialSubscriptionPayment: true, endpoints: [usdt])
+        XCTAssertNil(context.initialUsdtSubscriptionPayment(at: now))
+    }
+
+    func testInitialUsdtPreparationAuthorizesOnceAndDoesNotRepeatAfterAuthenticationCancellation() async throws {
+        for authorized in [true, false] {
+            var events: [String] = []
+            let quoted = expectation(description: "Initial quote prepared")
+            let authenticated = expectation(description: "Initial payment authorization")
+            let sent = expectation(description: "Initial payment submitted")
+            sent.isInverted = !authorized
+            let window = try hostInitialUsdtPayment(quotePayment: { _, _, _ in
+                events.append("quote")
+                quoted.fulfill()
+                return self.initialUsdtQuote
+            }, authenticatePayment: {
+                events.append("authenticate")
+                authenticated.fulfill()
+                return authorized
+            }, sendPayment: { _ in
+                events.append("send")
+                sent.fulfill()
+            })
+            defer { window.isHidden = true; window.rootViewController = nil }
+            await fulfillment(of: [quoted, authenticated], timeout: 3)
+            await fulfillment(of: [sent], timeout: authorized ? 3 : 0.2)
+            SettingsViewModel.shared.usdtPreference = .disabled
+            try await Task.sleep(for: .milliseconds(100))
+            SettingsViewModel.shared.usdtPreference = .enabled
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(events, authorized ? ["quote", "authenticate", "send"] : ["quote", "authenticate"])
+        }
+    }
+
+    func testInitialUsdtQuoteFailureRequiresExplicitPaymentConfirmationAfterRecovery() async throws {
+        for error in [UsdtError.InsufficientBalance, .QuoteExpired] {
+            var attempts = 0
+            let failed = expectation(description: "Initial quote failed")
+            let recovered = expectation(description: "Quote recovered")
+            let authorized = expectation(description: "Automatic authorization must stay consumed")
+            authorized.isInverted = true
+            let window = try hostInitialUsdtPayment(quotePayment: { _, _, _ in
+                attempts += 1
+                if attempts == 1 { failed.fulfill(); throw error }
+                recovered.fulfill()
+                return self.initialUsdtQuote
+            }, authenticatePayment: {
+                authorized.fulfill()
+                return false
+            }, sendPayment: { _ in XCTFail("A failed preparation must never submit automatically") })
+            defer { window.isHidden = true; window.rootViewController = nil }
+            await fulfillment(of: [failed], timeout: 3)
+            SettingsViewModel.shared.usdtPreference = .disabled
+            try await Task.sleep(for: .milliseconds(100))
+            SettingsViewModel.shared.usdtPreference = .enabled
+            await fulfillment(of: [recovered], timeout: 3)
+            await fulfillment(of: [authorized], timeout: 0.2)
+            XCTAssertEqual(attempts, 2)
+        }
+    }
+
+    func testCancelledInitialUsdtPreparationCannotAuthorizeAfterQuoteCompletes() async throws {
+        let started = expectation(description: "Quote started")
+        let finished = expectation(description: "Quote finished after close")
+        let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
+        let window = try hostInitialUsdtPayment(quotePayment: { _, _, _ in
+            started.fulfill()
+            for await _ in gate.stream {
+                break
+            }
+            finished.fulfill()
+            return self.initialUsdtQuote
+        }, authenticatePayment: {
+            XCTFail("Closing the flow must not authorize a payment")
+            return false
+        }, sendPayment: { _ in XCTFail("Closing the flow must not submit a payment") })
+        await fulfillment(of: [started], timeout: 3)
+        window.isHidden = true
+        window.rootViewController = nil
+        await fulfillment(of: [finished], timeout: 3)
+        try await Task.sleep(for: .milliseconds(100))
+    }
+
+    private var initialUsdtQuote: UsdtQuote {
+        UsdtQuote(bridgeProvider: nil, id: "subscription-quote", recipient: "0x1111111111111111111111111111111111111111",
+                  destination: .arbitrum, amount: 1_000_000, receivedAmount: 1_000_000, maximumFee: 20,
+                  expiresAt: UInt64(Date().timeIntervalSince1970) + 60)
+    }
+
+    private func hostInitialUsdtPayment(
+        quotePayment: @escaping (String, String, UsdtDestination) async throws -> UsdtQuote,
+        authenticatePayment: @escaping () async -> Bool,
+        sendPayment: @escaping (UsdtQuote) async throws -> Void
+    ) throws -> UIWindow {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let preference = settings.usdtPreference
+        addTeardownBlock { @MainActor in settings.usdtPreference = preference }
+        settings.usdtPreference = .enabled
+        let now = Date()
+        let endpoint = try PaykitUsdt.endpoint(address: initialUsdtQuote.recipient)
+        let record = try paymentRequestRecord(
+            state: .activeRecurring, amount: "1", asset: "usdt",
+            recurrence: .init(every: 1, unit: "month", startsAt: "2026-01-01T08:00:00Z",
+                              anchor: "2026-01-01T08:00:00Z", endsAt: nil),
+            endpoints: [endpoint.methodId.rawValue]
+        )
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = PaykitPaymentRequest(subscription: subscription,
+                                           billingPeriod: .init(startsAt: now, endsAt: now.addingTimeInterval(3600)),
+                                           lifecycleState: .accepted)
+        let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request,
+                                            isInitialSubscriptionPayment: true, endpoints: [endpoint])
+        XCTAssertNotNil(context.initialUsdtSubscriptionPayment())
+        let manager = UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw UsdtError.InvalidCredentials })
+        let view = UsdtSendView(onDetails: { _ in }, initialRecipient: endpoint.value, initialAmount: "1", embedded: true,
+                                paymentContext: context, quotePayment: quotePayment, authenticatePayment: authenticatePayment,
+                                sendPayment: sendPayment)
+            .environment(manager)
+            .environment(PaykitPaymentRequestManager())
+            .environmentObject(AppViewModel())
+            .environmentObject(ContactsManager())
+            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+            .environmentObject(settings)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(rootView: view)
+        window.makeKeyAndVisible()
+        window.rootViewController?.view.layoutIfNeeded()
+        return window
+    }
+
     func testMonthlyCostCombinesAssetsUsingTheWalletRate() {
         let now = Date()
         let amounts = [

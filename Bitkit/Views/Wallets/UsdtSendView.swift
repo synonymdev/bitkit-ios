@@ -8,6 +8,8 @@ struct UsdtSendView: View {
     var initialAmount = ""
     var embedded = false
     var paymentContext: ContactPaymentContext?
+    var quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)?
+    var authenticatePayment: (() async -> Bool)?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
@@ -48,6 +50,8 @@ struct UsdtSendView: View {
         initialAmount: String = "",
         embedded: Bool = false,
         paymentContext: ContactPaymentContext? = nil,
+        quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)? = nil,
+        authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
@@ -57,6 +61,8 @@ struct UsdtSendView: View {
         self.initialAmount = initialAmount
         self.embedded = embedded
         self.paymentContext = paymentContext
+        self.quotePayment = quotePayment
+        self.authenticatePayment = authenticatePayment
         self.sendPayment = sendPayment
         self.onBack = onBack
         self.onClose = onClose
@@ -588,7 +594,8 @@ struct UsdtSendView: View {
         }
         preparedQuote = nil
         let sender = usdt.address
-        let result = try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+        let result: UsdtQuote = if let quotePayment { try await quotePayment(recipient, amount, destination) }
+        else { try await usdt.quote(recipient: recipient, amount: amount, destination: destination) }
         preparedQuote = UsdtPreparedQuote(quote: result, amount: amount, sender: sender)
         return result
     }
@@ -634,6 +641,13 @@ struct UsdtSendView: View {
 
     private func authenticateAndSend() async {
         guard !busy else { return }
+        if let authenticatePayment {
+            busy = true
+            let authorized = await authenticatePayment()
+            busy = false
+            if authorized, !Task.isCancelled { await send() }
+            return
+        }
         if settings.requirePinForPayments && settings.pinEnabled {
             guard settings.useBiometrics && BiometricAuth.isAvailable else {
                 pin = true

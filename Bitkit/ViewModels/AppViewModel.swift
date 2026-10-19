@@ -39,6 +39,7 @@ struct ContactPaymentContext: Equatable {
 
     func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
         guard isInitialSubscriptionPayment, let request = incomingPaymentRequest, request.billingPeriod != nil,
+              Set(request.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue],
               !endpoints.isEmpty, endpoints.allSatisfy({ $0.methodId == .usdtArbitrum }),
               !request.isExpired(at: date)
         else { return nil }
