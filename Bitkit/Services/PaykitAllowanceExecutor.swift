@@ -60,6 +60,10 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
         case succeeded
         case failed
         case unknown
+
+        var isTerminal: Bool {
+            self == .succeeded || self == .failed
+        }
     }
 
     struct JournalEntry: Codable, Equatable {
@@ -130,13 +134,14 @@ protocol PaykitAllowancePaying: Sendable {
     func prepareProof(_ request: PaykitPaymentRequest, paymentAppId: String, paymentEndpointIdentifier: String, allowanceId: String?) async throws
     func associateLightningPayment(_ request: PaykitPaymentRequest, paymentHash: String) async throws
     func markOnchainPaymentStarted(_ request: PaykitPaymentRequest, address: String) async throws
-    func payLightning(bolt11: String, sats: UInt64?) async throws
+    func payLightning(_ request: PaykitPaymentRequest, bolt11: String, sats: UInt64?) async throws
     /// Whether an earlier on-chain send is unresolved, so another one cannot start.
     func isOnchainSendBlocked() async -> Bool
     /// Throws `OnchainSendAttemptError.preDispatch` only when nothing was broadcast, after rolling back the started proof.
     func payOnchain(_ request: PaykitPaymentRequest, address: String, sats: UInt64, paymentIdentity: String) async throws -> OnchainSendResult
     func completeOnchainPayment(_ request: PaykitPaymentRequest, txid: String, paymentAppId: String, paymentEndpointIdentifier: String) async -> Bool
-    func failLightningPayment(paymentHash: String) async
+    /// Removes the proof only when the submission error proves nothing reached the node; returns whether it did.
+    func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async
 }
 
@@ -212,8 +217,12 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         try await PaykitPaymentProofService.shared.markOnchainPaymentStarted(request, address: address)
     }
 
-    func payLightning(bolt11: String, sats: UInt64?) async throws {
-        _ = try await LightningService.shared.send(bolt11: bolt11, sats: sats)
+    func payLightning(_ request: PaykitPaymentRequest, bolt11: String, sats: UInt64?) async throws {
+        _ = try await LightningService.shared.send(
+            bolt11: bolt11,
+            sats: sats,
+            beforeSubmission: { try PaykitPaymentRequest.checkPaymentDeadline(request.paymentDeadline) }
+        )
     }
 
     func isOnchainSendBlocked() async -> Bool {
@@ -259,8 +268,8 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         )
     }
 
-    func failLightningPayment(paymentHash: String) async {
-        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+    func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
+        await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash, submissionError: submissionError)
     }
 
     func cancelProofPreparation(_ request: PaykitPaymentRequest) async {
@@ -698,10 +707,21 @@ actor PaykitAllowanceExecutor {
         }
 
         do {
-            try await payer.payLightning(bolt11: payment.endpoint.value, sats: payment.lightningInvoiceHasAmount ? nil : request.allowanceAmountSats)
+            try await payer.payLightning(
+                request,
+                bolt11: payment.endpoint.value,
+                sats: payment.lightningInvoiceHasAmount ? nil : request.allowanceAmountSats
+            )
         } catch {
-            // LDK rejected the payment before routing it.
-            await payer.failLightningPayment(paymentHash: paymentHash)
+            guard await payer.failLightningPayment(paymentHash: paymentHash, submissionError: error) else {
+                // The node may have started the payment; its settlement event records the outcome.
+                Logger.warn("Automatic Lightning allowance payment outcome is uncertain: \(error)", context: "PaykitAllowance")
+                await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
+                if !hasTerminalStage(attemptId: attemptId, identity: identity) {
+                    try await record(attemptId: attemptId, outcome: .unknown, identity: identity)
+                }
+                return .started
+            }
             await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
             try await record(attemptId: attemptId, outcome: .failed, identity: identity)
             throw error
@@ -922,11 +942,18 @@ actor PaykitAllowanceExecutor {
         try store.save(state, identity: identity)
     }
 
+    /// Settlement can record an outcome while a send is still cleaning up, so a later stage never replaces it.
     private func setStage(_ stage: PaykitAllowanceLocalState.Stage, attemptId: String, identity: String) {
         updateLocalState(identity: identity) { state in
-            guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
+            guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
+                  !state.journal[index].stage.isTerminal
+            else { return }
             state.journal[index].stage = stage
         }
+    }
+
+    private func hasTerminalStage(attemptId: String, identity: String) -> Bool {
+        localState(identity: identity).journal.first { $0.attemptId == attemptId }?.stage.isTerminal == true
     }
 
     private func notifyLimitReached(_ request: PaykitPaymentRequest, identity: String) {
