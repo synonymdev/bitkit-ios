@@ -246,6 +246,11 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertTrue(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(), attempts: attempts, now: Fixtures.now))
     }
 
+    func testAutomaticLightningRoutingFeeIsCappedAtOnePercent() {
+        XCTAssertEqual(PaykitAllowanceLivePayer.routeParameters(amountSats: 1000).maxTotalRoutingFeeMsat, 10000)
+        XCTAssertEqual(PaykitAllowanceLivePayer.routeParameters(amountSats: 1).maxTotalRoutingFeeMsat, 10)
+    }
+
     func testCapacityWithoutBothCeilingsNeverFits() {
         XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(monthlyLimitSats: nil), attempts: [], now: Fixtures.now))
         XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(perPaymentMaxSats: nil), attempts: [], now: Fixtures.now))
