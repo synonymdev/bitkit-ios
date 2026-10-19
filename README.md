@@ -103,6 +103,8 @@ This project uses [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) for
 brew install swiftformat
 ```
 
+CI pins SwiftFormat 0.64.0, and `.swiftformat` sets it as the minimum version.
+
 **IDE Extensions:**
 - [VSCode extension](https://open-vsx.org/extension/vknabel/vscode-swiftformat)
 - [Xcode extension](https://github.com/nicklockwood/SwiftFormat#xcode-source-editor-extension)
@@ -111,6 +113,15 @@ brew install swiftformat
 ```bash
 swiftformat .
 ```
+
+**Check formatting** the way the CI `lint` workflow does (a PR with unformatted Swift fails it):
+```bash
+swiftformat --lint .
+```
+
+### Compiler Warnings
+
+All targets build with `-warnings-as-errors -Wwarning DeprecatedDeclaration` (project-level Other Swift Flags), so a Swift compiler warning fails the build locally and in CI, while deprecation warnings stay warnings.
 
 ### Git Hooks
 
