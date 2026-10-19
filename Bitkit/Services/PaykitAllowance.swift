@@ -122,6 +122,11 @@ struct PaykitAllowance: Identifiable, Hashable {
         }
     }
 
+    /// A per-payment maximum and an anchored monthly amount, the ceilings Bitkit shows and checks before paying.
+    var hasAmountCeiling: Bool {
+        perPaymentMaxSats != nil && monthlyLimitSats != nil && monthlyAnchor != nil
+    }
+
     var isAnswerable: Bool {
         lifecycleState == .proposed && !isProposedByMe
     }
@@ -265,8 +270,9 @@ enum PaykitAllowanceCapacity {
         if let perPaymentMaxSats = allowance.perPaymentMaxSats, amountSats > perPaymentMaxSats {
             return false
         }
-        guard let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
-            return true
+        // Terms without both ceilings never pay automatically, whatever the SDK accepts.
+        guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
+            return false
         }
         let used = usedSats(allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
         return used + amountSats <= monthlyLimitSats

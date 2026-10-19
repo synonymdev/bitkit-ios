@@ -150,7 +150,7 @@ final class PaykitAllowanceManager {
             guard allowance.isAllower, allowance.status(at: now()) == .active,
                   PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty)
             else { return false }
-            guard let acceptedAt = allowance.lastEventAt, let createdAt = request.createdAt else { return true }
+            guard let acceptedAt = allowance.lastEventAt, let createdAt = request.createdAt else { return false }
             return createdAt >= acceptedAt.addingTimeInterval(-Self.acceptanceClockTolerance)
         }
     }
@@ -198,7 +198,10 @@ final class PaykitAllowanceManager {
 
     func accept(_ entry: PaykitAllowanceEntry) async throws {
         try await respond(to: entry) { allowance in
-            guard let proposalStreamItemId = allowance.proposalStreamItemId else { throw PaykitAllowanceError.unavailable }
+            // As the payer, only accept terms with both ceilings this wallet shows and enforces.
+            guard let proposalStreamItemId = allowance.proposalStreamItemId,
+                  allowance.role == .allowee || allowance.hasAmountCeiling
+            else { throw PaykitAllowanceError.unavailable }
             return try await self.sdk.acceptAllowance(
                 counterparty: allowance.counterparty,
                 allowanceId: allowance.allowanceId,
@@ -280,7 +283,7 @@ final class PaykitAllowanceManager {
             let result = await executor.autoPay(request, allowances: allowances, identity: identity)
             Logger.info("Automatic payment pass for a covered request ended as \(result)", context: "PaykitAllowance")
             switch result {
-            case .started, .completed:
+            case .started:
                 handledAny = true
             case .manual, .notCovered:
                 manualRequestIds[request.id] = signature

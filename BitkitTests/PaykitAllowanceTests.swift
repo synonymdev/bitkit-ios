@@ -246,11 +246,10 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertTrue(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(), attempts: attempts, now: Fixtures.now))
     }
 
-    func testCapacityWithoutMonthlyLimitChecksOnlyThePerPaymentMaximum() {
-        let allowance = Fixtures.allowance(monthlyLimitSats: nil)
-        let attempts = [Fixtures.capacityAttempt(sats: 1_000_000, at: "2026-09-05T10:00:00Z")]
-
-        XCTAssertTrue(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: allowance, attempts: attempts, now: Fixtures.now))
+    func testCapacityWithoutBothCeilingsNeverFits() {
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(monthlyLimitSats: nil), attempts: [], now: Fixtures.now))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(perPaymentMaxSats: nil), attempts: [], now: Fixtures.now))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(monthlyAnchor: nil), attempts: [], now: Fixtures.now))
     }
 
     func testAttemptsFromHistoryKeepAutomaticAllowanceAttempts() throws {
