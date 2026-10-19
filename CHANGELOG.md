@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - 2026-10-19
+## [3.0.1] - 2026-10-19
+
+### Fixed
+- Pause automatic Paykit refresh and publication during profile deletion, then resume if the profile remains signed in. #954
+- Fixed the Pubky sign-in sheet sometimes disappearing when a sign-in link opened Bitkit from a closed state. #966
+- On-chain payments no longer fail with an unknown outcome after Bitkit returns from the background. #967
+- Preserved pending USDT payment protection after backup restore and kept bridge support details safely formatted. #969
+- Opening another link while a Pubky sign-in is pending no longer drops the sign-in; the other link opens after it. #985
+- An on-chain payment whose request ended before it reached the network can now be cancelled, which sends its coins back to the wallet so it no longer blocks new on-chain payments. #986
+- Payment links opened while Bitkit is locked now open for review instead of being paid with QuickPay. #992
+- Copy plain USDT receiving addresses and share them with the selected network, requested amount and payment QR code. #997
+
+## [3.0.0] - 2026-10-16
 
 ### Added
 - Bitkit now opens Pubky marketplace setup links directly into explicit watch-only account consent. #722
@@ -88,14 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Receive invoices now keep the latest amount and note during overlapping refreshes, with retry available when invoice creation fails. #933
 - Discover Shop sellers from buyer interaction markers on app resume and payment-request polls, preserving edited and removed contacts, and refresh shared contacts before opening contact links. #934
 - Restored Arabic translations and added missing translations across languages. #938
-- Pause automatic Paykit refresh and publication during profile deletion, then resume if the profile remains signed in. #954
-- Fixed the Pubky sign-in sheet sometimes disappearing when a sign-in link opened Bitkit from a closed state. #966
-- On-chain payments no longer fail with an unknown outcome after Bitkit returns from the background. #967
-- Preserved pending USDT payment protection after backup restore and kept bridge support details safely formatted. #969
-- Opening another link while a Pubky sign-in is pending no longer drops the sign-in; the other link opens after it. #985
-- An on-chain payment whose request ended before it reached the network can now be cancelled, which sends its coins back to the wallet so it no longer blocks new on-chain payments. #986
-- Payment links opened while Bitkit is locked now open for review instead of being paid with QuickPay. #992
-- Copy plain USDT receiving addresses and share them with the selected network, requested amount and payment QR code. #997
 
 ### Security
 - Paykit payment approvals remain tied to the reviewed proposal when private state changes. #921
@@ -243,7 +247,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.0-rc2...v3.0.1
 [3.0.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.1...v3.0.0
 [2.5.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.1...v2.5.0
