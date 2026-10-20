@@ -159,7 +159,7 @@ npm install -g git-format-staged
 node scripts/validate-translations.js
 ```
 
-**Note:** Localization files are synced from Transifex using [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync).
+**Note:** Translations live in this repository. When adding or changing an English string, add or update its translation in every `*.lproj/Localizable.strings` in the same PR.
 
 ### Testing
 
@@ -480,4 +480,4 @@ investigate, not a bug report on its own.
 
 1. Update translation keys in code
 2. Run `node scripts/validate-translations.js` to check for issues
-3. Sync with Transifex using `bitkit-transifex-sync` tool
+3. Add or update the translation in every `*.lproj/Localizable.strings` in the same PR
