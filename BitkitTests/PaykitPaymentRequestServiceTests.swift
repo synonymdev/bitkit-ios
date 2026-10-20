@@ -364,31 +364,35 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testFreshRefreshRereadsRequestsChangedAfterSnapshot() async throws {
-        let record = try paymentRequestRecord()
-        let sdk = PaymentRequestSdkMock(records: [record])
-        let manager = paymentRequestManager(sdk: sdk)
-        await sdk.pauseNextPaymentRequestList()
-        let first = Task { await manager.refresh(messagePriority: .background) }
-        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        let refreshPriorities: [PaykitSdkOperationLock.Priority?] = [nil, .background]
+        for refreshPriority in refreshPriorities {
+            let record = try paymentRequestRecord()
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let manager = paymentRequestManager(sdk: sdk)
+            await sdk.pauseNextPaymentRequestList()
+            let first = Task { await manager.refresh(messagePriority: .background) }
+            try await waitUntil { await sdk.paymentRequestListIsPaused() }
 
-        await sdk.setRecords([])
-        let refreshStarted = expectation(description: "Request state refresh started")
-        let fresh = Task {
-            refreshStarted.fulfill()
-            await manager.refresh(forceFresh: true, messagePriority: .background)
+            await sdk.setRecords([])
+            let refreshStarted = expectation(description: "Request state refresh started")
+            let fresh = Task {
+                refreshStarted.fulfill()
+                await manager.refresh(forceFresh: true, messagePriority: .background, refreshPriority: refreshPriority)
+            }
+            await fulfillment(of: [refreshStarted], timeout: 1)
+            await sdk.resumePaymentRequestList()
+            _ = await first.value
+            await fresh.value
+
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.paymentRequestListCallCount, 2)
+            let priorities = await sdk.operationPriorities
+            let expectedPriority = refreshPriority ?? .ordered
+            XCTAssertEqual(priorities["pending"], [.background, expectedPriority])
+            XCTAssertEqual(priorities["receive"], [.background, expectedPriority])
+            XCTAssertEqual(priorities["observation"], [.background, expectedPriority])
         }
-        await fulfillment(of: [refreshStarted], timeout: 1)
-        await sdk.resumePaymentRequestList()
-        _ = await first.value
-        await fresh.value
-
-        XCTAssertTrue(manager.pendingRequests.isEmpty)
-        let snapshot = await sdk.snapshot()
-        XCTAssertEqual(snapshot.paymentRequestListCallCount, 2)
-        let priorities = await sdk.operationPriorities
-        XCTAssertEqual(priorities["pending"], [.background, .ordered])
-        XCTAssertEqual(priorities["receive"], [.background, .ordered])
-        XCTAssertEqual(priorities["observation"], [.background, .ordered])
     }
 
     func testFreshRefreshRereadsProofStateChangedDuringNotificationSynchronization() async throws {
@@ -503,31 +507,34 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testFreshRefreshDoesNotOutliveCancellationOrIdentityChange() async throws {
-        for invalidation in ["cancel", "clear", "identity"] {
-            let sdk = PaymentRequestSdkMock(records: [])
-            let manager = paymentRequestManager(sdk: sdk)
-            await sdk.pauseNextPaymentRequestList()
-            let first = Task { await manager.refresh() }
-            try await waitUntil { await sdk.paymentRequestListIsPaused() }
-            let refreshStarted = expectation(description: invalidation)
-            let fresh = Task {
-                refreshStarted.fulfill()
-                await manager.refresh(forceFresh: true)
-            }
-            await fulfillment(of: [refreshStarted], timeout: 1)
+        let refreshPriorities: [PaykitSdkOperationLock.Priority?] = [nil, .background]
+        for refreshPriority in refreshPriorities {
+            for invalidation in ["cancel", "clear", "identity"] {
+                let sdk = PaymentRequestSdkMock(records: [])
+                let manager = paymentRequestManager(sdk: sdk)
+                await sdk.pauseNextPaymentRequestList()
+                let first = Task { await manager.refresh() }
+                try await waitUntil { await sdk.paymentRequestListIsPaused() }
+                let refreshStarted = expectation(description: invalidation)
+                let fresh = Task {
+                    refreshStarted.fulfill()
+                    await manager.refresh(forceFresh: true, refreshPriority: refreshPriority)
+                }
+                await fulfillment(of: [refreshStarted], timeout: 1)
 
-            switch invalidation {
-            case "cancel": fresh.cancel()
-            case "clear": manager.clear()
-            default: manager.activate(identity: "pubky\(String(repeating: "y", count: 52))")
-            }
-            await sdk.resumePaymentRequestList()
-            _ = await first.value
-            await fresh.value
+                switch invalidation {
+                case "cancel": fresh.cancel()
+                case "clear": manager.clear()
+                default: manager.activate(identity: "pubky\(String(repeating: "y", count: 52))")
+                }
+                await sdk.resumePaymentRequestList()
+                _ = await first.value
+                await fresh.value
 
-            let snapshot = await sdk.snapshot()
-            XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, invalidation)
-            XCTAssertTrue(manager.pendingRequests.isEmpty, invalidation)
+                let snapshot = await sdk.snapshot()
+                XCTAssertEqual(snapshot.paymentRequestListCallCount, 1, invalidation)
+                XCTAssertTrue(manager.pendingRequests.isEmpty, invalidation)
+            }
         }
     }
 
@@ -4168,6 +4175,48 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let retried = await manager.refresh()
         XCTAssertTrue(retried)
         XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
+    func testBackgroundStateChangeRefreshDefersWithoutConsumingSnapshotOrBlockingRecovery() async throws {
+        let record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        let loaded = await manager.refresh(mode: .stored)
+        XCTAssertTrue(loaded)
+        let pending = manager.pendingRequests
+        await sdk.pauseNextPaymentRequestList()
+        let admitted = Task { await manager.refresh(mode: .stored) }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        let started = expectation(description: "Proof display refresh waiting for admitted snapshot")
+        let fresh = Task {
+            started.fulfill()
+            return await manager.refresh(mode: .stored, forceFresh: true, refreshPriority: .background)
+        }
+        await fulfillment(of: [started], timeout: 1)
+        await sdk.setBackgroundObservationDeferred(true)
+        await sdk.setRecords([])
+        await sdk.resumePaymentRequestList()
+        let admittedResult = await admitted.value
+        let deferredResult = await fresh.value
+        XCTAssertTrue(admittedResult)
+        XCTAssertFalse(deferredResult)
+        XCTAssertEqual(manager.pendingRequests, pending)
+
+        let recovered = await manager.refresh(mode: .stored, forceFresh: true)
+        XCTAssertTrue(recovered)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        await sdk.setBackgroundObservationDeferred(false)
+        let latest = try paymentRequestRecord(id: "latest-request")
+        await sdk.setRecords([latest])
+        let retried = await manager.refresh(mode: .stored)
+        XCTAssertTrue(retried)
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [latest.paymentRequestId])
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["observation"], [.background, .background, .background, .ordered, .background])
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.paymentRequestListCallCount, 4)
+        XCTAssertEqual(snapshot.processCallCount, 0)
+        XCTAssertEqual(snapshot.receiveCallCount, 0)
     }
 
     func testRefreshContinuesWhenPendingResponseDeliveryFails() async throws {
@@ -9360,6 +9409,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var incomingRecords: [PaymentRequestRecord] = []
     private var paymentRequestListCallCount = 0
     private var paymentRequestListError: Error?
+    private var isBackgroundObservationDeferred = false
     private var peerRecords: [LinkedPeerRecord] = []
     private var requestCapabilitiesByPublicKey: [String: Bool] = [:]
     private var liveSessionAvailable = true
@@ -9488,6 +9538,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?) async throws -> PaykitStateObservation {
         operationPriorities["observation", default: []].append(priority)
+        if priority == .background, isBackgroundObservationDeferred {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
         let identity = activeIdentity
         if let expectedIdentity {
             guard PubkyPublicKeyFormat.matches(identity, expectedIdentity) else { throw PubkyServiceError.identityChanged }
@@ -9532,6 +9585,10 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
 
     func setPaymentRequestListError(_ error: Error) {
         paymentRequestListError = error
+    }
+
+    func setBackgroundObservationDeferred(_ deferred: Bool) {
+        isBackgroundObservationDeferred = deferred
     }
 
     func identityStatus() -> IdentityStatus? {

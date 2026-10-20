@@ -1803,13 +1803,14 @@ final class PaykitPaymentRequestManager {
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .background,
+        refreshPriority: PaykitSdkOperationLock.Priority? = nil,
         canRefresh: @escaping @MainActor () -> Bool = { true }
     ) async -> Bool {
         await refresh(
             excludingProtectedRequestId: nil,
             mode: mode,
             forceFresh: forceFresh,
-            messagePriority: forceFresh ? .ordered : messagePriority,
+            messagePriority: refreshPriority ?? (forceFresh ? .ordered : messagePriority),
             canRefresh: canRefresh
         )
     }
