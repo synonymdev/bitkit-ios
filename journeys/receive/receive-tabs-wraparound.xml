@@ -1,7 +1,8 @@
 <journey name="receive tabs wraparound">
   <description>
     On the Receive sheet, tab swipes wrap around: a swipe to the right on the first tab selects the
-    last tab, and a swipe to the left on the last tab selects the first. A sideways swipe never closes
+    last tab, and a swipe to the left on the last tab selects the first. The wrap slides on to the
+    other end the way a swipe between neighbouring tabs does. A sideways swipe never closes
     the Receive sheet, also when it is released above the sheet, and a tap on a QR still copies it.
 
     Precondition: onboarded dev wallet with USDT enabled (introductory sheet or Settings, General,
