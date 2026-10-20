@@ -1553,6 +1553,7 @@
 "wallet__payment_request_status_pending" = "Ausstehend";
 "wallet__payment_request_status_paid" = "Bezahlt";
 "wallet__payment_request_contact" = "Kontakt";
+"wallet__payment_request_seller" = "Verkäufer";
 "subscriptions__active" = "Aktiv";
 "subscriptions__cancel" = "Abbrechen";
 "subscriptions__cancel_subscription" = "Abonnement kündigen";

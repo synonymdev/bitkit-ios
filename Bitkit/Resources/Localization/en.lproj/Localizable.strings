@@ -1570,6 +1570,7 @@
 "wallet__payment_request_status_pending" = "Pending";
 "wallet__payment_request_status_paid" = "Paid";
 "wallet__payment_request_contact" = "Contact";
+"wallet__payment_request_seller" = "Seller";
 "subscriptions__active" = "Active";
 "subscriptions__cancel" = "Cancel";
 "subscriptions__cancel_subscription" = "Cancel Subscription";

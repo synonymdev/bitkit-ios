@@ -75,6 +75,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     let billingPeriod: PaykitBillingPeriod?
     let paymentProofKind: PaykitPaymentProofKind?
     let paymentProofEventId: String?
+    /// Created by a Paykit server for a merchant, such as a Pubky Market order, not by a person's wallet.
+    private(set) var isMerchantRequest = false
 
     var requiresAcceptance: Bool {
         billingPeriod == nil && lifecycleState == .proposed
@@ -195,7 +197,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             expiresAt = nil
         }
 
-        return .success(PaykitPaymentRequest(
+        var request = PaykitPaymentRequest(
             paymentRequestId: record.paymentRequestId,
             counterparty: record.counterparty,
             proposalStreamItemId: record.proposalStreamItemId,
@@ -215,8 +217,13 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
                 PaykitPaymentProofKind(paymentEndpointIdentifier: $0.paymentEndpointIdentifier)
             },
             paymentProofEventId: record.paymentProofs.last?.eventId
-        ))
+        )
+        request.isMerchantRequest = record.proposalAppId == paykitServerAppId
+        return .success(request)
     }
+
+    /// The app id a Paykit server stamps on requests it creates for merchants.
+    private static let paykitServerAppId = "paykit-server"
 
     private static func actionableLifecycleState(
         for record: Paykit.PaymentRequestRecord
@@ -267,7 +274,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
         _ state: Paykit.PaymentRequestLifecycleState,
         paymentProofKind: PaykitPaymentProofKind? = nil
     ) -> PaykitPaymentRequest {
-        PaykitPaymentRequest(
+        var request = PaykitPaymentRequest(
             paymentRequestId: paymentRequestId,
             counterparty: counterparty,
             proposalStreamItemId: proposalStreamItemId,
@@ -286,6 +293,8 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             paymentProofKind: paymentProofKind ?? self.paymentProofKind,
             paymentProofEventId: paymentProofEventId
         )
+        request.isMerchantRequest = isMerchantRequest
+        return request
     }
 
     init(

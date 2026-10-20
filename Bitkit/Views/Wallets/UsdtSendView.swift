@@ -526,7 +526,7 @@ struct UsdtSendView: View {
                 }
             }
             if paymentContext != nil {
-                SendSectionView(t("wallet__payment_request_contact")) {
+                SendSectionView(t(paymentRequest?.isMerchantRequest == true ? "wallet__payment_request_seller" : "wallet__payment_request_contact")) {
                     HStack(spacing: 4) {
                         if let contact {
                             PubkyContactAvatar(contact: contact, size: 20)

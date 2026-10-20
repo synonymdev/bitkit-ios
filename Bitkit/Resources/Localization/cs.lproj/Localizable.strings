@@ -1555,6 +1555,7 @@
 "wallet__payment_request_status_pending" = "Čekající";
 "wallet__payment_request_status_paid" = "Zaplaceno";
 "wallet__payment_request_contact" = "Kontakt";
+"wallet__payment_request_seller" = "Prodejce";
 "subscriptions__active" = "Aktivní";
 "subscriptions__cancel" = "Zrušit";
 "subscriptions__cancel_subscription" = "Zrušit předplatné";

@@ -1561,6 +1561,7 @@
 "wallet__payment_request_status_pending" = "In behandeling";
 "wallet__payment_request_status_paid" = "Betaald";
 "wallet__payment_request_contact" = "Contact";
+"wallet__payment_request_seller" = "Verkoper";
 "subscriptions__active" = "Actief";
 "subscriptions__cancel" = "Annuleren";
 "subscriptions__cancel_subscription" = "Abonnement opzeggen";
