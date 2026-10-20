@@ -22,6 +22,11 @@ jobs:
     name: Run Integration Tests
     runs-on: macos-15
     timeout-minutes: 60
+    env:
+      DESTINATION: platform=iOS Simulator,name=iPhone 16,OS=latest
+      DERIVED_DATA: ${{ github.workspace }}/DerivedData
+      SOURCE_PACKAGES: ${{ github.workspace }}/SourcePackages
+      RESULT_BUNDLE: ${{ github.workspace }}/IntegrationTests.xcresult
 
     steps:
       - name: Checkout repository
@@ -36,77 +41,91 @@ jobs:
         run: |
           brew install xcbeautify
 
-      - name: Cache Swift Package Manager
-        uses: actions/cache@v6
+      # SwiftPM keeps full bare clones in SourcePackages/repositories (bitkit-core's history alone
+      # is over 10 GB, past the repository cache limit). Checkouts and binary artifacts are all a
+      # build needs, so only those are cached.
+      - name: Restore Swift packages
+        id: spm-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+            ${{ env.SOURCE_PACKAGES }}/checkouts
+            ${{ env.SOURCE_PACKAGES }}/artifacts
+            ${{ env.SOURCE_PACKAGES }}/workspace-state.json
+          key: ${{ runner.os }}-source-packages-${{ hashFiles('Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
 
-      - name: Install dependencies
+      - name: Resolve Swift packages
         run: |
           echo "⏱️  Starting dependency resolution at $(date)"
-          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
+          set -o pipefail && xcodebuild -resolvePackageDependencies \
+            -scheme Bitkit \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -onlyUsePackageVersionsFromResolvedFile \
+            | xcbeautify
           echo "✅ Dependencies resolved at $(date)"
 
-      - name: Clean build
+      # Saved right after resolving so a failing test run still warms the cache.
+      - name: Save Swift packages
+        if: steps.spm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ env.SOURCE_PACKAGES }}/checkouts
+            ${{ env.SOURCE_PACKAGES }}/artifacts
+            ${{ env.SOURCE_PACKAGES }}/workspace-state.json
+          key: ${{ steps.spm-cache.outputs.cache-primary-key }}
+
+      - name: Build for testing
         run: |
-          echo "⏱️  Cleaning build at $(date)"
-          xcodebuild clean -scheme Bitkit | xcbeautify
-          echo "✅ Build cleaned at $(date)"
+          echo "⏱️  Starting build at $(date)"
+          set -o pipefail && xcodebuild build-for-testing \
+            -scheme Bitkit \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disableAutomaticPackageResolution \
+            -enableCodeCoverage NO \
+            | xcbeautify
+          echo "✅ Build finished at $(date)"
 
       - name: Run integration tests
+        timeout-minutes: 20
         run: |
           echo "⏱️  Starting integration tests at $(date)"
 
-          run_tests() {
-            # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
-            # skips itself unless this is set. This lane runs on a simulator it erases between
-            # attempts; the unit lane does not, and must not run it.
-            #
-            # The TEST_RUNNER_ prefix is required: xcodebuild does not pass the invoking shell's
-            # environment to the simulator-hosted runner, only variables named TEST_RUNNER_<VAR>,
-            # which it forwards with the prefix stripped. Without it the guard never sees the
-            # variable, every test in the suite skips, and the lane still reports green.
-            set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 xcodebuild test \
-              -scheme Bitkit \
-              -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-              -enableCodeCoverage NO \
-              -parallel-testing-enabled NO \
-              -only-testing:BitkitTests/UtxoSelectionTests \
-              -only-testing:BitkitTests/BlocktankTests \
-              -only-testing:BitkitTests/PaymentFlowTests \
-              -only-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
-              -only-testing:BitkitTests/AddressTypeIntegrationTests \
-              -only-testing:BitkitTests/RNMigrationCleanupTests \
-              | xcbeautify --report junit
-          }
-
-          # Try up to 3 times with simulator reset between failures
-          for attempt in 1 2 3; do
-            echo "🔄 Test attempt $attempt of 3"
-            if run_tests; then
-              echo "✅ Integration tests completed at $(date)"
-              exit 0
-            fi
-
-            if [ $attempt -lt 3 ]; then
-              echo "⚠️  Test attempt $attempt failed, resetting simulator..."
-              xcrun simctl shutdown all || true
-              xcrun simctl erase "iPhone 16" || true
-              xcrun simctl boot "iPhone 16"
-              sleep 5
-            fi
-          done
-
-          echo "❌ All test attempts failed"
-          exit 1
+          # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
+          # skips itself unless this is set. This lane runs on a throwaway CI simulator; the unit
+          # lane does not, and must not run it.
+          #
+          # The TEST_RUNNER_ prefix is required: xcodebuild does not pass the invoking shell's
+          # environment to the simulator-hosted runner, only variables named TEST_RUNNER_<VAR>,
+          # which it forwards with the prefix stripped. Without it the guard never sees the
+          # variable, every test in the suite skips, and the lane still reports green.
+          #
+          # The live regtest suites are flaky on CI runners, so a failed test is retried once on
+          # its own instead of rebuilding and rerunning the whole suite.
+          set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 xcodebuild test-without-building \
+            -scheme Bitkit \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            -enableCodeCoverage NO \
+            -parallel-testing-enabled NO \
+            -retry-tests-on-failure \
+            -test-iterations 2 \
+            -only-testing:BitkitTests/UtxoSelectionTests \
+            -only-testing:BitkitTests/BlocktankTests \
+            -only-testing:BitkitTests/PaymentFlowTests \
+            -only-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
+            -only-testing:BitkitTests/AddressTypeIntegrationTests \
+            -only-testing:BitkitTests/RNMigrationCleanupTests \
+            | xcbeautify --report junit
+          echo "✅ Integration tests completed at $(date)"
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
           name: integration-test-results
-          path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+          path: ${{ env.RESULT_BUNDLE }}
