@@ -177,13 +177,17 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             ("contact save", { service in
                 _ = try await service.saveContact(publicKey: contactKey, label: "Alice", expectedIdentity: identityA)
             }, { error in
-                if case .identityChanged? = error as? PubkyServiceError { return true }
+                if case .identityChanged? = error as? PubkyServiceError {
+                    return true
+                }
                 return false
             }),
             ("contact batch save", { service in
                 _ = try await service.saveContacts(updates: [ContactUpdate(publicKey: contactKey, label: "Alice")], expectedIdentity: identityA)
             }, { error in
-                if case .identityChanged? = error as? PubkyServiceError { return true }
+                if case .identityChanged? = error as? PubkyServiceError {
+                    return true
+                }
                 return false
             }),
             ("explicit contact re-add", { service in
@@ -191,13 +195,17 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                     publicKey: contactKey, label: "Alice", restorePrivateConnection: true, expectedIdentity: identityA
                 )
             }, { error in
-                if case .identityChanged? = error as? PubkyServiceError { return true }
+                if case .identityChanged? = error as? PubkyServiceError {
+                    return true
+                }
                 return false
             }),
             ("profile avatar upload", { service in
                 _ = try await service.uploadAvatar(bytes: Data([1]), contentType: "image/jpeg", expectedIdentity: identityA)
             }, { error in
-                if case .identityChanged? = error as? PubkyServiceError { return true }
+                if case .identityChanged? = error as? PubkyServiceError {
+                    return true
+                }
                 return false
             }),
             ("payment request upload", { service in
@@ -208,7 +216,9 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             ("profile publication", { service in
                 _ = try await service.publishPaykitProfile(testProfile, expectedIdentity: identityA)
             }, { error in
-                if case .identityChanged? = error as? PubkyServiceError { return true }
+                if case .identityChanged? = error as? PubkyServiceError {
+                    return true
+                }
                 return false
             }),
         ]

@@ -823,7 +823,9 @@ struct PaykitPaymentRequestService {
             switch result {
             case let .success(canReceive):
                 capabilityCheckedPublicKeys.insert(publicKey)
-                if canReceive { targets.append(PaykitPaymentRequestTarget(publicKey: publicKey)) }
+                if canReceive {
+                    targets.append(PaykitPaymentRequestTarget(publicKey: publicKey))
+                }
             case let .failure(error):
                 isComplete = false
                 logWarning("Failed to inspect Paykit payment request support for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)")
@@ -1119,7 +1121,9 @@ struct PaykitPaymentRequestService {
 
     static func acceptedPaymentEndpointIdentifiers(canReceiveLightning: Bool) -> [String] {
         PublicPaykitService.MethodId.publishableMethodIds.compactMap { methodId in
-            if methodId == .usdtArbitrum { return PublicPaykitService.isUsdtPaymentOptionEnabled() ? methodId.rawValue : nil }
+            if methodId == .usdtArbitrum {
+                return PublicPaykitService.isUsdtPaymentOptionEnabled() ? methodId.rawValue : nil
+            }
             if methodId == .bitcoinLightningBolt11 {
                 return canReceiveLightning && PublicPaykitService.isLightningPaymentOptionEnabled() ? methodId.rawValue : nil
             }
@@ -1142,11 +1146,8 @@ struct PaykitPaymentRequestService {
                   kCGImageSourceCreateThumbnailFromImageAlways: true,
                   kCGImageSourceCreateThumbnailWithTransform: true,
                   kCGImageSourceThumbnailMaxPixelSize: 400,
-              ] as CFDictionary)
+              ] as CFDictionary), let compressed = UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.8)
         else {
-            throw PaykitPaymentRequestError.requestUnavailable
-        }
-        guard let compressed = UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.8) else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         return compressed
@@ -1500,8 +1501,8 @@ final class PaykitPaymentRequestManager {
     }
 
     func activate(identity: String) {
-        guard let normalizedIdentity = PubkyPublicKeyFormat.normalized(identity) else { return }
-        guard !PubkyPublicKeyFormat.matches(activeIdentity, normalizedIdentity) else { return }
+        guard let normalizedIdentity = PubkyPublicKeyFormat.normalized(identity),
+              !PubkyPublicKeyFormat.matches(activeIdentity, normalizedIdentity) else { return }
         if activeIdentity != nil {
             clear()
         }
@@ -1852,7 +1853,11 @@ final class PaykitPaymentRequestManager {
         let generation = refreshGeneration
         let task = Task { [weak self] in
             guard let self else { return false }
-            defer { if generation == refreshGeneration { refreshTask = nil } }
+            defer {
+                if generation == refreshGeneration {
+                    refreshTask = nil
+                }
+            }
             guard canRefresh() else { return false }
             let refreshed = await performRefresh(
                 generation: generation,

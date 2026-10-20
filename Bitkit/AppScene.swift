@@ -477,8 +477,7 @@ struct AppScene: View {
                 let reservationRevision = await reservations.attributionRevision
                 guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
                     try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                }) else { return nil }
-                guard pubkyProfile.authState == .authenticated,
+                }), pubkyProfile.authState == .authenticated,
                       PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
                       contacts == paykitPaymentRequestManager.receivedPaymentContacts,
                       await reservations.attributionRevision == reservationRevision
@@ -1261,7 +1260,9 @@ struct AppScene: View {
 
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         isPaykitSceneActive = newPhase == .active
-        if newPhase != .inactive { isContactRefreshForeground = newPhase == .active }
+        if newPhase != .inactive {
+            isContactRefreshForeground = newPhase == .active
+        }
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
         let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
@@ -1363,10 +1364,8 @@ struct AppScene: View {
         let publicSharingEnabled = UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey)
         let privateSharingEnabled = UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         guard privateSharingEnabled, !publicSharingEnabled,
-              let session = pubkyProfile.automaticPaykitSession
-        else { return }
-        guard await PubkyService.currentPublicKey() != nil else { return }
-        guard pubkyProfile.automaticPaykitSession == session else { return }
+              let session = pubkyProfile.automaticPaykitSession, await PubkyService.currentPublicKey() != nil,
+              pubkyProfile.automaticPaykitSession == session else { return }
 
         do {
             try await PublicPaykitService.syncPaykitApp()
@@ -1556,7 +1555,11 @@ struct AppScene: View {
         else { return }
         let id = UUID()
         let task = Task {
-            defer { if shopContactImport?.id == id { shopContactImport = nil } }
+            defer {
+                if shopContactImport?.id == id {
+                    shopContactImport = nil
+                }
+            }
             do {
                 try await contactsManager.importShopContacts(for: session.publicKey) {
                     foregroundContactSession == session && pubkyProfile.automaticPaykitSession == session
@@ -1804,7 +1807,9 @@ struct AppScene: View {
 
     private var isIncomingPaymentRequestPreparationInvalid: Bool {
         guard let preparation = incomingPaymentRequestPreparation else { return false }
-        if preparation.resolvedRoute != nil { return !preparation.ownsSheet(sheets) }
+        if preparation.resolvedRoute != nil {
+            return !preparation.ownsSheet(sheets)
+        }
         return !isCurrentIncomingPaymentRequestPreparation(preparation)
     }
 
@@ -1887,24 +1892,21 @@ struct AppScene: View {
     private func handlePendingPaykitSubscriptionNotification() async {
         guard PaykitFeatureFlags.isUIEnabled,
               wallet.walletExists == true,
-              pubkyProfile.authState == .authenticated
-        else { return }
-        guard let target = PaykitSubscriptionNotificationTargetStore.load() else { return }
-        guard let session = pubkyProfile.automaticPaykitSession else { return }
+              pubkyProfile.authState == .authenticated, let target = PaykitSubscriptionNotificationTargetStore.load(),
+              let session = pubkyProfile.automaticPaykitSession else { return }
         guard target.matches(identity: session.publicKey) else {
             PaykitSubscriptionNotificationTargetStore.clear()
             return
         }
         guard IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
             manager: paykitPaymentRequestManager, app: app, sheets: sheets
-        ) else { return }
-        guard await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
-              !Task.isCancelled,
-              pubkyProfile.automaticPaykitSession == session,
-              PaykitSubscriptionNotificationTargetStore.load() == target,
-              IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
-              )
+        ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
+        !Task.isCancelled,
+        pubkyProfile.automaticPaykitSession == session,
+        PaykitSubscriptionNotificationTargetStore.load() == target,
+        IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+            manager: paykitPaymentRequestManager, app: app, sheets: sheets
+        )
         else { return }
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {

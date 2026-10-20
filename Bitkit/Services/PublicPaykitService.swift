@@ -287,7 +287,9 @@ enum PublicPaykitService {
         guard let payload = PaykitIssuerInterop.parseEndpointPayload(endpointData) else {
             return nil
         }
-        if methodId == .usdtArbitrum, PaykitUsdt.address(from: endpointData) == nil { return nil }
+        if methodId == .usdtArbitrum, PaykitUsdt.address(from: endpointData) == nil {
+            return nil
+        }
 
         return Endpoint(
             methodId: methodId,
@@ -333,7 +335,9 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
     ) async throws {
-        if publish { wallet.preparePendingPublicPaykitInvoiceRefresh() }
+        if publish {
+            wallet.preparePendingPublicPaykitInvoiceRefresh()
+        }
         var desiredSnapshot: (endpoints: [Endpoint], invoiceRevision: UUID)?
         try await syncPublishedEndpoints(
             publish: publish,
@@ -390,7 +394,9 @@ enum PublicPaykitService {
             }
 
             try await syncApp()
-            if let isSessionCurrent, !isSessionCurrent() { throw PubkyServiceError.sessionNotActive }
+            if let isSessionCurrent, !isSessionCurrent() {
+                throw PubkyServiceError.sessionNotActive
+            }
             // Keep the App Registry current even when wallet endpoints are unavailable.
             try await applyEndpoints(desiredEndpoints.get())
         }
@@ -645,11 +651,7 @@ enum PublicPaykitService {
         case .usdtArbitrum:
             return Env.isUsdtEnabled && PaykitUsdt.address(from: endpoint.rawPayload) != nil
         case .bitcoinLightningBolt11:
-            guard case let .lightning(invoice) = try? await decode(invoice: endpoint.paymentRequest) else {
-                return false
-            }
-
-            guard !invoice.isExpired else {
+            guard case let .lightning(invoice) = try? await decode(invoice: endpoint.paymentRequest), !invoice.isExpired else {
                 return false
             }
 
@@ -667,11 +669,9 @@ enum PublicPaykitService {
              .testnetOnchainP2tr, .testnetOnchainP2wpkh, .testnetOnchainP2sh, .testnetOnchainP2pkh,
              .signetOnchainP2tr, .signetOnchainP2wpkh, .signetOnchainP2sh, .signetOnchainP2pkh,
              .regtestOnchainP2tr, .regtestOnchainP2wpkh, .regtestOnchainP2sh, .regtestOnchainP2pkh:
-            guard endpoint.methodId.onchainNetwork == Env.network else {
-                return false
-            }
-
-            guard case let .onChain(invoice) = try? await decode(invoice: endpoint.paymentRequest) else {
+            guard endpoint.methodId.onchainNetwork == Env.network,
+                  case let .onChain(invoice) = try? await decode(invoice: endpoint.paymentRequest)
+            else {
                 return false
             }
 

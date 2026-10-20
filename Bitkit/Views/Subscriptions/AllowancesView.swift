@@ -281,8 +281,14 @@ private struct AllowanceLimitsGrid: View {
     private func cell(title: String, usd: Decimal?, sats: UInt64?, identifier: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(title.localizedUppercase, textColor: .white64)
-            BodySSBText(t("subscriptions__allowance_up_to", variables: ["amount": usd.map { "$" + AllowanceAmountText.formatted($0) } ?? sats.map { "$" + AllowanceAmountText.limitValue(sats: $0, currency: currency) } ?? "—"]))
-                .accessibilityIdentifier(identifier)
+            BodySSBText(t(
+                "subscriptions__allowance_up_to",
+                variables: ["amount": usd.map { "$" + AllowanceAmountText.formatted($0) } ?? sats.map { "$" + AllowanceAmountText.limitValue(
+                    sats: $0,
+                    currency: currency
+                ) } ?? "—"]
+            ))
+            .accessibilityIdentifier(identifier)
             if let sats {
                 CaptionText("₿ " + sats.formattedWithSpaces, textColor: .white64)
             }
@@ -382,8 +388,13 @@ struct SetAllowanceView: View {
     @State private var perPaymentIndex = 1
     @State private var monthlyIndex = 2
 
-    private var perPaymentUsd: Decimal { PaykitAllowanceLimits.perPaymentStopsUsd[perPaymentIndex] }
-    private var monthlyUsd: Decimal { PaykitAllowanceLimits.monthlyStopsUsd[monthlyIndex] }
+    private var perPaymentUsd: Decimal {
+        PaykitAllowanceLimits.perPaymentStopsUsd[perPaymentIndex]
+    }
+
+    private var monthlyUsd: Decimal {
+        PaykitAllowanceLimits.monthlyStopsUsd[monthlyIndex]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -565,14 +576,22 @@ struct AllowanceStepSlider: View {
     private let labelWidth: CGFloat = 56
 
     private func labelOffset(for index: Int, width: CGFloat) -> CGFloat {
-        if index == 0 { return 0 }
-        if index == stops.count - 1 { return width - labelWidth }
+        if index == 0 {
+            return 0
+        }
+        if index == stops.count - 1 {
+            return width - labelWidth
+        }
         return position(for: index, width: width) - labelWidth / 2
     }
 
     private func alignment(for index: Int) -> Alignment {
-        if index == 0 { return .leading }
-        if index == stops.count - 1 { return .trailing }
+        if index == 0 {
+            return .leading
+        }
+        if index == stops.count - 1 {
+            return .trailing
+        }
         return .center
     }
 }

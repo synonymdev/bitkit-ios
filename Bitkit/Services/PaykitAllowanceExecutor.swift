@@ -31,7 +31,8 @@ protocol PaykitAllowanceSdkHandling: Sendable {
         expectedAssociationRevision: UInt64,
         checks: Paykit.PaymentExecutionChecks
     ) async throws -> Paykit.PaymentAttemptDecision
-    func reserveManualPayment(occurrence: Paykit.PaymentOccurrence, checks: Paykit.PaymentExecutionChecks) async throws -> Paykit.PaymentAttemptDecision
+    func reserveManualPayment(occurrence: Paykit.PaymentOccurrence, checks: Paykit.PaymentExecutionChecks) async throws -> Paykit
+        .PaymentAttemptDecision
     func beginPaymentExecution(attemptId: String, checks: Paykit.PaymentExecutionChecks) async throws -> Paykit.PaymentAttemptDecision
     @discardableResult
     func recordPaymentOutcome(_ report: Paykit.PaymentOutcomeReport) async throws -> Paykit.PaymentAttemptRecord
@@ -554,7 +555,7 @@ actor PaykitAllowanceExecutor {
             }
             throw error
         }
-        try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
+        _ = try? await sdk.processOutboundPrivateMessages(counterparty: request.counterparty)
 
         let occurrence = Paykit.PaymentOccurrence(request: scope, billingPeriod: nil)
         let reservation = try await sdk.reserveAutomaticPayment(
@@ -566,7 +567,7 @@ actor PaykitAllowanceExecutor {
             if case let .blocked(reason) = reservation {
                 Logger.info("Allowance reservation blocked: \(reason)", context: "PaykitAllowance")
             }
-            try? await sdk.markPaymentManualOnly(occurrence: occurrence)
+            _ = try? await sdk.markPaymentManualOnly(occurrence: occurrence)
             notifyLimitReached(request, identity: identity)
             return .manual
         }
@@ -589,7 +590,7 @@ actor PaykitAllowanceExecutor {
         )
 
         // Begin fetches nothing, so pull the link first: an End or a cancellation must be seen before the handoff.
-        try? await sdk.receivePrivateMessages(counterparty: request.counterparty)
+        _ = try? await sdk.receivePrivateMessages(counterparty: request.counterparty)
         let handoff = try await sdk.beginPaymentExecution(
             attemptId: prepared.attemptId,
             checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: trustedTime(identity: identity))
@@ -692,7 +693,11 @@ actor PaykitAllowanceExecutor {
                 try await record(attemptId: entry.attemptId, outcome: succeeded ? .succeeded : .failed, identity: identity)
                 if succeeded, entry.isAutomatic {
                     Self.eventSubject.send(
-                        .paidAutomatically(counterparty: entry.requestId.counterparty, amountSats: entry.amountSats, paymentId: paymentHash.lowercased())
+                        .paidAutomatically(
+                            counterparty: entry.requestId.counterparty,
+                            amountSats: entry.amountSats,
+                            paymentId: paymentHash.lowercased()
+                        )
                     )
                 }
             } catch {

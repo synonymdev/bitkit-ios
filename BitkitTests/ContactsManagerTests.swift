@@ -524,7 +524,11 @@ final class ContactsManagerTests: XCTestCase {
             while await gate.heldCount == 0 {
                 await Task.yield()
             }
-            if reset { manager.reset() } else { refresh.cancel() }
+            if reset {
+                manager.reset()
+            } else {
+                refresh.cancel()
+            }
             await gate.release()
             let result = await refresh.result
             XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }

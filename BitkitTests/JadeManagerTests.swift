@@ -595,7 +595,7 @@ final class JadeManagerTests: XCTestCase {
         XCTAssertTrue(service.calls.notifiedPaths.isEmpty)
     }
 
-    func testAnExternalDisconnectWhileConnectingTellsCore() async throws {
+    func testAnExternalDisconnectWhileConnectingTellsCore() async {
         store.devices = [JadeFixtures.knownEntry()]
         service.stubs.scanned = [JadeFixtures.device()]
         service.stubs.connectResults = [.failure(JadeError.DeviceDisconnected)]
@@ -814,7 +814,7 @@ final class JadeManagerTests: XCTestCase {
         XCTAssertNotNil(sut.connected, "a new connect is not refused as already running")
     }
 
-    func testNoFlagSticksAfterReleasingDuringThePinPrompt() async throws {
+    func testNoFlagSticksAfterReleasingDuringThePinPrompt() async {
         store.devices = [JadeFixtures.knownEntry()]
         service.stubs.scanned = [JadeFixtures.device()]
         service.stubs.connectResult = .success(JadeFixtures.version(.locked))

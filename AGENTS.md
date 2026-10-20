@@ -139,11 +139,14 @@ Bumping `bitkit-core`, `ldk-node`, `paykit` or `vss-rust-client-ffi` changes the
 
 ### Code Formatting
 ```bash
-# Install SwiftFormat
+# Install SwiftFormat (CI pins 0.64.0; `.swiftformat` sets it as the minimum version)
 brew install swiftformat
 
 # Format all Swift code
 swiftformat .
+
+# Check formatting the way the CI `lint` workflow does
+swiftformat --lint .
 
 # Setup git hooks for automatic formatting on commits
 npm install -g git-format-staged
@@ -363,7 +366,8 @@ Ensure accessibility modifiers and labels are added to custom components.
 
 ## Code Style & Conventions
 
-- **SwiftFormat** configuration in `.swiftformat`
+- **SwiftFormat** configuration in `.swiftformat`. RUN `swiftformat --lint .` before pushing: the `lint` workflow fails a PR with unformatted Swift
+- **Warnings are errors**: every target builds with `-warnings-as-errors -Wwarning DeprecatedDeclaration` in the project-level `OTHER_SWIFT_FLAGS`, locally and in CI. FIX a new warning rather than silencing it; deprecations stay warnings so an SDK bump does not break the build. KEEP the flags in `OTHER_SWIFT_FLAGS` rather than `SWIFT_TREAT_WARNINGS_AS_ERRORS`: Xcode appends that setting's flag last, which turns deprecations back into errors
 - Max line width: 150 characters
 - Swift version: 5.10
 - Use descriptive names: `isLoadingUsers` not `loading`
