@@ -49,6 +49,11 @@ struct PaykitAllowance: Identifiable, Hashable {
         id.allowanceId
     }
 
+    /// Allowance ids are unique only within one link, so local state keys an allowance by its counterparty too.
+    var scopedId: String {
+        "\(counterparty)/\(allowanceId)"
+    }
+
     init?(record: Paykit.AllowanceRecord) {
         guard let localRole = record.localRole,
               let role = Role(localRole),
