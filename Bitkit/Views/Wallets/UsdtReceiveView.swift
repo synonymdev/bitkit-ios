@@ -217,6 +217,7 @@ struct UsdtReceiveAddressContent: View {
                 }
             }
         }
+        Spacer(minLength: 0)
         CustomButton(
             title: networkTitle,
             variant: .secondary,

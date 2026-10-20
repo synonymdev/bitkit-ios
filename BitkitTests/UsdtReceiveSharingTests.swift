@@ -29,6 +29,24 @@ final class UsdtReceiveSharingTests: XCTestCase {
     }
 
     @MainActor
+    func testReceiveAddressContentFillsAvailableHeight() {
+        for width: CGFloat in [288, 370] {
+            for textSize: DynamicTypeSize in [.large, .accessibility5] {
+                let host = UIHostingController(rootView: VStack(spacing: 0) {
+                    UsdtReceiveAddressContent(
+                        address: "0x1111111111111111111111111111111111111111",
+                        uri: "ethereum:token/transfer",
+                        network: "Arbitrum One",
+                        onEdit: {}, onNetwork: {}
+                    )
+                }.environment(\.dynamicTypeSize, textSize))
+                let size = host.sizeThatFits(in: CGSize(width: width, height: 700))
+                XCTAssertEqual(size.height, 700, accuracy: 0.5, "The Receive footer must stay anchored at \(width) pt and \(textSize)")
+            }
+        }
+    }
+
+    @MainActor
     func testCompactQrWithLogoRemainsScannable() async throws {
         let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil,
                                                 options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
