@@ -993,7 +993,7 @@ actor PaykitPaymentProofService {
             if deliverInBackground {
                 submitInBackground(completed)
             } else {
-                _ = await submit(completed)
+                _ = await submit(completed, onlyIfRetained: true)
             }
             return true
         } catch {
@@ -1362,7 +1362,7 @@ actor PaykitPaymentProofService {
                             }
                             continue
                         }
-                        await submit(proof)
+                        await submit(proof, onlyIfRetained: proof.kind != .usdt)
                         continue
                     }
                     if proof.kind == .onchain,
@@ -1615,16 +1615,19 @@ actor PaykitPaymentProofService {
     }
 
     @discardableResult
-    private func submit(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
-        await submissionLock.withLock { await submitReady(pendingProof) }
+    private func submit(_ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool = false) async -> Bool {
+        await submissionLock.withLock { await submitReady(pendingProof, onlyIfRetained: onlyIfRetained) }
     }
 
-    private func submitReady(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
+    private func submitReady(_ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool) async -> Bool {
         guard !pendingProof.hasUnsupportedOnchainWallet ||
             pendingProof.onchainWalletId.map({ hardwareTransactionLookup.hasWallet(walletId: $0) }) == true,
             let proofData = pendingProof.proofData,
             pendingProof.kind != .onchain || pendingProof.onchainAcceptanceVerified == true else { return false }
         do {
+            if onlyIfRetained {
+                guard try await loadProofs().contains(pendingProof) else { return false }
+            }
             guard let identityStatus = try await sdk.identityStatus(),
                   identityStatus.capability == .privateLinkCapable,
                   PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity)
@@ -1692,7 +1695,7 @@ actor PaykitPaymentProofService {
     }
 
     private func submitInBackground(_ proof: PendingPaykitPaymentProof) {
-        Task { [weak self] in await self?.submit(proof) }
+        Task { [weak self] in await self?.submit(proof, onlyIfRetained: true) }
     }
 
     private func removeRequestProofs(_ proof: PendingPaykitPaymentProof) async {

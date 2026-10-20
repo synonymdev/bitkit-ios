@@ -1690,6 +1690,8 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(persistedProof?.paymentIdentifier, txid)
         XCTAssertEqual(persistedProof?.proofData, txid)
         XCTAssertEqual(persistedProof?.onchainAcceptanceVerified, true)
+        let identityReadsBeforeReconciliation = await sdk.identityStatusCallCount()
+        let requestReadsBeforeReconciliation = await sdk.paymentRequestCallCount()
         let reconciliationStarted = expectation(description: "Reconciliation loaded the persisted proof")
         await store.pauseNextLoad { reconciliationStarted.fulfill() }
         let reconciliation = Task { await service.reconcile() }
@@ -1704,6 +1706,13 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await reconciliation.value
         let countAfterReconciliation = await sdk.submissionCount()
         XCTAssertEqual(countAfterReconciliation, 1)
+        let identityReadsAfterReconciliation = await sdk.identityStatusCallCount()
+        let requestReadsAfterReconciliation = await sdk.paymentRequestCallCount()
+        XCTAssertEqual(identityReadsAfterReconciliation, identityReadsBeforeReconciliation + 1)
+        XCTAssertEqual(requestReadsAfterReconciliation, requestReadsBeforeReconciliation)
+        await sdk.waitForDelivery(count: 1)
+        let deliveryCount = await sdk.processCallCount()
+        XCTAssertEqual(deliveryCount, 1)
     }
 
     func testAcceptedOnchainCompletionWaitsForOriginalIdentityBeforeProofDelivery() async throws {
@@ -3398,6 +3407,7 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var shouldSuspendDelivery = false
     private var deliveryContinuation: CheckedContinuation<Void, Never>?
     private var identityStatusCalls = 0
+    private var paymentRequestCalls = 0
     private var isIdentityAvailable = true
     private var shouldSuspendIdentityStatus = false
     private var identityStatusContinuations: [CheckedContinuation<Void, Never>] = []
@@ -3443,6 +3453,7 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     }
 
     func paymentRequests() async -> [PaymentRequestRecord] {
+        paymentRequestCalls += 1
         paymentRequestFetchStarted = true
         paymentRequestFetchStartContinuations.forEach { $0.resume() }
         paymentRequestFetchStartContinuations.removeAll()
@@ -3588,6 +3599,10 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
 
     func identityStatusCallCount() -> Int {
         identityStatusCalls
+    }
+
+    func paymentRequestCallCount() -> Int {
+        paymentRequestCalls
     }
 }
 
