@@ -51,9 +51,10 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["TrezorPassphraseSheet"].waitForNonExistence(timeout: 5))
 
         app.buttons["TrezorTestHook-Pairing"].tap()
-        XCTAssertTrue(app.otherElements["TrezorPairingSheet"].waitForExistence(timeout: 5))
-        app.buttons["TrezorPairingCancel"].tap()
-        XCTAssertTrue(app.otherElements["TrezorPairingSheet"].waitForNonExistence(timeout: 5))
+        let pairingSheet = app.descendants(matching: .any)["HwPairSheet"]
+        XCTAssertTrue(pairingSheet.waitForExistence(timeout: 5))
+        pairingSheet.swipeDown(velocity: .fast)
+        XCTAssertTrue(pairingSheet.waitForNonExistence(timeout: 5))
 
         app.buttons["TrezorTestHook-Confirm"].tap()
         XCTAssertTrue(app.otherElements["TrezorConfirmOnDeviceOverlay"].waitForExistence(timeout: 5))
@@ -439,7 +440,6 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         scrollTo(element)
         element.tap()
         if let currentValue = element.value as? String, !currentValue.isEmpty, currentValue != element.placeholderValue {
-            element.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.99)).tap()
             element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count))
         }
         element.typeText(text)
