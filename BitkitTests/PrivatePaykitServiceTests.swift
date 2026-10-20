@@ -635,7 +635,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
         caller.cancel()
         await caller.value
         continuation.finish()
-        await preparation.value
+        _ = await preparation.value
         await fulfillment(of: [completed], timeout: 2)
         XCTAssertEqual(advances, 1)
         XCTAssertGreaterThan(receives, 0)
@@ -1355,7 +1355,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 first.cancel()
             }
             continuation.finish()
-            await first.value
+            _ = await first.value
             await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
             XCTAssertEqual(advances, 2)
         }
@@ -1395,11 +1395,11 @@ final class PrivatePaykitServiceTests: XCTestCase {
         }
         await fulfillment(of: [newStarted], timeout: 2)
         oldContinuation.finish()
-        await old.value
+        _ = await old.value
         await service.drainPendingPrivateMessages(reason: "test", advancing: ["peer"], operations: operations)
         XCTAssertEqual(advances, 2)
         newContinuation.finish()
-        await current.value
+        _ = await current.value
     }
 
     func testPrivateMessageDrainAdvancesRecoveryDetectedDuringSendOnNextPass() async {
@@ -1537,7 +1537,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 receive: { _ in XCTFail("Cancelled retry must not receive") }
             ))
         }
-        await task.value
+        _ = await task.value
     }
 
     private func drainPeer(_ publicKey: String, state: LinkedPeerState = .linked) -> LinkedPeerRecord {
@@ -2704,6 +2704,97 @@ final class PrivatePaykitServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testUnavailablePublicationRetainsDeferredLinkBeforePruningMissingPeer() async throws {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        let savedSecret = try Keychain.load(key: .pubkySecretKey)
+        addTeardownBlock {
+            if let savedSecret {
+                try Keychain.upsert(key: .pubkySecretKey, data: savedSecret)
+            } else {
+                try Keychain.delete(key: .pubkySecretKey)
+            }
+        }
+        let secret = String(repeating: "01", count: 32)
+        try Keychain.upsert(key: .pubkySecretKey, data: Data(secret.utf8))
+        let identity = try XCTUnwrap(PubkyPublicKeyFormat.normalized(PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secret)))
+        let key = "pubky" + String(repeating: "y", count: 52)
+        for outcome in ["retry", "session", "removed", "invalidated", "cancelled", "notFound"] {
+            let rejected = expectation(description: "Link admission rejected during review: \(outcome)")
+            let (resume, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            var review: UUID?
+            var sessionCurrent = true
+            var availabilityChecks = 0
+            var snapshots = 0
+            var linkAttempts = 0
+            var linked = false
+            let operations = PrivatePaykitService.PrivateMessageDrainOperations(
+                ensureLink: { _ in
+                    linkAttempts += 1
+                    if linkAttempts == 1 {
+                        review = await MainActor.run { PaykitPaymentActivity.shared.beginReview() }
+                        rejected.fulfill()
+                        for await _ in resume {}
+                        if outcome == "notFound" {
+                            throw PaykitError.NotFound(code: "not_found", context: "No App Registry")
+                        }
+                        throw PaykitPaymentRequestError.operationInProgress
+                    }
+                    linked = true
+                },
+                pendingOutbound: { [] },
+                linkedPeers: { linked ? [self.drainPeer(key)] : [] },
+                schedulingSnapshot: {
+                    snapshots += 1
+                    if linkAttempts == 1, outcome != "notFound" {
+                        XCTAssertGreaterThan(availabilityChecks, 1, "Deferral must return to preparation before a missing-peer read")
+                    }
+                    return .init(linkedPeers: linked ? [self.drainPeer(key)] : [], pendingOutboundCounterparties: [])
+                },
+                processPending: { _ in XCTFail("No outbound work exists") },
+                receive: { XCTAssertEqual($0, key) }
+            )
+            let service = PrivatePaykitService(
+                publicationOperations: .init(
+                    currentPublicKey: { identity }, ensureLink: { _ in XCTFail("Publication is unavailable"); return .unknown },
+                    buildEndpoints: { _ in XCTFail("Publication is unavailable"); return [] },
+                    syncPaymentLists: { _ in XCTFail("Publication is unavailable"); throw PrivatePaykitError.privateUnavailable },
+                    canPublish: { availabilityChecks += 1; return false }
+                ),
+                messageRetryOperations: .init(drain: { priority in
+                    XCTAssertEqual(priority, .background)
+                    return operations
+                })
+            )
+            _ = await service.prepareSavedContacts([key], wallet: WalletViewModel(), isSessionCurrent: { sessionCurrent })
+            await fulfillment(of: [rejected], timeout: 2)
+            let task = await service.preparationTask
+            defer { task?.cancel() }
+            let token = try XCTUnwrap(review)
+            defer { PaykitPaymentActivity.shared.endReview(token) }
+            XCTAssertEqual(snapshots, 1)
+            switch outcome {
+            case "session": sessionCurrent = false
+            case "removed": _ = await service.rememberSavedContacts([], replacing: true)
+            case "invalidated": await service.invalidateContactPreparation()
+            case "cancelled": task?.cancel()
+            default: break
+            }
+            // End review before the rejected SDK call unwinds, so a later read could otherwise prune the absent peer.
+            PaykitPaymentActivity.shared.endReview(token)
+            continuation.finish()
+            await task?.value
+            XCTAssertEqual(linkAttempts, outcome == "retry" ? 2 : 1, outcome)
+            XCTAssertEqual(linked, outcome == "retry", outcome)
+            XCTAssertEqual(snapshots, outcome == "retry" ? 3 : (outcome == "notFound" ? 2 : 1), outcome)
+            let retries = await service.pendingMessageDrainRetryKeys
+            XCTAssertTrue(retries.isEmpty, outcome)
+            await service.invalidateContactPreparation()
+        }
+    }
+
+    @MainActor
     func testDeferredForcedPreparationWaitsForForegroundAfterReviewEnds() async throws {
         PrivatePaykitService.setContactSharingCleanupPending(false)
         let key = "pubky" + String(repeating: "y", count: 52)
@@ -3012,7 +3103,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 case "invalidate": await service.invalidateContactPreparation()
                 default: task.cancel()
                 }
-                await task.value
+                _ = await task.value
                 XCTAssertEqual(events, outcome == "resume" ? order : prefix)
                 let remainingWaiters = await service.backgroundWorkWaiters.count
                 XCTAssertEqual(remainingWaiters, 0)
