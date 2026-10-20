@@ -1028,8 +1028,13 @@ struct SendSheet: View {
             throw PaykitPaymentRequestError.operationInProgress
         }
 
+        guard !app.paykitUsesUsdt, let privatePaymentContext = context.privatePaymentContext,
+              privatePaymentContext.paymentListVersion != nil
+        else {
+            try await paykitPaymentRequestManager.prepareForPayment(request)
+            return
+        }
         try await paykitPaymentRequestManager.prepareForPayment(request) {
-            guard !app.paykitUsesUsdt, let privatePaymentContext = context.privatePaymentContext else { return }
             try await PrivatePaykitService.shared.consumePrivatePaymentList(
                 publicKey: context.publicKey,
                 context: privatePaymentContext,

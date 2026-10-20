@@ -5500,6 +5500,42 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testInlineRequestClaimsDuringAcceptanceWithoutSeparateClaim() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+
+        try await manager.prepareForPayment(request)
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.executionClaimCallCount, 0)
+        XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
+        XCTAssertTrue(manager.isApprovedForPayment(request))
+    }
+
+    func testInlineRequestCannotAcceptAnotherAppsExecutionClaim() async throws {
+        var record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        record.executionClaimAppId = "other-app"
+        await sdk.setRecords([record])
+
+        do {
+            try await manager.prepareForPayment(request)
+            XCTFail("Expected execution claim rejection")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .requestMissing)
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.executionClaimCallCount, 0)
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
     func testPreparationConsumesBeforeAccepting() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
@@ -5510,6 +5546,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.prepareForPayment(request) {
             let snapshot = await sdk.snapshot()
             XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+            XCTAssertEqual(snapshot.executionClaimCallCount, 1)
             didConsume = true
         }
 
@@ -9011,6 +9048,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var receiveError: PaymentRequestSdkMockError?
     private var receiveReports: [PrivateStreamCounterpartyIntakeReport] = []
     private var acceptedRequests: [PaymentRequestInvocation] = []
+    private var executionClaimCallCount = 0
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
     private var acceptanceResponseError: Error?
@@ -9257,6 +9295,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     }
 
     func claimPaymentRequestForExecution(counterparty: String, paymentRequestId: String) throws -> PaymentRequestRecord {
+        executionClaimCallCount += 1
+        return try claimExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
+    }
+
+    private func claimExecution(counterparty: String, paymentRequestId: String) throws -> PaymentRequestRecord {
         guard let index = records.firstIndex(where: {
             $0.counterparty == counterparty && $0.paymentRequestId == paymentRequestId
         }), records[index].executionClaimAppId == nil || records[index].executionClaimAppId == "bitkit" else {
@@ -9278,6 +9321,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             isAcceptPaused = false
         }
 
+        _ = try claimExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
         let record: PaymentRequestRecord
         guard records.contains(where: {
             $0.counterparty == counterparty && $0.paymentRequestId == paymentRequestId &&
@@ -9510,6 +9554,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             receiveCallCount: receiveCallCount,
             paymentRequestListCallCount: paymentRequestListCallCount,
             acceptedRequests: acceptedRequests,
+            executionClaimCallCount: executionClaimCallCount,
             rejectedRequests: rejectedRequests,
             proposedRequests: proposedRequests
         )
@@ -9536,6 +9581,7 @@ private struct PaymentRequestSdkSnapshot {
     let receiveCallCount: Int
     let paymentRequestListCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]
+    let executionClaimCallCount: Int
     let rejectedRequests: [PaymentRequestInvocation]
     let proposedRequests: [ProposedPaymentRequestInvocation]
 }

@@ -1918,7 +1918,7 @@ final class PaykitPaymentRequestManager {
 
     func prepareForPayment(
         _ request: PaykitPaymentRequest,
-        consumePrivatePaymentList: () async throws -> Void = {}
+        consumePrivatePaymentList: (() async throws -> Void)? = nil
     ) async throws {
         guard let identity = activeIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
         let actionGeneration = stateGeneration
@@ -1937,9 +1937,12 @@ final class PaykitPaymentRequestManager {
                     throw PaykitPaymentRequestError.requestUnavailable
                 }
                 try await service.ensurePaymentAllowed($0)
-                try await service.claimForPayment($0)
+                // Acceptance claims ownership atomically; claim earlier only before consuming an endpoint or retrying an accepted request.
+                if consumePrivatePaymentList != nil || !$0.requiresAcceptance {
+                    try await service.claimForPayment($0)
+                }
                 guard !$0.isExpired(at: now()) else { throw PaykitPaymentRequestError.requestExpired }
-                try await consumePrivatePaymentList()
+                try await consumePrivatePaymentList?()
                 if $0.requiresAcceptance {
                     guard actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) else {
                         throw PaykitPaymentRequestError.requestUnavailable
