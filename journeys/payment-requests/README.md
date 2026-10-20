@@ -130,6 +130,11 @@ correctly prevents it from entering the presentation queue.
 
 ## Request summary
 
+`review-refresh.xml` checks that an unpaid Bitcoin review resumes after app unlock without
+dismissing and reopening the sheet. iOS recreates the send view on app lock; Android keeps
+its content beneath the lock overlay. The iOS journey therefore explicitly checks the
+restored fee, ready swipe control and Show Details before authorizing.
+
 `request-summary.xml` is ported alongside Android's matching journey.
 The USDT history step in `request-summary.xml` requires both instances opted in, a payer funded with
 local test USDT, and two completed requests (one USD-denominated and one BTC-denominated), each paid

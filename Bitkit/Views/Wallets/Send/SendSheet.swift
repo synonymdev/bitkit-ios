@@ -297,11 +297,10 @@ struct SendSheet: View {
         }
         .task(id: config.preparation?.resolvedRoute) {
             if let preparation = config.preparation {
-                guard let route = preparation.resolvedRoute, preparation.ownsSheet(sheets),
-                      let request = preparation.request,
-                      app.contactPaymentContext == preparation.paymentContext,
-                      app.contactPaymentContext?.incomingPaymentRequest?.id == request.id
+                guard let route = preparation.resolvedRoute,
+                      preparation.ownsResolvedContext(session: pubkyProfile.currentSession, app: app, sheets: sheets)
                 else { return }
+                preparation.isSuspendedForAppLock = false
                 rootRoute = route
             }
             setUpSend()
@@ -379,8 +378,19 @@ struct SendSheet: View {
         updatePaymentReview(false)
         setupTask?.cancel()
         setupTask = nil
+        let retainsReview = config.preparation?.shouldRetainReviewOnAppLock(
+            route: navigationPath.last ?? currentRoot,
+            isSubmittingPayment: isSubmittingPayment || PaykitPaymentActivity.shared.isActive,
+            isHardwarePayment: hwSend.isActive,
+            session: pubkyProfile.currentSession,
+            app: app,
+            sheets: sheets
+        ) == true
+        if !retainsReview {
+            config.preparation?.isSuspendedForAppLock = false
+        }
         hwSend.cancel()
-        if isPreparingRequest {
+        if isPreparingRequest || retainsReview {
             return
         }
         if let request = incomingPaymentRequest ?? app.contactPaymentContext?.incomingPaymentRequest {
