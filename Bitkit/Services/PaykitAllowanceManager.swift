@@ -10,6 +10,11 @@ struct PaykitAllowanceEntry: Identifiable, Hashable {
     let allowances: [PaykitAllowance]
     let limits: PaykitAllowanceLimits?
 
+    /// Another contact can reuse an allowance id, so an allowance outside a group is keyed by its counterparty too.
+    static func ungroupedId(for allowance: PaykitAllowance) -> String {
+        "\(allowance.counterparty)/\(allowance.allowanceId)"
+    }
+
     var primary: PaykitAllowance {
         allowances[0]
     }
@@ -94,7 +99,8 @@ final class PaykitAllowanceManager {
         var grouped: [String: [PaykitAllowance]] = [:]
         var order: [String] = []
         for allowance in allowances {
-            let key = localState.group(containing: allowance.allowanceId)?.id ?? allowance.allowanceId
+            let key = localState.group(containing: allowance.allowanceId, counterparty: allowance.counterparty)?.id
+                ?? PaykitAllowanceEntry.ungroupedId(for: allowance)
             if grouped[key] == nil {
                 order.append(key)
             }

@@ -87,8 +87,9 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
     var notifiedRequestIds: Set<String> = []
     var lastTrustedTime: Date?
 
-    func group(containing allowanceId: String) -> Group? {
-        groups.first { $0.allowanceIds.contains(allowanceId) }
+    /// Allowance ids are unique only within one link, so a group also matches its counterparty.
+    func group(containing allowanceId: String, counterparty: String) -> Group? {
+        groups.first { $0.allowanceIds.contains(allowanceId) && PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
     }
 }
 
