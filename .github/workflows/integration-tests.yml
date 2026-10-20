@@ -41,18 +41,15 @@ jobs:
         run: |
           brew install xcbeautify
 
-      # SwiftPM keeps full bare clones in SourcePackages/repositories (bitkit-core's history alone
-      # is over 10 GB, past the repository cache limit). Checkouts and binary artifacts are all a
-      # build needs, so only those are cached.
+      # SwiftPM keeps a full bare clone of every package and looks each one up on every resolve,
+      # so the clones have to be cached too. bitkit-core's history alone is over 13 GB, past the
+      # repository cache limit, so on a miss the clones are cut down to the pinned commits first.
       - name: Restore Swift packages
         id: spm-cache
         uses: actions/cache/restore@v6
         with:
-          path: |
-            ${{ env.SOURCE_PACKAGES }}/checkouts
-            ${{ env.SOURCE_PACKAGES }}/artifacts
-            ${{ env.SOURCE_PACKAGES }}/workspace-state.json
-          key: ${{ runner.os }}-source-packages-${{ hashFiles('Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          path: ${{ env.SOURCE_PACKAGES }}
+          key: ${{ runner.os }}-source-packages-v2-${{ hashFiles('Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
 
       - name: Resolve Swift packages
         run: |
@@ -62,25 +59,23 @@ jobs:
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
             -disablePackageRepositoryCache \
             -onlyUsePackageVersionsFromResolvedFile \
+            -skipPackageUpdates \
             | xcbeautify
           echo "✅ Dependencies resolved at $(date)"
+
+      - name: Shrink package clones
+        if: steps.spm-cache.outputs.cache-hit != 'true'
+        run: |
+          scripts/shallow-source-packages.sh "$SOURCE_PACKAGES"
+          du -sh "$SOURCE_PACKAGES"
 
       # Saved right after resolving so a failing test run still warms the cache.
       - name: Save Swift packages
         if: steps.spm-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: |
-            ${{ env.SOURCE_PACKAGES }}/checkouts
-            ${{ env.SOURCE_PACKAGES }}/artifacts
-            ${{ env.SOURCE_PACKAGES }}/workspace-state.json
+          path: ${{ env.SOURCE_PACKAGES }}
           key: ${{ steps.spm-cache.outputs.cache-primary-key }}
-
-      # The full clones are only needed to resolve; dropping them frees over 13 GB of the runner's disk.
-      - name: Free package clones
-        run: |
-          rm -rf "$SOURCE_PACKAGES/repositories"
-          df -h "$GITHUB_WORKSPACE"
 
       - name: Build for testing
         run: |
@@ -90,7 +85,9 @@ jobs:
             -destination "$DESTINATION" \
             -derivedDataPath "$DERIVED_DATA" \
             -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
             -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
             -enableCodeCoverage NO \
             | xcbeautify
           echo "✅ Build finished at $(date)"
