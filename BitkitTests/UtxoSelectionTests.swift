@@ -11,13 +11,16 @@ final class UtxoSelectionTests: XCTestCase {
     private static let pollIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let pollTimeout: TimeInterval = 120
 
+    /// Thrown rather than recorded, so a test whose funding never confirmed stops before it spends.
+    private struct PollTimeout: Error, CustomStringConvertible {
+        let description: String
+    }
+
     /// Syncs and lists spendable outputs until `isReady` holds. Regtest confirmations reach the
     /// node at varying speed on CI, and a sync can fail with `NodeError.WalletOperationTimeout`,
     /// so a fixed sleep then a single sync sees partial state.
     private func waitForSpendableOutputs(
         _ description: String,
-        file: StaticString = #filePath,
-        line: UInt = #line,
         until isReady: ([SpendableUtxo]) -> Bool
     ) async throws -> [SpendableUtxo] {
         let deadline = Date().addingTimeInterval(Self.pollTimeout)
@@ -38,8 +41,7 @@ final class UtxoSelectionTests: XCTestCase {
             try await Task.sleep(nanoseconds: Self.pollIntervalNanoseconds)
         } while Date() < deadline
 
-        XCTFail("Timed out after \(Int(Self.pollTimeout))s waiting for \(description)", file: file, line: line)
-        return outputs
+        throw PollTimeout(description: "Timed out after \(Int(Self.pollTimeout))s waiting for \(description), last saw \(outputs.count) outputs")
     }
 
     override func setUp() async throws {
