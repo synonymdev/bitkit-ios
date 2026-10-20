@@ -43,7 +43,8 @@ struct RectangleButton: View {
                 CircularIcon(icon: icon, iconColor: iconColor, backgroundColor: .black, size: 40)
 
                 BodyMSBText(title)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer(minLength: 0)
 
@@ -52,7 +53,8 @@ struct RectangleButton: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 72)
+            .padding(.vertical, 16)
+            .frame(minHeight: 72)
             .padding(.horizontal, 16)
             .background(backgroundColor)
             .cornerRadius(16)

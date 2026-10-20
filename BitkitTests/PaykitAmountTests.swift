@@ -8,6 +8,27 @@ final class PaykitAmountTests: XCTestCase {
         PaykitExchangeRate(price: "100000", timestamp: now)
     }
 
+    func testEditorAmountsKeepCentsAndExactSubCentPrecisionWithoutChangingWireAmounts() throws {
+        let cases: [(PaykitAsset, String, String)] = [
+            (.usd, "150.50", "150.50"), (.usdt, "150.50", "150.50"), (.usdt, "1", "1.00"),
+            (.usdt, "0.000001", "0.000001"), (.usdt, "18446744073709.551615", "18446744073709.551615"),
+            (.btc, "0.00000001", "0.00000001"),
+        ]
+        for (asset, value, expected) in cases {
+            let amount = try PaykitAmount(asset: asset, value: value)
+            XCTAssertEqual(amount.inputValue, expected)
+            XCTAssertEqual(try PaykitAmount(asset: asset, value: amount.inputValue), amount)
+            if asset == .usdt {
+                XCTAssertEqual(usdtInputAmount(amount.inputValue, locale: Locale(identifier: "en_US")), expected)
+                XCTAssertEqual(
+                    usdtInputAmount(amount.inputValue, locale: Locale(identifier: "de_DE")),
+                    expected.replacingOccurrences(of: ".", with: ",")
+                )
+            }
+        }
+        XCTAssertEqual(try PaykitAmount(asset: .usdt, value: "150.50").value, "150.5")
+    }
+
     func testUsdDisplayPreservesCentsAndUsesLocaleGrouping() {
         for (cents, us, de): (UInt64, String, String) in [
             (0, "0.00", "0,00"), (1, "0.01", "0,01"), (100, "1.00", "1,00"),

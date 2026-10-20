@@ -368,7 +368,7 @@ struct TrezorPairingCodeSheet: View {
         .background(Color.black)
         .interactiveDismissDisabled()
         .trezorAccessibilityAnchor("TrezorPairingSheet")
-        .onChange(of: code) { newValue in
+        .onChange(of: code) { _, newValue in
             if newValue.count == digitCount {
                 guard !hasSubmitted else { return }
                 hasSubmitted = true
@@ -653,7 +653,7 @@ struct TrezorDebugLogPanel: View {
                         }
                         .frame(maxHeight: 300)
                         .trezorAccessibilityAnchor("TrezorDebugLogEntries")
-                        .onChange(of: debugLog.entries.count) { _ in
+                        .onChange(of: debugLog.entries.count) {
                             if let lastIndex = debugLog.entries.indices.last {
                                 proxy.scrollTo(lastIndex, anchor: .bottom)
                             }

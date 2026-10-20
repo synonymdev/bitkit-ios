@@ -83,7 +83,9 @@
             }
             isLoadingProfile = true
             let success = await withCheckedContinuation { pendingResult = $0 }
-            if success { profile = Self.savedProfile }
+            if success {
+                profile = Self.savedProfile
+            }
             isLoadingProfile = false
         }
 

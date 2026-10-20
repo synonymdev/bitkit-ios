@@ -859,10 +859,8 @@ extension MigrationsService {
     /// One-time cleanup for transfers created from unpaid/expired Blocktank orders during migration.
     /// The RN backup's paidOrders map could contain orders that were never actually paid.
     func cleanupInvalidMigrationTransfers() async {
-        guard !userDefaults.bool(forKey: Self.didCleanupInvalidTransfersKey) else { return }
-        guard rnMigrationCompleted else { return }
-
-        guard let transfers = try? TransferStorage.shared.getActiveTransfers() else { return }
+        guard !userDefaults.bool(forKey: Self.didCleanupInvalidTransfersKey), rnMigrationCompleted,
+              let transfers = try? TransferStorage.shared.getActiveTransfers() else { return }
         let orderTransfers = transfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
 
         guard !orderTransfers.isEmpty else {
@@ -2298,8 +2296,7 @@ extension MigrationsService {
 
     /// Fetches peers.json from remote backup once, returns URIs to connect (or []).
     func tryFetchMigrationPeersFromBackup(walletIndex: Int) async -> [String] {
-        guard rnMigrationCompleted else { return [] }
-        guard !didAttemptPeerRecovery else { return [] }
+        guard rnMigrationCompleted, !didAttemptPeerRecovery else { return [] }
 
         didAttemptPeerRecovery = true
 

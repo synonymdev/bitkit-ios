@@ -93,18 +93,21 @@ struct CreateSubscriptionView: View {
             CaptionMText(t("wallet__payment_request_amount").localizedUppercase, textColor: .white64, lineHeight: 18)
             Button(action: onEditAmount) {
                 HStack(spacing: 8) {
-                    if draft.amount.asset == .btc { MoneyText(
-                        sats: Int(clamping: draft.amount.atomic),
-                        unitType: .primary,
-                        size: .display,
-                        symbol: true,
-                        color: .textPrimary,
-                        symbolColor: .textSecondary,
-                        fillsWidth: false
-                    )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    } else { PaykitAmountText(amount: draft.amount, size: .display) }
+                    if draft.amount.asset == .btc {
+                        MoneyText(
+                            sats: Int(clamping: draft.amount.atomic),
+                            unitType: .primary,
+                            size: .display,
+                            symbol: true,
+                            color: .textPrimary,
+                            symbolColor: .textSecondary,
+                            fillsWidth: false
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    } else {
+                        PaykitAmountText(amount: draft.amount, size: .display)
+                    }
                     Image("pencil")
                         .resizable()
                         .frame(width: 24, height: 24)
@@ -223,7 +226,11 @@ struct CreateSubscriptionView: View {
 
     private func loadIcon(_ item: PhotosPickerItem?) async {
         guard let item else { return }
-        defer { if selectedPhotoItem == item { selectedPhotoItem = nil } }
+        defer {
+            if selectedPhotoItem == item {
+                selectedPhotoItem = nil
+            }
+        }
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 throw PaykitPaymentRequestError.requestUnavailable

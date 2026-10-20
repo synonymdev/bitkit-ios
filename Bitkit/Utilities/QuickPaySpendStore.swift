@@ -186,8 +186,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
         multiplier: Double,
         rates: QuickPaySpendRates
     ) -> Bool {
-        guard enabled, amountSats > 0 else { return false }
-        guard let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0 else { return false }
+        guard enabled, amountSats > 0, let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0 else { return false }
         if amountSats > thresholdSats {
             return false
         }
@@ -224,8 +223,7 @@ final class QuickPaySpendStore: @unchecked Sendable {
         rates: QuickPaySpendRates,
         keepHashes: Set<String> = []
     ) throws -> QuickPayLedgerRecord? {
-        guard !paymentHash.isEmpty else { return nil }
-        guard let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0, amountSats <= thresholdSats else {
+        guard !paymentHash.isEmpty, let thresholdSats = rates.usdToSats(thresholdUsd), thresholdSats > 0, amountSats <= thresholdSats else {
             return nil
         }
         guard let convertedCents = rates.satsToUsdCents(amountSats) else {

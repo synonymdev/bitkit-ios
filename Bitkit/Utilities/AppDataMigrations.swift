@@ -23,8 +23,8 @@ enum AppDataMigrations {
     /// Migration 1: Move suggestions into widgets
     private static func migration1() {
         let key = "savedWidgets"
-        guard let data = UserDefaults.standard.data(forKey: key), !data.isEmpty else { return }
-        guard var list = try? JSONDecoder().decode([SavedWidget].self, from: data) else { return }
+        guard let data = UserDefaults.standard.data(forKey: key), !data.isEmpty,
+              var list = try? JSONDecoder().decode([SavedWidget].self, from: data) else { return }
         if list.contains(where: { $0.type == .suggestions }) {
             return
         }

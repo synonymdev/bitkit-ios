@@ -249,14 +249,7 @@ final class PubkyImageCache: @unchecked Sendable {
             diskQueue.async { [self] in
                 let path = diskPath(for: uri)
                 guard let fileSize = try? path.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-                      fileSize <= maxFileBytes
-                else {
-                    try? FileManager.default.removeItem(at: path)
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                guard let diskData = try? Data(contentsOf: path),
+                      fileSize <= maxFileBytes, let diskData = try? Data(contentsOf: path),
                       let diskImage = try? PubkyImageDecoder.image(from: diskData)
                 else {
                     try? FileManager.default.removeItem(at: path)

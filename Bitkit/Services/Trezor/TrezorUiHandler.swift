@@ -1,5 +1,5 @@
 import BitkitCore
-import Combine
+@preconcurrency import Combine
 import Foundation
 
 /// Which wallet to open when the device asks for a passphrase.
@@ -23,7 +23,10 @@ enum TrezorWalletMode {
 /// is bound to the THP session at connect time via `currentSelection()`. The device
 /// callback `onPassphraseRequest` is answered silently from the stored mode — this is
 /// what non-THP (legacy) devices use when they re-request the passphrase mid-operation.
-final class TrezorUiHandler: TrezorUiCallback {
+///
+/// `@unchecked`: the Rust FFI calls in on its own threads; `submittedPin` is guarded by `pinLock`,
+/// `walletMode` and `hostPassphrase` by `modeLock`.
+final class TrezorUiHandler: TrezorUiCallback, @unchecked Sendable {
     static let shared = TrezorUiHandler()
 
     // MARK: - PIN Handling

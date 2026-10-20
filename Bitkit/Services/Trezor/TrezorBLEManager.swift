@@ -5,8 +5,12 @@ import Observation
 
 /// Manages CoreBluetooth operations for Trezor BLE devices
 /// Handles device discovery, connection, and GATT communication
+///
+/// `@unchecked`: the Rust FFI calls in on its own threads while CoreBluetooth delegates arrive on
+/// the central's queue; peripheral and continuation state is guarded by `peripheralsLock` and
+/// `continuationLock`, and observed UI state is written on the main actor.
 @Observable
-class TrezorBLEManager: NSObject {
+class TrezorBLEManager: NSObject, @unchecked Sendable {
     static let shared = TrezorBLEManager()
 
     // MARK: - BLE Constants
@@ -342,9 +346,7 @@ class TrezorBLEManager: NSObject {
         // Try to get peripheral from cache first
         var peripheral: CBPeripheral?
 
-        peripheralsLock.lock()
-        peripheral = discoveredPeripherals[path]
-        peripheralsLock.unlock()
+        peripheral = peripheralsLock.withLock { discoveredPeripherals[path] }
 
         // If not in cache, try retrieving by UUID (works for previously bonded devices)
         if peripheral == nil {
@@ -353,9 +355,7 @@ class TrezorBLEManager: NSObject {
                 let retrieved = centralManager?.retrievePeripherals(withIdentifiers: [uuid]) ?? []
                 peripheral = retrieved.first
                 if let p = peripheral {
-                    peripheralsLock.lock()
-                    discoveredPeripherals[path] = p
-                    peripheralsLock.unlock()
+                    peripheralsLock.withLock { discoveredPeripherals[path] = p }
                     debugLog("Retrieved peripheral by UUID: \(path)")
                 }
             }

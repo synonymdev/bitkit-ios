@@ -88,18 +88,25 @@ struct UsdtActivityDetail: View {
                         if showDetails, let txHash = transfer.txHash {
                             if transfer.destination != .arbitrum, transfer.orchestra == nil {
                                 CustomButton(title: t("usdt__track_bridge"), variant: .secondary, shouldExpand: true) {
-                                    if let url = URL(string: "https://layerzeroscan.com/tx/" + txHash) { openURL(url) }
+                                    if let url = URL(string: "https://layerzeroscan.com/tx/" + txHash) {
+                                        openURL(url)
+                                    }
                                 }
                             }
                         }
                         if showDetails, transfer.isIncoming, usdt.depositsConfigured, let txHash = transfer.txHash {
                             CustomButton(title: t("wallet__activity_explorer"), variant: .secondary, shouldExpand: true) {
-                                if let url = URL(string: "https://arbiscan.io/tx/" + txHash) { openURL(url) }
+                                if let url = URL(string: "https://arbiscan.io/tx/" + txHash) {
+                                    openURL(url)
+                                }
                             }
                             .accessibilityIdentifier("UsdtActivityExplorer")
                         }
                         if transfer.destination != .arbitrum,
-                           showDetails || transfer.needsBridgeSupport { UsdtSupportActions(details: transfer.supportDetails) }
+                           showDetails || transfer.needsBridgeSupport
+                        {
+                            UsdtSupportActions(details: transfer.supportDetails)
+                        }
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -111,7 +118,9 @@ struct UsdtActivityDetail: View {
                     .accessibilityIdentifier("UsdtDepositHistory")
                 } else if showDetails, let txHash = transfer.txHash {
                     CustomButton(title: t("wallet__activity_explorer"), shouldExpand: true, titleKerning: -0.4, titleLineHeight: 20) {
-                        if let url = URL(string: "https://arbiscan.io/tx/" + txHash) { openURL(url) }
+                        if let url = URL(string: "https://arbiscan.io/tx/" + txHash) {
+                            openURL(url)
+                        }
                     }
                     .padding(.top, 24)
                     .accessibilityIdentifier("UsdtActivityExplorer")
@@ -225,7 +234,9 @@ struct UsdtActivityDetail: View {
 
 extension UsdtTransfer {
     var detailTitle: String {
-        if isIncoming { return t(status == .pending ? "usdt__receiving_title" : "usdt__payment_received") }
+        if isIncoming {
+            return t(status == .pending ? "usdt__receiving_title" : "usdt__payment_received")
+        }
         return t(status == .bridging ? "usdt__delivering_title" : "usdt__sent_title")
     }
 
@@ -234,8 +245,12 @@ extension UsdtTransfer {
     }
 
     var activityAmount: UInt64 {
-        if isIncoming { return amount }
-        if status == .failed || status == .replaced { return fee ?? 0 }
+        if isIncoming {
+            return amount
+        }
+        if status == .failed || status == .replaced {
+            return fee ?? 0
+        }
         let total = amount.addingReportingOverflow(fee ?? 0)
         return total.overflow ? UInt64.max : total.partialValue
     }

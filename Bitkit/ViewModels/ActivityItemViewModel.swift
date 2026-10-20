@@ -78,22 +78,21 @@ class ActivityItemViewModel: ObservableObject {
 
                         // Look for a boosted transaction that could be our replacement
                         for recentActivity in recentActivities {
-                            if case let .onchain(recentOnchain) = recentActivity {
-                                // Check if this is a boosted transaction with same value and type
-                                if recentOnchain.isBoosted &&
-                                    recentOnchain.txType == onchainActivity.txType &&
-                                    recentOnchain.value == onchainActivity.value &&
-                                    recentOnchain.timestamp >= onchainActivity.timestamp
-                                {
-                                    Logger.info(
-                                        "Found RBF replacement activity: \(recentOnchain.id)",
-                                        context: "ActivityItemViewModel.refreshActivity"
-                                    )
-                                    activity = recentActivity
-                                    activityId = recentOnchain.id
-                                    await loadTags()
-                                    return
-                                }
+                            if case let .onchain(recentOnchain) = recentActivity,
+                               // Check if this is a boosted transaction with same value and type
+                               recentOnchain.isBoosted &&
+                               recentOnchain.txType == onchainActivity.txType &&
+                               recentOnchain.value == onchainActivity.value &&
+                               recentOnchain.timestamp >= onchainActivity.timestamp
+                            {
+                                Logger.info(
+                                    "Found RBF replacement activity: \(recentOnchain.id)",
+                                    context: "ActivityItemViewModel.refreshActivity"
+                                )
+                                activity = recentActivity
+                                activityId = recentOnchain.id
+                                await loadTags()
+                                return
                             }
                         }
 

@@ -254,7 +254,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     func protectUsdtFunds(_ hasProtectedFunds: Bool) {
-        if hasProtectedFunds { usdtPreference = .enabled }
+        if hasProtectedFunds {
+            usdtPreference = .enabled
+        }
     }
 
     var electrumHasEdited: Bool {
@@ -360,8 +362,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
-        guard !isChangingAddressType else { return false }
-        guard enabled || addressType != .nativeSegwit else { return false }
+        guard !isChangingAddressType, enabled || addressType != .nativeSegwit else { return false }
 
         isChangingAddressType = true
         lastAddressTypeError = nil
@@ -851,10 +852,10 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty {
-            if let server = parseElectrumServerUrlForRestore(electrumServerUrl) {
-                electrumConfigService.saveServerConfig(server)
-            }
+        if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
+           let server = parseElectrumServerUrlForRestore(electrumServerUrl)
+        {
+            electrumConfigService.saveServerConfig(server)
         }
 
         if let rgsServerUrl = dict["rgsServerUrl"] as? String, !rgsServerUrl.isEmpty {

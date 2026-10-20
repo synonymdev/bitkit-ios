@@ -103,7 +103,9 @@ struct HomeWalletView: View {
                 }
             } else {
                 Spacer()
-                if usdt.balance ?? 0 == 0 { WalletOnboardingView(type: .home) }
+                if usdt.balance ?? 0 == 0 {
+                    WalletOnboardingView(type: .home)
+                }
             }
         }
         .padding(.top, ScreenLayout.topPaddingWithSafeArea)
