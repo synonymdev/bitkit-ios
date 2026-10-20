@@ -10,13 +10,29 @@ struct PaykitAllowanceEntry: Identifiable, Hashable {
     let allowances: [PaykitAllowance]
     let limits: PaykitAllowanceLimits?
 
-    var primary: PaykitAllowance { allowances[0] }
+    var primary: PaykitAllowance {
+        allowances[0]
+    }
 
-    var counterparty: String { primary.counterparty }
-    var role: PaykitAllowance.Role { primary.role }
-    var perPaymentMaxSats: UInt64? { primary.perPaymentMaxSats }
-    var monthlyLimitSats: UInt64? { primary.monthlyLimitSats }
-    var canEnd: Bool { allowances.contains(where: \.canEnd) }
+    var counterparty: String {
+        primary.counterparty
+    }
+
+    var role: PaykitAllowance.Role {
+        primary.role
+    }
+
+    var perPaymentMaxSats: UInt64? {
+        primary.perPaymentMaxSats
+    }
+
+    var monthlyLimitSats: UInt64? {
+        primary.monthlyLimitSats
+    }
+
+    var canEnd: Bool {
+        allowances.contains(where: \.canEnd)
+    }
 
     func status(at now: Date) -> PaykitAllowance.Status {
         primary.status(at: now)
@@ -78,7 +94,9 @@ final class PaykitAllowanceManager {
         var order: [String] = []
         for allowance in allowances {
             let key = localState.group(containing: allowance.allowanceId)?.id ?? allowance.allowanceId
-            if grouped[key] == nil { order.append(key) }
+            if grouped[key] == nil {
+                order.append(key)
+            }
             grouped[key, default: []].append(allowance)
         }
         return order.compactMap { key in
@@ -148,9 +166,8 @@ final class PaykitAllowanceManager {
         guard request.isAllowancePayable else { return false }
         return allowances.contains { allowance in
             guard allowance.isAllower, allowance.status(at: now()) == .active,
-                  PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty)
-            else { return false }
-            guard let acceptedAt = allowance.lastEventAt, let createdAt = request.createdAt else { return false }
+                  PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty), let acceptedAt = allowance.lastEventAt,
+                  let createdAt = request.createdAt else { return false }
             return createdAt >= acceptedAt.addingTimeInterval(-Self.acceptanceClockTolerance)
         }
     }
@@ -182,7 +199,7 @@ final class PaykitAllowanceManager {
             allowedPaymentEndpointIdentifiers: Self.allowedPaymentEndpointIdentifiers
         )
         let record = try await sdk.proposeAllowance(counterparty: contact.publicKey, localRole: .allower, terms: terms)
-        try? await sdk.processOutboundPrivateMessages(counterparty: contact.publicKey)
+        _ = try? await sdk.processOutboundPrivateMessages(counterparty: contact.publicKey)
 
         let group = PaykitAllowanceLocalState.Group(
             id: UUID().uuidString.lowercased(),
@@ -220,7 +237,7 @@ final class PaykitAllowanceManager {
         for allowance in entry.allowances where allowance.canEnd {
             _ = try await sdk.endAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
             endedAny = true
-            try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
+            _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard endedAny else { throw PaykitAllowanceError.unavailable }
         await refresh()
@@ -233,7 +250,7 @@ final class PaykitAllowanceManager {
         for allowance in entry.allowances where allowance.isAnswerable {
             _ = try await response(allowance)
             respondedAny = true
-            try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
+            _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard respondedAny else { throw PaykitAllowanceError.unavailable }
         if let identity {
@@ -297,7 +314,9 @@ final class PaykitAllowanceManager {
     /// Whether the allowance flow owns the request, so no sheet may open for it. A covered request belongs to the flow
     /// from the moment it arrives, even before the first pass over it, until that pass finds it manual.
     func isAutomaticallyHandling(_ request: PaykitPaymentRequest) async -> Bool {
-        if isAwaitingAutomaticPayment(request) { return true }
+        if isAwaitingAutomaticPayment(request) {
+            return true
+        }
         return await executor.isHandling(request.id)
     }
 

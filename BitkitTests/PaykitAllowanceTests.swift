@@ -273,9 +273,24 @@ final class PaykitAllowanceTests: XCTestCase {
     }
 
     func testCapacityWithoutBothCeilingsNeverFits() {
-        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(monthlyLimitSats: nil), attempts: [], now: Fixtures.now))
-        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(perPaymentMaxSats: nil), attempts: [], now: Fixtures.now))
-        XCTAssertFalse(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(monthlyAnchor: nil), attempts: [], now: Fixtures.now))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(
+            amountSats: 5000,
+            allowance: Fixtures.allowance(monthlyLimitSats: nil),
+            attempts: [],
+            now: Fixtures.now
+        ))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(
+            amountSats: 5000,
+            allowance: Fixtures.allowance(perPaymentMaxSats: nil),
+            attempts: [],
+            now: Fixtures.now
+        ))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(
+            amountSats: 5000,
+            allowance: Fixtures.allowance(monthlyAnchor: nil),
+            attempts: [],
+            now: Fixtures.now
+        ))
     }
 
     func testAttemptsFromHistoryKeepAutomaticAllowanceAttempts() throws {

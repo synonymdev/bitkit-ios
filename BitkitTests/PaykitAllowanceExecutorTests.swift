@@ -615,7 +615,11 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
 
-        XCTAssertEqual(result, .manual, "September's paid attempts must count; the subscription clock offset would have moved the window a year ahead")
+        XCTAssertEqual(
+            result,
+            .manual,
+            "September's paid attempts must count; the subscription clock offset would have moved the window a year ahead"
+        )
         let evaluatedTimes = await harness.sdk.evaluatedTrustedTimes
         XCTAssertEqual(evaluatedTimes, [PaykitAllowanceTime.format(Fixtures.now)])
         XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
@@ -971,7 +975,9 @@ private final class AllowanceMemoryStore: PaykitAllowanceStoring, @unchecked Sen
 
     func save(_ state: PaykitAllowanceLocalState, identity: String) throws {
         try lock.withLock {
-            if savesFail { throw AllowanceMockError.unsupported }
+            if savesFail {
+                throw AllowanceMockError.unsupported
+            }
             states[identity] = state
         }
     }
@@ -1118,7 +1124,9 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
 
     func resolve(_ request: PaykitPaymentRequest, eligibleIdentifiers: [String]) async throws -> PrivatePaykitAllowancePayment? {
         called("resolve")
-        if let resolveError { throw resolveError }
+        if let resolveError {
+            throw resolveError
+        }
         return payment
     }
 
@@ -1138,7 +1146,9 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
 
     func claimForExecution(_ request: PaykitPaymentRequest) async throws {
         called("claimForExecution")
-        if let claimError { throw claimError }
+        if let claimError {
+            throw claimError
+        }
         claimedRequestIds.append(request.id)
     }
 
@@ -1174,7 +1184,9 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
             // The real node call is cancellable, so a cancelled caller must not be able to stop the payment here.
             try Task.checkCancellation()
         }
-        if let lightningError { throw lightningError }
+        if let lightningError {
+            throw lightningError
+        }
     }
 
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
@@ -1333,7 +1345,9 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         checks: Paykit.PaymentExecutionChecks
     ) async throws -> Paykit.AllowanceAssociationRecord {
         log.append("acceptPaymentRequestAutomatically")
-        if let acceptError { throw acceptError }
+        if let acceptError {
+            throw acceptError
+        }
         selections.append(selection)
         acceptedEndpointIdentifiers.append(checks.paymentEndpointIdentifier)
         return Paykit.AllowanceAssociationRecord(

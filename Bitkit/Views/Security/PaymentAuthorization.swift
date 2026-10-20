@@ -45,7 +45,11 @@ private struct PaymentAuthorizationModifier: ViewModifier {
         content
             .sheet(isPresented: Binding(
                 get: { authorization.isAskingForPin },
-                set: { if !$0 { authorization.resolvePin(false) } }
+                set: {
+                    if !$0 {
+                        authorization.resolvePin(false)
+                    }
+                }
             )) {
                 SendPinScreen(
                     onCancel: { authorization.resolvePin(false) },
@@ -56,7 +60,11 @@ private struct PaymentAuthorizationModifier: ViewModifier {
                 t("security__bio_error_title"),
                 isPresented: Binding(
                     get: { authorization.biometricErrorMessage != nil },
-                    set: { if !$0 { authorization.dismissBiometricError() } }
+                    set: {
+                        if !$0 {
+                            authorization.dismissBiometricError()
+                        }
+                    }
                 )
             ) {
                 Button(t("common__ok")) {}
