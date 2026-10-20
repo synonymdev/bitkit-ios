@@ -21,7 +21,11 @@ final class UsdtWalletManager {
     private(set) var address = ""
     private(set) var receiveUri = ""
     private(set) var transfers: [UsdtTransfer] = [] {
-        didSet { if oldValue != transfers { Self.backupStateChanged.send() } }
+        didSet {
+            if oldValue != transfers {
+                Self.backupStateChanged.send()
+            }
+        }
     }
 
     private var pendingDepositIds: Set<String> = []
@@ -97,8 +101,11 @@ final class UsdtWalletManager {
 
     func recordDepositStatus(id: String, status: String) {
         guard !wiping else { return }
-        if UsdtPreference.hasPendingDeposit(status) { pendingDepositIds.insert(id) }
-        else { pendingDepositIds.remove(id) }
+        if UsdtPreference.hasPendingDeposit(status) {
+            pendingDepositIds.insert(id)
+        } else {
+            pendingDepositIds.remove(id)
+        }
     }
 
     var networkName: String {
@@ -145,7 +152,9 @@ final class UsdtWalletManager {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                if let error = error as? UsdtError, case .RateLimited = error { throw error }
+                if let error = error as? UsdtError, case .RateLimited = error {
+                    throw error
+                }
                 settlementError = error
             }
             try Task.checkCancellation()
@@ -159,11 +168,15 @@ final class UsdtWalletManager {
                     receivedTxPublisher.send(transfer)
                 }
             }
-            if let settlementError { throw settlementError }
+            if let settlementError {
+                throw settlementError
+            }
             errorMessage = nil
         } catch is CancellationError {
         } catch {
-            if let error = error as? UsdtError, case .RateLimited = error { refreshDelay = 60; rateLimitedUntil = now().addingTimeInterval(60) }
+            if let error = error as? UsdtError, case .RateLimited = error {
+                refreshDelay = 60; rateLimitedUntil = now().addingTimeInterval(60)
+            }
             errorMessage = Self.message(for: error)
             Logger.warn("Failed to refresh USDT: \(Self.message(for: error))", context: "UsdtWalletManager")
         }
@@ -224,7 +237,9 @@ final class UsdtWalletManager {
         let credentials = try await loadCredentials()
         try Task.checkCancellation()
         let fingerprint = SHA256.hash(data: Data("\(credentials.0.utf8.count):\(credentials.0)\(credentials.1 ?? "")".utf8))
-        if let cached = paymentEndpointCache, cached.fingerprint == fingerprint { return cached.endpoint }
+        if let cached = paymentEndpointCache, cached.fingerprint == fingerprint {
+            return cached.endpoint
+        }
         paymentEndpointCache = nil
         let endpoint = try await ServiceQueue.background(.core, wrapErrors: false) {
             try PaykitUsdt.endpoint(address: usdtAddress(mnemonic: credentials.0, passphrase: credentials.1))
@@ -253,7 +268,9 @@ final class UsdtWalletManager {
                 transfers.removeAll { $0.id == transfer.id }
                 transfers.insert(transfer, at: 0)
             } catch {
-                if let saved = try? await ServiceQueue.background(.core, wrapErrors: false, { try wallet.history() }) { transfers = saved }
+                if let saved = try? await ServiceQueue.background(.core, wrapErrors: false, { try wallet.history() }) {
+                    transfers = saved
+                }
                 throw error
             }
         }
@@ -298,7 +315,9 @@ final class UsdtWalletManager {
                 transfers.removeAll { $0.id == transfer.id }
                 transfers.insert(transfer, at: 0)
                 errorMessage = nil
-                if transfer.status != .pending { return }
+                if transfer.status != .pending {
+                    return
+                }
                 try await Task.sleep(for: .seconds(1))
             }
         } catch is CancellationError {
@@ -375,7 +394,9 @@ final class UsdtWalletManager {
     }
 
     func wipe() async throws {
-        if let wipeTask { return try await wipeTask.value }
+        if let wipeTask {
+            return try await wipeTask.value
+        }
         wiping = true
         let task = Task { try await performWipe() }
         wipeTask = task
@@ -433,9 +454,15 @@ final class UsdtWalletManager {
     }
 
     private func wallet(requiresNetwork: Bool = true) async throws -> UsdtWallet {
-        if requiresNetwork, !isConfigured { throw UsdtError.NotConfigured }
-        if let core { return core }
-        if let initialization { return try await initialization.value }
+        if requiresNetwork, !isConfigured {
+            throw UsdtError.NotConfigured
+        }
+        if let core {
+            return core
+        }
+        if let initialization {
+            return try await initialization.value
+        }
         // Core's constructor requires URLs even for local export/restore. Network operations remain configuration-gated.
         let task = Task {
             try await initializeWallet(bundlerUrl: bundlerUrl ?? "http://127.0.0.1:1", rpcUrl: rpcUrl ?? "http://127.0.0.1:1")

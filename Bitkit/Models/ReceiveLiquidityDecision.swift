@@ -36,11 +36,7 @@ enum ReceiveLiquidityDecision {
         maxCjitAmountSats: UInt64?,
         isGeoBlocked: Bool
     ) -> ReceiveAdditionalLiquidityAction {
-        guard source == .spending else {
-            return .none
-        }
-
-        guard needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats) else {
+        guard source == .spending, needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats) else {
             return .none
         }
 
@@ -71,15 +67,9 @@ enum ReceiveLiquidityDecision {
         inboundCapacitySats: UInt64?,
         isGeoBlocked: Bool
     ) -> Bool {
-        guard source == .spending else {
-            return false
-        }
-
-        guard needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats) else {
-            return false
-        }
-
-        guard (inboundCapacitySats ?? 0) > 0 else {
+        guard source == .spending, needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats),
+              (inboundCapacitySats ?? 0) > 0
+        else {
             return false
         }
 

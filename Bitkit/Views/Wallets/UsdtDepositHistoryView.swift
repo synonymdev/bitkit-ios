@@ -32,26 +32,39 @@ struct UsdtDepositHistoryView: View {
                 titleKerning: 0,
                 titleLineHeight: 26,
                 onBack: {
-                    if selected == nil { dismiss() }
-                    else { clearSelection() }
+                    if selected == nil {
+                        dismiss()
+                    } else {
+                        clearSelection()
+                    }
                 }
             )
             .disabled(busy || recoveryActive)
             .padding(.bottom, 16)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let selected { detail(selected) }
-                    else { depositList }
-                    if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtDepositError") }
-                    if let message { BodySText(message, textColor: .textSecondary) }
+                    if let selected {
+                        detail(selected)
+                    } else {
+                        depositList
+                    }
+                    if let error {
+                        BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtDepositError")
+                    }
+                    if let message {
+                        BodySText(message, textColor: .textSecondary)
+                    }
                 }
                 .padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.immediately)
             .refreshable {
                 guard !recoveryActive else { return }
-                if let selected { await loadDetail(selected.deposit.id) }
-                else { await loadPage(0) }
+                if let selected {
+                    await loadDetail(selected.deposit.id)
+                } else {
+                    await loadPage(0)
+                }
             }
             if selected != nil {
                 CustomButton(title: t("usdt__deposit_history"), isDisabled: busy || recoveryActive, titleKerning: -0.4, titleLineHeight: 20) {
@@ -91,11 +104,17 @@ struct UsdtDepositHistoryView: View {
         } message: {
             Text(selected?.refundConfirmation(address: refundAddress, hideBalance: settings.hideBalance) ?? "")
         }
-        .task { if !recoveryActive { await loadPage(0) } }
+        .task {
+            if !recoveryActive {
+                await loadPage(0)
+            }
+        }
         .task(id: "\(scenePhase == .active)-\(selected?.deposit.id ?? "")-\(recoveryActive)") {
             guard scenePhase == .active, !recoveryActive, let id = selected?.deposit.id else { return }
             while !Task.isCancelled {
-                if let selected, ["completed", "refunded"].contains(selected.order?.status ?? selected.deposit.status) { return }
+                if let selected, ["completed", "refunded"].contains(selected.order?.status ?? selected.deposit.status) {
+                    return
+                }
                 do {
                     try await Task.sleep(for: .seconds(10))
                     try Task.checkCancellation()
@@ -113,7 +132,9 @@ struct UsdtDepositHistoryView: View {
             SendSectionView(t("usdt__provider_status"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
                 BodySSBText(t("usdt__deposit_status_note"), kerning: 0, lineHeight: 20)
             }
-            if deposits.isEmpty, !busy { BodySText(t("usdt__deposit_empty"), textColor: .textSecondary) }
+            if deposits.isEmpty, !busy {
+                BodySText(t("usdt__deposit_empty"), textColor: .textSecondary)
+            }
             ForEach(deposits, id: \.id) { deposit in
                 Button { Task { await loadDetail(deposit.id) } } label: {
                     UsdtDepositRow(deposit: deposit, hideBalance: settings.hideBalance)
@@ -277,7 +298,11 @@ struct UsdtDepositHistoryView: View {
             busy = true
             error = nil
         }
-        defer { if !isRefreshing { busy = false } }
+        defer {
+            if !isRefreshing {
+                busy = false
+            }
+        }
         do {
             let detail = try await usdt.depositDetail(id: id, offset: pageOffsets[id] ?? 0)
             try Task.checkCancellation()
@@ -311,7 +336,11 @@ struct UsdtDepositHistoryView: View {
 
     private func authorizeRefund() async {
         guard !busy else { return }
-        defer { if !pin { approved = nil } }
+        defer {
+            if !pin {
+                approved = nil
+            }
+        }
         if settings.requirePinForPayments && settings.pinEnabled {
             guard settings.useBiometrics && BiometricAuth.isAvailable else {
                 pin = true
@@ -325,7 +354,9 @@ struct UsdtDepositHistoryView: View {
             case .cancelled: break
             case let .failed(message): refundError = message
             }
-        } else { await refund() }
+        } else {
+            await refund()
+        }
     }
 
     private func refund() async {
@@ -379,7 +410,9 @@ extension UsdtDepositDetail {
     }
 
     var statusCode: String? {
-        if let order { return order.code }
+        if let order {
+            return order.code
+        }
         return deposit.code
     }
 

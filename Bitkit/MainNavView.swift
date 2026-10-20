@@ -946,7 +946,9 @@ struct MainNavView: View {
                       isContactDeepLinkReady
                 else { throw ContactsManagerError.invalidPublicKey }
 
-                if routePublicContactIfSignedOut(publicKey: publicKey, profile: pubkyProfile, navigation: navigation) { return }
+                if routePublicContactIfSignedOut(publicKey: publicKey, profile: pubkyProfile, navigation: navigation) {
+                    return
+                }
 
                 scannerManager.configure(
                     app: app,

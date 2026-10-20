@@ -366,7 +366,9 @@ final class PublicPaykitServiceTests: XCTestCase {
         var passphrase: String?
         var cancelled = false
         let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, loadCredentials: {
-            if cancelled { throw CancellationError() }
+            if cancelled {
+                throw CancellationError()
+            }
             guard available else { throw PublicPaykitError.walletNotReady }
             return ("test test test test test test test test test test test junk", passphrase)
         })

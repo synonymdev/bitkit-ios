@@ -172,7 +172,11 @@ extension ActivityService {
             }
             var changed = false
             var complete = true
-            defer { if changed { notifyActivitiesChanged() } }
+            defer {
+                if changed {
+                    notifyActivitiesChanged()
+                }
+            }
             for activity in activities {
                 guard !Task.isCancelled, await isCurrent() else { return false }
                 guard !isContactDetached(activityId: ActivityScope.id(of: activity), walletId: ActivityScope.walletId(of: activity)) else { continue }

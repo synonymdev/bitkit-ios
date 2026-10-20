@@ -32,7 +32,9 @@ struct SendSectionView<Content: View>: View {
 
             content()
 
-            if alignDividerToBottom { Spacer(minLength: 0) }
+            if alignDividerToBottom {
+                Spacer(minLength: 0)
+            }
 
             CustomDivider()
                 .padding(.top, dividerSpacing)

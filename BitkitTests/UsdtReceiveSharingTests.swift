@@ -47,7 +47,9 @@ final class UsdtReceiveSharingTests: XCTestCase {
                     }
                     let features = try detector.features(in: XCTUnwrap(CIImage(image: image)))
                     decoded = (features.first as? CIQRCodeFeature)?.messageString
-                    if decoded == uri { break }
+                    if decoded == uri {
+                        break
+                    }
                 }
                 XCTAssertEqual(decoded, uri, "QR must remain scannable at height \(height)")
             }

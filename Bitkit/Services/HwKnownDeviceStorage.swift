@@ -382,8 +382,7 @@ enum HwKnownDeviceStorage {
     private static func pairedNames() -> [String: String] {
         var names: [String: String] = [:]
         for device in loadAll() {
-            guard let walletId = device.resolvedWalletId, !walletId.isEmpty else { continue }
-            guard let label = device.customLabel, !label.isEmpty else { continue }
+            guard let walletId = device.resolvedWalletId, !walletId.isEmpty, let label = device.customLabel, !label.isEmpty else { continue }
             names[walletId] = label
         }
         return names

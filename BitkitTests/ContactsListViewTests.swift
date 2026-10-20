@@ -41,7 +41,7 @@ final class ContactsListViewTests: XCTestCase {
         }
     }
 
-    func testActiveLoadFailureStillShowsErrorWithExistingContacts() async throws {
+    func testActiveLoadFailureStillShowsErrorWithExistingContacts() async {
         snapshotAppDefaultsDomain()
         let manager = SuspendedContactsListManager(error: TestError.offline)
         let app = AppViewModel()
@@ -90,7 +90,9 @@ final class ContactsListViewTests: XCTestCase {
 
     private enum TestError: LocalizedError {
         case offline
-        var errorDescription: String? { "Contacts unavailable" }
+        var errorDescription: String? {
+            "Contacts unavailable"
+        }
     }
 }
 
@@ -123,6 +125,8 @@ private final class SuspendedContactsListManager: ContactsManager {
         defer { finished.fulfill() }
         for await _ in stream {}
         wasCancelled = Task.isCancelled
-        if let error { throw error }
+        if let error {
+            throw error
+        }
     }
 }

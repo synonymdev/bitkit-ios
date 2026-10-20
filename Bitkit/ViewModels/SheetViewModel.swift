@@ -185,8 +185,7 @@ class SheetViewModel: ObservableObject {
 
     var addTagSheetItem: AddTagSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .addTag else { return nil }
-            guard let addTagConfig = config.data as? AddTagConfig else { return nil }
+            guard let config = activeSheetConfiguration, config.id == .addTag, let addTagConfig = config.data as? AddTagConfig else { return nil }
             return AddTagSheetItem(activityId: addTagConfig.activityId, walletId: addTagConfig.walletId)
         }
         set {
@@ -442,8 +441,8 @@ class SheetViewModel: ObservableObject {
 
     var renameHardwareWalletSheetItem: RenameHardwareWalletSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .renameHardwareWallet else { return nil }
-            guard let data = config.data as? RenameHardwareWalletConfig else { return nil }
+            guard let config = activeSheetConfiguration, config.id == .renameHardwareWallet,
+                  let data = config.data as? RenameHardwareWalletConfig else { return nil }
             return RenameHardwareWalletSheetItem(walletId: data.walletId, currentName: data.currentName)
         }
         set {
