@@ -824,7 +824,7 @@ actor PaykitSdkService {
 
     /// Refreshes display data under the native operation lock; views keep using their current projections.
     func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String? = nil) async throws -> Paykit.PaykitStateObservation {
-        try await withSdk(priority: priority) { sdk in
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             let observation = try await sdk.observeState()
             try Task.checkCancellation()
             if let expectedIdentity {
@@ -1050,7 +1050,7 @@ actor PaykitSdkService {
     }
 
     func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [PrivateStreamCounterpartyIntakeReport] {
-        try await withStateRevisionTracking(priority: priority) { sdk in
+        try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.receivePrivateMessagesFromLinkedPeers()
         }
     }
@@ -1099,7 +1099,7 @@ actor PaykitSdkService {
     }
 
     func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
-        try await withStateRevisionTracking(priority: priority) { sdk in
+        try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.processPendingPrivateMessages()
         }
     }
@@ -1407,6 +1407,7 @@ actor PaykitSdkService {
         priority: PaykitSdkOperationLock.Priority = .ordered,
         deferDuringPayment: Bool = false,
         operationName: StaticString = #function,
+        beforeOperation: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
         #if DEBUG
@@ -1437,6 +1438,7 @@ actor PaykitSdkService {
                     // Release the SDK lock before waiting if payment started while this operation was queued.
                     guard await !PaykitPaymentActivity.shared.isActive else { return nil }
                 }
+                try await beforeOperation()
                 do {
                     return try await withSdkErrorHandling {
                         #if DEBUG
@@ -1449,6 +1451,7 @@ actor PaykitSdkService {
                                 context: "PaykitSdkService"
                             )
                         #endif
+                        try await beforeOperation()
                         return try await .some(operation(handle()))
                     }
                 } catch OperationDeferral.paymentActive {
@@ -1477,13 +1480,22 @@ actor PaykitSdkService {
         cachedBackupState = nil
     }
 
+    private func checkRefreshAdmission(_ priority: PaykitSdkOperationLock.Priority) async throws {
+        if priority == .background, await PaykitPaymentActivity.shared.isActive {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
+    }
+
     private func withStateRevisionTracking<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
         deferDuringPayment: Bool = false,
         operationName: StaticString = #function,
+        beforeOperation: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
-        try await withSdk(priority: priority, deferDuringPayment: deferDuringPayment, operationName: operationName) { sdk in
+        try await withSdk(
+            priority: priority, deferDuringPayment: deferDuringPayment, operationName: operationName, beforeOperation: beforeOperation
+        ) { sdk in
             return try await Self.withBackupStateRevisionTracking(
                 readRevision: {
                     #if DEBUG
@@ -1505,6 +1517,7 @@ actor PaykitSdkService {
                 onSnapshot: { self.cachedBackupState = $0 },
                 onChange: { self.markWalletBackupDataChanged() },
                 beforeOperation: {
+                    try await beforeOperation()
                     if deferDuringPayment {
                         guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
                         try Task.checkCancellation()

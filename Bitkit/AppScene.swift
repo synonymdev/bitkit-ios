@@ -1379,7 +1379,7 @@ struct AppScene: View {
         presentItems: Bool = true,
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        messagePriority: PaykitSdkOperationLock.Priority = .background,
         onlyWhileActive: Bool = false,
         automatic: Bool = true
     ) async -> Bool {

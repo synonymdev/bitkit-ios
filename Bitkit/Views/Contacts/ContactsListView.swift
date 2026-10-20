@@ -297,6 +297,8 @@ struct ContactsListView: View {
             }
         } catch is CancellationError {
             return
+        } catch PaykitPaymentRequestError.operationInProgress {
+            return
         } catch {
             guard !Task.isCancelled else { return }
             Logger.error("Failed to load contacts in view: \(error)", context: "ContactsListView")
