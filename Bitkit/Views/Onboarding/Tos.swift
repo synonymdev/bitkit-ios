@@ -639,7 +639,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "10.2.2 use any Bitkit Services (including the Bitkit Wallet or any Connection) or Wallet in order to disguise the origin or nature of illicit proceeds of, or to breach any Laws, or to transact or deal in, any contraband assets, funds, property, or proceeds;"
+                        "10.2.2 use any Bitkit Services (including the Bitkit Wallet or any Connection) or Wallet in order to disguise the origin or nature of illicit proceeds or to breach any Laws, or to transact or deal in, any contraband assets, funds, property, or proceeds;"
                     )
 
                     Text(
@@ -689,7 +689,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "Any use as described in this Section 10 shall constitute a **\"Prohibited Use\"**. You must assure that any Wallet Asset Transfer, Routed Payment or other use by you of the Connection or the Bitkit Services is not a Prohibited Use. If Synonym determines or suspects that you have engaged in any Prohibited Use, Synonym may address such Prohibited Use through an appropriate sanction, in its sole and absolute discretion. Such sanction may include, without limitation: (i) force closing any active Blocktank Connection associated with you; (ii) making a report to any Government, law enforcement, or other authorities, without providing any notice of you about any such report; or (iii) suspending or terminating your access to any Bitkit Services. **In addition, should your actions or inaction result in Loss being suffered by Synonym or any of its Associates, you shall pay an amount to Synonym or the Associate so as to render Synonym or the Associate whole, including the amount of taxes or penalties that might be imposed on Synonym or the Associate.**"
+                        "Any use as described in this Section 10 shall constitute a **\"Prohibited Use\"**. You must assure that any Wallet Asset Transfer, Routed Payment or other use by you of the Connection or the Bitkit Services is not a Prohibited Use. If Synonym determines or suspects that you have engaged in any Prohibited Use, Synonym may address such Prohibited Use through an appropriate sanction, in its sole and absolute discretion. Such sanction may include, without limitation: (i) force closing any active Blocktank Connection associated with you; (ii) making a report to any Government, law enforcement, or other authorities, without providing any notice to you about any such report; or (iii) suspending or terminating your access to any Bitkit Services. **In addition, should your actions or inaction result in Loss being suffered by Synonym or any of its Associates, you shall pay an amount to Synonym or the Associate so as to render Synonym or the Associate whole, including the amount of taxes or penalties that might be imposed on Synonym or the Associate.**"
                     )
                 }
 
@@ -768,7 +768,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "13.1.10 you understand the risks associated with using the Bitkit Services, including that: (a) the Bitkit Services provided by Synonym are limited to technology and related services, (b) Synonym does not provide or control the Lighting Network or any other Person such as other operators of nodes in the Lightning Network or your Recipients, (c) Synonym does not provide or control any Digital Assets networks or protocols, (d) market prices for Digital Assets can be volatile and highly unpredictable, (e) the legality of holding and transacting Digital Assets may not be clear and may vary under the Laws of different jurisdictions throughout the world, (f) the Lightning Network and other Digital Asset networks may be subject to security breaches from cyber-attacks that hack and steal your Digital Assets, or electronic or technological failures that impede or prevent your Wallet Asset Transfers, Routed Payment or cause recordkeeping errors, and (g) Persons other than Synonym may be or become insolvent, bankrupt or default upon their obligations;"
+                        "13.1.10 you understand the risks associated with using the Bitkit Services, including that: (a) the Bitkit Services provided by Synonym are limited to technology and related services, (b) Synonym does not provide or control the Lightning Network or any other Person such as other operators of nodes in the Lightning Network or your Recipients, (c) Synonym does not provide or control any Digital Assets networks or protocols, (d) market prices for Digital Assets can be volatile and highly unpredictable, (e) the legality of holding and transacting Digital Assets may not be clear and may vary under the Laws of different jurisdictions throughout the world, (f) the Lightning Network and other Digital Asset networks may be subject to security breaches from cyber-attacks that hack and steal your Digital Assets, or electronic or technological failures that impede or prevent your Wallet Asset Transfers, Routed Payment or cause recordkeeping errors, and (g) Persons other than Synonym may be or become insolvent, bankrupt or default upon their obligations;"
                     )
 
                     Text(
