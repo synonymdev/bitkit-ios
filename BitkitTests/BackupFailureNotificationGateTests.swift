@@ -121,4 +121,24 @@ final class BackupFailureNotificationGateTests: XCTestCase {
             )
         )
     }
+
+    func testForegroundRecoverySuppressesNotificationsWithoutConsumingCooldown() {
+        var gate = BackupFailureNotificationGate()
+        gate.setActive(true)
+
+        XCTAssertTrue(gate.beginForegroundRecovery())
+        XCTAssertFalse(gate.beginForegroundRecovery())
+        XCTAssertFalse(gate.shouldNotify(at: 1000, notificationInterval: 600))
+
+        gate.endForegroundRecovery()
+
+        XCTAssertTrue(gate.shouldNotify(at: 1000, notificationInterval: 600))
+        gate.setActive(false)
+        gate.setActive(true)
+        XCTAssertTrue(gate.beginForegroundRecovery())
+        gate.endForegroundRecovery()
+
+        XCTAssertFalse(gate.shouldNotify(at: 1599, notificationInterval: 600))
+        XCTAssertTrue(gate.shouldNotify(at: 1600, notificationInterval: 600))
+    }
 }
