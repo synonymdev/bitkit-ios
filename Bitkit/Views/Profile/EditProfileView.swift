@@ -146,21 +146,31 @@ struct EditProfileView: View {
 
     private func deleteProfile() async {
         guard !isDeleting else { return }
+        guard let session = pubkyProfile.currentSession else {
+            showDeleteFailureOptions = true
+            return
+        }
 
         isDeleting = true
-        await pubkyProfile.performProfileDeletion {
-            await deleteProfileWithSessionRetry()
+        defer { isDeleting = false }
+        do {
+            try await pubkyProfile.performProfileDeletion {
+                await deleteProfileWithSessionRetry(session: session)
+            }
+        } catch {
+            guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
+            showDeleteFailureOptions = true
         }
-        isDeleting = false
     }
 
-    private func deleteProfileWithSessionRetry() async {
+    private func deleteProfileWithSessionRetry(session: PubkyProfileManager.SignedInSession) async {
         do {
-            try await performDeleteProfile()
+            try await performDeleteProfile(session: session)
         } catch {
-            if await pubkyProfile.refreshSessionIfPossible(after: error) {
+            guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
+            if pubkyProfile.currentSession == session, await pubkyProfile.refreshSessionIfPossible(after: error) {
                 do {
-                    try await performDeleteProfile()
+                    try await performDeleteProfile(session: session)
                     return
                 } catch {
                     Logger.error("Failed to delete profile after session refresh: \(error)", context: "EditProfileView")
@@ -169,14 +179,22 @@ struct EditProfileView: View {
                 Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
             }
 
-            showDeleteFailureOptions = true
+            if !Task.isCancelled, pubkyProfile.publicKey == session.publicKey {
+                showDeleteFailureOptions = true
+            }
         }
     }
 
-    private func performDeleteProfile() async throws {
-        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "EditProfileView.deleteProfile", deferAppSync: true)
+    private func performDeleteProfile(session: PubkyProfileManager.SignedInSession) async throws {
+        try pubkyProfile.requireCurrentSession(session)
+        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(
+            context: "EditProfileView.deleteProfile", deferAppSync: true,
+            isSessionCurrent: { pubkyProfile.currentSession == session }
+        )
+        try pubkyProfile.requireCurrentSession(session)
         await contactsManager.deleteAllContactsBestEffort()
-        try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false)
+        try pubkyProfile.requireCurrentSession(session)
+        try await pubkyProfile.deleteProfile(cleanPrivatePaykitEndpoints: false, expectedSession: session)
         navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 
