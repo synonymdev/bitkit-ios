@@ -1635,3 +1635,4 @@
 "usdt__deposit_tron_refund_note" = "Οι επιστροφές στο TRON μπορεί να απαιτούν βοήθεια από χειριστή του Orchestra.";
 "usdt__deposit_refund_address_network" = "Διεύθυνση USDT στο {network}";
 "wallet__send_error_support" = "Επικοινωνία με Υποστήριξη";
+"usdt__receive_copied" = "Η διεύθυνση αντιγράφηκε στο πρόχειρο.\nΒεβαιώσου ότι το USDT αποστέλλεται μόνο μέσω του επιλεγμένου δικτύου.";

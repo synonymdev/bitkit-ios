@@ -1908,3 +1908,4 @@
 "usdt__deposit_refund_confirmation" = "Terugbetaling aanvragen voor storting van {amount} USDT?\n\nNetwerk:\n{network}\n\nTerugbetalingsadres:\n{address}\n\nControleer of dit adres USDT kan ontvangen op {shortNetwork}. Er kunnen terugbetalingskosten gelden.";
 "usdt__deposit_tron_refund_note" = "Voor TRON-terugbetalingen kan hulp van een Orchestra-operator nodig zijn.";
 "usdt__deposit_refund_address_network" = "USDT-adres op {network}";
+"usdt__receive_copied" = "Adres gekopieerd naar klembord.\nZorg ervoor dat USDT alleen via het geselecteerde netwerk wordt verstuurd.";

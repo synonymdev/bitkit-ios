@@ -1992,3 +1992,4 @@
 "usdt__error_bridge_minimum" = "Amount is below this route’s minimum. Try a larger amount.";
 "usdt__error_bridge_maximum" = "Amount is above this route’s maximum. Try a smaller amount.";
 "usdt__error_bridge_liquidity" = "This route cannot complete the transfer right now. Try another network or try again later.";
+"usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";

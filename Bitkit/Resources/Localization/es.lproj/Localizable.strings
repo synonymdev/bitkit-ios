@@ -1784,3 +1784,4 @@
 "usdt__deposit_tron_refund_note" = "Los reembolsos en TRON pueden requerir la asistencia del operador de Orchestra.";
 "usdt__deposit_refund_address_network" = "Dirección USDT en {network}";
 "wallet__send_error_support" = "Contactar con el servicio de asistencia";
+"usdt__receive_copied" = "Dirección copiada al portapapeles.\nAsegúrate de enviar USDT solo a través de la red seleccionada.";

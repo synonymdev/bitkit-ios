@@ -1560,3 +1560,4 @@
 "usdt__deposit_refund_confirmation" = "Pedir o reembolso do depósito de {amount} USDT?\n\nRede:\n{network}\n\nEndereço de reembolso:\n{address}\n\nConfirme que este endereço pode receber USDT na rede {shortNetwork}. Podem aplicar-se taxas de reembolso.";
 "usdt__deposit_tron_refund_note" = "Os reembolsos na TRON podem exigir assistência do operador da Orchestra.";
 "usdt__deposit_refund_address_network" = "Endereço USDT na rede {network}";
+"usdt__receive_copied" = "Endereço copiado para a área de transferência.\nCertifica-te de que USDT é enviado apenas pela rede selecionada.";

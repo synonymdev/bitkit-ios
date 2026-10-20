@@ -1894,3 +1894,4 @@
 "usdt__deposit_refund_confirmation" = "Запросить возврат депозита {amount} USDT?\n\nСеть:\n{network}\n\nАдрес для возврата:\n{address}\n\nУбедитесь, что этот адрес может получать USDT в сети {shortNetwork}. Может взиматься комиссия за возврат.";
 "usdt__deposit_tron_refund_note" = "Для возвратов в сети TRON может потребоваться помощь оператора Orchestra.";
 "usdt__deposit_refund_address_network" = "Адрес USDT в сети {network}";
+"usdt__receive_copied" = "Адрес скопирован в буфер обмена.\nОтправляйте USDT только через выбранную сеть.";

@@ -1580,3 +1580,4 @@
 "wallet__receive_liquidity__label_additional" = "سيولة رصيد إنفاق إضافية";
 "wallet__receive_cjit_error_max__title" = "الحد الأقصى لسعة الاستلام";
 "wallet__receive_cjit_error_max__description" = "الحد الأقصى الذي يمكنك استلامه في رصيد الإنفاق الآن هو ₿ {amount}.";
+"usdt__receive_copied" = "تم نسخ العنوان إلى الحافظة.\nتأكد من إرسال USDT على الشبكة المحددة فقط.";

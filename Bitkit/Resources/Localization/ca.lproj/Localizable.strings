@@ -1764,3 +1764,4 @@
 "usdt__deposit_tron_refund_note" = "Les devolucions de TRON poden requerir l'assistència d'un operador d'Orchestra.";
 "usdt__deposit_refund_address_network" = "Adreça USDT a {network}";
 "wallet__send_error_support" = "Contacta amb el suport";
+"usdt__receive_copied" = "Adreça copiada al porta-retalls.\nAssegura’t que l’USDT només s’enviï a través de la xarxa seleccionada.";

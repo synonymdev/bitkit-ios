@@ -1903,3 +1903,4 @@
 "usdt__deposit_refund_confirmation" = "Požádat o vrácení vkladu {amount} USDT?\n\nSíť:\n{network}\n\nAdresa pro vrácení:\n{address}\n\nPotvrďte, že tato adresa může přijímat USDT v síti {shortNetwork}. Mohou být účtovány poplatky za vrácení.";
 "usdt__deposit_tron_refund_note" = "Vrácení prostředků v síti TRON může vyžadovat pomoc operátora Orchestra.";
 "usdt__deposit_refund_address_network" = "Adresa USDT v síti {network}";
+"usdt__receive_copied" = "Adresa byla zkopírována do schránky.\nUjistěte se, že USDT posíláte pouze prostřednictvím vybrané sítě.";

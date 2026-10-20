@@ -1873,3 +1873,4 @@
 "usdt__deposit_refund_confirmation" = "Richiedere il rimborso del deposito di {amount} USDT?\n\nRete:\n{network}\n\nIndirizzo di rimborso:\n{address}\n\nVerifica che questo indirizzo possa ricevere USDT su {shortNetwork}. Potrebbero essere applicate commissioni di rimborso.";
 "usdt__deposit_tron_refund_note" = "I rimborsi TRON possono richiedere l'intervento di un operatore Orchestra.";
 "usdt__deposit_refund_address_network" = "Indirizzo USDT su {network}";
+"usdt__receive_copied" = "Indirizzo copiato negli appunti.\nAssicurati che USDT venga inviato solo sulla rete selezionata.";

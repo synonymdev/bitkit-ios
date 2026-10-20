@@ -204,13 +204,14 @@ struct UsdtReceiveAddressContent: View {
                         navigationPath: .constant([]),
                         editRoute: nil,
                         accentColor: .usdtAccent,
+                        copyMessage: t("usdt__receive_copied"),
                         onShare: { showShareSheet = true }
                     )
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtReceiveAddress")
                 } else {
                     QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: address, shareText: shareText, onEdit: onEdit)
+                           copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
                 }
             } else if let error {
                 BodySText(error, textColor: .brandAccent)
