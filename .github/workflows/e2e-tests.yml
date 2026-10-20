@@ -77,20 +77,8 @@ jobs:
         run: |
           brew install xcbeautify
 
-      - name: Cache Swift Package Manager
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-
-      - name: Install dependencies
-        run: |
-          echo "⏱️  Starting dependency resolution at $(date)"
-          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
-          echo "✅ Dependencies resolved at $(date)"
+      - name: Swift packages
+        uses: ./.github/actions/swift-packages
 
       - name: Pre-start simulator
         run: |
@@ -122,6 +110,10 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
             -derivedDataPath DerivedData \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
             TREZOR_BRIDGE=true \
             TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
