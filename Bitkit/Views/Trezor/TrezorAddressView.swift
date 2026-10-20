@@ -51,7 +51,7 @@ struct TrezorAddressContent: View {
             GenerateButtonSection()
             AddressResultSection()
         }
-        .onChange(of: selectedScriptType) { newValue in
+        .onChange(of: selectedScriptType) { _, newValue in
             trezor.derivationPath = newValue.defaultPath(coinType: trezorManager.coinTypeComponent)
             trezor.selectedScriptType = newValue.trezorScriptType
             trezor.addressIndex = 0

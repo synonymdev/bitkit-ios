@@ -883,8 +883,8 @@ extension JadeManager: JadeSessioning {
     }
 
     func startAutoReconnect() {
-        guard connected == nil, !isConnectInProgress, transportReconnectTask == nil else { return }
-        guard savedOrLoadedDevices().contains(where: { $0.transportType == "bluetooth" }) else { return }
+        guard connected == nil, !isConnectInProgress, transportReconnectTask == nil,
+              savedOrLoadedDevices().contains(where: { $0.transportType == "bluetooth" }) else { return }
         reconnectLoopGeneration &+= 1
         let generation = reconnectLoopGeneration
         transportReconnectTask = Task { [weak self] in
@@ -900,8 +900,8 @@ extension JadeManager: JadeSessioning {
         let hadPendingReconnect = transportReconnectTask != nil
         cancelReconnectLoop()
         // A release already scheduled or still running covers this one.
-        guard backgroundReleaseTask == nil, backgroundTaskId == .invalid else { return }
-        guard connected != nil || isConnectInProgress || hadPendingReconnect else { return }
+        guard backgroundReleaseTask == nil, backgroundTaskId == .invalid,
+              connected != nil || isConnectInProgress || hadPendingReconnect else { return }
 
         let taskId = backgroundTasks.beginBackgroundTask(named: Self.backgroundTaskName) { [weak self] in
             self?.releaseBeforeSuspension()

@@ -761,8 +761,7 @@ final class WatchOnlyAccountManager {
         try await lifecycleCoordinator.withLock {
             guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
             let record = accounts[index]
-            guard record.setupState == .active else { return }
-            guard record.isTrackingEnabled != enabled else { return }
+            guard record.setupState == .active, record.isTrackingEnabled != enabled else { return }
             guard let addressType = LDKNode.AddressType.from(string: record.addressType) else {
                 throw WatchOnlyAccountError.invalidExtendedPublicKey
             }

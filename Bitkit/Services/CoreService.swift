@@ -53,7 +53,11 @@ class ActivityService {
         var entries = UserDefaults.standard.dictionary(forKey: Self.detachedContactsKey) as? [String: [String]] ?? [:]
         var ids = Set(entries[walletId] ?? [])
         guard ids.contains(activityId) != detached else { return }
-        if detached { ids.insert(activityId) } else { ids.remove(activityId) }
+        if detached {
+            ids.insert(activityId)
+        } else {
+            ids.remove(activityId)
+        }
         entries[walletId] = ids.isEmpty ? nil : Array(ids)
         UserDefaults.standard.set(entries, forKey: Self.detachedContactsKey)
         metadataChangedSubject.send()
@@ -590,7 +594,11 @@ class ActivityService {
         guard case let .onchain(txid, txStatus) = payment.kind else { return }
         let paymentTimestamp = payment.latestUpdateTimestamp
         let snapshot = try await getOnchainActivityByTxId(txid: txid)
-        let ldkConfirmed = if case .confirmed = txStatus { true } else { false }
+        let ldkConfirmed = if case .confirmed = txStatus {
+            true
+        } else {
+            false
+        }
         if let snapshot, (snapshot.updatedAt ?? 0) > paymentTimestamp,
            snapshot.confirmed == ldkConfirmed,
            !(snapshot.contact == nil && payment.direction == .inbound)
@@ -696,7 +704,9 @@ class ActivityService {
             }
 
             let activityId = existingOnchain?.id ?? payment.id
-            if self.isContactDetached(activityId: activityId, walletId: WalletScope.default) { contact = nil }
+            if self.isContactDetached(activityId: activityId, walletId: WalletScope.default) {
+                contact = nil
+            }
 
             // Build and save the activity
             let finalDoesExist = isConfirmed ? true : doesExist
@@ -987,7 +997,9 @@ class ActivityService {
                 {
                     updated.contact = latest.contact
                 }
-                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) { updated.contact = nil }
+                if self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                    updated.contact = nil
+                }
                 try updateActivity(activityId: payment.id, activity: .lightning(updated))
                 self.activitiesChangedSubject.send()
             }
@@ -1057,7 +1069,9 @@ class ActivityService {
         direction: PaymentDirection,
         transactionDetails: BitkitCore.TransactionDetails? = nil
     ) async -> String? {
-        if let channelLookup { return await channelLookup(txid, direction, transactionDetails) }
+        if let channelLookup {
+            return await channelLookup(txid, direction, transactionDetails)
+        }
         switch direction {
         case .inbound:
             // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO

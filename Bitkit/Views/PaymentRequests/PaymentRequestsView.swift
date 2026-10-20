@@ -172,31 +172,45 @@ struct PaymentRequestCard: View {
     }
 
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                contactSummary.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 8)
+                amountSummary.fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .trailing, spacing: 8) {
+                contactSummary.frame(maxWidth: .infinity, alignment: .leading)
+                amountSummary.fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .contentShape(Rectangle())
+    }
+
+    private var contactSummary: some View {
         HStack(spacing: 16) {
             avatar
-
             VStack(alignment: .leading, spacing: 4) {
                 BodyMSBText(title)
                     .lineLimit(1)
                 CaptionText(subtitle, textColor: .white64)
                     .lineLimit(1)
             }
-
-            Spacer(minLength: 8)
-
-            if let amountStatus = receipt?.statusText ?? amountStatus ??
-                (request.direction == .outgoing && request.paymentProofKind == .usdt ? t("wallet__payment_request_status_pending") : nil)
-            {
-                VStack(alignment: .trailing, spacing: 2) {
-                    PaykitAmountText(amount: request.amount, prefix: amountPrefix)
-                    CaptionText(amountStatus, textColor: .white64)
-                }
-            } else {
-                PaykitAmountText(amount: request.amount, prefix: amountPrefix)
-            }
         }
-        .padding(16)
-        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var amountSummary: some View {
+        if let amountStatus = receipt?.statusText ?? amountStatus ??
+            (request.direction == .outgoing && request.paymentProofKind == .usdt ? t("wallet__payment_request_status_pending") : nil)
+        {
+            VStack(alignment: .trailing, spacing: 2) {
+                PaykitAmountText(amount: request.amount, prefix: amountPrefix)
+                CaptionText(amountStatus, textColor: .white64)
+            }
+        } else {
+            PaykitAmountText(amount: request.amount, prefix: amountPrefix)
+        }
     }
 
     @ViewBuilder

@@ -24,12 +24,12 @@ struct LdkDebugScreen: View {
                         HStack(spacing: 8) {
                             CustomButton(title: "Add Peer", size: .small) {
                                 Task {
-                                    try await addPeer()
+                                    try? await addPeer()
                                 }
                             }
                             CustomButton(title: "Paste & Add", size: .small) {
                                 Task {
-                                    try await pasteAndAddPeer()
+                                    try? await pasteAndAddPeer()
                                 }
                             }
                         }

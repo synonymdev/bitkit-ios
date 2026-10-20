@@ -15,11 +15,7 @@ enum PubkyPublicKeyFormat {
         let boundedInput = bounded(input)
         let rawKey = boundedInput.hasPrefix(prefix) ? String(boundedInput.dropFirst(prefix.count)) : boundedInput
 
-        guard rawKey.count == rawKeyLength else {
-            return nil
-        }
-
-        guard rawKey.allSatisfy({ allowedCharacters.contains($0) }) else {
+        guard rawKey.count == rawKeyLength, rawKey.allSatisfy({ allowedCharacters.contains($0) }) else {
             return nil
         }
 

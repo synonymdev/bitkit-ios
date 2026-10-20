@@ -34,7 +34,9 @@ struct UsdtReceiveAmountView: View {
             .padding(.bottom, 36)
             CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy, titleKerning: 0, titleLineHeight: 20) {
                 guard canContinue else { return }
-                if let parsed = try? parsePaykitAmountInput(asset: .usdt, value: amount) { amount = parsed.value }
+                if let parsed = try? parsePaykitAmountInput(asset: .usdt, value: amount) {
+                    amount = parsed.value
+                }
                 await onContinue()
             }
             .accessibilityIdentifier("UsdtDepositCreate")

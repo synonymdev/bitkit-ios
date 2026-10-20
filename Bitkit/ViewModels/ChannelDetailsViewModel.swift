@@ -154,12 +154,10 @@ class ChannelDetailsViewModel: ObservableObject {
         }
 
         // Match by funding transaction (works for both open and closed channels)
-        if let fundingTxId = channel.displayedFundingTxoTxid {
-            if let order = orders.first(where: { order in
-                order.channel?.fundingTx.id == fundingTxId
-            }) {
-                return order
-            }
+        if let fundingTxId = channel.displayedFundingTxoTxid, let order = orders.first(where: { order in
+            order.channel?.fundingTx.id == fundingTxId
+        }) {
+            return order
         }
 
         // Match by counterparty node ID (less reliable, could match multiple)

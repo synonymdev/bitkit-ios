@@ -918,7 +918,7 @@ final class HwWalletManagerVendorTests: XCTestCase {
 
     // MARK: - App lifecycle
 
-    func testLifecycleHooksReachTheJade() async {
+    func testLifecycleHooksReachTheJade() {
         let manager = makeManager()
 
         manager.onAppBackgrounded()

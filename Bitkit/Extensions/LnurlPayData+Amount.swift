@@ -19,7 +19,9 @@ extension LnurlPayData {
     }
 
     func accepts(amountSats: UInt64) -> Bool {
-        if isFixedAmount { return amountSats == minSendableSat }
+        if isFixedAmount {
+            return amountSats == minSendableSat
+        }
         return amountSats >= max(1, minSendableSat) && amountSats <= maxSendableSat
     }
 

@@ -430,8 +430,7 @@ final class HwSendCoordinator {
         initialAvailableSats: UInt64 = 0,
         showsLoading: Bool = false
     ) {
-        guard self.walletId != walletId else { return }
-        guard operationTask == nil, !isBroadcastUnresolved else { return }
+        guard self.walletId != walletId, operationTask == nil, !isBroadcastUnresolved else { return }
 
         availabilityRequestId += 1
         previewRequestId += 1
@@ -669,11 +668,10 @@ final class HwSendCoordinator {
                             try? await markSignedPaymentRefused(signed, true)
                         }
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
-                        let cleared: Bool
-                        if hadPriorBroadcastAttempt {
-                            cleared = false
+                        let cleared: Bool = if hadPriorBroadcastAttempt {
+                            false
                         } else {
-                            cleared = await clearSignedPaymentBeforeDispatch(signed)
+                            await clearSignedPaymentBeforeDispatch(signed)
                         }
                         let retainsBroadcastAttempt = hadPriorBroadcastAttempt || !cleared
                         isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared

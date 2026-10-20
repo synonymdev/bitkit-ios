@@ -5,24 +5,24 @@ final class SpendingConfirmTotalTests: XCTestCase {
     func testNormalPath_UsesOrderFeePlusNetworkFee() {
         XCTAssertEqual(
             SpendingConfirmTotal.leavingAmount(
-                orderFeeSat: 50_000,
+                orderFeeSat: 50000,
                 networkFeeSat: 250,
                 shouldUseSendAll: false,
                 maxSendable: nil
             ),
-            50_250
+            50250
         )
     }
 
     func testNormalPath_IgnoresStaleMaxSendable() {
         XCTAssertEqual(
             SpendingConfirmTotal.leavingAmount(
-                orderFeeSat: 50_000,
+                orderFeeSat: 50000,
                 networkFeeSat: 250,
                 shouldUseSendAll: false,
-                maxSendable: 99_750
+                maxSendable: 99750
             ),
-            50_250
+            50250
         )
     }
 
@@ -30,10 +30,10 @@ final class SpendingConfirmTotalTests: XCTestCase {
         // balance 100_000, send-all fee 250 → maxSendable 99_750; amount leaving = 100_000
         XCTAssertEqual(
             SpendingConfirmTotal.leavingAmount(
-                orderFeeSat: 50_000,
+                orderFeeSat: 50000,
                 networkFeeSat: 250,
                 shouldUseSendAll: true,
-                maxSendable: 99_750
+                maxSendable: 99750
             ),
             100_000
         )
@@ -66,12 +66,12 @@ final class SpendingConfirmTotalTests: XCTestCase {
     func testSendAllPath_WithoutMaxSendable_FallsBackToOrderPlusFee() {
         XCTAssertEqual(
             SpendingConfirmTotal.leavingAmount(
-                orderFeeSat: 50_000,
+                orderFeeSat: 50000,
                 networkFeeSat: 250,
                 shouldUseSendAll: true,
                 maxSendable: nil
             ),
-            50_250
+            50250
         )
     }
 }

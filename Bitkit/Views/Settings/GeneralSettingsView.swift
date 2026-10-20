@@ -190,11 +190,15 @@ struct GeneralSettingsView: View {
         isUpdatingUsdt = true
         defer { isUpdatingUsdt = false }
         do {
-            if !enabled { try await usdt.checkCanDisable() }
+            if !enabled {
+                try await usdt.checkCanDisable()
+            }
             settings.usdtPreference = enabled ? .enabled : .disabled
         } catch is CancellationError {
         } catch {
-            if case UsdtWalletError.cannotDisable = error { usdtDisableBlocked = true }
+            if case UsdtWalletError.cannotDisable = error {
+                usdtDisableBlocked = true
+            }
             app.toast(type: .warning, title: t("usdt__settings_title"), description: t("usdt__disable_unavailable"))
         }
     }

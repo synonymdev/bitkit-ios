@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import SwiftUI
 import XCTest
 
@@ -32,6 +33,39 @@ final class ComponentSizingTests: XCTestCase {
         XCTAssertGreaterThan(height(of: sheet, width: 280, size: .accessibility5), height(of: sheet, width: 280, size: .large))
         let permission = ScannerPermissionRequest(onRequestPermission: {}).fixedSize(horizontal: false, vertical: true)
         XCTAssertGreaterThan(height(of: permission, width: 280, size: .accessibility5), height(of: permission, width: 280, size: .large))
+    }
+
+    func testDepositRowsGrowToShowNetworkStatusAndAmountAtAccessibilitySizes() {
+        let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
+                                  sourceTx: "0x" + String(repeating: "ab", count: 32), status: "held",
+                                  code: "standing_route_unavailable", refundTx: nil)
+        let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
+        let amount = usdtOverviewAmount(50_000_001)
+        for width: CGFloat in [280, 320] {
+            let textWidth = width - 32
+            let networkHeight = height(of: BodyMSBText(deposit.networkLabel, kerning: 0, lineHeight: 22)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let statusHeight = height(of: CaptionBText(deposit.statusText, kerning: 0, lineHeight: 18)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let amountHeight = height(of: BodyMSBText(amount + " USDT", kerning: 0, lineHeight: 22)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let fiatHeight = height(of: CaptionBText("$" + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let contentHeight = 40 + networkHeight + statusHeight + amountHeight + fiatHeight
+            XCTAssertEqual(height(of: row, width: width, size: .accessibility5), contentHeight + 64, accuracy: 1)
+        }
+    }
+
+    func testDepositRowsUseTheFullAvailableWidthWithLargeText() {
+        for network in ["polygon", "tron"] {
+            let deposit = UsdtDeposit(id: "deposit", network: network, asset: "USDT", amount: 1_000_000,
+                                      sourceTx: "0x" + String(repeating: "ab", count: 32), status: "pending", code: nil, refundTx: nil)
+            let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
+            for width: CGFloat in [280, 320] {
+                let controller = UIHostingController(rootView: row.environment(\.dynamicTypeSize, .accessibility1))
+                XCTAssertEqual(controller.sizeThatFits(in: CGSize(width: width, height: 10000)).width, width, accuracy: 1)
+            }
+        }
     }
 
     private func height(of view: some View, width: CGFloat, size: DynamicTypeSize) -> CGFloat {

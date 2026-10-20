@@ -150,7 +150,9 @@ extension MoneyText {
         if hideBalance {
             return displayDots
         }
-        if isUnavailable { return "—" }
+        if isUnavailable {
+            return "—"
+        }
 
         if let converted = currency.convert(sats: UInt64(abs(sats))) {
             switch unit {
@@ -178,7 +180,9 @@ extension MoneyText {
     }
 
     private var accessibilityValue: String {
-        if !hideBalance, isUnavailable { return "—" }
+        if !hideBalance, isUnavailable {
+            return "—"
+        }
         guard !hideBalance, let converted = currency.convert(sats: UInt64(abs(sats))) else {
             return prefixed(displayDots)
         }

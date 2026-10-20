@@ -293,8 +293,7 @@ final class HwConnectViewModel {
 
     /// The paired wallet's aggregated balance/name landed; reflect it on the Paired step.
     func onWalletsUpdated(_ wallets: [HwWallet]) {
-        guard let deviceId = pairedDeviceId else { return }
-        guard let wallet = pairedWallet(in: wallets, deviceId: deviceId) else { return }
+        guard let deviceId = pairedDeviceId, let wallet = pairedWallet(in: wallets, deviceId: deviceId) else { return }
 
         pairedWalletId = wallet.id
         deviceName = wallet.name
