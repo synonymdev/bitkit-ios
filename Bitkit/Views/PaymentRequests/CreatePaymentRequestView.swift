@@ -402,7 +402,7 @@ struct PaymentRequestAmountView: View {
                 return
             }
             if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
-            else { dollarAmount = initialDraft.amount.inputValue }
+            else { dollarAmount = initialDraft.amount.atomic == 0 ? "" : initialDraft.amount.inputValue }
         }
     }
 
