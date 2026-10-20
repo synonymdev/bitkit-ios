@@ -171,17 +171,28 @@ final class IncomingPaykitPaymentRequestPreparation {
             paymentContext.incomingPaymentRequest?.id == request.id
     }
 
-    func shouldRetainReviewOnAppLock(
-        route: SendRoute,
+    func suspendForAppLock(sheets: SheetViewModel) {
+        guard resolvedRoute != nil, ownsSheet(sheets) else { return }
+        isSuspendedForAppLock = true
+    }
+
+    func retainReviewOnAppLock(
+        root: SendRoute,
+        path: [SendRoute],
         isSubmittingPayment: Bool,
         isHardwarePayment: Bool,
         session: PubkyProfileManager.SignedInSession?,
         app: AppViewModel,
         sheets: SheetViewModel
     ) -> Bool {
-        isSuspendedForAppLock && resolvedRoute == .confirm && (route == .confirm || route == .pin) &&
-            !isSubmittingPayment && !isHardwarePayment && !app.paykitUsesUsdt &&
-            ownsResolvedContext(session: session, app: app, sheets: sheets)
+        let route = path.last ?? root
+        let reviewRoute = route == .pin ? path.dropLast().last ?? root : route
+        guard isSuspendedForAppLock, reviewRoute == .confirm,
+              !isSubmittingPayment, !isHardwarePayment, !app.paykitUsesUsdt,
+              ownsResolvedContext(session: session, app: app, sheets: sheets)
+        else { return false }
+        resolvedRoute = .confirm
+        return true
     }
 
     func complete(
@@ -1298,11 +1309,7 @@ struct AppScene: View {
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
-                if let preparation = incomingPaymentRequestPreparation,
-                   preparation.resolvedRoute == .confirm, preparation.ownsSheet(sheets)
-                {
-                    preparation.isSuspendedForAppLock = true
-                }
+                incomingPaymentRequestPreparation?.suspendForAppLock(sheets: sheets)
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()

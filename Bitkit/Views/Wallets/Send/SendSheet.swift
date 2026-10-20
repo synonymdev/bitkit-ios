@@ -213,7 +213,7 @@ struct SendSheet: View {
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
-            (app.contactPaymentContext?.requiresAssetSelection == true && navigationPath.isEmpty)
+            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && navigationPath.isEmpty)
         {
             return false
         }
@@ -378,8 +378,9 @@ struct SendSheet: View {
         updatePaymentReview(false)
         setupTask?.cancel()
         setupTask = nil
-        let retainsReview = config.preparation?.shouldRetainReviewOnAppLock(
-            route: navigationPath.last ?? currentRoot,
+        let retainsReview = config.preparation?.retainReviewOnAppLock(
+            root: currentRoot,
+            path: navigationPath,
             isSubmittingPayment: isSubmittingPayment || PaykitPaymentActivity.shared.isActive,
             isHardwarePayment: hwSend.isActive,
             session: pubkyProfile.currentSession,
