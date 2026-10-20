@@ -10,14 +10,18 @@ final class UsdtWalletUITests: XCTestCase {
         app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
         app.launchEnvironment["USDT_BRIDGE_NETWORKS"] = "polygon"
         app.launch()
-        if app.buttons["Continue"].waitForExistence(timeout: 3) { app.buttons["Continue"].tap() }
+        if app.buttons["Continue"].waitForExistence(timeout: 3) {
+            app.buttons["Continue"].tap()
+        }
         if app.buttons["SkipIntro"].waitForExistence(timeout: 3) {
             app.buttons["SkipIntro"].tap()
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
         XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
-        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) { app.buttons["UsdtIntroEnable"].tap() }
+        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
+            app.buttons["UsdtIntroEnable"].tap()
+        }
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
         app.buttons["RecipientManual"].tap()
@@ -30,7 +34,9 @@ final class UsdtWalletUITests: XCTestCase {
         let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: continueButton)
         wait(for: [enabled], timeout: 5)
         continueButton.tap()
-        if app.buttons["UsdtEnablePromptContinue"].waitForExistence(timeout: 3) { app.buttons["UsdtEnablePromptContinue"].tap() }
+        if app.buttons["UsdtEnablePromptContinue"].waitForExistence(timeout: 3) {
+            app.buttons["UsdtEnablePromptContinue"].tap()
+        }
         XCTAssertTrue(app.buttons["UsdtReview"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.staticTexts["$ 0"].exists)
         XCTAssertFalse(app.buttons["UsdtReview"].isEnabled)
@@ -62,14 +68,18 @@ final class UsdtWalletUITests: XCTestCase {
         app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
         app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
         app.launch()
-        if app.buttons["Continue"].waitForExistence(timeout: 3) { app.buttons["Continue"].tap() }
+        if app.buttons["Continue"].waitForExistence(timeout: 3) {
+            app.buttons["Continue"].tap()
+        }
         if app.buttons["SkipIntro"].waitForExistence(timeout: 3) {
             app.buttons["SkipIntro"].tap()
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
         }
         XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
-        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) { app.buttons["UsdtIntroEnable"].tap() }
+        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
+            app.buttons["UsdtIntroEnable"].tap()
+        }
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 90))
         capture(app, "USDT home")
         app.buttons["UsdtWallet"].tap()
@@ -175,7 +185,9 @@ final class UsdtWalletUITests: XCTestCase {
             app.buttons["NewWallet"].tap()
         }
         XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
-        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) { app.buttons["UsdtIntroEnable"].tap() }
+        if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
+            app.buttons["UsdtIntroEnable"].tap()
+        }
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 90), app.debugDescription)
         app.buttons["UsdtWallet"].tap()
         XCTAssertTrue(app.buttons["UsdtReceive"].waitForExistence(timeout: 5))

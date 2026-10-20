@@ -505,7 +505,9 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
 
     override func ensureLinkWithPeer(counterparty: String, maxAdvanceSteps: UInt32) async throws -> LinkedPeerHandshakeReport {
         XCTAssertEqual(maxAdvanceSteps, 1)
-        if failRecovery { throw PubkyServiceError.sessionNotActive }
+        if failRecovery {
+            throw PubkyServiceError.sessionNotActive
+        }
         let index = try XCTUnwrap(peers.firstIndex { $0.counterparty == counterparty })
         XCTAssertEqual(peers[index].state, .recoveryRequired)
         peers[index].state = .linking
@@ -535,12 +537,16 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     ) async throws -> PrivatePaymentListDeliveryReport {
         XCTAssertEqual(counterparty, publicKey)
         events.append("clear")
-        if failWithdrawal { throw PubkyServiceError.sessionNotActive }
+        if failWithdrawal {
+            throw PubkyServiceError.sessionNotActive
+        }
         return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
     }
 
     override func blockPeer(counterparty: String) async throws -> LinkedPeerRecord {
-        if failBlock { throw PubkyServiceError.profileNotFound }
+        if failBlock {
+            throw PubkyServiceError.profileNotFound
+        }
         events.append("block")
         let index = try XCTUnwrap(peers.firstIndex { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) })
         peers[index].state = .blocked
@@ -578,7 +584,9 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     override func saveContactsAndUnblockPeers(updates: [ContactUpdate]) async throws -> [ContactRecord] {
         events.append("save-and-unblock")
         restoredBatches.append(updates)
-        if let restoreError { throw restoreError }
+        if let restoreError {
+            throw restoreError
+        }
         let saved = updates.map(Self.contactRecord)
         for index in peers.indices where peers[index].state == .blocked {
             if updates.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, peers[index].counterparty) }) {
@@ -586,7 +594,9 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
             }
         }
         record = saved.last ?? record
-        if cancelAfterRestore { withUnsafeCurrentTask { $0?.cancel() } }
+        if cancelAfterRestore {
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
         return saved
     }
 

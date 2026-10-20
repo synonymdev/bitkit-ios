@@ -90,7 +90,9 @@ enum AppReset {
         session.skipSplashOnce = true
         session.bump()
 
-        if let usdtCleanupError { throw usdtCleanupError }
+        if let usdtCleanupError {
+            throw usdtCleanupError
+        }
 
         // Show toast
         app.toast(

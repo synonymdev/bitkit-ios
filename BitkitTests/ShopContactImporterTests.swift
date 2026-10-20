@@ -50,9 +50,13 @@ final class ShopContactImporterTests: XCTestCase {
         let importer = ShopContactImporter(listPage: { _, cursor, _ in
             cursor == nil ? ["\(root)\(self.buyer).json", "pubky://\(self.other)\(ShopContactImporter.markerPath)\(self.seller).json", uri] : []
         }, fetchFile: { path, _ in
-            if path == uri { return Data(marker.utf8) }
+            if path == uri {
+                return Data(marker.utf8)
+            }
             guard storefrontAvailable else { throw PubkyServiceError.profileNotFound }
-            if let storefront { return Data(storefront.utf8) }
+            if let storefront {
+                return Data(storefront.utf8)
+            }
             return self.file(uri: path, seller: self.seller)
         }, saveContacts: { keys, _, _ in
             saves.append(keys)

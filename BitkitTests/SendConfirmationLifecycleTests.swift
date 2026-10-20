@@ -220,7 +220,9 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(wallet.preparationCount, 1)
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
-            if operation == .selection { XCTAssertNotNil(wallet.selectedUtxos) }
+            if operation == .selection {
+                XCTAssertNotNil(wallet.selectedUtxos)
+            }
         }
     }
 
@@ -311,7 +313,9 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(wallet.preparationCount, 2)
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
-            if operation == .selection { XCTAssertNotNil(wallet.selectedUtxos) }
+            if operation == .selection {
+                XCTAssertNotNil(wallet.selectedUtxos)
+            }
         }
     }
 
@@ -502,7 +506,9 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                             .onAppear { navigation.visibleRoutes.insert(route) }
                             .onDisappear {
                                 navigation.visibleRoutes.remove(route)
-                                if route == .confirm { navigation.confirmationDisappearances += 1 }
+                                if route == .confirm {
+                                    navigation.confirmationDisappearances += 1
+                                }
                             }
                         }
                 }
@@ -598,7 +604,9 @@ private final class ControlledSendWallet: WalletViewModel {
     }
 
     override func setFeeRate(speed: TransactionSpeed, isCurrentSend: () -> Bool = { true }) async throws {
-        if operation == .fee { try await suspend() }
+        if operation == .fee {
+            try await suspend()
+        }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         selectedFeeRateSatsPerVByte = 2
     }
@@ -615,7 +623,9 @@ private final class ControlledSendWallet: WalletViewModel {
         listSpendable: (() async throws -> [SpendableUtxo])? = nil,
         selectForAmount: ((UInt64, UInt32, CoinSelectionAlgorithm) async throws -> [SpendableUtxo])? = nil
     ) async throws {
-        if operation == .selection { try await suspend() }
+        if operation == .selection {
+            try await suspend()
+        }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
         selectedUtxos = []
     }
@@ -640,6 +650,8 @@ private final class ControlledSendWallet: WalletViewModel {
         }
         wasCancelled = Task.isCancelled
         finished.fulfill()
-        if fails { throw AppError(message: "UTXO selection unavailable", debugMessage: nil) }
+        if fails {
+            throw AppError(message: "UTXO selection unavailable", debugMessage: nil)
+        }
     }
 }

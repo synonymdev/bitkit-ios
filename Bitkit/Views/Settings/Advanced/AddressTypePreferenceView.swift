@@ -111,8 +111,8 @@ struct AddressTypePreferenceView: View {
                                     addressType: addressType,
                                     isSelected: settingsViewModel.selectedAddressType == addressType
                                 ) {
-                                    guard !settingsViewModel.isChangingAddressType else { return }
-                                    guard settingsViewModel.selectedAddressType != addressType else { return }
+                                    guard !settingsViewModel.isChangingAddressType,
+                                          settingsViewModel.selectedAddressType != addressType else { return }
 
                                     app.toast(
                                         type: .info,

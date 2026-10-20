@@ -1,0 +1,40 @@
+name: lint
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GIT_LFS_SKIP_SMUDGE: "1"
+  # Keep in step with `--minversion` in .swiftformat.
+  SWIFTFORMAT_VERSION: "0.64.0"
+
+jobs:
+  swiftformat:
+    name: SwiftFormat
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install SwiftFormat
+        run: |
+          curl -fsSL -o swiftformat.zip \
+            "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat_linux.zip"
+          unzip -q swiftformat.zip -d "$RUNNER_TEMP/swiftformat"
+          rm swiftformat.zip
+          chmod +x "$RUNNER_TEMP/swiftformat/swiftformat_linux"
+          echo "$RUNNER_TEMP/swiftformat" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/swiftformat/swiftformat_linux" --version
+
+      - name: Lint Swift formatting
+        run: swiftformat_linux --lint --reporter github-actions-log .

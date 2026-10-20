@@ -31,11 +31,10 @@ final class HwWalletManagerTests: XCTestCase {
         struct StartError: Error {}
 
         func startWatcher(params: WatcherParams, listener _: EventListener) async throws {
-            lock.lock()
-            startedParams.append(params)
-            let shouldFail = startFailures.contains(params.watcherId)
-            let shouldHold = holdStart
-            lock.unlock()
+            let (shouldFail, shouldHold) = lock.withLock {
+                startedParams.append(params)
+                return (startFailures.contains(params.watcherId), holdStart)
+            }
 
             if shouldFail {
                 throw StartError()

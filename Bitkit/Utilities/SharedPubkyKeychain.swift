@@ -80,7 +80,9 @@ enum SharedPubkyKeychain {
 
         var result: AnyObject?
         let status = copyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { return nil }
+        if status == errSecItemNotFound {
+            return nil
+        }
         guard status == errSecSuccess,
               let data = result as? Data,
               let hex = String(data: data, encoding: .utf8),

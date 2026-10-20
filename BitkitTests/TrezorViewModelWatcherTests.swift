@@ -23,11 +23,11 @@ final class TrezorViewModelWatcherTests: XCTestCase {
         private var pendingStartResult: Result<Void, Error>?
 
         func startWatcher(params: WatcherParams, listener: EventListener) async throws {
-            lock.lock()
-            startedParams.append(params)
-            startedListeners.append(listener)
-            let shouldHold = holdStart
-            lock.unlock()
+            let shouldHold = lock.withLock {
+                startedParams.append(params)
+                startedListeners.append(listener)
+                return holdStart
+            }
 
             guard shouldHold else { return }
             try await withCheckedThrowingContinuation { continuation in

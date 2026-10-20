@@ -3,6 +3,7 @@ import BitkitCore
 import LDKNode
 import XCTest
 
+@MainActor
 final class AddressTypeIntegrationTests: XCTestCase {
     let walletIndex = 0
     let settings = SettingsViewModel.shared
@@ -65,7 +66,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
     private static let retryDelayNanoseconds: UInt64 = 2_000_000_000
     private static let balancePollIntervalNanoseconds: UInt64 = 3_000_000_000
-    private static let balanceTimeout: TimeInterval = 120
+    private nonisolated static let balanceTimeout: TimeInterval = 120
 
     /// LDK wallet operations time out under load on CI runners (`NodeError.WalletOperationTimeout`),
     /// which is a property of the runner rather than of the code under test.
