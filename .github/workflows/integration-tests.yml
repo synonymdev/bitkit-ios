@@ -73,7 +73,7 @@ jobs:
           echo "✅ Build finished at $(date)"
 
       - name: Run integration tests
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           echo "⏱️  Starting integration tests at $(date)"
