@@ -9,9 +9,6 @@ build
 # Node
 scripts/node_modules/
 
-# Transifex
-tx
-
 # Sweetpad
 buildServer.json
 
