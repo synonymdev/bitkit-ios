@@ -157,6 +157,7 @@ struct SendAmountView: View {
                 if app.paykitUsesUsdt {
                     UsdtAmountHeader(amount: usdtAmount.isEmpty ? "0" : usdtAmount)
                         .accessibilityIdentifier("SendNumberField")
+                        .frame(maxHeight: .infinity, alignment: .leading)
                 } else {
                     NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
                         .onTapGesture { amountViewModel.togglePrimaryDisplay(currency: currency) }
@@ -165,9 +166,7 @@ struct SendAmountView: View {
                     BodySText(conversionError, textColor: .brandAccent).padding(.top, 12)
                 }
 
-                if app.paykitUsesUsdt {
-                    Spacer().frame(height: 32)
-                } else {
+                if !app.paykitUsesUsdt {
                     Spacer()
                 }
 
@@ -255,7 +254,7 @@ struct SendAmountView: View {
                         amountViewModel.handleNumberPadInput(key, currency: currency)
                     }
                 }
-                .frame(maxHeight: app.paykitUsesUsdt ? .infinity : nil)
+                .padding(.horizontal, app.paykitUsesUsdt ? -16 : 0)
 
                 CustomButton(
                     title: t("common__continue"),

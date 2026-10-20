@@ -337,7 +337,7 @@ struct UsdtSendView: View {
         VStack(alignment: .leading, spacing: 0) {
             UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount)
                 .accessibilityIdentifier("UsdtAmount")
-                .padding(.bottom, 32)
+                .frame(maxHeight: .infinity, alignment: .leading)
             if let error {
                 BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError").padding(.bottom, 16)
             }
@@ -364,7 +364,7 @@ struct UsdtSendView: View {
                 onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false; error = nil },
                 onPress: enterAmount
             )
-            .frame(maxHeight: .infinity)
+            .padding(.horizontal, -16)
             CustomButton(title: t("common__continue"), isDisabled: busy || (try? parsePaykitAmountInput(asset: .usdt, value: amount)) == nil,
                          isLoading: busy && !preparingMaximum, titleKerning: 0, titleLineHeight: 20)
             {
