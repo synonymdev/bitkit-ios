@@ -16,7 +16,7 @@
     <action>Tap the $5 stop of the payment limit slider (id "AllowancePerPaymentStop-1") and the $50 stop of the monthly slider (id "AllowanceMonthlyStop-1")</action>
     <action>Verify the summary (id "AllowanceSummary") reads "Requests up to $5 will be paid automatically, up to $50 a month, without asking you each time."</action>
     <action>Tap Save Allowance (id "AllowanceSave")</action>
-    <action>Verify the sheet dismisses and the list shows one row for the payee (id "AllowanceRow-&lt;allowanceId&gt;") whose status line (id "AllowanceRowStatus") reads "Waiting for an answer", with "$ 50.00" over "Monthly limit" on the right</action>
+    <action>Verify the sheet dismisses and the list shows one row for the payee (id "AllowanceRow-&lt;entryId&gt;") whose status line (id "AllowanceRowStatus") reads "Waiting for an answer", with "$ 50.00" over "Monthly limit" on the right</action>
     <action>Switch to the payee instance and bring Bitkit to the foreground</action>
     <action>Verify the Allowance review sheet (id "AllowanceReview") opens on its own within a few seconds, headed "&lt;payer&gt; offers an allowance", with the payer's contact card (id "AllowanceCounterparty"), PER PAYMENT "Up to $5.00" (id "AllowancePerPaymentValue") and EACH MONTH "Up to $50.00" (id "AllowanceMonthlyValue")</action>
     <action>Tap Accept (id "AllowanceAccept")</action>
