@@ -496,7 +496,9 @@ actor PaykitAllowanceExecutor {
         let selectionTime = trustedTime(identity: identity)
         let candidates = try await sdk.evaluateAllowanceCandidates(scope: scope, trustedTime: selectionTime)
         guard let candidate = candidates.first(where: { $0.blocked == nil }),
-              let allowance = allowances.first(where: { $0.allowanceId == candidate.allowanceId })
+              let allowance = allowances.first(where: {
+                  $0.allowanceId == candidate.allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
+              })
         else {
             let reasons = candidates.compactMap { $0.blocked.map { String(describing: $0) } }
             Logger.info("No eligible allowance for an incoming request: \(reasons)", context: "PaykitAllowance")

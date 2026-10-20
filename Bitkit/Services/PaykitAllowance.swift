@@ -51,7 +51,11 @@ struct PaykitAllowance: Identifiable, Hashable {
 
     /// Allowance ids are unique only within one link, so local state keys an allowance by its counterparty too.
     var scopedId: String {
-        "\(counterparty)/\(allowanceId)"
+        Self.scopedId(counterparty: counterparty, allowanceId: allowanceId)
+    }
+
+    static func scopedId(counterparty: String, allowanceId: String) -> String {
+        "\(PubkyPublicKeyFormat.normalized(counterparty) ?? counterparty)/\(allowanceId)"
     }
 
     init?(record: Paykit.AllowanceRecord) {
@@ -273,16 +277,21 @@ enum PaykitAllowanceTime {
 /// Allowance's live automatic attempts in the current month first and keeps an over-cap request on the manual flow.
 enum PaykitAllowanceCapacity {
     struct Attempt: Equatable {
+        let counterparty: String
         let allowanceId: String
         let amountSats: UInt64
         let admittedAt: Date
         let isLive: Bool
     }
 
-    static func usedSats(allowanceId: String, attempts: [Attempt], anchor: Date, now: Date) -> UInt64 {
+    /// Allowance ids are unique only within one link, so attempts count toward an allowance only under its counterparty.
+    static func usedSats(counterparty: String, allowanceId: String, attempts: [Attempt], anchor: Date, now: Date) -> UInt64 {
         let window = PaykitAllowanceTime.monthlyWindow(anchor: anchor, containing: now)
         return attempts
-            .filter { $0.allowanceId == allowanceId && $0.isLive && $0.admittedAt >= window.start && $0.admittedAt < window.end }
+            .filter {
+                $0.allowanceId == allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, counterparty) && $0.isLive &&
+                    $0.admittedAt >= window.start && $0.admittedAt < window.end
+            }
             .reduce(0) { $0 + $1.amountSats }
     }
 
@@ -294,18 +303,21 @@ enum PaykitAllowanceCapacity {
         guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
             return false
         }
-        let used = usedSats(allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
+        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
         return used + amountSats <= monthlyLimitSats
     }
 
     static func attempts(from history: Paykit.AllowanceAccountingHistory) -> [Attempt] {
-        history.occurrences.flatMap(\.attempts).compactMap { attempt in
+        history.occurrences.flatMap { occurrence in
+            occurrence.attempts.map { (counterparty: occurrence.key.request.counterparty, attempt: $0) }
+        }.compactMap { counterparty, attempt in
             guard attempt.mode == .automatic,
                   let allowanceId = attempt.allowanceId,
                   let admittedAt = PaykitAllowanceTime.parse(attempt.admittedAt),
                   let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
             else { return nil }
             return Attempt(
+                counterparty: counterparty,
                 allowanceId: allowanceId,
                 amountSats: amountSats,
                 admittedAt: admittedAt,
