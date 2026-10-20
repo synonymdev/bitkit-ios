@@ -10,11 +10,6 @@ struct PaykitAllowanceEntry: Identifiable, Hashable {
     let allowances: [PaykitAllowance]
     let limits: PaykitAllowanceLimits?
 
-    /// Another contact can reuse an allowance id, so an allowance outside a group is keyed by its counterparty too.
-    static func ungroupedId(for allowance: PaykitAllowance) -> String {
-        "\(allowance.counterparty)/\(allowance.allowanceId)"
-    }
-
     var primary: PaykitAllowance {
         allowances[0]
     }
@@ -100,7 +95,7 @@ final class PaykitAllowanceManager {
         var order: [String] = []
         for allowance in allowances {
             let key = localState.group(containing: allowance.allowanceId, counterparty: allowance.counterparty)?.id
-                ?? PaykitAllowanceEntry.ungroupedId(for: allowance)
+                ?? allowance.scopedId
             if grouped[key] == nil {
                 order.append(key)
             }
@@ -301,10 +296,8 @@ final class PaykitAllowanceManager {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard respondedAny else { throw PaykitAllowanceError.unavailable }
-        // An offer is never presented, and presented ids are keyed by allowance id alone, so marking an offer would
-        // also hide another contact's ask that shares its id.
-        let ids = entry.allowances.filter { !$0.isOfferFromAllower }.map(\.allowanceId)
-        if let identity, identity == initiatingIdentity, !ids.isEmpty {
+        if let identity, identity == initiatingIdentity {
+            let ids = entry.allowances.map(\.scopedId)
             await executor.updateLocalState(identity: identity) { $0.presentedProposalIds.formUnion(ids) }
         }
         await refresh()
@@ -315,13 +308,13 @@ final class PaykitAllowanceManager {
     func proposalForPresentation() -> PaykitAllowanceEntry? {
         entries.first { entry in
             entry.allowances.contains(where: { $0.isAnswerable && !$0.isOfferFromAllower }) &&
-                !entry.allowances.contains { localState.presentedProposalIds.contains($0.allowanceId) }
+                !entry.allowances.contains { localState.presentedProposalIds.contains($0.scopedId) }
         }
     }
 
     func markProposalPresented(_ entry: PaykitAllowanceEntry) async {
         guard let identity else { return }
-        let ids = entry.allowances.map(\.allowanceId)
+        let ids = entry.allowances.map(\.scopedId)
         await executor.updateLocalState(identity: identity) { $0.presentedProposalIds.formUnion(ids) }
         localState.presentedProposalIds.formUnion(ids)
     }

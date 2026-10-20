@@ -656,6 +656,29 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testPresentingOneContactsProposalKeepsAnotherContactsProposalWithTheSameIdPresentable() async throws {
+        let harness = AllowanceHarness()
+        let sharedId = Fixtures.otherAllowanceId
+        let offer = try Fixtures.record(
+            allowanceId: sharedId, localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(),
+            proposedByMe: false, lastEventAt: "2026-09-02T10:00:00Z"
+        )
+        let ask = try Fixtures.record(
+            allowanceId: sharedId, counterparty: Fixtures.otherCounterpartyKey, localRole: .allower, state: .proposed,
+            terms: Fixtures.standardTerms(), proposedByMe: false, lastEventAt: "2026-09-01T10:00:00Z"
+        )
+        await harness.sdk.setRecords([offer, ask])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let first = try XCTUnwrap(manager.proposalForPresentation())
+        await manager.markProposalPresented(first)
+
+        let second = try XCTUnwrap(manager.proposalForPresentation())
+        XCTAssertNotEqual(second.counterparty, first.counterparty)
+    }
+
+    @MainActor
     func testManagerPresentsEachGrantAsOneEntryWithItsLimitsAndLeavesInvalidHistoryOut() async throws {
         let harness = AllowanceHarness()
         let terms = try Fixtures.standardTerms()
