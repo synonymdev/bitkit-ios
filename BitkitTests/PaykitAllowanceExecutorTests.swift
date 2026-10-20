@@ -659,15 +659,16 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     func testPresentingOneContactsProposalKeepsAnotherContactsProposalWithTheSameIdPresentable() async throws {
         let harness = AllowanceHarness()
         let sharedId = Fixtures.otherAllowanceId
-        let offer = try Fixtures.record(
-            allowanceId: sharedId, localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(),
+        // Both are asks: an offer from an allower is accepted without the review sheet, so it is never presented.
+        let askFromC = try Fixtures.record(
+            allowanceId: sharedId, localRole: .allower, state: .proposed, terms: Fixtures.standardTerms(),
             proposedByMe: false, lastEventAt: "2026-09-02T10:00:00Z"
         )
-        let ask = try Fixtures.record(
+        let askFromM = try Fixtures.record(
             allowanceId: sharedId, counterparty: Fixtures.otherCounterpartyKey, localRole: .allower, state: .proposed,
             terms: Fixtures.standardTerms(), proposedByMe: false, lastEventAt: "2026-09-01T10:00:00Z"
         )
-        await harness.sdk.setRecords([offer, ask])
+        await harness.sdk.setRecords([askFromC, askFromM])
         let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
         await manager.activate(identity: Fixtures.identityKey)
 
