@@ -34,9 +34,14 @@ struct SendEnterManuallyView: View {
         )
     }
 
+    private var isUsdtInput: Bool {
+        let input = app.manualEntryInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return input.hasPrefix("0x") || input.hasPrefix("ethereum:")
+    }
+
     var body: some View {
         VStack {
-            SheetHeader(title: t("wallet__send_bitcoin"), showBackButton: true)
+            SheetHeader(title: t(isUsdtInput ? "usdt__send_title" : "wallet__send_bitcoin"), showBackButton: true)
 
             CaptionMText(t("wallet__send_to"))
                 .frame(maxWidth: .infinity, alignment: .leading)

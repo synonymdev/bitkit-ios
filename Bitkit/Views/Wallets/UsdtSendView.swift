@@ -7,6 +7,8 @@ struct UsdtSendView: View {
     var initialRecipient = ""
     var initialAmount = ""
     var embedded = false
+    /// Shown inside the send sheet's navigation stack: back from the amount step returns to the address step.
+    var hosted = false
     var paymentContext: ContactPaymentContext?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
     var onBack: (() -> Void)?
@@ -46,6 +48,7 @@ struct UsdtSendView: View {
         initialRecipient: String = "",
         initialAmount: String = "",
         embedded: Bool = false,
+        hosted: Bool = false,
         paymentContext: ContactPaymentContext? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
         onBack: (() -> Void)? = nil,
@@ -55,6 +58,7 @@ struct UsdtSendView: View {
         self.initialRecipient = initialRecipient
         self.initialAmount = initialAmount
         self.embedded = embedded
+        self.hosted = hosted
         self.paymentContext = paymentContext
         self.sendPayment = sendPayment
         self.onBack = onBack
@@ -129,7 +133,7 @@ struct UsdtSendView: View {
                         dismiss()
                     }
                 }, onEnable: { settings.usdtPreference = .enabled })
-            } else if embedded {
+            } else if embedded || hosted {
                 content
             } else {
                 NavigationStack { content }
@@ -646,7 +650,7 @@ struct UsdtSendView: View {
         if showingNetworks {
             showingNetworks = false; return
         }
-        if let onBack {
+        if let onBack, embedded || (hosted && quote == nil) {
             onBack(); return
         }
         if quote != nil {
