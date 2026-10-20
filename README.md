@@ -62,27 +62,7 @@ different host or port.
 
 ## Localization
 
-### Pulling Translations
-
-To pull the latest translations from Transifex:
-
-1. **Install Transifex CLI** (if not already installed):
-   - Follow the installation instructions: [Transifex CLI Installation](https://developers.transifex.com/docs/cli)
-
-2. **Authenticate with Transifex** (if not already configured):
-   - Create a `.transifexrc` file in your home directory (`~/.transifexrc`) with your API token:
-     ```ini
-     [https://www.transifex.com]
-     rest_hostname = https://rest.api.transifex.com
-     token         = YOUR_API_TOKEN_HERE
-     ```
-   - You can get your API token from your [Transifex account settings](https://www.transifex.com/user/settings/api/)
-   - The CLI will prompt you for an API token if one is not configured
-
-3. **Pull translations**:
-   ```sh
-   ./scripts/pull-translations.sh
-   ```
+Translations live in this repository, in `Bitkit/Resources/Localization/*.lproj/Localizable.strings`. A PR that adds or changes an English string updates every shipped locale in the same PR.
 
 ### Validating Translations
 

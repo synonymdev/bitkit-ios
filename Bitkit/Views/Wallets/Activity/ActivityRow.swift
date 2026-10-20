@@ -101,7 +101,9 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
                 CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(stacked ? nil : 1)
             }
             .fixedSize(horizontal: false, vertical: true)
-            if !stacked { Spacer(minLength: 0) }
+            if !stacked {
+                Spacer(minLength: 0)
+            }
             amount()
         }
         .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
