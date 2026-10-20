@@ -67,9 +67,9 @@ target list. If an element the journey names is missing from `snapshot-ui`, chec
 `--identifier X --predicate exists` before concluding it is gone. `wait-for-ui` requires the complete
 identifier and does not support prefix matching.
 
-**Identifiers built from localized text are English-only.** `SegmentedControl` derives its identifier
-from the tab's display name, so `Tab-all` is `Tab-todas` when the app runs in Spanish. Journeys that
-name a `Tab-*` identifier assume an English device.
+**Tab identifiers do not follow the app language.** `SegmentedControl` derives its identifier from the
+tab's English name, so `Tab-all` stays `Tab-all` when the app runs in Spanish. A tab given an explicit
+label keeps it, so a hardware wallet tab is `Tab-trezor` or `Tab-jade` in every language.
 
 Prefer `snapshot-ui` over screenshots: it names elements by their accessibility identifier, which is
 what the journeys assert on, and it avoids the image-size limits the Android runner has to work around.
