@@ -59,7 +59,8 @@ final class PaykitAllowanceManager {
     private(set) var localState = PaykitAllowanceLocalState()
     private(set) var isWorking = false
     private(set) var autoPaidRequestIds: Set<PaykitPaymentRequest.ID> = []
-    private(set) var autoPaidSatsByAllowanceId: [String: UInt64] = [:]
+    /// Keyed by `PaykitAllowance.scopedId`, since another contact can reuse an allowance id.
+    private(set) var autoPaidSatsByScopedId: [String: UInt64] = [:]
 
     @ObservationIgnored private let sdk: any PaykitAllowanceSdkHandling
     @ObservationIgnored private let executor: PaykitAllowanceExecutor
@@ -133,7 +134,7 @@ final class PaykitAllowanceManager {
         allowances = []
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
-        autoPaidSatsByAllowanceId = [:]
+        autoPaidSatsByScopedId = [:]
         manualRequestIds = [:]
     }
 
@@ -152,14 +153,14 @@ final class PaykitAllowanceManager {
         localState = await executor.localState(identity: identity)
         let paid = await executor.succeededAutomaticPayments(identity: identity)
         autoPaidRequestIds = Set(paid.map(\.requestId))
-        autoPaidSatsByAllowanceId = paid.reduce(into: [:]) { totals, entry in
+        autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, entry in
             guard let allowanceId = entry.allowanceId else { return }
-            totals[allowanceId, default: 0] += entry.amountSats
+            totals[PaykitAllowance.scopedId(counterparty: entry.requestId.counterparty, allowanceId: allowanceId), default: 0] += entry.amountSats
         }
     }
 
     func autoPaidSats(for entry: PaykitAllowanceEntry) -> UInt64 {
-        entry.allowances.reduce(0) { $0 + (autoPaidSatsByAllowanceId[$1.allowanceId] ?? 0) }
+        entry.allowances.reduce(0) { $0 + (autoPaidSatsByScopedId[$1.scopedId] ?? 0) }
     }
 
     /// Whether an incoming request is covered by an active Allowance this wallet granted. A request created before the
@@ -180,7 +181,7 @@ final class PaykitAllowanceManager {
             hasher.combine(allowance.allowanceId)
             hasher.combine(allowance.lifecycleState.rawDescription)
         }
-        hasher.combine(autoPaidSatsByAllowanceId.values.reduce(0, +))
+        hasher.combine(autoPaidSatsByScopedId.values.reduce(0, +))
         return hasher.finalize()
     }
 

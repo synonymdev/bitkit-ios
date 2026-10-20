@@ -167,6 +167,7 @@ final class PaykitAllowanceTests: XCTestCase {
         let beforeMarchAnchor = PaykitAllowanceTime.monthlyWindow(anchor: marchAnchor, containing: Fixtures.utc("2026-01-15T00:00:00Z"))
         let allowance = Fixtures.allowance(monthlyAnchor: anchor)
         let lateMarchAttempt = PaykitAllowanceCapacity.Attempt(
+            counterparty: Fixtures.counterpartyKey,
             allowanceId: allowance.allowanceId,
             amountSats: 50000,
             admittedAt: Fixtures.utc("2026-03-29T09:00:00Z"),
@@ -246,6 +247,16 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertTrue(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(), attempts: attempts, now: Fixtures.now))
     }
 
+    func testAnotherContactsAttemptsUnderTheSameIdNeverFillThisContactsCap() {
+        let attempts = [
+            Fixtures.capacityAttempt(counterparty: Fixtures.otherCounterpartyKey, sats: 45000, at: "2026-09-05T10:00:00Z"),
+            Fixtures.capacityAttempt(sats: 1000, at: "2026-09-06T10:00:00Z"),
+        ]
+
+        XCTAssertEqual(Fixtures.usedSats(attempts), 1000)
+        XCTAssertTrue(PaykitAllowanceCapacity.fits(amountSats: 5000, allowance: Fixtures.allowance(), attempts: attempts, now: Fixtures.now))
+    }
+
     func testAllowerTermsWithADustPerPaymentMaximumAreDropped() throws {
         let terms = try Paykit.AllowanceTerms(
             asset: PaykitIssuerInterop.bitcoinAsset,
@@ -314,18 +325,21 @@ final class PaykitAllowanceTests: XCTestCase {
 
         XCTAssertEqual(attempts, [
             PaykitAllowanceCapacity.Attempt(
+                counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 10000,
                 admittedAt: Fixtures.utc("2026-09-02T10:00:00Z"),
                 isLive: false
             ),
             PaykitAllowanceCapacity.Attempt(
+                counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 10000,
                 admittedAt: Fixtures.utc("2026-09-03T10:00:00Z"),
                 isLive: true
             ),
             PaykitAllowanceCapacity.Attempt(
+                counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 2000,
                 admittedAt: Fixtures.utc("2026-09-05T10:00:00Z"),
@@ -510,15 +524,20 @@ enum PaykitAllowanceFixtures {
 
     static func capacityAttempt(
         allowanceId: String = walletAllowanceId,
+        counterparty: String = counterpartyKey,
         sats: UInt64,
         at timestamp: String,
         isLive: Bool = true
     ) -> PaykitAllowanceCapacity.Attempt {
-        PaykitAllowanceCapacity.Attempt(allowanceId: allowanceId, amountSats: sats, admittedAt: utc(timestamp), isLive: isLive)
+        PaykitAllowanceCapacity.Attempt(
+            counterparty: counterparty, allowanceId: allowanceId, amountSats: sats, admittedAt: utc(timestamp), isLive: isLive
+        )
     }
 
     static func usedSats(_ attempts: [PaykitAllowanceCapacity.Attempt]) -> UInt64 {
-        PaykitAllowanceCapacity.usedSats(allowanceId: walletAllowanceId, attempts: attempts, anchor: septemberAnchor, now: now)
+        PaykitAllowanceCapacity.usedSats(
+            counterparty: counterpartyKey, allowanceId: walletAllowanceId, attempts: attempts, anchor: septemberAnchor, now: now
+        )
     }
 
     static func attemptRecord(
