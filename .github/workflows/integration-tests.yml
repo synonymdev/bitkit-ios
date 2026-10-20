@@ -94,6 +94,10 @@ jobs:
             -destination "$DESTINATION" \
             -derivedDataPath "$DERIVED_DATA" \
             -resultBundlePath "$RESULT_BUNDLE" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
             -retry-tests-on-failure \
