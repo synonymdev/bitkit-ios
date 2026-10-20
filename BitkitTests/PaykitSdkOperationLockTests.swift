@@ -439,6 +439,71 @@ final class PaykitSdkOperationLockTests: XCTestCase {
     }
 
     @MainActor
+    func testBackgroundOutboundDeliveryRechecksPaymentAfterIdentityRead() async throws {
+        for change in ["resume", "cancel", "reset", "wipe"] {
+            let identity = "pubky\(String(repeating: "z", count: 52))"
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let started = expectation(description: "Outbound delivery is checking identity")
+            let recorder = Recorder()
+            let sdk = PublicReadSdk(noPointer: .init())
+            sdk.pendingOutboundCounterparties = ["peer"]
+            sdk.identityRead = {
+                let isFirstRead = await recorder.events.isEmpty
+                await recorder.record("identity")
+                if isFirstRead {
+                    started.fulfill()
+                    for await _ in gate {}
+                }
+                return IdentityStatus(publicKey: identity, capability: .privateLinkCapable)
+            }
+            sdk.outboundDelivery = { await recorder.record("delivery") }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let initialVersion = await service.backupStateVersion
+            let delivery = Task {
+                let report = try await service.processOutboundPrivateMessages(
+                    counterparty: "peer", priority: .background, expectedIdentity: identity
+                )
+                await recorder.record("completed")
+                return report
+            }
+            defer { delivery.cancel() }
+            await fulfillment(of: [started], timeout: 2)
+            let payment = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(payment) }
+            release.finish()
+
+            // This ordered read is a queue barrier while delivery waits outside the SDK lock.
+            let pending = try await service.pendingOutboundPrivateCounterparties()
+            let heldEvents = await recorder.events
+            let heldVersion = await service.backupStateVersion
+            XCTAssertEqual(pending, ["peer"])
+            XCTAssertEqual(heldEvents, ["identity"])
+            XCTAssertEqual(heldVersion, initialVersion)
+
+            switch change {
+            case "cancel": delivery.cancel()
+            case "reset": await service.clearState()
+            case "wipe": try await service.withWalletWipe {}
+            default: break
+            }
+            PaykitPaymentActivity.shared.end(payment)
+            do {
+                _ = try await delivery.value
+                XCTAssertEqual(change, "resume")
+            } catch is CancellationError {
+                XCTAssertEqual(change, "cancel")
+            } catch PubkyServiceError.identityChanged {
+                XCTAssertTrue(change == "reset" || change == "wipe")
+            }
+            let remaining = try await service.pendingOutboundPrivateCounterparties()
+            let events = await recorder.events
+            XCTAssertEqual(remaining, change == "resume" ? [] : ["peer"])
+            XCTAssertEqual(events, change == "resume" ? ["identity", "identity", "delivery", "completed"] : ["identity"])
+        }
+    }
+
+    @MainActor
     func testDeferredOutboundDeliveryRejectsCancellationOrReplacedWallet() async throws {
         for change in ["cancel", "reset", "wipe"] {
             let recorder = Recorder()
@@ -883,10 +948,20 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     var backupExport: () async -> Void = {}
     var outboundDelivery: () async -> Void = {}
     var backupRevisionRead: () async -> Void = {}
+    var identityRead: () async -> IdentityStatus? = {
+        IdentityStatus(publicKey: nil, capability: .privateLinkCapable)
+    }
 
-    override func processOutboundPrivateMessages(counterparty _: String) async throws -> OutboundPrivateSendReport {
+    var pendingOutboundCounterparties: [String] = []
+
+    override func processOutboundPrivateMessages(counterparty: String) async throws -> OutboundPrivateSendReport {
         await outboundDelivery()
+        pendingOutboundCounterparties.removeAll { $0 == counterparty }
         return OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
+    }
+
+    override func pendingOutboundPrivateCounterparties() async throws -> [String] {
+        pendingOutboundCounterparties
     }
 
     override func submitPaymentProof(
@@ -921,7 +996,7 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: nil, capability: .privateLinkCapable)
+        await identityRead()
     }
 
     override func stateRevision() throws -> String? {

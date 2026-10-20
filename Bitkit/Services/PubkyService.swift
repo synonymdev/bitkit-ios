@@ -1089,6 +1089,10 @@ actor PaykitSdkService {
                     throw PubkyServiceError.identityChanged
                 }
             }
+            if priority == .background {
+                guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
+                try Task.checkCancellation()
+            }
             return try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
@@ -1560,6 +1564,8 @@ actor PaykitSdkService {
         let result: T
         do {
             result = try await operation()
+        } catch OperationDeferral.paymentActive {
+            throw OperationDeferral.paymentActive
         } catch {
             // A failed write can change remote state without advancing the local revision.
             onSnapshot(nil)
