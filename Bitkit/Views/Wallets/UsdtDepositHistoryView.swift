@@ -197,7 +197,10 @@ struct UsdtDepositHistoryView: View {
                 }
                 UsdtSupportActions(details: detail.supportDetails).disabled(busy || recoveryActive)
             } else {
-                HStack(alignment: .top, spacing: 16) {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+                layout {
                     UsdtDetailCell(title: t("wallet__activity_status"), value: detail.statusText, icon: detail.statusIcon,
                                    valueColor: detail.statusColor, iconColor: detail.statusColor, valueKerning: 0)
                     UsdtDetailCell(title: t("usdt__receiving_network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network")
@@ -412,6 +415,7 @@ extension UsdtDeposit {
 }
 
 struct UsdtDepositRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let deposit: UsdtDeposit
     let hideBalance: Bool
 
@@ -424,14 +428,16 @@ struct UsdtDepositRow: View {
         let color: Color = completed ? .usdtAccent : .yellowAccent
         ActivityRowContainer {
             ActivityRowContent(title: deposit.networkLabel, subtitle: deposit.statusText, textKerning: 0,
-                               titleLineHeight: 22, subtitleLineHeight: 18, textSpacing: 0)
+                               titleLineHeight: 22, subtitleLineHeight: 18, textSpacing: 0, stacked: dynamicTypeSize.isAccessibilitySize)
             {
                 CircularIcon(icon: completed ? "check-circle" : "hourglass-simple", iconColor: color,
                              backgroundColor: color.opacity(0.16), size: 40)
             } amount: {
-                VStack(alignment: .trailing, spacing: 0) {
-                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset, kerning: 0, lineHeight: 22).lineLimit(1)
+                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
+                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset, kerning: 0, lineHeight: 22)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         .minimumScaleFactor(0.7)
+                        .fixedSize(horizontal: false, vertical: true)
                     if deposit.asset == "USDT" {
                         CaptionBText(hideBalance ? amount : "$" + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
                     }
