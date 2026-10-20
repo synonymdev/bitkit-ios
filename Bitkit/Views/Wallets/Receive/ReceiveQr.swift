@@ -89,7 +89,9 @@ struct ReceiveQr: View {
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
         }
-        if settings.isUsdtEnabled, cjitInvoice == nil { items.append(TabItem(.usdt)) }
+        if settings.isUsdtEnabled, cjitInvoice == nil {
+            items.append(TabItem(.usdt))
+        }
         return items
     }
 
@@ -162,15 +164,13 @@ struct ReceiveQr: View {
     }
 
     var body: some View {
-        Group {
-            if selectedTab == .usdt, !settings.isUsdtEnabled {
-                UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
-                                 onEnable: { settings.usdtPreference = .enabled })
-            } else if selectedTab == .usdt {
-                UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
-            } else {
-                bitcoinContent
-            }
+        if selectedTab == .usdt, !settings.isUsdtEnabled {
+            UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
+                             onEnable: { settings.usdtPreference = .enabled })
+        } else if selectedTab == .usdt {
+            UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
+        } else {
+            bitcoinContent
         }
     }
 
@@ -201,7 +201,9 @@ struct ReceiveQr: View {
                     }
 
                     tabContent(for: .spending)
-                    if settings.isUsdtEnabled, cjitInvoice == nil { Color.clear.tag(ReceivePage.tab(.usdt)) }
+                    if settings.isUsdtEnabled, cjitInvoice == nil {
+                        Color.clear.tag(ReceivePage.tab(.usdt))
+                    }
 
                     if let first = availableTabItems.first?.tab {
                         wrapPage(showing: first, tag: .wrapToFirst)

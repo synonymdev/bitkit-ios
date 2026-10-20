@@ -7,7 +7,11 @@ final class EnvConfigurationTests: XCTestCase {
         let original = keys.map { ProcessInfo.processInfo.environment[$0] }
         defer {
             for (key, value) in zip(keys, original) {
-                if let value { setenv(key, value, 1) } else { unsetenv(key) }
+                if let value {
+                    setenv(key, value, 1)
+                } else {
+                    unsetenv(key)
+                }
             }
         }
         setenv("USDT_RPC_URL", "https://override.invalid", 1)
