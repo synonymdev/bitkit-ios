@@ -918,7 +918,7 @@ struct MainNavView: View {
                 do {
                     return try await preparePubkyContactLink(profile: pubkyProfile, contacts: contactsManager)
                 } catch PaykitPaymentRequestError.operationInProgress {
-                    try await PaykitPaymentActivity.shared.waitUntilIdle()
+                    try await PaykitPaymentActivity.shared.waitUntilIdle(includingReviews: true)
                 }
             }
             return false

@@ -9,6 +9,7 @@ struct UsdtSendView: View {
     var embedded = false
     var paymentContext: ContactPaymentContext?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
+    var onReviewChange: ((Bool) -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
     @Environment(UsdtWalletManager.self) private var usdt
@@ -48,6 +49,7 @@ struct UsdtSendView: View {
         embedded: Bool = false,
         paymentContext: ContactPaymentContext? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
+        onReviewChange: ((Bool) -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
     ) {
@@ -57,6 +59,7 @@ struct UsdtSendView: View {
         self.embedded = embedded
         self.paymentContext = paymentContext
         self.sendPayment = sendPayment
+        self.onReviewChange = onReviewChange
         self.onBack = onBack
         self.onClose = onClose
         _recipient = State(initialValue: initialRecipient)
@@ -119,6 +122,10 @@ struct UsdtSendView: View {
         return t(editingAmount ? "usdt__amount" : "usdt__send_title")
     }
 
+    private var isReviewingPayment: Bool {
+        paymentContext != nil && settings.isUsdtEnabled && quote != nil && !submitted
+    }
+
     var body: some View {
         Group {
             if !settings.isUsdtEnabled, !submitted {
@@ -137,7 +144,13 @@ struct UsdtSendView: View {
         }
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onAppear { usdt.isSendPresented = true }
-        .onDisappear { usdt.isSendPresented = false; preparedQuote = nil }
+        .onDisappear {
+            usdt.isSendPresented = false
+            preparedQuote = nil
+        }
+        .onChange(of: isReviewingPayment, initial: true) { _, reviewing in
+            onReviewChange?(reviewing)
+        }
         .task(id: settings.isUsdtEnabled) {
             if !embedded {
                 do { destinations = try await usdt.sendDestinations() }

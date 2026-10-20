@@ -3,6 +3,31 @@ import XCTest
 
 @MainActor
 final class PaykitPaymentActivityTests: XCTestCase {
+    func testReviewDefersContactRetryWithoutHoldingPaymentDelivery() async throws {
+        let activity = PaykitPaymentActivity()
+        let first = activity.beginReview()
+        let second = activity.beginReview()
+        var didRefresh = false
+        let refresh = Task {
+            try await activity.waitUntilIdle(includingReviews: true)
+            didRefresh = true
+        }
+        defer { refresh.cancel() }
+        try await activity.waitUntilIdle()
+        await Task.yield()
+        XCTAssertFalse(didRefresh)
+
+        activity.endReview(first)
+        let payment = activity.begin()
+        activity.endReview(second)
+        await Task.yield()
+        XCTAssertFalse(didRefresh)
+
+        activity.end(payment)
+        try await refresh.value
+        XCTAssertTrue(didRefresh)
+    }
+
     func testProofInvalidationsCoalesceUntilForegroundAndPaymentIdle() async throws {
         let profile = PubkyProfileManager()
         profile.publicKey = "pubky\(String(repeating: "z", count: 52))"

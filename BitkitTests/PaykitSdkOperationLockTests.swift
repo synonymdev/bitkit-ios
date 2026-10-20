@@ -261,6 +261,56 @@ final class PaykitSdkOperationLockTests: XCTestCase {
     }
 
     @MainActor
+    func testPaymentReviewDefersOnlyPassiveRefreshAndReleasesAfterLastReview() async throws {
+        let recorder = Recorder()
+        let sdk = PublicReadSdk(noPointer: .init())
+        sdk.intake = { await recorder.record("refresh") }
+        sdk.backupExport = { await recorder.record("backup") }
+        sdk.outboundDelivery = { await recorder.record("delivery") }
+        sdk.paymentMutation = { await recorder.record($0) }
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let first = PaykitPaymentActivity.shared.beginReview()
+        let second = PaykitPaymentActivity.shared.beginReview()
+        defer {
+            PaykitPaymentActivity.shared.endReview(first)
+            PaykitPaymentActivity.shared.endReview(second)
+        }
+        let operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.receivePrivateMessagesFromLinkedPeers(priority: .background) },
+            { _ = try await $0.processPendingPrivateMessages(priority: .background) },
+            { _ = try await $0.observeState(priority: .background) },
+        ]
+        for operation in operations {
+            do {
+                try await operation(service)
+                XCTFail("Passive refresh must yield during review")
+            } catch PaykitPaymentRequestError.operationInProgress {}
+        }
+        PaykitPaymentActivity.shared.endReview(first)
+        PaykitPaymentActivity.shared.endReview(first)
+        XCTAssertTrue(PaykitPaymentActivity.shared.shouldDeferRefresh)
+        XCTAssertFalse(PaykitPaymentActivity.shared.isActive)
+        do {
+            _ = try await service.prepareAndResolvePrivatePaymentRequest(
+                counterparty: "peer", paymentRequestId: "request", afterPrivatePaymentListVersion: nil
+            )
+            XCTFail("Expected the pending native preparation result")
+        } catch PaymentMutationReached.reached {}
+        _ = try await service.receivePrivateMessages(counterparty: "peer", priority: .background)
+        _ = try await service.processPendingPrivateMessages(priority: .ordered)
+        _ = try await service.exportBackupState()
+        _ = try await service.processOutboundPrivateMessages(counterparty: "peer", priority: .background)
+        let reviewingEvents = await recorder.events
+        XCTAssertEqual(reviewingEvents, ["prepare", "refresh", "refresh", "backup", "delivery"])
+
+        PaykitPaymentActivity.shared.endReview(second)
+        _ = try await service.processPendingPrivateMessages(priority: .background)
+        XCTAssertFalse(PaykitPaymentActivity.shared.shouldDeferRefresh)
+        let resumedEvents = await recorder.events
+        XCTAssertEqual(resumedEvents, ["prepare", "refresh", "refresh", "backup", "delivery", "refresh"])
+    }
+
+    @MainActor
     func testBackgroundOutboundDeliveryWaitsWhenPaymentStartsBeforeSending() async throws {
         for waitingInQueue in [true, false] {
             let (gate, release) = AsyncStream<Void>.makeStream()
@@ -760,6 +810,13 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
 
     override func claimPaymentRequestForExecution(counterparty _: String, paymentRequestId _: String) async throws -> PaymentRequestRecord {
         await paymentMutation("claim")
+        throw PaymentMutationReached.reached
+    }
+
+    override func prepareAndResolvePrivatePaymentRequest(
+        counterparty _: String, paymentRequestId _: String, afterPrivatePaymentListVersion _: UInt64?, maxAdvanceSteps _: UInt32
+    ) async throws -> PreparedPrivateContactPayment {
+        await paymentMutation("prepare")
         throw PaymentMutationReached.reached
     }
 

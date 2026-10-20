@@ -1481,7 +1481,7 @@ actor PaykitSdkService {
     }
 
     private func checkRefreshAdmission(_ priority: PaykitSdkOperationLock.Priority) async throws {
-        if priority == .background, await PaykitPaymentActivity.shared.isActive {
+        if priority == .background, await PaykitPaymentActivity.shared.shouldDeferRefresh {
             throw PaykitPaymentRequestError.operationInProgress
         }
     }

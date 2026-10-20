@@ -16,7 +16,7 @@ enum PaykitPaymentProofKind: String, Codable {
     }
 }
 
-struct PaykitOnchainPaymentResolution: Equatable {
+struct PaykitOnchainPaymentResolution: Hashable {
     let identity: String
     let requestId: PaykitPaymentRequest.ID
     let transactionId: String

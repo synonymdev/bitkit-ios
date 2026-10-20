@@ -113,6 +113,7 @@ struct SendSheetItem: SheetItem {
 }
 
 struct SendSheet: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var settings: SettingsViewModel
@@ -135,6 +136,8 @@ struct SendSheet: View {
     @State private var hasValidatedAfterSync = false
     @State private var incomingPaymentRequest: PaykitPaymentRequest?
     @State private var isSubmittingPayment = false
+    @State private var paymentReview: UUID?
+    @State private var isReviewingUsdtPayment = false
     @State private var pendingEmbeddedRetryRoute: SendRoute?
     @State private var routingCacheResetAttempted = false
     @State private var syncTimedOut = false
@@ -156,6 +159,24 @@ struct SendSheet: View {
 
     private var currentRoot: SendRoute {
         rootOverride ?? rootRoute
+    }
+
+    private var isReviewingPayment: Bool {
+        guard scenePhase != .background else { return false }
+        switch navigationPath.last ?? currentRoot {
+        case .confirm, .pin, .hardwareSign: return true
+        case .usdt: return isReviewingUsdtPayment
+        default: return false
+        }
+    }
+
+    private func updatePaymentReview(_ reviewing: Bool) {
+        if reviewing, paymentReview == nil {
+            paymentReview = PaykitPaymentActivity.shared.beginReview()
+        } else if !reviewing, let paymentReview {
+            PaykitPaymentActivity.shared.endReview(paymentReview)
+            self.paymentReview = nil
+        }
     }
 
     private var isPreparingRequest: Bool {
@@ -268,6 +289,9 @@ struct SendSheet: View {
             guard shouldDismiss else { return }
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
         }
+        .onChange(of: isReviewingPayment, initial: true) { _, reviewing in
+            updatePaymentReview(reviewing)
+        }
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
@@ -352,6 +376,7 @@ struct SendSheet: View {
     }
 
     private func cleanup() {
+        updatePaymentReview(false)
         setupTask?.cancel()
         setupTask = nil
         hwSend.cancel()
@@ -873,7 +898,8 @@ struct SendSheet: View {
                     }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
-            }, onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+            }, onReviewChange: { isReviewingUsdtPayment = $0 },
+            onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:

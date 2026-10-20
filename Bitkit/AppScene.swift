@@ -666,8 +666,10 @@ struct AppScene: View {
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { @MainActor in
-                    app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
-                    await associateResolvedPaykitOnchainPayment(resolution)
+                    await app.withPaykitOnchainPaymentResolution(resolution) {
+                        app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
+                        await associateResolvedPaykitOnchainPayment(resolution)
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .paykitSubscriptionPaymentDue)) { _ in

@@ -7120,10 +7120,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             requestId: PaykitPaymentRequest.ID(paymentRequestId: "other", counterparty: request.counterparty),
             transactionId: "other-tx"
         )
+        var publications = 0
+        let subscription = app.$paykitOnchainPaymentResolution.dropFirst().sink { _ in publications += 1 }
+        defer { subscription.cancel() }
 
         app.retainPaykitOnchainPaymentResolution(resolution, identity: otherIdentity)
         XCTAssertNil(app.paykitOnchainPaymentResolution)
         app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
+        app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
+        XCTAssertEqual(publications, 1)
         app.retainPaykitOnchainPaymentResolution(unrelated, identity: identity)
         app.consumePaykitOnchainPaymentResolution(unrelated)
         app.resetSendState(preservingContactPaymentContext: true)
@@ -7134,6 +7139,54 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
         app.resetSendState()
         XCTAssertNil(app.paykitOnchainPaymentResolution)
+    }
+
+    func testOnchainResolutionCoalescesReplaysUntilFollowupFinishes() async throws {
+        let app = AppViewModel()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(), now: Date()))
+        let resolution = PaykitOnchainPaymentResolution(identity: "identity", requestId: request.id, transactionId: "tx")
+        let (started, signalStarted) = AsyncStream<Void>.makeStream()
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        var handled: [PaykitOnchainPaymentResolution] = []
+        let first = Task {
+            await app.withPaykitOnchainPaymentResolution(resolution) {
+                handled.append(resolution)
+                signalStarted.yield()
+                for await _ in gate {
+                    break
+                }
+            }
+        }
+        defer { release.finish(); first.cancel() }
+        for await _ in started {
+            break
+        }
+        for _ in 0 ..< 20 {
+            await app.withPaykitOnchainPaymentResolution(resolution) {
+                XCTFail("A replay must not start another activity sync while follow-up is pending")
+            }
+        }
+        let distinct = [
+            PaykitOnchainPaymentResolution(identity: "other", requestId: request.id, transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: .init(paymentRequestId: "other", counterparty: request.counterparty),
+                                           transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: .init(paymentRequestId: request.paymentRequestId, counterparty: "other"),
+                                           transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: .init(paymentRequestId: request.paymentRequestId,
+                                                                                  counterparty: request.counterparty,
+                                                                                  billingPeriodStartsAt: Date(timeIntervalSince1970: 1)),
+                                           transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: request.id, transactionId: "other"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: request.id, transactionId: "tx", walletId: "hardware"),
+        ]
+        for next in distinct {
+            await app.withPaykitOnchainPaymentResolution(next) { handled.append(next) }
+        }
+        XCTAssertEqual(handled, [resolution] + distinct)
+        release.finish()
+        await first.value
+        await app.withPaykitOnchainPaymentResolution(resolution) { handled.append(resolution) }
+        XCTAssertEqual(handled, [resolution] + distinct + [resolution], "A later recovery attempt must remain possible")
     }
 
     func testAcceptInvalidatesAnOverlappingRefreshSnapshot() async throws {
