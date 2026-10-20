@@ -126,8 +126,8 @@ struct ElectrumSettingsScreen: View {
     private func onConnect() {
         let generation = settings.serverConnectionGeneration
         Task {
-            guard settings.isCurrentServerConnection(generation) else { return }
-            guard let result = await settings.connectToElectrumServer(), settings.isCurrentServerConnection(generation) else { return }
+            guard settings.isCurrentServerConnection(generation), let result = await settings.connectToElectrumServer(),
+                  settings.isCurrentServerConnection(generation) else { return }
             // Sync wallet state to update node lifecycle state for app status
             wallet.syncState()
             showToast(result.success, result.host, result.port, result.errorMessage)
@@ -137,8 +137,8 @@ struct ElectrumSettingsScreen: View {
     private func onReset() {
         let generation = settings.serverConnectionGeneration
         Task {
-            guard settings.isCurrentServerConnection(generation) else { return }
-            guard let result = await settings.resetElectrumToDefault(), settings.isCurrentServerConnection(generation) else { return }
+            guard settings.isCurrentServerConnection(generation), let result = await settings.resetElectrumToDefault(),
+                  settings.isCurrentServerConnection(generation) else { return }
             // Sync wallet state to update node lifecycle state for app status
             wallet.syncState()
             showToast(result.success, result.host, result.port, result.errorMessage)
