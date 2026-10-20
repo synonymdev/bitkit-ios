@@ -185,6 +185,164 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         service.setAppActive(false)
         await service.stopObservingBackups()
     }
+
+    func testHungRetryDoesNotSuppressOtherOverdueFailures() async throws {
+        let fixture = try Fixture(categories: [.settings, .metadata])
+        defer { fixture.removeDefaults() }
+        let hung = expectation(description: "Metadata retry is held")
+        let failed = expectation(description: "Settings retry failed")
+        let recovered = expectation(description: "Metadata upload eventually succeeds")
+        let alert = expectation(description: "Overdue settings failure is reported while metadata is running")
+        let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
+        let (timeoutGate, expireWindow) = AsyncStream<Void>.makeStream()
+        defer {
+            releaseUpload.finish()
+            expireWindow.finish()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            if key == BackupCategory.settings.rawValue {
+                throw URLError(.notConnectedToInternet)
+            }
+            hung.fulfill()
+            for await _ in uploadGate {}
+            XCTAssertFalse(Task.isCancelled, "Expiring the recovery window must not cancel an upload")
+        }, waitForForegroundRecoveryTimeout: {
+            for await _ in timeoutGate {}
+        })
+        await service.startObservingBackups()?.value
+        let failedSubscription = service.backupStatusesPublisher
+            .map { $0[.settings]?.running == true }
+            .removeDuplicates()
+            .drop(while: { !$0 })
+            .filter { !$0 }
+            .first()
+            .sink { _ in failed.fulfill() }
+        let recoveredSubscription = service.backupStatusesPublisher
+            .filter { $0[.metadata].map { !$0.isRequired && !$0.running } == true }
+            .first()
+            .sink { _ in recovered.fulfill() }
+        let failureSubscription = service.backupFailurePublisher.sink { _ in alert.fulfill() }
+        defer {
+            failedSubscription.cancel()
+            recoveredSubscription.cancel()
+            failureSubscription.cancel()
+        }
+
+        let recovery = service.setAppActive(true)
+        await fulfillment(of: [hung, failed], timeout: 2)
+        expireWindow.finish()
+        await fulfillment(of: [alert], timeout: 2)
+
+        XCTAssertTrue(service.getBackupStatus(category: .metadata).running)
+        XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).running)
+        XCTAssertEqual(service.getBackupStatus(category: .settings).required, fixture.required)
+        releaseUpload.finish()
+        await fulfillment(of: [recovered], timeout: 2)
+        await recovery?.value
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
+    func testLateRetryCompletionDoesNotEndNewRecoveryWindow() async throws {
+        let fixture = try Fixture(categories: [.settings, .metadata])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let deadlines = UploadRecorder()
+        let oldUploadStarted = expectation(description: "First window has a held metadata upload")
+        let oldRetryFailed = expectation(description: "First settings retry failed")
+        let oldDeadlineStarted = expectation(description: "First window has its own deadline")
+        let oldWindowEnded = expectation(description: "First window ends while its upload is still held")
+        let newUploadStarted = expectation(description: "Second window has a held settings upload")
+        let newDeadlineStarted = expectation(description: "Second window has its own deadline")
+        let oldUploadFinished = expectation(description: "First window's upload finishes late")
+        let newWindowStillWaiting = expectation(description: "Second window stays open until its own completion or deadline")
+        newWindowStillWaiting.isInverted = true
+        let (oldUpload, releaseOldUpload) = AsyncStream<Void>.makeStream()
+        let (newUpload, releaseNewUpload) = AsyncStream<Void>.makeStream()
+        let (oldTimeout, expireOldWindow) = AsyncStream<Void>.makeStream()
+        let (newTimeout, expireNewWindow) = AsyncStream<Void>.makeStream()
+        defer {
+            releaseOldUpload.finish()
+            releaseNewUpload.finish()
+            expireOldWindow.finish()
+            expireNewWindow.finish()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            await uploads.record(key)
+            if key == BackupCategory.metadata.rawValue {
+                oldUploadStarted.fulfill()
+                for await _ in oldUpload {}
+                return
+            }
+            let counts = await uploads.counts
+            if counts[key] == 1 {
+                throw URLError(.notConnectedToInternet)
+            }
+            newUploadStarted.fulfill()
+            for await _ in newUpload {}
+            throw URLError(.notConnectedToInternet)
+        }, waitForForegroundRecoveryTimeout: {
+            await deadlines.record("window")
+            let counts = await deadlines.counts
+            if counts["window"] == 1 {
+                oldDeadlineStarted.fulfill()
+                for await _ in oldTimeout {}
+            } else {
+                newDeadlineStarted.fulfill()
+                for await _ in newTimeout {}
+            }
+        })
+        await service.startObservingBackups()?.value
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.metadata].map { !$0.isRequired && !$0.running } == true }
+            .first()
+            .sink { _ in oldUploadFinished.fulfill() }
+        let failureSubscription = service.backupStatusesPublisher
+            .map { $0[.settings]?.running == true }
+            .removeDuplicates()
+            .drop(while: { !$0 })
+            .filter { !$0 }
+            .first()
+            .sink { _ in oldRetryFailed.fulfill() }
+        defer {
+            subscription.cancel()
+            failureSubscription.cancel()
+        }
+
+        let oldRecovery = service.setAppActive(true)
+        let oldWindowCompletion = Task {
+            await oldRecovery?.value
+            oldWindowEnded.fulfill()
+        }
+        await fulfillment(of: [oldUploadStarted, oldRetryFailed, oldDeadlineStarted], timeout: 2)
+        expireOldWindow.finish()
+        await fulfillment(of: [oldWindowEnded], timeout: 2)
+        service.setAppActive(false)
+        let newRecovery = service.setAppActive(true)
+        let newWindowCompletion = Task {
+            await newRecovery?.value
+            if !Task.isCancelled {
+                newWindowStillWaiting.fulfill()
+            }
+        }
+        await fulfillment(of: [newUploadStarted, newDeadlineStarted], timeout: 2)
+
+        releaseOldUpload.finish()
+        await fulfillment(of: [oldUploadFinished], timeout: 2)
+        await fulfillment(of: [newWindowStillWaiting], timeout: 0.2)
+        XCTAssertNil(service.setAppActive(true), "A late retry must not release the newer window's gate")
+        let counts = await uploads.counts
+        XCTAssertEqual(counts[BackupCategory.metadata.rawValue], 1)
+        XCTAssertEqual(counts[BackupCategory.settings.rawValue], 2)
+
+        newWindowCompletion.cancel()
+        service.setAppActive(false)
+        releaseNewUpload.finish()
+        await newWindowCompletion.value
+        await oldWindowCompletion.value
+        await service.stopObservingBackups()
+    }
 }
 
 private struct Fixture {
@@ -204,13 +362,15 @@ private struct Fixture {
 
     func service(
         uploadBackup: @escaping (String, Data) async throws -> Void,
-        waitForBackupDelay: @escaping () async throws -> Void = { throw CancellationError() }
+        waitForBackupDelay: @escaping () async throws -> Void = { throw CancellationError() },
+        waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = { try await Task.sleep(for: .seconds(60)) }
     ) -> BackupService {
         BackupService(
             defaults: defaults,
             backupData: { _ in Data("isolated-snapshot".utf8) },
             uploadBackup: uploadBackup,
-            waitForBackupDelay: waitForBackupDelay
+            waitForBackupDelay: waitForBackupDelay,
+            waitForForegroundRecoveryTimeout: waitForForegroundRecoveryTimeout
         )
     }
 

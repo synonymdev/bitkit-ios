@@ -120,6 +120,7 @@ class BackupService {
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
+    private let waitForForegroundRecoveryTimeout: () async throws -> Void
     private let backupStatusesKey = "backupStatuses"
     private var backupVersions: [BackupCategory: UInt64] = [:]
 
@@ -150,12 +151,16 @@ class BackupService {
         },
         waitForBackupDelay: @escaping () async throws -> Void = {
             try await Task.sleep(nanoseconds: 5_000_000_000)
+        },
+        waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = {
+            try await Task.sleep(for: .seconds(BackupService.backupFailureCheckInterval))
         }
     ) {
         self.defaults = defaults
         self.backupData = backupData
         self.uploadBackup = uploadBackup
         self.waitForBackupDelay = waitForBackupDelay
+        self.waitForForegroundRecoveryTimeout = waitForForegroundRecoveryTimeout
         let statuses = getAllBackupStatuses()
         var clearedStatuses = statuses
         for category in BackupCategory.allCases {
@@ -198,7 +203,7 @@ class BackupService {
 
         guard shouldRecover else { return nil }
         return Task {
-            await retryPendingBackups()
+            await waitForForegroundRetries()
             self.stateQueue.sync {
                 self.backupFailureNotificationGate.endForegroundRecovery()
             }
@@ -214,6 +219,24 @@ class BackupService {
             guard shouldCheck else { return }
             self.checkForFailedBackups()
         }
+    }
+
+    private func waitForForegroundRetries() async {
+        let (settled, finish) = AsyncStream<Void>.makeStream()
+        // Bound alert suppression, not the uploads: an FFI write may ignore cancellation.
+        Task {
+            await self.retryPendingBackups()
+            finish.finish()
+        }
+        let timeout = Task {
+            do {
+                try await self.waitForForegroundRecoveryTimeout()
+                try Task.checkCancellation()
+                finish.finish()
+            } catch {}
+        }
+        for await _ in settled {}
+        timeout.cancel()
     }
 
     private func retryPendingBackups() async {
