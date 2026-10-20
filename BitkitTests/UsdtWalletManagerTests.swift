@@ -233,6 +233,11 @@ final class UsdtWalletManagerTests: XCTestCase {
                        t("usdt__deposit_minimum", variables: ["amount": "200".usdCents]))
     }
 
+    func testDepositLiquidityErrorDoesNotDescribeTheNetworkAsUnsupported() {
+        XCTAssertEqual(usdtDepositAmountMessage(UsdtError.BridgeLiquidityUnavailable, amount: "3.5"),
+                       t("usdt__error_bridge_liquidity"))
+    }
+
     func testOwnAddressHasSpecificErrorForExactAndMaximumSends() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
