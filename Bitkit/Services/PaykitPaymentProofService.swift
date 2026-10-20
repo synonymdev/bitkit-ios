@@ -1520,6 +1520,9 @@ actor PaykitPaymentProofService {
     }
 
     func retainedHardwarePaymentForRetry(request: PaykitPaymentRequest) async throws -> PendingPaykitPaymentProof? {
+        let proofs = try await loadProofs()
+        try Task.checkCancellation()
+        guard proofs.contains(where: { $0.requestId == request.id && $0.hardwareSignedTransaction != nil }) else { return nil }
         let identity = try await currentIdentity()
         let proof = await retainedHardwarePaymentsForRetry(identity: identity)[request.id]
         guard let proof, request.matchesOnchainPayment(proof), proof.billingPeriod == request.billingPeriod,

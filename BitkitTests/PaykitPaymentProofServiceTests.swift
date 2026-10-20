@@ -1043,6 +1043,62 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testHardwareRetrySkipsIdentityWithoutSignedReceiptForRequest() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let record = try paymentRequestRecord(endpoints: [endpoint])
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
+        let softwareProof = PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: endpoint, kind: .onchain, paymentStarted: true,
+            paymentIdentifier: nil, proofData: nil,
+            onchainWalletId: WalletScope.default
+        )
+        let unrelated = [
+            PaykitPaymentRequest.ID(paymentRequestId: "other-request", counterparty: request.counterparty),
+            PaykitPaymentRequest.ID(
+                paymentRequestId: request.paymentRequestId, counterparty: request.counterparty,
+                billingPeriodStartsAt: Date(timeIntervalSince1970: 1_893_456_000)
+            ),
+        ].map { id in
+            var proof = PendingPaykitPaymentProof(
+                identity: identity, requestId: id, paymentAppId: "bitkit",
+                paymentEndpointIdentifier: endpoint, kind: .onchain, paymentIdentifier: nil, proofData: nil
+            )
+            proof.hardwareSignedTransaction = "retained"
+            return proof
+        }
+        let store = PaymentProofMemoryStore()
+        let sdk = PaymentProofSdkMock(identity: identity, records: [record])
+        await sdk.setIdentityAvailable(false)
+        let service = paymentProofService(sdk: sdk, store: store)
+
+        for proofs in [[], [softwareProof], unrelated + [softwareProof]] {
+            await store.seed(proofs)
+            let retained = try await service.retainedHardwarePaymentForRetry(request: request)
+            XCTAssertNil(retained)
+            let saved = await store.snapshot()
+            XCTAssertEqual(saved, proofs)
+        }
+        await store.failNextLoad()
+        do {
+            _ = try await service.retainedHardwarePaymentForRetry(request: request)
+            XCTFail("Unreadable local state must not be treated as an absent receipt")
+        } catch PaymentProofStoreMockError.load {}
+
+        let captured = expectation(description: "Captured local proof snapshot")
+        await store.pauseNextLoad { captured.fulfill() }
+        let cancelled = Task { try await service.retainedHardwarePaymentForRetry(request: request) }
+        await fulfillment(of: [captured], timeout: 1)
+        cancelled.cancel()
+        await store.resumePausedLoad()
+        do {
+            _ = try await cancelled.value
+            XCTFail("Cancelled lookup must not continue preparation")
+        } catch is CancellationError {}
+        let identityReads = await sdk.identityStatusCallCount()
+        XCTAssertEqual(identityReads, 0)
+    }
+
     func testHardwareStartAtomicallyRetainsReceiptAcrossAuthorizationBackup() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let record = try paymentRequestRecord(endpoints: [endpoint])
@@ -1126,6 +1182,26 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertEqual(refused?.signedTx, receipt)
         let retryable = await localReopened.retainedHardwarePaymentsForRetry(identity: identity)
         XCTAssertEqual(retryable[request.id]?.hardwareSignedTransaction, serializedTx)
+        let retainedRetry = try await localReopened.retainedHardwarePaymentForRetry(request: request)
+        XCTAssertEqual(retainedRetry, localProof)
+        for removeReceipt in [false, true] {
+            let identityRead = expectation(description: "Reading current payer")
+            await sdk.suspendIdentityStatus { identityRead.fulfill() }
+            let lookup = Task { try await localReopened.retainedHardwarePaymentForRetry(request: request) }
+            await fulfillment(of: [identityRead], timeout: 1)
+            if removeReceipt {
+                await store.clear()
+            } else {
+                await sdk.setIdentity(counterparty)
+            }
+            await sdk.resumeIdentityStatus()
+            let stale = try await lookup.value
+            XCTAssertNil(stale)
+            let remaining = await store.snapshot()
+            XCTAssertEqual(remaining, removeReceipt ? [] : localSnapshot)
+            await sdk.setIdentity(identity)
+            await store.seed(localSnapshot)
+        }
         let stillGuarded = await localReopened.inFlightRequestIds(identity: identity)
         XCTAssertTrue(stillGuarded.contains(request.id), "Manual reopening must not release the in-flight guard")
         let foreignRetries = await localReopened.retainedHardwarePaymentsForRetry(identity: "pubky" + String(repeating: "y", count: 52))
@@ -3560,6 +3636,7 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     private var paymentRequestCalls = 0
     private var isIdentityAvailable = true
     private var shouldSuspendIdentityStatus = false
+    private var onIdentityStatusStarted: (@Sendable () -> Void)?
     private var identityStatusContinuations: [CheckedContinuation<Void, Never>] = []
     private var shouldSuspendSubmission = false
     private var submissionContinuation: CheckedContinuation<Void, Never>?
@@ -3578,14 +3655,18 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
     func identityStatus() async -> IdentityStatus? {
         identityStatusCalls += 1
         if shouldSuspendIdentityStatus {
-            await withCheckedContinuation { identityStatusContinuations.append($0) }
+            await withCheckedContinuation {
+                identityStatusContinuations.append($0)
+                onIdentityStatusStarted?()
+            }
         }
         guard isIdentityAvailable else { return nil }
         return IdentityStatus(publicKey: identity, capability: .privateLinkCapable)
     }
 
-    func suspendIdentityStatus() {
+    func suspendIdentityStatus(onStarted: (@Sendable () -> Void)? = nil) {
         shouldSuspendIdentityStatus = true
+        onIdentityStatusStarted = onStarted
     }
 
     func resumeIdentityStatus() {
