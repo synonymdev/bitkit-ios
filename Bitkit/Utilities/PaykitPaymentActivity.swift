@@ -60,7 +60,9 @@ final class PaykitPaymentActivity {
 
     func endReview(_ id: UUID) {
         reviews.remove(id)
-        if reviews.isEmpty { resumeIdleWaiters() }
+        if reviews.isEmpty {
+            resumeIdleWaiters()
+        }
     }
 
     func begin() -> UUID {

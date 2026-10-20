@@ -634,7 +634,7 @@ actor PaykitSdkService {
 
     func identityStatus(priority: PaykitSdkOperationLock.Priority) async throws -> IdentityStatus? {
         try await withSdk(priority: priority) { sdk in
-            try await sdk.identityStatus()
+            try await readRetryingSharedStateBusy { try await sdk.identityStatus() }
         }
     }
 
@@ -1230,7 +1230,7 @@ actor PaykitSdkService {
 
     func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [LinkedPeerRecord] {
         try await withSdk(priority: priority) { sdk in
-            try await sdk.linkedPeers()
+            try await readRetryingSharedStateBusy { try await sdk.linkedPeers() }
         }
     }
 
@@ -1461,6 +1461,16 @@ actor PaykitSdkService {
             if let result {
                 return result
             }
+        }
+    }
+
+    private func readRetryingSharedStateBusy<T>(_ read: () async throws -> T) async throws -> T {
+        do {
+            return try await read()
+        } catch PaykitError.SharedStateBusy {
+            // Acquisition failed before the read ran. Retry only this read, never a payment or uncertain write.
+            try await Task.sleep(for: .milliseconds(250))
+            return try await read()
         }
     }
 

@@ -231,15 +231,24 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                     for await _ in gate {}
                 }
                 let sdk = PublicReadSdk(noPointer: .init())
-                if queued { sdk.lockedRead = pause } else { sdk.backupRevisionRead = pause }
+                if queued {
+                    sdk.lockedRead = pause
+                } else {
+                    sdk.backupRevisionRead = pause
+                }
                 sdk.intake = { await recorder.record("refresh") }
                 let service = PaykitSdkService(sdkFactory: { sdk })
                 let holder = queued ? Task { try await service.contactRecords() } : nil
-                if queued { await fulfillment(of: [started], timeout: 2) }
+                if queued {
+                    await fulfillment(of: [started], timeout: 2)
+                }
                 let refresh = Task { try await operation(service, .background) }
                 defer { refresh.cancel() }
-                if queued { try await Task.sleep(for: .milliseconds(50)) }
-                else { await fulfillment(of: [started], timeout: 2) }
+                if queued {
+                    try await Task.sleep(for: .milliseconds(50))
+                } else {
+                    await fulfillment(of: [started], timeout: 2)
+                }
                 let payment = PaykitPaymentActivity.shared.begin()
                 defer { PaykitPaymentActivity.shared.end(payment) }
                 release.finish()

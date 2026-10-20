@@ -5520,17 +5520,67 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testInlineRequestClaimsDuringAcceptanceWithoutSeparateClaim() async throws {
-        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy"),
+        ])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
+        let peerReadsBeforeAcceptance = await sdk.linkedPeersCalls()
 
         try await manager.prepareForPayment(request)
 
         let snapshot = await sdk.snapshot()
+        let peerReadsAfterAcceptance = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReadsAfterAcceptance, peerReadsBeforeAcceptance)
         XCTAssertEqual(snapshot.executionClaimCallCount, 0)
         XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
         XCTAssertTrue(manager.isApprovedForPayment(request))
+
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: request.counterparty, state: .blocked)],
+            requestCapabilitiesByPublicKey: [:]
+        )
+        do {
+            try await manager.ensurePaymentAllowed(request)
+            XCTFail("The final authorization must reject a newly blocked peer")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
+    func testInlineAcceptanceRejectsPeerBlockedWhileSdkAcceptanceIsPending() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let store = PaymentRequestPresentationMemoryStore()
+        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let peerReadsBeforeAcceptance = await sdk.linkedPeersCalls()
+        await sdk.pauseNextAccept()
+
+        let acceptance = Task { try await manager.prepareForPayment(request) }
+        try await waitUntil { await sdk.acceptIsPaused() }
+        let peerReadsDuringAcceptance = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReadsDuringAcceptance, peerReadsBeforeAcceptance)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: request.counterparty, state: .blocked)],
+            requestCapabilitiesByPublicKey: [:]
+        )
+        await sdk.resumeAccept()
+
+        do {
+            try await acceptance.value
+            XCTFail("Atomic acceptance must reject the current blocked peer")
+        } catch {
+            guard case PaykitError.Policy = error else { return XCTFail("Unexpected error: \(error)") }
+        }
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+        XCTAssertEqual(snapshot.executionClaimCallCount, 0)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        XCTAssertTrue(try store.load(identity: "pubky\(String(repeating: "z", count: 52))").isEmpty)
     }
 
     func testInlineRequestCannotAcceptAnotherAppsExecutionClaim() async throws {
@@ -9394,6 +9444,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             isAcceptPaused = false
         }
 
+        if peerRecords.contains(where: {
+            $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, counterparty)
+        }) {
+            throw PaykitError.Policy(code: "policy", context: "counterparty is blocked")
+        }
         _ = try claimExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
         let record: PaymentRequestRecord
         guard records.contains(where: {

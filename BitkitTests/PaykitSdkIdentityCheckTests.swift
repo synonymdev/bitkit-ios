@@ -5,6 +5,106 @@ import XCTest
 /// Writes made for one identity check, in the same locked SDK operation as the write, that the identity is still signed
 /// in, so a sign-out and another identity's sign-in that land while the write waits make it write nothing.
 final class PaykitSdkIdentityCheckTests: XCTestCase {
+    private let contendedReads: [(read: @Sendable (PaykitSdkService) async throws -> String?, expected: String)] = [
+        ({ try await $0.identityStatus()?.publicKey }, identityA),
+        ({ try await $0.linkedPeers().first?.counterparty }, contactKey),
+    ]
+
+    func testIdentityAndPeerReadsRetryContentionAndReturnFreshState() async throws {
+        for identity in [identityA, nil] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identity
+            sdk.readErrors = [sharedStateBusy]
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            let status = try await service.identityStatus()
+
+            XCTAssertEqual(status?.publicKey, identity)
+            XCTAssertEqual(status?.capability, identity == nil ? .signedOut : .publicOnly)
+            let reads = await sdk.reads.count
+            XCTAssertEqual(reads, 2)
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        sdk.readErrors = [sharedStateBusy]
+        sdk.peerState = .blocked
+        let service = PaykitSdkService(sdkFactory: { sdk })
+
+        let peers = try await service.linkedPeers()
+        XCTAssertEqual(peers.map(\.counterparty), [contactKey])
+        XCTAssertEqual(peers.map(\.state), [.blocked])
+        let reads = await sdk.reads.count
+        XCTAssertEqual(reads, 2)
+        XCTAssertTrue(sdk.writes.isEmpty)
+    }
+
+    func testIdentityAndPeerReadsDoNotRepeatExhaustedContentionOrOtherFailures() async throws {
+        let cases: [(errors: [PaykitError], reads: Int)] = [
+            ([sharedStateBusy, sharedStateBusy], 2),
+            ([sharedStateBusy, .Identity(code: "identity_error", context: "Session changed")], 2),
+            ([.Identity(code: "identity_error", context: "Session changed")], 1),
+            ([.Storage(code: "storage_error", context: "State unavailable")], 1),
+            ([.Transport(code: "transport_error", context: "Uncertain write")], 1),
+            ([.ConcurrentUpdate(code: "concurrent_update", context: "Revision changed")], 1),
+        ]
+        for operation in contendedReads {
+            for testCase in cases {
+                let sdk = IdentitySwitchingSdk(noPointer: .init())
+                sdk.readErrors = testCase.errors
+                let service = PaykitSdkService(sdkFactory: { sdk })
+                do {
+                    _ = try await operation.read(service)
+                    XCTFail("Expected the read to fail")
+                } catch {
+                    XCTAssertEqual(error.localizedDescription, testCase.errors.last?.localizedDescription)
+                }
+                let reads = await sdk.reads.count
+                XCTAssertEqual(reads, testCase.reads)
+                XCTAssertTrue(sdk.writes.isEmpty)
+            }
+        }
+    }
+
+    func testIdentityAndPeerReadCancellationPreventsContentionRetry() async throws {
+        for operation in contendedReads {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.readErrors = [sharedStateBusy]
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let read = Task { try await operation.read(service) }
+            try await sdk.reads.waitForEntries(count: 1)
+            read.cancel()
+
+            do {
+                _ = try await read.value
+                XCTFail("Expected cancellation")
+            } catch is CancellationError {}
+            let reads = await sdk.reads.count
+            XCTAssertEqual(reads, 1)
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
+    func testIdentityAndPeerReadsRetainSdkOwnershipAcrossContentionRetry() async throws {
+        for operation in contendedReads {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.readErrors = [sharedStateBusy]
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let read = Task { try await operation.read(service) }
+            try await sdk.reads.waitForEntries(count: 1)
+            let signOut = Task { try await service.signOut() }
+
+            let result = try await read.value
+            try await signOut.value
+            XCTAssertEqual(result, operation.expected)
+            XCTAssertNil(sdk.identity)
+            let reads = await sdk.reads.count
+            XCTAssertEqual(reads, 2)
+        }
+    }
+
     func testObservationIsBoundToTheRequestedIdentity() async throws {
         let sdk = IdentitySwitchingSdk(noPointer: .init())
         sdk.identity = identityA
@@ -342,6 +442,7 @@ private let bareIdentityA = "8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgr
 private let identityB = "pubkyc1nbnzsfgm1g1rf9um6nh5mdtdhq8mz5i5o4r6g8x4qzi3uqhdmo"
 private let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 private let testProfile = PaykitProfile(displayName: "Alice", imageUri: nil, extraJson: nil)
+private let sharedStateBusy = PaykitError.SharedStateBusy(code: "shared_state_busy", context: "Shared state is locked")
 /// What the SDK reports for a blob upload without a live Pubky session.
 private let noLiveSessionError = PaykitError.Identity(
     code: "identity_error",
@@ -401,6 +502,9 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var recordedWrites: [String] = []
     private var recordedIdentitiesAtWrites: [String?] = []
     private var recordedContactReads = 0
+    private var pendingReadErrors: [PaykitError] = []
+    private var linkedPeerState: LinkedPeerState = .linked
+    let reads = IdentityCheckCallLog()
     let contactRecordsGate = IdentityCheckGate()
     let contactRecordsStarted = IdentityCheckCallLog()
     let observationGate = IdentityCheckGate()
@@ -416,6 +520,16 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     var hasLiveSession: Bool {
         get { lock.withLock { liveSession } }
         set { lock.withLock { liveSession = newValue } }
+    }
+
+    var readErrors: [PaykitError] {
+        get { lock.withLock { pendingReadErrors } }
+        set { lock.withLock { pendingReadErrors = newValue } }
+    }
+
+    var peerState: LinkedPeerState {
+        get { lock.withLock { linkedPeerState } }
+        set { lock.withLock { linkedPeerState = newValue } }
     }
 
     var writes: [String] {
@@ -439,7 +553,26 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? .publicOnly : .signedOut)
+        await reads.record()
+        let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
+        if let error {
+            throw error
+        }
+        return IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? .publicOnly : .signedOut)
+    }
+
+    override func linkedPeers() async throws -> [LinkedPeerRecord] {
+        await reads.record()
+        let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
+        if let error {
+            throw error
+        }
+        guard identity != nil else { return [] }
+        return [LinkedPeerRecord(
+            counterparty: contactKey, state: peerState, lastSyncAt: nil, lastPrivateReceiveAt: nil,
+            failureCount: 0, localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil,
+            localRecoveryMarkerLastError: nil, remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil
+        )]
     }
 
     override func observeState() async throws -> PaykitStateObservation {

@@ -468,7 +468,9 @@ final class ContactsManagerTests: XCTestCase {
         let cached = contactRecord(key: contactProfileKey, name: "Saved")
         let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
         let manager = ContactsManager(observedContactRecords: { owner in
-            if owner == "payment-active" { throw PaykitPaymentRequestError.operationInProgress }
+            if owner == "payment-active" {
+                throw PaykitPaymentRequestError.operationInProgress
+            }
             _ = try await gate.fetch(owner)
             return []
         }, fetchRemoteProfile: { _, _ in nil })

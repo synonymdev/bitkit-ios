@@ -1938,9 +1938,9 @@ final class PaykitPaymentRequestManager {
                 guard $0.billingPeriod != nil || $0.requiresAcceptance || acceptedRequestIds.contains($0.id) else {
                     throw PaykitPaymentRequestError.requestUnavailable
                 }
-                try await service.ensurePaymentAllowed($0)
-                // Acceptance claims ownership atomically; claim earlier only before consuming an endpoint or retrying an accepted request.
+                // Acceptance checks the peer and claims ownership atomically; preflight earlier only before consumption or a retry.
                 if consumePrivatePaymentList != nil || !$0.requiresAcceptance {
+                    try await service.ensurePaymentAllowed($0)
                     try await service.claimForPayment($0)
                 }
                 guard !$0.isExpired(at: now()) else { throw PaykitPaymentRequestError.requestExpired }

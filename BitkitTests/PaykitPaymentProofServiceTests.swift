@@ -1242,7 +1242,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
         let proofRemoved = expectation(description: "Local proof removed after durable submission")
         let store = PaymentProofMemoryStore { proofs in
-            if proofs.isEmpty { proofRemoved.fulfill() }
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
         }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
@@ -1281,7 +1283,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         XCTAssertTrue(request.isPaymentDeadlineExpired(at: Date()))
         let proofRemoved = expectation(description: "Local proof removed after durable submission")
         let store = PaymentProofMemoryStore { proofs in
-            if proofs.isEmpty { proofRemoved.fulfill() }
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
         }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         await sdk.setSubmissionFailure(true)
@@ -1414,7 +1418,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
         let proofRemoved = expectation(description: "Local proof removed after durable submission")
         let store = PaymentProofMemoryStore { proofs in
-            if proofs.isEmpty { proofRemoved.fulfill() }
+            if proofs.isEmpty {
+                proofRemoved.fulfill()
+            }
         }
         let sdk = PaymentProofSdkMock(identity: identity, records: [record])
         let service = paymentProofService(sdk: sdk, store: store)
@@ -1453,7 +1459,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
             let request = try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date()))
             let proofRemoved = expectation(description: "Local proof removed after durable submission")
             let store = PaymentProofMemoryStore { proofs in
-                if proofs.isEmpty { proofRemoved.fulfill() }
+                if proofs.isEmpty {
+                    proofRemoved.fulfill()
+                }
             }
             let sdk = PaymentProofSdkMock(identity: identity, records: [record])
             let service = paymentProofService(sdk: sdk, store: store)
@@ -1658,7 +1666,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let duplicateSubmission = expectation(description: "No overlapping proof submission")
         duplicateSubmission.isInverted = true
         let sdk = PaymentProofSdkMock(identity: identity, records: [record]) { count in
-            if count > 1 { duplicateSubmission.fulfill() }
+            if count > 1 {
+                duplicateSubmission.fulfill()
+            }
         }
         let service = paymentProofService(sdk: sdk, store: store)
         let txid = String(repeating: "ab", count: 32)
@@ -2730,7 +2740,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         )
         let proofRemoved = expectation(description: "Local proof removed after durable submission")
         let store = PaymentProofMemoryStore { proofs in
-            if proofs.allSatisfy({ $0.kind == .onchain }) { proofRemoved.fulfill() }
+            if proofs.allSatisfy({ $0.kind == .onchain }) {
+                proofRemoved.fulfill()
+            }
         }
         await store.seed([onchainProof, lightningProof])
         let sdk = PaymentProofSdkMock(identity: identity, records: [onchainRecord, lightningRecord])
@@ -3471,7 +3483,9 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         if shouldSuspendDelivery {
             await withCheckedContinuation { deliveryContinuation = $0 }
         }
-        if shouldFailDelivery { throw PaymentProofSdkMockError.submission }
+        if shouldFailDelivery {
+            throw PaymentProofSdkMockError.submission
+        }
         return OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
     }
 
