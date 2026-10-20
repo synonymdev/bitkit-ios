@@ -349,8 +349,11 @@ struct PaymentRequestAmountView: View {
                         guard choice != asset else { return }
                         do {
                             let converted = try entryConversion.converted(amount, to: choice, rate: currency.paykitRate, at: Date())
-                            if choice == .usd { dollarAmount = converted.atomic == 0 ? "" : converted.inputValue }
-                            else { amountViewModel.updateFromSats(converted.atomic, currency: currency) }
+                            if choice == .usd {
+                                dollarAmount = converted.atomic == 0 ? "" : converted.inputValue
+                            } else {
+                                amountViewModel.updateFromSats(converted.atomic, currency: currency)
+                            }
                             asset = choice
                             conversionError = false
                         } catch { conversionError = true }
@@ -378,8 +381,11 @@ struct PaymentRequestAmountView: View {
                 errorKey: amountViewModel.errorKey
             ) { key in
                 entryConversion.reset()
-                if asset == .usd { dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2) }
-                else { amountViewModel.handleNumberPadInput(key, currency: currency) }
+                if asset == .usd {
+                    dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2)
+                } else {
+                    amountViewModel.handleNumberPadInput(key, currency: currency)
+                }
             }
 
             CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
@@ -405,8 +411,11 @@ struct PaymentRequestAmountView: View {
                 asset = allowedAssets.first ?? .btc
                 return
             }
-            if asset == .btc { amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency) }
-            else { dollarAmount = initialDraft.amount.inputValue }
+            if asset == .btc {
+                amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency)
+            } else {
+                dollarAmount = initialDraft.amount.inputValue
+            }
         }
     }
 
@@ -497,7 +506,9 @@ struct PaymentRequestDetailsView: View {
                     if initialDraft.amount.asset == .btc {
                         MoneyText(sats: Int(clamping: initialDraft.amount.atomic), unitType: .primary, size: .display,
                                   symbol: true, color: .textPrimary, symbolColor: .textSecondary, fillsWidth: false)
-                    } else { PaykitAmountText(amount: initialDraft.amount, size: .display) }
+                    } else {
+                        PaykitAmountText(amount: initialDraft.amount, size: .display)
+                    }
                     Image("pencil").resizable().frame(width: 24, height: 24).foregroundColor(.textPrimary)
                 }
             }
@@ -561,8 +572,11 @@ struct PaymentRequestDetailsView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                if initialDraft.amount.asset == .btc { MoneyCell(sats: Int(clamping: initialDraft.amount.atomic), prefix: "") }
-                else { PaykitAmountText(amount: initialDraft.amount) }
+                if initialDraft.amount.asset == .btc {
+                    MoneyCell(sats: Int(clamping: initialDraft.amount.atomic), prefix: "")
+                } else {
+                    PaykitAmountText(amount: initialDraft.amount)
+                }
             }
             .padding(16)
             .background(Color.gray6)

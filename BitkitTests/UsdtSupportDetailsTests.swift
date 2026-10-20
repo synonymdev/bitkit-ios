@@ -38,7 +38,9 @@ final class UsdtSupportDetailsTests: XCTestCase {
             XCTAssertEqual(details.components(separatedBy: "\n").count, 9)
             XCTAssertTrue(details.contains("référence"))
             XCTAssertEqual(details.components(separatedBy: "\nRefund transaction:").count, 2)
-            if control != "\n" { XCTAssertFalse(details.contains(control)) }
+            if control != "\n" {
+                XCTAssertFalse(details.contains(control))
+            }
         }
     }
 

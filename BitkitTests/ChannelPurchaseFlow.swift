@@ -219,7 +219,7 @@ final class PaymentFlowTests: XCTestCase {
             updatedOrders = try await blocktank.orders(orderIds: [order.id], filter: nil, refresh: true)
         }
 
-        Logger.test("Updated order state: \(updatedOrders.first?.state2)", context: "PaymentFlowTests")
+        Logger.test("Updated order state: \(String(describing: updatedOrders.first?.state2))", context: "PaymentFlowTests")
         XCTAssertEqual(updatedOrders.first?.state2, .paid, "Order state should be paid after payment confirmation")
 
         // Request channel to be opened

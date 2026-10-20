@@ -191,9 +191,13 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             profile.clearAuthenticatedStateForTesting()
             wallet.replaceEmptyPublicInvoice = true
             wallet.applyPublicEndpoints = { _ in XCTFail("Startup must not publish") }
-            if state == .sharingDisabled { UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey) }
+            if state == .sharingDisabled {
+                UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+            }
             await Task {
-                if state == .cancelled { withUnsafeCurrentTask { $0?.cancel() } }
+                if state == .cancelled {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
                 await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
             }.value
             if state == .replacement || state == .sameKeyNewSession {
@@ -268,9 +272,15 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                         wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
                     }
                 }
-                wallet.beforeReceiveAddress = { if !duringCreation { invalidate() } }
+                wallet.beforeReceiveAddress = {
+                    if !duringCreation {
+                        invalidate()
+                    }
+                }
                 wallet.invoiceCreation = {
-                    if duringCreation { invalidate() }
+                    if duringCreation {
+                        invalidate()
+                    }
                     return Self.invoiceWithRouteHints
                 }
                 var published: [String] = []
@@ -280,7 +290,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                         try await PublicPaykitService.syncPublishedEndpoints(
                             wallet: wallet, publish: publish, isSessionCurrent: isCurrent, syncApp: {},
                             applyEndpoints: {
-                                if !publish { removals += 1 }
+                                if !publish {
+                                    removals += 1
+                                }
                                 published = $0.map(\.value)
                             }
                         )
@@ -312,7 +324,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 XCTAssertEqual(removals, invalidations == 1 ? 0 : 1)
                 XCTAssertEqual(endpointRefreshes, 1)
                 XCTAssertEqual(wallet.addressCallCount, 1)
-                if !duringCreation { XCTAssertEqual(preparations, 1) }
+                if !duringCreation {
+                    XCTAssertEqual(preparations, 1)
+                }
             }
         }
     }
@@ -335,7 +349,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             wallet.beforeReceiveAddress = { invalidate() }
             wallet.invoiceCreation = {
                 creations += 1
-                if invalidatesRetry { invalidate() }
+                if invalidatesRetry {
+                    invalidate()
+                }
                 return Self.invoiceWithRouteHints
             }
             var published: [String] = []
@@ -389,7 +405,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 creations += 1
                 wallet.publicPaykitBolt11PaymentHash = "paid"
                 wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
-                if failsCreation { throw PublicPaykitError.walletNotReady }
+                if failsCreation {
+                    throw PublicPaykitError.walletNotReady
+                }
                 return "invalid-invoice"
             }
             do {
@@ -425,7 +443,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                     wallet.publicPaykitBolt11PaymentHash = "paid"
                     wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid")
                 }
-                if creations == heldCreation { await creation.wait() }
+                if creations == heldCreation {
+                    await creation.wait()
+                }
                 return Self.invoiceWithRouteHints
             }
             let operations = ContactPaymentsService.Operations(
@@ -509,7 +529,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             do {
                 try await profile.performProfileDeletion {
                     await Task {
-                        if state == .cancelled { withUnsafeCurrentTask { $0?.cancel() } }
+                        if state == .cancelled {
+                            withUnsafeCurrentTask { $0?.cancel() }
+                        }
                         await wallet.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "test", forceRefreshLightning: true)
                     }.value
                     throw PublicPaykitError.publicationFailed
@@ -610,7 +632,9 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 let operations = ContactPaymentsService.Operations(
                     syncPublicEndpoints: { publish, isChangeCurrent in
                         publications += 1
-                        if restoresSharing, publications == 1 { throw PublicPaykitError.publicationFailed }
+                        if restoresSharing, publications == 1 {
+                            throw PublicPaykitError.publicationFailed
+                        }
                         XCTAssertTrue(publish)
                         XCTAssertTrue(isChangeCurrent())
                         XCTAssertTrue(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey))
@@ -1158,7 +1182,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         try await refresh.value
     }
 
-    func testFailedBackgroundForcedRefreshKeepsValidQr() async throws {
+    func testFailedBackgroundForcedRefreshKeepsValidQr() async {
         let wallet = GatedReceiveWallet()
         seedReusableInvoice(wallet)
         wallet.reusableInvoice = true
@@ -1226,7 +1250,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
     }
 
-    func testFailedBackgroundRefreshWithoutCachedInvoiceReportsError() async throws {
+    func testFailedBackgroundRefreshWithoutCachedInvoiceReportsError() async {
         let wallet = GatedReceiveWallet()
         wallet.failNextInvoice = true
         try? await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false, reportsError: false)
@@ -1234,7 +1258,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
     }
 
-    func testFailedBackgroundRefreshWithExpiredCachedInvoiceReportsError() async throws {
+    func testFailedBackgroundRefreshWithExpiredCachedInvoiceReportsError() async {
         let wallet = GatedReceiveWallet()
         seedReusableInvoice(wallet)
         wallet.reusableInvoice = false
@@ -1243,7 +1267,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         XCTAssertNotNil(wallet.receiveInvoiceError)
     }
 
-    func testFailedBackgroundRefreshWithChangedInputsReportsError() async throws {
+    func testFailedBackgroundRefreshWithChangedInputsReportsError() async {
         let wallet = GatedReceiveWallet()
         seedReusableInvoice(wallet)
         wallet.reusableInvoice = true
@@ -1349,7 +1373,9 @@ private final class GatedReceiveWallet: WalletViewModel {
     }
 
     override func isReceiveInvoiceReusable(_ invoice: String) async throws -> Bool {
-        if let reusableInvoice { return reusableInvoice }
+        if let reusableInvoice {
+            return reusableInvoice
+        }
         return try await super.isReceiveInvoiceReusable(invoice)
     }
 
@@ -1372,7 +1398,9 @@ private final class GatedReceiveWallet: WalletViewModel {
         includeLightning: Bool = true
     ) async throws -> (onchainAddress: String, bolt11: String) {
         await beforePublicEndpointRefresh?()
-        if failPublicEndpointRefresh { throw TestError.failed }
+        if failPublicEndpointRefresh {
+            throw TestError.failed
+        }
         if stubPublicEndpoints {
             if replaceEmptyPublicInvoice, forceRefreshBolt11 || publicPaykitBolt11.isEmpty {
                 publicPaykitBolt11 = "ln-current"
@@ -1391,13 +1419,21 @@ private final class GatedReceiveWallet: WalletViewModel {
         endpointSync = nil
     }
 
-    override func paymentId() async -> String? { nil }
+    override func paymentId() async -> String? {
+        nil
+    }
+
     override func persistPreActivityMetadata(tags: [String] = []) async {}
     override func persistPreActivityMetadata(paymentId: String, paymentHash: String?, address: String, tags: [String]) async {}
-    override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool { true }
+    override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
+        true
+    }
+
     override func refreshReusableOnchainAddress() async throws -> String {
         await beforeReceiveAddress?()
-        if failNextAddress { failNextAddress = false; throw TestError.failed }
+        if failNextAddress {
+            failNextAddress = false; throw TestError.failed
+        }
         addressCallCount += 1
         if gateFirstAddress, addressCallCount == 1 {
             return await withCheckedContinuation {
@@ -1415,8 +1451,12 @@ private final class GatedReceiveWallet: WalletViewModel {
     }
 
     override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
-        if let invoiceCreation { return try await invoiceCreation() }
-        if failNextInvoice { failNextInvoice = false; throw TestError.failed }
+        if let invoiceCreation {
+            return try await invoiceCreation()
+        }
+        if failNextInvoice {
+            failNextInvoice = false; throw TestError.failed
+        }
         if amountSats == 1000 {
             return await withCheckedContinuation { continuation in
                 olderInvoice = continuation
@@ -1478,7 +1518,10 @@ private final class TaggedReceiveWallet: WalletViewModel {
     private var firstWrite: CheckedContinuation<Void, Never>?
     private var invoiceCount = 0
 
-    override func paymentId() async -> String? { bolt11.isEmpty ? "initial" : bolt11 }
+    override func paymentId() async -> String? {
+        bolt11.isEmpty ? "initial" : bolt11
+    }
+
     var addressReads = 0
     override func receiveInvoiceTags(paymentId: String, searchByAddress: Bool = false) async -> [String]? {
         if searchByAddress {
@@ -1489,8 +1532,14 @@ private final class TaggedReceiveWallet: WalletViewModel {
         return metadata[paymentId]
     }
 
-    override func refreshReusableOnchainAddress() async throws -> String { "bcrt1qreceive" }
-    override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool { true }
+    override func refreshReusableOnchainAddress() async throws -> String {
+        "bcrt1qreceive"
+    }
+
+    override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
+        true
+    }
+
     override func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
         invoiceCount += 1
         return invoiceCount == 1 ? "ln-first" : "ln-second"

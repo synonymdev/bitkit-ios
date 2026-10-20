@@ -162,7 +162,9 @@ extension PrivatePaykitService {
                     )
                 }
             )
-            if case .opened = result { return result }
+            if case .opened = result {
+                return result
+            }
 
             if resolution.state == .recoveryPending {
                 schedulePrivatePaymentRecovery(for: publicKey)
@@ -355,7 +357,9 @@ extension PrivatePaykitService {
     func retainOriginalPaymentListVersion(publicKey: String, version: UInt64) throws {
         guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }
         var contact = state.contacts[key, default: ContactState()]
-        if let consumed = contact.consumedPrivatePaymentListVersion, consumed >= version { return }
+        if let consumed = contact.consumedPrivatePaymentListVersion, consumed >= version {
+            return
+        }
         let previous = state.contacts[key]
         contact.consumedPrivatePaymentListVersion = version
         contact.cachedResolvedEndpoints.removeAll()

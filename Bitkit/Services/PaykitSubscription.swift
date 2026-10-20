@@ -244,8 +244,7 @@ struct PaykitSubscriptionRecurrence: Hashable {
         guard var index = firstBoundaryIndex(after: preciseStartsAt) else { return [] }
 
         for _ in 0 ..< Self.maximumPeriods {
-            guard start <= preciseDate else { break }
-            guard var end = boundary(at: index) else { break }
+            guard start <= preciseDate, var end = boundary(at: index) else { break }
             index += 1
             if end <= start {
                 guard let fallback = addingInterval(to: start) else { break }

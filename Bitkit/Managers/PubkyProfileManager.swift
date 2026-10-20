@@ -239,7 +239,9 @@ class PubkyProfileManager: ObservableObject {
         if let initializationTask {
             await initializationTask.value
         }
-        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision { return }
+        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision {
+            return
+        }
         guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
@@ -1749,11 +1751,7 @@ class PubkyProfileManager: ObservableObject {
         adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current
     ) throws -> PubkySessionBackupV1? {
         // A foreign key stays with its owner, so an adopted identity has nothing to back up.
-        guard adopted == nil else {
-            return nil
-        }
-
-        guard let secretKeyHex = try loadKeychainString(.pubkySecretKey), !secretKeyHex.isEmpty else {
+        guard adopted == nil, let secretKeyHex = try loadKeychainString(.pubkySecretKey), !secretKeyHex.isEmpty else {
             return nil
         }
 

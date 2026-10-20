@@ -108,8 +108,7 @@ struct HomeScreen: View {
     }
 
     private func refresh() async {
-        guard currentPage == 0 else { return }
-        guard pullRefreshState.beginRefreshing() else { return }
+        guard currentPage == 0, pullRefreshState.beginRefreshing() else { return }
         defer { pullRefreshState.endRefreshing() }
 
         async let currencyRefreshFeedback: Void = HomePullRefreshFeedback.wait {
