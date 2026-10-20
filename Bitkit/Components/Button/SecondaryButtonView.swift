@@ -27,8 +27,11 @@ struct SecondaryButtonView: View {
                 BodySSBText(title, textColor: textColor, kerning: titleKerning, lineHeight: titleLineHeight)
             }
         }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, size == .small ? 8 : 12)
         .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
-        .frame(height: size.height)
+        .frame(minHeight: size.height)
         .padding(.horizontal, 16)
         .background(isPressed ? Color.white10 : Color.clear)
         .background(BlurView())

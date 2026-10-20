@@ -11,7 +11,19 @@ enum LocalizationHelper {
         let isPlural: Bool
     }
 
+    /// Language used instead of the selected one for the duration of `inEnglish`.
+    @TaskLocal private static var languageOverride: String?
+
+    /// Resolves strings in English, for identifiers that must not change with the app language.
+    static func inEnglish<T>(_ body: () -> T) -> T {
+        $languageOverride.withValue("en", operation: body)
+    }
+
     private static var currentLanguageCode: String {
+        if let languageOverride {
+            return languageOverride
+        }
+
         let appGroupCode = UserDefaults(suiteName: appGroupSuiteName)?.string(forKey: selectedLanguageCodeKey) ?? ""
         if !appGroupCode.isEmpty {
             return appGroupCode

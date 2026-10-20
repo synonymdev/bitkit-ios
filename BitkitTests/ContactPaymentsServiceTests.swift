@@ -598,12 +598,18 @@ final class ContactPaymentsServiceTests: XCTestCase {
         snapshotAppDefaultsDomain()
         for interruption in ["deletion", "deletionAfterPrivate", "cancelAfterPrivate"] {
             PublicPaykitService.setCleanupPending(true)
-            if interruption == "deletion" { await PrivatePaykitService.shared.beginProfileDeletion() }
+            if interruption == "deletion" {
+                await PrivatePaykitService.shared.beginProfileDeletion()
+            }
             var registryUpdates = 0
             let reconciliation = Task {
                 await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
-                    if interruption == "deletionAfterPrivate" { await PrivatePaykitService.shared.beginProfileDeletion() }
-                    if interruption == "cancelAfterPrivate" { withUnsafeCurrentTask { $0?.cancel() } }
+                    if interruption == "deletionAfterPrivate" {
+                        await PrivatePaykitService.shared.beginProfileDeletion()
+                    }
+                    if interruption == "cancelAfterPrivate" {
+                        withUnsafeCurrentTask { $0?.cancel() }
+                    }
                 }) {
                     registryUpdates += 1
                     PublicPaykitService.setCleanupPending(false)
@@ -684,7 +690,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 switch await disable.result {
                 case let .success(applied):
                     XCTAssertEqual(applied, !disableUI)
-                    if !disableUI { XCTAssertFalse(removalFails) }
+                    if !disableUI {
+                        XCTAssertFalse(removalFails)
+                    }
                 case let .failure(error):
                     XCTAssertTrue(removalFails)
                     XCTAssertEqual(error as? TestError, .operationFailed)

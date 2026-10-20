@@ -58,12 +58,8 @@ struct SamRockSetupRequest: Equatable {
             .split(separator: "/")
             .map(String.init)
 
-        guard let storeId = samRockStoreId(in: pathComponents)
-        else {
-            return nil
-        }
-
-        guard let otp = queryItems.first(where: { $0.name.caseInsensitiveCompare("otp") == .orderedSame })?.value,
+        guard let storeId = samRockStoreId(in: pathComponents),
+              let otp = queryItems.first(where: { $0.name.caseInsensitiveCompare("otp") == .orderedSame })?.value,
               !otp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
             return nil

@@ -236,8 +236,11 @@ final class ProfileDestinationViewTests: XCTestCase {
         defer {
             AdoptedPubkyReference.current = savedReference
             for (key, value) in zip(keys, savedValues) {
-                if let value { try? Keychain.upsert(key: key, data: value) }
-                else { try? Keychain.delete(key: key) }
+                if let value {
+                    try? Keychain.upsert(key: key, data: value)
+                } else {
+                    try? Keychain.delete(key: key)
+                }
             }
         }
         AdoptedPubkyReference.current = nil
@@ -362,7 +365,9 @@ final class ProfileDestinationViewTests: XCTestCase {
     }
 
     private func scrollView(in view: UIView) -> UIScrollView? {
-        if let scroll = view as? UIScrollView { return scroll }
+        if let scroll = view as? UIScrollView {
+            return scroll
+        }
         return view.subviews.lazy.compactMap { self.scrollView(in: $0) }.first
     }
 

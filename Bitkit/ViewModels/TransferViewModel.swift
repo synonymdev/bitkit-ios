@@ -332,8 +332,7 @@ class TransferViewModel: ObservableObject {
 
     /// Calculates the total value of channels connected to Blocktank nodes
     func totalBtChannelsValueSats(blocktankInfo: IBtInfo?) -> UInt64 {
-        guard let channels = lightningService.channels else { return 0 }
-        guard let btNodeIds = blocktankInfo?.nodes.map(\.pubkey) else { return 0 }
+        guard let channels = lightningService.channels, let btNodeIds = blocktankInfo?.nodes.map(\.pubkey) else { return 0 }
 
         let btChannels = channels.filter { channel in
             btNodeIds.contains(channel.counterpartyNodeId)
@@ -467,7 +466,9 @@ class TransferViewModel: ObservableObject {
     ) async throws {
         if let context = try await onchainAttemptService.orderPendingContext(orderId: order.id) {
             await showFundingPending(context)
-            if recoveredOnchainFundingOrderId == order.id { return }
+            if recoveredOnchainFundingOrderId == order.id {
+                return
+            }
             throw OnchainFundingPendingError()
         }
         guard let address = order.payment?.onchain?.address else {
@@ -559,7 +560,8 @@ class TransferViewModel: ObservableObject {
         do {
             if let attempt = try await onchainAttemptService.pendingAttempt(context: context),
                attempt.status == .accepted, !attempt.localFollowupComplete,
-               let orderId = attempt.orderId, let txid = attempt.txid {
+               let orderId = attempt.orderId, let txid = attempt.txid
+            {
                 _ = try await onchainAttemptService.resumeAcceptedTransfer(orderId: orderId, txid: txid, using: transferService)
             }
         } catch {
@@ -800,8 +802,7 @@ class TransferViewModel: ObservableObject {
     }
 
     func updateHwFundingFeeEstimate(walletId: String) async {
-        guard let hwSigner else { return }
-        guard !hwSpending.hasPendingBroadcast else { return }
+        guard let hwSigner, !hwSpending.hasPendingBroadcast else { return }
         do {
             let address: String = if let orderAddress = uiState.order?.payment?.onchain?.address {
                 orderAddress
@@ -837,8 +838,7 @@ class TransferViewModel: ObservableObject {
             guard let order = try await orderForConfirmation(
                 createOrder: createOrder,
                 isCurrent: { self.hwOrderCreationToken == token }
-            ) else { return }
-            guard hwOrderCreationToken == token else { return }
+            ), hwOrderCreationToken == token else { return }
             onTransferToSpendingHwConfirm(order: order, walletId: walletId)
         } catch is OnchainFundingPendingError {
             return
@@ -849,11 +849,7 @@ class TransferViewModel: ObservableObject {
 
     func onTransferToSpendingHwConfirm(order: IBtOrder, walletId: String) {
         guard !hwSpending.isSigning else { return }
-        guard let hwSigner else {
-            hwTransferError = .generic(t("common__error"))
-            return
-        }
-        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
+        guard let hwSigner, let address = order.payment?.onchain?.address, !address.isEmpty else {
             hwTransferError = .generic(t("common__error"))
             return
         }
@@ -1491,19 +1487,19 @@ class TransferViewModel: ObservableObject {
                 _,
                 _,
                 fundingTxo
-            ) = event {
+            ) = event,
                 // Match by user channel ID
-                if eventUserChannelId.description == userChannelId {
-                    Task {
-                        await channelCapture.setChannelData(
-                            channelId: eventChannelId.description,
-                            fundingTxId: fundingTxo.txid.description
-                        )
-                        Logger.debug(
-                            "Captured channel pending event: channelId=\(eventChannelId.description) userChannelId=\(userChannelId) fundingTxId=\(fundingTxo.txid.description)",
-                            context: "TransferViewModel"
-                        )
-                    }
+               eventUserChannelId.description == userChannelId
+            {
+                Task {
+                    await channelCapture.setChannelData(
+                        channelId: eventChannelId.description,
+                        fundingTxId: fundingTxo.txid.description
+                    )
+                    Logger.debug(
+                        "Captured channel pending event: channelId=\(eventChannelId.description) userChannelId=\(userChannelId) fundingTxId=\(fundingTxo.txid.description)",
+                        context: "TransferViewModel"
+                    )
                 }
             }
         }
@@ -1941,8 +1937,8 @@ class TransferViewModel: ObservableObject {
         // routing failure for the paid hold invoice and resumes the failure wait below. The
         // returned payment id may land in either the event's payment id or its payment hash field.
         onEvent(eventId) { event in
-            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, reason) = event else { return }
-            guard [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
+            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, reason) = event,
+                  [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
             Task { await paymentFailure.markFailed(reason: reason) }
         }
 

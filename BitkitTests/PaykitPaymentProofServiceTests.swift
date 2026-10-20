@@ -134,6 +134,364 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         }
     }
 
+    private func unknownRequestPayment(
+        state: PaymentRequestLifecycleState, records: Bool = true, proofSubmitted: Bool = false, seedProof: Bool = true
+    ) async throws -> (PaykitPaymentProofService, MemoryAttemptStore, PaymentProofMemoryStore, OnchainSendAttempt) {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let open = try paymentRequestRecord(endpoints: [endpoint], state: .accepted)
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: open, now: Date()))
+        let record = try paymentRequestRecord(endpoints: [endpoint], state: proofSubmitted ? .proofSubmitted : state)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amount.atomic
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amount.atomic,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        XCTAssertEqual(attempt.status, .unknown)
+        let store = PaymentProofMemoryStore()
+        if seedProof {
+            await store.seed([PendingPaykitPaymentProof(
+                identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint, kind: .onchain,
+                paymentStarted: true, paymentIdentifier: attempt.txid, proofData: nil,
+                onchainAddress: onchainAddress, onchainAmountSats: request.amount.atomic
+            )])
+        }
+        let sdk = PaymentProofSdkMock(identity: identity, records: records ? [record] : [])
+        return (paymentProofService(sdk: sdk, store: store, attemptService: attempts), attemptsStore, store, attempt)
+    }
+
+    private func context(_ attempt: OnchainSendAttempt) -> OnchainSendPendingContext {
+        .init(attemptId: attempt.id, walletId: attempt.walletId, txid: attempt.txid)
+    }
+
+    func testEndedRequestReleasesPaymentThatNeverReachedTheNetwork() async throws {
+        for state in [PaymentRequestLifecycleState.canceled, .proposalExpired, .rejected] {
+            let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: state)
+            let wallet = ReleaseWalletMock()
+            try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+            XCTAssertEqual(wallet.broadcasts, 1)
+            XCTAssertTrue(attempts.snapshot().isEmpty)
+            let saved = await proofs.snapshot()
+            XCTAssertTrue(saved.isEmpty)
+        }
+    }
+
+    func testPaymentThatMayStillConfirmOrWhoseRequestIsOpenIsKept() async throws {
+        let cases: [(PaymentRequestLifecycleState, Bool, Bool, Bool)] = [
+            (.accepted, true, false, true),
+            (.canceled, false, false, true),
+            (.canceled, true, true, true),
+            (.canceled, true, false, false),
+        ]
+        for (state, hasRecord, proofSubmitted, neverReached) in cases {
+            let (service, attempts, proofs, attempt) = try await unknownRequestPayment(
+                state: state, records: hasRecord, proofSubmitted: proofSubmitted
+            )
+            let before = await proofs.snapshot()
+            do {
+                let wallet = ReleaseWalletMock()
+                wallet.neverReached = neverReached
+                try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+                XCTFail("Released a payment that must stay pending")
+            } catch let error as OnchainSendAbandonError {
+                XCTAssertEqual(error, neverReached ? .requestOpen : .mayStillConfirm)
+            }
+            XCTAssertEqual(attempts.snapshot(), [attempt])
+            let after = await proofs.snapshot()
+            XCTAssertEqual(after, before)
+        }
+    }
+
+    func testReleaseFinishesWhenTheProofWasAlreadyRemoved() async throws {
+        let (service, attempts, _, attempt) = try await unknownRequestPayment(state: .canceled, seedProof: false)
+        try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: ReleaseWalletMock(), approveRelease: { _ in })
+        XCTAssertTrue(attempts.snapshot().isEmpty)
+    }
+
+    func testEndedSubscriptionPeriodCountsOnlyWithoutItsOwnProof() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00Z", anchor: "2026-10-01T08:00:00Z", endsAt: nil
+        )
+        let active = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: active))
+        let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).last)
+        let period = try XCTUnwrap(request.billingPeriod)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amount.atomic
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amount.atomic,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        let store = PaymentProofMemoryStore()
+        await store.seed([PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint,
+            kind: .onchain, billingPeriod: period, paymentStarted: true,
+            paymentIdentifier: attempt.txid, proofData: nil, onchainAddress: onchainAddress, onchainAmountSats: request.amount.atomic
+        )])
+        let thisPeriod = BillingPeriod(startsAt: period.sdkValue.startsAt, endsAt: period.sdkValue.endsAt)
+        let olderPeriod = BillingPeriod(startsAt: "2026-09-01T08:00:00Z", endsAt: "2026-10-01T08:00:00Z")
+        for (proofPeriod, ended) in [(olderPeriod, true), (thisPeriod, false)] {
+            var canceled = try paymentRequestRecord(endpoints: [endpoint], state: .canceled, recurrence: recurrence)
+            canceled.paymentProofs = try [paymentProofRecord(endpoint: endpoint, kind: .onchain, data: "older", billingPeriod: proofPeriod)]
+            let service = paymentProofService(
+                sdk: PaymentProofSdkMock(identity: identity, records: [canceled]), store: store, attemptService: attempts
+            )
+            let result = try await service.onchainRequestHasEnded(attempt)
+            XCTAssertEqual(result, ended)
+        }
+    }
+
+    func testRejectedOrUnknownReleaseKeepsTheGuardAndProof() async throws {
+        for result in ["rejected", "unknown"] {
+            let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: .canceled)
+            let before = await proofs.snapshot()
+            let wallet = ReleaseWalletMock()
+            wallet.result = result == "rejected" ? .rejected(txid: wallet.releaseTxid, reason: "conflict") : .unknown(txid: wallet.releaseTxid)
+            do {
+                try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+                XCTFail("Released a payment whose release was not accepted")
+            } catch let error as OnchainSendAbandonError {
+                XCTAssertEqual(error, result == "rejected" ? .mayStillConfirm : .releasePending)
+            }
+            let pending = try XCTUnwrap(attempts.snapshot().first)
+            XCTAssertEqual(pending.releaseTxid, wallet.releaseTxid)
+            XCTAssertTrue(pending.blocksNewSend, "A send with other coins must stay blocked while the release is unconfirmed")
+            let after = await proofs.snapshot()
+            XCTAssertEqual(after, before)
+
+            // Once a sync puts the release in the wallet, a later cancel finishes without a second release.
+            wallet.knownTxids = [wallet.releaseTxid]
+            try await service.abandonUnbroadcastOnchainPayment(context: context(pending), wallet: wallet, approveRelease: { _ in })
+            XCTAssertEqual(wallet.prepared, 1)
+            XCTAssertTrue(attempts.snapshot().isEmpty)
+            let finished = await proofs.snapshot()
+            XCTAssertTrue(finished.isEmpty)
+        }
+    }
+
+    func testACoinAlreadySpentElsewhereFinishesTheCancelWithoutAnotherRelease() async throws {
+        let (service, attempts, proofs, attempt) = try await unknownRequestPayment(state: .canceled)
+        let wallet = ReleaseWalletMock()
+        wallet.spentElsewhere = true
+        try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+        XCTAssertEqual(wallet.prepared, 0)
+        XCTAssertTrue(attempts.snapshot().isEmpty)
+        let saved = await proofs.snapshot()
+        XCTAssertTrue(saved.isEmpty)
+    }
+
+    func testSpentElsewhereCancelCutShortAfterItsProofWasRemovedCanFinish() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
+            anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
+        )
+        var record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        record.terms?.conversion = .perPeriod
+        let quotePeriod = BillingPeriod(startsAt: recurrence.startsAt, endsAt: "2026-11-01T08:00:00.123456789Z")
+        record.conversionQuotes = [PaymentConversionQuoteRecord(
+            eventId: "original", billingPeriod: quotePeriod,
+            rates: [ConversionRate(asset: "usdt", value: "100000")], validFrom: recurrence.startsAt,
+            expiresAt: PaykitPreciseInstant(date: Date().addingTimeInterval(-60)).timestamp, outboundStatus: nil
+        )]
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).first)
+        let period = try XCTUnwrap(request.billingPeriod)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amount.atomic
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amount.atomic,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        var proof = PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint,
+            kind: .onchain, billingPeriod: period, paymentStarted: true,
+            paymentIdentifier: attempt.txid, proofData: nil, onchainAddress: onchainAddress, onchainAmountSats: request.amount.atomic
+        )
+        proof.conversionQuoteId = "original"
+        // The app dies right after the proof removal: the attempt deletion never runs.
+        let store = PaymentProofMemoryStore(onSave: { saved in
+            if saved.isEmpty {
+                attemptsStore.failSave = true
+            }
+        })
+        await store.seed([proof])
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts
+        )
+        let wallet = ReleaseWalletMock()
+        wallet.spentElsewhere = true
+        do {
+            try await service.abandonUnbroadcastOnchainPayment(context: context(attempt), wallet: wallet, approveRelease: { _ in })
+            XCTFail("The attempt deletion was expected to fail")
+        } catch {}
+        await store.seed([])
+        attemptsStore.failSave = false
+        let leftover = try XCTUnwrap(attemptsStore.snapshot().first)
+        do {
+            try await service.abandonUnbroadcastOnchainPayment(context: context(leftover), wallet: wallet, approveRelease: { _ in })
+        } catch {
+            XCTFail("A later cancel must finish once the proof is gone, got \(error)")
+        }
+        XCTAssertTrue(attemptsStore.snapshot().isEmpty, "The send block stayed after the proof was removed")
+    }
+
+    func testReleaseAddsWalletCoinsWhenTheOriginalCoinsFallShort() {
+        func utxo(_ byte: String, _ value: UInt64) -> SpendableUtxo {
+            SpendableUtxo(outpoint: OutPoint(txid: Txid(String(repeating: byte, count: 32)), vout: 0), valueSats: value)
+        }
+        let original = utxo("11", 1200)
+        let small = utxo("22", 5000)
+        let large = utxo("33", 90000)
+        let medium = utxo("55", 20000)
+        let unconfirmed = utxo("44", 500_000)
+        let originalInput: Set = [OnchainSendInput(txid: String(repeating: "11", count: 32), vout: 0)]
+        let confirmed = Set(["22", "33", "55"].map { String(repeating: $0, count: 32) })
+        let sets = OnchainSendAttemptService.releaseInputSets(
+            spendable: [small, original, unconfirmed, large, medium], original: originalInput, confirmedTxids: confirmed
+        )
+        // The original's own coin stays even unconfirmed; an unconfirmed extra coin is never added (BIP125 rule 2).
+        XCTAssertEqual(sets.map { $0.map(\.valueSats) }, [[1200], [1200, 90000], [1200, 90000, 20000], [1200, 90000, 20000, 5000]])
+        XCTAssertTrue(OnchainSendAttemptService.releaseInputSets(
+            spendable: [small, large], original: originalInput, confirmedTxids: confirmed
+        ).isEmpty, "A release without an original coin is never built")
+    }
+
+    func testReleaseMustSpendAnOriginalCoinAndOutbidEveryCandidate() async throws {
+        let (_, _, _, attempt) = try await unknownRequestPayment(state: .canceled)
+        let inputs = try XCTUnwrap(attempt.recoveryContext?.inputs)
+        let candidateFee = try XCTUnwrap(attempt.recoveryContext?.candidateFeeSats?.values.max() ?? attempt.followupContext?.feeSats)
+        func release(_ inputs: [OnchainSendInput], fee: UInt64) -> PreparedOnchainSendDispatch {
+            .init(txid: String(repeating: "77", count: 32), inputs: inputs, recipientAmountSats: 500, miningFeeSats: fee,
+                  broadcast: { .accepted(txid: String(repeating: "77", count: 32)) })
+        }
+        XCTAssertTrue(OnchainSendAttemptService.releaseOutbids(release(inputs, fee: candidateFee + 1), attempt))
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(release(inputs, fee: candidateFee), attempt))
+        XCTAssertFalse(OnchainSendAttemptService.releaseOutbids(
+            release([OnchainSendInput(txid: String(repeating: "99", count: 32), vout: 7)], fee: candidateFee + 1), attempt
+        ))
+    }
+
+    func testOnlyASyncFinishedAfterTheRequestCountsAsFresh() {
+        XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(nil, after: 0))
+        XCTAssertFalse(OnchainSendAttemptService.isOnchainSync(1_800_000_000, after: 1_800_000_000))
+        XCTAssertTrue(OnchainSendAttemptService.isOnchainSync(1_800_000_001, after: 1_800_000_000))
+        // The requested sync's own success counts even when it finished in the same second.
+        XCTAssertTrue(OnchainSendAttemptService.isOnchainSync(1_800_000_000, after: 1_800_000_000, requestedSyncSucceeded: true))
+    }
+
+    func testApprovedReleaseFinishesAfterItsProofWasRemoved() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00Z", anchor: "2026-10-01T08:00:00Z", endsAt: nil
+        )
+        let record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).last)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amount.atomic
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amount.atomic,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        // The app stopped after the approval and the proof removal, before the attempt was deleted.
+        let approved = try await attempts.approveRelease(attempt)
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: PaymentProofMemoryStore(), attemptService: attempts
+        )
+        let hasEnded = try await service.onchainRequestHasEnded(approved)
+        XCTAssertTrue(hasEnded)
+        try await service.abandonUnbroadcastOnchainPayment(context: .init(attemptId: approved.id, walletId: approved.walletId,
+                                                                          txid: approved.txid),
+                                                           wallet: ReleaseWalletMock(), approveRelease: { _ in })
+        XCTAssertTrue(attemptsStore.snapshot().isEmpty)
+    }
+
+    func testCanceledSubscriptionReleasesAfterItsProofWasRemoved() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00Z", anchor: "2026-10-01T08:00:00Z", endsAt: nil
+        )
+        let active = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        let subscription = try XCTUnwrap(PaykitSubscription(record: active))
+        let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).last)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amount.atomic
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amount.atomic,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        let canceled = try paymentRequestRecord(endpoints: [endpoint], state: .canceled, recurrence: recurrence)
+        let service = paymentProofService(
+            sdk: PaymentProofSdkMock(identity: identity, records: [canceled]), store: PaymentProofMemoryStore(), attemptService: attempts
+        )
+        try await service.abandonUnbroadcastOnchainPayment(context: .init(attemptId: attempt.id, walletId: attempt.walletId,
+                                                                          txid: attempt.txid),
+                                                           wallet: ReleaseWalletMock(), approveRelease: { _ in })
+        XCTAssertTrue(attemptsStore.snapshot().isEmpty)
+    }
+
+    func testExpiredQuoteEndsAnActiveSubscriptionPeriod() async throws {
+        let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let recurrence = PaymentRequestRecurrence(
+            every: 1, unit: "month", startsAt: "2026-10-01T08:00:00.123456789Z",
+            anchor: "2026-10-01T08:00:00.123456789Z", endsAt: nil
+        )
+        var record = try paymentRequestRecord(endpoints: [endpoint], state: .activeRecurring, recurrence: recurrence)
+        record.terms?.conversion = .perPeriod
+        let quotePeriod = BillingPeriod(startsAt: recurrence.startsAt, endsAt: "2026-11-01T08:00:00.123456789Z")
+        let quote = { (expiresAt: Date) in PaymentConversionQuoteRecord(
+            eventId: "original", billingPeriod: quotePeriod,
+            rates: [ConversionRate(asset: "usdt", value: "100000")], validFrom: recurrence.startsAt,
+            expiresAt: PaykitPreciseInstant(date: expiresAt).timestamp, outboundStatus: nil
+        ) }
+        record.conversionQuotes = [quote(Date().addingTimeInterval(3600))]
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = try XCTUnwrap(subscription.requests(through: Date(), acceptedAt: PaykitPreciseInstant(date: Date())).first)
+        let period = try XCTUnwrap(request.billingPeriod)
+        let attemptsStore = MemoryAttemptStore()
+        let attempts = OnchainSendAttemptService(store: attemptsStore)
+        let sender = PreparedAttemptNodeMock()
+        sender.amount = request.amount.atomic
+        sender.result = .unknown(txid: sender.txid)
+        _ = try await attempts.send(using: sender, address: onchainAddress, amountSats: request.amount.atomic,
+                                    satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: false,
+                                    requestId: request.id, paymentIdentity: identity)
+        let attempt = try XCTUnwrap(attemptsStore.snapshot().first)
+        var proof = PendingPaykitPaymentProof(
+            identity: identity, requestId: request.id, paymentAppId: "bitkit", paymentEndpointIdentifier: endpoint,
+            kind: .onchain, billingPeriod: period, paymentStarted: true,
+            paymentIdentifier: attempt.txid, proofData: nil, onchainAddress: onchainAddress, onchainAmountSats: request.amount.atomic
+        )
+        proof.conversionQuoteId = "original"
+        for (expiresAt, ended) in [(Date().addingTimeInterval(3600), false), (Date().addingTimeInterval(-60), true)] {
+            record.conversionQuotes = [quote(expiresAt)]
+            let store = PaymentProofMemoryStore()
+            await store.seed([proof])
+            let service = paymentProofService(
+                sdk: PaymentProofSdkMock(identity: identity, records: [record]), store: store, attemptService: attempts
+            )
+            let result = try await service.onchainRequestHasEnded(attempt)
+            XCTAssertEqual(result, ended)
+        }
+    }
+
     func testRecurringRecoveryKeepsOriginalUnpaidBillingPeriod() async throws {
         let endpoint = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
         let recurrence = PaymentRequestRecurrence(
@@ -337,12 +695,16 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let resolution = PaykitOnchainPaymentResolution(identity: identity, requestId: request.id, transactionId: txid, walletId: hardwareWalletId)
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink {
-            if $0.requestId == request.id { resolutions.append($0) }
+            if $0.requestId == request.id {
+                resolutions.append($0)
+            }
         }
         defer { subscription.cancel() }
         let reconciliation = Task { await service.reconcile() }
         for _ in 0 ..< 100 {
-            if await sdk.submissionCount() > 0 { break }
+            if await sdk.submissionCount() > 0 {
+                break
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
         let startedSubmissions = await sdk.submissionCount()
@@ -395,7 +757,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         var observing = false
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
-            if observing, resolution.requestId == request.id { resolutions.append(resolution) }
+            if observing, resolution.requestId == request.id {
+                resolutions.append(resolution)
+            }
         }
         observing = true
         defer { subscription.cancel() }
@@ -818,7 +1182,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await store.resumeSave()
         await completion.value
         try await marking.value
-        let proofs = try await store.load()
+        let proofs = await store.load()
         XCTAssertEqual(proofs.first(where: { $0.requestId == request.id })?.paymentStarted, true)
         XCTAssertEqual(proofs.first(where: { $0.requestId == lightningId })?.proofData, preimage)
     }
@@ -1597,7 +1961,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         var isObservingResolutions = false
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
-            if isObservingResolutions, resolution.requestId == request.id { resolutions.append(resolution) }
+            if isObservingResolutions, resolution.requestId == request.id {
+                resolutions.append(resolution)
+            }
         }
         isObservingResolutions = true
         defer { subscription.cancel() }
@@ -2325,7 +2691,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                     paymentDeadline: PaykitPreciseInstant(date: deadline),
                     beforeBroadcastAttempt: {
                         try await service.markOnchainPaymentStarted(request, address: self.onchainAddress, paymentIdentity: self.identity)
-                        if failCleanup { await store.failNextSave() }
+                        if failCleanup {
+                            await store.failNextSave()
+                        }
                     },
                     onPreDispatchFailure: { _ in
                         XCTAssertEqual(attemptsStore.snapshot().first?.requestId, request.id)
@@ -3152,5 +3520,39 @@ private actor SuspendedHardwareShopFollowup {
 
     func saveCount() -> Int {
         saves
+    }
+}
+
+private final class ReleaseWalletMock: OnchainReleasing, @unchecked Sendable {
+    let releaseTxid = String(repeating: "77", count: 32)
+    var neverReached = true
+    var spentElsewhere = false
+    var knownTxids: Set<String> = []
+    lazy var result: OnchainSendResult = .accepted(txid: releaseTxid)
+    var prepared = 0
+    var broadcasts = 0
+
+    func onchainCandidatesNeverReachedNetwork(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        neverReached
+    }
+
+    func walletKnowsTransaction(_ txid: String) async -> Bool {
+        knownTxids.contains(txid)
+    }
+
+    func originalCoinSpentElsewhere(_ attempt: OnchainSendAttempt) async throws -> Bool {
+        spentElsewhere
+    }
+
+    func prepareRelease(_ attempt: OnchainSendAttempt) async throws -> PreparedOnchainSendDispatch {
+        prepared += 1
+        let fee = max(attempt.recoveryContext?.candidateFeeSats?.values.max() ?? 0, attempt.followupContext?.feeSats ?? 0) + 1
+        return PreparedOnchainSendDispatch(
+            txid: releaseTxid, inputs: attempt.recoveryContext?.inputs ?? [], recipientAmountSats: 500, miningFeeSats: fee,
+            broadcast: { [self] in
+                broadcasts += 1
+                return result
+            }
+        )
     }
 }

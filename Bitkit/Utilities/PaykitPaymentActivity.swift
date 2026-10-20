@@ -18,11 +18,15 @@ struct PaykitPaymentProofRefreshState {
     }
 
     mutating func complete(_ request: Request) {
-        if pending == request { pending = nil }
+        if pending == request {
+            pending = nil
+        }
     }
 
     mutating func discard(unlessSession session: PubkyProfileManager.SignedInSession?) {
-        if pending?.session != session { pending = nil }
+        if pending?.session != session {
+            pending = nil
+        }
     }
 }
 
@@ -72,7 +76,9 @@ final class PaykitPaymentActivity {
     @discardableResult
     func runWhenIdle(_ key: DeferredWork, operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         deferredOperations[key] = operation
-        if let task = deferredTasks[key] { return task }
+        if let task = deferredTasks[key] {
+            return task
+        }
         let task = Task {
             do {
                 try await waitUntilIdle()

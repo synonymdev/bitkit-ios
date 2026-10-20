@@ -219,17 +219,15 @@ struct LnurlPayConfirm: View {
             }
 
             // Convert to USD to check if over $100
-            if let usdAmount = currency.convert(sats: sats, to: "USD") {
-                if usdAmount.value > 100.0 {
-                    showWarningAlert = true
-                    // Wait for the alert to be dismissed
-                    let shouldProceed = try await waitForAlertDismissal()
-                    if !shouldProceed {
-                        // User cancelled, throw error to reset SwipeButton
-                        throw CancellationError()
-                    }
-                    // User confirmed, continue with authentication if needed
+            if let usdAmount = currency.convert(sats: sats, to: "USD"), usdAmount.value > 100.0 {
+                showWarningAlert = true
+                // Wait for the alert to be dismissed
+                let shouldProceed = try await waitForAlertDismissal()
+                if !shouldProceed {
+                    // User cancelled, throw error to reset SwipeButton
+                    throw CancellationError()
                 }
+                // User confirmed, continue with authentication if needed
             }
         }
 

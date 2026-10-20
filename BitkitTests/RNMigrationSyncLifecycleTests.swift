@@ -125,7 +125,9 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
         let operations = PostMigrationSyncOperations(
             syncPayments: {
                 syncCount += 1
-                if syncCount == 1 { await gate.suspend() }
+                if syncCount == 1 {
+                    await gate.suspend()
+                }
             },
             markActivitiesSeen: {
                 sweepCount += 1
@@ -234,7 +236,9 @@ final class RNMigrationSyncLifecycleTests: XCTestCase {
             migrations: migrations, postMigrationSyncOperations: PostMigrationSyncOperations(
                 syncPayments: {
                     syncCount += 1
-                    if syncCount == 1 { await gate.suspend() }
+                    if syncCount == 1 {
+                        await gate.suspend()
+                    }
                 },
                 markActivitiesSeen: {},
                 reapplyMetadata: { _ in

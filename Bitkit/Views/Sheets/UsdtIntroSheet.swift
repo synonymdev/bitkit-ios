@@ -14,7 +14,9 @@ struct UsdtIntroSheet: View {
     var body: some View {
         Sheet(id: .usdtIntro, data: config, backgroundColor: .gray7, applyGradient: false) {
             UsdtIntroContent(onDecline: {
-                if !usdt.hasProtectedFunds { settings.usdtPreference = .disabled }
+                if !usdt.hasProtectedFunds {
+                    settings.usdtPreference = .disabled
+                }
                 sheets.hideSheet()
             }, onEnable: {
                 settings.usdtPreference = .enabled

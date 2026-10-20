@@ -450,9 +450,7 @@ struct PubkyAuthRequest {
             .split(separator: ",")
             .compactMap { segment -> PubkyAuthPermission? in
                 let trimmed = segment.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { return nil }
-
-                guard let lastColon = trimmed.lastIndex(of: ":") else { return nil }
+                guard !trimmed.isEmpty, let lastColon = trimmed.lastIndex(of: ":") else { return nil }
 
                 let path = String(trimmed[trimmed.startIndex ..< lastColon])
                 let access = String(trimmed[trimmed.index(after: lastColon)...])

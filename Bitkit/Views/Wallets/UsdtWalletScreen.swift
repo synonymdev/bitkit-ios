@@ -33,7 +33,9 @@ struct UsdtWalletScreen: View {
                     .balanceVisibilityToggle()
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtBalance")
-                    if let error = usdt.errorMessage { BodySText(error, textColor: .brandAccent) }
+                    if let error = usdt.errorMessage {
+                        BodySText(error, textColor: .brandAccent)
+                    }
                     activityList
                 }
             }
@@ -88,9 +90,15 @@ struct UsdtWalletScreen: View {
         }
         .navigationDestination(isPresented: Binding(
             get: { selectedTransferId != nil },
-            set: { if !$0 { selectedTransferId = nil } }
+            set: {
+                if !$0 {
+                    selectedTransferId = nil
+                }
+            }
         )) {
-            if let id = selectedTransferId { UsdtActivityDetail(transferId: id) }
+            if let id = selectedTransferId {
+                UsdtActivityDetail(transferId: id)
+            }
         }
     }
 
@@ -107,7 +115,9 @@ struct UsdtWalletScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("UsdtActivity-\(index)")
             }
-            if !usdt.historyComplete { BodySText(t("usdt__history_sync"), textColor: .textSecondary) }
+            if !usdt.historyComplete {
+                BodySText(t("usdt__history_sync"), textColor: .textSecondary)
+            }
         }
     }
 }
@@ -192,7 +202,9 @@ func usdtDisplaySats(amount: String, rate: PaykitExchangeRate?, now: Date = Date
 func usdtOverviewAmount(_ amount: UInt64, locale: Locale = .current) -> String {
     let format = Decimal.FormatStyle.number.precision(.fractionLength(2))
         .rounded(rule: .toNearestOrAwayFromZero).locale(locale)
-    if amount > 0, amount < 10000 { return "<" + (Decimal(1) / 100).formatted(format) }
+    if amount > 0, amount < 10000 {
+        return "<" + (Decimal(1) / 100).formatted(format)
+    }
     return (Decimal(amount) / 1_000_000).formatted(format)
 }
 
