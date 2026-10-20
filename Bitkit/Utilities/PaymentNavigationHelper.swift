@@ -209,7 +209,11 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
-        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil { return .amount }
+        if app.contactPaymentContext?.requiresAssetSelection == true {
+            if app.paykitPaymentTerms == nil { return .amount }
+            // LNURL confirmation has no funding selector, so keep both Bitcoin methods reachable here.
+            if app.lnurlPayData != nil, app.scannedOnchainInvoice != nil { return .amount }
+        }
         guard let route = appropriateSendRoute(
             app: app,
             currency: currency,

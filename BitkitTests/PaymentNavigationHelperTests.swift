@@ -220,6 +220,41 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
+    func testQuotedLnurlRequestKeepsFundingSelectionWhenSavingsIsAvailable() throws {
+        settings.usdtPreference = .disabled
+        let lightning = PublicPaykitService.MethodId.bitcoinLightningLnurl
+        let onchain = PublicPaykitService.MethodId.regtestOnchainP2wpkh
+        for offersSavings in [false, true] {
+            let request = try incomingPaymentRequest(
+                endpointIdentifier: lightning.rawValue,
+                additionalEndpointIdentifiers: offersSavings ? [onchain.rawValue] : [],
+                amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+                conversion: .fixed(rates: [
+                    ConversionRate(asset: "btc-lightning", value: "0.00001"),
+                    ConversionRate(asset: "btc-regtest", value: "0.00002"),
+                ])
+            )
+            let app = AppViewModel()
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.lnurlPayData = LnurlPayData(
+                uri: "https://example.com/pay", callback: "https://example.com/callback",
+                minSendable: 1000, maxSendable: 100_000_000,
+                metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+            )
+            app.selectedWalletToPayFrom = .lightning
+            app.paykitPaymentTerms = try request.payment(using: lightning)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            XCTAssertEqual(app.paykitReviewedAmount?.atomic, 2500)
+            if offersSavings {
+                app.scannedOnchainInvoice = OnChainInvoice(
+                    address: "bcrt1qexample", amountSatoshis: 0, label: nil, message: nil, params: nil
+                )
+                XCTAssertEqual(try request.payment(using: onchain).amount.atomic, 5000)
+            }
+            XCTAssertEqual(contactPaymentRoute(for: app), offersSavings ? .amount : .lnurlPayConfirm)
+        }
+    }
+
     func testDollarRequestOffersAssetSelectionOnlyWhenUsdtIsEnabled() async throws {
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
         let method = PublicPaykitService.onchainMethodId(for: address)
@@ -370,6 +405,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
 
     private func incomingPaymentRequest(
         endpointIdentifier: String,
+        additionalEndpointIdentifiers: [String] = [],
         amount: PaymentRequestAmount = PaymentRequestAmount(value: "0.00001", asset: "btc"),
         conversion: PaymentConversion? = nil,
         deadline: PaymentDeadline? = nil
@@ -391,7 +427,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
-                acceptedPaymentEndpointIdentifiers: [endpointIdentifier],
+                acceptedPaymentEndpointIdentifiers: [endpointIdentifier] + additionalEndpointIdentifiers,
                 paymentEndpoints: nil,
                 requiredAppId: "bitkit",
                 conversion: conversion,
