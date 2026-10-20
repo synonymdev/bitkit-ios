@@ -230,6 +230,12 @@ struct SubscriptionsView: View {
     }
 }
 
+func subscriptionPayments(subscription: PaykitSubscription, history: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
+    subscription.isCreatedByUser
+        ? subscription.receivedPaymentRequests()
+        : history.filter { $0.belongs(to: subscription) && $0.lifecycleState == .proofSubmitted }
+}
+
 func subscriptionMonthlyCostSats(amounts: [PaykitAmount], rate: PaykitExchangeRate?, now: Date = Date()) -> Int? {
     var total = 0
     for amount in amounts {
@@ -509,9 +515,7 @@ struct SubscriptionDetailView: View {
 
     @ViewBuilder
     private func payments(_ subscription: PaykitSubscription) -> some View {
-        let payments = subscription.isCreatedByUser
-            ? subscription.receivedPaymentRequests()
-            : paymentRequests.historyRequests.filter { $0.belongs(to: subscription) }
+        let payments = subscriptionPayments(subscription: subscription, history: paymentRequests.historyRequests)
         if !payments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 CaptionMText(t("subscriptions__payments").localizedUppercase, textColor: .white64)

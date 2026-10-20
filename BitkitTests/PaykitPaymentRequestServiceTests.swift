@@ -3640,7 +3640,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.historyRequests.contains { $0.id == unpaid.id && $0.isExpired(at: now) })
         XCTAssertEqual(paid.lifecycleState, .proofSubmitted)
         XCTAssertEqual(paid.paymentProofKind, .lightning)
-        XCTAssertEqual(manager.subscriptions.first { $0.isCreatedByUser }?.receivedPaymentRequests().count, 1)
+        XCTAssertEqual(subscriptionPayments(subscription: payerSubscription, history: manager.historyRequests), [paid])
+        let creatorSubscription = try XCTUnwrap(manager.subscriptions.first { $0.isCreatedByUser })
+        let received = subscriptionPayments(subscription: creatorSubscription, history: manager.historyRequests)
+        XCTAssertEqual(received, creatorSubscription.receivedPaymentRequests())
+        XCTAssertEqual(received.count, 1)
         await scheduler.synchronize(
             manager.subscriptions,
             acceptedAt: Dictionary(uniqueKeysWithValues: manager.subscriptions.map { ($0.id, PaykitPreciseInstant(date: now)) }),
@@ -5037,6 +5041,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         manager.reconcileExpiredRequests()
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertEqual(manager.historyRequests, [request])
+        XCTAssertTrue(try subscriptionPayments(
+            subscription: XCTUnwrap(manager.subscriptions.first), history: manager.historyRequests
+        ).isEmpty)
         XCTAssertEqual(
             try PaymentRequestDisplay.statusKey(for: XCTUnwrap(manager.historyRequests.first), isActionable: false, now: clock.now()),
             "wallet__payment_request_status_expired"
@@ -5051,6 +5058,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertEqual(manager.historyRequests, [request])
+        XCTAssertTrue(try subscriptionPayments(
+            subscription: XCTUnwrap(manager.subscriptions.first), history: manager.historyRequests
+        ).isEmpty)
         manager.clear()
         XCTAssertTrue(manager.historyRequests.isEmpty)
 
@@ -5059,6 +5069,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await restored.refresh()
         XCTAssertTrue(restored.pendingRequests.isEmpty)
         XCTAssertEqual(restored.historyRequests, [request])
+        XCTAssertTrue(try subscriptionPayments(
+            subscription: XCTUnwrap(restored.subscriptions.first), history: restored.historyRequests
+        ).isEmpty)
         clock.advance(by: nextPeriod.timeIntervalSince(clock.now()))
         await restored.refresh()
         let next = try XCTUnwrap(restored.pendingRequests.first)
@@ -5067,6 +5080,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(next.billingPeriod?.startsAt, nextPeriod)
         XCTAssertFalse(next.isExpired(at: clock.now()))
         XCTAssertEqual(restored.historyRequests, [request])
+        XCTAssertTrue(try subscriptionPayments(
+            subscription: XCTUnwrap(restored.subscriptions.first), history: restored.historyRequests
+        ).isEmpty)
     }
 
     func testBelowMinimumOnchainRequestShowsMinimumAndRemainsRetryable() async throws {
