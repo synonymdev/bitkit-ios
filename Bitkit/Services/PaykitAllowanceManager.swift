@@ -301,8 +301,10 @@ final class PaykitAllowanceManager {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard respondedAny else { throw PaykitAllowanceError.unavailable }
-        if let identity, identity == initiatingIdentity {
-            let ids = entry.allowances.map(\.allowanceId)
+        // An offer is never presented, and presented ids are keyed by allowance id alone, so marking an offer would
+        // also hide another contact's ask that shares its id.
+        let ids = entry.allowances.filter { !$0.isOfferFromAllower }.map(\.allowanceId)
+        if let identity, identity == initiatingIdentity, !ids.isEmpty {
             await executor.updateLocalState(identity: identity) { $0.presentedProposalIds.formUnion(ids) }
         }
         await refresh()
