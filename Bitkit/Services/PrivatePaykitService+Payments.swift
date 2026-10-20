@@ -47,7 +47,6 @@ extension PrivatePaykitService {
         if prePaymentPublicationKeys.insert(normalizedKey).inserted {
             Task {
                 defer { prePaymentPublicationKeys.remove(normalizedKey) }
-                guard await canPublishPrivateEndpoints(wallet: wallet) else { return }
                 _ = await refreshSavedContactEndpointsReturningError(
                     for: [normalizedKey],
                     wallet: wallet,

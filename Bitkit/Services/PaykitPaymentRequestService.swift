@@ -1593,6 +1593,9 @@ final class PaykitPaymentRequestManager {
             guard generation == eligibilityGeneration,
                   currentStateGeneration == stateGeneration
             else { return }
+            if case PaykitPaymentRequestError.operationInProgress = error {
+                return
+            }
             eligibleTargets = eligibleTargets.filter { target in
                 savedPublicKeys.contains { PubkyPublicKeyFormat.matches($0, target.publicKey) }
             }
