@@ -9254,6 +9254,15 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         return receiveReports
     }
 
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async -> PaymentRequestRead {
+        let status = identityStatus()
+        guard status?.capability == .privateLinkCapable,
+              expectedIdentity == nil || PubkyPublicKeyFormat.matches(status?.publicKey, expectedIdentity)
+        else { return PaymentRequestRead(identityStatus: status, paymentRequests: []) }
+        let records = await paymentRequests().filter { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
+        return PaymentRequestRead(identityStatus: status, paymentRequests: records)
+    }
+
     func paymentRequests() async -> [PaymentRequestRecord] {
         await sharedPaymentRequests().filter(PaykitSdkService.isBitkitPaymentRequest)
     }

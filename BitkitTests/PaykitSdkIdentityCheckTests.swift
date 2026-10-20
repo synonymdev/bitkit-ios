@@ -86,6 +86,101 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
+    func testPaymentRequestReadRetainsItsRuntimeThroughContentionAndFiltersRecords() async throws {
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        let freshSdk = IdentitySwitchingSdk(noPointer: .init())
+        let reads = IdentityCheckCallLog()
+        let resets = IdentityCheckCallLog()
+        let firstReadGate = IdentityCheckGate()
+        await firstReadGate.close()
+        defer { Task { await firstReadGate.open() } }
+        let status = IdentityStatus(publicKey: identityA, capability: .privateLinkCapable)
+        let bitkit = try paymentRequestRecord(appId: "bitkit")
+        let server = try paymentRequestRecord(appId: "marketplace")
+        sdk.paymentRequestRead = { counterparty, expectedIdentity in
+            XCTAssertEqual(counterparty, contactKey)
+            XCTAssertEqual(expectedIdentity, bareIdentityA)
+            await reads.record()
+            if await reads.count == 1 {
+                await firstReadGate.wait()
+                throw sharedStateBusy
+            }
+            let completedResets = await resets.count
+            XCTAssertEqual(completedResets, 0)
+            return PaymentRequestRead(identityStatus: status, paymentRequests: [server, bitkit])
+        }
+        let freshStatus = IdentityStatus(publicKey: identityB, capability: .publicOnly)
+        freshSdk.paymentRequestRead = { _, expectedIdentity in
+            XCTAssertNil(expectedIdentity)
+            return PaymentRequestRead(identityStatus: freshStatus, paymentRequests: [])
+        }
+        var handlesCreated = 0
+        let service = PaykitSdkService(sdkFactory: {
+            handlesCreated += 1
+            return handlesCreated == 1 ? sdk : freshSdk
+        })
+        let read = Task { try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: bareIdentityA) }
+        try await reads.waitForEntries(count: 1)
+        let resetStarted = expectation(description: "Runtime reset requested")
+        let reset = Task {
+            resetStarted.fulfill()
+            await service.clearState()
+            await resets.record()
+        }
+        await fulfillment(of: [resetStarted], timeout: 2)
+        await firstReadGate.open()
+
+        let result = try await read.value
+        await reset.value
+        XCTAssertEqual(result.identityStatus, status)
+        XCTAssertEqual(result.paymentRequests.count, 1)
+        let retained = try XCTUnwrap(result.paymentRequests.first)
+        XCTAssertEqual(retained.counterparty, bitkit.counterparty)
+        XCTAssertEqual(retained.paymentRequestId, bitkit.paymentRequestId)
+        XCTAssertEqual(retained.proposalAppId, bitkit.proposalAppId)
+        let attempts = await reads.count
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(handlesCreated, 1)
+        let freshResult = try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil)
+        XCTAssertEqual(freshResult.identityStatus, freshStatus)
+        XCTAssertTrue(freshResult.paymentRequests.isEmpty)
+        XCTAssertEqual(handlesCreated, 2)
+        XCTAssertTrue(sdk.writes.isEmpty)
+    }
+
+    func testPaymentRequestReadRetriesOnlyOneAcquisitionFailure() async throws {
+        let cases: [[Error]] = [
+            [sharedStateBusy, sharedStateBusy],
+            [sharedStateBusy, PaykitError.Identity(code: "identity_error", context: "Session changed")],
+            [PaykitError.Identity(code: "identity_error", context: "Session changed")],
+            [PaykitError.Storage(code: "storage_error", context: "State unavailable")],
+            [PaykitError.Transport(code: "transport_error", context: "Uncertain write")],
+            [PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "Revision changed")],
+            [CancellationError()],
+        ]
+        for errors in cases {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            let reads = IdentityCheckCallLog()
+            sdk.paymentRequestRead = { _, _ in
+                await reads.record()
+                let attempt = await reads.count
+                throw errors[min(attempt - 1, errors.count - 1)]
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            do {
+                _ = try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil)
+                XCTFail("Expected the read to fail")
+            } catch {
+                let expected = errors[errors.count - 1]
+                XCTAssertEqual(error.localizedDescription, expected.localizedDescription)
+                XCTAssertEqual(error is CancellationError, expected is CancellationError)
+            }
+            let attempts = await reads.count
+            XCTAssertEqual(attempts, errors.count)
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
     func testIdentityAndPeerReadsRetainSdkOwnershipAcrossContentionRetry() async throws {
         for operation in contendedReads {
             let sdk = IdentitySwitchingSdk(noPointer: .init())
@@ -103,6 +198,110 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             let reads = await sdk.reads.count
             XCTAssertEqual(reads, 2)
         }
+    }
+
+    func testCancelledPaymentRequestReadDrainsNativeWorkWithoutRetrying() async throws {
+        for holdNativeRead in [false, true] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            let reads = IdentityCheckCallLog()
+            let gate = IdentityCheckGate()
+            if holdNativeRead {
+                await gate.close()
+            }
+            sdk.paymentRequestRead = { _, _ in
+                await reads.record()
+                await gate.wait()
+                throw sharedStateBusy
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let read = Task { try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil) }
+            try await reads.waitForEntries(count: 1)
+            read.cancel()
+            let contacts = Task { try await service.contactRecords() }
+            if holdNativeRead {
+                try await Task.sleep(for: .milliseconds(50))
+                let overlappingReads = await sdk.contactRecordsStarted.count
+                XCTAssertEqual(overlappingReads, 0)
+            }
+            await gate.open()
+            let result = await read.result
+            _ = try await contacts.value
+            XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+            let attempts = await reads.count
+            XCTAssertEqual(attempts, 1)
+            let contactReads = await sdk.contactRecordsStarted.count
+            XCTAssertEqual(contactReads, 1)
+        }
+    }
+
+    func testPaymentRequestReadRespectsWalletWipeAdmission() async throws {
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        let reads = IdentityCheckCallLog()
+        sdk.paymentRequestRead = { _, _ in
+            await reads.record()
+            return PaymentRequestRead(identityStatus: nil, paymentRequests: [])
+        }
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let gate = IdentityCheckGate()
+        await gate.close()
+        let started = IdentityCheckCallLog()
+        let wipe = Task {
+            try await service.withWalletWipe {
+                await started.record()
+                await gate.wait()
+            }
+        }
+        try await started.waitForEntries(count: 1)
+        let rejected = expectation(description: "Read rejected during wallet wipe")
+        let read = Task {
+            defer { rejected.fulfill() }
+            return try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil)
+        }
+        await fulfillment(of: [rejected], timeout: 2)
+        let rejectedReads = await reads.count
+        await gate.open()
+        try await wipe.value
+        let rejectedResult = await read.result
+        XCTAssertThrowsError(try rejectedResult.get()) { error in
+            guard case let PaykitError.Storage(code, _) = error else {
+                return XCTFail("Expected the wallet wipe error, got \(error)")
+            }
+            XCTAssertEqual(code, "wallet_wipe_in_progress")
+        }
+        XCTAssertEqual(rejectedReads, 0)
+        let result = try await service.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil)
+        XCTAssertNil(result.identityStatus)
+        XCTAssertTrue(result.paymentRequests.isEmpty)
+        let completedReads = await reads.count
+        XCTAssertEqual(completedReads, 1)
+    }
+
+    func testSchedulingSnapshotKeepsSdkAdmissionAndRetriesAcquisitionOnce() async throws {
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        let reads = IdentityCheckCallLog()
+        let expected = Paykit.PrivateMessageSchedulingSnapshot(linkedPeers: [], pendingOutboundCounterparties: [contactKey])
+        sdk.schedulingRead = {
+            await reads.record()
+            if await reads.count == 1 {
+                throw sharedStateBusy
+            }
+            return expected
+        }
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        await sdk.contactRecordsGate.close()
+        let holder = Task { try await service.contactRecords() }
+        try await sdk.contactRecordsStarted.waitForEntries(count: 1)
+        let snapshot = Task { try await service.privateMessageSchedulingSnapshot(priority: .background) }
+        try await Task.sleep(for: .milliseconds(50))
+        let overlappingReads = await reads.count
+        await sdk.contactRecordsGate.open()
+        _ = try await holder.value
+        let result = try await snapshot.value
+        XCTAssertEqual(overlappingReads, 0)
+        XCTAssertTrue(result.linkedPeers.isEmpty)
+        XCTAssertEqual(result.pendingOutboundCounterparties, expected.pendingOutboundCounterparties)
+        let attempts = await reads.count
+        XCTAssertEqual(attempts, 2)
     }
 
     func testObservationIsBoundToTheRequestedIdentity() async throws {
@@ -435,6 +634,29 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertEqual(sdk.writes, ["save:Alice"])
         XCTAssertEqual(sdk.identitiesAtWrites, [identityA], "Nothing is written once the identity signed out")
     }
+
+    private func paymentRequestRecord(appId: String) throws -> PaymentRequestRecord {
+        try PaymentRequestRecord(
+            counterparty: contactKey, paymentRequestId: "71300000-0000-4000-8000-000000000001",
+            localRole: .payee, state: .proposed, proposalStreamItemId: 1,
+            proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
+            proposalEventId: "71300000-0000-4000-8000-000000000002",
+            proposalAppId: appId, payerAppId: nil, executionClaimAppId: nil,
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
+                paymentReference: PaymentReference(text: "invoice-123"),
+                proposalExpiresAt: nil, recurrence: nil, acceptedPaymentEndpointIdentifiers: ["btc-lightning-bolt11"],
+                paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
+                metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil, acceptedOutboundStatus: nil,
+            rejectedEventId: nil, rejectedOutboundStatus: nil,
+            canceledEventId: nil, canceledOutboundStatus: nil,
+            conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,
+            lastOutboundMessageId: nil, lastOutboundStatus: nil,
+            lastEventAt: "2026-10-20T12:00:00Z", invalidReason: nil
+        )
+    }
 }
 
 private let identityA = "pubky8qd4tbz3hyafi7h7hoqwd5hm7tsaz1n7txcyojmd4kxf9xp7mgro"
@@ -505,6 +727,14 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var pendingReadErrors: [PaykitError] = []
     private var linkedPeerState: LinkedPeerState = .linked
     let reads = IdentityCheckCallLog()
+    var paymentRequestRead: (String, String?) async throws -> PaymentRequestRead = { _, _ in
+        PaymentRequestRead(identityStatus: nil, paymentRequests: [])
+    }
+
+    var schedulingRead: () async throws -> Paykit.PrivateMessageSchedulingSnapshot = {
+        Paykit.PrivateMessageSchedulingSnapshot(linkedPeers: [], pendingOutboundCounterparties: [])
+    }
+
     let contactRecordsGate = IdentityCheckGate()
     let contactRecordsStarted = IdentityCheckCallLog()
     let observationGate = IdentityCheckGate()
@@ -550,6 +780,14 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
             recordedWrites.append(write)
             recordedIdentitiesAtWrites.append(signedInIdentity)
         }
+    }
+
+    override func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> PaymentRequestRead {
+        try await paymentRequestRead(counterparty, expectedIdentity)
+    }
+
+    override func privateMessageSchedulingSnapshot() async throws -> Paykit.PrivateMessageSchedulingSnapshot {
+        try await schedulingRead()
     }
 
     override func identityStatus() async throws -> IdentityStatus? {

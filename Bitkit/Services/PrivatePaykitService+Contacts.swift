@@ -26,6 +26,7 @@ extension PrivatePaykitService {
         let ensureLink: (String) async throws -> Void
         let pendingOutbound: () async throws -> [String]
         let linkedPeers: () async throws -> [LinkedPeerRecord]
+        let schedulingSnapshot: () async throws -> Paykit.PrivateMessageSchedulingSnapshot
         let processPending: (String) async throws -> Void
         let receive: (String) async throws -> Void
 
@@ -34,6 +35,7 @@ extension PrivatePaykitService {
                 ensureLink: { _ = try await PaykitSdkService.shared.ensureLinkWithPeer($0, priority: readPriority) },
                 pendingOutbound: { try await PaykitSdkService.shared.pendingOutboundPrivateCounterparties(priority: readPriority) },
                 linkedPeers: { try await PaykitSdkService.shared.linkedPeers(priority: readPriority) },
+                schedulingSnapshot: { try await PaykitSdkService.shared.privateMessageSchedulingSnapshot(priority: readPriority) },
                 processPending: { _ = try await PaykitSdkService.shared.processOutboundPrivateMessages(counterparty: $0, priority: readPriority) },
                 receive: { _ = try await PaykitSdkService.shared.receivePrivateMessages(counterparty: $0, priority: readPriority) }
             )
@@ -1178,6 +1180,10 @@ extension PrivatePaykitService {
                 defer { inspectedSchedulingGeneration = nil }
                 return try await self.retryDrainOperations(for: publicKey).linkedPeers()
             },
+            schedulingSnapshot: {
+                defer { inspectedSchedulingGeneration = nil }
+                return try await self.retryDrainOperations(for: publicKey).schedulingSnapshot()
+            },
             processPending: {
                 defer { inspectedSchedulingGeneration = nil }
                 try await self.retryDrainOperations(for: publicKey).processPending($0)
@@ -1277,34 +1283,25 @@ extension PrivatePaykitService {
         let generation = preparationGeneration
         let schedulingGeneration = messageSchedulingGeneration
 
-        let peers: [LinkedPeerRecord]
         do {
             if priority == .background, await !waitForBackgroundWork(generation: generation) {
                 return nil
             }
             guard await isCurrent() else { return nil }
-            peers = try await operations.linkedPeers()
-        } catch {
-            Logger.warn("Failed to inspect private Paykit link state: \(error)", context: "PrivatePaykit")
-            return nil
-        }
-
-        let pendingOutbound: Set<String>
-        do {
+            let snapshot = try await operations.schedulingSnapshot()
             if priority == .background, await !waitForBackgroundWork(generation: generation) {
                 return nil
             }
-            guard await isCurrent() else { return nil }
-            let pending = try await operations.pendingOutbound()
-            pendingOutbound = Set(pending.compactMap(PubkyPublicKeyFormat.normalized))
+            guard await isCurrent(), generation == preparationGeneration, schedulingGeneration == messageSchedulingGeneration else { return nil }
+            return PrivateMessageSchedulingSnapshot(
+                peers: snapshot.linkedPeers,
+                pendingOutbound: Set(snapshot.pendingOutboundCounterparties.compactMap(PubkyPublicKeyFormat.normalized)),
+                preparationGeneration: generation, schedulingGeneration: schedulingGeneration
+            )
         } catch {
-            Logger.warn("Failed to inspect pending private Paykit messages: \(error)", context: "PrivatePaykit")
+            Logger.warn("Failed to inspect private Paykit scheduling state: \(error)", context: "PrivatePaykit")
             return nil
         }
-
-        return PrivateMessageSchedulingSnapshot(
-            peers: peers, pendingOutbound: pendingOutbound, preparationGeneration: generation, schedulingGeneration: schedulingGeneration
-        )
     }
 
     static func pendingPrivateMessageDrainKeys(

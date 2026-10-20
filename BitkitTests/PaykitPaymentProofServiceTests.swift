@@ -3664,6 +3664,15 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
         return IdentityStatus(publicKey: identity, capability: .privateLinkCapable)
     }
 
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async -> PaymentRequestRead {
+        let status = await identityStatus()
+        guard status?.capability == .privateLinkCapable,
+              expectedIdentity == nil || PubkyPublicKeyFormat.matches(status?.publicKey, expectedIdentity)
+        else { return PaymentRequestRead(identityStatus: status, paymentRequests: []) }
+        let records = await paymentRequests().filter { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
+        return PaymentRequestRead(identityStatus: status, paymentRequests: records)
+    }
+
     func suspendIdentityStatus(onStarted: (@Sendable () -> Void)? = nil) {
         shouldSuspendIdentityStatus = true
         onIdentityStatusStarted = onStarted

@@ -162,6 +162,7 @@ struct PaykitPaymentProofStore: PaykitPaymentProofStoring {
 protocol PaykitPaymentProofSdkHandling: Sendable {
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> Paykit.PaymentRequestRead
     func processOutboundPrivateMessages(
         counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
     ) async throws -> Paykit.OutboundPrivateSendReport
@@ -414,8 +415,12 @@ actor PaykitPaymentProofService {
         kind: PaykitPaymentProofKind
     ) async throws -> PendingPaykitPaymentProof {
         guard request.acceptedPaymentEndpointIdentifiers.contains(paymentEndpointIdentifier),
-              Self.endpoint(paymentEndpointIdentifier, supports: kind),
-              let identityStatus = try await sdk.identityStatus(),
+              Self.endpoint(paymentEndpointIdentifier, supports: kind)
+        else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        let read = try await sdk.readPaymentRequests(counterparty: request.counterparty, expectedIdentity: nil)
+        guard let identityStatus = read.identityStatus,
               identityStatus.capability == .privateLinkCapable,
               let publicKey = identityStatus.publicKey,
               let identity = PubkyPublicKeyFormat.normalized(publicKey)
@@ -423,8 +428,7 @@ actor PaykitPaymentProofService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
-        let records = try await sdk.paymentRequests()
-        if records.contains(where: { record in
+        if read.paymentRequests.contains(where: { record in
             guard record.localRole == .payer,
                   record.paymentRequestId == request.paymentRequestId,
                   PubkyPublicKeyFormat.matches(record.counterparty, request.counterparty)
@@ -1650,16 +1654,16 @@ actor PaykitPaymentProofService {
             if onlyIfRetained {
                 guard try await loadProofs().contains(pendingProof) else { return false }
             }
-            guard let identityStatus = try await sdk.identityStatus(),
+            let read = try await sdk.readPaymentRequests(
+                counterparty: pendingProof.requestId.counterparty,
+                expectedIdentity: pendingProof.identity
+            )
+            guard let identityStatus = read.identityStatus,
                   identityStatus.capability == .privateLinkCapable,
-                  PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity)
-            else { return false }
-
-            let records = try await sdk.paymentRequests()
-            guard let request = records.first(where: {
-                $0.paymentRequestId == pendingProof.requestId.paymentRequestId &&
-                    PubkyPublicKeyFormat.matches($0.counterparty, pendingProof.requestId.counterparty)
-            }) else { return false }
+                  PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity), let request = read.paymentRequests.first(where: {
+                      $0.paymentRequestId == pendingProof.requestId.paymentRequestId &&
+                          PubkyPublicKeyFormat.matches($0.counterparty, pendingProof.requestId.counterparty)
+                  }) else { return false }
 
             let proofText = try Self.proofText(kind: pendingProof.kind, data: proofData)
             let isAlreadyQueued = request.paymentProofs.contains(where: {

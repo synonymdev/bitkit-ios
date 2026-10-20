@@ -1112,6 +1112,18 @@ actor PaykitSdkService {
         try await sharedPaymentRequests().filter(Self.isBitkitPaymentRequest)
     }
 
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> Paykit.PaymentRequestRead {
+        try await withSdk { sdk in
+            let read = try await readRetryingSharedStateBusy {
+                try await sdk.readPaymentRequests(counterparty: counterparty, expectedIdentity: expectedIdentity)
+            }
+            return Paykit.PaymentRequestRead(
+                identityStatus: read.identityStatus,
+                paymentRequests: read.paymentRequests.filter(Self.isBitkitPaymentRequest)
+            )
+        }
+    }
+
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
         try await sharedPaymentRequests(priority: .ordered)
     }
@@ -1236,6 +1248,14 @@ actor PaykitSdkService {
     func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [LinkedPeerRecord] {
         try await withSdk(priority: priority) { sdk in
             try await readRetryingSharedStateBusy { try await sdk.linkedPeers() }
+        }
+    }
+
+    func privateMessageSchedulingSnapshot(
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws -> Paykit.PrivateMessageSchedulingSnapshot {
+        try await withSdk(priority: priority) { sdk in
+            try await readRetryingSharedStateBusy { try await sdk.privateMessageSchedulingSnapshot() }
         }
     }
 
