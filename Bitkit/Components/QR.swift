@@ -28,7 +28,8 @@ struct QR: View {
                     .aspectRatio(1, contentMode: .fit)
                     .frame(maxWidth: .infinity)
             }
-
+        }
+        .overlay {
             if let imageAsset {
                 GeometryReader { geometry in
                     let size = min(68, min(geometry.size.width, geometry.size.height) * 0.2)

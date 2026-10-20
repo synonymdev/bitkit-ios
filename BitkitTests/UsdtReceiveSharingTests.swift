@@ -17,6 +17,18 @@ final class UsdtReceiveSharingTests: XCTestCase {
     }
 
     @MainActor
+    func testQrLogoPreservesSquareLayoutInTallContainer() {
+        for logo: String? in [nil, "btc", "tether-circle"] {
+            let host = UIHostingController(rootView: QR(content: "bitcoin:bcrt1qexample", imageAsset: logo))
+            for width: CGFloat in [140, 343] {
+                let size = host.sizeThatFits(in: CGSize(width: width, height: 600))
+                XCTAssertEqual(size.width, width, accuracy: 0.5)
+                XCTAssertEqual(size.height, width, accuracy: 0.5, "Logo must not add vertical space below the QR")
+            }
+        }
+    }
+
+    @MainActor
     func testCompactQrWithLogoRemainsScannable() async throws {
         let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil,
                                                 options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
