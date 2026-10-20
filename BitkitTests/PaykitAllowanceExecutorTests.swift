@@ -628,6 +628,31 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     // MARK: Manager
 
     @MainActor
+    func testAcceptingAProposalNeverAnswersAnotherContactsProposalWithTheSameId() async throws {
+        let harness = AllowanceHarness()
+        let sharedId = Fixtures.otherAllowanceId
+        let offer = try Fixtures.record(
+            allowanceId: sharedId, localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(),
+            proposedByMe: false, lastEventAt: "2026-09-02T10:00:00Z"
+        )
+        let ask = try Fixtures.record(
+            allowanceId: sharedId, counterparty: Fixtures.otherCounterpartyKey, localRole: .allower, state: .proposed,
+            terms: Fixtures.standardTerms(), proposedByMe: false, lastEventAt: "2026-09-01T10:00:00Z"
+        )
+        await harness.sdk.setRecords([offer, ask])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let presented = try XCTUnwrap(manager.proposalForPresentation())
+        XCTAssertEqual(presented.role, .allowee)
+        XCTAssertEqual(presented.counterparty, Fixtures.counterpartyKey)
+        try await manager.accept(presented)
+
+        let accepted = await harness.sdk.acceptedCounterparties
+        XCTAssertEqual(accepted, [Fixtures.counterpartyKey], "Accepting C's offer must not accept M's ask as payer")
+    }
+
+    @MainActor
     func testManagerPresentsEachGrantAsOneEntryWithItsLimitsAndLeavesInvalidHistoryOut() async throws {
         let harness = AllowanceHarness()
         let terms = try Fixtures.standardTerms()
@@ -649,7 +674,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         await manager.activate(identity: Fixtures.identityKey)
 
         let entries = manager.entries
-        XCTAssertEqual(entries.map(\.id), ["group-1", Fixtures.otherAllowanceId])
+        XCTAssertEqual(entries.map(\.id), ["group-1", "\(Fixtures.otherCounterpartyKey)/\(Fixtures.otherAllowanceId)"])
         let grant = try XCTUnwrap(entries.first)
         XCTAssertEqual(grant.allowances.map(\.allowanceId), [Fixtures.walletAllowanceId])
         XCTAssertEqual(grant.limits, Fixtures.limits)
@@ -1226,6 +1251,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private(set) var reconciliations: [Paykit.AllowanceAccountingReconciliation] = []
     private(set) var manualOnlyOccurrences: [Paykit.PaymentOccurrence] = []
     private(set) var proposals: [Proposal] = []
+    private(set) var acceptedCounterparties: [String] = []
 
     init(log: AllowanceCallLog) {
         self.log = log
@@ -1292,7 +1318,11 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
-        throw AllowanceMockError.unsupported
+        acceptedCounterparties.append(counterparty)
+        guard let record = records.first(where: { $0.counterparty == counterparty && $0.allowanceId == allowanceId }) else {
+            throw AllowanceMockError.unsupported
+        }
+        return record
     }
 
     func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
