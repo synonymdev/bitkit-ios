@@ -411,8 +411,13 @@ struct SendPendingScreen: View {
                     }
                 }
             )
-            _ = result
-            try await refreshOriginalOutcome(context: context)
+            let proofPriority: PaykitSdkOperationLock.Priority =
+                if case .accepted = result, original.walletId == OnchainSendAttemptService.walletId(index: 0) {
+                    .interactive
+                } else {
+                    .ordered
+                }
+            try await refreshOriginalOutcome(context: context, proofPriority: proofPriority)
         } catch is CancellationError {
             // A positive original observation may have won while authentication awaited.
             try? await refreshOriginalOutcome(context: context)
@@ -487,13 +492,19 @@ struct SendPendingScreen: View {
     }
 
     @MainActor
-    private func refreshOriginalOutcome(context: OnchainSendPendingContext) async throws {
+    private func refreshOriginalOutcome(
+        context: OnchainSendPendingContext, proofPriority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws {
         onchainAttempt = try await attemptService.pendingAttempt(context: context)
         guard let original = onchainAttempt, original.status == .accepted, original.txid != nil else { return }
         if let requestId = original.requestId {
-            await proofService.reconcile()
+            if proofPriority == .ordered {
+                await proofService.reconcile()
+            }
             if let payer = original.recoveryContext?.paymentIdentity,
-               let resolution = await proofService.resolvedOnchainPayment(requestId: requestId, identity: payer, context: context)
+               let resolution = await proofService.resolvedOnchainPayment(
+                   requestId: requestId, identity: payer, context: context, priority: proofPriority
+               )
             {
                 applyOnchainPaymentResolution(resolution)
             }

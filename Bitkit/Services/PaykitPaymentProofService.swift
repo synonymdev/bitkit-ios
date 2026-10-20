@@ -680,7 +680,8 @@ actor PaykitPaymentProofService {
     }
 
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
-                                context: OnchainSendPendingContext?) async -> PaykitOnchainPaymentResolution?
+                                context: OnchainSendPendingContext?,
+                                priority: PaykitSdkOperationLock.Priority = .ordered) async -> PaykitOnchainPaymentResolution?
     {
         do {
             try await requireRecoveryPayer(identity)
@@ -691,10 +692,17 @@ actor PaykitPaymentProofService {
                 nil
             }
             let txid: String?
+            var completionPriority: PaykitSdkOperationLock.Priority = .ordered
             if let attempt, attempt.requestId == requestId, attempt.status == .accepted,
                PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity ?? identity, identity)
             {
                 txid = attempt.txid
+                if attempt.walletId == OnchainSendAttemptService.walletId(index: 0),
+                   let proof, !proof.hasUnsupportedOnchainWallet,
+                   PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity, identity)
+                {
+                    completionPriority = priority
+                }
             } else if let proof, !proof.hasUnsupportedOnchainWallet, proof.onchainAcceptanceVerified == true,
                       proof.paymentIdentifier == proof.proofData
             {
@@ -702,7 +710,9 @@ actor PaykitPaymentProofService {
             } else {
                 return nil
             }
-            guard let txid, await completeOnchainPayment(requestId: requestId, identity: identity, txid: txid) else { return nil }
+            guard let txid, await completeOnchainPayment(
+                requestId: requestId, identity: identity, txid: txid, priority: completionPriority
+            ) else { return nil }
             return PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid)
         } catch { return nil }
     }
