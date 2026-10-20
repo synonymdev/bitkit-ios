@@ -76,6 +76,12 @@ jobs:
             ${{ env.SOURCE_PACKAGES }}/workspace-state.json
           key: ${{ steps.spm-cache.outputs.cache-primary-key }}
 
+      # The full clones are only needed to resolve; dropping them frees over 13 GB of the runner's disk.
+      - name: Free package clones
+        run: |
+          rm -rf "$SOURCE_PACKAGES/repositories"
+          df -h "$GITHUB_WORKSPACE"
+
       - name: Build for testing
         run: |
           echo "⏱️  Starting build at $(date)"
