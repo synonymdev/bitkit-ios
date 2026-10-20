@@ -1146,9 +1146,10 @@ actor PaykitSdkService {
     func submitPaymentProof(
         counterparty: String,
         paymentRequestId: String,
-        proof: Paykit.PaymentProofSubmission
+        proof: Paykit.PaymentProofSubmission,
+        priority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws -> Paykit.PaymentRequestRecord {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.submitPaymentProof(
                 counterparty: counterparty,
                 paymentRequestId: paymentRequestId,

@@ -309,6 +309,7 @@ final class TransferServiceActivityTests: XCTestCase {
             window.rootViewController = nil
         }
         try await Task.sleep(for: .milliseconds(500))
+        XCTAssertFalse(PaykitPaymentActivity.shared.shouldDeferRefresh, "Idle Pending must leave discovery and recovery available")
         // Store the positive original result after initialization, without delivering a
         // native callback or a completion event to the already-visible Pending screen.
         _ = try await attempts.observeConfirmedTransaction(txid: txid)
@@ -327,6 +328,7 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(records.count, 1)
         XCTAssertEqual(records.first?.lspOrderId, "original-lost-event-order")
         XCTAssertTrue(path.isEmpty, "Funding recovery must not mark a new unsent payment successful")
+        XCTAssertFalse(PaykitPaymentActivity.shared.shouldDeferRefresh)
     }
 
     @MainActor

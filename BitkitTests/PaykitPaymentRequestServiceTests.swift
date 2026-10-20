@@ -9318,7 +9318,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     func submitPaymentProof(
         counterparty _: String,
         paymentRequestId _: String,
-        proof _: PaymentProofSubmission
+        proof _: PaymentProofSubmission,
+        priority _: PaykitSdkOperationLock.Priority
     ) throws -> PaymentRequestRecord {
         XCTFail("Failure cleanup must not submit a payment proof")
         throw PaymentRequestSdkMockError.process

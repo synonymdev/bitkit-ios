@@ -1781,7 +1781,8 @@ extension AppViewModel {
             Task {
                 await PaykitPaymentProofService.shared.completeLightningPayment(
                     paymentHash: paymentHash,
-                    preimage: paymentPreimage
+                    preimage: paymentPreimage,
+                    priority: .interactive
                 )
             }
             let outcome = QuickPayPaymentCoordinator.shared.complete(

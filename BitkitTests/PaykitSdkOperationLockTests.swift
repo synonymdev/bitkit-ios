@@ -155,7 +155,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
     }
 
     func testPaymentMutationsOvertakeBackgroundWorkWithoutCrossingOrderedWork() async throws {
-        for accepting in [false, true] {
+        for operation in ["claim", "claimAndAccept", "proof", "orderedProof"] {
             for orderedBarrier in [false, true] {
                 let recorder = Recorder()
                 let (gate, release) = AsyncStream<Void>.makeStream()
@@ -172,8 +172,8 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                     }
                 }
                 sdk.intake = { await recorder.record("intake") }
-                sdk.paymentMutation = { operation in
-                    XCTAssertEqual(operation, accepting ? "claimAndAccept" : "claim")
+                sdk.paymentMutation = { nativeOperation in
+                    XCTAssertEqual(nativeOperation, operation == "orderedProof" ? "proof" : operation)
                     await recorder.record("payment")
                 }
                 let service = PaykitSdkService(sdkFactory: { sdk })
@@ -187,7 +187,15 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 }
                 let payment = Task {
                     do {
-                        if accepting {
+                        if operation == "orderedProof" {
+                            _ = try await service.submitPaymentProof(
+                                counterparty: "peer", paymentRequestId: "request", proof: self.proofSubmission()
+                            )
+                        } else if operation == "proof" {
+                            _ = try await service.submitPaymentProof(
+                                counterparty: "peer", paymentRequestId: "request", proof: self.proofSubmission(), priority: .interactive
+                            )
+                        } else if operation == "claimAndAccept" {
                             _ = try await service.acceptPaymentRequest(
                                 counterparty: "peer",
                                 paymentRequestId: "request",
@@ -206,9 +214,73 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 try await barrier?.value
                 try await payment.value
                 let events = await recorder.events
-                XCTAssertEqual(events, orderedBarrier ? ["active", "intake", "ordered", "payment"] : ["active", "payment", "intake"])
+                let expected = orderedBarrier ? ["active", "intake", "ordered", "payment"] :
+                    operation == "orderedProof" ? ["active", "intake", "payment"] : ["active", "payment", "intake"]
+                XCTAssertEqual(events, expected)
             }
         }
+    }
+
+    func testProofEnqueueCancellationPreservesNativeOwnershipUntilCompletion() async throws {
+        for cancelBeforeAdmission in [true, false] {
+            let gate = AsyncGate()
+            defer { gate.open() }
+            let recorder = Recorder()
+            let started = expectation(description: "Active SDK operation started")
+            let sdk = PublicReadSdk(noPointer: .init())
+            sdk.lockedRead = {
+                if cancelBeforeAdmission, await recorder.events.isEmpty {
+                    await recorder.record("active")
+                    started.fulfill()
+                    await gate.wait()
+                } else {
+                    await recorder.record("next")
+                }
+            }
+            sdk.paymentMutation = { _ in
+                await recorder.record("proof")
+                started.fulfill()
+                await gate.wait()
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let active = cancelBeforeAdmission ? Task { _ = try await service.contactRecords() } : nil
+            if cancelBeforeAdmission {
+                await fulfillment(of: [started], timeout: 2)
+            }
+            let proof = Task {
+                try await service.submitPaymentProof(
+                    counterparty: "peer", paymentRequestId: "request", proof: self.proofSubmission(), priority: .interactive
+                )
+            }
+            if !cancelBeforeAdmission {
+                await fulfillment(of: [started], timeout: 2)
+            }
+            proof.cancel()
+            let next = Task { _ = try await service.contactRecords() }
+            try await Task.sleep(for: .milliseconds(50))
+            let heldEvents = await recorder.events
+            XCTAssertEqual(heldEvents, [cancelBeforeAdmission ? "active" : "proof"])
+            gate.open()
+            try await active?.value
+            do {
+                _ = try await proof.value
+                XCTFail("Canceled proof operation must not succeed")
+            } catch is CancellationError {
+                XCTAssertTrue(cancelBeforeAdmission)
+            } catch PaymentMutationReached.reached {
+                XCTAssertFalse(cancelBeforeAdmission)
+            }
+            try await next.value
+            let events = await recorder.events
+            XCTAssertEqual(events, [cancelBeforeAdmission ? "active" : "proof", "next"])
+        }
+    }
+
+    private func proofSubmission() throws -> PaymentProofSubmission {
+        try PaymentProofSubmission(
+            billingPeriod: nil, paymentAppId: "bitkit", paymentEndpointIdentifier: "endpoint", allowanceId: nil,
+            conversionQuoteId: nil, proof: PrivateJsonObject(text: "{}")
+        )
     }
 
     @MainActor
@@ -815,6 +887,13 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     override func processOutboundPrivateMessages(counterparty _: String) async throws -> OutboundPrivateSendReport {
         await outboundDelivery()
         return OutboundPrivateSendReport(attempted: [], sent: [], failed: [], reservationCleanupFailures: [], recoveryMarkerFailures: [])
+    }
+
+    override func submitPaymentProof(
+        counterparty _: String, paymentRequestId _: String, proof _: PaymentProofSubmission
+    ) async throws -> PaymentRequestRecord {
+        await paymentMutation("proof")
+        throw PaymentMutationReached.reached
     }
 
     override func claimPaymentRequestForExecution(counterparty _: String, paymentRequestId _: String) async throws -> PaymentRequestRecord {

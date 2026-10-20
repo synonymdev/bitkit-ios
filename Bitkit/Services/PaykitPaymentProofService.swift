@@ -168,7 +168,8 @@ protocol PaykitPaymentProofSdkHandling: Sendable {
     func submitPaymentProof(
         counterparty: String,
         paymentRequestId: String,
-        proof: Paykit.PaymentProofSubmission
+        proof: Paykit.PaymentProofSubmission,
+        priority: PaykitSdkOperationLock.Priority
     ) async throws -> Paykit.PaymentRequestRecord
 }
 
@@ -1064,7 +1065,9 @@ actor PaykitPaymentProofService {
         return PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid.lowercased(), walletId: walletId)
     }
 
-    func completeLightningPayment(paymentHash: String, preimage: String?) async {
+    func completeLightningPayment(
+        paymentHash: String, preimage: String?, priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async {
         guard let preimage,
               Self.preimage(preimage, matchesPaymentHash: paymentHash)
         else {
@@ -1094,7 +1097,7 @@ actor PaykitPaymentProofService {
             }
             for proof in completed {
                 if persisted {
-                    submitInBackground(proof)
+                    submitInBackground(proof, priority: priority)
                     continue
                 }
                 guard await !submit(proof) else { continue }
@@ -1122,14 +1125,16 @@ actor PaykitPaymentProofService {
         return await completeOnchainPayment(
             requestId: request.id,
             identity: identity,
-            txid: txid
+            txid: txid,
+            priority: .interactive
         )
     }
 
     private func completeOnchainPayment(
         requestId: PaykitPaymentRequest.ID,
         identity: String,
-        txid: String
+        txid: String,
+        priority: PaykitSdkOperationLock.Priority = .ordered
     ) async -> Bool {
         guard Self.isHex(txid, byteCount: 32) else { return false }
         do {
@@ -1183,7 +1188,7 @@ actor PaykitPaymentProofService {
             }
             guard result.0 else { return false }
             if let completed = result.1 {
-                submitInBackground(completed)
+                submitInBackground(completed, priority: priority)
             }
             guard await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid) else { return false }
             if let completed = result.1 {
@@ -1615,11 +1620,15 @@ actor PaykitPaymentProofService {
     }
 
     @discardableResult
-    private func submit(_ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool = false) async -> Bool {
-        await submissionLock.withLock { await submitReady(pendingProof, onlyIfRetained: onlyIfRetained) }
+    private func submit(
+        _ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool = false, priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async -> Bool {
+        await submissionLock.withLock { await submitReady(pendingProof, onlyIfRetained: onlyIfRetained, priority: priority) }
     }
 
-    private func submitReady(_ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool) async -> Bool {
+    private func submitReady(
+        _ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool, priority: PaykitSdkOperationLock.Priority
+    ) async -> Bool {
         guard !pendingProof.hasUnsupportedOnchainWallet ||
             pendingProof.onchainWalletId.map({ hardwareTransactionLookup.hasWallet(walletId: $0) }) == true,
             let proofData = pendingProof.proofData,
@@ -1659,7 +1668,8 @@ actor PaykitPaymentProofService {
                         allowanceId: nil,
                         conversionQuoteId: pendingProof.conversionQuoteId,
                         proof: Paykit.PrivateJsonObject(text: proofText)
-                    )
+                    ),
+                    priority: priority
                 )
                 logInfo("Queued a Paykit payment proof for private delivery")
             }
@@ -1694,8 +1704,8 @@ actor PaykitPaymentProofService {
         Self.proofStateChangedSubject.send()
     }
 
-    private func submitInBackground(_ proof: PendingPaykitPaymentProof) {
-        Task { [weak self] in await self?.submit(proof, onlyIfRetained: true) }
+    private func submitInBackground(_ proof: PendingPaykitPaymentProof, priority: PaykitSdkOperationLock.Priority = .ordered) {
+        Task { [weak self] in await self?.submit(proof, onlyIfRetained: true, priority: priority) }
     }
 
     private func removeRequestProofs(_ proof: PendingPaykitPaymentProof) async {

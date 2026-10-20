@@ -1,8 +1,30 @@
 @testable import Bitkit
+import SwiftUI
 import XCTest
 
 @MainActor
 final class PaykitPaymentActivityTests: XCTestCase {
+    func testPendingRecoveryReviewKeepsInactivePromptsAndReleasesInBackground() {
+        let prompts: [(fee: Bool, approval: String?, abandon: Bool, biometric: Bool)] = [
+            (false, nil, false, false),
+            (true, nil, false, false),
+            (false, "Prepared payment fee", false, false),
+            (false, nil, true, false),
+            (false, nil, false, true),
+        ]
+        for (index, prompt) in prompts.enumerated() {
+            for phase in [ScenePhase.active, .inactive, .background] {
+                XCTAssertEqual(SendPendingScreen.isReviewingRecovery(
+                    scenePhase: phase,
+                    showingRetryConfirmation: prompt.fee,
+                    retryApprovalMessage: prompt.approval,
+                    showingAbandonConfirmation: prompt.abandon,
+                    isAuthenticatingRecovery: prompt.biometric
+                ), index != 0 && phase != .background)
+            }
+        }
+    }
+
     func testReviewDefersContactRetryWithoutHoldingPaymentDelivery() async throws {
         let activity = PaykitPaymentActivity()
         let first = activity.beginReview()
