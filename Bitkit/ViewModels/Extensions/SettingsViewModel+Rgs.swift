@@ -9,30 +9,60 @@ extension SettingsViewModel {
         rgsServerUrl = currentUrl
     }
 
-    func resetRgsToDefault() async -> (success: Bool, url: String, errorMessage: String?) {
+    func resetRgsToDefault() async -> (success: Bool, url: String, errorMessage: String?)? {
+        guard isCurrentServerConnection(serverConnectionGeneration) else { return nil }
         let defaultUrl = rgsConfigService.getDefaultServerUrl()
         rgsServerUrl = defaultUrl
 
         return await connectToRgsServer()
     }
 
-    func connectToRgsServer() async -> (success: Bool, url: String, errorMessage: String?) {
+    func connectToRgsServer() async -> (success: Bool, url: String, errorMessage: String?)? {
+        await connectToRgsServer(checkEndpoint: isRgsEndpointReachable) { electrumUrl, rgsUrl in
+            try await self.lightningService.restart(electrumServerUrl: electrumUrl, rgsServerUrl: rgsUrl)
+        }
+    }
+
+    func connectToRgsServer(
+        checkEndpoint: @escaping (String) async -> Bool,
+        restartNode: @escaping (String, String?) async throws -> Void
+    ) async -> (success: Bool, url: String, errorMessage: String?)? {
+        await withServerConnection { generation in
+            await self.performRgsConnection(generation: generation, checkEndpoint: checkEndpoint, restartNode: restartNode)
+        }
+    }
+
+    private func performRgsConnection(
+        generation: UUID,
+        checkEndpoint: (String) async -> Bool,
+        restartNode: (String, String?) async throws -> Void
+    ) async -> (success: Bool, url: String, errorMessage: String?)? {
+        guard isCurrentServerConnection(generation) else { return nil }
         rgsIsLoading = true
+        defer {
+            if generation == serverConnectionGeneration {
+                rgsIsLoading = false
+            }
+        }
 
         let url = rgsServerUrl.trimmingCharacters(in: .whitespaces)
 
         // Re-validate the exact URL at connect time; the debounced rgsUrlIsValid can be stale
         // for ~300ms after the field changes, which would otherwise leave Connect enabled.
         let isValid = await Task.detached { [self] in isValidRgsUrl(url) }.value
+        guard isCurrentServerConnection(generation) else { return nil }
         guard isValid else {
-            rgsIsLoading = false
             return (success: false, url: url, errorMessage: nil)
         }
 
         // Verify the endpoint actually serves a snapshot before restarting the node; a
         // well-formed but wrong URL would otherwise report success. Empty URL disables RGS.
-        if !url.isEmpty, await !isRgsEndpointReachable(url) {
-            rgsIsLoading = false
+        var isReachable = true
+        if !url.isEmpty {
+            isReachable = await checkEndpoint(url)
+        }
+        guard isCurrentServerConnection(generation) else { return nil }
+        if !isReachable {
             return (success: false, url: url, errorMessage: nil)
         }
 
@@ -42,15 +72,14 @@ extension SettingsViewModel {
 
             // Restart the Lightning node with the new RGS server
             let currentElectrumUrl = electrumConfigService.getCurrentServer().fullUrl
-            try await lightningService.restart(electrumServerUrl: currentElectrumUrl, rgsServerUrl: url.isEmpty ? nil : url)
-
-            rgsIsLoading = false
+            try await restartNode(currentElectrumUrl, url.isEmpty ? nil : url)
+            guard isCurrentServerConnection(generation) else { return nil }
 
             Logger.info("Successfully connected to RGS server: \(url.isEmpty ? "disabled" : url)")
 
             return (success: true, url: url, errorMessage: nil)
         } catch {
-            rgsIsLoading = false
+            guard isCurrentServerConnection(generation) else { return nil }
 
             Logger.error(error, context: "Failed to connect to RGS server")
 
@@ -78,15 +107,18 @@ extension SettingsViewModel {
             }
             return (200 ... 299).contains(http.statusCode)
         } catch {
-            Logger.warn("RGS endpoint unreachable at \(testUrl.absoluteString): \(error.localizedDescription)")
+            if !Task.isCancelled {
+                Logger.warn("RGS endpoint unreachable at \(testUrl.absoluteString): \(error.localizedDescription)")
+            }
             return false
         }
     }
 
     func onRgsScan(_ data: String) async -> (success: Bool, url: String, errorMessage: String?)? {
+        let generation = serverConnectionGeneration
         // Validate scanned data off the main thread (regex could block on pathological input)
         let isValid = await Task.detached { [self] in isValidRgsUrl(data) }.value
-        guard isValid else {
+        guard isCurrentServerConnection(generation), isValid else {
             return nil
         }
 
