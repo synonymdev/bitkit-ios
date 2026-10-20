@@ -249,7 +249,9 @@ final class PaykitAllowanceManager {
     /// announce, once the identity it started with is gone or `canContinue` turns false.
     func acceptOffersFromAllowers(canContinue: @MainActor () -> Bool = { true }) async -> [PaykitAllowanceEntry] {
         guard let identity, !isAcceptingOffers else { return [] }
-        func isCurrent() -> Bool { self.identity == identity && canContinue() }
+        func isCurrent() -> Bool {
+            self.identity == identity && canContinue()
+        }
         let offers = entries.filter { entry in
             let answerable = entry.allowances.filter(\.isAnswerable)
             return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
@@ -278,8 +280,14 @@ final class PaykitAllowanceManager {
         _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord
     ) async throws {
         let initiatingIdentity = identity
-        if showsProgress { isWorking = true }
-        defer { if showsProgress { isWorking = false } }
+        if showsProgress {
+            isWorking = true
+        }
+        defer {
+            if showsProgress {
+                isWorking = false
+            }
+        }
         var respondedAny = false
         for allowance in entry.allowances where allowance.isAnswerable {
             _ = try await response(allowance)

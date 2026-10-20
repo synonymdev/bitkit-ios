@@ -877,7 +877,9 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         await manager.activate(identity: Fixtures.identityKey)
 
         let proposing = Task { @MainActor in try await manager.propose(to: Fixtures.contact(), limits: Fixtures.limits) }
-        while !harness.log.entries.contains("proposeAllowance") { await Task.yield() }
+        while !harness.log.entries.contains("proposeAllowance") {
+            await Task.yield()
+        }
         XCTAssertTrue(manager.isWorking)
 
         let accepted = await manager.acceptOffersFromAllowers()
@@ -913,7 +915,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     func testManagerNeverAcceptsAProposalItSentOrOneAlreadyAnswered() async throws {
         let harness = AllowanceHarness()
         let terms = try Fixtures.standardTerms()
-        try await harness.sdk.setRecords([
+        await harness.sdk.setRecords([
             Fixtures.record(allowanceId: "sent", localRole: .allower, state: .proposed, terms: terms, proposedByMe: true),
             Fixtures.record(allowanceId: "declined", localRole: .allowee, state: .rejected, terms: terms, proposedByMe: false),
             Fixtures.record(allowanceId: "ended", localRole: .allowee, state: .ended, terms: terms, proposedByMe: false),
@@ -1433,7 +1435,9 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         terms: Paykit.AllowanceTerms
     ) async throws -> Paykit.AllowanceRecord {
         log.append("proposeAllowance")
-        if let proposeGate { await proposeGate.wait() }
+        if let proposeGate {
+            await proposeGate.wait()
+        }
         proposals.append(Proposal(counterparty: counterparty, localRole: localRole, terms: terms))
         let record = PaykitAllowanceFixtures.record(
             allowanceId: "proposed-\(proposals.count)",
@@ -1447,7 +1451,9 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
-        if let acceptAllowanceError { throw acceptAllowanceError }
+        if let acceptAllowanceError {
+            throw acceptAllowanceError
+        }
         guard let index = records.firstIndex(where: { $0.allowanceId == allowanceId })
         else { throw AllowanceMockError.unsupported }
         records[index].state = .accepted
