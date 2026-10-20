@@ -21,8 +21,8 @@
     <action>Tap Receive (id "Receive") and verify the Savings tab (id "Tab-savings") is selected</action>
     <action>Swipe right across the Savings QR; verify the USDT tab (id "Tab-usdt") is selected and wait until the USDT QR is visible</action>
     <action>Swipe left across the USDT QR; verify the Savings tab is selected</action>
-    <action>Swipe left across the Savings QR in 600 ms (`axe swipe --start-x 330 --start-y 440 --end-x 80 --end-y 440 --duration 0.6`); verify the Spending tab (id "Tab-spending") is selected</action>
-    <action>Swipe left across the Spending content in 600 ms; verify the USDT tab is selected and wait until its QR is visible</action>
+    <action>Swipe left across the Savings QR in 1200 ms (`axe swipe --start-x 330 --start-y 440 --end-x 80 --end-y 440 --duration 1.2`); verify the Spending tab (id "Tab-spending") is selected</action>
+    <action>Swipe left across the Spending content in 1200 ms; verify the USDT tab is selected and wait until its QR is visible</action>
     <action>Swipe left from the top right of the USDT QR to above the sheet (`axe swipe --start-x 360 --start-y 300 --end-x 30 --end-y 60 --duration 0.3`); verify the Receive sheet is still open and the Savings tab is selected</action>
     <action>Swipe right from the top left of the Savings QR to above the sheet (`axe swipe --start-x 40 --start-y 300 --end-x 380 --end-y 60 --duration 0.3`); verify the Receive sheet is still open and the USDT tab is selected</action>
     <action>Swipe left across the USDT QR, then tap the Savings QR once; verify the "copied" tooltip appears</action>
