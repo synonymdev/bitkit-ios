@@ -4,6 +4,7 @@ import SwiftUI
 struct UsdtDepositHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject private var settings: SettingsViewModel
     @State private var deposits: [UsdtDeposit] = []
@@ -17,6 +18,7 @@ struct UsdtDepositHistoryView: View {
     @State private var pin = false
     @State private var busy = false
     @State private var error: String?
+    @State private var refundError: String?
     @State private var message: String?
 
     private var recoveryActive: Bool {
@@ -30,26 +32,39 @@ struct UsdtDepositHistoryView: View {
                 titleKerning: 0,
                 titleLineHeight: 26,
                 onBack: {
-                    if selected == nil { dismiss() }
-                    else { clearSelection() }
+                    if selected == nil {
+                        dismiss()
+                    } else {
+                        clearSelection()
+                    }
                 }
             )
             .disabled(busy || recoveryActive)
             .padding(.bottom, 16)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let selected { detail(selected) }
-                    else { depositList }
-                    if let error { BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtDepositError") }
-                    if let message { BodySText(message, textColor: .textSecondary) }
+                    if let selected {
+                        detail(selected)
+                    } else {
+                        depositList
+                    }
+                    if let error {
+                        BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtDepositError")
+                    }
+                    if let message {
+                        BodySText(message, textColor: .textSecondary)
+                    }
                 }
                 .padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.immediately)
             .refreshable {
                 guard !recoveryActive else { return }
-                if let selected { await loadDetail(selected.deposit.id) }
-                else { await loadPage(0) }
+                if let selected {
+                    await loadDetail(selected.deposit.id)
+                } else {
+                    await loadPage(0)
+                }
             }
             if selected != nil {
                 CustomButton(title: t("usdt__deposit_history"), isDisabled: busy || recoveryActive, titleKerning: -0.4, titleLineHeight: 20) {
@@ -89,11 +104,17 @@ struct UsdtDepositHistoryView: View {
         } message: {
             Text(selected?.refundConfirmation(address: refundAddress, hideBalance: settings.hideBalance) ?? "")
         }
-        .task { if !recoveryActive { await loadPage(0) } }
+        .task {
+            if !recoveryActive {
+                await loadPage(0)
+            }
+        }
         .task(id: "\(scenePhase == .active)-\(selected?.deposit.id ?? "")-\(recoveryActive)") {
             guard scenePhase == .active, !recoveryActive, let id = selected?.deposit.id else { return }
             while !Task.isCancelled {
-                if let selected, ["completed", "refunded"].contains(selected.order?.status ?? selected.deposit.status) { return }
+                if let selected, ["completed", "refunded"].contains(selected.order?.status ?? selected.deposit.status) {
+                    return
+                }
                 do {
                     try await Task.sleep(for: .seconds(10))
                     try Task.checkCancellation()
@@ -102,6 +123,7 @@ struct UsdtDepositHistoryView: View {
                 await loadDetail(id, isRefreshing: true)
             }
         }
+        .onChange(of: refundAddress) { _, _ in refundError = nil }
         .interactiveDismissDisabled(busy || pin)
     }
 
@@ -110,7 +132,9 @@ struct UsdtDepositHistoryView: View {
             SendSectionView(t("usdt__provider_status"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
                 BodySSBText(t("usdt__deposit_status_note"), kerning: 0, lineHeight: 20)
             }
-            if deposits.isEmpty, !busy { BodySText(t("usdt__deposit_empty"), textColor: .textSecondary) }
+            if deposits.isEmpty, !busy {
+                BodySText(t("usdt__deposit_empty"), textColor: .textSecondary)
+            }
             ForEach(deposits, id: \.id) { deposit in
                 Button { Task { await loadDetail(deposit.id) } } label: {
                     UsdtDepositRow(deposit: deposit, hideBalance: settings.hideBalance)
@@ -156,8 +180,14 @@ struct UsdtDepositHistoryView: View {
                               minContentHeight: 20)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().disabled(busy)
                         .environment(\._lineHeightMultiple, 20 / (UIFont(name: Fonts.semiBold, size: 15)?.lineHeight ?? 20))
+                    if let refundError {
+                        BodySText(refundError, textColor: .brandAccent).accessibilityIdentifier("UsdtRefundError")
+                    }
                 }
-                HStack(spacing: 16) {
+                let buttonLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 16))
+                    : AnyLayout(HStackLayout(spacing: 16))
+                buttonLayout {
                     if detail.canRequestRefund {
                         CustomButton(title: t("usdt__deposit_refund_action"), size: .small,
                                      icon: Image("coins").resizable().frame(width: 16, height: 16).foregroundColor(.usdtAccent),
@@ -188,7 +218,10 @@ struct UsdtDepositHistoryView: View {
                 }
                 UsdtSupportActions(details: detail.supportDetails).disabled(busy || recoveryActive)
             } else {
-                HStack(alignment: .top, spacing: 16) {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+                layout {
                     UsdtDetailCell(title: t("wallet__activity_status"), value: detail.statusText, icon: detail.statusIcon,
                                    valueColor: detail.statusColor, iconColor: detail.statusColor, valueKerning: 0)
                     UsdtDetailCell(title: t("usdt__receiving_network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network")
@@ -228,6 +261,7 @@ struct UsdtDepositHistoryView: View {
         message = nil
         error = nil
         refundAddress = ""
+        refundError = nil
         approved = nil
         showDetails = false
     }
@@ -264,7 +298,11 @@ struct UsdtDepositHistoryView: View {
             busy = true
             error = nil
         }
-        defer { if !isRefreshing { busy = false } }
+        defer {
+            if !isRefreshing {
+                busy = false
+            }
+        }
         do {
             let detail = try await usdt.depositDetail(id: id, offset: pageOffsets[id] ?? 0)
             try Task.checkCancellation()
@@ -272,6 +310,7 @@ struct UsdtDepositHistoryView: View {
             error = nil
             if selected?.deposit.id != id {
                 refundAddress = ""
+                refundError = nil
                 approved = nil
                 message = nil
                 showDetails = false
@@ -297,7 +336,11 @@ struct UsdtDepositHistoryView: View {
 
     private func authorizeRefund() async {
         guard !busy else { return }
-        defer { if !pin { approved = nil } }
+        defer {
+            if !pin {
+                approved = nil
+            }
+        }
         if settings.requirePinForPayments && settings.pinEnabled {
             guard settings.useBiometrics && BiometricAuth.isAvailable else {
                 pin = true
@@ -309,15 +352,17 @@ struct UsdtDepositHistoryView: View {
             switch result {
             case .success: await refund()
             case .cancelled: break
-            case let .failed(message): error = message
+            case let .failed(message): refundError = message
             }
-        } else { await refund() }
+        } else {
+            await refund()
+        }
     }
 
     private func refund() async {
         guard !busy, let selected, let approved, selected.deposit.id == approved.deposit.id else { return }
         busy = true
-        error = nil
+        refundError = nil
         defer {
             busy = false
             self.approved = nil
@@ -331,7 +376,7 @@ struct UsdtDepositHistoryView: View {
             acknowledged.order?.code = nil
             updateSelection(acknowledged)
             message = t("usdt__deposit_refund_requested")
-        } catch { self.error = UsdtWalletManager.message(for: error) }
+        } catch { refundError = UsdtWalletManager.message(for: error) }
     }
 }
 
@@ -365,7 +410,9 @@ extension UsdtDepositDetail {
     }
 
     var statusCode: String? {
-        if let order { return order.code }
+        if let order {
+            return order.code
+        }
         return deposit.code
     }
 
@@ -401,6 +448,7 @@ extension UsdtDeposit {
 }
 
 struct UsdtDepositRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let deposit: UsdtDeposit
     let hideBalance: Bool
 
@@ -413,14 +461,16 @@ struct UsdtDepositRow: View {
         let color: Color = completed ? .usdtAccent : .yellowAccent
         ActivityRowContainer {
             ActivityRowContent(title: deposit.networkLabel, subtitle: deposit.statusText, textKerning: 0,
-                               titleLineHeight: 22, subtitleLineHeight: 18, textSpacing: 0)
+                               titleLineHeight: 22, subtitleLineHeight: 18, textSpacing: 0, stacked: dynamicTypeSize.isAccessibilitySize)
             {
                 CircularIcon(icon: completed ? "check-circle" : "hourglass-simple", iconColor: color,
                              backgroundColor: color.opacity(0.16), size: 40)
             } amount: {
-                VStack(alignment: .trailing, spacing: 0) {
-                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset, kerning: 0, lineHeight: 22).lineLimit(1)
+                VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
+                    BodyMSBText(deposit.asset == "USDT" ? amount + " USDT" : deposit.asset, kerning: 0, lineHeight: 22)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         .minimumScaleFactor(0.7)
+                        .fixedSize(horizontal: false, vertical: true)
                     if deposit.asset == "USDT" {
                         CaptionBText(hideBalance ? amount : "$" + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
                     }

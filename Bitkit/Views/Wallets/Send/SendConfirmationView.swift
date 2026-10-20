@@ -148,8 +148,7 @@ struct SendConfirmationView: View {
     }
 
     var canSwitchWallet: Bool {
-        guard !hwSend.isActive else { return false }
-        guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
+        guard !hwSend.isActive, app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
         return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
     }
@@ -213,10 +212,8 @@ struct SendConfirmationView: View {
     }
 
     private var canEditAmount: Bool {
-        guard preparingRequest == nil else { return false }
-        guard app.contactPaymentContext?.incomingPaymentRequest == nil else { return false }
-        guard app.selectedWalletToPayFrom == .lightning else { return true }
-        guard let invoice = app.scannedLightningInvoice else { return true }
+        guard preparingRequest == nil, app.contactPaymentContext?.incomingPaymentRequest == nil else { return false }
+        guard app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice else { return true }
 
         return invoice.amountSatoshis == 0
     }
@@ -412,7 +409,9 @@ struct SendConfirmationView: View {
                 if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                     showManualConfirmation(reason: "not automatic when opened")
                 }
-                if prepareRequestCoinsIfNeeded() { return }
+                if prepareRequestCoinsIfNeeded() {
+                    return
+                }
                 await calculateTransactionFee()
                 await calculateRoutingFee()
                 guard !Task.isCancelled else { return }
@@ -982,7 +981,9 @@ struct SendConfirmationView: View {
             guard invoiceAmountSats == 0 || invoiceAmountSats == reviewedAmountSats else {
                 throw PaykitPaymentRequestError.amountMismatch
             }
-            if let request { try await authorize(request) }
+            if let request {
+                try await authorize(request)
+            }
         } catch {
             await onAuthorizationFailure(error)
             throw error
@@ -1568,20 +1569,14 @@ struct SendConfirmationView: View {
         }
 
         // Check if amount > $100 and warning is enabled
-        if settings.warnWhenSendingOver100 {
-            if let usdAmount = currency.convert(sats: amount, to: "USD") {
-                if usdAmount.value > 100.0 {
-                    warnings.append(.amount)
-                }
-            }
+        if settings.warnWhenSendingOver100, let usdAmount = currency.convert(sats: amount, to: "USD"), usdAmount.value > 100.0 {
+            warnings.append(.amount)
         }
 
         // Check if fee > $10 (only for onchain)
         if app.selectedWalletToPayFrom == .onchain {
-            if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD") {
-                if feeUsd.value > 10.0 {
-                    warnings.append(.fee)
-                }
+            if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD"), feeUsd.value > 10.0 {
+                warnings.append(.fee)
             }
 
             // Check if fee > 50% of send amount
@@ -1626,8 +1621,7 @@ struct SendConfirmationView: View {
         feeRate: UInt32? = nil,
         isCurrentSend: () -> Bool = { true }
     ) async -> Bool {
-        guard wallet.isMaxAmountSend else { return false }
-        guard let rate = feeRate ?? wallet.selectedFeeRateSatsPerVByte else { return false }
+        guard wallet.isMaxAmountSend, let rate = feeRate ?? wallet.selectedFeeRateSatsPerVByte else { return false }
 
         do {
             let currentMaxSendable = try await wallet.calculateMaxSendableAmount(
@@ -1820,7 +1814,9 @@ struct SendConfirmationView: View {
         for _ in 0 ..< 3 {
             let startedFrom = feeCalculationId
             await calculateTransactionFee()
-            if feeCalculationId == startedFrom + 1 { return }
+            if feeCalculationId == startedFrom + 1 {
+                return
+            }
         }
     }
 

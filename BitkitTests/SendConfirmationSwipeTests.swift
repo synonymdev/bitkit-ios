@@ -16,7 +16,9 @@ final class SendConfirmationSwipeTests: XCTestCase {
                     selectedUtxos: nil
                 ) {
                     attempts += 1
-                    if shouldFail { throw SelectionError.unavailable }
+                    if shouldFail {
+                        throw SelectionError.unavailable
+                    }
                     openedSelection = true
                 }
                 XCTFail("Manual selection must stop before payment authorization")

@@ -99,6 +99,8 @@ struct SheetHeader: View {
             }
 
             SubtitleText(title, kerning: titleKerning)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             if let action {

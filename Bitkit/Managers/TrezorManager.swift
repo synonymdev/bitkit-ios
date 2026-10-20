@@ -11,7 +11,7 @@ import Foundation
 /// manager rather than a dev-screen ViewModel, keeping dependencies pointing Manager→Manager→Service.
 @Observable
 @MainActor
-final class TrezorManager {
+final class TrezorManager: Sendable {
     // MARK: - Network Configuration
 
     /// Independent of the app's global network — scoped to the Trezor dashboard.
@@ -923,8 +923,7 @@ final class TrezorManager {
     }
 
     private func performAutoReconnect() async throws {
-        guard !knownDevices.isEmpty else { return }
-        guard !isAutoReconnecting else { return }
+        guard !knownDevices.isEmpty, !isAutoReconnecting else { return }
         // A deliberate wallet-mode open is mid-flight; reconnecting now would race it and open the
         // standard wallet under a hidden selection.
         guard !isOpeningSession else { return }
@@ -1036,8 +1035,7 @@ final class TrezorManager {
         Task {
             do {
                 try await withConnectionOperation {
-                    guard self.connectedDevice?.id != deviceId else { return }
-                    guard !self.isOpeningSession else { return }
+                    guard self.connectedDevice?.id != deviceId, !self.isOpeningSession else { return }
                     try await self.reconnectKnownDevice(deviceId: deviceId)
                 }
             } catch {

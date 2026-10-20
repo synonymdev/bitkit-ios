@@ -655,7 +655,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 switch await disable.result {
                 case let .success(applied):
                     XCTAssertEqual(applied, !disableUI)
-                    if !disableUI { XCTAssertFalse(removalFails) }
+                    if !disableUI {
+                        XCTAssertFalse(removalFails)
+                    }
                 case let .failure(error):
                     XCTAssertTrue(removalFails)
                     XCTAssertEqual(error as? TestError, .operationFailed)

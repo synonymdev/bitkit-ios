@@ -83,7 +83,9 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
                     operation: {
                         revision = "after"
                         withUnsafeCurrentTask { $0?.cancel() }
-                        if throwsCancellation { try Task.checkCancellation() }
+                        if throwsCancellation {
+                            try Task.checkCancellation()
+                        }
                     }
                 )
             }
@@ -138,8 +140,12 @@ final class PaykitBackupStateTrackingTests: XCTestCase {
                 readRevision: { reads += 1; return finalContent },
                 readStateRevision: { "current" },
                 readObservedSnapshot: {
-                    if observedState == "unavailable" { return nil }
-                    if observedState == "unreadable" { throw Failure.revision }
+                    if observedState == "unavailable" {
+                        return nil
+                    }
+                    if observedState == "unreadable" {
+                        throw Failure.revision
+                    }
                     return .init(stateRevision: observedState, backupRevision: finalContent)
                 },
                 cachedSnapshot: .init(stateRevision: observedState == "current" ? "previous" : "current", backupRevision: "content"),
