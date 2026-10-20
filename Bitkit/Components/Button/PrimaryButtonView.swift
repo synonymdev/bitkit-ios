@@ -31,8 +31,11 @@ struct PrimaryButtonView: View {
                 }
             }
         }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, size == .small ? 8 : 12)
         .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
-        .frame(height: size.height)
+        .frame(minHeight: size.height)
         .padding(.horizontal, 16)
         .background(backgroundGradient)
         .cornerRadius(64)

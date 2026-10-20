@@ -287,7 +287,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async throws {
+    func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async {
         let viewModel = makeViewModel()
         var feeCallBalances: [UInt64] = []
         // The liquidity calc reports no receiving room (maxLspBalance = 0) because the client
@@ -299,7 +299,7 @@ final class TransferViewModelTests: XCTestCase {
             maxClientBalance: Self.optionMaxClientBalance
         )
 
-        let result = try await viewModel.calculateSpendingLimits(
+        let result = await viewModel.calculateSpendingLimits(
             onchainAvailable: Self.onChainBalance,
             lspMaxClientBalance: Self.lspMaxClientBalance,
             transferValues: { _ in values },
@@ -316,7 +316,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testSpendingLimitsUsesFullBalanceWhenLspInfoUnavailable() async throws {
+    func testSpendingLimitsUsesFullBalanceWhenLspInfoUnavailable() async {
         let viewModel = makeViewModel()
         var feeCallBalances: [UInt64] = []
         let values = TransferValues(
@@ -326,7 +326,7 @@ final class TransferViewModelTests: XCTestCase {
             maxClientBalance: Self.optionMaxClientBalance
         )
 
-        let result = try await viewModel.calculateSpendingLimits(
+        let result = await viewModel.calculateSpendingLimits(
             onchainAvailable: Self.onChainBalance,
             lspMaxClientBalance: nil,
             transferValues: { _ in values },
@@ -342,7 +342,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testSpendingLimitsIsZeroWhenLiquidityReportsZeroClientBalance() async throws {
+    func testSpendingLimitsIsZeroWhenLiquidityReportsZeroClientBalance() async {
         let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: Self.lspBalance,
@@ -351,7 +351,7 @@ final class TransferViewModelTests: XCTestCase {
             maxClientBalance: 0
         )
 
-        let result = try await viewModel.calculateSpendingLimits(
+        let result = await viewModel.calculateSpendingLimits(
             onchainAvailable: Self.onChainBalance,
             lspMaxClientBalance: Self.lspMaxClientBalance,
             transferValues: { _ in values },

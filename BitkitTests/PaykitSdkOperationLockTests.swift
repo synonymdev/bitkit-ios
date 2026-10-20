@@ -129,7 +129,9 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 let intake = Task { try await operation(service) }
                 try await Task.sleep(for: .milliseconds(50))
                 let barrier = testCase.orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
-                if barrier != nil { try await Task.sleep(for: .milliseconds(50)) }
+                if barrier != nil {
+                    try await Task.sleep(for: .milliseconds(50))
+                }
                 let publication = Task {
                     if let priority = testCase.priority {
                         try await service.syncPaykitApp(privatePaymentsEnabled: false, priority: priority)
@@ -180,7 +182,9 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 let intake = Task { _ = try await service.receivePrivateMessagesFromLinkedPeers(priority: .background) }
                 try await Task.sleep(for: .milliseconds(50))
                 let barrier = orderedBarrier ? Task { _ = try await service.contactRecords() } : nil
-                if barrier != nil { try await Task.sleep(for: .milliseconds(50)) }
+                if barrier != nil {
+                    try await Task.sleep(for: .milliseconds(50))
+                }
                 let payment = Task {
                     do {
                         if accepting {
@@ -229,7 +233,9 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             sdk.outboundDelivery = { await recorder.record("delivery") }
             let service = PaykitSdkService(sdkFactory: { sdk })
             let holder = waitingInQueue ? Task { try await service.contactRecords() } : nil
-            if waitingInQueue { await fulfillment(of: [started], timeout: 2) }
+            if waitingInQueue {
+                await fulfillment(of: [started], timeout: 2)
+            }
             let delivery = Task { try await service.processOutboundPrivateMessages(counterparty: "peer", priority: .background) }
             defer { delivery.cancel() }
             if waitingInQueue {
@@ -396,7 +402,9 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         }
         let heldEvents = await recorder.events
         XCTAssertEqual(heldEvents, ["active"], "Active publication must not be preempted")
-        if let cancelIndex { queued[cancelIndex].cancel() }
+        if let cancelIndex {
+            queued[cancelIndex].cancel()
+        }
         release.finish()
         try await active.value
         for (index, task) in queued.enumerated() {

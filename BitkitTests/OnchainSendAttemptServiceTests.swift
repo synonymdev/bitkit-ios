@@ -30,12 +30,16 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     }
 
     func testAcceptedConfirmationStaysPendingUntilOriginalFollowupCompletes() async throws {
-        let shopRequest = PaykitPaymentRequest.ID(paymentRequestId: "original-shop-order", counterparty: "original-merchant", billingPeriodStartsAt: nil)
+        let shopRequest = PaykitPaymentRequest.ID(
+            paymentRequestId: "original-shop-order",
+            counterparty: "original-merchant",
+            billingPeriodStartsAt: nil
+        )
         for requestId in [nil, shopRequest] as [PaykitPaymentRequest.ID?] {
             let store = MemoryAttemptStore()
             let original = OnchainSendAttempt(id: UUID(), walletId: walletId, requestId: requestId, orderId: nil,
-                                             address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
-                                             status: .accepted, txid: txid)
+                                              address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
+                                              status: .accepted, txid: txid)
             try store.save([original])
             let service = OnchainSendAttemptService(store: store)
             let route = await SendConfirmationView.acceptedOnchainRoute(
@@ -269,16 +273,16 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
 
     func testPreparedMaxFundingMustRespectOriginalOrderBeforeBroadcast() async throws {
         for (amount, fee, valid): (UInt64, UInt64?, Bool) in [
-            (98999, 500, false), (100001, 500, false), (99500, 500, true),
-            (99500, nil, false), (99500, 501, false), (99500, UInt64.max, false)
+            (98999, 500, false), (100_001, 500, false), (99500, 500, true),
+            (99500, nil, false), (99500, 501, false), (99500, UInt64.max, false),
         ] {
             let store = MemoryAttemptStore()
             let service = OnchainSendAttemptService(store: store)
             let sender = PreparedAttemptNodeMock()
             sender.amount = amount
             sender.miningFee = fee
-            let context = OnchainSendTransferContext(clientBalanceSats: 97000, txTotalSats: 100000,
-                                                     preTransferOnchainSats: 100000, originalOrderFeeSats: 99000)
+            let context = OnchainSendTransferContext(clientBalanceSats: 97000, txTotalSats: 100_000,
+                                                     preTransferOnchainSats: 100_000, originalOrderFeeSats: 99000)
             do {
                 _ = try await service.send(using: sender, address: "original", amountSats: 99000,
                                            satsPerVbyte: 2, utxosToSpend: nil, isMaxAmount: true,
@@ -318,8 +322,8 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
     func testOrdinaryFollowupIsOwnedAcrossSuspensionAndReleasedAfterFailure() async throws {
         let store = MemoryAttemptStore()
         let attempt = OnchainSendAttempt(id: UUID(), walletId: "original-wallet", requestId: nil, orderId: nil,
-                                          address: "original", amountSats: 1000, isMaxAmount: false,
-                                          status: .accepted, txid: String(repeating: "ab", count: 32))
+                                         address: "original", amountSats: 1000, isMaxAmount: false,
+                                         status: .accepted, txid: String(repeating: "ab", count: 32))
         try store.save([attempt])
         let followup = SuspendedOrdinaryFollowup()
         let service = OnchainSendAttemptService(store: store, localFollowup: followup)
@@ -369,7 +373,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                 followupContext: .init(feeSats: 0, feeRate: 1, tags: [], contact: nil, createdAt: 123)
             )
             do {
-                _ = try await service.resumeAcceptedOrdinarySend(walletId: try XCTUnwrap(store.snapshot().first).walletId)
+                _ = try await service.resumeAcceptedOrdinarySend(walletId: XCTUnwrap(store.snapshot().first).walletId)
                 XCTFail("The capturing local follow-up does not acknowledge completion")
             } catch {}
             XCTAssertEqual(followup.attempt?.followupContext?.feeSats, observed)
@@ -809,8 +813,11 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
                             _ = try await service.backupSnapshot(wallet: wallet, proofs: [])
                             XCTFail("Authorization must not upload the undispatched retry candidate")
                         } catch {}
-                        if walletChanges { sender.currentWalletIndex = 1 }
-                        else { throw CancellationError() }
+                        if walletChanges {
+                            sender.currentWalletIndex = 1
+                        } else {
+                            throw CancellationError()
+                        }
                     }
                 )
                 XCTFail("Pre-dispatch exit submitted the successor")
@@ -1671,7 +1678,9 @@ private actor SuspendedOrdinaryFollowup: OnchainSendLocalFollowupHandling {
     private var suspended: CheckedContinuation<Void, Never>?
 
     func waitForStart() async {
-        if calls > 0 { return }
+        if calls > 0 {
+            return
+        }
         await withCheckedContinuation { started = $0 }
     }
 
@@ -1690,7 +1699,9 @@ private actor SuspendedOrdinaryFollowup: OnchainSendLocalFollowupHandling {
         suspended = nil
     }
 
-    func callCount() -> Int { calls }
+    func callCount() -> Int {
+        calls
+    }
 }
 
 private actor SuspendedOnchainPreparation {

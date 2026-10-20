@@ -1,11 +1,14 @@
 import BitkitCore
-import Combine
+@preconcurrency import Combine
 import CoreBluetooth
 import Foundation
 
 /// Implementation of TrezorTransportCallback protocol
 /// Coordinates BLE and USB transports for Trezor device communication
-final class TrezorTransport: TrezorTransportCallback {
+///
+/// `@unchecked`: the Rust FFI calls in on its own threads; `submittedPairingCode` is guarded by
+/// `pairingCodeLock`.
+final class TrezorTransport: TrezorTransportCallback, @unchecked Sendable {
     static let shared = TrezorTransport()
 
     private let bleManager = TrezorBLEManager.shared

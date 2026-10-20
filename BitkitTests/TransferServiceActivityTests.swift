@@ -382,7 +382,8 @@ final class TransferServiceActivityTests: XCTestCase {
             contactPublicKey: requestId.counterparty, tags: ["original tag"], requestId: requestId, proofVerified: false
         )
         let proof = PendingPaykitPaymentProof(
-            identity: identity, requestId: requestId, paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            identity: identity, requestId: requestId, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
             kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
             onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId
         )
@@ -406,7 +407,10 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertEqual(sent?.contact, PubkyPublicKeyFormat.normalized(requestId.counterparty))
         let tags = try await activity.tags(forActivity: txid, walletId: walletId)
         XCTAssertEqual(tags, ["original tag"])
-        await service.consumeOnchainPaymentResolution(.init(identity: identity, requestId: requestId, transactionId: txid, walletId: walletId), activeIdentity: identity)
+        await service.consumeOnchainPaymentResolution(
+            .init(identity: identity, requestId: requestId, transactionId: txid, walletId: walletId),
+            activeIdentity: identity
+        )
         let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
         let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
         defer {
@@ -554,7 +558,7 @@ final class TransferServiceActivityTests: XCTestCase {
             let store = PaymentProofMemoryStore()
             await store.seed([PendingPaykitPaymentProof(identity: identity, requestId: requestId,
                                                         paymentAppId: "bitkit",
-            paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+                                                        paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
                                                         kind: .onchain,
                                                         paymentStarted: true, paymentIdentifier: txid, proofData: nil,
                                                         onchainAddress: "bcrt1qoriginal",
@@ -644,7 +648,8 @@ final class TransferServiceActivityTests: XCTestCase {
         let walletId = "trezor:original-ios-wallet"
         let txid = String(repeating: "ab", count: 32)
         let proof = PendingPaykitPaymentProof(
-            identity: identity, requestId: requestId, paymentAppId: "bitkit", paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+            identity: identity, requestId: requestId, paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
             kind: .onchain, paymentStarted: true, paymentIdentifier: txid, proofData: nil,
             onchainAddress: "bcrt1qoriginal", onchainAmountSats: 1234, onchainWalletId: walletId
         )
@@ -1141,7 +1146,7 @@ final class TransferServiceActivityTests: XCTestCase {
         let sheets = SheetViewModel()
         let order = IBtOrder.mock()
         let vm = TransferViewModel(transferService: makeService(), sheetViewModel: sheets,
-                                  onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 })
+                                   onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 })
         vm.onOrderCreated(order: order)
         transferDefaults.set(Data("broken-transfer-store".utf8), forKey: "transfers")
         do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}

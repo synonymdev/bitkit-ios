@@ -94,7 +94,7 @@ extension LightningService: OnchainReleasing {
               let recovery = attempt.recoveryContext, !recovery.inputs.isEmpty
         else { throw OnchainSendAttemptError.retryUnavailable }
         let original = Set(recovery.inputs)
-        let confirmedTxids = Set(await listPayments()?.compactMap { payment -> String? in
+        let confirmedTxids = await Set(listPayments()?.compactMap { payment -> String? in
             guard case let .onchain(txid, .confirmed) = payment.kind else { return nil }
             return txid
         } ?? [])
@@ -146,7 +146,7 @@ extension LightningService {
         let previousSync = node.status().latestOnchainWalletSyncTimestamp ?? 0
         let requestedSync = RequestedSyncResult()
         Task {
-            if (try? await self.sync()) != nil {
+            if await (try? self.sync()) != nil {
                 await requestedSync.markSucceeded()
             }
         }
@@ -162,8 +162,8 @@ extension LightningService {
             try await Task.sleep(for: .milliseconds(500))
         }
         return try await ServiceQueue.background(.ldk, wrapErrors: false) {
-            guard self.onchainDispatchNode === node else { return false }
-            guard attempt.candidateTxids.allSatisfy({ node.getTransactionDetails(txid: $0) == nil }) else { return false }
+            guard self.onchainDispatchNode === node,
+                  attempt.candidateTxids.allSatisfy({ node.getTransactionDetails(txid: $0) == nil }) else { return false }
             return inputs.allSatisfy { node.getTransactionDetails(txid: $0.txid) != nil }
         }
     }
@@ -178,7 +178,7 @@ struct OnchainSendInput: Codable, Equatable, Hashable {
     }
 }
 
-// Produced only by the adapter before entering the native broadcast call.
+/// Produced only by the adapter before entering the native broadcast call.
 struct PreparedOnchainSendNotSubmitted: Error {
     let underlying: Error
 }
@@ -187,7 +187,7 @@ struct PreparedOnchainSendDispatch {
     let txid: String
     let inputs: [OnchainSendInput]
     let recipientAmountSats: UInt64
-    var miningFeeSats: UInt64? = nil
+    var miningFeeSats: UInt64?
     let broadcast: () async throws -> OnchainSendResult
 }
 
@@ -670,14 +670,15 @@ actor OnchainSendAttemptService {
         catch let failure as PreparedOnchainSendNotSubmitted {
             // Remove the exact durable proof before releasing its matching wallet guard.
             do {
-                if requestId != nil { try await onPreDispatchFailure(failure.underlying) }
+                if requestId != nil {
+                    try await onPreDispatchFailure(failure.underlying)
+                }
                 try clearBeforeDispatch(attemptId: attemptId)
             } catch {
                 throw OnchainSendAttemptError.unresolved
             }
             throw OnchainSendAttemptError.preDispatch(failure.underlying)
-        }
-        catch { result = .unknown(txid: prepared.txid) }
+        } catch { result = .unknown(txid: prepared.txid) }
 
         do {
             try record(result, attemptId: attemptId)
@@ -955,8 +956,7 @@ actor OnchainSendAttemptService {
     func resumeAcceptedOrdinarySend(walletId: String, observedTxid: String? = nil,
                                     pendingContext: OnchainSendPendingContext? = nil) async throws -> OnchainSendLocalResolution?
     {
-        guard ordinaryFollowupInProgress == nil else { return nil }
-        guard var attempt = try currentAttempt(), attempt.walletId == walletId,
+        guard ordinaryFollowupInProgress == nil, var attempt = try currentAttempt(), attempt.walletId == walletId,
               attempt.requestId == nil, attempt.orderId == nil, let txid = attempt.txid
         else { return nil }
         if let pendingContext {
@@ -975,8 +975,7 @@ actor OnchainSendAttemptService {
                 try store.save([attempt])
             }
         }
-        guard attempt.status == .accepted, nativeDispatchInProgress == nil else { return nil }
-        guard let txid = attempt.txid else { return nil }
+        guard attempt.status == .accepted, nativeDispatchInProgress == nil, let txid = attempt.txid else { return nil }
         if attempt.localFollowupComplete {
             // A delayed native event must not replay metadata/contact writes or publish a new resolution.
             guard observedTxid == nil else { return nil }
@@ -1007,7 +1006,11 @@ actor OnchainSendAttemptService {
         }
         let isOriginal = recovery.candidateTxids.first?.caseInsensitiveCompare(txid) == .orderedSame
         let retainedFee = recovery.candidateFeeSats?[txid.lowercased()] ?? (isOriginal && context.feeSats > 0 ? context.feeSats : nil)
-        let observed: UInt64? = if let retainedFee { retainedFee } else { try await winningFee(original) }
+        let observed: UInt64? = if let retainedFee {
+            retainedFee
+        } else {
+            try await winningFee(original)
+        }
         guard let fee = observed,
               !original.amountSats.addingReportingOverflow(fee).overflow,
               var attempt = try currentAttempt(), attempt.id == original.id,
@@ -1036,7 +1039,9 @@ actor OnchainSendAttemptService {
               let attempt = try currentAttempt(), attempt.requestId == requestId, attempt.orderId == nil,
               attempt.status == .accepted, attempt.txid?.caseInsensitiveCompare(txid) == .orderedSame
         else { return false }
-        if attempt.localFollowupComplete { return !onlyIfIncomplete }
+        if attempt.localFollowupComplete {
+            return !onlyIfIncomplete
+        }
         // Keep the transition owned across suspending activity/fee operations. A competing
         // reconciliation must neither repeat the write nor publish this call's completion.
         requestFollowupInProgress = attempt.id
@@ -1143,8 +1148,8 @@ actor OnchainSendAttemptService {
 
     func clearBeforeDispatch(attemptId: UUID) throws {
         var attempts = try store.load()
-        guard let index = attempts.firstIndex(where: { $0.id == attemptId && $0.status == .pending }) else { return }
-        guard knownAttempt?.id != attemptId || knownAttempt?.status == .pending else { return }
+        guard let index = attempts.firstIndex(where: { $0.id == attemptId && $0.status == .pending }),
+              knownAttempt?.id != attemptId || knownAttempt?.status == .pending else { return }
         attempts.remove(at: index)
         try store.save(attempts)
         knownAttempt = nil

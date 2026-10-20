@@ -204,7 +204,7 @@ struct NodeStateView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button {
-                            Task { @MainActor in
+                            _ = Task { @MainActor in
                                 closingChannels.append(channel.channelId)
                                 try await wallet.closeChannel(channel)
                                 closingChannels.removeAll { $0 == channel.channelId }
