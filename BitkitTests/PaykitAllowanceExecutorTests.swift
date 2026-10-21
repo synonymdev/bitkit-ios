@@ -977,7 +977,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
         await manager.activate(identity: Fixtures.identityKey)
 
-        let paused = await manager.acceptOffersFromAllowers { false }
+        let paused = await manager.acceptOffersFromAllowers(canContinue: { false })
 
         XCTAssertTrue(paused.isEmpty)
         XCTAssertFalse(harness.log.entries.contains("acceptAllowance"), "No accept while the session is paused or gone")
