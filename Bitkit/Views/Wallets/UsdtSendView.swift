@@ -702,7 +702,7 @@ struct UsdtSendView: View {
         guard let quote, !busy, !submitted else { return }
         var warnings: [String] = []
         if let balance = usdt.balance, quote.amount > balance / 2 {
-            warnings.append("wallet__send_dialog2")
+            warnings.append("wallet__send_dialog2_usdt")
         }
         if settings.warnWhenSendingOver100, quote.amount > 100_000_000 {
             warnings.append("wallet__send_dialog1")
