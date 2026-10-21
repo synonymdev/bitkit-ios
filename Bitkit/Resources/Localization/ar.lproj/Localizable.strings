@@ -1386,7 +1386,6 @@
 "wallet__payment_request_status_pending" = "معلق";
 "wallet__payment_request_status_paid" = "مدفوع";
 "wallet__payment_request_contact" = "جهة الاتصال";
-"wallet__payment_request_seller" = "البائع";
 "subscriptions__active" = "نشط";
 "subscriptions__cancel" = "إلغاء";
 "subscriptions__cancel_subscription" = "إلغاء الاشتراك";

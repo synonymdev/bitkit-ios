@@ -1549,7 +1549,6 @@
 "wallet__payment_request_status_pending" = "В ожидании";
 "wallet__payment_request_status_paid" = "Оплачен";
 "wallet__payment_request_contact" = "Контакт";
-"wallet__payment_request_seller" = "Продавец";
 "subscriptions__active" = "Активна";
 "subscriptions__cancel" = "Отмена";
 "subscriptions__cancel_subscription" = "Отменить Подписку";

@@ -1304,7 +1304,6 @@
 "wallet__payment_request_status_pending" = "Εκκρεμεί";
 "wallet__payment_request_status_paid" = "Πληρώθηκε";
 "wallet__payment_request_contact" = "Επαφή";
-"wallet__payment_request_seller" = "Πωλητής";
 "subscriptions__active" = "Ενεργή";
 "subscriptions__cancel" = "Ακύρωση";
 "subscriptions__cancel_subscription" = "Ακύρωση συνδρομής";

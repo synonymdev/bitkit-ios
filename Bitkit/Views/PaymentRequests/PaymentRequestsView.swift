@@ -652,7 +652,7 @@ struct PaymentRequestDetailView: View {
     private func counterparty(_ request: PaykitPaymentRequest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             CaptionMText(
-                t(request.isMerchantRequest ? "wallet__payment_request_seller" : "wallet__payment_request_contact").localizedUppercase,
+                t(request.isMerchantRequest ? "wallet__send_to" : "wallet__payment_request_contact").localizedUppercase,
                 textColor: .white64
             )
             HStack(spacing: 16) {

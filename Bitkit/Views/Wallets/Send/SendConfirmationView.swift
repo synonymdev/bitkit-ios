@@ -1142,7 +1142,7 @@ struct SendConfirmationView: View {
 
     private var contactSectionTitle: String {
         guard let request = oneOffPaymentRequest else { return t("wallet__send_to") }
-        return request.isMerchantRequest ? t("wallet__payment_request_seller") : t("wallet__payment_request_contact")
+        return request.isMerchantRequest ? t("wallet__send_to") : t("wallet__payment_request_contact")
     }
 
     private var oneOffPaymentRequestNote: String? {

@@ -13,7 +13,7 @@
     <action>Using the saved issuer public key, verify the one-time request row (id "PaymentRequestRow-71300000-0000-4000-8000-000000000001-one-time") shows 100,000 sats</action>
     <action>Tap the one-time request row (id "PaymentRequestRow-71300000-0000-4000-8000-000000000001-one-time")</action>
     <action>Verify Payment Request details (id "PaymentRequestDetailScreen") shows an unsigned 100,000 sats amount (id "PaymentRequestDetailsAmount") and status "Waiting for payment" (id "PaymentRequestDetailsStatus")</action>
-    <action>Verify the requester heading on Payment Request details reads "Seller"</action>
+    <action>Verify the requester heading on Payment Request details reads "To"</action>
     <action>Tap Back (id "NavigationBack")</action>
     <action>Tap the pending Payment Requests bell (id "PaymentRequestsBell")</action>
     <action>Verify the incoming Payment Requests sheet (id "PaymentRequestsSheet") appears</action>
@@ -22,6 +22,6 @@
     <action>Verify the Payment Request confirmation screen (id "PaymentRequestConfirm") shows 100,000 sats</action>
     <action>Wait for fresh validation and wallet preparation to finish; verify the same sheet stays open and its payment swipe control stops showing progress</action>
     <action>Tap Show details (id "SendConfirmToggleDetails")</action>
-    <action>Verify the recipient (id "ReviewContactRecipient") under Seller is the saved fixture issuer contact; the fixture is a Paykit server request, so the label reads "Seller" rather than "Contact"</action>
+    <action>Verify the recipient (id "ReviewContactRecipient") under To is the saved fixture issuer contact; the fixture is a Paykit server request, so the label reads "To" rather than "Contact"</action>
   </actions>
 </journey>

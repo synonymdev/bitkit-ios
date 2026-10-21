@@ -1260,7 +1260,6 @@
 "wallet__payment_request_status_pending" = "Pendente";
 "wallet__payment_request_status_paid" = "Pago";
 "wallet__payment_request_contact" = "Contato";
-"wallet__payment_request_seller" = "Vendedor";
 "subscriptions__active" = "Ativa";
 "subscriptions__cancel" = "Cancelar";
 "subscriptions__cancel_subscription" = "Cancelar subscrição";
