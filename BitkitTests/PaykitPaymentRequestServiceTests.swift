@@ -806,6 +806,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(merchant.isMerchantRequest)
         XCTAssertTrue(merchant.updatingLifecycleState(.accepted).isMerchantRequest)
         XCTAssertFalse(other.isMerchantRequest)
+        let outgoing = try XCTUnwrap(PaykitPaymentRequest(
+            historyRecord: paymentRequestRecord(role: .payee, proposalAppId: "paykit-server"),
+            now: Date()
+        ))
+        XCTAssertFalse(outgoing.isMerchantRequest)
     }
 
     func testRequestEndpointUsesOnlyPayableResolvedCandidates() async throws {

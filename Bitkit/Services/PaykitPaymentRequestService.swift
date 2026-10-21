@@ -75,7 +75,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
     let billingPeriod: PaykitBillingPeriod?
     let paymentProofKind: PaykitPaymentProofKind?
     let paymentProofEventId: String?
-    /// Created by a Paykit server for a merchant, such as a Pubky Market order, not by a person's wallet.
+    /// An incoming request a Paykit server created for a merchant, such as a Pubky Market order.
     private(set) var isMerchantRequest = false
 
     var requiresAcceptance: Bool {
@@ -218,7 +218,7 @@ struct PaykitPaymentRequest: Identifiable, Hashable {
             },
             paymentProofEventId: record.paymentProofs.last?.eventId
         )
-        request.isMerchantRequest = record.proposalAppId == paykitServerAppId
+        request.isMerchantRequest = expectedRole == .payer && record.proposalAppId == paykitServerAppId
         return .success(request)
     }
 
