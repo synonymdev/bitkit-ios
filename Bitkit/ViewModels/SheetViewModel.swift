@@ -40,7 +40,7 @@ struct SheetConfiguration {
 
 class SheetViewModel: ObservableObject {
     /// How long a closing sheet animates out before the next sheet may be shown.
-    static let replacementDelaySeconds: TimeInterval = 0.7
+    static let replacementDelaySeconds: TimeInterval = 1.5
 
     @Published var activeSheetConfiguration: SheetConfiguration? = nil
     @Published var hardwareConnectHandlesPairing = false
