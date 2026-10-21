@@ -53,6 +53,7 @@ enum SendRoute: Hashable {
     case manual
     case amount
     case usdt(recipient: String, amount: String)
+    case usdtAddress(recipient: String, amount: String)
     case utxoSelection
     case confirm
     case hardwareSign
@@ -165,7 +166,7 @@ struct SendSheet: View {
         guard scenePhase != .background else { return false }
         switch navigationPath.last ?? currentRoot {
         case .confirm, .pin, .hardwareSign: return true
-        case .usdt: return isReviewingUsdtPayment
+        case .usdt, .usdtAddress: return isReviewingUsdtPayment
         default: return false
         }
     }
@@ -899,6 +900,12 @@ struct SendSheet: View {
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
             }, onReviewChange: { isReviewingUsdtPayment = $0 },
+            onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+        case let .usdtAddress(recipient, amount):
+            UsdtSendView(onDetails: { id in
+                usdtDetails = id
+            }, initialRecipient: recipient, initialAmount: amount, hosted: true,
+            onReviewChange: { isReviewingUsdtPayment = $0 },
             onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
