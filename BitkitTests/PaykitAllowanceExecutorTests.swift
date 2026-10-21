@@ -983,12 +983,31 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("acceptAllowance"), "No accept while the session is paused or gone")
 
         var checks = 0
-        let endedDuringAccept = await manager.acceptOffersFromAllowers {
+        let wentInactiveDuringAccept = await manager.acceptOffersFromAllowers(canContinue: {
             checks += 1
             return checks == 1
-        }
+        })
 
-        XCTAssertTrue(endedDuringAccept.isEmpty, "An accept that outlived its session is not announced")
+        XCTAssertEqual(
+            wentInactiveDuringAccept.map(\.counterparty), [Fixtures.counterpartyKey],
+            "An accept made before the app went inactive is still announced: the offer is no longer answerable afterwards"
+        )
+        let acceptedIds = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIds, [Fixtures.walletAllowanceId])
+    }
+
+    @MainActor
+    func testManagerDoesNotAnnounceAnOfferAcceptedAfterTheSessionEnded() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        let sessionEnded = await manager.acceptOffersFromAllowers(canAnnounce: { false })
+
+        XCTAssertTrue(sessionEnded.isEmpty, "Sign-out, a profile switch or profile deletion mid-accept announces nothing")
         let acceptedIds = await harness.sdk.acceptedAllowanceIds
         XCTAssertEqual(acceptedIds, [Fixtures.walletAllowanceId])
     }

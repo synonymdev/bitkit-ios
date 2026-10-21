@@ -247,13 +247,14 @@ final class PaykitAllowanceManager {
     }
 
     /// Accepts the offers that make this wallet the allowee, and returns the ones now active so the caller can tell the
-    /// user. A failed accept stays unanswered and is tried again on the next refresh. Stops, and returns nothing to
-    /// announce, once the identity it started with is gone or `canContinue` turns false.
-    func acceptOffersFromAllowers(canContinue: @MainActor () -> Bool = { true }) async -> [PaykitAllowanceEntry] {
+    /// user. A failed accept stays unanswered and is tried again on the next refresh. `canContinue` gates each further
+    /// accept; an accept already made is still returned while this identity is active and `canAnnounce` holds, since
+    /// the offer is no longer answerable afterwards and nothing else would tell the user about it.
+    func acceptOffersFromAllowers(
+        canContinue: @MainActor () -> Bool = { true },
+        canAnnounce: @MainActor () -> Bool = { true }
+    ) async -> [PaykitAllowanceEntry] {
         guard let identity, !isAcceptingOffers else { return [] }
-        func isCurrent() -> Bool {
-            self.identity == identity && canContinue()
-        }
         let offers = entries.filter { entry in
             let answerable = entry.allowances.filter(\.isAnswerable)
             return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
@@ -264,7 +265,7 @@ final class PaykitAllowanceManager {
         defer { isAcceptingOffers = false }
         var accepted: [PaykitAllowanceEntry] = []
         for offer in offers {
-            guard isCurrent() else { return [] }
+            guard self.identity == identity, canContinue() else { break }
             do {
                 // A background accept must not clear the progress flag of a proposal the user has in flight.
                 try await accept(offer, showsProgress: false)
@@ -273,7 +274,7 @@ final class PaykitAllowanceManager {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
             }
         }
-        return isCurrent() ? accepted : []
+        return self.identity == identity && canAnnounce() ? accepted : []
     }
 
     private func respond(

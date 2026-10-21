@@ -1422,9 +1422,11 @@ struct AppScene: View {
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
-            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers {
-                canRefresh() && pubkyProfile.automaticPaykitSession == session && !pubkyProfile.isDeletingProfile
-            }
+            let isAutomaticSession = { pubkyProfile.automaticPaykitSession == session && !pubkyProfile.isDeletingProfile }
+            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers(
+                canContinue: { canRefresh() && isAutomaticSession() },
+                canAnnounce: isAutomaticSession
+            )
             announceAcceptedAllowanceOffers(acceptedOffers)
             // A request whose manual sheet is already open stays with the user.
             let manualRequestId = incomingPaymentRequestPreparation.flatMap { $0.ownsSheet(sheets) ? $0.request?.id : nil }
