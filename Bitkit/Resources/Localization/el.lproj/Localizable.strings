@@ -1679,6 +1679,8 @@
 "subscriptions__allowance_payment_in_progress" = "Αυτό το αίτημα πληρώνεται ήδη.";
 "subscriptions__allowance_executed_title" = "Η πληρωμή εκτελέστηκε";
 "subscriptions__allowance_executed_description" = "Η αυτόματη πληρωμή έστειλε {amount} σε {name}";
+"subscriptions__allowance_offer_accepted_title" = "Η προέγκριση προστέθηκε";
+"subscriptions__allowance_offer_accepted_description" = "Ο χρήστης {name} όρισε μια προέγκριση για εσάς";
 "subscriptions__allowance_limit_title" = "Το όριο εξαντλήθηκε";
 "subscriptions__allowance_limit_description" = "Ένα αίτημα {amount} από {name} υπερβαίνει την προέγκρισή σου. Έλεγξέ το για να πληρώσεις.";
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";

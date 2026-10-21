@@ -1604,6 +1604,8 @@
 "subscriptions__allowance_payment_in_progress" = "Este pedido já está a ser pago.";
 "subscriptions__allowance_executed_title" = "Pagamento executado";
 "subscriptions__allowance_executed_description" = "O pagamento automático enviou {amount} para {name}";
+"subscriptions__allowance_offer_accepted_title" = "Pré-aprovação adicionada";
+"subscriptions__allowance_offer_accepted_description" = "{name} configurou uma pré-aprovação para si";
 "subscriptions__allowance_limit_title" = "Limite atingido";
 "subscriptions__allowance_limit_description" = "Um pedido de {amount} de {name} excede a sua pré-aprovação. Reveja-o para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";

@@ -1958,6 +1958,8 @@
 "subscriptions__allowance_payment_in_progress" = "Esta solicitação já está sendo paga.";
 "subscriptions__allowance_executed_title" = "Pagamento Executado";
 "subscriptions__allowance_executed_description" = "O pagamento automático enviou {amount} para {name}";
+"subscriptions__allowance_offer_accepted_title" = "Pré-aprovação Adicionada";
+"subscriptions__allowance_offer_accepted_description" = "{name} configurou uma pré-aprovação para você";
 "subscriptions__allowance_limit_title" = "Limite Atingido";
 "subscriptions__allowance_limit_description" = "Uma solicitação de {amount} de {name} excede sua pré-aprovação. Revise-a para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
