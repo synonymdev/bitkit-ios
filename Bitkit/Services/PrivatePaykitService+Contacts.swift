@@ -47,6 +47,7 @@ extension PrivatePaykitService {
     struct PrivateMessageRetryOperations {
         var now: () -> Date = Date.init
         var sleep: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+        var shouldDeferRefresh: () async -> Bool = { await PaykitPaymentActivity.shared.shouldDeferRefresh }
         var currentPublicKey: (PaykitSdkOperationLock.Priority) async throws -> String? = {
             try await PaykitSdkService.shared.identityStatus(priority: $0)?.publicKey
         }
@@ -1146,7 +1147,8 @@ extension PrivatePaykitService {
             while !Task.isCancelled, retryGeneration == pendingMessageDrainRetryGeneration {
                 guard await waitForBackgroundWork(generation: preparationGeneration) else { break }
                 guard retryGeneration == pendingMessageDrainRetryGeneration else { return }
-                let shouldDeferBackground = await PaykitPaymentActivity.shared.shouldDeferRefresh
+                let shouldDeferBackground = await messageRetryOperations.shouldDeferRefresh()
+                guard !Task.isCancelled, retryGeneration == pendingMessageDrainRetryGeneration else { break }
                 let now = messageRetryOperations.now()
                 let due = pendingMessageDrainRetries.filter { $0.value.nextAttemptAt <= now }
                 let foreground = due.filter { $0.value.priority(at: now) == .interactive }
