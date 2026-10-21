@@ -26,7 +26,7 @@ struct UsdtReceiveAmountView: View {
             .fixedSize(horizontal: false, vertical: true)
             Divider()
             Spacer(minLength: 34)
-            NumberPad(type: .decimal, decimalSeparator: Locale.current.decimalSeparator ?? ".", isDisabled: busy,
+            NumberPad(type: .decimal, isDisabled: busy,
                       onDeleteLongPress: { amount = "" })
             { key in
                 amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)

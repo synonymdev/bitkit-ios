@@ -239,7 +239,6 @@ struct SendAmountView: View {
 
                 NumberPad(
                     type: app.paykitUsesUsdt ? .decimal : amountViewModel.getNumberPadType(currency: currency),
-                    decimalSeparator: app.paykitUsesUsdt ? Locale.current.decimalSeparator ?? "." : ".",
                     errorKey: amountViewModel.errorKey,
                     isDisabled: !canEditAmount
                 ) { key in

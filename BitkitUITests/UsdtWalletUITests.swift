@@ -2,26 +2,44 @@ import XCTest
 
 final class UsdtWalletUITests: XCTestCase {
     @MainActor
-    func testOrdinaryManualEntryRoutesBareAddressToUsdt() throws {
+    func testEmptyWalletAndManualEntryUseConsistentAmountsInCommaRegion() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
-        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "de_DE"]
+        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:1"
+        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:1"
         app.launchEnvironment["USDT_BRIDGE_NETWORKS"] = "polygon"
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
             app.buttons["Continue"].tap()
         }
+        var createdWallet = false
         if app.buttons["SkipIntro"].waitForExistence(timeout: 3) {
             app.buttons["SkipIntro"].tap()
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
+            createdWallet = true
         }
         XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
         if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
             app.buttons["UsdtIntroEnable"].tap()
         }
+        let homeTile = app.buttons["UsdtWallet"]
+        XCTAssertTrue(homeTile.waitForExistence(timeout: 10), app.debugDescription)
+        if createdWallet {
+            XCTAssertTrue(homeTile.label.contains("$ 0.00"), homeTile.label)
+        }
+        capture(app, "USDT empty Home balance in German region")
+        homeTile.tap()
+        XCTAssertTrue(app.buttons["UsdtReceive"].waitForExistence(timeout: 5))
+        let balance = app.otherElements["UsdtBalance"]
+        if createdWallet {
+            XCTAssertTrue(balance.staticTexts["$ 0.00"].exists, app.debugDescription)
+        }
+        XCTAssertFalse(app.staticTexts["Could not update USDT. Check your connection and try again."].exists)
+        XCTAssertFalse(app.staticTexts["Older activity is still syncing. Your balance is up to date when the connection is available."].exists)
+        capture(app, "USDT empty wallet in German region")
+        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
         app.buttons["RecipientManual"].tap()
@@ -40,6 +58,12 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(app.buttons["UsdtReview"].waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertTrue(app.staticTexts["$ 0"].exists)
         XCTAssertFalse(app.buttons["UsdtReview"].isEnabled)
+        XCTAssertTrue(app.buttons["NDecimal"].label.contains("."))
+        app.buttons["N1"].tap()
+        app.buttons["NDecimal"].tap()
+        app.buttons["N5"].tap()
+        XCTAssertTrue(app.staticTexts["$ 1.5"].exists, app.debugDescription)
+        capture(app, "USDT dot decimal entry in German region")
         let network = app.buttons["UsdtNetwork"]
         XCTAssertTrue(network.label.contains("Arbitrum One"))
         XCTAssertTrue(network.isEnabled)

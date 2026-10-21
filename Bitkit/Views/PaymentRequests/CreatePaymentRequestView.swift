@@ -331,7 +331,7 @@ struct PaymentRequestAmountView: View {
             )
 
             if asset == .usd {
-                NumberPadAmountText(value: usdtInputAmount(dollarAmount.isEmpty ? "0" : dollarAmount), symbol: "$")
+                NumberPadAmountText(value: dollarAmount.isEmpty ? "0" : dollarAmount, symbol: "$")
                     .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
             } else {
                 NumberPadTextField(viewModel: amountViewModel, showEditButton: false, isFocused: true,
@@ -377,7 +377,6 @@ struct PaymentRequestAmountView: View {
             }
             NumberPad(
                 type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
-                decimalSeparator: asset == .usd ? Locale.current.decimalSeparator ?? "." : ".",
                 errorKey: amountViewModel.errorKey
             ) { key in
                 entryConversion.reset()

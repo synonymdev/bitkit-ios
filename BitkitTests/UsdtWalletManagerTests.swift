@@ -115,10 +115,10 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
-    func testUsdCentsUseTheLocalesDecimalAndGroupingSeparators() {
+    func testUsdCentsUseTheFiatDecimalAndGroupingSeparators() {
         XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "en_US")), "$10,000.00")
-        XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$10.000,00")
-        XCTAssertEqual("5".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$0,05")
+        XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$10,000.00")
+        XCTAssertEqual("5".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$0.05")
         XCTAssertEqual("invalid".formattedUsdCents(locale: Locale(identifier: "en_US")), "—")
     }
 
