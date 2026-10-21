@@ -729,7 +729,10 @@ actor PaykitAllowanceExecutor {
             )
         } catch {
             await payer.cancelProofPreparation(request)
-            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
+            await releasePaymentList(
+                request, payment: payment, attemptId: listAttemptId, journalAttemptId: submitted.attemptId, identity: identity,
+                outcome: .definitePreBroadcastFailure
+            )
             try await record(attemptId: submitted.attemptId, outcome: .failed, identity: identity)
             throw error
         }
@@ -748,8 +751,19 @@ actor PaykitAllowanceExecutor {
         _ request: PaykitPaymentRequest,
         payment: PrivatePaykitAllowancePayment,
         attemptId: UUID,
+        journalAttemptId: String,
+        identity: String,
         outcome: PrivatePaymentListSendOutcome
     ) async {
+        if outcome == .definitePreBroadcastFailure {
+            // Released here, so recording the attempt failed must not release it again: by then another payment may
+            // have consumed the same list version.
+            updateLocalState(identity: identity) { state in
+                guard let index = state.journal.firstIndex(where: { $0.attemptId == journalAttemptId }) else { return }
+                state.journal[index].paymentListVersion = nil
+                state.journal[index].previousPaymentListVersion = nil
+            }
+        }
         await payer.resolvePaymentList(publicKey: request.counterparty, context: payment.context, attemptId: attemptId, outcome: outcome)
     }
 
@@ -766,7 +780,10 @@ actor PaykitAllowanceExecutor {
             try await payer.associateLightningPayment(request, paymentHash: paymentHash)
         } catch {
             await payer.cancelProofPreparation(request)
-            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
+            await releasePaymentList(
+                request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity,
+                outcome: .definitePreBroadcastFailure
+            )
             try await record(attemptId: attemptId, outcome: .failed, identity: identity)
             throw error
         }
@@ -781,17 +798,24 @@ actor PaykitAllowanceExecutor {
             guard await payer.failLightningPayment(paymentHash: paymentHash, submissionError: error) else {
                 // The node may have started the payment; its settlement event records the outcome.
                 Logger.warn("Automatic Lightning allowance payment outcome is uncertain: \(error)", context: "PaykitAllowance")
-                await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
+                await releasePaymentList(
+                    request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity, outcome: .uncertain
+                )
                 if !hasTerminalStage(attemptId: attemptId, identity: identity) {
                     try await record(attemptId: attemptId, outcome: .unknown, identity: identity)
                 }
                 return .started
             }
-            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
+            await releasePaymentList(
+                request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity,
+                outcome: .definitePreBroadcastFailure
+            )
             try await record(attemptId: attemptId, outcome: .failed, identity: identity)
             throw error
         }
-        await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
+        await releasePaymentList(
+            request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity, outcome: .uncertain
+        )
         setStage(.sent, attemptId: attemptId, identity: identity)
         Logger.info("Handed an allowance payment to the node", context: "PaykitAllowance")
         return .started
