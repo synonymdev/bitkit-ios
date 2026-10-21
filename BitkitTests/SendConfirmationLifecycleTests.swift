@@ -277,7 +277,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         FeeEstimatesManager().devOverrideFeeEstimates = true
         for operation in [ControlledSendWallet.Operation.manualUtxos, .selection] {
-            let wallet = ControlledSendWallet(operation: operation)
+            let wallet = ControlledSendWallet(operation: operation, suspendsResumedPreparation: true)
             let app = AppViewModel()
             let sheets = SheetViewModel()
             sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
@@ -304,13 +304,20 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(wallet.preparationCount, 1)
             XCTAssertEqual(navigation.path, [.confirm, .tag])
 
+            // The resumed preparation waits until the pop back from tags has settled, so its push never overlaps that transition.
             navigation.path.removeLast()
-            try await navigation.waitForAppearance(operation == .manualUtxos ? .utxoSelection : .confirm)
-            let deadline = ContinuousClock.now + .seconds(3)
-            while wallet.preparationCount < 2, ContinuousClock.now < deadline {
-                try await Task.sleep(for: .milliseconds(10))
-            }
+            try await navigation.waitForAppearance(.confirm)
+            await fulfillment(of: [wallet.resumedStarted], timeout: 3)
             XCTAssertEqual(wallet.preparationCount, 2)
+            wallet.resume()
+            if operation == .manualUtxos {
+                try await navigation.waitForAppearance(.utxoSelection)
+            } else {
+                let deadline = ContinuousClock.now + .seconds(3)
+                while wallet.selectedUtxos == nil, ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+            }
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
             if operation == .selection {
@@ -587,15 +594,18 @@ private final class ControlledSendWallet: WalletViewModel {
 
     let started = XCTestExpectation(description: "Send preparation suspended")
     let finished = XCTestExpectation(description: "Send preparation resumed")
+    let resumedStarted = XCTestExpectation(description: "Resumed send preparation suspended")
     private let operation: Operation
     private let fails: Bool
+    private let suspendsResumedPreparation: Bool
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var wasCancelled = false
     private(set) var preparationCount = 0
 
-    init(operation: Operation, fails: Bool = false) {
+    init(operation: Operation, fails: Bool = false, suspendsResumedPreparation: Bool = false) {
         self.operation = operation
         self.fails = fails
+        self.suspendsResumedPreparation = suspendsResumedPreparation
         super.init(
             transferService: TransferService(lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank),
             sheetViewModel: SheetViewModel(),
@@ -643,6 +653,13 @@ private final class ControlledSendWallet: WalletViewModel {
 
     private func suspend() async throws {
         preparationCount += 1
+        if preparationCount == 2, suspendsResumedPreparation {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                resumedStarted.fulfill()
+            }
+            return
+        }
         guard preparationCount == 1 else { return }
         await withCheckedContinuation { continuation in
             self.continuation = continuation
