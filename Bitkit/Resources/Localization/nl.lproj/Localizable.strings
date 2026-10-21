@@ -1929,6 +1929,7 @@
 "subscriptions__allowance_status_active" = "Actief";
 "subscriptions__allowance_status_waiting" = "Wacht op antwoord";
 "subscriptions__allowance_status_needs_answer" = "Wacht op uw antwoord";
+"subscriptions__allowance_status_setting_up" = "Toelage wordt ingesteld";
 "subscriptions__allowance_status_scheduled" = "Nog niet actief";
 "subscriptions__allowance_status_expired" = "Verlopen";
 "subscriptions__allowance_status_declined" = "Geweigerd";

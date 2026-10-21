@@ -1924,6 +1924,7 @@
 "subscriptions__allowance_status_active" = "Aktivní";
 "subscriptions__allowance_status_waiting" = "Čeká na odpověď";
 "subscriptions__allowance_status_needs_answer" = "Čeká na vaši odpověď";
+"subscriptions__allowance_status_setting_up" = "Nastavuje se povolení plateb";
 "subscriptions__allowance_status_scheduled" = "Zatím neaktivní";
 "subscriptions__allowance_status_expired" = "Vypršelo";
 "subscriptions__allowance_status_declined" = "Odmítnuto";

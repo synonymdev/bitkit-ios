@@ -1656,6 +1656,7 @@
 "subscriptions__allowance_status_active" = "Ενεργή";
 "subscriptions__allowance_status_waiting" = "Αναμονή απάντησης";
 "subscriptions__allowance_status_needs_answer" = "Αναμένεται η απάντησή σου";
+"subscriptions__allowance_status_setting_up" = "Γίνεται ρύθμιση της προέγκρισης";
 "subscriptions__allowance_status_scheduled" = "Δεν είναι ακόμη ενεργή";
 "subscriptions__allowance_status_expired" = "Έληξε";
 "subscriptions__allowance_status_declined" = "Απορρίφθηκε";

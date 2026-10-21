@@ -117,7 +117,9 @@ struct AllowanceRow: View {
         case .awaitingAnswer:
             return t("subscriptions__allowance_status_waiting")
         case .awaitingMyAnswer:
-            return t("subscriptions__allowance_status_needs_answer")
+            return entry.primary.isOfferFromAllower
+                ? t("subscriptions__allowance_status_setting_up")
+                : t("subscriptions__allowance_status_needs_answer")
         case .notYetActive:
             return t("subscriptions__allowance_status_scheduled")
         case .expired:
@@ -764,7 +766,9 @@ struct AllowanceDetailView: View {
         case .awaitingAnswer:
             t("subscriptions__allowance_status_waiting")
         case .awaitingMyAnswer:
-            t("subscriptions__allowance_status_needs_answer")
+            current.primary.isOfferFromAllower
+                ? t("subscriptions__allowance_status_setting_up")
+                : t("subscriptions__allowance_status_needs_answer")
         case .notYetActive:
             t("subscriptions__allowance_status_scheduled")
         case .expired:

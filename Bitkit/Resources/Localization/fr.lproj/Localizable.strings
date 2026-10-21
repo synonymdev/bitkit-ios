@@ -1935,6 +1935,7 @@
 "subscriptions__allowance_status_active" = "Active";
 "subscriptions__allowance_status_waiting" = "En attente de réponse";
 "subscriptions__allowance_status_needs_answer" = "En attente de votre réponse";
+"subscriptions__allowance_status_setting_up" = "Configuration de l'allocation";
 "subscriptions__allowance_status_scheduled" = "Pas encore active";
 "subscriptions__allowance_status_expired" = "Expirée";
 "subscriptions__allowance_status_declined" = "Refusée";

@@ -1921,6 +1921,7 @@
 "subscriptions__allowance_status_active" = "Aktiv";
 "subscriptions__allowance_status_waiting" = "Wartet auf Antwort";
 "subscriptions__allowance_status_needs_answer" = "Wartet auf deine Antwort";
+"subscriptions__allowance_status_setting_up" = "Kontingent wird eingerichtet";
 "subscriptions__allowance_status_scheduled" = "Noch nicht aktiv";
 "subscriptions__allowance_status_expired" = "Abgelaufen";
 "subscriptions__allowance_status_declined" = "Abgelehnt";

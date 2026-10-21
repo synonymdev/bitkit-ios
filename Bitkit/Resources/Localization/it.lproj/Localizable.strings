@@ -1894,6 +1894,7 @@
 "subscriptions__allowance_status_active" = "Attivo";
 "subscriptions__allowance_status_waiting" = "In attesa di risposta";
 "subscriptions__allowance_status_needs_answer" = "In attesa della tua risposta";
+"subscriptions__allowance_status_setting_up" = "Configurazione del Plafond";
 "subscriptions__allowance_status_scheduled" = "Non ancora attivo";
 "subscriptions__allowance_status_expired" = "Scaduto";
 "subscriptions__allowance_status_declined" = "Rifiutato";

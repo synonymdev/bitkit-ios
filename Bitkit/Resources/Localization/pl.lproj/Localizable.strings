@@ -1934,6 +1934,7 @@
 "subscriptions__allowance_status_active" = "Aktywny";
 "subscriptions__allowance_status_waiting" = "Czeka na odpowiedź";
 "subscriptions__allowance_status_needs_answer" = "Czeka na Twoją odpowiedź";
+"subscriptions__allowance_status_setting_up" = "Konfigurowanie przydziału";
 "subscriptions__allowance_status_scheduled" = "Jeszcze nieaktywny";
 "subscriptions__allowance_status_expired" = "Wygasł";
 "subscriptions__allowance_status_declined" = "Odrzucony";

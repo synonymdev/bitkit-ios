@@ -1601,6 +1601,7 @@
 "subscriptions__allowance_status_active" = "نشط";
 "subscriptions__allowance_status_waiting" = "بانتظار الرد";
 "subscriptions__allowance_status_needs_answer" = "بانتظار ردك";
+"subscriptions__allowance_status_setting_up" = "جارٍ إعداد المخصص";
 "subscriptions__allowance_status_scheduled" = "غير نشط بعد";
 "subscriptions__allowance_status_expired" = "منتهي الصلاحية";
 "subscriptions__allowance_status_declined" = "مرفوض";

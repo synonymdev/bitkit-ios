@@ -1805,6 +1805,7 @@
 "subscriptions__allowance_status_active" = "Activa";
 "subscriptions__allowance_status_waiting" = "Esperando respuesta";
 "subscriptions__allowance_status_needs_answer" = "Esperando su respuesta";
+"subscriptions__allowance_status_setting_up" = "Configurando la asignación";
 "subscriptions__allowance_status_scheduled" = "Aún no activa";
 "subscriptions__allowance_status_expired" = "Caducada";
 "subscriptions__allowance_status_declined" = "Rechazada";

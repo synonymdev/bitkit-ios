@@ -1785,6 +1785,7 @@
 "subscriptions__allowance_status_active" = "Activa";
 "subscriptions__allowance_status_waiting" = "Esperant resposta";
 "subscriptions__allowance_status_needs_answer" = "Esperant la teva resposta";
+"subscriptions__allowance_status_setting_up" = "S'està configurant l'assignació";
 "subscriptions__allowance_status_scheduled" = "Encara no activa";
 "subscriptions__allowance_status_expired" = "Caducada";
 "subscriptions__allowance_status_declined" = "Rebutjada";

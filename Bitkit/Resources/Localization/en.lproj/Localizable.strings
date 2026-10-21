@@ -1796,6 +1796,7 @@
 "subscriptions__allowance_status_active" = "Active";
 "subscriptions__allowance_status_waiting" = "Waiting for an answer";
 "subscriptions__allowance_status_needs_answer" = "Waiting for your answer";
+"subscriptions__allowance_status_setting_up" = "Setting up the allowance";
 "subscriptions__allowance_status_scheduled" = "Not active yet";
 "subscriptions__allowance_status_expired" = "Expired";
 "subscriptions__allowance_status_declined" = "Declined";

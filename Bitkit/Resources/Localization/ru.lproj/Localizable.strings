@@ -1915,6 +1915,7 @@
 "subscriptions__allowance_status_active" = "Активен";
 "subscriptions__allowance_status_waiting" = "Ожидает ответа";
 "subscriptions__allowance_status_needs_answer" = "Ожидает вашего ответа";
+"subscriptions__allowance_status_setting_up" = "Настройка лимита автооплаты";
 "subscriptions__allowance_status_scheduled" = "Ещё не активен";
 "subscriptions__allowance_status_expired" = "Истёк";
 "subscriptions__allowance_status_declined" = "Отклонён";

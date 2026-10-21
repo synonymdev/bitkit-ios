@@ -1581,6 +1581,7 @@
 "subscriptions__allowance_status_active" = "Ativa";
 "subscriptions__allowance_status_waiting" = "A aguardar resposta";
 "subscriptions__allowance_status_needs_answer" = "A aguardar a sua resposta";
+"subscriptions__allowance_status_setting_up" = "A configurar a pré-aprovação";
 "subscriptions__allowance_status_scheduled" = "Ainda não ativa";
 "subscriptions__allowance_status_expired" = "Expirada";
 "subscriptions__allowance_status_declined" = "Recusada";
