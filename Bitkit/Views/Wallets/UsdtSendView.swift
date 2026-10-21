@@ -470,15 +470,13 @@ struct UsdtSendView: View {
                         reviewDetailsButton.padding(.vertical, 24)
                         if showDetails {
                             Spacer(minLength: 0)
+                            BodySText(t("usdt__fee_note"), textColor: .textSecondary, kerning: 0, lineHeight: 20)
+                                .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
                         }
                     }
                     .frame(minHeight: geometry.size.height, alignment: .top)
                 }
                 .id(showDetails)
-            }
-            if showDetails {
-                BodySText(t("usdt__fee_note"), textColor: .textSecondary, kerning: 0, lineHeight: 20)
-                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
             }
             SwipeButton(
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
