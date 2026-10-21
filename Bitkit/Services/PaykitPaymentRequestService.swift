@@ -2509,6 +2509,10 @@ final class PaykitPaymentRequestManager {
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
+            recordSilentExpirations(
+                at: refreshDate,
+                excluding: [handledRequestedExpirationId, excludingProtectedRequestId].compactMap { $0 }
+            )
             let previousPending = pendingRequests
             receivedPaymentContacts = snapshot.receivedPaymentContacts
             let satisfiedUsdtProofs = (try? PaykitUsdtPaymentService.shared.satisfiedProofs(identity: activeIdentity)) ?? [:]
@@ -2689,7 +2693,7 @@ final class PaykitPaymentRequestManager {
         operation: (PaykitPaymentRequest) async throws -> Void
     ) async throws {
         guard !request.isExpired(at: now()) else {
-            discardExpiredRequests()
+            discardExpiredRequests(openedRequestId: request.id)
             throw PaykitPaymentRequestError.requestExpired
         }
         guard pendingRequests.contains(where: { $0.id == request.id }) else {
