@@ -376,14 +376,14 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertFalse(detail.canRequestRefund)
     }
 
-    func testRefundConfirmationShowsLocalizedAmountNetworkAndFullAddress() {
+    func testRefundConfirmationShowsExactAmountNetworkAndFullAddress() {
         let address = "0x1111222233334444555566667777888899990000"
         let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
                                   sourceTx: "source-tx", status: "held", code: nil, refundTx: nil)
         let detail = UsdtDepositDetail(deposit: deposit, order: nil)
-        for (identifier, amount) in [("en_US", "50.000001"), ("de_DE", "50,000001")] {
+        for identifier in ["en_US", "de_DE", "nl_NL", "fr_FR"] {
             let confirmation = detail.refundConfirmation(address: address, hideBalance: false, locale: Locale(identifier: identifier))
-            for value in [amount, "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
+            for value in ["50.000001", "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
                 XCTAssertTrue(confirmation.contains(value), value)
             }
         }
