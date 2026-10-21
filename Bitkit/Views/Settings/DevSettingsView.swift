@@ -66,6 +66,11 @@ struct DevSettingsView: View {
                         toggle: $disableAllToasts,
                         testIdentifier: "DisableAllToastsToggle"
                     )
+                    .onChange(of: disableAllToasts) { _, isDisabled in
+                        if isDisabled {
+                            app.hideToast()
+                        }
+                    }
 
                     SettingsSectionHeader("SWAPS")
                         .padding(.top, 16)
