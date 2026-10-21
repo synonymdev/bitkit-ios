@@ -956,8 +956,22 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(isHandling, "A USD request reaches the Send sheet instead of waiting for an automatic payment")
 
         let convertedRequest = try Fixtures.paymentRequest(conversion: .fixed(rates: [.init(asset: "usdt", value: "100000")]))
-        XCTAssertFalse(convertedRequest.isAllowancePayable, "A bitcoin request that offers a conversion stays manual")
-        XCTAssertFalse(manager.coversRequest(convertedRequest))
+        XCTAssertTrue(convertedRequest.isAllowancePayable, "A bitcoin request that also prices a USDT rail pays over bitcoin")
+        XCTAssertTrue(manager.coversRequest(convertedRequest))
+    }
+
+    func testManualPaymentOverTheUsdtRailStaysOutOfTheLedger() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest(conversion: .fixed(rates: [.init(asset: "usdt", value: "100000")]))
+
+        let attemptId = try await harness.executor.beginManualPayment(
+            request,
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.usdtArbitrum.rawValue
+        )
+
+        XCTAssertNil(attemptId)
+        XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
     }
 
     @MainActor
