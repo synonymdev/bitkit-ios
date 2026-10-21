@@ -1368,6 +1368,12 @@ final class PaykitPaymentRequestManager {
     private static let recentEligibilityCheckInterval = TimeInterval(30)
 
     private(set) var pendingRequests: [PaykitPaymentRequest] = []
+
+    /// Incoming one-time requests that expired before the user accepted or paid them, without being opened.
+    private(set) var silentlyExpiredRequests: [PaykitPaymentRequest] = []
+    /// A refresh that started before an expiry can put the request back, so report each one once.
+    private var reportedSilentExpirationIds: Set<PaykitPaymentRequest.ID> = []
+    private(set) var silentExpirationTrigger = 0
     private(set) var retainedHardwareRetries: [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = [:]
     private(set) var historyRequests: [PaykitPaymentRequest] = []
     private(set) var subscriptions: [PaykitSubscription] = []
@@ -2177,7 +2183,7 @@ final class PaykitPaymentRequestManager {
 
     @discardableResult
     func requestPresentation(_ request: PaykitPaymentRequest) -> Bool {
-        discardExpiredRequests()
+        discardExpiredRequests(openedRequestId: request.id)
         guard pendingRequests.contains(where: { $0.id == request.id }),
               !processingRequestIds.contains(request.id),
               requestedPresentationId == nil
@@ -2238,6 +2244,8 @@ final class PaykitPaymentRequestManager {
         presentationRetryDeadlines = [:]
         automaticPresentationDiagnosticReasons = [:]
         expiredRequestedPresentations = []
+        reportedSilentExpirationIds = []
+        silentlyExpiredRequests = []
         unavailableRequestedPresentations = []
         requestedPresentationId = nil
         requestedSubscriptionProposalId = nil
@@ -2514,6 +2522,12 @@ final class PaykitPaymentRequestManager {
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
+            // The snapshot already dropped expired proposals; skip ones it still keeps, or the timer reports them again.
+            recordSilentExpirations(
+                at: refreshDate,
+                excluding: [handledRequestedExpirationId, excludingProtectedRequestId].compactMap { $0 }
+                    + snapshot.incoming.map(\.id)
+            )
             let previousPending = pendingRequests
             receivedPaymentContacts = snapshot.receivedPaymentContacts
             let satisfiedUsdtProofs = (try? PaykitUsdtPaymentService.shared.satisfiedProofs(identity: activeIdentity)) ?? [:]
@@ -2703,7 +2717,7 @@ final class PaykitPaymentRequestManager {
         operation: (PaykitPaymentRequest) async throws -> Void
     ) async throws {
         guard !request.isExpired(at: now()) else {
-            discardExpiredRequests()
+            discardExpiredRequests(openedRequestId: request.id)
             throw PaykitPaymentRequestError.requestExpired
         }
         guard pendingRequests.contains(where: { $0.id == request.id }) else {
@@ -2783,11 +2797,13 @@ final class PaykitPaymentRequestManager {
 
     private func discardExpiredRequests(
         at: Date? = nil,
-        handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil
+        handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil,
+        openedRequestId: PaykitPaymentRequest.ID? = nil
     ) {
         let date = at ?? now()
         let subscriptionDate = subscriptionNow()
         recordRequestedPresentationExpiration(at: date, excluding: handledRequestedExpirationId)
+        recordSilentExpirations(at: date, excluding: [handledRequestedExpirationId, openedRequestId].compactMap { $0 })
         let historyIds = Set(historyRequests.map(\.id))
         historyRequests.append(contentsOf: pendingRequests.filter {
             $0.billingPeriod != nil && $0.isExpired(at: date) && !historyIds.contains($0.id)
@@ -2818,6 +2834,19 @@ final class PaykitPaymentRequestManager {
         schedulePresentationRetry()
     }
 
+    private func recordSilentExpirations(at date: Date, excluding handledIds: [PaykitPaymentRequest.ID]) {
+        let expired = pendingRequests.filter {
+            $0.id != requestedPresentationId && !handledIds.contains($0.id) && !reportedSilentExpirationIds.contains($0.id)
+                && !processingRequestIds.contains($0.id)
+                && $0.direction == .incoming && $0.billingPeriod == nil && $0.lifecycleState == .proposed
+                && $0.isExpired(at: date)
+        }
+        guard !expired.isEmpty else { return }
+        reportedSilentExpirationIds.formUnion(expired.map(\.id))
+        silentlyExpiredRequests = expired
+        silentExpirationTrigger += 1
+    }
+
     @discardableResult
     private func recordRequestedPresentationExpiration(
         at date: Date,
@@ -2831,6 +2860,7 @@ final class PaykitPaymentRequestManager {
         else { return nil }
 
         expiredRequestedPresentations.append(expiredRequest)
+        reportedSilentExpirationIds.insert(expiredRequest.id)
         requestedPresentationExpirationTrigger += 1
         return requestedPresentationId
     }
