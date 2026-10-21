@@ -1685,7 +1685,6 @@
 "usdt__failed" = "Fallido";
 "usdt__fee_note" = "Todas las comisiones se pagan en USDT. La comisión final puede ser menor.";
 "usdt__hide_details" = "Ocultar detalles";
-"usdt__history_sync" = "La actividad anterior aún se está sincronizando. Su saldo estará actualizado cuando haya conexión.";
 "usdt__network_warning" = "Seleccione la red que usa el destinatario. Si envía a una dirección en la red equivocada, puede perder los fondos.";
 "usdt__pending" = "Pendiente";
 "usdt__received" = "Recibido";

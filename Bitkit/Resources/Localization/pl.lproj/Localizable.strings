@@ -1815,7 +1815,6 @@
 "usdt__failed" = "Niepowodzenie";
 "usdt__fee_note" = "Wszystkie opłaty są płacone w USDT. Ostateczna opłata może być niższa.";
 "usdt__hide_details" = "Ukryj szczegóły";
-"usdt__history_sync" = "Starsza aktywność wciąż się synchronizuje. Saldo jest aktualne, gdy połączenie jest dostępne.";
 "usdt__network_warning" = "Wybierz sieć używaną przez odbiorcę. Wysłanie na adres w niewłaściwej sieci może skutkować utratą środków.";
 "usdt__pending" = "W toku";
 "usdt__received" = "Otrzymano";

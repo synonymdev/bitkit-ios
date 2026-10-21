@@ -1802,7 +1802,6 @@
 "usdt__failed" = "Fehlgeschlagen";
 "usdt__fee_note" = "Alle Gebühren werden in USDT bezahlt. Die endgültige Gebühr kann niedriger sein.";
 "usdt__hide_details" = "Details ausblenden";
-"usdt__history_sync" = "Ältere Aktivitäten werden noch synchronisiert. Dein Guthaben ist aktuell, sobald eine Verbindung besteht.";
 "usdt__network_warning" = "Wähle das Netzwerk, das der Empfänger verwendet. Beim Senden an eine Adresse im falschen Netzwerk kann Guthaben verloren gehen.";
 "usdt__pending" = "Ausstehend";
 "usdt__received" = "Empfangen";

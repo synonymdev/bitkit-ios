@@ -1805,7 +1805,6 @@
 "usdt__failed" = "Selhání";
 "usdt__fee_note" = "Všechny poplatky se platí v USDT. Konečný poplatek může být nižší.";
 "usdt__hide_details" = "Skrýt podrobnosti";
-"usdt__history_sync" = "Starší aktivita se stále synchronizuje. Když je připojení k dispozici, je váš zůstatek aktuální.";
 "usdt__network_warning" = "Vyberte síť, kterou používá příjemce. Odesláním na adresu v nesprávné síti můžete přijít o prostředky.";
 "usdt__pending" = "Čekající";
 "usdt__received" = "Přijato";

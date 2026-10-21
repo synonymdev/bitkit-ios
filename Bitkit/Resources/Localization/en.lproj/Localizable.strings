@@ -1847,7 +1847,6 @@
 "usdt__failed" = "Failed";
 "usdt__fee_note" = "All fees are paid in USDT. Final fee may be lower.";
 "usdt__hide_details" = "Hide details";
-"usdt__history_sync" = "Older activity is still syncing. Your balance is up to date when the connection is available.";
 "usdt__maximum_fee" = "Maximum fee";
 "usdt__network_warning" = "Select the network used by the recipient. Sending to an address on the wrong network can lose funds.";
 "usdt__pending" = "Pending";
