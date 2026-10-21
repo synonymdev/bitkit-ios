@@ -393,6 +393,11 @@ actor PaykitAllowanceExecutor {
             // No ledger means nothing was ever admitted, so there is nothing to recover and no reason to create one at launch.
             guard try await sdk.allowanceAccountingState() != nil else { return }
             let state = try await ensureReconciled(identity: identity)
+            // One journal read for the whole pass: each attempt appears once, so a stage changed below is never read again.
+            let journalStages = Dictionary(
+                localState(identity: identity).journal.map { ($0.attemptId, $0.stage) },
+                uniquingKeysWith: { first, _ in first }
+            )
             for attempt in state.history.occurrences.flatMap(\.attempts) {
                 switch attempt.status {
                 case .prepared:
@@ -409,8 +414,7 @@ actor PaykitAllowanceExecutor {
                 case .succeeded, .failed:
                     // Reconciliation can settle an attempt the journal still shows as open.
                     let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
-                    let stage = localState(identity: identity).journal.first { $0.attemptId == attempt.attemptId }?.stage
-                    if let stage, !stage.isTerminal {
+                    if let stage = journalStages[attempt.attemptId], !stage.isTerminal {
                         let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
                         if outcome == .failed {
                             await releaseConsumedPaymentList(of: entry)

@@ -210,6 +210,16 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerMayNotCoverAContactWhoseAllowanceEnded() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(state: .ended, terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertFalse(try manager.mayCover(Fixtures.paymentRequest()), "An ended allowance can't start covering a request")
+    }
+
+    @MainActor
     func testManagerKeepsADeferredRequestOffTheSendSheet() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])

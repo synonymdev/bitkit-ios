@@ -713,6 +713,12 @@ struct AppScene: View {
                     Task { await presentNextIncomingPaykitItem() }
                 }
             }
+            .onChange(of: paykitAllowanceManager.isUpdating) { _, isUpdating in
+                // A request held back while allowances were updating is presented as soon as they settle.
+                if !isUpdating {
+                    Task { await presentNextIncomingPaykitItem() }
+                }
+            }
             .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
                 handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
