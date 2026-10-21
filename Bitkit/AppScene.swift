@@ -1593,7 +1593,10 @@ struct AppScene: View {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
                 if await paykitAllowanceManager.isAutomaticallyHandling(request) {
                     // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
-                    paykitPaymentRequestManager.releaseRequestedPresentation(request)
+                    if paykitPaymentRequestManager.requestedPresentationId == request.id {
+                        app.toast(type: .info, title: t("subscriptions__allowance_payment_in_progress"))
+                        paykitPaymentRequestManager.releaseRequestedPresentation(request)
+                    }
                     shouldPresentNextRequest = false
                     continue
                 }

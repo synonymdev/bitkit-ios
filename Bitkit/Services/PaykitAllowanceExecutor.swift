@@ -386,8 +386,10 @@ actor PaykitAllowanceExecutor {
                         }
                         continue
                     }
+                    let wasSettled = localState(identity: identity).journal.first { $0.attemptId == attempt.attemptId }?.stage == .succeeded
                     try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
-                    if outcome == .succeeded {
+                    // A settlement event already announced a journal entry it settled.
+                    if outcome == .succeeded, !wasSettled {
                         announceAutomaticPayment(attemptId: attempt.attemptId, identity: identity)
                     }
                 case .succeeded, .failed:
