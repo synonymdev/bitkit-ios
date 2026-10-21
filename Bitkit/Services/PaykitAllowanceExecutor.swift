@@ -411,6 +411,16 @@ actor PaykitAllowanceExecutor {
         )
     }
 
+    /// The SDK's block codes for a request over an amount, count or period limit, as on Android.
+    static let capacityBlockCodes: Set<String> = ["amount_outside_range", "period_amount_limit", "period_count_limit", "lifetime_amount_limit"]
+
+    static func isCapacityBlock(_ reason: Paykit.AllowanceAccountingBlock) -> Bool {
+        if case let .sharedRule(code) = reason {
+            return capacityBlockCodes.contains(code)
+        }
+        return false
+    }
+
     /// Whether a covered request is over every limit of the contact's accepted allowances, decided without the node.
     func exceedsLimits(_ request: PaykitPaymentRequest, allowances: [PaykitAllowance], identity: String) async -> Bool {
         let covering = allowances.filter {
@@ -602,11 +612,16 @@ actor PaykitAllowanceExecutor {
             checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: trustedTime(identity: identity))
         )
         guard case let .ready(prepared) = reservation else {
+            var isCapacityBlock = false
             if case let .blocked(reason) = reservation {
                 Logger.info("Allowance reservation blocked: \(reason)", context: "PaykitAllowance")
+                isCapacityBlock = Self.isCapacityBlock(reason)
             }
             _ = try? await sdk.markPaymentManualOnly(occurrence: occurrence)
-            notifyLimitReached(request, identity: identity)
+            // Only a limit says Limit Reached; an ended allowance or a manual-only decision just asks.
+            if isCapacityBlock {
+                notifyLimitReached(request, identity: identity)
+            }
             return .manual
         }
 

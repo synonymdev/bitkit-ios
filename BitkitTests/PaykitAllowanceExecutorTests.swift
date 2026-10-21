@@ -285,9 +285,26 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(listOutcomes, [.definitePreBroadcastFailure])
     }
 
+    func testReservationBlockedForAReasonOtherThanALimitRaisesNoLimitReached() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setAutomaticReservation(.blocked(reason: .manualOnly))
+        let events = AllowanceEventRecorder()
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(events.events.contains {
+            if case .limitReached = $0 {
+                true
+            } else {
+                false
+            }
+        })
+    }
+
     func testBlockedReservationMarksThePaymentManualOnly() async throws {
         let harness = AllowanceHarness()
-        await harness.sdk.setAutomaticReservation(.blocked(reason: .sharedRule(code: "period_amount_limit_exceeded")))
+        await harness.sdk.setAutomaticReservation(.blocked(reason: .sharedRule(code: "period_amount_limit")))
         let request = try Fixtures.paymentRequest()
 
         let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
