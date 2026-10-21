@@ -198,6 +198,18 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerMayCoverAContactItWasAskedToGrant() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(state: .proposed, terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertTrue(try manager.mayCover(Fixtures.paymentRequest()))
+        XCTAssertFalse(try manager.mayCover(Fixtures.paymentRequest(counterparty: Fixtures.otherCounterpartyKey)))
+        XCTAssertFalse(manager.isUpdating)
+    }
+
+    @MainActor
     func testManagerKeepsADeferredRequestOffTheSendSheet() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -535,6 +547,65 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         let paid = events.events.filter { $0 == .paidAutomatically(counterparty: Fixtures.counterpartyKey, amountSats: 1000, paymentId: paidHash) }
         XCTAssertEqual(paid.count, 1)
+    }
+
+    func testRecoveryAnnouncesAPaymentReconciliationAlreadySettled() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-settled", attempts: [Fixtures.attemptRecord(id: "settled", status: .succeeded)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "settled", request: request, stage: .sent, paymentHash: paidHash)]),
+            identity: Fixtures.identityKey
+        )
+        let events = AllowanceEventRecorder()
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.succeeded])
+        let paid = events.events.filter { $0 == .paidAutomatically(counterparty: Fixtures.counterpartyKey, amountSats: 1000, paymentId: paidHash) }
+        XCTAssertEqual(paid.count, 1)
+    }
+
+    func testSettlementAndRecoveryAnnounceOnePaymentOnce() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-sent", attempts: [Fixtures.attemptRecord(id: "sent", status: .submitted)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "sent", request: request, stage: .sent, paymentHash: paidHash)]),
+            identity: Fixtures.identityKey
+        )
+        await harness.lookup.setStatuses([paidHash: .succeeded(preimage: String(repeating: "0", count: 64))])
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let events = AllowanceEventRecorder()
+
+        await harness.executor.lightningPaymentSettled(paymentHash: paidHash, succeeded: true)
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        await harness.executor.lightningPaymentSettled(paymentHash: paidHash, succeeded: true)
+
+        let paid = events.events.filter { $0 == .paidAutomatically(counterparty: Fixtures.counterpartyKey, amountSats: 1000, paymentId: paidHash) }
+        XCTAssertEqual(paid.count, 1)
+    }
+
+    func testLimitCheckIgnoresAnExpiredAllowance() async throws {
+        let harness = AllowanceHarness()
+        let active = Fixtures.allowance(allowanceId: "active", perPaymentMaxSats: 500)
+        let expired = Fixtures.allowance(allowanceId: "expired", perPaymentMaxSats: 5000, expiresAt: Fixtures.now.addingTimeInterval(-60))
+
+        let exceeds = try await harness.executor.exceedsLimits(
+            Fixtures.paymentRequest(),
+            allowances: [active, expired],
+            identity: Fixtures.identityKey
+        )
+
+        XCTAssertTrue(exceeds, "Only an allowance active now can take a request")
     }
 
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {

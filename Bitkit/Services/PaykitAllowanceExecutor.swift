@@ -386,29 +386,20 @@ actor PaykitAllowanceExecutor {
                         }
                         continue
                     }
-                    let wasSettled = localState(identity: identity).journal.first { $0.attemptId == attempt.attemptId }?.stage == .succeeded
                     try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
-                    // A settlement event already announced a journal entry it settled.
-                    if outcome == .succeeded, !wasSettled {
-                        announceAutomaticPayment(attemptId: attempt.attemptId, identity: identity)
+                case .succeeded:
+                    // Reconciliation can settle an attempt the journal still shows as sent.
+                    let stage = localState(identity: identity).journal.first { $0.attemptId == attempt.attemptId }?.stage
+                    if let stage, stage != .succeeded {
+                        applyJournalOutcome(attemptId: attempt.attemptId, outcome: .succeeded, identity: identity)
                     }
-                case .succeeded, .failed:
+                case .failed:
                     continue
                 }
             }
         } catch {
             Logger.warn("Paykit allowance recovery failed: \(error)", context: "PaykitAllowance")
         }
-    }
-
-    /// Recovery settles payments no settlement event reported, so it raises the same contact link and notification.
-    private func announceAutomaticPayment(attemptId: String, identity: String) {
-        guard let entry = localState(identity: identity).journal.first(where: { $0.attemptId == attemptId }),
-              entry.isAutomatic, let paymentHash = entry.paymentHash
-        else { return }
-        Self.eventSubject.send(
-            .paidAutomatically(counterparty: entry.requestId.counterparty, amountSats: entry.amountSats, paymentId: paymentHash.lowercased())
-        )
     }
 
     /// The SDK's block codes for a request over an amount, count or period limit, as on Android.
@@ -424,7 +415,7 @@ actor PaykitAllowanceExecutor {
     /// Whether a covered request is over every limit of the contact's accepted allowances, decided without the node.
     func exceedsLimits(_ request: PaykitPaymentRequest, allowances: [PaykitAllowance], identity: String) async -> Bool {
         let covering = allowances.filter {
-            $0.isAllower && $0.lifecycleState == .accepted && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
+            $0.isAllower && $0.status(at: now()) == .active && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
         }
         guard !covering.isEmpty else { return false }
         let attempts = await automaticAttempts()
@@ -475,8 +466,18 @@ actor PaykitAllowanceExecutor {
 
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {
         try await sdk.recordPaymentOutcome(Paykit.PaymentOutcomeReport(attemptId: attemptId, outcome: outcome))
+        applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity)
+    }
+
+    /// Moves the journal entry to the outcome, and announces an automatic payment only from the call that settles it,
+    /// so a settlement event and recovery never both raise Payment Executed.
+    private func applyJournalOutcome(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) {
+        var settledEntry: PaykitAllowanceLocalState.JournalEntry?
         updateLocalState(identity: identity) { state in
             guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
+            if outcome == .succeeded, state.journal[index].stage != .succeeded {
+                settledEntry = state.journal[index]
+            }
             switch outcome {
             case .succeeded: state.journal[index].stage = .succeeded
             case .failed: state.journal[index].stage = .failed
@@ -484,6 +485,11 @@ actor PaykitAllowanceExecutor {
             }
         }
         Self.eventSubject.send(.ledgerChanged)
+        if let entry = settledEntry, entry.isAutomatic, let paymentHash = entry.paymentHash {
+            Self.eventSubject.send(
+                .paidAutomatically(counterparty: entry.requestId.counterparty, amountSats: entry.amountSats, paymentId: paymentHash.lowercased())
+            )
+        }
     }
 
     func automaticAttempts() async -> [PaykitAllowanceCapacity.Attempt] {
@@ -751,15 +757,6 @@ actor PaykitAllowanceExecutor {
         for entry in entries {
             do {
                 try await record(attemptId: entry.attemptId, outcome: succeeded ? .succeeded : .failed, identity: identity)
-                if succeeded, entry.isAutomatic {
-                    Self.eventSubject.send(
-                        .paidAutomatically(
-                            counterparty: entry.requestId.counterparty,
-                            amountSats: entry.amountSats,
-                            paymentId: paymentHash.lowercased()
-                        )
-                    )
-                }
             } catch {
                 Logger.warn("Failed to record an allowance payment outcome: \(error)", context: "PaykitAllowance")
             }

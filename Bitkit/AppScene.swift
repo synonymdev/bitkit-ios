@@ -1606,6 +1606,11 @@ struct AppScene: View {
                     shouldPresentNextRequest = false
                     continue
                 }
+                // A refresh or pass still running may hand this request to the allowance flow; a later round presents it.
+                if paykitAllowanceManager.isUpdating, paykitAllowanceManager.mayCover(request) {
+                    shouldPresentNextRequest = false
+                    continue
+                }
                 let preparation: IncomingPaykitPaymentRequestPreparation
                 if let current = incomingPaymentRequestPreparation, current.ownsSheet(sheets) {
                     guard current.request?.id == request.id else { continue }
