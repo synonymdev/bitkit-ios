@@ -318,6 +318,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                     try await Task.sleep(for: .milliseconds(10))
                 }
             }
+            XCTAssertEqual(wallet.preparationCount, 2)
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
             if operation == .selection {
