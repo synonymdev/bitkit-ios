@@ -1304,6 +1304,7 @@
 "wallet__send_yes" = "Tak, wyślij";
 "wallet__send_dialog1" = "Wygląda na to, że wysyłasz ponad $100. Czy kontynuować?";
 "wallet__send_dialog2" = "Wygląda na to, że wysyłasz ponad 50% swojego salda. Czy kontynuować?";
+"wallet__send_dialog2_usdt" = "Wygląda na to, że wysyłasz ponad 50% swojego salda USDT. Czy kontynuować?";
 "wallet__send_dialog3" = "Opłata transakcyjna wynosi ponad 50% wysyłanej kwoty. Czy chcesz kontynuować?";
 "wallet__send_dialog4" = "Opłata transakcyjna wynosi ponad 10 USD. Czy chcesz kontynuować?";
 "wallet__send_dialog5_title" = "Opłata transakcyjna jest potencjalnie zbyt niska";

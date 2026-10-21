@@ -76,6 +76,27 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertNotNil(app.scannedOnchainInvoice)
     }
 
+    func testSendScanOfUsdtAddressContinuesInSendSheet() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled, "USDT is not configured in this build")
+        let recipient = "0x18503bD685aF84E6A7bC289898bAa1C3f5d8527E"
+        let scanner = ScannerManager {}
+        let app = configure(scanner)
+        let navigation = NavigationViewModel()
+        scanner.configure(
+            app: app,
+            currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared,
+            navigation: navigation,
+            wallet: WalletViewModel()
+        )
+        var routes: [SendRoute?] = []
+
+        await scanner.handleSendScan(recipient) { routes.append($0) }
+
+        XCTAssertEqual(routes, [.usdtAddress(recipient: recipient, amount: "")])
+        XCTAssertTrue(navigation.path.isEmpty)
+    }
+
     private func configure(_ scanner: ScannerManager) -> AppViewModel {
         let app = AppViewModel(
             sheetViewModel: SheetViewModel(),
