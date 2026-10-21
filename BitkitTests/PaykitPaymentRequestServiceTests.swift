@@ -169,62 +169,62 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
-    func testInitialUsdtPinAuthorizationSurvivesNavigationAndRemainsOneShot() async throws {
-        snapshotAppDefaultsDomain()
-        let settings = SettingsViewModel.shared
-        let previousPinEnabled = settings.pinEnabled
-        let previousPin = try Bitkit.Keychain.load(key: .securityPin)
-        let previousSwipeBack = SwipeBackState.allowSwipeBack
-        addTeardownBlock { @MainActor in
-            settings.pinEnabled = previousPinEnabled
-            SwipeBackState.allowSwipeBack = previousSwipeBack
-            if let previousPin {
-                try Bitkit.Keychain.upsert(key: .securityPin, data: previousPin)
-            } else {
-                try Bitkit.Keychain.delete(key: .securityPin)
-            }
-        }
-        try Bitkit.Keychain.upsert(key: .securityPin, data: Data("1234".utf8))
-        settings.pinEnabled = true
-        settings.requirePinForPayments = true
-        settings.useBiometrics = false
-        settings.pinFailedAttempts = 0
-
-        for verifiesPin in [false, true] {
+    func testInitialUsdtAuthorizationSurvivesNavigationAndRemainsOneShot() async throws {
+        for authorized in [false, true] {
             var quoteCount = 0
+            var authorizationCount = 0
             var sendCount = 0
-            let sent = expectation(description: "PIN-authorized initial payment")
-            sent.isInverted = !verifiesPin
+            var authorization: CheckedContinuation<Bool, Never>?
+            var resumedAuthorizationWasCancelled: [Bool] = []
+            let navigation = InitialUsdtPaymentTestNavigation()
             let manager = UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw UsdtError.InvalidCredentials })
-            let window = try hostInitialUsdtPayment(manager: manager, quotePayment: { _, _, _ in
+            let window = try hostInitialUsdtPayment(manager: manager, navigation: navigation, quotePayment: { _, _, _ in
                 quoteCount += 1
                 return self.initialUsdtQuote
+            }, authenticatePayment: {
+                authorizationCount += 1
+                guard authorizationCount == 1 else { return false }
+                let result = await withCheckedContinuation { continuation in
+                    authorization = continuation
+                    navigation.path = [1]
+                }
+                resumedAuthorizationWasCancelled.append(Task.isCancelled)
+                return result
             }, sendPayment: { _ in
                 try Task.checkCancellation()
                 sendCount += 1
-                sent.fulfill()
             })
-            defer { window.isHidden = true; window.rootViewController = nil }
+            defer {
+                authorization?.resume(returning: false)
+                authorization = nil
+                window.isHidden = true
+                window.rootViewController = nil
+            }
             try await waitUntil {
-                self.initialPaymentNavigation(window)?.viewControllers.count == 2 && !manager.isSendPresented
+                navigation.authorizationVisible && !manager.isSendPresented
             }
-            let navigation = try XCTUnwrap(initialPaymentNavigation(window))
-            let pinView = try XCTUnwrap(navigation.topViewController?.view)
-            for identifier in verifiesPin ? ["N1", "N2", "N3", "N4"] : ["NavigationBack"] {
-                try await waitUntil { self.initialPaymentAccessibilityElement(identifier, in: pinView) != nil }
-                let button = try XCTUnwrap(initialPaymentAccessibilityElement(identifier, in: pinView))
-                XCTAssertTrue(button.accessibilityActivate(), "Could not activate \(identifier)")
-                try await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(quoteCount, 1)
+            XCTAssertEqual(authorizationCount, 1)
+            XCTAssertEqual(sendCount, 0)
+            navigation.path.removeAll()
+            try await waitUntil { !navigation.authorizationVisible && manager.isSendPresented }
+            let continuation = try XCTUnwrap(authorization)
+            authorization = nil
+            continuation.resume(returning: authorized)
+            try await waitUntil { !resumedAuthorizationWasCancelled.isEmpty }
+            XCTAssertEqual(resumedAuthorizationWasCancelled, [false])
+            if authorized {
+                try await waitUntil { sendCount == 1 }
             }
-            await fulfillment(of: [sent], timeout: verifiesPin ? 3 : 0.2)
-            try await waitUntil { navigation.viewControllers.count == 1 && manager.isSendPresented }
+            let settings = SettingsViewModel.shared
             settings.usdtPreference = .disabled
             try await Task.sleep(for: .milliseconds(100))
             settings.usdtPreference = .enabled
             try await Task.sleep(for: .milliseconds(100))
-            XCTAssertEqual(navigation.viewControllers.count, 1, "Returning from PIN must not authorize again")
+            XCTAssertTrue(navigation.path.isEmpty, "Returning from authorization must not authorize again")
             XCTAssertEqual(quoteCount, 1)
-            XCTAssertEqual(sendCount, verifiesPin ? 1 : 0)
+            XCTAssertEqual(authorizationCount, 1)
+            XCTAssertEqual(sendCount, authorized ? 1 : 0)
         }
     }
 
@@ -323,26 +323,6 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         return nil
     }
 
-    private func initialPaymentAccessibilityElement(_ identifier: String, in root: NSObject) -> NSObject? {
-        var elements = [root]
-        var visited: Set<ObjectIdentifier> = []
-        while !elements.isEmpty {
-            let element = elements.removeFirst()
-            guard visited.insert(ObjectIdentifier(element)).inserted else { continue }
-            if (element as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier {
-                return element
-            }
-            if let view = element as? UIView {
-                elements.append(contentsOf: view.subviews)
-            }
-            let count = element.accessibilityElementCount()
-            if count > 0, count != NSNotFound {
-                elements.append(contentsOf: (0 ..< count).compactMap { element.accessibilityElement(at: $0) as? NSObject })
-            }
-        }
-        return nil
-    }
-
     private func initialPaymentSnapshot(_ window: UIWindow, name: String) throws -> [String] {
         let view = try XCTUnwrap(window.rootViewController?.view)
         let image = UIGraphicsImageRenderer(bounds: view.bounds).image { _ in
@@ -368,6 +348,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         automatic: Bool = true,
         manager: UsdtWalletManager? = nil,
         pushed: Bool = false,
+        navigation: InitialUsdtPaymentTestNavigation? = nil,
         quotePayment: @escaping (String, String, UsdtDestination) async throws -> UsdtQuote,
         authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: @escaping (UsdtQuote) async throws -> Void
@@ -417,13 +398,27 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-        window.rootViewController = UIHostingController(rootView: NavigationStack(path: .constant(pushed ? [1] : [])) {
-            if pushed {
-                Color.black.navigationDestination(for: Int.self) { _ in view }
+        let root = Group {
+            if let navigation {
+                @Bindable var navigation = navigation
+                NavigationStack(path: $navigation.path) {
+                    view.navigationDestination(for: Int.self) { _ in
+                        Color.black
+                            .onAppear { navigation.authorizationVisible = true }
+                            .onDisappear { navigation.authorizationVisible = false }
+                    }
+                }
             } else {
-                view
+                NavigationStack(path: .constant(pushed ? [1] : [])) {
+                    if pushed {
+                        Color.black.navigationDestination(for: Int.self) { _ in view }
+                    } else {
+                        view
+                    }
+                }
             }
-        })
+        }
+        window.rootViewController = UIHostingController(rootView: root)
         window.makeKeyAndVisible()
         window.rootViewController?.view.layoutIfNeeded()
         return window
@@ -10229,4 +10224,11 @@ private final class PaymentRequestSendWallet: WalletViewModel {
     override func setFeeRate(speed: TransactionSpeed, isCurrentSend: () -> Bool = { true }) async throws {
         selectedFeeRateSatsPerVByte = 2
     }
+}
+
+@Observable
+@MainActor
+private final class InitialUsdtPaymentTestNavigation {
+    var path: [Int] = []
+    var authorizationVisible = false
 }
