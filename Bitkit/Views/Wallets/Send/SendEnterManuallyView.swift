@@ -35,6 +35,7 @@ struct SendEnterManuallyView: View {
     }
 
     private var isUsdtInput: Bool {
+        guard !hwSend.isActive, settings.isUsdtEnabled else { return false }
         let input = app.manualEntryInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return input.hasPrefix("0x") || input.hasPrefix("ethereum:")
     }
