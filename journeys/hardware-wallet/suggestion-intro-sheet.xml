@@ -11,7 +11,7 @@
     <action>Tap the forget-device (trash) icon next to the known device (id "TrezorForgetDevice-bridge"), confirming any dialog</action>
     <action>Navigate back to the wallet home screen</action>
     <action>Verify no hardware wallet tile (id "ActivityHardware") is shown beneath the SAVINGS and SPENDING tiles</action>
-    <action>Scroll the suggestion cards horizontally until a card titled "Hardware" with the text "Connect device" is visible, and verify by screenshot that its artwork shows a Trezor Safe 7 (touchscreen device), not the Trezor Model One</action>
+    <action>Scroll the home screen until a card titled "Hardware" with the text "Connect device" is visible, and verify by screenshot that its artwork shows a Trezor Safe 7 (touchscreen device), not the Trezor Model One</action>
     <action>Tap the "Hardware" suggestion card</action>
     <action>Verify a sheet opens titled "Hardware Wallet" (id "HardwareWalletIntroScreen") showing hardware device illustrations, and verify by screenshot that the left illustration is a Trezor Safe 7 bleeding off the left edge</action>
     <action>Verify the headline reads "ADD YOUR HARDWARE WALLET" — iOS renders it uppercase — with the words "HARDWARE WALLET" in blue</action>
