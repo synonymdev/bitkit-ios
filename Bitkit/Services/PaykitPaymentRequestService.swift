@@ -1358,7 +1358,13 @@ final class PaykitPaymentRequestManager {
     private static let automaticPresentationRetryDelay = TimeInterval(120)
     private static let recentEligibilityCheckInterval = TimeInterval(30)
 
-    private(set) var pendingRequests: [PaykitPaymentRequest] = []
+    private(set) var pendingRequests: [PaykitPaymentRequest] = [] {
+        didSet { recordSilentExpirations(from: oldValue) }
+    }
+
+    /// Pending incoming requests that expired on their own, without the user opening them.
+    private(set) var silentlyExpiredRequests: [PaykitPaymentRequest] = []
+    private(set) var silentExpirationTrigger = 0
     private(set) var retainedHardwareRetries: [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = [:]
     private(set) var historyRequests: [PaykitPaymentRequest] = []
     private(set) var subscriptions: [PaykitSubscription] = []
@@ -2793,6 +2799,18 @@ final class PaykitPaymentRequestManager {
         persistPresentedRequestIds()
         scheduleExpiration()
         schedulePresentationRetry()
+    }
+
+    private func recordSilentExpirations(from previous: [PaykitPaymentRequest]) {
+        let remainingIds = Set(pendingRequests.map(\.id))
+        let date = now()
+        let expired = previous.filter {
+            !remainingIds.contains($0.id) && $0.id != requestedPresentationId
+                && $0.direction == .incoming && $0.billingPeriod == nil && $0.isExpired(at: date)
+        }
+        guard !expired.isEmpty else { return }
+        silentlyExpiredRequests = expired
+        silentExpirationTrigger += 1
     }
 
     @discardableResult

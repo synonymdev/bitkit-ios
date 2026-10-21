@@ -704,6 +704,9 @@ struct AppScene: View {
             .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
                 handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
+            .onChange(of: paykitPaymentRequestManager.silentExpirationTrigger) {
+                toastSilentlyExpiredPaymentRequests()
+            }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
@@ -1822,6 +1825,17 @@ struct AppScene: View {
 
     private var incomingPaykitPaymentRequestPresentationState: IncomingPaykitPaymentRequestPresentationState {
         IncomingPaykitPaymentRequestPresentationState(paykitPaymentRequestManager)
+    }
+
+    private func toastSilentlyExpiredPaymentRequests() {
+        let payingRequestId = app.contactPaymentContext?.incomingPaymentRequest?.id
+        guard paykitPaymentRequestManager.silentlyExpiredRequests.contains(where: { $0.id != payingRequestId }) else { return }
+        app.toast(
+            type: .error,
+            title: t("wallet__payment_request"),
+            description: t("wallet__payment_request_expired"),
+            accessibilityIdentifier: "PaymentRequestExpiredToast"
+        )
     }
 
     private func handleIncomingPaykitPaymentRequestPresentationStateChange(

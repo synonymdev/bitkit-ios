@@ -5111,6 +5111,27 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 0)
         XCTAssertNil(manager.consumeExpiredRequestedPresentation())
+        XCTAssertEqual(manager.silentExpirationTrigger, 0)
+    }
+
+    func testPendingRequestExpiringUnopenedIsReportedAsSilentExpiration() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(60))),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertEqual(manager.silentExpirationTrigger, 0)
+
+        clock.advance(by: 60)
+        manager.reconcileExpiredRequests()
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.silentExpirationTrigger, 1)
+        XCTAssertEqual(manager.silentlyExpiredRequests, [request])
+        XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 0)
     }
 
     func testRequestedExpirationSurvivesSuspendedResolution() async throws {
@@ -5143,6 +5164,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.requestedPresentationExpirationTrigger, 1)
         XCTAssertEqual(manager.consumeExpiredRequestedPresentation(), request)
         XCTAssertNil(manager.consumeExpiredRequestedPresentation())
+        XCTAssertEqual(manager.silentExpirationTrigger, 0)
 
         continuation?.resume()
         _ = await presentationTask.value
