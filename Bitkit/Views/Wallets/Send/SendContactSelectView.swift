@@ -63,13 +63,14 @@ struct SendContactSelectView: View {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: contact.publicKey, wallet: wallet)
 
             switch result {
-            case let .opened(paymentRequest, privatePaymentContext):
+            case let .opened(paymentRequest, privatePaymentContext, endpoints):
                 _ = await openContactPayment(
                     paymentRequest: paymentRequest,
                     publicKey: contact.publicKey,
-                    privatePaymentContext: privatePaymentContext
+                    privatePaymentContext: privatePaymentContext,
+                    endpoints: endpoints
                 )
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
                         type: .warning,
@@ -80,7 +81,9 @@ struct SendContactSelectView: View {
             }
         } catch {
             Logger.error("Failed to pay contact \(PubkyPublicKeyFormat.redacted(contact.publicKey)): \(error)", context: "SendContactSelectView")
-            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+            if let description = PaymentNavigationHelper.contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
     }
 
@@ -88,11 +91,13 @@ struct SendContactSelectView: View {
     private func openContactPayment(
         paymentRequest: String,
         publicKey: String,
-        privatePaymentContext: PrivatePaykitPaymentContext?
+        privatePaymentContext: PrivatePaykitPaymentContext?,
+        endpoints: [PublicPaykitService.Endpoint]
     ) async -> Bool {
         let contactPaymentContext = ContactPaymentContext(
             publicKey: publicKey,
-            privatePaymentContext: privatePaymentContext
+            privatePaymentContext: privatePaymentContext,
+            endpoints: endpoints
         )
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
 

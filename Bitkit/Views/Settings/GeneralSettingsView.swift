@@ -1,10 +1,15 @@
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedContactPaymentsPreference = false
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
+
+    @Environment(UsdtWalletManager.self) private var usdt
+    @State private var isUpdatingUsdt = false
+    @State private var isCheckingUsdt = false
+    @State private var usdtDisableBlocked = false
 
     @Environment(HwWalletManager.self) private var hwWalletManager
 
@@ -101,17 +106,6 @@ struct GeneralSettingsView: View {
                 }
                 .accessibilityIdentifier("TransactionSpeedSettings")
 
-                if isPaykitUIActive, pubkyProfile.isAuthenticated {
-                    SettingsRow(
-                        title: t("profile__pay_contacts_toggle"),
-                        iconName: "list-dashes",
-                        rightIcon: nil,
-                        toggle: contactPaymentsToggle,
-                        disabled: isUpdatingContactPayments,
-                        testIdentifier: "ContactPaymentsToggle"
-                    )
-                }
-
                 NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                     SettingsRow(
                         title: t("settings__quickpay__nav_title"),
@@ -138,10 +132,45 @@ struct GeneralSettingsView: View {
                     )
                 }
                 .accessibilityIdentifier("HardwareWalletsSettings")
+
+                if isPaykitUIActive, pubkyProfile.isAuthenticated {
+                    SettingsRow(
+                        title: t("profile__pay_contacts_toggle"),
+                        iconName: "list-dashes",
+                        rightIcon: nil,
+                        toggle: contactPaymentsToggle,
+                        disabled: isUpdatingContactPayments,
+                        testIdentifier: "ContactPaymentsToggle"
+                    )
+                }
+
+                if usdt.isConfigured {
+                    SettingsRow(
+                        title: t("usdt__settings_title"),
+                        iconName: "usdt-settings",
+                        rightIcon: nil,
+                        toggle: Binding(get: { settings.isUsdtEnabled || usdt.hasFundsOrPendingTransfers },
+                                        set: { enabled in Task { await updateUsdt(enabled) } }),
+                        disabled: isUpdatingUsdt || isCheckingUsdt || usdt.hasFundsOrPendingTransfers ||
+                            (settings.isUsdtEnabled && (usdt.hasProtectedFunds || usdtDisableBlocked)),
+                        testIdentifier: "UsdtSettingsToggle"
+                    )
+                }
             }
             .padding(.top, 16)
             .padding(.horizontal, 16)
             .bottomSafeAreaPadding()
+        }
+        .task(id: settings.isUsdtEnabled) {
+            guard settings.isUsdtEnabled else { usdtDisableBlocked = false; return }
+            isCheckingUsdt = true
+            defer { isCheckingUsdt = false }
+            do {
+                try await usdt.checkCanDisable()
+                usdtDisableBlocked = false
+            } catch UsdtWalletError.cannotDisable {
+                usdtDisableBlocked = true
+            } catch {}
         }
         .task {
             ContactPaymentsService.enableAllPaymentOptions()
@@ -150,7 +179,27 @@ struct GeneralSettingsView: View {
                   !hasConfirmedContactPaymentsPreference
             else { return }
 
-            await updateContactPayments(true)
+            // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish
+            // unless the Pubky session ends or a newer contact payments change starts first.
+            Task { await updateContactPayments(true) }
+        }
+    }
+
+    private func updateUsdt(_ enabled: Bool) async {
+        guard !isUpdatingUsdt else { return }
+        isUpdatingUsdt = true
+        defer { isUpdatingUsdt = false }
+        do {
+            if !enabled {
+                try await usdt.checkCanDisable()
+            }
+            settings.usdtPreference = enabled ? .enabled : .disabled
+        } catch is CancellationError {
+        } catch {
+            if case UsdtWalletError.cannotDisable = error {
+                usdtDisableBlocked = true
+            }
+            app.toast(type: .warning, title: t("usdt__settings_title"), description: t("usdt__disable_unavailable"))
         }
     }
 
@@ -165,17 +214,14 @@ struct GeneralSettingsView: View {
         }
 
         do {
-            let canUsePrivatePayments = pubkyProfile.hasLocalSecretKeyForCurrentProfile
-            if canUsePrivatePayments, let publicKey = pubkyProfile.publicKey {
-                try await contactsManager.loadContactsIfNeeded(for: publicKey)
-            }
-
             try await ContactPaymentsService.setEnabled(
                 enabled,
-                wallet: wallet,
-                contactPublicKeys: contactsManager.contacts.map(\.publicKey),
-                canUsePrivatePayments: canUsePrivatePayments
+                pubkyProfile: pubkyProfile,
+                contactsManager: contactsManager,
+                operations: .live(wallet: wallet)
             )
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error("Failed to update contact payments: \(error)", context: "GeneralSettingsView")
             app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
@@ -193,6 +239,7 @@ struct GeneralSettingsView: View {
             .environmentObject(AppViewModel())
             .environmentObject(WalletViewModel())
             .environment(HwWalletManager())
+            .environment(UsdtWalletManager())
     }
     .preferredColorScheme(.dark)
 }

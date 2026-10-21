@@ -10,7 +10,7 @@ struct ReceiveEdit: View {
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @Binding var navigationPath: [ReceiveRoute]
     let sourceTab: ReceiveQr.ReceiveTab
@@ -36,7 +36,7 @@ struct ReceiveEdit: View {
             return .auto
         case .spending:
             return .spending
-        case .trezor:
+        case .hardware, .usdt:
             return .savings
         }
     }
@@ -108,7 +108,7 @@ struct ReceiveEdit: View {
                         ) {
                             onSendPaymentRequest(
                                 PaykitPaymentRequestDraft(
-                                    amountSats: amountSats,
+                                    amount: PaykitAmount(asset: .btc, atomic: amountSats),
                                     note: note.trimmingCharacters(in: .whitespacesAndNewlines),
                                     expiresAt: PaymentRequestExpiration.week.date(from: .now)
                                 )
@@ -295,12 +295,8 @@ struct ReceiveEdit: View {
     }
 
     private func deleteTag(_ tag: String) async {
-        guard let paymentId = await wallet.paymentId(), !paymentId.isEmpty else { return }
         do {
-            try await CoreService.shared.activity.removePreActivityMetadataTags(
-                paymentId: paymentId,
-                tags: [tag]
-            )
+            try await wallet.mutateReceiveTags(.remove([tag]))
 
             await MainActor.run {
                 tagManager.removeTagFromSelection(tag)

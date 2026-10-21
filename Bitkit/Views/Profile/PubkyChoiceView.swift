@@ -5,14 +5,80 @@ struct PubkyChoiceView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var contactsManager: ContactsManager
-    @Environment(\.scenePhase) var scenePhase
+    @Environment(\.scenePhase) private var scenePhase
 
-    @State private var isAuthenticating = false
-    @State private var isWaitingForRing = false
-    @State private var isLoadingAfterAuth = false
-    @State private var showRingNotInstalledDialog = false
+    @State private var ringPubkys: [String] = []
+    @State private var ringProfiles: [String: PubkyProfile] = [:]
+    @State private var didLoad = false
+    @State private var adoptingPubky: String?
+    /// Bumped to look the rows up again. The `.task` keyed on it stops the previous lookup, and SwiftUI stops it when the
+    /// screen goes away.
+    @State private var ringLoadGeneration = 0
 
-    private let pubkyRingAppStoreUrl = "https://apps.apple.com/app/pubky-ring/id6739356756"
+    private var hasRingIdentities: Bool {
+        !ringPubkys.isEmpty
+    }
+
+    static func descriptionKey(hasRingIdentities: Bool) -> String {
+        hasRingIdentities ? "profile__choice_description_ring" : "profile__choice_description"
+    }
+
+    static func showsCreateCard(hasRingIdentities: Bool) -> Bool {
+        !hasRingIdentities
+    }
+
+    /// Equals the manager's row profiles, so a row whose lookup now finds nothing drops its old name and avatar. While an
+    /// adoption runs it only adds: adopting clears the manager's cache while this screen is still up, and rows must not
+    /// flash back to bare keys before navigation.
+    static func mirroredRingProfiles(
+        _ shown: [String: PubkyProfile],
+        found: [String: PubkyProfile],
+        isAdopting: Bool
+    ) -> [String: PubkyProfile] {
+        guard isAdopting else { return found }
+        return shown.merging(found) { _, latest in latest }
+    }
+
+    /// The row being adopted shows only its key-icon spinner.
+    static func showsRingLookup(isLookingUp: Bool, hasProfile: Bool, isAdoptingRow: Bool) -> Bool {
+        isLookingUp && !hasProfile && !isAdoptingRow
+    }
+
+    /// Only the other rows' lookups stop, since they would compete with sign-in while the tapped row's can still land in
+    /// time to be reused. A failed adopt reloads the rows so none is left on a bare key.
+    @MainActor
+    static func adoptRingIdentity(
+        _ pubky: String,
+        pubkyProfile: PubkyProfileManager,
+        reloadRows: () -> Void
+    ) async throws -> PubkyProfile? {
+        pubkyProfile.cancelRingIdentityLookups(except: pubky)
+        do {
+            return try await pubkyProfile.adoptRingIdentity(pubky: pubky)
+        } catch {
+            reloadRows()
+            throw error
+        }
+    }
+
+    /// Contact discovery can outlast the refresh of a reused row profile. When that refresh finds the profile removed,
+    /// Create Profile opens while discovery runs, so this returns no route then and the discovered one does not replace it.
+    @MainActor
+    static func destinationAfterAdoption(
+        of adopted: PubkyProfile,
+        pubkyProfile: PubkyProfileManager,
+        contactsManager: ContactsManager
+    ) async -> Route? {
+        let destination = await contactsManager.destinationAfterAuthentication(
+            profile: pubkyProfile.profile,
+            publicKey: adopted.publicKey
+        )
+        guard !pubkyProfile.isProfileSetupPending else {
+            contactsManager.clearPendingImport()
+            return nil
+        }
+        return destination
+    }
 
     var body: some View {
         ZStack {
@@ -22,16 +88,16 @@ struct PubkyChoiceView: View {
                 NavigationBar(title: t("profile__nav_title"))
                     .padding(.horizontal, 16)
 
-                VStack(alignment: .leading, spacing: 0) {
-                    titleSection
-                        .padding(.top, 24)
-                        .padding(.bottom, 24)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        titleSection
+                            .padding(.top, 24)
+                            .padding(.bottom, 24)
 
-                    optionCards
+                        optionCards
+                    }
+                    .padding(.horizontal, 16)
                 }
-                .padding(.horizontal, 16)
-
-                Spacer()
             }
         }
         .clipped()
@@ -39,31 +105,15 @@ struct PubkyChoiceView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task(id: isWaitingForRing) {
-            guard isWaitingForRing else { return }
-            await waitForApproval()
-        }
+        .task(id: ringLoadGeneration) { await loadIdentities() }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active, isWaitingForRing {
-                // Ring returned to app — approval task handles completion
-            }
+            guard newPhase == .active else { return }
+            pubkyProfile.forgetRingIdentityMisses()
+            guard adoptingPubky == nil else { return }
+            reloadIdentities()
         }
-        .onChange(of: pubkyProfile.authState) { _, authState in
-            authState.resetRingAuthViewStateIfNeeded(
-                isAuthenticating: $isAuthenticating,
-                isWaitingForRing: $isWaitingForRing,
-                isLoadingAfterAuth: $isLoadingAfterAuth
-            )
-        }
-        .alert(t("profile__ring_not_installed_title"), isPresented: $showRingNotInstalledDialog) {
-            Button(t("profile__ring_download")) {
-                if let url = URL(string: pubkyRingAppStoreUrl) {
-                    Task { await UIApplication.shared.open(url) }
-                }
-            }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-        } message: {
-            Text(t("profile__ring_not_installed_description"))
+        .onReceive(pubkyProfile.$ringIdentityProfiles) { found in
+            ringProfiles = Self.mirroredRingProfiles(ringProfiles, found: found, isAdopting: pubkyProfile.isAdoptingRingIdentity)
         }
     }
 
@@ -78,9 +128,7 @@ struct PubkyChoiceView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
 
-            BodyMText(isLoadingAfterAuth
-                ? t("profile__ring_loading")
-                : isWaitingForRing ? t("profile__ring_waiting") : t("profile__choice_description"))
+            BodyMText(t(Self.descriptionKey(hasRingIdentities: hasRingIdentities)))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -90,148 +138,86 @@ struct PubkyChoiceView: View {
 
     private var optionCards: some View {
         VStack(spacing: 8) {
-            choiceCard(
-                icon: "user-plus",
-                title: t("profile__choice_create"),
-                accessibilityId: "PubkyChoiceCreate"
-            ) {
-                navigation.navigate(.createProfile)
-            }
-            .disabled(isAuthenticating || isWaitingForRing || isLoadingAfterAuth)
-
-            if isWaitingForRing || isLoadingAfterAuth {
-                ringWaitingCard
-            } else {
-                choiceCard(
-                    systemIcon: "key.fill",
-                    title: t("profile__choice_import"),
-                    isLoading: isAuthenticating,
-                    accessibilityId: "PubkyChoiceImport"
-                ) {
-                    await startRingAuth()
-                }
-                .disabled(isAuthenticating)
-            }
-        }
-    }
-
-    private func choiceCard(
-        icon: String? = nil,
-        systemIcon: String? = nil,
-        title: String,
-        isLoading: Bool = false,
-        accessibilityId: String,
-        action: @escaping () async -> Void
-    ) -> some View {
-        Button {
-            Task { await action() }
-        } label: {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(Color.black)
-                        .frame(width: 40, height: 40)
-
-                    if isLoading {
-                        ActivityIndicator(size: 20)
-                    } else if let icon {
-                        Image(icon)
-                            .resizable()
-                            .scaledToFit()
-                            .foregroundColor(.pubkyGreen)
-                            .frame(width: 20, height: 20)
-                    } else if let systemIcon {
-                        Image(systemName: systemIcon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.pubkyGreen)
+            if didLoad {
+                if Self.showsCreateCard(hasRingIdentities: hasRingIdentities) {
+                    PubkyChoiceRow(
+                        icon: "user-plus",
+                        caption: t("profile__choice_create_caption"),
+                        title: t("profile__choice_create"),
+                        accessibilityId: "PubkyChoiceCreate"
+                    ) {
+                        navigation.navigate(.createProfile)
+                    }
+                } else {
+                    ForEach(ringPubkys, id: \.self) { pubky in
+                        ringRow(pubky)
                     }
                 }
-
-                BodyMSBText(title, textColor: .white)
-
-                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .background(Color.gray6)
-            .cornerRadius(16)
-        }
-        .accessibilityIdentifier(accessibilityId)
-    }
-
-    // MARK: - Ring Auth
-
-    private func startRingAuth() async {
-        isAuthenticating = true
-
-        do {
-            try await pubkyProfile.startAuthentication()
-            isAuthenticating = false
-            isWaitingForRing = true
-        } catch PubkyServiceError.ringNotInstalled {
-            isAuthenticating = false
-            showRingNotInstalledDialog = true
-        } catch {
-            isAuthenticating = false
-            app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)
         }
     }
 
-    private func waitForApproval() async {
+    private func ringRow(_ pubky: String) -> some View {
+        let truncatedKey = PubkyPublicKeyFormat.displayTruncated(pubky)
+        let key = PubkyPublicKeyFormat.normalized(pubky)
+        let profile = key.flatMap { ringProfiles[$0] }
+        let name = profile?.name ?? ""
+        let title = name.isEmpty ? truncatedKey : name
+        let isAdoptingRow = adoptingPubky == pubky
+
+        return PubkyChoiceRow(
+            systemIcon: "key.fill",
+            caption: truncatedKey,
+            title: title,
+            avatarName: title,
+            avatarImageUrl: profile?.imageUrl,
+            isLoading: isAdoptingRow,
+            isLookingUp: Self.showsRingLookup(
+                isLookingUp: key.map { pubkyProfile.ringIdentityLookupsInFlight.contains($0) } ?? false,
+                hasProfile: profile != nil,
+                isAdoptingRow: isAdoptingRow
+            ),
+            lookupAccessibilityId: "PubkyChoiceRingLookup_\(pubky)",
+            accessibilityId: "PubkyChoiceRing_\(pubky)"
+        ) {
+            startAdopting(pubky)
+        }
+        .disabled(adoptingPubky != nil)
+    }
+
+    private func startAdopting(_ pubky: String) {
+        guard adoptingPubky == nil else { return }
+        adoptingPubky = pubky
+        Task { await adopt(pubky) }
+    }
+
+    private func adopt(_ pubky: String) async {
+        defer { adoptingPubky = nil }
+
         do {
-            let publicKey = try await pubkyProfile.completeAuthentication()
-            isLoadingAfterAuth = true
-            await navigateAfterAuth(publicKey: publicKey)
+            guard let adopted = try await Self.adoptRingIdentity(pubky, pubkyProfile: pubkyProfile, reloadRows: reloadIdentities) else {
+                navigation.navigate(.createProfile)
+                return
+            }
+
+            if let destination = await Self.destinationAfterAdoption(of: adopted, pubkyProfile: pubkyProfile, contactsManager: contactsManager) {
+                navigation.path = [destination]
+            }
         } catch is CancellationError {
             return
         } catch {
-            isWaitingForRing = false
-            app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)
+            app.toast(type: .error, title: t("profile__adopt_error_title"), description: error.localizedDescription)
         }
     }
 
-    private func navigateAfterAuth(publicKey: String) async {
-        let destination = await contactsManager.destinationAfterAuthentication(
-            profile: pubkyProfile.profile,
-            publicKey: publicKey
-        )
-        navigation.path = [destination]
-        pubkyProfile.finalizeAuthentication()
+    private func reloadIdentities() {
+        ringLoadGeneration += 1
     }
 
-    // MARK: - Ring Waiting Card
-
-    private var ringWaitingCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(Color.black)
-                        .frame(width: 40, height: 40)
-
-                    ActivityIndicator(size: 20)
-                }
-
-                BodyMSBText(t(isLoadingAfterAuth ? "profile__ring_loading" : "profile__ring_waiting"), textColor: .white)
-
-                Spacer()
-            }
-
-            if !isLoadingAfterAuth {
-                Button {
-                    isWaitingForRing = false
-                    Task { await pubkyProfile.cancelAuthentication() }
-                } label: {
-                    BodySSBText(t("common__cancel"), textColor: .white64)
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .accessibilityIdentifier("PubkyChoiceCancelRing")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .background(Color.gray6)
-        .cornerRadius(16)
+    private func loadIdentities() async {
+        ringPubkys = SharedPubkyKeychain.listRingIdentities()
+        didLoad = true
+        await pubkyProfile.loadRingIdentityProfiles(ringPubkys)
     }
 
     // MARK: - Background Illustrations

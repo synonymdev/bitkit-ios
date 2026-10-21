@@ -72,7 +72,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 }
 
 struct DrawerView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
@@ -239,6 +239,11 @@ struct DrawerView: View {
                 }
                 withAnimation(.easeOut(duration: 0.25).delay(0.1)) {
                     showMenu = true
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    showBackdrop = false
+                    showMenu = false
                 }
             }
         }

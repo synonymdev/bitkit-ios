@@ -10,7 +10,7 @@ final class PaykitIssuerInteropTests: XCTestCase {
         XCTAssertEqual(fixtures.schemaVersion, 1)
 
         for fixture in fixtures.requestFixtures {
-            let record = try paymentRequestRecord(
+            var record = try paymentRequestRecord(
                 asset: fixture.asset,
                 endpointIdentifiers: fixture.acceptedPaymentEndpointIdentifiers
             )
@@ -18,6 +18,10 @@ final class PaykitIssuerInteropTests: XCTestCase {
 
             XCTAssertEqual(request != nil, fixture.accepted, fixture.name)
             XCTAssertEqual(request?.acceptedPaymentEndpointIdentifiers ?? [], fixture.expectedIdentifiers, fixture.name)
+            record.terms?.paymentDeadline = .at(timestamp: "2099-01-01T00:00:00.123456789Z")
+            let deadlineRequest = PaykitPaymentRequest(record: record, now: Date(), network: fixture.network.ldkNetwork)
+            XCTAssertEqual(deadlineRequest != nil, fixture.accepted, fixture.name)
+            XCTAssertEqual(deadlineRequest?.acceptedPaymentEndpointIdentifiers ?? [], fixture.expectedIdentifiers, fixture.name)
         }
     }
 
@@ -88,7 +92,6 @@ final class PaykitIssuerInteropTests: XCTestCase {
     private func paymentRequestRecord(asset: String, endpointIdentifiers: [String]) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: "pubkyissuerfixture",
-            counterpartyReceiverPath: PaykitReceiverPath.server,
             paymentRequestId: "71300000-0000-4000-8000-000000000001",
             localRole: .payer,
             state: .proposed,
@@ -96,12 +99,19 @@ final class PaykitIssuerInteropTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: asset),
                 paymentReference: PaymentReference(text: "marketplace-order-713"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: endpointIdentifiers,
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
+                conversion: nil,
+                paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: #"{"order":"713"}"#)
             ),
             acceptedEventId: nil,
@@ -110,6 +120,7 @@ final class PaykitIssuerInteropTests: XCTestCase {
             rejectedOutboundStatus: nil,
             canceledEventId: nil,
             canceledOutboundStatus: nil,
+            conversionQuotes: [],
             paymentProofs: [],
             lastStreamItemId: 1,
             lastOutboundMessageId: nil,

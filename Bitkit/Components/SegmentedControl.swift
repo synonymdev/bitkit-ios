@@ -2,15 +2,26 @@ import SwiftUI
 
 struct TabItem<T: Hashable & CustomStringConvertible> {
     let tab: T
+    /// Shown in place of the tab's own description, for a tab whose name depends on what it shows.
+    let label: String?
     let activeColor: Color?
     let badge: Int?
     let accessibilityIdentifier: String?
 
-    init(_ tab: T, activeColor: Color? = nil, badge: Int? = nil, accessibilityIdentifier: String? = nil) {
+    init(_ tab: T, label: String? = nil, activeColor: Color? = nil, badge: Int? = nil, accessibilityIdentifier: String? = nil) {
         self.tab = tab
+        self.label = label
         self.activeColor = activeColor
         self.badge = badge
         self.accessibilityIdentifier = accessibilityIdentifier
+    }
+
+    var title: String {
+        label ?? tab.description
+    }
+
+    var resolvedAccessibilityIdentifier: String {
+        accessibilityIdentifier ?? "Tab-\((label ?? LocalizationHelper.inEnglish { tab.description }).lowercased())"
     }
 }
 
@@ -19,20 +30,40 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
     private let tabItems: [TabItem<T>]
     private let defaultActiveColor: Color
     private let inactiveColor: Color?
+    private let labelKerning: CGFloat
+    private let labelLineHeight: CGFloat?
     @Namespace private var underlineNamespace
 
-    init(selectedTab: Binding<T>, tabs: [T], activeColor: Color = .textPrimary, inactiveColor: Color? = nil) {
+    init(
+        selectedTab: Binding<T>,
+        tabs: [T],
+        activeColor: Color = .textPrimary,
+        inactiveColor: Color? = nil,
+        labelKerning: CGFloat = 0.4,
+        labelLineHeight: CGFloat? = nil
+    ) {
         _selectedTab = selectedTab
         tabItems = tabs.map { TabItem($0) }
         defaultActiveColor = activeColor
         self.inactiveColor = inactiveColor
+        self.labelKerning = labelKerning
+        self.labelLineHeight = labelLineHeight
     }
 
-    init(selectedTab: Binding<T>, tabItems: [TabItem<T>], defaultActiveColor: Color = .textPrimary, inactiveColor: Color? = nil) {
+    init(
+        selectedTab: Binding<T>,
+        tabItems: [TabItem<T>],
+        defaultActiveColor: Color = .textPrimary,
+        inactiveColor: Color? = nil,
+        labelKerning: CGFloat = 0.4,
+        labelLineHeight: CGFloat? = nil
+    ) {
         _selectedTab = selectedTab
         self.tabItems = tabItems
         self.defaultActiveColor = defaultActiveColor
         self.inactiveColor = inactiveColor
+        self.labelKerning = labelKerning
+        self.labelLineHeight = labelLineHeight
     }
 
     var body: some View {
@@ -51,13 +82,14 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                             badge(for: tabItem)
                                 .hidden()
                             CaptionBText(
-                                tabItem.tab.description,
-                                textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary
+                                tabItem.title,
+                                textColor: selectedTab == tabItem.tab ? .white : inactiveColor ?? .secondary,
+                                kerning: labelKerning, lineHeight: labelLineHeight
                             )
                             badge(for: tabItem)
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 20)
+                        .frame(height: labelLineHeight ?? 20)
                         ZStack {
                             Rectangle()
                                 .frame(height: 2)
@@ -75,7 +107,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityIdentifier(tabItem.accessibilityIdentifier ?? "Tab-\(tabItem.tab.description.lowercased())")
+                .accessibilityIdentifier(tabItem.resolvedAccessibilityIdentifier)
             }
         }
         .frame(maxWidth: .infinity)

@@ -1,4 +1,6 @@
 import BitkitCore
+import CryptoKit
+import Foundation
 import LDKNode
 
 /// The default address type funds are sourced from when transferring from a hardware wallet to
@@ -46,4 +48,77 @@ struct HwFundingBroadcastResult: Equatable {
     let miningFeeSats: UInt64
     let feeRate: UInt64
     let totalSpent: UInt64
+}
+
+/// Matches Android's txid calculation: hash consensus bytes without marker, flag or witness.
+/// This identifies a signed candidate; it does not establish backend acceptance.
+enum SignedTransactionId {
+    static func fromHex(_ hex: String) throws -> String {
+        func invalid() -> PaykitPaymentRequestError {
+            .requestUnavailable
+        }
+        guard (20 ... 2_000_000).contains(hex.count), hex.count.isMultiple(of: 2) else { throw invalid() }
+        let chars = Array(hex.utf8)
+        var bytes = [UInt8]()
+        for index in stride(from: 0, to: chars.count, by: 2) {
+            guard let byte = UInt8(String(decoding: chars[index ... index + 1], as: UTF8.self), radix: 16) else { throw invalid() }
+            bytes.append(byte)
+        }
+        var offset = 4
+        func skip(_ length: Int) throws {
+            guard length >= 0, length <= bytes.count - offset else { throw invalid() }
+            offset += length
+        }
+        func compactSize() throws -> Int {
+            guard offset < bytes.count else { throw invalid() }
+            let prefix = bytes[offset]
+            offset += 1
+            if prefix < 253 {
+                return Int(prefix)
+            }
+            let length = prefix == 253 ? 2 : prefix == 254 ? 4 : 8
+            guard length <= bytes.count - offset else { throw invalid() }
+            var value: UInt64 = 0
+            for index in 0 ..< length {
+                value |= UInt64(bytes[offset]) << (8 * index)
+                offset += 1
+            }
+            guard value <= UInt64(Int.max) else { throw invalid() }
+            return Int(value)
+        }
+        let hasWitness = bytes[offset] == 0
+        if hasWitness {
+            guard bytes[offset + 1] == 1 else { throw invalid() }
+            try skip(2)
+        }
+        let baseStart = offset
+        let inputCount = try compactSize()
+        guard inputCount > 0, inputCount <= bytes.count / 41 else { throw invalid() }
+        for _ in 0 ..< inputCount {
+            try skip(36)
+            try skip(compactSize())
+            try skip(4)
+        }
+        let outputCount = try compactSize()
+        guard outputCount > 0, outputCount <= bytes.count / 9 else { throw invalid() }
+        for _ in 0 ..< outputCount {
+            try skip(8)
+            try skip(compactSize())
+        }
+        let baseEnd = offset
+        if hasWitness {
+            for _ in 0 ..< inputCount {
+                let count = try compactSize()
+                guard count <= bytes.count - offset else { throw invalid() }
+                for _ in 0 ..< count {
+                    try skip(compactSize())
+                }
+            }
+        }
+        let lockTimeStart = offset
+        try skip(4)
+        guard offset == bytes.count else { throw invalid() }
+        let canonical = Data(bytes[0 ..< 4] + bytes[baseStart ..< baseEnd] + bytes[lockTimeStart ..< offset])
+        return SHA256.hash(data: Data(SHA256.hash(data: canonical))).reversed().map { String(format: "%02x", $0) }.joined()
+    }
 }

@@ -1,18 +1,23 @@
 import SwiftUI
 
 struct ReceiveQr: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Binding var navigationPath: [ReceiveRoute]
     let cjitInvoice: String?
     let tab: ReceiveTab?
     let hardwareWalletId: String?
+    let onUsdtSelectionChange: ((Bool) -> Void)?
 
+    @State private var needsInvoiceRefresh: Bool
+    @State private var invoiceRefreshFailed = false
     @State private var selectedTab: ReceiveTab
     @State private var showDetails = false
     @State private var hasAppliedDefaultTab = false
@@ -25,17 +30,20 @@ struct ReceiveQr: View {
     @State private var isVerifyingPassphrase = false
     @State private var verifyTask: Task<Void, Never>?
     @State private var passphraseTask: Task<Void, Never>?
+    @State private var engagedSession = HwEngagedSession()
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
         cjitInvoice: String? = nil,
         tab: ReceiveTab? = nil,
-        hardwareWalletId: String? = nil
+        hardwareWalletId: String? = nil,
+        onUsdtSelectionChange: ((Bool) -> Void)? = nil
     ) {
         _navigationPath = navigationPath
         self.cjitInvoice = cjitInvoice
         self.tab = tab
         self.hardwareWalletId = hardwareWalletId
+        self.onUsdtSelectionChange = onUsdtSelectionChange
 
         // Default to unified tab if available, otherwise use provided tab or savings
         let defaultTab: ReceiveTab = if tab != nil {
@@ -44,12 +52,13 @@ struct ReceiveQr: View {
             // We'll set this in onAppear since we need access to wallet.channelCount
             .savings
         }
+        _needsInvoiceRefresh = State(initialValue: tab == .usdt)
         _selectedTab = State(initialValue: defaultTab)
         _hasAppliedDefaultTab = State(initialValue: tab != nil)
     }
 
     enum ReceiveTab: CaseIterable, CustomStringConvertible {
-        case savings, unified, spending, trezor
+        case savings, unified, spending, hardware, usdt
 
         var description: String {
             switch self {
@@ -59,8 +68,10 @@ struct ReceiveQr: View {
                 return "Auto"
             case .spending:
                 return t("lightning__spending")
-            case .trezor:
-                return t("hardware__device_model_trezor")
+            case .usdt:
+                return "USDT"
+            case .hardware:
+                return t("hardware__receive_tab_hardware")
             }
         }
     }
@@ -76,9 +87,17 @@ struct ReceiveQr: View {
         }
 
         if selectedHardwareWalletId != nil {
-            items.insert(TabItem(.trezor), at: 0)
+            items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
+        }
+        if settings.isUsdtEnabled, cjitInvoice == nil {
+            items.append(TabItem(.usdt))
         }
         return items
+    }
+
+    private var selectedHardwareWallet: HwWallet? {
+        guard let walletId = selectedHardwareWalletId else { return nil }
+        return hwWalletManager.wallets.first { $0.id == walletId }
     }
 
     private var selectedHardwareWalletId: String? {
@@ -95,7 +114,7 @@ struct ReceiveQr: View {
     }
 
     private var canShowUnifiedReceive: Bool {
-        !wallet.bolt11.isEmpty && cjitInvoice == nil
+        (wallet.canCreateReceiveLightningInvoice || wallet.hasCoherentReceiveInvoice) && cjitInvoice == nil
     }
 
     private var selectedTabBinding: Binding<ReceiveTab> {
@@ -105,6 +124,37 @@ struct ReceiveQr: View {
                 selectedTab = newTab
                 hasUserSelectedTab = true
                 hasAppliedDefaultTab = true
+                onUsdtSelectionChange?(newTab == .usdt)
+            }
+        )
+    }
+
+    /// A page of the receive `TabView`. The wrap pages sit before the first and after the last tab, so a swipe past
+    /// either end pages on and then selects the tab at the other end. They are hidden from accessibility, so their
+    /// copies of the end tab's buttons never match an identifier lookup.
+    private enum ReceivePage: Hashable {
+        case tab(ReceiveTab)
+        case wrapToLast
+        case wrapToFirst
+    }
+
+    private var pageSelection: Binding<ReceivePage> {
+        Binding(
+            get: { .tab(selectedTab) },
+            set: { page in
+                let tabs = availableTabItems.map(\.tab)
+                switch page {
+                case let .tab(tab):
+                    selectedTabBinding.wrappedValue = tab
+                case .wrapToLast:
+                    if let last = tabs.last {
+                        selectedTabBinding.wrappedValue = last
+                    }
+                case .wrapToFirst:
+                    if let first = tabs.first {
+                        selectedTabBinding.wrappedValue = first
+                    }
+                }
             }
         )
     }
@@ -114,6 +164,17 @@ struct ReceiveQr: View {
     }
 
     var body: some View {
+        if selectedTab == .usdt, !settings.isUsdtEnabled {
+            UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
+                             onEnable: { settings.usdtPreference = .enabled })
+        } else if selectedTab == .usdt {
+            UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
+        } else {
+            bitcoinContent
+        }
+    }
+
+    private var bitcoinContent: some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__receive_bitcoin"), action: paymentRequestAction)
                 .padding(.horizontal, 16)
@@ -124,9 +185,13 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
-                TabView(selection: selectedTabBinding) {
+                TabView(selection: pageSelection) {
+                    if let last = availableTabItems.last?.tab {
+                        wrapPage(showing: last, tag: .wrapToLast)
+                    }
+
                     if selectedHardwareWalletId != nil {
-                        tabContent(for: .trezor)
+                        tabContent(for: .hardware)
                     }
 
                     tabContent(for: .savings)
@@ -136,6 +201,13 @@ struct ReceiveQr: View {
                     }
 
                     tabContent(for: .spending)
+                    if settings.isUsdtEnabled, cjitInvoice == nil {
+                        Color.clear.tag(ReceivePage.tab(.usdt))
+                    }
+
+                    if let first = availableTabItems.first?.tab {
+                        wrapPage(showing: first, tag: .wrapToFirst)
+                    }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
@@ -160,7 +232,7 @@ struct ReceiveQr: View {
                         }
                     } else if showDetails {
                         VStack(spacing: 16) {
-                            if selectedTab == .trezor {
+                            if selectedTab == .hardware {
                                 CustomButton(
                                     title: t("hardware__verify_address"),
                                     variant: .secondary,
@@ -188,7 +260,7 @@ struct ReceiveQr: View {
                         CustomButton(
                             title: t("common__show_details"),
                             variant: .tertiary,
-                            isDisabled: selectedTab == .trezor && displayedHardwareAddress == nil
+                            isDisabled: selectedTab == .hardware && displayedHardwareAddress == nil
                         ) {
                             showDetails.toggle()
                         }
@@ -199,11 +271,12 @@ struct ReceiveQr: View {
             }
             .onChange(of: selectedTab) { _, newTab in
                 showDetails = false
-                if newTab == .trezor {
+                if newTab == .hardware {
                     Task { await loadHardwareAddress() }
                 } else {
                     verifyTask?.cancel()
                     verifyTask = nil
+                    engagedSession.release(through: hwWalletManager)
                 }
             }
             .onAppear {
@@ -222,9 +295,16 @@ struct ReceiveQr: View {
             )
         }
         .task(id: selectedHardwareWalletId) {
-            if selectedTab == .trezor {
+            if selectedTab == .hardware {
                 await loadHardwareAddress()
             }
+        }
+        .onChange(of: selectedHardwareWalletId) {
+            abandonHardwareVerification()
+        }
+        .onChange(of: displayedHardwareAddress?.address) { previousAddress, _ in
+            guard previousAddress != nil else { return }
+            abandonHardwareVerification()
         }
         .task {
             do {
@@ -247,7 +327,7 @@ struct ReceiveQr: View {
             }
         }
         .onChange(of: wallet.bolt11) { _, bolt11 in
-            if bolt11.isEmpty && selectedTab == .unified {
+            if bolt11.isEmpty && !wallet.canCreateReceiveLightningInvoice && selectedTab == .unified {
                 selectedTab = .savings
             }
 
@@ -258,6 +338,7 @@ struct ReceiveQr: View {
             verifyTask = nil
             passphraseTask?.cancel()
             passphraseTask = nil
+            engagedSession.release(through: hwWalletManager)
         }
     }
 
@@ -291,10 +372,36 @@ struct ReceiveQr: View {
         )
     }
 
-    func tabContent(for tab: ReceiveTab) -> some View {
+    @ViewBuilder
+    private func wrapPage(showing tab: ReceiveTab, tag: ReceivePage) -> some View {
+        if tab == .usdt {
+            Color.clear.tag(tag)
+        } else {
+            tabContent(for: tab, tag: tag)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func tabContent(for tab: ReceiveTab, tag: ReceivePage? = nil) -> some View {
         VStack(spacing: 0) {
-            if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
+            if needsInvoiceRefresh && tab != .hardware {
+                if invoiceRefreshFailed {
+                    VStack(spacing: 16) {
+                        BodyMText(t("wallet__refresh_error_msg"), textColor: .textSecondary)
+                            .multilineTextAlignment(.center)
+                        CustomButton(title: t("common__try_again"), variant: .tertiary) {
+                            await refreshBip21()
+                        }
+                        .accessibilityIdentifier("ReceiveInvoiceRetry")
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ProgressView()
+                }
+            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
                 cjitOnboarding
+            } else if receiveUnavailable(for: tab) {
+                receiveRefreshStatus(for: tab)
             } else if showDetails {
                 detailsContent(for: tab)
             } else {
@@ -304,12 +411,12 @@ struct ReceiveQr: View {
             Spacer()
         }
         .padding(.horizontal)
-        .tag(tab)
+        .tag(tag ?? .tab(tab))
     }
 
     @ViewBuilder
     func qrContent(for tab: ReceiveTab) -> some View {
-        if tab == .trezor {
+        if tab == .hardware {
             if let hardwareAddress = displayedHardwareAddress {
                 let uri = Bip21Utils.hardwareInvoice(
                     address: hardwareAddress.address,
@@ -320,9 +427,8 @@ struct ReceiveQr: View {
                     uri: uri,
                     imageAsset: "btc-circle-blue",
                     accentColor: .blueAccent,
-                    navigationPath: $navigationPath,
                     copyValue: uri.contains("?") ? uri : hardwareAddress.address,
-                    editRoute: .edit(tab: .trezor, onchainOnly: true)
+                    onEdit: { navigationPath.append(.edit(tab: .hardware, onchainOnly: true)) }
                 )
             } else if hardwareAddressLoadFailed {
                 VStack(spacing: 16) {
@@ -345,13 +451,41 @@ struct ReceiveQr: View {
                     uri: config.uri,
                     imageAsset: config.imageAsset,
                     accentColor: config.accentColor,
-                    navigationPath: $navigationPath,
-                    editRoute: editRoute(for: tab)
+                    onEdit: editRoute(for: tab).map { route in
+                        { navigationPath.append(route) }
+                    }
                 )
+                .id(config.uri)
             } else {
                 ProgressView()
             }
         }
+    }
+
+    private func receiveUnavailable(for tab: ReceiveTab) -> Bool {
+        guard cjitInvoice == nil, tab == .unified || tab == .spending else { return false }
+        return wallet.isReceiveInvoiceUpdating || wallet.receiveInvoiceError != nil ||
+            (tab == .unified && !wallet.hasCoherentReceiveInvoice)
+    }
+
+    private func receiveRefreshStatus(for tab: ReceiveTab) -> some View {
+        VStack(spacing: 16) {
+            if !wallet.isReceiveInvoiceUpdating, let error = wallet.receiveInvoiceError {
+                BodyMText(error, textColor: .textSecondary)
+                    .multilineTextAlignment(.center)
+                CustomButton(title: t("common__try_again"), variant: .tertiary) {
+                    await refreshBip21()
+                }
+                .accessibilityIdentifier("ReceiveRetry")
+            }
+            QrArea(
+                uri: "", imageAsset: nil, accentColor: tab == .spending ? .purpleAccent : .brandAccent,
+                onEdit: editRoute(for: tab).map { route in
+                    { navigationPath.append(route) }
+                }
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func qrConfig(for tab: ReceiveTab) -> (uri: String, imageAsset: String, accentColor: Color) {
@@ -364,7 +498,7 @@ struct ReceiveQr: View {
             )
         case .unified:
             return (
-                uri: wallet.bip21,
+                uri: wallet.hasCoherentReceiveInvoice ? wallet.bip21 : "",
                 imageAsset: "btc-and-ln",
                 accentColor: .brandAccent
             )
@@ -374,7 +508,9 @@ struct ReceiveQr: View {
                 imageAsset: "ln",
                 accentColor: .purpleAccent
             )
-        case .trezor:
+        case .usdt:
+            return (uri: usdt.receiveUri, imageAsset: "tether-circle", accentColor: .usdtAccent)
+        case .hardware:
             return (uri: "", imageAsset: "btc-circle-blue", accentColor: .blueAccent)
         }
     }
@@ -472,7 +608,9 @@ struct ReceiveQr: View {
                             )
                         )
                     }
-                case .trezor:
+                case .usdt:
+                    pairs.append(CopyAddressPair(title: t("wallet__activity_address"), address: usdt.address, type: .onchain))
+                case .hardware:
                     if let hardwareAddress = displayedHardwareAddress {
                         pairs.append(
                             CopyAddressPair(
@@ -492,7 +630,7 @@ struct ReceiveQr: View {
                     addresses: addressPairs,
                     navigationPath: $navigationPath,
                     editRoute: editRoute(for: tab),
-                    accentColor: tab == .trezor ? .blueAccent : nil
+                    accentColor: tab == .hardware ? .blueAccent : nil
                 )
             }
 
@@ -501,7 +639,7 @@ struct ReceiveQr: View {
     }
 
     private func editRoute(for tab: ReceiveTab) -> ReceiveRoute? {
-        .edit(tab: tab, onchainOnly: tab == .trezor, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
+        .edit(tab: tab, onchainOnly: tab == .hardware, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
     }
 
     private struct ImageConfig {
@@ -511,9 +649,15 @@ struct ReceiveQr: View {
 
     func refreshBip21() async {
         guard wallet.nodeLifecycleState == .running else { return }
+        invoiceRefreshFailed = false
         do {
-            try await wallet.refreshBip21()
+            if needsInvoiceRefresh, let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
+                try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
+            }
+            try await wallet.refreshBip21(forceRefreshBolt11: needsInvoiceRefresh)
+            needsInvoiceRefresh = false
         } catch {
+            invoiceRefreshFailed = true
             app.toast(error)
         }
     }
@@ -562,15 +706,15 @@ struct ReceiveQr: View {
         isVerifyingHardwareAddress = true
         defer { isVerifyingHardwareAddress = false }
         do {
-            try await hwWalletManager.verifyReceiveAddress(walletId: walletId, receiveAddress: hardwareAddress)
+            try await engagedSession.perform(walletId: walletId) {
+                try await hwWalletManager.verifyReceiveAddress(walletId: walletId, receiveAddress: hardwareAddress)
+            }
         } catch is CancellationError {
             return
         } catch HwPassphraseError.required {
             isPassphraseRequired = true
         } catch {
-            if !error.isTrezorUserCancellation() {
-                app.toast(error)
-            }
+            showHardwareVerifyError(error)
         }
     }
 
@@ -591,18 +735,18 @@ struct ReceiveQr: View {
                 passphraseTask = nil
             }
             do {
-                try await hwWalletManager.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
-                guard isPassphraseRequired else { throw CancellationError() }
-                isPassphraseRequired = false
-                await verifyHardwareAddress()
+                try await engagedSession.perform(walletId: walletId) {
+                    try await hwWalletManager.reconnectWithPassphrase(walletId: walletId, passphrase: passphrase)
+                    guard isPassphraseRequired else { throw CancellationError() }
+                    isPassphraseRequired = false
+                    await verifyHardwareAddress()
+                }
             } catch is CancellationError {
                 return
             } catch HwPassphraseError.mismatch {
                 app.toast(HwTransferError.passphraseMismatch)
             } catch {
-                if !error.isTrezorUserCancellation() {
-                    app.toast(error)
-                }
+                showHardwareVerifyError(error)
             }
         }
     }
@@ -611,6 +755,32 @@ struct ReceiveQr: View {
         passphraseTask?.cancel()
         isPassphraseRequired = false
         isVerifyingPassphrase = false
+        engagedSession.release(through: hwWalletManager)
+    }
+
+    /// The wallet or address on screen changed, so a verification still in progress is for one no
+    /// longer shown.
+    private func abandonHardwareVerification() {
+        engagedSession.invalidate(through: hwWalletManager)
+        verifyTask?.cancel()
+        verifyTask = nil
+        passphraseTask?.cancel()
+        if isPassphraseRequired {
+            dismissPassphrase()
+        }
+    }
+
+    private func showHardwareVerifyError(_ error: Error) {
+        if error.isHwUserCancellation() {
+            return
+        }
+        if error is HwWalletMismatchError {
+            app.toast(HwTransferError.walletMismatch)
+        } else if let vendor = error.hwBusyVendor {
+            app.toast(HwTransferError.deviceBusy(vendor))
+        } else {
+            app.toast(error)
+        }
     }
 
     /// Strips the lightning parameter from a BIP21 URI while keeping other parameters

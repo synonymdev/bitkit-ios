@@ -70,8 +70,8 @@ struct TrezorPublicKeyContent: View {
             .accessibilityIdentifier("TrezorPublicKeyGet")
 
             // Results
-            if let xpub = trezor.xpub {
-                CopyableField(label: "Extended Public Key (xpub)", value: xpub, accessibilityIdentifier: "TrezorXpub")
+            if let displayablePublicKey = trezor.displayablePublicKey {
+                CopyableField(label: "Account Public Key", value: displayablePublicKey, accessibilityIdentifier: "TrezorXpub")
             }
 
             if let pubKey = trezor.publicKeyHex {

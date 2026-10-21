@@ -52,20 +52,8 @@ jobs:
         run: |
           brew install xcbeautify
 
-      - name: Cache Swift Package Manager
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-
-      - name: Install dependencies
-        run: |
-          echo "⏱️  Starting dependency resolution at $(date)"
-          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
-          echo "✅ Dependencies resolved at $(date)"
+      - name: Swift packages
+        uses: ./.github/actions/swift-packages
 
       - name: Pre-start simulator
         run: |
@@ -96,6 +84,10 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,name=${{ env.SIMULATOR_NAME }},OS=${{ env.IOS_VERSION }}" \
             -derivedDataPath DerivedData \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='DEBUG E2E_BUILD' \
             -allowProvisioningUpdates \
             build
@@ -119,7 +111,7 @@ jobs:
 
   e2e-tests-staging:
     runs-on: macos-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: [build-staging, e2e-branch]
 
     strategy:
@@ -129,6 +121,7 @@ jobs:
           - { name: multi_address, grep: "@multi_address_staging" }
           - { name: pubky, grep: "@pubky_staging" }
           - { name: transfer, grep: "@transfer_staging" }
+          - { name: ios_nightly_ui, grep: "@ios_nightly" }
 
     name: e2e-tests-staging - ${{ matrix.shard.name }}
 

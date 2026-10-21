@@ -168,6 +168,7 @@ struct ContactImportSelectView: View {
     // MARK: - Actions
 
     private func importSelectedContacts() async {
+        guard !isImporting else { return }
         let selected = contacts.filter { selectedKeys.contains($0.publicKey) }
 
         guard !selected.isEmpty else {
@@ -180,9 +181,10 @@ struct ContactImportSelectView: View {
         defer { isImporting = false }
 
         do {
-            try await contactsManager.importContacts(publicKeys: selected.map(\.publicKey))
-            contactsManager.clearPendingImport()
-            navigation.path = [.payContacts]
+            try await contactsManager.importContacts(contacts: selected)
+            if contactsManager.completePendingImport() {
+                navigation.path = [.payContacts]
+            }
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }

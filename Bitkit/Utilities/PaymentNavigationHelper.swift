@@ -1,5 +1,6 @@
 import BitkitCore
 import Foundation
+import Paykit
 
 @MainActor
 struct PaymentNavigationHelper {
@@ -16,7 +17,7 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> Bool {
-        guard let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
+        guard !app.isRoutingDeepLinkFromLock, let amountSats = QuickPayLimits.paymentAmountSats(app: app), amountSats > 0 else {
             return false
         }
 
@@ -43,6 +44,11 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) {
+        if app.contactPaymentContext?.requiresAssetSelection == true {
+            sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+            return
+        }
+
         // Handle LNURL withdraw
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             Logger.info("LNURL withdraw data: \(lnurlWithdrawData)")
@@ -107,6 +113,9 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
+        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil {
+            return .amount
+        }
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             if lnurlWithdrawData.isFixedAmount {
                 return .lnurlWithdrawConfirm
@@ -195,6 +204,9 @@ struct PaymentNavigationHelper {
         spendStore: QuickPaySpendStore = .shared,
         coordinator: QuickPayPaymentCoordinator? = nil
     ) -> SendRoute? {
+        if app.contactPaymentContext?.requiresAssetSelection == true, app.paykitPaymentTerms == nil {
+            return .amount
+        }
         guard let route = appropriateSendRoute(
             app: app,
             currency: currency,
@@ -235,9 +247,10 @@ struct PaymentNavigationHelper {
     ) async {
         do {
             let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
+            guard !Task.isCancelled else { return }
             switch result {
-            case let .opened(paymentRequest, privatePaymentContext):
-                let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext)
+            case let .opened(paymentRequest, privatePaymentContext, endpoints):
+                let context = ContactPaymentContext(publicKey: publicKey, privatePaymentContext: privatePaymentContext, endpoints: endpoints)
                 guard app.claimContactPaymentContext(context) else { return }
 
                 do {
@@ -263,7 +276,8 @@ struct PaymentNavigationHelper {
                     return
                 }
 
-                guard app.ownsContactPaymentContext(context),
+                guard !Task.isCancelled,
+                      app.ownsContactPaymentContext(context),
                       let route = contactPaymentRoute(app: app, currency: currency, settings: settings)
                 else {
                     app.resetSendState()
@@ -271,17 +285,29 @@ struct PaymentNavigationHelper {
                 }
                 present(route)
 
-            case .noEndpoint, .notOpened, .waitingForUpdatedPaymentList:
+            case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t(messageKey))
                 }
             }
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error(
                 "Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
                 context: "PaymentNavigationHelper"
             )
-            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+            if let description = contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
+    }
+
+    static func contactPaymentErrorDescription(_ error: Error) -> String? {
+        let underlyingError = (error as? AppError)?.underlyingError ?? error
+        if underlyingError is CancellationError {
+            return nil
+        }
+        return underlyingError is PaykitError ? t("other__try_again") : error.localizedDescription
     }
 }

@@ -95,26 +95,28 @@ struct HardwareWalletScreen: View {
         }
         .padding(.horizontal)
         .background(alignment: .topTrailing) {
-            trezorIllustration
-                // Align the device's top with the balance header and bleed off the trailing edge.
-                .offset(x: 118, y: ScreenLayout.topPaddingWithoutSafeArea)
+            deviceIllustration(for: wallet.vendor)
         }
     }
 
-    /// The shared upright Trezor device, transformed to match the Figma "Wallet Overview" visual:
-    /// cover-filled into a square, rotated -15°, and clipped to a 256pt box that bleeds off the
-    /// screen's trailing edge. Reuses the generic `trezor-device` asset — no screen-specific crop is
-    /// baked in, so the same image can be adapted elsewhere with SwiftUI.
-    private var trezorIllustration: some View {
-        Image("trezor-device")
+    /// The vendor's shared device, transformed to match the Figma "Wallet Overview" visual:
+    /// cover-filled into a square, stood upright at a slight lean, and clipped to a 256pt box that
+    /// bleeds off the screen's trailing edge. Reuses the generic device asset (no screen-specific
+    /// crop is baked in), so the same image can be adapted elsewhere with SwiftUI.
+    private func deviceIllustration(for vendor: HwWalletVendor) -> some View {
+        let placement = DeviceIllustrationPlacement(vendor: vendor)
+
+        return Image(vendor.deviceImageName)
             .resizable()
             .aspectRatio(contentMode: .fill)
             .frame(width: 268, height: 268)
             .clipped()
-            .rotationEffect(.degrees(-15))
-            .offset(x: 9, y: 13)
+            .rotationEffect(placement.rotation)
+            .offset(placement.offset)
             .frame(width: 256, height: 256)
             .clipped()
+            // Align the device's top with the balance header and bleed off the trailing edge.
+            .offset(x: placement.trailingOverhang, y: ScreenLayout.topPaddingWithoutSafeArea)
     }
 
     private var transferButton: some View {
@@ -185,6 +187,31 @@ struct HardwareWalletScreen: View {
             try await hwWalletManager.removeWallet(walletId: wallet.id, keepBackupData: keepBackupData)
         } catch {
             app.toast(type: .error, title: t("common__error"), description: RemoveHwWalletDialog.errorDescription(for: error))
+        }
+    }
+}
+
+/// How each vendor's device asset is turned and placed so that it peeks in from the trailing edge of
+/// the wallet overview with its recognizable face on screen.
+private struct DeviceIllustrationPlacement {
+    let rotation: Angle
+    let offset: CGSize
+    /// How far the 256pt box extends past the screen's trailing edge.
+    let trailingOverhang: CGFloat
+
+    init(vendor: HwWalletVendor) {
+        switch vendor {
+        case .trezor:
+            rotation = .degrees(-15)
+            offset = CGSize(width: 9, height: 13)
+            trailingOverhang = 118
+        case .blockstream:
+            // The Jade asset lies landscape with its own tilt, so turning it 86° stands it upright with
+            // the same lean as the Trezor and the wordmark reading left to right. The smaller overhang
+            // keeps its screen, button and wordmark on screen above the activity list.
+            rotation = .degrees(86)
+            offset = CGSize(width: 9, height: -5)
+            trailingOverhang = 80
         }
     }
 }

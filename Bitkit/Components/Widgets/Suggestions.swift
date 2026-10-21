@@ -181,7 +181,7 @@ struct Suggestions: View {
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @Environment(HwWalletManager.self) private var hwWalletManager
 
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @State private var showShareSheet = false
 
     private var isPaykitUIActive: Bool {

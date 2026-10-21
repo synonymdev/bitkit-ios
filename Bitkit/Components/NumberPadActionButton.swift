@@ -8,6 +8,9 @@ enum NumberPadActionButtonVariant {
 struct NumberPadActionButton: View {
     let text: String
     var imageName: String?
+    var trailingImageName: String?
+    var titleKerning: CGFloat = 0.8
+    var titleLineHeight: CGFloat?
     var color: Color = .purpleAccent
     var variant: NumberPadActionButtonVariant = .primary
     var disabled: Bool = false
@@ -33,14 +36,20 @@ struct NumberPadActionButton: View {
                         .frame(width: 16, height: 16)
                 }
 
-                CaptionMText(text, textColor: color)
+                CaptionMText(text, textColor: color, kerning: titleKerning, lineHeight: titleLineHeight)
+                if let trailingImageName {
+                    Image(trailingImageName)
+                        .resizable().scaledToFit().foregroundColor(color)
+                        .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
+                }
             }
             .frame(height: 28)
             .padding(.horizontal, 8)
             .background(background)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(variant == .secondary ? color : Color.clear, lineWidth: 2)
+                    .stroke(variant == .secondary ? color : Color.clear, lineWidth: 1)
             )
             .cornerRadius(8)
         }

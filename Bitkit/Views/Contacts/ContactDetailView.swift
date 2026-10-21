@@ -1,12 +1,13 @@
 import SwiftUI
 
 struct ContactDetailView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -21,6 +22,8 @@ struct ContactDetailView: View {
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
     @State private var showDeleteConfirmation = false
+    @State private var isPayLoading = false
+    @State private var payTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +48,15 @@ struct ContactDetailView: View {
                 isLoading = false
             }
             isLoading = false
+            await contactsManager.resolvePendingContactProfile(publicKey: publicKey)
+        }
+        .task {
+            if isPaymentRequestAvailable {
+                paymentRequests.startEligibleTargetRefresh(publicKey: publicKey)
+            }
+        }
+        .onDisappear {
+            payTask?.cancel()
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
             if let cached = updatedContacts.first(where: { $0.publicKey == publicKey }) {
@@ -53,7 +65,7 @@ struct ContactDetailView: View {
             } else if hasResolvedContactFromContacts {
                 hasResolvedContactFromContacts = false
                 profile = nil
-                navigation.path = [.contacts]
+                navigation.returnToContactsAfterRemoving(publicKey: publicKey)
             }
         }
         .alert(
@@ -114,16 +126,9 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send")) {
-                if canRequestPayment {
-                    sheets.showSheet(
-                        .receive,
-                        data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey))
-                    )
-                } else {
-                    Task {
-                        await payContact()
-                    }
+            GradientCircleButton(icon: "coins-regular", accessibilityLabel: t("wallet__send"), isLoading: isPayLoading) {
+                payTask = Task {
+                    await onPayTapped()
                 }
             }
             .accessibilityIdentifier("ContactPay")
@@ -158,12 +163,25 @@ struct ContactDetailView: View {
         }
     }
 
-    private var canRequestPayment: Bool {
-        PaykitFeatureFlags.isUIAvailable &&
-            isPaykitUIEnabled &&
-            paymentRequests.eligibleTargets.contains {
-                PubkyPublicKeyFormat.matches($0.publicKey, publicKey)
-            }
+    private var isPaymentRequestAvailable: Bool {
+        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
+    }
+
+    private func onPayTapped() async {
+        guard !isPayLoading else { return }
+        isPayLoading = true
+        defer { isPayLoading = false }
+
+        let target = isPaymentRequestAvailable
+            ? await paymentRequests.eligibleTarget(publicKey: publicKey, waitingAtMost: .seconds(2))
+            : nil
+        guard !Task.isCancelled else { return }
+
+        if target != nil {
+            sheets.showSheet(.receive, data: ReceiveConfig(view: .requestOrPay(publicKey: publicKey)))
+        } else {
+            await payContact()
+        }
     }
 
     // MARK: - Links / Metadata
@@ -210,46 +228,29 @@ struct ContactDetailView: View {
     // MARK: - Tag Persistence
 
     private func addTag(_ newTag: String) {
-        guard var current = profile else { return }
-        current = PubkyProfile(
-            publicKey: current.publicKey,
-            name: current.name,
-            bio: current.bio,
-            imageUrl: current.imageUrl,
-            links: current.links,
-            tags: current.tags + [newTag],
-            status: current.status
-        )
-        profile = current
-        persistContact(current)
+        updateTags { $0 + [newTag] }
     }
 
     private func removeTag(_ tag: String) {
-        guard var current = profile else { return }
-        current = PubkyProfile(
-            publicKey: current.publicKey,
-            name: current.name,
-            bio: current.bio,
-            imageUrl: current.imageUrl,
-            links: current.links,
-            tags: current.tags.filter { $0 != tag },
-            status: current.status
-        )
-        profile = current
-        persistContact(current)
+        updateTags { $0.filter { $0 != tag } }
     }
 
-    private func persistContact(_ profile: PubkyProfile) {
+    /// Shows the change at once, then saves it, one tag change at a time, over the contact's latest profile, after the
+    /// lookup of a profile the row is still waiting for. The save is dropped quietly once this Pubky session ends.
+    private func updateTags(_ transform: @escaping ([String]) -> [String]) {
+        let pubkyProfile = pubkyProfile
+        guard let current = profile, let session = pubkyProfile.currentSession else { return }
+        profile = current.withTags(transform(current.tags))
+        let change = contactsManager.updateContactTags(
+            publicKey: publicKey,
+            shownProfile: current,
+            expectedIdentity: session.publicKey,
+            isSessionCurrent: { pubkyProfile.currentSession == session },
+            transform: transform
+        )
         Task {
             do {
-                try await contactsManager.updateContact(
-                    publicKey: publicKey,
-                    name: profile.name,
-                    bio: profile.bio,
-                    imageUrl: profile.imageUrl,
-                    links: profile.links,
-                    tags: profile.tags
-                )
+                try await change.value
             } catch {
                 Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
                 app.toast(type: .error, title: t("contacts__error_saving"))
@@ -265,7 +266,14 @@ struct ContactDetailView: View {
                 title: t("contacts__delete_success"),
                 accessibilityIdentifier: "ContactDeletedToast"
             )
-            navigation.path = [.contacts]
+            if !contactsManager.contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }) {
+                navigation.returnToContactsAfterRemoving(publicKey: publicKey)
+            }
+        } catch let PubkyServiceError.activeSubscription(endsAt) {
+            let description = endsAt.map {
+                t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
+            }
+            app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
             app.toast(type: .error, title: t("contacts__delete_error"))
@@ -293,7 +301,7 @@ struct ContactDetailView: View {
 
                 if let contact = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                     profile = contact.profile
-                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
+                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey, retryTransient: true) {
                     profile = fetched
                 }
             }
@@ -345,6 +353,7 @@ struct ContactDetailView: View {
             .environmentObject(CurrencyViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(PubkyProfileManager())
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())

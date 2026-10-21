@@ -63,7 +63,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testConfirmationRequiresAnotherSwipeWhenTheCreatedOrderCostsMore() async throws {
+    func testHardwareConfirmationStopsWhenTheCreatedOrderCostsMore() async throws {
         let vm = makeViewModel()
         vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
         let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_000)
@@ -85,6 +85,130 @@ final class TransferViewModelTests: XCTestCase {
 
         XCTAssertEqual(confirmed?.id, createdOrder.id)
         XCTAssertEqual(calls, 1)
+    }
+
+    @MainActor
+    func testSwipeReportsAServiceIncreaseWhenTheCreatedOrderCostsMore() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_000)
+        var calls = 0
+        let create: (UInt64, UInt64) async throws -> IBtOrder = { _, _ in
+            calls += 1
+            return createdOrder
+        }
+        let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 102_500)
+
+        let first = try await vm.orderForSwipe(createOrder: create)
+        XCTAssertEqual(first.id, createdOrder.id)
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+        XCTAssertEqual(vm.feeIncrease(order: first, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt), .service(amountSat: 1000))
+        XCTAssertEqual(vm.uiState.feeSat, createdOrder.feeSat)
+
+        let second = try await vm.orderForSwipe(createOrder: create)
+        XCTAssertEqual(second.id, createdOrder.id)
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(vm.feeIncrease(order: second, displayedOrderFeeSat: vm.uiState.feeSat, displayed: rebuilt, rebuilt: rebuilt))
+    }
+
+    @MainActor
+    func testUnfundableRebuildReportsTheServiceIncreaseAndMovesToTheOrderFee() {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let order = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_500)
+
+        XCTAssertEqual(vm.unfundableFeeIncrease(order: order, displayedOrderFeeSat: 101_000), .service(amountSat: 1500))
+        XCTAssertEqual(vm.uiState.feeSat, 102_500)
+    }
+
+    @MainActor
+    func testUnfundableRebuildReportsNothingWhenTheOrderFeeIsNotHigher() {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let equal = makeOrder(id: "equal", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        let lower = makeOrder(id: "lower", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 100_000)
+
+        XCTAssertNil(vm.unfundableFeeIncrease(order: equal, displayedOrderFeeSat: 101_000))
+        XCTAssertNil(vm.unfundableFeeIncrease(order: lower, displayedOrderFeeSat: 101_000))
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
+
+    @MainActor
+    func testSwipeReportsANetworkIncreaseThenPaysOnTheNextSwipe() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        var calls = 0
+        let create: (UInt64, UInt64) async throws -> IBtOrder = { _, _ in
+            calls += 1
+            return createdOrder
+        }
+        let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 700, totalSat: 101_700)
+
+        let first = try await vm.orderForSwipe(createOrder: create)
+        XCTAssertEqual(vm.feeIncrease(order: first, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt), .network(amountSat: 200))
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+
+        let second = try await vm.orderForSwipe(createOrder: create)
+        XCTAssertEqual(second.id, createdOrder.id)
+        XCTAssertEqual(calls, 1)
+        XCTAssertNil(vm.feeIncrease(order: second, displayedOrderFeeSat: vm.uiState.feeSat, displayed: rebuilt, rebuilt: rebuilt))
+    }
+
+    @MainActor
+    func testSwipeDecidesFromTheSnapshotTakenBeforeTheOrderIsCreated() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let snapshot = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let snapshotOrderFeeSat = vm.uiState.feeSat
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 102_000)
+        let order = try await vm.orderForSwipe { _, _ in createdOrder }
+        vm.uiState.feeSat = createdOrder.feeSat
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 102_500)
+
+        XCTAssertEqual(
+            vm.feeIncrease(order: order, displayedOrderFeeSat: snapshotOrderFeeSat, displayed: snapshot, rebuilt: rebuilt),
+            .service(amountSat: 1000)
+        )
+    }
+
+    @MainActor
+    func testSwipePaysOnTheFirstSwipeWhenTheRebuiltTotalIsLower() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        let order = try await vm.orderForSwipe { _, _ in createdOrder }
+        let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 300, totalSat: 101_300)
+
+        XCTAssertNil(vm.feeIncrease(order: order, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt))
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
+    }
+
+    @MainActor
+    func testSwipePaysOnTheFirstSwipeWhenTheCreatedOrderCostsLess() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "cheaper", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 100_500)
+        let order = try await vm.orderForSwipe { _, _ in createdOrder }
+        let displayed = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+        let rebuilt = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_000)
+
+        XCTAssertNil(vm.feeIncrease(order: order, displayedOrderFeeSat: 101_000, displayed: displayed, rebuilt: rebuilt))
+    }
+
+    @MainActor
+    func testSwipePaysOnTheFirstSwipeWhenTheRebuiltFundingMatches() async throws {
+        let vm = makeViewModel()
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        let createdOrder = makeOrder(id: "created", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+        let order = try await vm.orderForSwipe { _, _ in createdOrder }
+        let amounts = SpendingConfirmAmounts(networkFeeSat: 500, totalSat: 101_500)
+
+        XCTAssertNil(vm.feeIncrease(order: order, displayedOrderFeeSat: 101_000, displayed: amounts, rebuilt: amounts))
+        XCTAssertEqual(vm.uiState.feeSat, 101_000)
     }
 
     @MainActor
@@ -163,7 +287,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async throws {
+    func testSpendingLimitsCapsAtLspMaxClientBalanceWhenOnchainExceedsIt() async {
         let viewModel = makeViewModel()
         var feeCallBalances: [UInt64] = []
         // The liquidity calc reports no receiving room (maxLspBalance = 0) because the client
@@ -175,7 +299,7 @@ final class TransferViewModelTests: XCTestCase {
             maxClientBalance: Self.optionMaxClientBalance
         )
 
-        let result = try await viewModel.calculateSpendingLimits(
+        let result = await viewModel.calculateSpendingLimits(
             onchainAvailable: Self.onChainBalance,
             lspMaxClientBalance: Self.lspMaxClientBalance,
             transferValues: { _ in values },
@@ -192,7 +316,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testSpendingLimitsUsesFullBalanceWhenLspInfoUnavailable() async throws {
+    func testSpendingLimitsUsesFullBalanceWhenLspInfoUnavailable() async {
         let viewModel = makeViewModel()
         var feeCallBalances: [UInt64] = []
         let values = TransferValues(
@@ -202,7 +326,7 @@ final class TransferViewModelTests: XCTestCase {
             maxClientBalance: Self.optionMaxClientBalance
         )
 
-        let result = try await viewModel.calculateSpendingLimits(
+        let result = await viewModel.calculateSpendingLimits(
             onchainAvailable: Self.onChainBalance,
             lspMaxClientBalance: nil,
             transferValues: { _ in values },
@@ -218,7 +342,7 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testSpendingLimitsIsZeroWhenLiquidityReportsZeroClientBalance() async throws {
+    func testSpendingLimitsIsZeroWhenLiquidityReportsZeroClientBalance() async {
         let viewModel = makeViewModel()
         let values = TransferValues(
             defaultLspBalance: Self.lspBalance,
@@ -227,7 +351,7 @@ final class TransferViewModelTests: XCTestCase {
             maxClientBalance: 0
         )
 
-        let result = try await viewModel.calculateSpendingLimits(
+        let result = await viewModel.calculateSpendingLimits(
             onchainAvailable: Self.onChainBalance,
             lspMaxClientBalance: Self.lspMaxClientBalance,
             transferValues: { _ in values },

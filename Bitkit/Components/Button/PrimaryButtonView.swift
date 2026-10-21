@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PrimaryButtonView: View {
     let title: String
+    var titleKerning: CGFloat = 0.4
+    var titleLineHeight: CGFloat?
     let size: CustomButton.Size
     let icon: AnyView?
     let isDisabled: Bool
@@ -9,6 +11,7 @@ struct PrimaryButtonView: View {
     let isPressed: Bool
     let shouldExpand: Bool
     let background: AnyView?
+    var showsHighlightShadow = true
 
     var body: some View {
         HStack(spacing: 8) {
@@ -22,14 +25,17 @@ struct PrimaryButtonView: View {
                     .frame(width: 20, height: 20)
             } else {
                 if size == .small {
-                    CaptionBText(title, textColor: .textPrimary)
+                    CaptionBText(title, textColor: .textPrimary, kerning: titleKerning, lineHeight: titleLineHeight)
                 } else {
-                    BodySSBText(title, textColor: .textPrimary)
+                    BodySSBText(title, textColor: .textPrimary, kerning: titleKerning, lineHeight: titleLineHeight)
                 }
             }
         }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, size == .small ? 8 : 12)
         .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
-        .frame(height: size.height)
+        .frame(minHeight: size.height)
         .padding(.horizontal, 16)
         .background(backgroundGradient)
         .cornerRadius(64)
@@ -60,7 +66,7 @@ struct PrimaryButtonView: View {
     }
 
     private var shadowColor: Color {
-        if isDisabled {
+        if isDisabled || !showsHighlightShadow {
             return .clear
         }
         return isPressed ? Color.white.opacity(0.4) : Color.white.opacity(0.25)

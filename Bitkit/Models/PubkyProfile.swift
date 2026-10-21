@@ -134,7 +134,7 @@ struct PubkyProfile {
         self = PubkyProfileData.from(paykitProfile: paykitProfile).toProfile(publicKey: publicKey)
     }
 
-    init(resolution: Paykit.ContactProfileResolution) {
+    init(resolution: Paykit.ProfileResolution) {
         let publicKey = Self.normalizedPublicKey(resolution.publicKey)
         if let paykitProfile = resolution.paykitProfile {
             self.init(publicKey: publicKey, paykitProfile: paykitProfile)
@@ -168,6 +168,11 @@ struct PubkyProfile {
         )
     }
 
+    /// Holds nothing beyond what `placeholder(publicKey:)` makes from the key, as for a contact whose lookup failed.
+    var isPlaceholder: Bool {
+        name == Self.truncate(publicKey) && bio.isEmpty && imageUrl == nil && links.isEmpty && tags.isEmpty && status == nil
+    }
+
     static func forDisplay(publicKey: String, name: String?, imageUrl: String?) -> PubkyProfile {
         PubkyProfile(
             publicKey: publicKey,
@@ -177,6 +182,10 @@ struct PubkyProfile {
             links: [],
             status: nil
         )
+    }
+
+    func withTags(_ tags: [String]) -> PubkyProfile {
+        PubkyProfile(publicKey: publicKey, name: name, bio: bio, imageUrl: imageUrl, links: links, tags: tags, status: status)
     }
 
     func withNameFallback(_ fallbackName: String?) -> PubkyProfile {

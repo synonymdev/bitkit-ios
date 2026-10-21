@@ -79,21 +79,13 @@ struct ActivityRowOnchain: View {
     }
 
     var body: some View {
-        HStack(spacing: 16) {
+        ActivityRowContent(title: status, subtitle: description) {
             if let contact {
                 PubkyContactAvatar(contact: contact, size: 40)
             } else {
                 ActivityIcon(activity: .onchain(item), size: 40, isCpfpChild: isCpfpChild, context: .row)
             }
-
-            VStack(alignment: .leading, spacing: 2) {
-                BodyMSBText(status).lineLimit(1)
-                CaptionBText(description).lineLimit(1)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
-
+        } amount: {
             MoneyCell(sats: amount, prefix: amountPrefix, enableHide: true)
         }
         .task {

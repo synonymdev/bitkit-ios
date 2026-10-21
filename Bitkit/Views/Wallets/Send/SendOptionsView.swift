@@ -2,7 +2,7 @@ import PhotosUI
 import SwiftUI
 
 struct SendOptionsView: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var contactsManager: ContactsManager
@@ -112,6 +112,8 @@ struct SendOptionsView: View {
             return
         }
 
+        let value = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = ClipboardPromptHistory().recordInspection(changeCount: UIPasteboard.general.changeCount, supportedValue: value)
         Task {
             await scanner.handleSendScan(uri, scope: scanScope) { route in
                 if let route {

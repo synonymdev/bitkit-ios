@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SecondaryButtonView: View {
     let title: String
+    var titleKerning: CGFloat = 0.4
+    var titleLineHeight: CGFloat?
     let size: CustomButton.Size
     let icon: AnyView?
     let isDisabled: Bool
@@ -20,13 +22,16 @@ struct SecondaryButtonView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: textColor))
                     .frame(width: 20, height: 20)
             } else if size == .small {
-                CaptionBText(title, textColor: textColor)
+                CaptionBText(title, textColor: textColor, kerning: titleKerning, lineHeight: titleLineHeight)
             } else {
-                BodySSBText(title, textColor: textColor)
+                BodySSBText(title, textColor: textColor, kerning: titleKerning, lineHeight: titleLineHeight)
             }
         }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, size == .small ? 8 : 12)
         .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
-        .frame(height: size.height)
+        .frame(minHeight: size.height)
         .padding(.horizontal, 16)
         .background(isPressed ? Color.white10 : Color.clear)
         .background(BlurView())

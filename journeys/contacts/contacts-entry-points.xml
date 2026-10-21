@@ -1,0 +1,20 @@
+<journey name="contacts entry points">
+  <description>
+    Precondition: an onboarded disposable wallet with Paykit enabled, no Pubky identity,
+    unseen Contacts and Profile intros, and an English device. A second run uses an
+    authenticated disposable profile with the Contacts intro already seen.
+    Delayed identity lookup and failed session restoration need fault injection outside
+    journey capabilities and are covered by the ProfileDestinationViewTests regressions
+    and the PR manual checks.
+  </description>
+  <actions>
+    <action>Open the Home menu (identifier "HeaderMenu") and tap Contacts (identifier "DrawerContacts")</action>
+    <action>Verify Contacts intro (identifier "ContactsIntro") appears after loading finishes</action>
+    <action>Tap Add Contact (identifier "ContactsIntro-button")</action>
+    <action>Verify Profile intro (identifier "ProfileIntro") appears</action>
+    <action>Return Home and open Contacts from the menu again</action>
+    <action>Verify Profile intro (identifier "ProfileIntro") appears without Contacts intro</action>
+    <action>On the authenticated profile run, open Contacts from the Home menu</action>
+    <action>Verify the Contacts list and Add button (identifier "ContactsAddButton") appear without Profile onboarding</action>
+  </actions>
+</journey>

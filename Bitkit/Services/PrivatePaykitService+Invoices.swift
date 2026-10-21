@@ -8,11 +8,10 @@ import UIKit
 extension PrivatePaykitService {
     func currentOrRotatedInvoice(
         for publicKey: String,
-        receiverPath: String,
         wallet: WalletViewModel,
         forceRefresh: Bool = false
     ) async throws -> StoredInvoice {
-        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey, receiverPath: receiverPath) {
+        if !forceRefresh, let invoice = await reusablePrivateInvoice(for: publicKey) {
             return invoice
         }
 
@@ -29,7 +28,7 @@ extension PrivatePaykitService {
             paymentHash: decodedInvoice.paymentHash.hex,
             expiresAt: Double(decodedInvoice.timestampSeconds + decodedInvoice.expirySeconds)
         )
-        setLocalInvoice(invoice, publicKey: publicKey, receiverPath: receiverPath)
+        setLocalInvoice(invoice, publicKey: publicKey)
         persistState()
         return invoice
     }
@@ -50,8 +49,8 @@ extension PrivatePaykitService {
         persistState()
     }
 
-    func reusablePrivateInvoice(for publicKey: String, receiverPath: String) async -> StoredInvoice? {
-        guard let invoice = localInvoice(for: publicKey, receiverPath: receiverPath),
+    func reusablePrivateInvoice(for publicKey: String) async -> StoredInvoice? {
+        guard let invoice = localInvoice(for: publicKey),
               invoice.expiresAt > Date().timeIntervalSince1970 + Self.invoiceRefreshBufferSeconds,
               await !isReceivedInvoiceSettled(paymentHash: invoice.paymentHash),
               case let .lightning(decodedInvoice) = try? await decode(invoice: invoice.bolt11),
@@ -107,7 +106,7 @@ extension PrivatePaykitService {
 
     func settledPrivateInvoicePaymentHashes() async -> [String] {
         let settledHashes = await receivedSettledPaymentHashes()
-        return state.contacts.values.flatMap { localInvoices($0) }
+        return state.contacts.values.compactMap(\.localInvoice)
             .map(\.paymentHash)
             .filter(settledHashes.contains)
     }
@@ -146,17 +145,13 @@ extension PrivatePaykitService {
         )
     }
 
-    func localInvoice(for publicKey: String, receiverPath: String) -> StoredInvoice? {
-        state.contacts[publicKey]?.localInvoicesByReceiverPath[receiverPath]
+    func localInvoice(for publicKey: String) -> StoredInvoice? {
+        state.contacts[publicKey]?.localInvoice
     }
 
-    func localInvoices(_ contactState: ContactState) -> [StoredInvoice] {
-        Array(contactState.localInvoicesByReceiverPath.values)
-    }
-
-    private func setLocalInvoice(_ invoice: StoredInvoice, publicKey: String, receiverPath: String) {
+    private func setLocalInvoice(_ invoice: StoredInvoice, publicKey: String) {
         var contactState = state.contacts[publicKey, default: ContactState()]
-        contactState.localInvoicesByReceiverPath[receiverPath] = invoice
+        contactState.localInvoice = invoice
         state.contacts[publicKey] = contactState
     }
 }

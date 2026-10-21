@@ -149,6 +149,12 @@ Use `Not used` when a phase had no AI involvement and `Unknown` when the model w
 never infer a model from a tool name. If no review occurred, write `Review: Not performed`.
 `Not used` and `Not performed` need no reasoning value. See `.agents/commands/pr.md` for formatting.
 
+### Review Findings
+
+When addressing review feedback on any PR, release PRs included, PR babysitters and the author's agent keep the PR in scope:
+- Fix in the PR only critical and HIGH findings and reachable correctness bugs. MEDIUM findings are a judgment call.
+- PR babysitters re-triage each LOW or non-blocking finding. If it is still LOW and not a reachable correctness bug, they defer it and leave the code unchanged: file an issue in the next release's milestone, add an Out of Scope bullet linking the issue and the thread (see `.agents/commands/pr.md`), reply in the thread `out of scope: tracked in #N, because …`, and resolve it.
+
 ## Project Overview
 
 Bitkit iOS is a native Swift implementation of a Bitcoin and Lightning Network wallet. This is a work-in-progress repository that is **NOT** the live production app. The production app uses React Native and is at github.com/synonymdev/bitkit.
@@ -273,11 +279,14 @@ Bumping `bitkit-core`, `ldk-node`, `paykit` or `vss-rust-client-ffi` changes the
 
 ### Code Formatting
 ```bash
-# Install SwiftFormat
+# Install SwiftFormat (CI pins 0.64.0; `.swiftformat` sets it as the minimum version)
 brew install swiftformat
 
 # Format all Swift code
 swiftformat .
+
+# Check formatting the way the CI `lint` workflow does
+swiftformat --lint .
 
 # Setup git hooks for automatic formatting on commits
 npm install -g git-format-staged
@@ -290,7 +299,7 @@ npm install -g git-format-staged
 node scripts/validate-translations.js
 ```
 
-**Note:** Localization files are synced from Transifex using [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync).
+**Note:** Translations live in this repository. When adding or changing an English string, add or update its translation in every `*.lproj/Localizable.strings` in the same PR.
 
 ### Testing
 
@@ -497,7 +506,8 @@ Ensure accessibility modifiers and labels are added to custom components.
 
 ## Code Style & Conventions
 
-- **SwiftFormat** configuration in `.swiftformat`
+- **SwiftFormat** configuration in `.swiftformat`. RUN `swiftformat --lint .` before pushing: the `lint` workflow fails a PR with unformatted Swift
+- **Warnings are errors**: every target builds with `-warnings-as-errors -Wwarning DeprecatedDeclaration` in the project-level `OTHER_SWIFT_FLAGS`, locally and in CI. FIX a new warning rather than silencing it; deprecations stay warnings so an SDK bump does not break the build. KEEP the flags in `OTHER_SWIFT_FLAGS` rather than `SWIFT_TREAT_WARNINGS_AS_ERRORS`: Xcode appends that setting's flag last, which turns deprecations back into errors
 - Max line width: 150 characters
 - Swift version: 5.10
 - Use descriptive names: `isLoadingUsers` not `loading`
@@ -610,4 +620,4 @@ investigate, not a bug report on its own.
 
 1. Update translation keys in code
 2. Run `node scripts/validate-translations.js` to check for issues
-3. Sync with Transifex using `bitkit-transifex-sync` tool
+3. Add or update the translation in every `*.lproj/Localizable.strings` in the same PR

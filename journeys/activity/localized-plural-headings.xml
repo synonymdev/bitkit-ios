@@ -1,0 +1,21 @@
+<journey name="activity explorer resolves translated plurals">
+  <description>
+    Requires an onboarded disposable regtest wallet with a native on-chain activity whose
+    transaction details have one input and two outputs. Record its transaction ID and the
+    currently selected app language before starting. This checks the iOS plural-formatting fix;
+    Android already formats these translations with ICU. It changes only the app language and
+    restores it at the end. Restart after each language change as the language alert requests.
+  </description>
+  <actions>
+    <action>From Home, open the menu (id "HeaderMenu") and Settings (id "DrawerSettings"), open Language (id "LanguageSettings"), and record the currently selected language</action>
+    <action>Tap Polish, dismiss the Language Changed alert with OK, then terminate and relaunch Bitkit with the simulator tools and unlock if needed</action>
+    <action>Open the recorded on-chain transaction from Activity and tap its transaction details button (id "ActivityTxDetails")</action>
+    <action>Wait for transaction details to load and verify the transaction ID (id "TXID") matches the recorded transaction</action>
+    <action>Verify the input heading is WEJŚCIE and the output heading is WYJŚCIA (2), with no literal braces, plural keywords, or hash placeholders</action>
+    <action>Return to Settings and Language (id "LanguageSettings"), select French, dismiss the alert with OK, then terminate and relaunch Bitkit and unlock if needed</action>
+    <action>Open the same transaction's details (id "ActivityTxDetails") and verify its headings are ENTRÉE and SORTIES (2), with no raw plural template</action>
+    <action>Return to Settings and Language (id "LanguageSettings"), select English, dismiss the alert with OK, then terminate and relaunch Bitkit and unlock if needed</action>
+    <action>Open the same transaction's details (id "ActivityTxDetails") and verify its headings are INPUT and OUTPUTS (2)</action>
+    <action>Return to Settings and Language (id "LanguageSettings"), restore the original language, dismiss any language alert, and restart Bitkit if the language changed</action>
+  </actions>
+</journey>

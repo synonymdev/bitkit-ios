@@ -20,6 +20,8 @@
     <action>Verify the Hardware Wallets screen now lists the paired device as "Renamed Trezor"</action>
     <action>Tap the "Add Hardware Wallet" button near the bottom (id "AddHardwareWallet")</action>
     <action>Verify a sheet opens titled "Hardware Wallet" (id "HardwareWalletIntroScreen") showing hardware device illustrations, then tap Cancel (id "HardwareWalletIntroCancel") and verify the sheet closes back to the Hardware Wallets screen</action>
+    <action>On Android, use German on a 360dp-wide device and reopen Add Hardware Wallet at font scales 1.15 and 1.25. Verify Abbrechen and Weiter stack with complete single-line labels. At 411dp wide and font scale 1.3, verify they fit side by side.</action>
+    <action>On Android, reopen Add Hardware Wallet at 360dp wide and font scale 2.0. Scroll the text and actions as needed, then tap Weiter and verify the next connection step opens. Reopen the intro and tap Abbrechen to close it. Restore the original language, display width and font scale; reopen and verify both buttons return to their original side-by-side row and 56dp height, then close with Cancel.</action>
     <action>Tap the trash (delete) icon on the device row</action>
     <action>Verify a confirm dialog appears (id "RemoveHwWalletDialog") explaining that your funds are safe and your coins won't be deleted</action>
     <action>Tap "Cancel" and verify the device is still listed on the Hardware Wallets screen</action>

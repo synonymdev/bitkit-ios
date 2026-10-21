@@ -5,7 +5,7 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject private var wallet: WalletViewModel
 
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = false
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
 
     private var electrumRowRightText: String {
         let currentServerUrl = settings.electrumCurrentServer.fullUrl
