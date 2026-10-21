@@ -842,6 +842,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(endpoints.map(\.value), [endpoint.value])
     }
 
+    func testPaykitServerRequestsAreMerchantRequests() throws {
+        let personal = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(), now: Date()))
+        let merchant = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(proposalAppId: "paykit-server"), now: Date()))
+        let other = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(proposalAppId: "marketplace"), now: Date()))
+
+        XCTAssertFalse(personal.isMerchantRequest)
+        XCTAssertTrue(merchant.isMerchantRequest)
+        XCTAssertTrue(merchant.updatingLifecycleState(.accepted).isMerchantRequest)
+        XCTAssertFalse(other.isMerchantRequest)
+        let outgoing = try XCTUnwrap(PaykitPaymentRequest(
+            historyRecord: paymentRequestRecord(role: .payee, proposalAppId: "paykit-server"),
+            now: Date()
+        ))
+        XCTAssertFalse(outgoing.isMerchantRequest)
+    }
+
     func testRequestEndpointUsesOnlyPayableResolvedCandidates() async throws {
         snapshotAppDefaultsDomain()
         UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
@@ -9414,7 +9430,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         acceptedEventId: String? = nil,
         rejectedEventId: String? = nil,
         canceledEventId: String? = nil,
-        paymentProofs: [PaymentProofRecord] = []
+        paymentProofs: [PaymentProofRecord] = [],
+        proposalAppId: String = "bitkit"
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
@@ -9425,7 +9442,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             proposalOutboundMessageId: proposalOutboundMessageId,
             proposalOutboundStatus: proposalOutboundStatus,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
-            proposalAppId: "bitkit",
+            proposalAppId: proposalAppId,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
