@@ -413,7 +413,7 @@ struct PaymentRequestAmountView: View {
             if asset == .btc {
                 amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency)
             } else {
-                dollarAmount = initialDraft.amount.inputValue
+                dollarAmount = initialDraft.amount.atomic == 0 ? "" : initialDraft.amount.inputValue
             }
         }
     }
