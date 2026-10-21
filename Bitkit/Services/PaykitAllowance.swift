@@ -335,9 +335,9 @@ enum PaykitAllowanceCapacity {
 }
 
 extension PaykitPaymentRequest {
-    /// Allowances cover only requests priced in bitcoin without a conversion; any other request always asks.
+    /// Allowances cover only requests priced in bitcoin, paid over a bitcoin rail. A conversion only prices other rails, and
+    /// the SDK requires a bitcoin rail to pay the bitcoin amount, so it does not keep a request manual.
     var isAllowancePayable: Bool {
-        // A conversion only prices other rails; the SDK requires a bitcoin rail to pay the bitcoin amount, as on Android.
         amount.asset == .btc
     }
 

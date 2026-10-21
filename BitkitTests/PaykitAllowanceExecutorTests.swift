@@ -686,6 +686,35 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 5, previousVersion: 4)])
     }
 
+    func testRecoveryNeverReleasesAListASettlementReleasedWhileItWaited() async throws {
+        let harness = AllowanceHarness()
+        let first = try Fixtures.paymentRequest()
+        let second = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let secondHash = String(repeating: "2", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: "a", status: .failed)]),
+            Fixtures.occurrence(requestId: "req-b", attempts: [Fixtures.attemptRecord(id: "b", status: .failed)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [
+                Self.journalEntry(attemptId: "a", request: first, stage: .sent, paymentListVersion: 5),
+                Self.journalEntry(attemptId: "b", request: second, stage: .sent, paymentHash: secondHash, paymentListVersion: 7),
+            ]),
+            identity: Fixtures.identityKey
+        )
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let gate = await harness.payer.holdNextRelease()
+
+        let recovery = Task { await harness.executor.recover(identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("releaseConsumedPaymentList") }
+        await harness.executor.lightningPaymentSettled(paymentHash: secondHash, succeeded: false)
+        gate.open()
+        await recovery.value
+
+        let released = await harness.payer.releasedLists.map(\.version)
+        XCTAssertEqual(released.filter { $0 == 7 }.count, 1, "The second attempt's list is released once, by the settlement")
+    }
+
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()
@@ -1632,9 +1661,22 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         nil
     }
 
+    private var releaseGate: AllowanceGate?
+
+    /// Holds the next list release until the returned gate opens.
+    func holdNextRelease() -> AllowanceGate {
+        let gate = AllowanceGate()
+        releaseGate = gate
+        return gate
+    }
+
     func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) async {
         called("releaseConsumedPaymentList")
         releasedLists.append(ReleasedList(publicKey: publicKey, version: version, previousVersion: previousVersion))
+        if let gate = releaseGate {
+            releaseGate = nil
+            await gate.wait()
+        }
     }
 
     func claimForExecution(_ request: PaykitPaymentRequest) async throws {
