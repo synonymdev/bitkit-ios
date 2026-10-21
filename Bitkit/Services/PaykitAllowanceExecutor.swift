@@ -414,11 +414,13 @@ actor PaykitAllowanceExecutor {
                 case .succeeded, .failed:
                     // Reconciliation can settle an attempt the journal still shows as open.
                     let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
-                    if let stage = journalStages[attempt.attemptId], !stage.isTerminal {
-                        let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
-                        if outcome == .failed {
-                            await releaseConsumedPaymentList(of: entry)
-                        }
+                    // The cached stage only skips settled attempts cheaply; a settlement while this loop awaited may have
+                    // settled one since, so the move itself checks the current stage.
+                    if let stage = journalStages[attempt.attemptId], !stage.isTerminal,
+                       let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity, onlyIfOpen: true),
+                       outcome == .failed
+                    {
+                        await releaseConsumedPaymentList(of: entry)
                     }
                 }
             }
@@ -510,11 +512,18 @@ actor PaykitAllowanceExecutor {
     /// Moves the journal entry to the outcome, and announces an automatic payment only from the call that settles it,
     /// so a settlement event and recovery never both raise Payment Executed.
     @discardableResult
-    private func applyJournalOutcome(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) -> PaykitAllowanceLocalState.JournalEntry? {
+    private func applyJournalOutcome(
+        attemptId: String,
+        outcome: Paykit.PaymentOutcome,
+        identity: String,
+        onlyIfOpen: Bool = false
+    ) -> PaykitAllowanceLocalState.JournalEntry? {
         var entry: PaykitAllowanceLocalState.JournalEntry?
         var settledEntry: PaykitAllowanceLocalState.JournalEntry?
         updateLocalState(identity: identity) { state in
-            guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }) else { return }
+            guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
+                  !onlyIfOpen || !state.journal[index].stage.isTerminal
+            else { return }
             entry = state.journal[index]
             if outcome == .succeeded, state.journal[index].stage != .succeeded {
                 settledEntry = state.journal[index]
