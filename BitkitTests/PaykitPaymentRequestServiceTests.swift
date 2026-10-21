@@ -5169,6 +5169,30 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(manager.silentlyExpiredRequests, [request])
     }
 
+    func testReinstatedExpiredRequestIsReportedOnce() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let clock = PaymentRequestTestClock(now)
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(expiresAt: timestamp(now.addingTimeInterval(60))),
+        ])
+        let manager = paymentRequestManager(sdk: sdk, clock: clock)
+        await manager.refresh()
+
+        clock.shiftWallClock(by: 60)
+        manager.reconcileExpiredRequests()
+        XCTAssertEqual(manager.silentExpirationTrigger, 1)
+
+        // A refresh taken before the expiry puts the request back, then it expires again.
+        clock.shiftWallClock(by: -30)
+        _ = await manager.refresh(forceFresh: true)
+        XCTAssertEqual(manager.pendingRequests.count, 1)
+        clock.shiftWallClock(by: 30)
+        manager.reconcileExpiredRequests()
+
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertEqual(manager.silentExpirationTrigger, 1)
+    }
+
     func testDismissingAnExpiredRequestIsNotReportedAsSilentExpiration() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let clock = PaymentRequestTestClock(now)
