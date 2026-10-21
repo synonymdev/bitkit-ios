@@ -1240,8 +1240,11 @@
 "profile__edit" = "Bewerken";
 "profile__pay_contacts_nav_title" = "Contacten betalen";
 "profile__pay_contacts_title" = "Laat uw contacten\n<accent>u betalen</accent>";
-"profile__pay_contacts_description" = "Gebruik Bitkit met uw contacten om direct betalingen te versturen, altijd en overal.";
-"profile__pay_contacts_toggle" = "Betalen met contacten";
+"profile__pay_contacts_description" = "Deel betaalgegevens privé met je contacten. Openbare betalingen blijven uit totdat je ze inschakelt in Instellingen.";
+"profile__private_payments_toggle" = "Privébetalingen met contacten";
+"profile__public_payments_toggle" = "Openbare betalingen";
+"profile__public_payments_warning" = "Je betaalgegevens worden openbaar en gekoppeld aan je profiel. Iedereen kan ze zien.";
+"profile__payments_pending" = "Wijzigingen zijn in behandeling. Eerder gedeelde betaalgegevens kunnen nog beschikbaar zijn.";
 "profile__add_link_title" = "Link toevoegen";
 "profile__add_link_label" = "LABEL";
 "profile__add_link_label_placeholder" = "Bijvoorbeeld 'Website'";

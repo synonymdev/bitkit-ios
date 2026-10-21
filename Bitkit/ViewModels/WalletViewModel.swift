@@ -160,6 +160,11 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        lightningService.onchainActivityWillPersist = { [weak self] in
+            guard let self else { return nil }
+            let isSessionCurrent = publicPaykitPublicationAdmission()
+            return { await self.refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isSessionCurrent) }
+        }
     }
 
     /// Convenience initializer for previews and testing
@@ -338,8 +343,10 @@ class WalletViewModel: ObservableObject {
                         self.isSyncingWallet = false
                         self.currentBlockHeight = syncedBlockHeight
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+                        let isSessionCurrent = self.publicPaykitPublicationAdmission()
                         Task {
                             await self.refreshAndSyncState()
+                            await self.refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isSessionCurrent)
                         }
 
                     // MARK: Balance Events
@@ -607,6 +614,7 @@ class WalletViewModel: ObservableObject {
     }
 
     func sync() async throws {
+        let isSessionCurrent = publicPaykitPublicationAdmission()
         syncState()
 
         if isSyncingWallet {
@@ -634,6 +642,7 @@ class WalletViewModel: ObservableObject {
         isSyncingWallet = false
         syncState()
         QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
+        await refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isSessionCurrent)
         if isPaykitUIActive {
             await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
             await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
@@ -1403,12 +1412,12 @@ class WalletViewModel: ObservableObject {
         let initialInvoiceRevision = publicPaykitInvoiceRevision
         let session = pubkyProfile?.currentSession
         let wasSharing = sharesPublicPaykitEndpoints
-        let receiveID = receiveRefreshID
-        let commitID = receiveCommitID
-        let previousAddress = onchainAddress
-        let publicOnchainAddress = includeOnchain ? try await refreshReusableOnchainAddress() : ""
-        if includeOnchain, receiveRefreshID == receiveID, receiveCommitID == commitID, onchainAddress == previousAddress {
-            onchainAddress = publicOnchainAddress
+        let publicOnchainAddress: String
+        if includeOnchain {
+            guard let session else { throw PubkyServiceError.sessionNotActive }
+            publicOnchainAddress = try await publicPaykitOnchainAddress(for: session.publicKey)
+        } else {
+            publicOnchainAddress = ""
         }
 
         for attempt in 0 ..< 2 {
@@ -1451,6 +1460,36 @@ class WalletViewModel: ObservableObject {
             return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
         }
         throw PublicPaykitError.publicationFailed
+    }
+
+    func publicPaykitOnchainAddress(for publicKey: String) async throws -> String {
+        try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedPublicAddress(for: publicKey)
+    }
+
+    func isPublicPaykitAddressUsed(for publicKey: String) async throws -> Bool {
+        try await PrivatePaykitAddressReservationStore.shared.isCurrentPublicAddressUsed(for: publicKey)
+    }
+
+    func refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: @escaping @MainActor () -> Bool) async {
+        let canPublish = {
+            !Task.isCancelled && isSessionCurrent() && self.isPaykitUIActive && self.sharesPublicPaykitEndpoints &&
+                self.pubkyProfile?.isDeletingProfile != true && PublicPaykitService.isOnchainPaymentOptionEnabled()
+        }
+        guard canPublish(), let session = pubkyProfile?.automaticPaykitSession,
+              await !PrivatePaykitService.shared.isDeletingProfile
+        else { return }
+        do {
+            guard try await isPublicPaykitAddressUsed(for: session.publicKey),
+                  canPublish(), pubkyProfile?.automaticPaykitSession == session,
+                  await !PrivatePaykitService.shared.isDeletingProfile
+            else { return }
+            PublicPaykitService.setCleanupPending(true)
+            try await syncReceivePublicPaykitEndpoints(isSessionCurrent: canPublish)
+        } catch {
+            guard canPublish(), pubkyProfile?.automaticPaykitSession == session else { return }
+            PublicPaykitService.setCleanupPending(true)
+            Logger.warn("Failed to refresh public Paykit address after on-chain activity: \(error)", context: "WalletViewModel")
+        }
     }
 
     func refreshPublicPaykitEndpointsOnForeground(isSessionCurrent: @escaping @MainActor () -> Bool) async {

@@ -5,6 +5,8 @@ struct GeneralSettingsView: View {
     @AppStorage(ContactPaymentsService.confirmedPreferenceKey) private var hasConfirmedContactPaymentsPreference = false
     @AppStorage(PrivatePaykitService.publishingEnabledKey) private var sharesPrivatePaykitEndpoints = false
     @AppStorage(PublicPaykitService.publishingEnabledKey) private var sharesPublicPaykitEndpoints = false
+    @AppStorage(PrivatePaykitService.cleanupPendingKey) private var isPrivateSharingCleanupPending = false
+    @AppStorage(PublicPaykitService.cleanupPendingKey) private var isPublicSharingCleanupPending = false
 
     @Environment(UsdtWalletManager.self) private var usdt
     @State private var isUpdatingUsdt = false
@@ -23,6 +25,8 @@ struct GeneralSettingsView: View {
     @StateObject private var languageManager = LanguageManager.shared
     @State private var isUpdatingContactPayments = false
     @State private var pendingContactPaymentsValue: Bool?
+    @State private var isUpdatingPublicPayments = false
+    @State private var pendingPublicPaymentsValue: Bool?
 
     private var isPaykitUIActive: Bool {
         PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
@@ -32,11 +36,18 @@ struct GeneralSettingsView: View {
         Binding(
             get: {
                 pendingContactPaymentsValue ??
-                    (hasConfirmedContactPaymentsPreference && (sharesPublicPaykitEndpoints || sharesPrivatePaykitEndpoints))
+                    (hasConfirmedContactPaymentsPreference && sharesPrivatePaykitEndpoints)
             },
             set: { enabled in
                 Task { await updateContactPayments(enabled) }
             }
+        )
+    }
+
+    private var publicPaymentsToggle: Binding<Bool> {
+        Binding(
+            get: { pendingPublicPaymentsValue ?? sharesPublicPaykitEndpoints },
+            set: { enabled in Task { await updatePublicPayments(enabled) } }
         )
     }
 
@@ -134,14 +145,23 @@ struct GeneralSettingsView: View {
                 .accessibilityIdentifier("HardwareWalletsSettings")
 
                 if isPaykitUIActive, pubkyProfile.isAuthenticated {
-                    SettingsRow(
-                        title: t("profile__pay_contacts_toggle"),
-                        iconName: "list-dashes",
-                        rightIcon: nil,
+                    sharingRow(
+                        title: t("profile__private_payments_toggle"),
                         toggle: contactPaymentsToggle,
-                        disabled: isUpdatingContactPayments,
-                        testIdentifier: "ContactPaymentsToggle"
+                        isUpdating: isUpdatingContactPayments,
+                        isPending: isPrivateSharingCleanupPending,
+                        identifier: "PrivateContactPaymentsToggle"
                     )
+                    sharingRow(
+                        title: t("profile__public_payments_toggle"),
+                        toggle: publicPaymentsToggle,
+                        isUpdating: isUpdatingPublicPayments,
+                        isPending: isPublicSharingCleanupPending,
+                        identifier: "PublicPaymentsToggle"
+                    )
+                    BodySText(t("profile__public_payments_warning"), textColor: .textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 8)
                 }
 
                 if usdt.isConfigured {
@@ -182,6 +202,50 @@ struct GeneralSettingsView: View {
             // Leaving the screen cancels `.task`; its own task lets the first contacts load and the enable still finish
             // unless the Pubky session ends or a newer contact payments change starts first.
             Task { await updateContactPayments(true) }
+        }
+    }
+
+    private func sharingRow(title: String, toggle: Binding<Bool>, isUpdating: Bool, isPending: Bool, identifier: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .opacity(isUpdating ? 1 : 0)
+                    .accessibilityHidden(!isUpdating)
+                    .frame(width: 20)
+                SettingsRow(
+                    title: title,
+                    rightIcon: nil,
+                    toggle: toggle,
+                    disabled: isUpdating,
+                    testIdentifier: identifier
+                )
+                .minimumScaleFactor(0.75)
+            }
+            if isPending, !isUpdating {
+                BodySText(t("profile__payments_pending"), textColor: .textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 8)
+            }
+        }
+    }
+
+    private func updatePublicPayments(_ enabled: Bool) async {
+        guard !isUpdatingPublicPayments else { return }
+        isUpdatingPublicPayments = true
+        pendingPublicPaymentsValue = enabled
+        defer {
+            pendingPublicPaymentsValue = nil
+            isUpdatingPublicPayments = false
+        }
+        do {
+            try await ContactPaymentsService.setPublicEnabled(
+                enabled, pubkyProfile: pubkyProfile, operations: .live(wallet: wallet)
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.error("Failed to update public payments: \(error)", context: "GeneralSettingsView")
+            app.toast(type: .error, title: t("common__error"), description: error.localizedDescription)
         }
     }
 

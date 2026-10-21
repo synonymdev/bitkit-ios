@@ -326,7 +326,7 @@ enum PublicPaykitService {
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
         appSyncPriority: PaykitSdkOperationLock.Priority = .ordered,
         syncApp: (() async throws -> Void)? = nil,
-        applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
+        applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
         if publish {
             wallet.preparePendingPublicPaykitInvoiceRefresh()
@@ -340,8 +340,8 @@ enum PublicPaykitService {
                 desiredSnapshot = snapshot
                 return snapshot.endpoints
             },
-            syncApp: syncApp ?? { try await syncPaykitApp(priority: appSyncPriority) },
-            applyEndpoints: applyEndpoints
+            syncApp: syncApp ?? { try await syncPaykitApp(priority: appSyncPriority, isSessionCurrent: isSessionCurrent) },
+            applyEndpoints: applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
         )
         if let desiredSnapshot {
             acknowledgePublishedEndpoints(
@@ -375,6 +375,9 @@ enum PublicPaykitService {
                 } catch {
                     firstError = firstError ?? error
                 }
+                if let isSessionCurrent, !isSessionCurrent() {
+                    throw PubkyServiceError.sessionNotActive
+                }
                 do {
                     try await syncApp()
                 } catch {
@@ -399,8 +402,8 @@ enum PublicPaykitService {
     static func syncCurrentPublishedEndpoints(
         wallet: WalletViewModel,
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
-        syncApp: () async throws -> Void = { try await syncPaykitApp() },
-        applyEndpoints: ([Endpoint]) async throws -> Void = applyPublishedEndpointsLocked
+        syncApp: (() async throws -> Void)? = nil,
+        applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
         wallet.preparePendingPublicPaykitInvoiceRefresh()
         let (desiredEndpoints, invoiceRevision) = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
@@ -408,8 +411,8 @@ enum PublicPaykitService {
             publish: true,
             isSessionCurrent: isSessionCurrent,
             buildEndpoints: { desiredEndpoints },
-            syncApp: syncApp,
-            applyEndpoints: applyEndpoints
+            syncApp: syncApp ?? { try await syncPaykitApp(isSessionCurrent: isSessionCurrent) },
+            applyEndpoints: applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
         )
         acknowledgePublishedEndpoints(
             wallet: wallet,
@@ -417,6 +420,32 @@ enum PublicPaykitService {
             invoiceRevision: invoiceRevision,
             isSessionCurrent: isSessionCurrent
         )
+    }
+
+    @MainActor
+    static func retryPendingEndpointReconciliation(
+        wallet: WalletViewModel,
+        isSessionCurrent: @escaping @MainActor () -> Bool,
+        syncApp: (() async throws -> Void)? = nil,
+        applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
+    ) async throws {
+        guard isCleanupPending, !Task.isCancelled, isSessionCurrent() else { return }
+        let mode = pendingReconciliationMode()
+        let isCurrent = { @MainActor in
+            !Task.isCancelled && isSessionCurrent() && pendingReconciliationMode() == mode
+        }
+        switch mode {
+        case .publishEndpoints:
+            try await syncCurrentPublishedEndpoints(
+                wallet: wallet, isSessionCurrent: isCurrent, syncApp: syncApp, applyEndpoints: applyEndpoints
+            )
+        case .removePublishedState:
+            try await syncPublishedEndpoints(
+                wallet: wallet, publish: false, isSessionCurrent: isCurrent, syncApp: syncApp, applyEndpoints: applyEndpoints
+            )
+            guard isCurrent() else { return }
+            setCleanupPending(false)
+        }
     }
 
     @MainActor
@@ -443,10 +472,14 @@ enum PublicPaykitService {
 
     static func syncPaykitApp(
         privateSharingEnabled: Bool? = nil,
-        priority: PaykitSdkOperationLock.Priority = .ordered
+        priority: PaykitSdkOperationLock.Priority = .ordered,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        sdkService: PaykitSdkService = .shared
     ) async throws {
         let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
-        try await PaykitSdkService.shared.syncPaykitApp(privatePaymentsEnabled: privateSharing, priority: priority)
+        try await sdkService.syncPaykitApp(
+            privatePaymentsEnabled: privateSharing, priority: priority, isSessionCurrent: isSessionCurrent
+        )
     }
 
     static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {
@@ -558,12 +591,14 @@ enum PublicPaykitService {
     ) async throws {
         try await withEndpointLock(unlessSessionEnded: isSessionCurrent) {
             try await beforeApplying()
-            try await applyPublishedEndpointsLocked(desiredEndpoints)
+            try await applyPublishedEndpointsLocked(desiredEndpoints, isSessionCurrent: isSessionCurrent)
         }
     }
 
-    private static func applyPublishedEndpointsLocked(_ desiredEndpoints: [Endpoint]) async throws {
-        let report = try await PaykitSdkService.shared.syncPublicEndpoints(desiredEndpoints)
+    private static func applyPublishedEndpointsLocked(
+        _ desiredEndpoints: [Endpoint], isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) async throws {
+        let report = try await PaykitSdkService.shared.syncPublicEndpoints(desiredEndpoints, isSessionCurrent: isSessionCurrent)
         guard report.failed.isEmpty else {
             throw PublicPaykitError.publicationFailed
         }

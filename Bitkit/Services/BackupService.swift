@@ -401,7 +401,10 @@ class BackupService {
                     }
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
-                await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
+                await PrivatePaykitAddressReservationStore.shared.restoreBackup(
+                    payload.privatePaykitHighestReservedReceiveIndexByAddressType,
+                    legacyPublicAddresses: payload.publicPaykitLegacyAddresses
+                )
                 try await WatchOnlyAccountManager.shared.restore(
                     payload.watchOnlyAccounts,
                     allocationState: payload.watchOnlyAccountAllocationState
@@ -914,7 +917,7 @@ class BackupService {
                     wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
                 )
                 paymentState.usdt = try await PaykitUsdtPaymentService.shared.backupSnapshot()
-                let payload = WalletBackupV1(
+                let payload = await WalletBackupV1(
                     version: 1,
                     createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                     transfers: transfers,
@@ -923,7 +926,8 @@ class BackupService {
                     watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
                     watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
                     usdtWallet: usdtSnapshot,
-                    paykitPaymentState: paymentState
+                    paykitPaymentState: paymentState,
+                    publicPaykitLegacyAddresses: PrivatePaykitAddressReservationStore.shared.legacyPublicAddressesSnapshot()
                 )
                 let data = try JSONEncoder().encode(payload)
                 // Proof/attempt locks have been released before reacquiring the SDK lock.
