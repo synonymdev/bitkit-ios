@@ -2,7 +2,7 @@ import XCTest
 
 final class UsdtWalletUITests: XCTestCase {
     @MainActor
-    func testEmptyWalletAndManualEntryUseConsistentAmountsInCommaRegion() throws {
+    func testUnknownBalanceAndManualEntryUseConsistentAmountsInCommaRegion() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "de_DE"]
@@ -13,12 +13,10 @@ final class UsdtWalletUITests: XCTestCase {
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
             app.buttons["Continue"].tap()
         }
-        var createdWallet = false
         if app.buttons["SkipIntro"].waitForExistence(timeout: 3) {
             app.buttons["SkipIntro"].tap()
             XCTAssertTrue(app.buttons["NewWallet"].waitForExistence(timeout: 5))
             app.buttons["NewWallet"].tap()
-            createdWallet = true
         }
         XCTAssertTrue(app.otherElements["TotalBalance-primary"].waitForExistence(timeout: 90))
         if app.buttons["UsdtIntroEnable"].waitForExistence(timeout: 10) {
@@ -26,19 +24,17 @@ final class UsdtWalletUITests: XCTestCase {
         }
         let homeTile = app.buttons["UsdtWallet"]
         XCTAssertTrue(homeTile.waitForExistence(timeout: 10), app.debugDescription)
-        if createdWallet {
-            XCTAssertTrue(homeTile.label.contains("$ 0.00"), homeTile.label)
-        }
-        capture(app, "USDT empty Home balance in German region")
+        XCTAssertTrue(homeTile.label.contains("—"), homeTile.label)
+        XCTAssertFalse(homeTile.label.contains("0.00"), homeTile.label)
+        capture(app, "USDT unknown Home balance in German region")
         homeTile.tap()
         XCTAssertTrue(app.buttons["UsdtReceive"].waitForExistence(timeout: 5))
         let balance = app.otherElements["UsdtBalance"]
-        if createdWallet {
-            XCTAssertTrue(balance.staticTexts["$ 0.00"].exists, app.debugDescription)
-        }
+        XCTAssertTrue(balance.staticTexts["$ —"].exists, app.debugDescription)
+        XCTAssertFalse(balance.staticTexts["$ 0.00"].exists)
         XCTAssertFalse(app.staticTexts["Could not update USDT. Check your connection and try again."].exists)
         XCTAssertFalse(app.staticTexts["Older activity is still syncing. Your balance is up to date when the connection is available."].exists)
-        capture(app, "USDT empty wallet in German region")
+        capture(app, "USDT unknown wallet in German region")
         try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))

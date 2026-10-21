@@ -27,8 +27,8 @@ struct UsdtWalletScreen: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 32) {
                     UsdtAmountHeader(
-                        amount: usdtFormatAmount(amount: usdt.balance ?? 0),
-                        displayAmount: usdtOverviewAmount(usdt.balance ?? 0), hideBalance: settings.hideBalance
+                        amount: usdt.balance.map { usdtFormatAmount(amount: $0) } ?? "—",
+                        displayAmount: usdt.balance.map { usdtOverviewAmount($0) }, hideBalance: settings.hideBalance
                     )
                     .balanceVisibilityToggle()
                     .accessibilityElement(children: .contain)

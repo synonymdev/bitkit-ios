@@ -22,6 +22,7 @@ final class UsdtDisplayTests: XCTestCase {
         XCTAssertEqual(usdtDisplaySats(amount: "0.000001", rate: rate, now: now), 0)
         XCTAssertNil(usdtDisplaySats(amount: "3.5", rate: nil, now: now))
         XCTAssertNil(usdtDisplaySats(amount: "3.5", rate: PaykitExchangeRate(price: "100000", timestamp: now.addingTimeInterval(-601)), now: now))
+        XCTAssertNil(usdtDisplaySats(amount: "—", rate: rate, now: now))
         XCTAssertNil(usdtDisplaySats(amount: "-1", rate: rate, now: now))
         XCTAssertNil(usdtDisplaySats(amount: "999999999999999999999999", rate: rate, now: now))
     }
