@@ -1077,6 +1077,48 @@ actor PaykitSdkService {
         }
     }
 
+    func receiveAndObserveState(
+        expectedIdentity: String,
+        onReceive: @Sendable ([PrivateStreamCounterpartyIntakeReport]) -> Date
+    ) async throws -> (observation: Paykit.PaykitStateObservation, synchronizationDate: Date) {
+        let generation = runtimeGeneration
+        let walletGeneration = try operationLock.walletGeneration()
+        let checkAdmission = {
+            try Task.checkCancellation()
+            guard self.runtimeGeneration == generation, try self.operationLock.walletGeneration() == walletGeneration else {
+                throw PubkyServiceError.identityChanged
+            }
+            try await self.checkRefreshAdmission(.background)
+            try Task.checkCancellation()
+            guard self.runtimeGeneration == generation, try self.operationLock.walletGeneration() == walletGeneration else {
+                throw PubkyServiceError.identityChanged
+            }
+        }
+        return try await withSdk(priority: .background, beforeOperation: checkAdmission) { sdk in
+            let key = self.cachedPaykitKey
+            if let key {
+                guard PubkyPublicKeyFormat.matches(key.publicKey, expectedIdentity) else { throw PubkyServiceError.identityChanged }
+            }
+            let reports = try await self.withStateRevisionTracking(sdk: sdk, beforeOperation: checkAdmission) {
+                try await sdk.receivePrivateMessagesFromLinkedPeers()
+            }
+            let synchronizationDate = onReceive(reports)
+            return try await self.operationLock.withoutLock {
+                try await checkAdmission()
+                guard self.sdk === sdk, self.cachedPaykitKey?.publicKey == key?.publicKey,
+                      self.cachedPaykitKey?.generation == key?.generation
+                else { throw PubkyServiceError.identityChanged }
+                try Task.checkCancellation()
+                let observation = try await sdk.observeState()
+                try Task.checkCancellation()
+                guard PubkyPublicKeyFormat.matches(observation.publicKey, expectedIdentity),
+                      key == nil || observation.keyGeneration == key?.generation
+                else { throw PubkyServiceError.identityChanged }
+                return (observation, synchronizationDate)
+            }
+        }
+    }
+
     @discardableResult
     func receivePrivateMessages(counterparty: String) async throws -> PrivateStreamIntakeReport {
         try await receivePrivateMessages(counterparty: counterparty, priority: .ordered)
@@ -1559,36 +1601,44 @@ actor PaykitSdkService {
         try await withSdk(
             priority: priority, deferDuringPayment: deferDuringPayment, operationName: operationName, beforeOperation: beforeOperation
         ) { sdk in
-            return try await Self.withBackupStateRevisionTracking(
-                readRevision: {
-                    #if DEBUG
-                        let clock = ContinuousClock()
-                        let started = clock.now
-                        defer {
-                            Logger.debug("Read Paykit backup revision duration=\(started.duration(to: clock.now))", context: "PaykitSdkService")
-                        }
-                    #endif
-                    return try await self.withSdkErrorHandling { try await sdk.backupStateRevision() }
-                },
-                readStateRevision: { try sdk.stateRevision() },
-                readObservedSnapshot: {
-                    try sdk.observedBackupStateRevision().map {
-                        BackupStateSnapshot(stateRevision: $0.stateRevision, backupRevision: $0.backupRevision)
-                    }
-                },
-                cachedSnapshot: self.cachedBackupState,
-                onSnapshot: { self.cachedBackupState = $0 },
-                onChange: { self.markWalletBackupDataChanged() },
-                beforeOperation: {
-                    try await beforeOperation()
-                    if deferDuringPayment {
-                        guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
-                        try Task.checkCancellation()
-                    }
-                },
-                operation: { try await operation(sdk) }
-            )
+            try await self.withStateRevisionTracking(sdk: sdk, beforeOperation: {
+                try await beforeOperation()
+                if deferDuringPayment {
+                    guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
+                    try Task.checkCancellation()
+                }
+            }) { try await operation(sdk) }
         }
+    }
+
+    private func withStateRevisionTracking<T>(
+        sdk: PaykitSdk,
+        beforeOperation: () async throws -> Void,
+        _ operation: () async throws -> T
+    ) async throws -> T {
+        return try await Self.withBackupStateRevisionTracking(
+            readRevision: {
+                #if DEBUG
+                    let clock = ContinuousClock()
+                    let started = clock.now
+                    defer {
+                        Logger.debug("Read Paykit backup revision duration=\(started.duration(to: clock.now))", context: "PaykitSdkService")
+                    }
+                #endif
+                return try await self.withSdkErrorHandling { try await sdk.backupStateRevision() }
+            },
+            readStateRevision: { try sdk.stateRevision() },
+            readObservedSnapshot: {
+                try sdk.observedBackupStateRevision().map {
+                    BackupStateSnapshot(stateRevision: $0.stateRevision, backupRevision: $0.backupRevision)
+                }
+            },
+            cachedSnapshot: cachedBackupState,
+            onSnapshot: { self.cachedBackupState = $0 },
+            onChange: { self.markWalletBackupDataChanged() },
+            beforeOperation: beforeOperation,
+            operation: operation
+        )
     }
 
     static func withBackupStateRevisionTracking<T>(

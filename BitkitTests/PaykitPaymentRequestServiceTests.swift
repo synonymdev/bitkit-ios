@@ -219,7 +219,48 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 XCTAssertEqual(priorities["observation"], [priority], context)
                 XCTAssertNil(priorities["requests"], context)
                 XCTAssertNil(priorities["peers"], context)
+                XCTAssertEqual(priorities["inbox"] ?? [], mode >= .inbox && priority == .background ? [.background] : [], context)
             }
+        }
+    }
+
+    func testForcedAndNonBackgroundRefreshRetainSeparateReceiveAndObservation() async {
+        for mode in [PaykitPaymentRequestRefreshMode.inbox, .full] {
+            for priority in [PaykitSdkOperationLock.Priority.background, .ordered, .interactive] {
+                let sdk = PaymentRequestSdkMock(records: [])
+                let manager = paymentRequestManager(sdk: sdk)
+                await manager.refresh(mode: mode, forceFresh: priority == .background, refreshPriority: priority)
+                let priorities = await sdk.operationPriorities
+                XCTAssertEqual(priorities["receive"], [priority])
+                XCTAssertEqual(priorities["observation"], [priority])
+                XCTAssertNil(priorities["inbox"])
+            }
+        }
+    }
+
+    func testAutomaticFullRefreshFinishesPendingDrainBeforeObservationAndStopsOnDeferral() async throws {
+        for deferred in [false, true] {
+            let sdk = PaymentRequestSdkMock(records: [])
+            let manager = paymentRequestManager(sdk: sdk)
+            await sdk.pauseNextProcess()
+            if deferred {
+                await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
+            }
+            let refresh = Task { await manager.refresh(mode: .full) }
+            try await waitUntil { await sdk.processIsPaused() }
+            let paused = await sdk.operationPriorities
+            XCTAssertEqual(paused["pending"], [.background])
+            XCTAssertNil(paused["inbox"])
+            XCTAssertNil(paused["receive"])
+            XCTAssertNil(paused["observation"])
+            await sdk.resumeProcess()
+            let result = await refresh.value
+            let priorities = await sdk.operationPriorities
+            XCTAssertEqual(result, !deferred)
+            XCTAssertEqual(priorities["pending"], [.background])
+            XCTAssertEqual(priorities["inbox"] ?? [], deferred ? [] : [.background])
+            XCTAssertEqual(priorities["receive"] ?? [], deferred ? [] : [.background])
+            XCTAssertEqual(priorities["observation"] ?? [], deferred ? [] : [.background])
         }
     }
 
@@ -4156,25 +4197,29 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testDeferredRefreshPreservesRequestsAndAllowsRecoveryAndRetry() async throws {
-        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
-        let manager = paymentRequestManager(sdk: sdk)
-        let loaded = await manager.refresh(mode: .stored)
-        XCTAssertTrue(loaded)
-        let pending = manager.pendingRequests
-        await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
-        let deferred = await manager.refresh()
-        XCTAssertFalse(deferred)
-        XCTAssertEqual(manager.pendingRequests, pending)
-        let skipped = await sdk.snapshot()
-        XCTAssertEqual(skipped.receiveCallCount, 0)
-        let recovered = await manager.refresh(forceFresh: true)
-        XCTAssertTrue(recovered)
-        let priorities = await sdk.operationPriorities
-        XCTAssertEqual(priorities["observation"], [.background, .ordered])
-        await sdk.setRecords([])
-        let retried = await manager.refresh()
-        XCTAssertTrue(retried)
-        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        for forceFresh in [false, true] {
+            let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+            let manager = paymentRequestManager(sdk: sdk)
+            let loaded = await manager.refresh(mode: .stored)
+            XCTAssertTrue(loaded)
+            let pending = manager.pendingRequests
+            await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
+            let deferred = await manager.refresh(forceFresh: forceFresh, refreshPriority: forceFresh ? .background : nil)
+            XCTAssertFalse(deferred)
+            XCTAssertEqual(manager.pendingRequests, pending)
+            let skipped = await sdk.snapshot()
+            XCTAssertEqual(skipped.receiveCallCount, 0)
+            let deferredPriorities = await sdk.operationPriorities
+            XCTAssertEqual(deferredPriorities["pending"], [.background])
+            let recovered = await manager.refresh(forceFresh: true)
+            XCTAssertTrue(recovered)
+            let priorities = await sdk.operationPriorities
+            XCTAssertEqual(priorities["observation"], [.background, .ordered])
+            await sdk.setRecords([])
+            let retried = await manager.refresh()
+            XCTAssertTrue(retried)
+            XCTAssertTrue(manager.pendingRequests.isEmpty)
+        }
     }
 
     func testBackgroundStateChangeRefreshDefersWithoutConsumingSnapshotOrBlockingRecovery() async throws {
@@ -4304,6 +4349,44 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             await manager.refresh()
             XCTAssertTrue(manager.pendingRequests.isEmpty)
             XCTAssertTrue(manager.historyRequests.isEmpty)
+        }
+    }
+
+    func testAutomaticInboxKeepsIntakeDiagnosticsAndTimeBeforeFailedObservation() async throws {
+        for deferred in [false, true] {
+            let record = try paymentRequestRecord()
+            let sdk = PaymentRequestSdkMock(records: [record])
+            await sdk.setReceiveReports([
+                PrivateStreamCounterpartyIntakeReport(
+                    counterparty: record.counterparty, report: nil, error: PaymentRequestIntakeError(noPointer: .init())
+                ),
+            ])
+            if deferred {
+                await sdk.setBackgroundObservationDeferred(true)
+            } else {
+                await sdk.setLinkedPeersError(.linkedPeers)
+            }
+            let recorder = PaymentRequestLogRecorder()
+            let service = PaykitPaymentRequestService(sdk: sdk, now: {
+                recorder.append("synchronization-date")
+                return Date()
+            }, logWarning: { recorder.append($0) })
+            do {
+                _ = try await service.synchronize(
+                    mode: .inbox, priority: .background, messagePriority: .background,
+                    expectedIdentity: "pubky\(String(repeating: "z", count: 52))", combineReceiveObservation: true
+                )
+                XCTFail("Expected observation failure")
+            } catch PaykitPaymentRequestError.operationInProgress {
+                XCTAssertTrue(deferred)
+            } catch PaymentRequestSdkMockError.linkedPeers {
+                XCTAssertFalse(deferred)
+            }
+            XCTAssertEqual(recorder.messages.count, 2)
+            XCTAssertTrue(recorder.messages[0].hasPrefix("Failed to receive Paykit private messages"))
+            XCTAssertEqual(recorder.messages[1], "synchronization-date")
+            let snapshot = await sdk.snapshot()
+            XCTAssertEqual(snapshot.receiveCallCount, 1)
         }
     }
 
@@ -9521,6 +9604,17 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         records.append(contentsOf: incomingRecords)
         incomingRecords = []
         return receiveReports
+    }
+
+    func receiveAndObserveState(
+        expectedIdentity: String,
+        onReceive: @Sendable ([PrivateStreamCounterpartyIntakeReport]) -> Date
+    ) async throws -> (observation: PaykitStateObservation, synchronizationDate: Date) {
+        operationPriorities["inbox", default: []].append(.background)
+        let reports = try receivePrivateMessagesFromLinkedPeers(priority: .background)
+        let synchronizationDate = onReceive(reports)
+        let observation = try await observeState(priority: .background, expectedIdentity: expectedIdentity)
+        return (observation, synchronizationDate)
     }
 
     func readPaymentRequests(counterparty: String, expectedIdentity: String?) async -> PaymentRequestRead {

@@ -605,6 +605,10 @@ enum PaykitPaymentRequestError: LocalizedError, Equatable {
 
 protocol PaykitPaymentRequestSdkHandling: Sendable {
     func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?) async throws -> Paykit.PaykitStateObservation
+    func receiveAndObserveState(
+        expectedIdentity: String,
+        onReceive: @Sendable ([Paykit.PrivateStreamCounterpartyIntakeReport]) -> Date
+    ) async throws -> (observation: Paykit.PaykitStateObservation, synchronizationDate: Date)
     func processOutboundPrivateMessages(counterparty: String) async throws -> Paykit.OutboundPrivateSendReport
     func processOutboundPrivateMessages(counterparty: String, priority: PaykitSdkOperationLock.Priority) async throws -> Paykit
         .OutboundPrivateSendReport
@@ -694,17 +698,29 @@ struct PaykitPaymentRequestService {
         mode: PaykitPaymentRequestRefreshMode = .full,
         priority: PaykitSdkOperationLock.Priority = .ordered,
         messagePriority: PaykitSdkOperationLock.Priority = .ordered,
-        expectedIdentity: String? = nil
+        expectedIdentity: String? = nil,
+        combineReceiveObservation: Bool = false
     ) async throws -> PaykitPaymentRequestSnapshot {
         if mode == .full {
             try await processPendingMessages(priority: messagePriority)
         }
-        if mode >= .inbox {
-            let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers(priority: messagePriority)
-            logIntakeFailures(intakeReports)
+        let observation: Paykit.PaykitStateObservation
+        let synchronizationDate: Date
+        if combineReceiveObservation, mode >= .inbox, priority == .background, messagePriority == .background, let expectedIdentity {
+            let received = try await sdk.receiveAndObserveState(expectedIdentity: expectedIdentity) { reports in
+                logIntakeFailures(reports)
+                return now()
+            }
+            observation = received.observation
+            synchronizationDate = received.synchronizationDate
+        } else {
+            if mode >= .inbox {
+                let intakeReports = try await sdk.receivePrivateMessagesFromLinkedPeers(priority: messagePriority)
+                logIntakeFailures(intakeReports)
+            }
+            synchronizationDate = now()
+            observation = try await sdk.observeState(priority: priority, expectedIdentity: expectedIdentity)
         }
-        let synchronizationDate = now()
-        let observation = try await sdk.observeState(priority: priority, expectedIdentity: expectedIdentity)
         let sharedRecords = observation.paymentRequests
         let records = sharedRecords.filter(PaykitSdkService.isBitkitPaymentRequest)
         let blockedPeers = observation.linkedPeers.filter { $0.state == .blocked }
@@ -1811,6 +1827,7 @@ final class PaykitPaymentRequestManager {
             mode: mode,
             forceFresh: forceFresh,
             messagePriority: refreshPriority ?? (forceFresh ? .ordered : messagePriority),
+            combineReceiveObservation: !forceFresh,
             canRefresh: canRefresh
         )
     }
@@ -1839,6 +1856,7 @@ final class PaykitPaymentRequestManager {
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        combineReceiveObservation: Bool = false,
         canRefresh: @escaping @MainActor () -> Bool = { true }
     ) async -> Bool {
         guard canRefresh() else { return false }
@@ -1849,7 +1867,7 @@ final class PaykitPaymentRequestManager {
             if forceFresh || mode > refreshTask.mode {
                 return await refresh(
                     excludingProtectedRequestId: excludingProtectedRequestId, mode: mode,
-                    messagePriority: messagePriority, canRefresh: canRefresh
+                    messagePriority: messagePriority, combineReceiveObservation: combineReceiveObservation, canRefresh: canRefresh
                 )
             }
             return refreshed
@@ -1869,7 +1887,8 @@ final class PaykitPaymentRequestManager {
                 generation: generation,
                 excludingProtectedRequestId: excludingProtectedRequestId,
                 mode: mode,
-                messagePriority: messagePriority
+                messagePriority: messagePriority,
+                combineReceiveObservation: combineReceiveObservation
             )
             guard generation == refreshGeneration else { return false }
             return refreshed
@@ -2494,12 +2513,14 @@ final class PaykitPaymentRequestManager {
         generation: Int,
         excludingProtectedRequestId: PaykitPaymentRequest.ID?,
         mode: PaykitPaymentRequestRefreshMode,
-        messagePriority: PaykitSdkOperationLock.Priority
+        messagePriority: PaykitSdkOperationLock.Priority,
+        combineReceiveObservation: Bool
     ) async -> Bool {
         do {
             guard let activeIdentity else { return false }
             let snapshot = try await service.synchronize(
-                mode: mode, priority: messagePriority, messagePriority: messagePriority, expectedIdentity: activeIdentity
+                mode: mode, priority: messagePriority, messagePriority: messagePriority, expectedIdentity: activeIdentity,
+                combineReceiveObservation: combineReceiveObservation
             )
             guard generation == refreshGeneration, PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity) else { return false }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
