@@ -1740,7 +1740,9 @@ final class PaykitPaymentRequestManager {
         let actionGeneration = stateGeneration
         let savedPublicKeysSnapshot = savedPublicKeys
         isCreatingRequest = true
+        let review = paymentActivity.beginReview()
         defer {
+            paymentActivity.endReview(review)
             if actionGeneration == stateGeneration {
                 isCreatingRequest = false
             }
