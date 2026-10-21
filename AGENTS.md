@@ -161,6 +161,8 @@ node scripts/validate-translations.js
 
 **Note:** Translations live in this repository. When adding or changing an English string, add or update its translation in every `*.lproj/Localizable.strings` in the same PR.
 
+**Rail-specific copy:** when a shared message needs wording for one payment rail, add a new key with the rail as suffix (`wallet__send_dialog2_usdt` next to `wallet__send_dialog2`) and leave the shared key unchanged.
+
 ### Testing
 
 ```bash
