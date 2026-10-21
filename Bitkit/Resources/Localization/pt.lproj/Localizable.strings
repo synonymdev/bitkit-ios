@@ -1058,6 +1058,7 @@
 "wallet__send_yes" = "Sim, Enviar";
 "wallet__send_dialog1" = "Parece que você está enviando mais de US$ 100. Deseja continuar?";
 "wallet__send_dialog2" = "Parece que você está enviando mais de 50% do seu saldo total. Deseja continuar?";
+"wallet__send_dialog2_usdt" = "Parece que você está enviando mais de 50% do seu saldo de USDT. Deseja continuar?";
 "wallet__send_dialog3" = "A taxa de transação parece ser superior a 50% do valor que você está enviando. Deseja continuar?";
 "wallet__send_dialog4" = "A taxa de transação parece ser superior a US$ 10. Deseja continuar?";
 "wallet__send_dialog5_title" = "A taxa pode ser demasiado baixa";

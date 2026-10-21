@@ -16,6 +16,8 @@ enum AppReset {
     ) async throws {
         try await PaykitSdkService.shared.withWalletWipe {
             try await app.withMigrationSyncPausedForWipe {
+                await SettingsViewModel.shared.beginServerSettingsWipe()
+                defer { SettingsViewModel.shared.endServerSettingsWipe() }
                 try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
             }
         }

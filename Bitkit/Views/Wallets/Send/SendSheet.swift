@@ -53,6 +53,7 @@ enum SendRoute: Hashable {
     case manual
     case amount
     case usdt(recipient: String, amount: String)
+    case usdtAddress(recipient: String, amount: String)
     case utxoSelection
     case confirm
     case hardwareSign
@@ -880,6 +881,11 @@ struct SendSheet: View {
                     navigationPath.removeLast()
                 }
             }, onClose: { sheets.hideSheet() })
+        case let .usdtAddress(recipient, amount):
+            UsdtSendView(onDetails: { id in
+                usdtDetails = id
+            }, initialRecipient: recipient, initialAmount: amount, hosted: true,
+            onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:

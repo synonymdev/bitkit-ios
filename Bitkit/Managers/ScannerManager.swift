@@ -196,18 +196,12 @@ class ScannerManager: ObservableObject {
         playScanSuccess()
 
         do {
-            if scope == .unrestricted, let route = try resolveUsdtPaymentRoute(input: uri) {
+            if scope == .unrestricted, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
                 guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else {
                     completion(nil)
                     return
                 }
-                let path = navigation?.path
-                sheets?.hideSheetBeforePerforming(reason: "Send scanner routed USDT payment") { [weak self] in
-                    guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
-                          navigation?.path == path else { return }
-                    navigation?.navigate(route)
-                }
-                completion(nil)
+                completion(.usdtAddress(recipient: recipient, amount: amount))
                 return
             }
             if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
@@ -262,8 +256,12 @@ class ScannerManager: ObservableObject {
 
     private func handleElectrumScan(_ uri: String) async {
         guard let settings else { return }
+        let generation = settings.serverConnectionGeneration
+        guard settings.isCurrentServerConnection(generation) else { return }
+        let result = await settings.onElectrumScan(uri)
+        guard settings.isCurrentServerConnection(generation) else { return }
 
-        if let result = await settings.onElectrumScan(uri) {
+        if let result {
             if result.success {
                 app?.toast(
                     type: .success,
