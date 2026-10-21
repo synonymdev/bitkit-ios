@@ -2509,9 +2509,11 @@ final class PaykitPaymentRequestManager {
             let refreshDate = now()
             let subscriptionDate = subscriptionNow()
             let handledRequestedExpirationId = recordRequestedPresentationExpiration(at: refreshDate)
+            // The snapshot already dropped expired proposals; skip ones it still keeps, or the timer reports them again.
             recordSilentExpirations(
                 at: refreshDate,
                 excluding: [handledRequestedExpirationId, excludingProtectedRequestId].compactMap { $0 }
+                    + snapshot.incoming.map(\.id)
             )
             let previousPending = pendingRequests
             receivedPaymentContacts = snapshot.receivedPaymentContacts
