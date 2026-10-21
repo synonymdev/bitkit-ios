@@ -3,41 +3,48 @@ import Foundation
 /// Runs one-time app data migrations in order using a single schema version.
 /// Add new migrations by adding a step in `run()` and bumping the version.
 enum AppDataMigrations {
-    private static let versionKey = "appDataSchemaVersion"
+    static let versionKey = "appDataSchemaVersion"
 
     /// Call once at app launch (before feature code loads migrated state).
-    static func run() {
-        let current = UserDefaults.standard.integer(forKey: versionKey)
+    static func run(
+        defaults: UserDefaults = .standard,
+        hasStoredPubkyIdentity: () -> Bool = hasStoredPubkyIdentity
+    ) {
+        let current = defaults.integer(forKey: versionKey)
 
         if current < 1 {
-            migration1()
-            UserDefaults.standard.set(1, forKey: versionKey)
+            migration1(defaults: defaults)
+            defaults.set(1, forKey: versionKey)
         }
 
         if current < 2 {
-            migration2()
-            UserDefaults.standard.set(2, forKey: versionKey)
+            migration2(defaults: defaults, hasStoredPubkyIdentity: hasStoredPubkyIdentity)
+            defaults.set(2, forKey: versionKey)
+        }
+
+        if current < 3 {
+            migration3(defaults: defaults)
+            defaults.set(3, forKey: versionKey)
         }
     }
 
     /// Migration 1: Move suggestions into widgets
-    private static func migration1() {
+    private static func migration1(defaults: UserDefaults) {
         let key = "savedWidgets"
-        guard let data = UserDefaults.standard.data(forKey: key), !data.isEmpty,
+        guard let data = defaults.data(forKey: key), !data.isEmpty,
               var list = try? JSONDecoder().decode([SavedWidget].self, from: data) else { return }
         if list.contains(where: { $0.type == .suggestions }) {
             return
         }
         list.insert(SavedWidget(type: .suggestions), at: 0)
         if let encoded = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(encoded, forKey: key)
+            defaults.set(encoded, forKey: key)
         }
     }
 
     /// Migration 2: Restore the Paykit-on default for wallets that never set Paykit up.
-    /// Wallet wipes on 2.3.2 to 2.5.0 stored Paykit off; an off with any Paykit footprint is kept as an opt-out.
-    private static func migration2() {
-        let defaults = UserDefaults.standard
+    /// Wallet wipes on 2.3.0 to 2.5.1 stored Paykit off; an off with any Paykit footprint is kept as an opt-out.
+    private static func migration2(defaults: UserDefaults, hasStoredPubkyIdentity: () -> Bool) {
         guard defaults.object(forKey: PaykitFeatureFlags.uiEnabledKey) as? Bool == false else { return }
 
         let hasPaykitFootprint = PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults) ||
@@ -47,6 +54,13 @@ enum AppDataMigrations {
             hasStoredPubkyIdentity()
         guard !hasPaykitFootprint else { return }
 
+        defaults.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
+    }
+
+    /// Migration 3: Show Paykit to every wallet once, now that it is public.
+    /// A stored off came from 2.x wipes or the Dev Settings switch; migration 2 kept it for wallets with a Pubky identity,
+    /// which hid their profile. Like the Dev Settings "Enable", this only clears the flag. Later Dev Settings changes stay.
+    private static func migration3(defaults: UserDefaults) {
         defaults.removeObject(forKey: PaykitFeatureFlags.uiEnabledKey)
     }
 
