@@ -1302,6 +1302,10 @@ extension AppViewModel {
     }
 
     func resetSendState(preservingContactPaymentContext: Bool = false) {
+        Logger.debug(
+            "PROBE resetSendState hadLnurlPay=\(lnurlPayData != nil)\n\(Thread.callStackSymbols.prefix(10).joined(separator: "\n"))",
+            context: "PROBE"
+        )
         paykitUsesUsdt = false
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil

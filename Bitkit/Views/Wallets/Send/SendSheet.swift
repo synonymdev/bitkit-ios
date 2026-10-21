@@ -353,6 +353,7 @@ struct SendSheet: View {
     }
 
     private func cleanup() {
+        Logger.debug("PROBE SendSheet.cleanup root=\(currentRoot) hadLnurlPay=\(app.lnurlPayData != nil)", context: "PROBE")
         setupTask?.cancel()
         setupTask = nil
         hwSend.cancel()
@@ -370,6 +371,7 @@ struct SendSheet: View {
     }
 
     private func setUpSend() {
+        Logger.debug("PROBE SendSheet.setUpSend root=\(currentRoot) hasLnurlPay=\(app.lnurlPayData != nil)", context: "PROBE")
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         if let walletId = config.hardwareWalletId {
             let balance = hwWalletManager.fundingBalance(walletId: walletId)
