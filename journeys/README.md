@@ -243,6 +243,10 @@ iOS-only feature.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
 A submitted payment must return to the wallet without reopening the paid draft on either platform.
 
+`usdt-send-review-and-details.xml` is adapted: on iOS the Swipe To Pay knob stays at the end of the
+track while a USDT send warning is open and returns to the start on Cancel. Android master returns the
+knob to the start as soon as the warning opens, so its fee-warning action has no knob assertion.
+
 `coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
 name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.
 The iOS picker has no accessibility identifiers, so assert its visible "Coin Selection" title.
