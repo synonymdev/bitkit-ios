@@ -68,6 +68,13 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let canPayNow: @MainActor () -> Bool
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
+    @ObservationIgnored private var updateDepth = 0
+
+    /// Whether allowances are being refreshed or a pass is deciding requests, so a covered request may still change hands.
+    var isUpdating: Bool {
+        updateDepth > 0
+    }
+
     @ObservationIgnored private var manualRequestIds: [PaykitPaymentRequest.ID: Int] = [:]
 
     init(
@@ -139,6 +146,8 @@ final class PaykitAllowanceManager {
 
     func refresh() async {
         guard let identity else { return }
+        updateDepth += 1
+        defer { updateDepth -= 1 }
         do {
             let records = try await sdk.listAllowances(
                 filter: Paykit.AllowanceFilter(counterparty: nil, localRole: nil, states: [])
@@ -284,6 +293,8 @@ final class PaykitAllowanceManager {
     /// for manual payment, so the caller refreshes before presenting the rest.
     func processIncomingRequests(_ requests: [PaykitPaymentRequest]) async -> Bool {
         guard let identity, !isProcessingRequests else { return false }
+        updateDepth += 1
+        defer { updateDepth -= 1 }
         let signature = allowancesSignature
         let covered = requests.filter(isAwaitingAutomaticPayment)
         guard !covered.isEmpty else { return false }
@@ -326,6 +337,11 @@ final class PaykitAllowanceManager {
             return true
         }
         return await executor.isHandling(request.id)
+    }
+
+    /// Whether this wallet grants, or was asked to grant, the request's contact an allowance in any state.
+    func mayCover(_ request: PaykitPaymentRequest) -> Bool {
+        allowances.contains { $0.isAllower && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) }
     }
 
     private func isAwaitingAutomaticPayment(_ request: PaykitPaymentRequest) -> Bool {
