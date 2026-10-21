@@ -44,6 +44,8 @@ struct UsdtSendView: View {
     @State private var showFullRecipient = false
     @State private var warning: String?
     @State private var confirmedWarnings: Set<String> = []
+    @State private var warningContinuation: CheckedContinuation<Bool, Never>?
+    @State private var pinContinuation: CheckedContinuation<Bool, Never>?
     @State private var swipeProgress: CGFloat = 0
     @FocusState private var recipientFocused: Bool
 
@@ -182,7 +184,7 @@ struct UsdtSendView: View {
         }
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onAppear { usdt.isSendPresented = true }
-        .onDisappear { usdt.isSendPresented = false; preparedQuote = nil }
+        .onDisappear { usdt.isSendPresented = false; preparedQuote = nil; resolveWarning(proceed: false) }
         .task(id: settings.isUsdtEnabled) {
             if !embedded {
                 do { destinations = try await usdt.sendDestinations() }
@@ -199,7 +201,8 @@ struct UsdtSendView: View {
             catch { self.error = UsdtWalletManager.message(for: error) }
             busy = false
             if automaticPayment, !Task.isCancelled, quote != nil {
-                await confirmPayment()
+                // PIN navigation can cancel the view task while authorization is awaiting its result.
+                Task { @MainActor in try? await confirmPayment() }
             }
         }
     }
@@ -234,26 +237,17 @@ struct UsdtSendView: View {
         .background(Color.gray7)
         .navigationBarHidden(true)
         .navigationDestination(isPresented: $pin) {
-            SendPinScreen(onCancel: { pin = false }, onPinVerified: {
-                pin = false
-                Task { await send() }
-            })
+            SendPinScreen(onCancel: { resolvePin(verified: false) }, onPinVerified: { resolvePin(verified: true) })
+        }
+        .onChange(of: pin) { _, isShown in
+            if !isShown {
+                resolvePin(verified: false)
+            }
         }
         .interactiveDismissDisabled(busy || pin)
-        .alert(t("common__are_you_sure"), isPresented: Binding(
-            get: { warning != nil },
-            set: {
-                if !$0 {
-                    warning = nil
-                }
-            }
-        ), presenting: warning) { warning in
-            Button(t("common__cancel"), role: .cancel) { self.warning = nil }
-            Button(t("wallet__send_yes")) {
-                confirmedWarnings.insert(warning)
-                self.warning = nil
-                Task { await confirmPayment() }
-            }
+        .alert(t("common__are_you_sure"), isPresented: .constant(warning != nil), presenting: warning) { _ in
+            Button(t("common__cancel"), role: .cancel) { resolveWarning(proceed: false) }
+            Button(t("wallet__send_yes")) { resolveWarning(proceed: true) }
         } message: { warning in
             Text(t(warning))
         }
@@ -496,22 +490,20 @@ struct UsdtSendView: View {
                         reviewDetailsButton.padding(.vertical, 24)
                         if showDetails {
                             Spacer(minLength: 0)
+                            BodySText(t("usdt__fee_note"), textColor: .textSecondary, kerning: 0, lineHeight: 20)
+                                .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
                         }
                     }
                     .frame(minHeight: geometry.size.height, alignment: .top)
                 }
                 .id(showDetails)
             }
-            if showDetails {
-                BodySText(t("usdt__fee_note"), textColor: .textSecondary, kerning: 0, lineHeight: 20)
-                    .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.bottom, 24)
-            }
             SwipeButton(
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
                 isLoading: busy, isSubmitted: submitted, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
                 automaticPayment = false
-                await confirmPayment()
+                try await confirmPayment()
                 if !submitted {
                     throw CancellationError()
                 }
@@ -557,7 +549,7 @@ struct UsdtSendView: View {
                 }
             }
             if paymentContext != nil {
-                SendSectionView(t("wallet__payment_request_contact")) {
+                SendSectionView(t(paymentRequest?.isMerchantRequest == true ? "wallet__send_to" : "wallet__payment_request_contact")) {
                     HStack(spacing: 4) {
                         if let contact {
                             PubkyContactAvatar(contact: contact, size: 20)
@@ -733,7 +725,7 @@ struct UsdtSendView: View {
         error = nil
     }
 
-    private func confirmPayment() async {
+    private func confirmPayment() async throws {
         guard let quote, !busy, !submitted else { return }
         var warnings: [String] = []
         if let balance = usdt.balance, quote.amount > balance / 2 {
@@ -748,14 +740,31 @@ struct UsdtSendView: View {
         if quote.totalCost > quote.amount / 2 {
             warnings.append("wallet__send_dialog3")
         }
-        if let next = warnings.first(where: { !confirmedWarnings.contains($0) }) {
-            warning = next
-            return
+        // The swipe stays completed while each warning or the PIN is open; cancelling one resets it.
+        for next in warnings where !confirmedWarnings.contains(next) {
+            let proceed = await withCheckedContinuation { continuation in
+                warningContinuation = continuation
+                warning = next
+            }
+            guard proceed else { throw CancellationError() }
+            confirmedWarnings.insert(next)
         }
-        await authenticateAndSend()
+        try await authenticateAndSend()
     }
 
-    private func authenticateAndSend() async {
+    private func resolveWarning(proceed: Bool) {
+        warningContinuation?.resume(returning: proceed)
+        warningContinuation = nil
+        warning = nil
+    }
+
+    private func resolvePin(verified: Bool) {
+        pinContinuation?.resume(returning: verified)
+        pinContinuation = nil
+        pin = false
+    }
+
+    private func authenticateAndSend() async throws {
         guard !busy else { return }
         if let authenticatePayment {
             busy = true
@@ -768,7 +777,12 @@ struct UsdtSendView: View {
         }
         if settings.requirePinForPayments && settings.pinEnabled {
             guard settings.useBiometrics && BiometricAuth.isAvailable else {
-                pin = true
+                let verified = await withCheckedContinuation { continuation in
+                    pinContinuation = continuation
+                    pin = true
+                }
+                guard verified else { throw CancellationError() }
+                await send()
                 return
             }
             busy = true

@@ -169,6 +169,65 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testInitialUsdtPinAuthorizationSurvivesNavigationAndRemainsOneShot() async throws {
+        snapshotAppDefaultsDomain()
+        let settings = SettingsViewModel.shared
+        let previousPinEnabled = settings.pinEnabled
+        let previousPin = try Bitkit.Keychain.load(key: .securityPin)
+        let previousSwipeBack = SwipeBackState.allowSwipeBack
+        addTeardownBlock { @MainActor in
+            settings.pinEnabled = previousPinEnabled
+            SwipeBackState.allowSwipeBack = previousSwipeBack
+            if let previousPin {
+                try Bitkit.Keychain.upsert(key: .securityPin, data: previousPin)
+            } else {
+                try Bitkit.Keychain.delete(key: .securityPin)
+            }
+        }
+        try Bitkit.Keychain.upsert(key: .securityPin, data: Data("1234".utf8))
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        settings.pinFailedAttempts = 0
+
+        for verifiesPin in [false, true] {
+            var quoteCount = 0
+            var sendCount = 0
+            let sent = expectation(description: "PIN-authorized initial payment")
+            sent.isInverted = !verifiesPin
+            let manager = UsdtWalletManager(rpcUrl: nil, bundlerUrl: nil, loadCredentials: { throw UsdtError.InvalidCredentials })
+            let window = try hostInitialUsdtPayment(manager: manager, quotePayment: { _, _, _ in
+                quoteCount += 1
+                return self.initialUsdtQuote
+            }, sendPayment: { _ in
+                try Task.checkCancellation()
+                sendCount += 1
+                sent.fulfill()
+            })
+            defer { window.isHidden = true; window.rootViewController = nil }
+            try await waitUntil {
+                self.initialPaymentNavigation(window)?.viewControllers.count == 2 && !manager.isSendPresented
+            }
+            let navigation = try XCTUnwrap(initialPaymentNavigation(window))
+            let pinView = try XCTUnwrap(navigation.topViewController?.view)
+            for identifier in verifiesPin ? ["N1", "N2", "N3", "N4"] : ["NavigationBack"] {
+                try await waitUntil { self.initialPaymentAccessibilityElement(identifier, in: pinView) != nil }
+                let button = try XCTUnwrap(initialPaymentAccessibilityElement(identifier, in: pinView))
+                XCTAssertTrue(button.accessibilityActivate(), "Could not activate \(identifier)")
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            await fulfillment(of: [sent], timeout: verifiesPin ? 3 : 0.2)
+            try await waitUntil { navigation.viewControllers.count == 1 && manager.isSendPresented }
+            settings.usdtPreference = .disabled
+            try await Task.sleep(for: .milliseconds(100))
+            settings.usdtPreference = .enabled
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(navigation.viewControllers.count, 1, "Returning from PIN must not authorize again")
+            XCTAssertEqual(quoteCount, 1)
+            XCTAssertEqual(sendCount, verifiesPin ? 1 : 0)
+        }
+    }
+
     func testCancelledInitialUsdtPreparationCannotAuthorizeAfterQuoteCompletes() async throws {
         let started = expectation(description: "Quote started")
         let finished = expectation(description: "Quote finished after close")
@@ -246,19 +305,42 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await fulfillment(of: [sent], timeout: 3)
         try await Task.sleep(for: .milliseconds(1500))
         _ = try initialPaymentSnapshot(window, name: "subscription-success")
-        var controllers = try [XCTUnwrap(window.rootViewController)]
-        var navigation: UINavigationController?
-        while !controllers.isEmpty {
-            let controller = controllers.removeFirst()
-            if let candidate = controller as? UINavigationController {
-                navigation = candidate; break
-            }
-            controllers.append(contentsOf: controller.children)
-        }
-        let stack = try XCTUnwrap(navigation)
+        let stack = try XCTUnwrap(initialPaymentNavigation(window))
         XCTAssertEqual(stack.viewControllers.count, 2)
         XCTAssertTrue(stack.isNavigationBarHidden)
         XCTAssertFalse(SwipeBackState.allowSwipeBack)
+    }
+
+    private func initialPaymentNavigation(_ window: UIWindow) -> UINavigationController? {
+        var controllers = window.rootViewController.map { [$0] } ?? []
+        while !controllers.isEmpty {
+            let controller = controllers.removeFirst()
+            if let navigation = controller as? UINavigationController {
+                return navigation
+            }
+            controllers.append(contentsOf: controller.children)
+        }
+        return nil
+    }
+
+    private func initialPaymentAccessibilityElement(_ identifier: String, in root: NSObject) -> NSObject? {
+        var elements = [root]
+        var visited: Set<ObjectIdentifier> = []
+        while !elements.isEmpty {
+            let element = elements.removeFirst()
+            guard visited.insert(ObjectIdentifier(element)).inserted else { continue }
+            if (element as? UIAccessibilityIdentification)?.accessibilityIdentifier == identifier {
+                return element
+            }
+            if let view = element as? UIView {
+                elements.append(contentsOf: view.subviews)
+            }
+            let count = element.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                elements.append(contentsOf: (0 ..< count).compactMap { element.accessibilityElement(at: $0) as? NSObject })
+            }
+        }
+        return nil
     }
 
     private func initialPaymentSnapshot(_ window: UIWindow, name: String) throws -> [String] {
@@ -287,7 +369,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         manager: UsdtWalletManager? = nil,
         pushed: Bool = false,
         quotePayment: @escaping (String, String, UsdtDestination) async throws -> UsdtQuote,
-        authenticatePayment: @escaping () async -> Bool,
+        authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: @escaping (UsdtQuote) async throws -> Void
     ) throws -> UIWindow {
         snapshotAppDefaultsDomain()
@@ -1088,6 +1170,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(target, PaykitUsdt.paymentURI(address: endpoint.value))
         XCTAssertEqual(context?.paymentListVersion, 7)
         XCTAssertEqual(endpoints.map(\.value), [endpoint.value])
+    }
+
+    func testPaykitServerRequestsAreMerchantRequests() throws {
+        let personal = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(), now: Date()))
+        let merchant = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(proposalAppId: "paykit-server"), now: Date()))
+        let other = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(proposalAppId: "marketplace"), now: Date()))
+
+        XCTAssertFalse(personal.isMerchantRequest)
+        XCTAssertTrue(merchant.isMerchantRequest)
+        XCTAssertTrue(merchant.updatingLifecycleState(.accepted).isMerchantRequest)
+        XCTAssertFalse(other.isMerchantRequest)
+        let outgoing = try XCTUnwrap(PaykitPaymentRequest(
+            historyRecord: paymentRequestRecord(role: .payee, proposalAppId: "paykit-server"),
+            now: Date()
+        ))
+        XCTAssertFalse(outgoing.isMerchantRequest)
     }
 
     func testRequestEndpointUsesOnlyPayableResolvedCandidates() async throws {
@@ -9230,7 +9328,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         acceptedEventId: String? = nil,
         rejectedEventId: String? = nil,
         canceledEventId: String? = nil,
-        paymentProofs: [PaymentProofRecord] = []
+        paymentProofs: [PaymentProofRecord] = [],
+        proposalAppId: String = "bitkit"
     ) throws -> PaymentRequestRecord {
         try PaymentRequestRecord(
             counterparty: counterparty,
@@ -9241,7 +9340,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             proposalOutboundMessageId: proposalOutboundMessageId,
             proposalOutboundStatus: proposalOutboundStatus,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
-            proposalAppId: "bitkit",
+            proposalAppId: proposalAppId,
             payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
