@@ -1358,11 +1358,9 @@ final class PaykitPaymentRequestManager {
     private static let automaticPresentationRetryDelay = TimeInterval(120)
     private static let recentEligibilityCheckInterval = TimeInterval(30)
 
-    private(set) var pendingRequests: [PaykitPaymentRequest] = [] {
-        didSet { recordSilentExpirations(from: oldValue) }
-    }
+    private(set) var pendingRequests: [PaykitPaymentRequest] = []
 
-    /// Pending incoming requests that expired on their own, without the user opening them.
+    /// Incoming one-time requests that expired before the user accepted or paid them, without being opened.
     private(set) var silentlyExpiredRequests: [PaykitPaymentRequest] = []
     private(set) var silentExpirationTrigger = 0
     private(set) var retainedHardwareRetries: [PaykitPaymentRequest.ID: PendingPaykitPaymentProof] = [:]
@@ -2174,7 +2172,7 @@ final class PaykitPaymentRequestManager {
 
     @discardableResult
     func requestPresentation(_ request: PaykitPaymentRequest) -> Bool {
-        discardExpiredRequests()
+        discardExpiredRequests(openedRequestId: request.id)
         guard pendingRequests.contains(where: { $0.id == request.id }),
               !processingRequestIds.contains(request.id),
               requestedPresentationId == nil
@@ -2771,11 +2769,13 @@ final class PaykitPaymentRequestManager {
 
     private func discardExpiredRequests(
         at: Date? = nil,
-        handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil
+        handledRequestedExpirationId: PaykitPaymentRequest.ID? = nil,
+        openedRequestId: PaykitPaymentRequest.ID? = nil
     ) {
         let date = at ?? now()
         let subscriptionDate = subscriptionNow()
         recordRequestedPresentationExpiration(at: date, excluding: handledRequestedExpirationId)
+        recordSilentExpirations(at: date, excluding: [handledRequestedExpirationId, openedRequestId].compactMap { $0 })
         pendingRequests.removeAll { $0.isExpired(at: date) }
         subscriptions = subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
         presentedSubscriptionProposalIds.formIntersection(
@@ -2801,12 +2801,11 @@ final class PaykitPaymentRequestManager {
         schedulePresentationRetry()
     }
 
-    private func recordSilentExpirations(from previous: [PaykitPaymentRequest]) {
-        let remainingIds = Set(pendingRequests.map(\.id))
-        let date = now()
-        let expired = previous.filter {
-            !remainingIds.contains($0.id) && $0.id != requestedPresentationId
-                && $0.direction == .incoming && $0.billingPeriod == nil && $0.isExpired(at: date)
+    private func recordSilentExpirations(at date: Date, excluding handledIds: [PaykitPaymentRequest.ID]) {
+        let expired = pendingRequests.filter {
+            $0.id != requestedPresentationId && !handledIds.contains($0.id)
+                && $0.direction == .incoming && $0.billingPeriod == nil && $0.lifecycleState == .proposed
+                && $0.isExpired(at: date)
         }
         guard !expired.isEmpty else { return }
         silentlyExpiredRequests = expired
