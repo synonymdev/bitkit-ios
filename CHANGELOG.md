@@ -7,6 +7,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-19
+
+### Fixed
+- Pause automatic Paykit refresh and publication during profile deletion, then resume if the profile remains signed in. #954
+- Fixed the Pubky sign-in sheet sometimes disappearing when a sign-in link opened Bitkit from a closed state. #966
+- On-chain payments no longer fail with an unknown outcome after Bitkit returns from the background. #967
+- Preserved pending USDT payment protection after backup restore and kept bridge support details safely formatted. #969
+- Opening another link while a Pubky sign-in is pending no longer drops the sign-in; the other link opens after it. #985
+- An on-chain payment whose request ended before it reached the network can now be cancelled, which sends its coins back to the wallet so it no longer blocks new on-chain payments. #986
+- Payment links opened while Bitkit is locked now open for review instead of being paid with QuickPay. #992
+- Copy plain USDT receiving addresses and share them with the selected network, requested amount and payment QR code. #997
+
+## [3.0.0] - 2026-10-16
+
+### Added
+- Bitkit now opens Pubky marketplace setup links directly into explicit watch-only account consent. #722
+- Added support for creating a Pubky identity from app-authorized and direct Pubky signup requests, with approval, a relay timeout and protection against overlapping signup attempts. #724
+- Bitkit can now propose recurring subscriptions to Paykit contacts. #736
+- Added support for restoring wallets from Standard and Compact SeedQR codes. #760
+- Added support for pairing Blockstream Jade and Jade Plus hardware wallets over Bluetooth, including watch-only balances, address verification and on-device transaction signing. #765
+- Open Pubky contact links directly in Bitkit to add a contact or view an existing one. #768
+- Bitkit can now use a pubky you already keep in Pubky Ring, and shares its own pubky with Pubky Ring. #774
+- Dev Settings can now move subscription renewals forward by a number of days, so the next billing period can be tested without waiting for it. #798
+- Opt in to USDT in Settings to send and receive with fees paid in USDT, Paykit contact payments and requests, subscriptions, cross-network deposits, optional Earn address sharing, and encrypted payment recovery backups. #884
+- Support Pubky grant signup links through the existing authorization and profile setup flows. #900
+- Bitkit on iPhone can now open Pubky sign-in requests from web pages, such as connecting the Lock Server in the Shop. #939
+
+### Changed
+- Improved Home pull-to-refresh feedback and added on-demand exchange-rate updates. #532
+- Incoming payment requests are checked every ten seconds while the app is open and online. #769
+- Incoming Payment Requests now show who the request is from and what it is for under the amount. #789
+- Paykit contacts, payment requests and subscriptions are now on by default. #802
+- The Payment Request sheet now always shows what a request is for, reading "Not specified" when the request has no note. #817
+- Share Paykit contacts and payment state with authorized apps while keeping wallet keys private, restore contacts when re-importing an identity, prepare incoming payments in the payment sheet, support one-time payment deadlines, prioritize payment submission over background synchronization, distinguish temporary restoration failures from expired sessions, preserve subscription reminders through retries, and label received payments with their Paykit contact. #856
+- Jade hardware wallets now display device artwork that matches the app's hardware wallet design. #878
+- Pubky authorization dialogs now name the requesting service, group permissions and details under clear headings, and show a compact profile card. #880
+- Accepting a subscription now sends the first payment in the same swipe when it is paid on-chain, as it already did over Lightning. #881
+- Refine Earn and USDT payment layouts, support plain USDT addresses in scanning and manual entry, and let requests and subscriptions choose individual receiving methods. #942
+
+### Fixed
+- Use USDT labels and styling when preparing and entering payments, with readable messages for bridge issues. #948
+- Keep wallet backups consistent during Paykit activity and preserve pending changes until they are backed up. #950
+- Incoming on-chain transactions that confirm before being seen in the mempool now show the received notification. #588
+- Payment requests now provide safe failure diagnostics and show an error when requested payment details remain unavailable. #721
+- Fixed the transfer to spending flow creating a Blocktank order every time you tapped Continue, so an order is now only created when you confirm the transfer. #738
+- Incoming payment requests appear sooner while the app is open, without unnecessary wallet backup uploads. #748
+- Improved Pubky identity discovery by periodically refreshing existing identity records while Bitkit is open. #753
+- Subscriptions now match their designs: rows scroll under the tab bar and the floating buttons, the delete sheet carries the trash illustration, dates drop the year, and the amount step gains a unit switch for entering amounts in fiat. #754
+- Fixed private payment connections reusing a previous wallet’s key after resetting the wallet. #761
+- Hardware wallet send confirmation now uses the orange accent color instead of blue. #771
+- Spending confirm now shows the amount of bitcoin that leaves the wallet when a transfer uses send-all funding, and the transfer record uses that same amount. #772
+- Aligned the profile screens and the home header spacing with the latest designs. #781
+- Transfer to spending no longer pays more than the confirmed amount: if fees rise before the swipe, it explains the increase and waits for another swipe. #783
+- Preserve Paykit subscription and pending payment state in wallet backups, and retain saved data when it cannot be read or restored. #786
+- Clipboard reading now runs after unlocking Bitkit with a PIN. #790
+- Fixed a sheet closing right after it opened when it appeared just after another sheet was dismissed, such as a subscription proposal arriving after you tapped Later on the QuickPay intro. #793
+- Payout authorization no longer fails when the initial wallet sync times out. #794
+- Fixed Paykit recovery after connection loss or device clock changes to preserve profiles and contacts, retry saved sessions with visible loading feedback, and improve billing reminder timing, including preserving the previous identity when a switch fails. #796
+- Paying a contact now reliably offers Request or Pay when the contact accepts requests, and opens the amount screen faster with a loading indicator. #809
+- Fixed a paid Paykit payment request sometimes reappearing as pending after closing the send screen, which could lead to paying it twice. #820
+- Keep Paykit requests with unsupported payment deadlines in history and explain why their subscriptions cannot be accepted. #823
+- Fixed unpaid Payment Requests appearing as completed payments or getting stuck after a failed send or private-link recovery. #826
+- Deleting a contact now stops private payment requests until you add that contact again, and background refreshes no longer restore deleted contacts. #830
+- Fixed wallet setup getting stuck at 100% after retrying a failed startup. #831
+- On-chain sends now keep uncertain broadcast attempts pending and show the transaction ID, preventing another payment while the outcome is unresolved. #844
+- A canceled subscription now stays active until its paid period ends, then expires. #846
+- Fixed swipe to pay being usable before the network fee rate had loaded, which made on-chain payments fail with "Fee rate not set". #847
+- Fixed the wallet staying on "Connection issues" after a failed node start until the app was relaunched; it now retries when the app returns to the foreground. #848
+- Fixed slow contact imports by saving prepared contacts locally, skipping your own profile and keeping failed imports available for retry. #851
+- Activity metadata restored from a React Native wallet stays saved for later recovery without repeatedly rebuilding payment history or uploading unchanged backups. #852
+- Pubky profiles and contacts load faster: Pubky Ring identities appear at once, adopting one no longer waits on other lookups, the profile screen shows your cached name and avatar while it loads, and Contacts shows your saved contacts straight away while their profiles load. A contact import that finishes after you leave it no longer takes you to Pay Contacts. #854
+- Fixed Paykit failures after wiping a wallet and false profile errors when cancelled work finishes after signup. #855
+- New incoming Payment Requests open automatically while Bitkit is unlocked, without waiting for the rest of the refresh to finish. #858
+- Opening Contacts keeps your saved profile on loading or Retry while it reconnects instead of offering profile setup. #864
+- Saving a profile edit with a new avatar no longer opens Create Profile, and a contact deleted while its profile loads keeps its new profile when added back. #869
+- Bitkit now offers each clipboard copy only once and waits for confirmation before contacting payment endpoints. #870
+- Leaving Contacts no longer shows an error for a cancelled contact load. #873
+- Pay fixed-price Paykit requests using the quoted Bitcoin amount, show feedback for unavailable destinations, and prioritize linking for newly added or explicitly refreshed contacts. #887
+- Pause automatic contact and payment-request refreshes in the background without delaying payment and wallet-sync completion, preserve pending work until resume, and avoid redundant startup endpoint publication. #888
+- Fixed untranslated plural templates in transaction details and backup failure messages for affected languages. #897
+- Keep your public profile visible after restarting while private payment data is still reconnecting. #898
+- Fixed an incorrect send error appearing after closing a successful Lightning payment. #899
+- Report identity-key access errors before enabling contact payments. #901
+- Keep manual coin selection required after returning from the coin picker without choosing coins. #903
+- Stopped unnecessary background retries for unavailable contacts while preserving queued message delivery. #911
+- Payment requests below the minimum Bitcoin amount now show the minimum and close payment preparation. #913
+- Verified hardware-wallet payments can finish locally while their payment proofs await delivery. #914
+- Retain exact Bitcoin retry fees so accepted payments can finish local recovery while wallet history is still catching up. #915
+- Bitcoin sends keep a single activity entry with their contact and fee when wallet synchronization overlaps payment completion. #916
+- Fixed force-closed channels failing to claim pending payments on-chain. #930
+- Receive invoices now keep the latest amount and note during overlapping refreshes, with retry available when invoice creation fails. #933
+- Discover Shop sellers from buyer interaction markers on app resume and payment-request polls, preserving edited and removed contacts, and refresh shared contacts before opening contact links. #934
+- Restored Arabic translations and added missing translations across languages. #938
+
+### Security
+- Paykit payment approvals remain tied to the reviewed proposal when private state changes. #921
+- Updated the Lightning node with upstream security fixes. #928
+
+## [2.5.1] - 2026-10-13
+
+### Fixed
+- Updated LDK Node to 0.7.0-rc.66.1 for the upstream Lightning security fixes. #924
+
 ## [2.5.0] - 2026-09-10
 
 ### Added
@@ -144,7 +247,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/synonymdev/bitkit-ios/compare/v3.0.0..v3.0.1
+[3.0.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.1..v3.0.0
+[2.5.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/synonymdev/bitkit-ios/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.3.2...v2.4.0

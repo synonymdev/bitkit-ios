@@ -1294,6 +1294,7 @@
 "wallet__send_yes" = "Ano, odeslat";
 "wallet__send_dialog1" = "Zdá se, že posíláte více než $100. Přejete si pokračovat?";
 "wallet__send_dialog2" = "Zdá se, že posíláte více než 50 % svého celkového zůstatku. Přejete si pokračovat?";
+"wallet__send_dialog2_usdt" = "Zdá se, že posíláte více než 50 % svého zůstatku USDT. Přejete si pokračovat?";
 "wallet__send_dialog3" = "Zdá se, že transakční poplatek přesahuje 50 % částky, kterou odesíláte. Přejete si pokračovat?";
 "wallet__send_dialog4" = "Transakční poplatek se zdá být vyšší než $10. Přejete si pokračovat?";
 "wallet__send_dialog5_title" = "Poplatek je potenciálně příliš nízký";

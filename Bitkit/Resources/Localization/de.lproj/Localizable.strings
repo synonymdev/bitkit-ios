@@ -1292,6 +1292,7 @@
 "wallet__send_yes" = "Ja, senden";
 "wallet__send_dialog1" = "Es scheint, dass du über $100 sendest. Möchtest du fortfahren?";
 "wallet__send_dialog2" = "Es scheint, dass du über 50% deines Gesamtguthabens sendest. Möchtest du fortfahren?";
+"wallet__send_dialog2_usdt" = "Es scheint, dass du über 50% deines USDT-Guthabens sendest. Möchtest du fortfahren?";
 "wallet__send_dialog3" = "Die Transaktionsgebühr scheint über 50% des gesendeten Betrags zu liegen. Möchtest du fortfahren?";
 "wallet__send_dialog4" = "Die Transaktionsgebühr scheint über $10 zu liegen. Möchtest du fortfahren?";
 "wallet__send_dialog5_title" = "Gebühr ist möglicherweise zu niedrig";

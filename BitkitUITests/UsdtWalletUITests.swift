@@ -48,7 +48,7 @@ final class UsdtWalletUITests: XCTestCase {
         try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
         XCTAssertTrue(app.buttons["UsdtReview"].waitForExistence(timeout: 5))
         try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
-        let restoredRecipient = app.textViews["UsdtRecipient"]
+        let restoredRecipient = app.textViews["RecipientInput"]
         XCTAssertTrue(restoredRecipient.waitForExistence(timeout: 5))
         XCTAssertEqual(restoredRecipient.value as? String, recipient)
         capture(app, "Manual USDT recipient preserved")
