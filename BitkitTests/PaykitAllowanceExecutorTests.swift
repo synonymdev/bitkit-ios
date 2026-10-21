@@ -642,6 +642,26 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 3, previousVersion: 2)])
     }
 
+    func testRecoveryReleasesThePaymentListOfAnAttemptReconciliationFailed() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-failed", attempts: [Fixtures.attemptRecord(id: "failed", status: .failed)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "failed", request: request, stage: .sent, paymentListVersion: 5)]),
+            identity: Fixtures.identityKey
+        )
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.failed])
+        let released = await harness.payer.releasedLists
+        XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 5, previousVersion: 4)])
+    }
+
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()

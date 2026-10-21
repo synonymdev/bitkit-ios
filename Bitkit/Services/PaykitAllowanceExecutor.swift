@@ -406,14 +406,16 @@ actor PaykitAllowanceExecutor {
                         continue
                     }
                     try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
-                case .succeeded:
-                    // Reconciliation can settle an attempt the journal still shows as sent.
+                case .succeeded, .failed:
+                    // Reconciliation can settle an attempt the journal still shows as open.
+                    let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
                     let stage = localState(identity: identity).journal.first { $0.attemptId == attempt.attemptId }?.stage
-                    if let stage, stage != .succeeded {
-                        applyJournalOutcome(attemptId: attempt.attemptId, outcome: .succeeded, identity: identity)
+                    if let stage, !stage.isTerminal {
+                        let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
+                        if outcome == .failed {
+                            await releaseConsumedPaymentList(of: entry)
+                        }
                     }
-                case .failed:
-                    continue
                 }
             }
         } catch {
@@ -486,14 +488,19 @@ actor PaykitAllowanceExecutor {
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {
         try await sdk.recordPaymentOutcome(Paykit.PaymentOutcomeReport(attemptId: attemptId, outcome: outcome))
         let entry = applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity)
-        // A failed automatic payment leaves the payee's list usable for the manual payment that follows.
-        if outcome == .failed, let entry, entry.isAutomatic, let version = entry.paymentListVersion {
-            await payer.releaseConsumedPaymentList(
-                publicKey: entry.requestId.counterparty,
-                version: version,
-                previousVersion: entry.previousPaymentListVersion
-            )
+        if outcome == .failed {
+            await releaseConsumedPaymentList(of: entry)
         }
+    }
+
+    /// A failed automatic payment leaves the payee's list usable for the manual payment that follows.
+    private func releaseConsumedPaymentList(of entry: PaykitAllowanceLocalState.JournalEntry?) async {
+        guard let entry, entry.isAutomatic, let version = entry.paymentListVersion else { return }
+        await payer.releaseConsumedPaymentList(
+            publicKey: entry.requestId.counterparty,
+            version: version,
+            previousVersion: entry.previousPaymentListVersion
+        )
     }
 
     /// Moves the journal entry to the outcome, and announces an automatic payment only from the call that settles it,
