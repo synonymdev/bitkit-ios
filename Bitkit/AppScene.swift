@@ -626,6 +626,7 @@ struct AppScene: View {
                 } else if authState == .idle {
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
+                    hasPendingExpiryToast = false
                 }
             }
             .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
