@@ -1677,6 +1677,7 @@
 "usdt__track_bridge" = "Seguir el lliurament entre xarxes";
 "usdt__replaced" = "Substituït per un altre pagament";
 "usdt__receive_title" = "Rebre dòlars";
+"usdt__receive_copied" = "Adreça copiada al porta-retalls.\nAssegura’t que l’USDT només s’enviï a través de la xarxa seleccionada.";
 "usdt__send_title" = "Enviar USDT";
 "usdt__deposit_attention" = "Aquest dipòsit requereix l'assistència del proveïdor. Contacta amb el suport de Bitkit i indica la referència del dipòsit.";
 "usdt__deposit_cost" = "Deducció estimada (USDT)";
@@ -1764,4 +1765,3 @@
 "usdt__deposit_tron_refund_note" = "Les devolucions de TRON poden requerir l'assistència d'un operador d'Orchestra.";
 "usdt__deposit_refund_address_network" = "Adreça USDT a {network}";
 "wallet__send_error_support" = "Contacta amb el suport";
-"usdt__receive_copied" = "Adreça copiada al porta-retalls.\nAssegura’t que l’USDT només s’enviï a través de la xarxa seleccionada.";

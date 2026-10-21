@@ -1814,6 +1814,7 @@
 "usdt__track_bridge" = "Netzübergreifende Zustellung verfolgen";
 "usdt__replaced" = "Durch andere Zahlung ersetzt";
 "usdt__receive_title" = "Dollar empfangen";
+"usdt__receive_copied" = "Adresse in die Zwischenablage kopiert.\nStelle sicher, dass USDT nur über das ausgewählte Netzwerk gesendet wird.";
 "usdt__send_title" = "USDT senden";
 "usdt__deposit_attention" = "Diese Einzahlung erfordert Unterstützung durch den Anbieter. Wende dich mit der Einzahlungsreferenz an den Bitkit-Support.";
 "usdt__deposit_cost" = "Geschätzter Abzug (USDT)";
@@ -1900,4 +1901,3 @@
 "usdt__deposit_refund_confirmation" = "Rückerstattung für die Einzahlung von {amount} USDT anfordern?\n\nNetzwerk:\n{network}\n\nRückerstattungsadresse:\n{address}\n\nStelle sicher, dass diese Adresse USDT auf {shortNetwork} empfangen kann. Es können Rückerstattungsgebühren anfallen.";
 "usdt__deposit_tron_refund_note" = "TRON-Rückerstattungen können die Unterstützung eines Orchestra-Betreibers erfordern.";
 "usdt__deposit_refund_address_network" = "USDT-Adresse auf {network}";
-"usdt__receive_copied" = "Adresse in die Zwischenablage kopiert.\nStelle sicher, dass USDT nur über das ausgewählte Netzwerk gesendet wird.";

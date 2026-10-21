@@ -1808,6 +1808,7 @@
 "usdt__track_bridge" = "Отслеживать доставку между сетями";
 "usdt__replaced" = "Заменён другим платежом";
 "usdt__receive_title" = "Получить Доллары";
+"usdt__receive_copied" = "Адрес скопирован в буфер обмена.\nОтправляйте USDT только через выбранную сеть.";
 "usdt__send_title" = "Отправить USDT";
 "usdt__deposit_attention" = "Этому депозиту нужна помощь провайдера. Свяжитесь с поддержкой Bitkit и укажите ID депозита.";
 "usdt__deposit_cost" = "Примерное удержание (USDT)";
@@ -1894,4 +1895,3 @@
 "usdt__deposit_refund_confirmation" = "Запросить возврат депозита {amount} USDT?\n\nСеть:\n{network}\n\nАдрес для возврата:\n{address}\n\nУбедитесь, что этот адрес может получать USDT в сети {shortNetwork}. Может взиматься комиссия за возврат.";
 "usdt__deposit_tron_refund_note" = "Для возвратов в сети TRON может потребоваться помощь оператора Orchestra.";
 "usdt__deposit_refund_address_network" = "Адрес USDT в сети {network}";
-"usdt__receive_copied" = "Адрес скопирован в буфер обмена.\nОтправляйте USDT только через выбранную сеть.";

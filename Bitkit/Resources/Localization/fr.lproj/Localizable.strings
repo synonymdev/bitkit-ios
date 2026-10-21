@@ -1828,6 +1828,7 @@
 "usdt__track_bridge" = "Suivre la livraison inter-réseaux";
 "usdt__replaced" = "Remplacé par un autre paiement";
 "usdt__receive_title" = "Recevoir des dollars";
+"usdt__receive_copied" = "Adresse copiée dans le presse-papiers.\nAssurez-vous que les USDT sont envoyés uniquement sur le réseau sélectionné.";
 "usdt__send_title" = "Envoyer des USDT";
 "usdt__deposit_attention" = "Ce dépôt nécessite l'intervention du prestataire. Contactez le support Bitkit avec la référence du dépôt.";
 "usdt__deposit_cost" = "Déduction estimée (USDT)";
@@ -1914,4 +1915,3 @@
 "usdt__deposit_refund_confirmation" = "Demander le remboursement du dépôt de {amount} USDT ?\n\nRéseau :\n{network}\n\nAdresse de remboursement :\n{address}\n\nVérifiez que cette adresse peut recevoir des USDT sur {shortNetwork}. Des frais de remboursement peuvent s'appliquer.";
 "usdt__deposit_tron_refund_note" = "Les remboursements TRON peuvent nécessiter l'intervention d'un opérateur Orchestra.";
 "usdt__deposit_refund_address_network" = "Adresse USDT sur {network}";
-"usdt__receive_copied" = "Adresse copiée dans le presse-papiers.\nAssurez-vous que les USDT sont envoyés uniquement sur le réseau sélectionné.";
