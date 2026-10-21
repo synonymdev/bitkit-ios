@@ -8,6 +8,42 @@ final class UtxoSelectionTests: XCTestCase {
     let blocktank = CoreService.shared.blocktank
     let lightning = LightningService.shared
 
+    private static let pollIntervalNanoseconds: UInt64 = 2_000_000_000
+    private static let pollTimeout: TimeInterval = 120
+
+    /// Thrown rather than recorded, so a test whose funding never confirmed stops before it spends.
+    private struct PollTimeout: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    /// Syncs and lists spendable outputs until `isReady` holds. Regtest confirmations reach the
+    /// node at varying speed on CI, and a sync can fail with `NodeError.WalletOperationTimeout`,
+    /// so a fixed sleep then a single sync sees partial state.
+    private func waitForSpendableOutputs(
+        _ description: String,
+        until isReady: ([SpendableUtxo]) -> Bool
+    ) async throws -> [SpendableUtxo] {
+        let deadline = Date().addingTimeInterval(Self.pollTimeout)
+        var outputs: [SpendableUtxo] = []
+
+        repeat {
+            do {
+                try await lightning.sync()
+                outputs = try await lightning.listSpendableOutputs()
+                if isReady(outputs) {
+                    return outputs
+                }
+                Logger.test("Waiting for \(description), have \(outputs.count) spendable outputs", context: "UtxoSelectionTests")
+            } catch {
+                Logger.test("Spendable output poll failed, retrying: \(error)", context: "UtxoSelectionTests")
+            }
+
+            try await Task.sleep(nanoseconds: Self.pollIntervalNanoseconds)
+        } while Date() < deadline
+
+        throw PollTimeout(description: "Timed out after \(Int(Self.pollTimeout))s waiting for \(description), last saw \(outputs.count) outputs")
+    }
+
     override func setUp() async throws {
         try await super.setUp()
         // `StartupHandler.createNewWallet` resets `selectedAddressType` and `addressTypesToMonitor` for a
@@ -95,15 +131,9 @@ final class UtxoSelectionTests: XCTestCase {
         try await blocktank.regtestMineBlocks(6)
         Logger.test("Blocks mined successfully", context: "UtxoSelectionTests")
 
-        // Sleep 15 seconds to ensure all blocks are processed
-        Logger.test("Waiting 15 seconds for blocks to be processed", context: "UtxoSelectionTests")
-        try await Task.sleep(nanoseconds: 15_000_000_000)
-        Logger.test("Wait completed", context: "UtxoSelectionTests")
-
-        // Sync the wallet to see the new balance
-        Logger.test("Syncing wallet to update balances", context: "UtxoSelectionTests")
-        try await lightning.sync()
-        Logger.test("Wallet sync complete", context: "UtxoSelectionTests")
+        let outputs = try await waitForSpendableOutputs("\(depositAmounts.count) confirmed deposits") {
+            $0.count >= depositAmounts.count
+        }
 
         // Verify updated balances after funding
         let updatedBalances = await MainActor.run { lightning.balances }
@@ -117,9 +147,7 @@ final class UtxoSelectionTests: XCTestCase {
         XCTAssertEqual(finalTotal, totalExpectedAmount, "Final balance should equal the sum of all deposits")
         XCTAssertGreaterThan(finalTotal, 0, "Final balance should be greater than 0")
 
-        // List utxos and make sure we have the right amount
-        Logger.test("Listing UTXOs to verify amounts", context: "UtxoSelectionTests")
-        let outputs = try await lightning.listSpendableOutputs()
+        // Make sure we have the right UTXOs
         Logger.test("Found \(outputs.count) spendable outputs", context: "UtxoSelectionTests")
         XCTAssertEqual(outputs.count, depositAmounts.count, "Number of UTXOs should match number of deposits")
 
@@ -184,19 +212,10 @@ final class UtxoSelectionTests: XCTestCase {
         try await blocktank.regtestMineBlocks(1)
         Logger.test("Block mined successfully", context: "UtxoSelectionTests")
 
-        // Wait for the block to be processed
-        Logger.test("Waiting 10 seconds for block to be processed", context: "UtxoSelectionTests")
-        try await Task.sleep(nanoseconds: 10_000_000_000)
-        Logger.test("Wait completed", context: "UtxoSelectionTests")
-
-        // Sync the wallet to update UTXOs
-        Logger.test("Syncing wallet to update UTXO set", context: "UtxoSelectionTests")
-        try await lightning.sync()
-        Logger.test("Wallet sync complete", context: "UtxoSelectionTests")
-
-        // List UTXOs again and verify the spent ones are missing
-        Logger.test("Listing UTXOs after spending to verify the spent ones are missing", context: "UtxoSelectionTests")
-        let remainingOutputs = try await lightning.listSpendableOutputs()
+        // Verify the spent ones are missing
+        let remainingOutputs = try await waitForSpendableOutputs("the selected UTXOs to be spent") { outputs in
+            !outputs.contains { output in selectedUtxoIds.contains("\(output.outpoint.txid):\(output.outpoint.vout)") }
+        }
         Logger.test("Found \(remainingOutputs.count) remaining spendable outputs", context: "UtxoSelectionTests")
 
         // Verify the specific UTXOs we spent are no longer in the list
@@ -271,19 +290,9 @@ final class UtxoSelectionTests: XCTestCase {
         try await blocktank.regtestMineBlocks(6)
         Logger.test("Blocks mined successfully", context: "UtxoSelectionTests")
 
-        // Wait for blocks to be processed
-        Logger.test("Waiting 15 seconds for blocks to be processed", context: "UtxoSelectionTests")
-        try await Task.sleep(nanoseconds: 15_000_000_000)
-        Logger.test("Wait completed", context: "UtxoSelectionTests")
-
-        // Sync the wallet to see the new balance
-        Logger.test("Syncing wallet to update balances", context: "UtxoSelectionTests")
-        try await lightning.sync()
-        Logger.test("Wallet sync complete", context: "UtxoSelectionTests")
-
-        // Get all available UTXOs
-        Logger.test("Listing all available UTXOs", context: "UtxoSelectionTests")
-        let allUtxos = try await lightning.listSpendableOutputs()
+        let allUtxos = try await waitForSpendableOutputs("\(depositAmounts.count) confirmed deposits") {
+            $0.count >= depositAmounts.count
+        }
         Logger.test("Found \(allUtxos.count) spendable outputs", context: "UtxoSelectionTests")
         XCTAssertEqual(allUtxos.count, depositAmounts.count, "Number of UTXOs should match number of deposits")
 

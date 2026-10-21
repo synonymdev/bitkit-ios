@@ -1187,6 +1187,7 @@
 "wallet__send_yes" = "Sí, envia";
 "wallet__send_dialog1" = "Sembla que estàs enviant més de 100 $. Vols continuar?";
 "wallet__send_dialog2" = "Sembla que estàs enviant més del 50% del teu saldo total. Vols continuar?";
+"wallet__send_dialog2_usdt" = "Sembla que estàs enviant més del 50% del teu saldo de USDT. Vols continuar?";
 "wallet__send_dialog3" = "La comissió de la transacció sembla ser més del 50% de l\'import que estàs enviant. Vols continuar?";
 "wallet__send_dialog4" = "La comissió de la transacció sembla ser superior a 10 $. Vols continuar?";
 "wallet__send_dialog5_title" = "La comissió pot ser massa baixa";
