@@ -10,6 +10,10 @@ enum Route: Hashable {
     case savingsWallet
     case spendingWallet
     case hardwareWallet(walletId: String)
+    case usdtWallet
+    case usdtPayment(recipient: String, amount: String)
+    case usdtActivity(transferId: String)
+    case usdtDepositHistory
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)
@@ -145,6 +149,13 @@ extension Route {
             return false
         }
     }
+
+    var isUsdtWalletRoute: Bool {
+        switch self {
+        case .usdtWallet, .usdtPayment, .usdtDepositHistory: true
+        default: false
+        }
+    }
 }
 
 func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bool {
@@ -160,11 +171,7 @@ func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
 }
 
 func resolvePubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
-    guard PaykitFeatureFlags.isUIEnabled else {
-        return nil
-    }
-
-    guard let normalizedKey = PubkyPublicKeyFormat.normalized(input) else {
+    guard PaykitFeatureFlags.isUIEnabled, let normalizedKey = PubkyPublicKeyFormat.normalized(input) else {
         return nil
     }
 
@@ -181,6 +188,18 @@ func resolvePubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyCon
 
 func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
     resolvePubkyRoute(input: input, ownPublicKey: ownPublicKey, contacts: contacts)
+}
+
+func resolveUsdtPaymentRoute(input: String, isEnabled: Bool = Env.isUsdtEnabled) throws -> Route? {
+    let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    let isPaymentURI = input.lowercased().hasPrefix("ethereum:")
+    guard isPaymentURI || input.lowercased().hasPrefix("0x") else { return nil }
+    guard isEnabled else { throw ScanHandlingError.unsupportedRequest }
+    if !isPaymentURI {
+        return try .usdtPayment(recipient: usdtValidateRecipient(value: input, destination: .arbitrum), amount: "")
+    }
+    let request = try usdtParsePaymentRequest(value: input)
+    return .usdtPayment(recipient: request.recipient, amount: request.amount.map { usdtFormatAmount(amount: $0) } ?? "")
 }
 
 @MainActor
@@ -202,6 +221,19 @@ class NavigationViewModel: ObservableObject {
     func navigateBack() {
         guard !path.isEmpty else { return }
         path.removeLast()
+    }
+
+    func returnToContactsAfterRemoving(publicKey: String) {
+        let remainingPath = path.filter { route in
+            switch route {
+            case let .contactDetail(shownKey), let .editContact(shownKey), let .contactSaved(shownKey):
+                return !PubkyPublicKeyFormat.matches(shownKey, publicKey)
+            default:
+                return true
+            }
+        }
+        guard remainingPath != path else { return }
+        path = remainingPath.isEmpty ? [.contacts] : remainingPath
     }
 
     func reset() {

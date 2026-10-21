@@ -9,6 +9,8 @@ struct NavigationBar: View {
     let showMenuButton: Bool
     let action: AnyView?
     let icon: String?
+    let titleKerning: CGFloat
+    let titleLineHeight: CGFloat?
     let onBack: (() -> Void)?
 
     init(
@@ -17,9 +19,13 @@ struct NavigationBar: View {
         showMenuButton: Bool = true,
         action: AnyView? = nil,
         icon: String? = nil,
+        titleKerning: CGFloat = 0.4,
+        titleLineHeight: CGFloat? = nil,
         onBack: (() -> Void)? = nil
     ) {
         self.title = title
+        self.titleKerning = titleKerning
+        self.titleLineHeight = titleLineHeight
         self.showBackButton = showBackButton
         self.showMenuButton = showMenuButton
         self.action = action
@@ -63,7 +69,9 @@ struct NavigationBar: View {
                         .padding(.trailing, 16)
                 }
 
-                TitleText(title)
+                TitleText(title, kerning: titleKerning, lineHeight: titleLineHeight)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
@@ -88,7 +96,7 @@ struct NavigationBar: View {
                     .frame(width: 24, height: 24)
             }
         }
-        .frame(height: 48)
+        .frame(minHeight: 48)
         .background(LinearGradient(
             colors: [.black, .black.opacity(0)],
             startPoint: .top,

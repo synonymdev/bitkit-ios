@@ -216,11 +216,11 @@ struct AddContactView: View {
             canRetryError = false
             isLoading = false
             if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
-                await contactsManager.refreshContactReceiverPaths(publicKey: normalizedKey, wallet: wallet)
+                await contactsManager.refreshContactLink(publicKey: normalizedKey, wallet: wallet)
             }
             return
         case let .valid(normalizedKey):
-            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true) {
+            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true, retryTransient: true) {
                 fetchedProfile = profile
                 hasPayableEndpoint = await (try? PublicPaykitService.hasPayablePublicEndpoint(publicKey: normalizedKey)) == true
             } else {
@@ -243,11 +243,13 @@ struct AddContactView: View {
                 return
             }
 
+            let identity = pubkyProfile.publicKey
             try await contactsManager.addContact(
                 publicKey: normalizedPublicKey,
                 existingProfile: fetchedProfile,
-                ownPublicKey: pubkyProfile.publicKey
+                ownPublicKey: identity
             )
+            await PrivatePaykitService.shared.startExplicitContactLink(publicKey: normalizedPublicKey, expectedIdentity: identity, wallet: wallet)
             navigation.path = [.contacts, .contactSaved(publicKey: normalizedPublicKey)]
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")
@@ -265,8 +267,8 @@ struct AddContactView: View {
             let result = try await PublicPaykitService.beginPayment(to: normalizedPublicKey)
 
             switch result {
-            case let .opened(paymentRequest, _):
-                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey)
+            case let .opened(paymentRequest, _, endpoints):
+                _ = await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey, endpoints: endpoints)
             case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
                     app.toast(
@@ -278,17 +280,15 @@ struct AddContactView: View {
             }
         } catch {
             Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
-            app.toast(
-                type: .error,
-                title: t("slashtags__error_pay_title"),
-                description: error.localizedDescription
-            )
+            if let description = PaymentNavigationHelper.contactPaymentErrorDescription(error) {
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: description)
+            }
         }
     }
 
     @MainActor
-    private func openContactPayment(paymentRequest: String, publicKey: String) async -> Bool {
-        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+    private func openContactPayment(paymentRequest: String, publicKey: String, endpoints: [PublicPaykitService.Endpoint]) async -> Bool {
+        let contactPaymentContext = ContactPaymentContext(publicKey: publicKey, endpoints: endpoints)
         guard app.claimContactPaymentContext(contactPaymentContext) else { return false }
 
         do {

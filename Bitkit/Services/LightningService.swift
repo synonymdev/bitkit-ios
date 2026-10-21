@@ -9,6 +9,10 @@ class LightningService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
     private var node: Node?
+    var onchainDispatchNode: AnyObject? {
+        node
+    }
+
     var currentWalletIndex: Int = 0
 
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
@@ -23,6 +27,8 @@ class LightningService {
     @MainActor private var cachedChannels: [ChannelDetails]?
 
     private var storedEventCallback: ((Event) -> Void)?
+    var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
+    var onchainTransactionReceived: (@Sendable (String) async -> Void)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
@@ -678,11 +684,22 @@ class LightningService {
         }
     }
 
+    func listOnchainWalletAccounts() async throws -> [LDKNode.OnchainWalletAccount] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            node.listOnchainWalletAccounts()
+        }
+    }
+
     func addressInfosForType(
         _ addressType: LDKNode.AddressType,
         keychain: LDKNode.KeychainKind,
         startIndex: UInt32,
-        count: UInt32
+        count: UInt32,
+        accountIndex: UInt32 = 0
     ) async throws -> [AddressDerivationInfo] {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -690,7 +707,9 @@ class LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             try node.onchainPayment()
-                .addressInfosForType(addressType: addressType, keychain: keychain, startIndex: startIndex, count: count)
+                .addressInfosForAccount(
+                    addressType: addressType, accountIndex: accountIndex, keychain: keychain, startIndex: startIndex, count: count
+                )
                 .map { AddressDerivationInfo(address: $0.address, index: $0.index) }
         }
     }
@@ -765,7 +784,7 @@ class LightningService {
 
     private static func convertVByteToKwu(satsPerVByte: UInt32) -> FeeRate {
         // 1 vbyte = 4 weight units, so 1 sats/vbyte = 250 sats/kwu
-        let satPerKwu = UInt64(satsPerVByte * 250)
+        let satPerKwu = UInt64(satsPerVByte) * 250
         // Ensure we're above the minimum relay fee
         return .fromSatPerKwu(satKwu: max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
     }
@@ -775,26 +794,33 @@ class LightningService {
         sats: UInt64,
         satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        isMaxAmount: Bool = false
-    ) async throws -> Txid {
+        isMaxAmount: Bool = false,
+        expectedWalletIndex: Int? = nil,
+        expectedNode: AnyObject? = nil,
+        beforeSubmission: @escaping () throws -> Void = {}
+    ) async throws -> OnchainSendResult {
         guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+            throw NodeError.NotRunning(message: "Node not set up")
         }
 
         Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount))")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            return try await ServiceQueue.background(.ldk, wrapErrors: false) {
+                if let expectedWalletIndex {
+                    guard self.currentWalletIndex == expectedWalletIndex, self.node === node, expectedNode === node else {
+                        throw NodeError.NotRunning(message: "Wallet or node changed before on-chain dispatch")
+                    }
+                }
+                try beforeSubmission()
                 if isMaxAmount {
-                    // For max amount sends, use sendAllToAddress to send all available funds
-                    try node.onchainPayment().sendAllToAddress(
+                    return try node.onchainPayment().sendAllToAddressWithBroadcastResult(
                         address: address,
-                        retainReserve: true,
+                        retainReserves: true,
                         feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
                     )
                 } else {
-                    // For normal sends, use sendToAddress with specific amount
-                    try node.onchainPayment().sendToAddress(
+                    return try node.onchainPayment().sendToAddressWithBroadcastResult(
                         address: address,
                         amountSats: sats,
                         feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
@@ -808,7 +834,12 @@ class LightningService {
         }
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {
+    func send(
+        bolt11: String,
+        sats: UInt64? = nil,
+        params: RouteParametersConfig? = nil,
+        beforeSubmission: @escaping () throws -> Void = {}
+    ) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -816,7 +847,7 @@ class LightningService {
         Logger.info("Paying bolt11: \(bolt11)")
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            return try await Self.submitPayment(beforeSubmission: beforeSubmission) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
                         invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, routeParameters: params
@@ -829,6 +860,17 @@ class LightningService {
             dumpLdkLogs()
             dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
+        }
+    }
+
+    static func submitPayment<Result>(
+        beforeSubmission: @escaping () throws -> Void,
+        send: @escaping () throws -> Result
+    ) async throws -> Result {
+        try await ServiceQueue.background(.ldk) {
+            // Authorization can precede a queue wait; only the actual submission time is relevant here.
+            try beforeSubmission()
+            return try send()
         }
     }
 
@@ -1459,6 +1501,7 @@ extension LightningService {
                 case let .onchainTransactionReceived(txid, details):
                     Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
                     Task {
+                        await self.onchainTransactionReceived?(txid)
                         do {
                             try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
                         } catch {
@@ -1468,6 +1511,9 @@ extension LightningService {
                 case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
                     Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
                     Task {
+                        if let onchainTransactionConfirmed = self.onchainTransactionConfirmed {
+                            await onchainTransactionConfirmed(txid)
+                        }
                         do {
                             try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
                                 txid: txid,

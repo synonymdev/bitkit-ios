@@ -166,6 +166,87 @@ final class ShopPaymentRequestTests: XCTestCase {
         }
     }
 
+    func testContactFundingPreferenceRespectsAvailableAssets() throws {
+        let usdt = try PaykitUsdt.endpoint(address: "0x4cdDcC65AF3Aa77803d1A99A030eb17751AC7780")
+        let bitcoin = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh,
+            value: "bcrt1qexample",
+            min: nil,
+            max: nil,
+            rawPayload: "bcrt1qexample"
+        )
+        let usdtOnly = ContactPaymentContext(publicKey: "contact", endpoints: [usdt])
+        let both = ContactPaymentContext(publicKey: "contact", endpoints: [bitcoin, usdt])
+        let btcOnly = ContactPaymentContext(publicKey: "contact", endpoints: [bitcoin])
+        XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 100_000))
+        XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 100_000))
+        XCTAssertTrue(both.prefersUsdt(onchainBalanceSats: 0, usdtBalance: 1_000_000))
+        XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 0))
+        XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 0, canSendLightning: true, usdtBalance: 1_000_000))
+        XCTAssertFalse(btcOnly.prefersUsdt(onchainBalanceSats: 0))
+        XCTAssertFalse(both.prefersUsdt(onchainBalanceSats: 0, isUsdtEnabled: false))
+        XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 0, isUsdtEnabled: false))
+    }
+
+    func testHardwareContactScanKeepsTheBitcoinEndpointWhenUsdtIsFirst() async throws {
+        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
+        let usdt = try PaykitUsdt.endpoint(address: "0x4cdDcC65AF3Aa77803d1A99A030eb17751AC7780")
+        let bitcoin = PublicPaykitService.Endpoint(
+            methodId: .regtestOnchainP2wpkh, value: address, min: nil, max: nil, rawPayload: address
+        )
+        let app = AppViewModel(
+            sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel(),
+            scanPaymentOperations: ScanPaymentOperations(
+                state: { ScanPaymentState(isNodeRunning: true, spendableOnchainBalanceSats: 0,
+                                          totalLightningBalanceSats: 0, hasChannels: false, hasUsableChannels: false) },
+                canSendLightning: { _ in false }
+            ), usdtBalance: { 1_000_000 }
+        )
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: [usdt, bitcoin])
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        try await app.handleScannedData(usdt.paymentRequest, claimedContactPaymentContext: context,
+                                        scope: .onchainPayments, alternativeOnchainBalanceSats: 100_000)
+        XCTAssertEqual(app.scannedOnchainInvoice?.address, address)
+        XCTAssertFalse(app.paykitUsesUsdt)
+        XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
+        XCTAssertFalse(app.didRejectScannedPayment)
+    }
+
+    func testHardwareContactScanRejectsUsdtOnlyEndpoints() async throws {
+        let endpoint = try PaykitUsdt.endpoint(address: "0x4cdDcC65AF3Aa77803d1A99A030eb17751AC7780")
+        let app = AppViewModel()
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: [endpoint])
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+        do {
+            try await app.handleScannedData(endpoint.paymentRequest, claimedContactPaymentContext: context, scope: .onchainPayments)
+            XCTFail("Hardware scope must not select a software USDT wallet")
+        } catch ScanHandlingError.unsupportedRequest {}
+        XCTAssertFalse(app.paykitUsesUsdt)
+        XCTAssertNil(app.scannedOnchainInvoice)
+    }
+
+    func testUsdtContactPaymentCanBePreparedAndCleared() async throws {
+        let app = AppViewModel()
+        let endpoint = try PaykitUsdt.endpoint(address: "0x4cdDcC65AF3Aa77803d1A99A030eb17751AC7780")
+        let context = ContactPaymentContext(publicKey: "contact", endpoints: [endpoint])
+        XCTAssertFalse(app.hasSendPaymentTarget)
+        XCTAssertTrue(app.claimContactPaymentContext(context))
+
+        try await app.handleScannedData(endpoint.paymentRequest, claimedContactPaymentContext: context)
+
+        XCTAssertTrue(app.hasSendPaymentTarget)
+        XCTAssertTrue(app.paykitUsesUsdt)
+        XCTAssertTrue(app.ownsContactPaymentContext(context))
+        XCTAssertNil(app.scannedOnchainInvoice)
+        XCTAssertNil(app.scannedLightningInvoice)
+
+        app.resetSendState()
+
+        XCTAssertFalse(app.hasSendPaymentTarget)
+        XCTAssertFalse(app.paykitUsesUsdt)
+        XCTAssertNil(app.contactPaymentContext)
+    }
+
     private var lightningInvoice: LightningInvoice {
         LightningInvoice(
             bolt11: "test-invoice",

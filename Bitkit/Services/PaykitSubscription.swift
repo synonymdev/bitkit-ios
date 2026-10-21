@@ -3,7 +3,7 @@ import Foundation
 import Paykit
 import UserNotifications
 
-struct PaykitPreciseInstant: Codable, Comparable, Hashable, Sendable {
+struct PaykitPreciseInstant: Codable, Comparable, Hashable {
     let seconds: Int64
     let nanoseconds: Int
     let timestamp: String
@@ -244,8 +244,7 @@ struct PaykitSubscriptionRecurrence: Hashable {
         guard var index = firstBoundaryIndex(after: preciseStartsAt) else { return [] }
 
         for _ in 0 ..< Self.maximumPeriods {
-            guard start <= preciseDate else { break }
-            guard var end = boundary(at: index) else { break }
+            guard start <= preciseDate, var end = boundary(at: index) else { break }
             index += 1
             if end <= start {
                 guard let fallback = addingInterval(to: start) else { break }
@@ -424,23 +423,27 @@ struct PaykitSubscription: Identifiable, Hashable {
     struct ID: Codable, Hashable {
         let paymentRequestId: String
         let counterparty: String
-        let counterpartyReceiverPath: String
     }
 
     struct Payment: Hashable {
         let billingPeriod: PaykitBillingPeriod
         let proofKind: PaykitPaymentProofKind?
+        let proofEventId: String
     }
 
     let paymentRequestId: String
     let counterparty: String
-    let counterpartyReceiverPath: String
-    let amountValue: String
-    let amountSats: UInt64
+    let proposalStreamItemId: UInt64?
+    let amount: PaykitAmount
+    let paymentReference: String
+    let pricing: PaykitRequestPricing
+    var amountValue: String {
+        amount.value
+    }
+
     let note: String?
     let createdAt: Date?
     let proposalExpiresAt: Date?
-    let hasPaymentDeadline: Bool
     let recurrence: PaykitSubscriptionRecurrence
     let metadata: PaykitSubscriptionMetadata
     let acceptedPaymentEndpointIdentifiers: [String]
@@ -449,16 +452,26 @@ struct PaykitSubscription: Identifiable, Hashable {
     let deliveryStatus: PaykitPaymentRequest.DeliveryStatus?
     var lifecycleState: Paykit.PaymentRequestLifecycleState
     let payments: [Payment]
+    private var verifiedUsdtPeriods: Set<PaykitBillingPeriod> = []
 
     var paidPeriods: [PaykitBillingPeriod] {
-        payments.map(\.billingPeriod)
+        payments.filter { isPayer || $0.proofKind != .usdt || verifiedUsdtPeriods.contains($0.billingPeriod) }.map(\.billingPeriod)
+    }
+
+    func withVerifiedUsdtPayments(_ proofs: [PaykitPaymentRequest.ID: Set<String>]) -> Self {
+        var subscription = self
+        subscription.verifiedUsdtPeriods = Set(payments.compactMap { payment in
+            let id = PaykitPaymentRequest.ID(paymentRequestId: paymentRequestId, counterparty: counterparty,
+                                             billingPeriodStartsAt: payment.billingPeriod.startsAt)
+            return proofs[id]?.contains(payment.proofEventId) == true ? payment.billingPeriod : nil
+        })
+        return subscription
     }
 
     var id: ID {
         ID(
             paymentRequestId: paymentRequestId,
-            counterparty: counterparty,
-            counterpartyReceiverPath: counterpartyReceiverPath
+            counterparty: counterparty
         )
     }
 
@@ -476,7 +489,6 @@ struct PaykitSubscription: Identifiable, Hashable {
 
     func isProposalActionable(at date: Date) -> Bool {
         isProposalVisible(at: date) &&
-            !hasPaymentDeadline &&
             recurrence.unit.isSupported &&
             recurrence.canMaterializePeriods &&
             !acceptedPaymentEndpointIdentifiers.isEmpty
@@ -492,8 +504,33 @@ struct PaykitSubscription: Identifiable, Hashable {
         lifecycleState == .activeRecurring && recurrence.endsAt.map { $0 > date } ?? true
     }
 
+    /// A canceled subscription is paid up to its last paid period, whatever its fixed end date.
+    var canceledPaidThrough: Date? {
+        lifecycleState == .canceled ? paidPeriods.map(\.endsAt).max() : nil
+    }
+
+    /// The paid-through date of a canceled subscription that still runs; nil otherwise.
+    func canceledPaidThroughDate(at date: Date) -> Date? {
+        canceledPaidThrough.flatMap { $0 > date ? $0 : nil }
+    }
+
+    /// Active, or canceled with its last paid period still ahead: it runs until its paid-through date.
+    func runsUntilPaidThrough(at date: Date) -> Bool {
+        isActive(at: date) || canceledPaidThroughDate(at: date) != nil
+    }
+
+    /// The detail's timing cell needs a date to show: active, or an end date from the terms or a paid period.
+    func showsTiming(at date: Date) -> Bool {
+        isActive(at: date) || subscriptionEndDate(subscription: self) != nil
+    }
+
+    /// Expired and no longer running; a canceled subscription is not lapsed before its paid-through date.
+    func isLapsed(at date: Date) -> Bool {
+        isExpired(at: date) && !runsUntilPaidThrough(at: date)
+    }
+
     func isCreatedVisible(at date: Date) -> Bool {
-        isCreatedByUser && (isProposalVisible(at: date) || isActive(at: date))
+        isCreatedByUser && (isProposalVisible(at: date) || isActive(at: date) || canceledPaidThroughDate(at: date) != nil)
     }
 
     func isExpiredVisible(at date: Date) -> Bool {
@@ -539,9 +576,9 @@ struct PaykitSubscription: Identifiable, Hashable {
 
         guard let terms = record.terms,
               let recurrence = terms.recurrence.flatMap(PaykitSubscriptionRecurrence.init),
-              terms.amount.asset == PaykitIssuerInterop.bitcoinAsset,
-              let amountSats = PaykitPaymentRequest.sats(fromBitcoinAmount: terms.amount.value),
-              amountSats <= UInt64.max / 1000
+              let asset = PaykitAsset(rawValue: terms.amount.asset),
+              let amount = try? PaykitAmount(asset: asset, value: terms.amount.value),
+              asset != .btc || amount.atomic <= UInt64.max / 1000
         else { return nil }
 
         let proposalExpiresAt = terms.proposalExpiresAt.flatMap(PaykitPaymentRequest.parseDate)
@@ -550,14 +587,14 @@ struct PaykitSubscription: Identifiable, Hashable {
         }
 
         paymentRequestId = record.paymentRequestId
+        proposalStreamItemId = record.proposalStreamItemId
         counterparty = record.counterparty
-        counterpartyReceiverPath = record.counterpartyReceiverPath
-        amountValue = terms.amount.value
-        self.amountSats = amountSats
+        self.amount = amount
+        paymentReference = terms.paymentReference.exportText()
+        pricing = PaykitRequestPricing(conversion: terms.conversion, deadline: terms.paymentDeadline, quotes: record.conversionQuotes)
         note = PaykitPaymentRequest.note(from: terms.metadata).map { String($0.prefix(256)) }
         createdAt = record.lastEventAt.flatMap(PaykitPaymentRequest.parseDate)
         self.proposalExpiresAt = proposalExpiresAt
-        hasPaymentDeadline = terms.paymentDeadline != nil
         self.recurrence = recurrence
         metadata = PaykitSubscriptionMetadata(terms.metadata)
         acceptedPaymentEndpointIdentifiers = PaykitIssuerInterop.supportedEndpointIdentifiers(
@@ -577,7 +614,8 @@ struct PaykitSubscription: Identifiable, Hashable {
             else { continue }
             paymentsByPeriod[billingPeriod] = Payment(
                 billingPeriod: billingPeriod,
-                proofKind: PaykitPaymentProofKind(paymentEndpointIdentifier: proof.paymentEndpointIdentifier)
+                proofKind: PaykitPaymentProofKind(paymentEndpointIdentifier: proof.paymentEndpointIdentifier),
+                proofEventId: proof.eventId
             )
         }
         payments = paymentsByPeriod.values.sorted { $0.billingPeriod.startsAt < $1.billingPeriod.startsAt }
@@ -599,7 +637,7 @@ struct PaykitSubscription: Identifiable, Hashable {
     /// The period that accepting at `acceptedAt` makes due on the schedule clock `date`; `acceptedAt` is real time, which
     /// differs from `date` only while the subscription clock offset is on.
     func paymentDueOnAcceptance(at date: Date, acceptedAt: Date? = nil) -> PaykitPaymentRequest? {
-        guard isPayer, !hasPaymentDeadline else { return nil }
+        guard isPayer else { return nil }
         let acceptedAt = PaykitPreciseInstant(date: acceptedAt ?? date)
         guard let period = recurrence.periods(through: date, acceptedAt: acceptedAt).first else { return nil }
         return PaykitPaymentRequest(subscription: self, billingPeriod: period, lifecycleState: .activeRecurring)
@@ -727,7 +765,6 @@ actor PaykitSubscriptionNotificationScheduler {
         let previousClockOffset = lastClockOffset
         let eligibleSubscriptions = subscriptions.filter {
             $0.isPayer &&
-                !$0.hasPaymentDeadline &&
                 $0.recurrence.unit.isSupported &&
                 acceptedAt[$0.id] != nil
         }
@@ -819,7 +856,6 @@ actor PaykitSubscriptionNotificationScheduler {
                 "payer_identity": payerIdentity,
                 "payment_request_id": subscription.paymentRequestId,
                 "counterparty": subscription.counterparty,
-                "counterparty_receiver_path": subscription.counterpartyReceiverPath,
                 "billing_period_starts_at": PaykitSubscriptionTimestamp.string(from: period.startsAt),
             ]
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
@@ -857,14 +893,14 @@ enum PaykitSubscriptionNotificationIdentifier {
 
     static func identifier(identity: String, subscription: PaykitSubscription, period: PaykitBillingPeriod) -> String {
         "\(prefix)\(identity)|\(subscription.counterparty)|" +
-            "\(subscription.counterpartyReceiverPath)|\(subscription.paymentRequestId)|" +
+            "\(subscription.paymentRequestId)|" +
             PaykitSubscriptionTimestamp.string(from: period.startsAt)
     }
 
     static func identifier(identity: String, requestId: PaykitPaymentRequest.ID) -> String? {
         guard let startsAt = requestId.billingPeriodStartsAt else { return nil }
         return "\(prefix)\(identity)|\(requestId.counterparty)|" +
-            "\(requestId.counterpartyReceiverPath)|\(requestId.paymentRequestId)|" +
+            "\(requestId.paymentRequestId)|" +
             PaykitSubscriptionTimestamp.string(from: startsAt)
     }
 }

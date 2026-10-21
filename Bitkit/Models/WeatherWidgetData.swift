@@ -189,11 +189,8 @@ enum WeatherWidgetCache {
     /// Returns the cached percentile only when it's within the TTL window.
     static func loadPercentile(now: Date = Date()) -> FeePercentile? {
         guard let data = defaults().data(forKey: percentileKey),
-              let entry = try? JSONDecoder().decode(CachedFeePercentile.self, from: data)
-        else {
-            return nil
-        }
-        guard now.timeIntervalSince(entry.timestamp) <= percentileTTL else { return nil }
+              let entry = try? JSONDecoder().decode(CachedFeePercentile.self, from: data),
+              now.timeIntervalSince(entry.timestamp) <= percentileTTL else { return nil }
         return entry.percentile
     }
 

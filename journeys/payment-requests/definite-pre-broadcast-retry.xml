@@ -12,7 +12,7 @@
     <action>Swipe the send control (id "GRAB")</action>
     <action>Verify the send failure screen (id "SendFailure") appears</action>
     <action>Configure the same LNURL-pay invoice callback to succeed without publishing a new Paykit payment list</action>
-    <action>Tap Try Again (id "Retry")</action>
+    <action>Tap Try Again (id "Retry") without waiting for the next foreground request poll</action>
     <action>Verify the LNURL payment review appears again with 21,000 sats (id "ReviewAmount-primary" or "ReviewAmount-secondary", depending on the primary display setting)</action>
     <action>Swipe the send control (id "GRAB")</action>
     <action>Verify the payment success screen (id "SendSuccess") appears</action>

@@ -8,11 +8,15 @@ enum KeychainEntryType {
     case securityPin
     case paykitSession
     case paykitPendingPaymentProofs
+    case onchainSendAttempts
+    case paykitUsdtPayments
     case paykitPresentedPaymentRequests
+    case paykitAcceptedPaymentRequests
     case paykitSubscriptionState
-    case paykitReceiverNoiseSecretKey
-    case paykitSdkState
+    case paykitKeyGeneration(publicKey: String)
+    case paykitRecoveryBackup
     case paykitPendingBackupRestore
+    case paykitAllowanceState
     case pubkySecretKey
 
     var storageKey: String {
@@ -23,11 +27,15 @@ enum KeychainEntryType {
         case .securityPin: "security_pin"
         case .paykitSession: "paykit_session"
         case .paykitPendingPaymentProofs: "paykit_pending_payment_proofs"
+        case .onchainSendAttempts: "onchain_send_attempts"
+        case .paykitUsdtPayments: "paykit_usdt_payments"
         case .paykitPresentedPaymentRequests: "paykit_presented_payment_requests"
+        case .paykitAcceptedPaymentRequests: "paykit_accepted_payment_requests"
         case .paykitSubscriptionState: "paykit_subscription_state"
-        case .paykitReceiverNoiseSecretKey: "paykit_receiver_noise_secret_key"
-        case .paykitSdkState: "paykit_sdk_state"
+        case let .paykitKeyGeneration(publicKey): "paykit_key_generation_\(publicKey)"
+        case .paykitRecoveryBackup: "paykit_recovery_backup"
         case .paykitPendingBackupRestore: "paykit_pending_backup_restore"
+        case .paykitAllowanceState: "paykit_allowance_state"
         case .pubkySecretKey: "pubky_secret_key"
         }
     }

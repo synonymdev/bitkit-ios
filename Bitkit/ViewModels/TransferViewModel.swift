@@ -1,6 +1,10 @@
 import BitkitCore
+import Combine
 import LDKNode
 import SwiftUI
+
+/// Funding was dispatched but unresolved; confirmation must yield to its retained Pending sheet.
+struct OnchainFundingPendingError: Error {}
 
 struct TransferUiState {
     var clientBalanceSat: UInt64 = 0
@@ -26,6 +30,8 @@ struct TransferValues {
 struct HwSpendingState: Equatable {
     var isLoading = false
     var isSigning = false
+    /// Reaching the device before anything is on it to sign, which may be abandoned.
+    var isConnectingDevice = false
     var hasPendingBroadcast = false
     var isPassphraseRequired = false
     var isVerifyingPassphrase = false
@@ -61,12 +67,15 @@ enum HwTransferError: Error, Equatable {
     case broadcastUncertain
     /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
     case broadcastConnectivity
-    /// Trezor is locked or otherwise busy before signing can start.
-    case deviceBusy
+    /// The device is locked or otherwise busy before signing can start. Carries the vendor so the
+    /// toast can name the device.
+    case deviceBusy(HwWalletVendor)
     /// Firmware error (code 99) — user must reconnect the device.
     case firmwareReconnect
     /// The entered passphrase opened a different wallet than the one being spent from.
     case passphraseMismatch
+    /// The device holds another wallet than the one being spent from, so reconnecting cannot help.
+    case walletMismatch
     case funding(String?)
     case generic(String?)
 }
@@ -98,15 +107,21 @@ protocol HwTransferFunding: Sendable {
         addressType: AddressScriptType
     ) async throws -> UInt64
     func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
-    func broadcastFunding(serializedTx: String) async throws -> String
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
+    ) async throws -> String
 }
 
 /// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
 /// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
-/// reaching its transport. Implemented by `TrezorManager`.
+/// reaching its transport. Implemented by `HwWalletManager`.
 @MainActor
 protocol HwTransferConnecting: Sendable {
     func ensureConnected(walletId: String) async throws
+    /// How long `ensureConnected` may take for this wallet's device before the flow gives up.
+    func reconnectTimeout(walletId: String) -> Double
     func disconnectStaleSession(walletId: String) async
     func scheduleStaleSessionCleanup(walletId: String)
     /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
@@ -127,6 +142,9 @@ class TransferViewModel: ObservableObject {
 
     @Published var uiState = TransferUiState()
     private var fundedOrderId: String?
+    @Published private(set) var recoveredOnchainFundingOrderId: String?
+    private var pendingOnchainFunding: OnchainSendPendingContext?
+    private var fundingResolutionObservation: AnyCancellable?
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()
 
@@ -152,6 +170,9 @@ class TransferViewModel: ObservableObject {
 
     private let coreService: CoreService
     private let lightningService: LightningService
+    private let onchainAttemptService: OnchainSendAttemptService
+    private let onchainSender: any OnchainSending
+    private let onchainBalanceProvider: () -> UInt64
     private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
@@ -200,11 +221,17 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting? = nil,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
-        onBalanceRefresh: (() async -> Void)? = nil
+        hwTimeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 45, sign: 120, broadcast: 120),
+        onBalanceRefresh: (() async -> Void)? = nil,
+        onchainAttemptService: OnchainSendAttemptService = .shared,
+        onchainSender: (any OnchainSending)? = nil,
+        onchainBalanceProvider: (() -> UInt64)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
+        self.onchainAttemptService = onchainAttemptService
+        self.onchainSender = onchainSender ?? lightningService
+        self.onchainBalanceProvider = onchainBalanceProvider ?? { lightningService.balances?.totalOnchainBalanceSats ?? 0 }
         self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
@@ -221,6 +248,13 @@ class TransferViewModel: ObservableObject {
         } else {
             self.hwConnecting = nil
             hwSigner = nil
+        }
+        fundingResolutionObservation = OnchainSendAttemptService.localResolutionPublisher.sink { [weak self] resolution in
+            Task { @MainActor [weak self] in
+                guard let self, let context = pendingOnchainFunding,
+                      context.attemptId == resolution.attemptId, context.walletId == resolution.walletId else { return }
+                await resumeRecoveredOnchainFunding(context: context)
+            }
         }
     }
 
@@ -258,7 +292,7 @@ class TransferViewModel: ObservableObject {
         hwConnecting: HwTransferConnecting?,
         hwFeeRateProvider: (() async -> UInt64?)? = nil,
         hwAddressProvider: (() async throws -> String)? = nil,
-        hwTimeouts: (reconnect: Double, compose: Double, sign: Double, broadcast: Double) = (reconnect: 30, compose: 45, sign: 120, broadcast: 120),
+        hwTimeouts: (compose: Double, sign: Double, broadcast: Double) = (compose: 45, sign: 120, broadcast: 120),
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
@@ -298,8 +332,7 @@ class TransferViewModel: ObservableObject {
 
     /// Calculates the total value of channels connected to Blocktank nodes
     func totalBtChannelsValueSats(blocktankInfo: IBtInfo?) -> UInt64 {
-        guard let channels = lightningService.channels else { return 0 }
-        guard let btNodeIds = blocktankInfo?.nodes.map(\.pubkey) else { return 0 }
+        guard let channels = lightningService.channels, let btNodeIds = blocktankInfo?.nodes.map(\.pubkey) else { return 0 }
 
         let btChannels = channels.filter { channel in
             btNodeIds.contains(channel.counterpartyNodeId)
@@ -312,6 +345,12 @@ class TransferViewModel: ObservableObject {
 
     var isSpendingBusy: Bool {
         uiState.isConfirming || hwSpending.isSigning || hwSpending.isCreatingOrder
+    }
+
+    /// Whether the hardware sign screen may be left. Reaching the device (a Jade may wait minutes for
+    /// its PIN) can be abandoned, and leaving cancels it; once the device is asked to sign it cannot.
+    var canLeaveHwSign: Bool {
+        !isSpendingBusy || hwSpending.isConnectingDevice
     }
 
     func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false) {
@@ -352,6 +391,13 @@ class TransferViewModel: ObservableObject {
         isCurrent: () -> Bool
     ) async throws -> IBtOrder? {
         guard isCurrent() else { return nil }
+        if let retained = try await onchainAttemptService.blockingAttempt(),
+           retained.requestId == nil, retained.orderId != nil
+        {
+            let context = OnchainSendPendingContext(attemptId: retained.id, walletId: retained.walletId, txid: retained.txid)
+            await showFundingPending(context)
+            throw OnchainFundingPendingError()
+        }
         if let order = uiState.order {
             if pendingHwFundingBroadcast?.orderId == order.id {
                 return order
@@ -418,11 +464,18 @@ class TransferViewModel: ObservableObject {
         isMaxAmount: Bool = false,
         maxSendableAmount: UInt64? = nil
     ) async throws {
+        if let context = try await onchainAttemptService.orderPendingContext(orderId: order.id) {
+            await showFundingPending(context)
+            if recoveredOnchainFundingOrderId == order.id {
+                return
+            }
+            throw OnchainFundingPendingError()
+        }
         guard let address = order.payment?.onchain?.address else {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        let preTransferOnchainSats = lightningService.balances?.totalOnchainBalanceSats ?? 0
+        let preTransferOnchainSats = onchainBalanceProvider()
 
         // Verify we can afford the transfer when using sendAll
         if isMaxAmount, let maxSendable = maxSendableAmount, maxSendable < order.feeSat {
@@ -432,16 +485,6 @@ class TransferViewModel: ObservableObject {
             )
         }
 
-        // For sendAll (change would be dust), send entire balance
-        // Otherwise, send exact order.feeSat amount
-        let txid = try await lightningService.send(
-            address: address,
-            sats: order.feeSat,
-            satsPerVbyte: satsPerVbyte,
-            utxosToSpend: utxosToSpend,
-            isMaxAmount: isMaxAmount
-        )
-
         let txTotalSats = SpendingConfirmTotal.leavingAmount(
             orderFeeSat: order.feeSat,
             networkFeeSat: txFee,
@@ -449,31 +492,105 @@ class TransferViewModel: ObservableObject {
             maxSendable: maxSendableAmount
         )
 
-        // Pre-activity metadata lets the LDK activity sync recognize this send as a transfer.
-        let currentTime = UInt64(Date().timeIntervalSince1970)
-        let preActivityMetadata = BitkitCore.PreActivityMetadata(
-            walletId: WalletScope.default,
-            paymentId: txid,
-            tags: [],
-            paymentHash: nil,
-            txId: txid,
+        // For sendAll (change would be dust), send entire balance
+        // Otherwise, send exact order.feeSat amount
+        let result = try await onchainAttemptService.send(
+            using: onchainSender,
             address: address,
-            isReceive: false,
-            feeRate: UInt64(satsPerVbyte),
-            isTransfer: true,
-            channelId: nil,
-            createdAt: currentTime
+            amountSats: order.feeSat,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: utxosToSpend,
+            isMaxAmount: isMaxAmount,
+            orderId: order.id,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee, feeRate: satsPerVbyte, tags: [], contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            ),
+            transferContext: OnchainSendTransferContext(
+                clientBalanceSats: order.clientBalanceSat,
+                txTotalSats: txTotalSats,
+                preTransferOnchainSats: preTransferOnchainSats,
+                originalOrderFeeSats: order.feeSat
+            )
         )
-        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+        let txid: String
+        switch result {
+        case let .accepted(acceptedTxid):
+            txid = acceptedTxid
+        case let .rejected(rejectedTxid, reason):
+            if let context = try await onchainAttemptService.pendingContext(txid: rejectedTxid) {
+                await showFundingPending(context)
+                throw OnchainFundingPendingError()
+            }
+            throw AppError(
+                message: t("wallet__onchain_funding_rejected"),
+                debugMessage: "Broadcast rejected for \(rejectedTxid): \(reason)"
+            )
+        case let .unknown(unknownTxid):
+            if let context = try await onchainAttemptService.pendingContext(txid: unknownTxid) {
+                await showFundingPending(context)
+                throw OnchainFundingPendingError()
+            }
+            throw AppError(
+                message: t("wallet__onchain_funding_unknown"),
+                debugMessage: "Broadcast outcome unknown for \(unknownTxid)"
+            )
+        }
 
-        await fundPaidOrder(
-            order: order,
-            txId: txid,
-            txTotalSats: txTotalSats,
-            preTransferOnchainSats: preTransferOnchainSats
-        )
+        do {
+            guard try await onchainAttemptService.resumeAcceptedTransfer(
+                orderId: order.id, txid: txid, using: transferService
+            ) else { throw OnchainSendAttemptError.localFollowupNotSaved }
+        } catch {
+            Logger.warn("Accepted funding local follow-up remains guarded: \(error)", context: "TransferViewModel")
+            throw AppError(
+                message: t("wallet__onchain_funding_followup_failed"),
+                debugMessage: "Accepted funding transaction \(txid) for order \(order.id)"
+            )
+        }
+        fundedOrderId = order.id
+        lightningSetupStep = 0
+        await onBalanceRefresh?()
+        watchOrder(orderId: order.id)
     }
 
+    private func showFundingPending(_ context: OnchainSendPendingContext) async {
+        pendingOnchainFunding = context
+        sheetViewModel.showSheet(.send, data: SendConfig(view: .onchainPending(context)))
+        do {
+            if let attempt = try await onchainAttemptService.pendingAttempt(context: context),
+               attempt.status == .accepted, !attempt.localFollowupComplete,
+               let orderId = attempt.orderId, let txid = attempt.txid
+            {
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(orderId: orderId, txid: txid, using: transferService)
+            }
+        } catch {
+            Logger.warn("Accepted original funding follow-up remains Pending: \(error)", context: "TransferViewModel")
+        }
+        // Acceptance can precede the sheet and its subscription's next delivery.
+        await resumeRecoveredOnchainFunding(context: context)
+    }
+
+    private func resumeRecoveredOnchainFunding(context: OnchainSendPendingContext) async {
+        do {
+            guard pendingOnchainFunding?.attemptId == context.attemptId,
+                  pendingOnchainFunding?.walletId == context.walletId,
+                  let attempt = try await onchainAttemptService.pendingAttempt(context: context),
+                  attempt.status == .accepted, attempt.localFollowupComplete,
+                  attempt.requestId == nil, let orderId = attempt.orderId,
+                  fundedOrderId != orderId else { return }
+            pendingOnchainFunding = nil
+            fundedOrderId = orderId
+            lightningSetupStep = 0
+            watchOrder(orderId: orderId)
+            recoveredOnchainFundingOrderId = orderId
+            await onBalanceRefresh?()
+        } catch {
+            Logger.warn("Recovered funding order remains guarded: \(error)", context: "TransferViewModel")
+        }
+    }
+
+    @discardableResult
     private func fundPaidOrder(
         order: IBtOrder,
         txId: String,
@@ -483,8 +600,9 @@ class TransferViewModel: ObservableObject {
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil,
         activityWalletId: String = WalletScope.default
-    ) async {
+    ) async -> Bool {
         fundedOrderId = order.id
+        var trackingSaved = false
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
@@ -495,6 +613,7 @@ class TransferViewModel: ObservableObject {
                 preTransferOnchainSats: preTransferOnchainSats
             )
             Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
+            trackingSaved = true
         } catch {
             Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
         }
@@ -512,6 +631,7 @@ class TransferViewModel: ObservableObject {
         lightningSetupStep = 0
         await onBalanceRefresh?()
         watchOrder(orderId: order.id)
+        return trackingSaved
     }
 
     func startWatchingOrderFromRestart(_ order: IBtOrder) async {
@@ -682,8 +802,7 @@ class TransferViewModel: ObservableObject {
     }
 
     func updateHwFundingFeeEstimate(walletId: String) async {
-        guard let hwSigner else { return }
-        guard !hwSpending.hasPendingBroadcast else { return }
+        guard let hwSigner, !hwSpending.hasPendingBroadcast else { return }
         do {
             let address: String = if let orderAddress = uiState.order?.payment?.onchain?.address {
                 orderAddress
@@ -719,9 +838,10 @@ class TransferViewModel: ObservableObject {
             guard let order = try await orderForConfirmation(
                 createOrder: createOrder,
                 isCurrent: { self.hwOrderCreationToken == token }
-            ) else { return }
-            guard hwOrderCreationToken == token else { return }
+            ), hwOrderCreationToken == token else { return }
             onTransferToSpendingHwConfirm(order: order, walletId: walletId)
+        } catch is OnchainFundingPendingError {
+            return
         } catch {
             hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
         }
@@ -729,11 +849,7 @@ class TransferViewModel: ObservableObject {
 
     func onTransferToSpendingHwConfirm(order: IBtOrder, walletId: String) {
         guard !hwSpending.isSigning else { return }
-        guard let hwSigner else {
-            hwTransferError = .generic(t("common__error"))
-            return
-        }
-        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
+        guard let hwSigner, let address = order.payment?.onchain?.address, !address.isEmpty else {
             hwTransferError = .generic(t("common__error"))
             return
         }
@@ -756,6 +872,7 @@ class TransferViewModel: ObservableObject {
             guard let self else { return }
             defer {
                 self.hwSpending.isSigning = false
+                self.hwSpending.isConnectingDevice = false
                 self.hwSignTask = nil
             }
 
@@ -771,6 +888,8 @@ class TransferViewModel: ObservableObject {
                         address: address
                     ) { [weak self] funding in
                         self?.hwSpending.miningFeeSats = funding.miningFeeSats
+                    } onConnectingDevice: { [weak self] isConnecting in
+                        self?.hwSpending.isConnectingDevice = isConnecting
                     }
                     pendingHwFundingBroadcast = PendingHwFundingBroadcast(
                         orderId: order.id,
@@ -800,7 +919,7 @@ class TransferViewModel: ObservableObject {
             } catch let error as HwTransferError {
                 self.handleHardwareTransferFailure(error, walletId: walletId)
             } catch {
-                if error.isTrezorUserCancellation() {
+                if error.isHwUserCancellation() {
                     Logger.info("Hardware transfer cancelled on device for '\(walletId)'", context: "TransferViewModel")
                     return
                 }
@@ -876,6 +995,7 @@ class TransferViewModel: ObservableObject {
         hwSignTask?.cancel()
         hwSignTask = nil
         hwSpending.isSigning = false
+        hwSpending.isConnectingDevice = false
         activeHwTransferWalletId = nil
         if let walletId, let hwConnecting {
             Task {
@@ -904,11 +1024,13 @@ class TransferViewModel: ObservableObject {
         case .broadcastConnectivity:
             Logger.warn("Hardware funding broadcast connectivity failure for '\(walletId)'", context: "TransferViewModel")
         case .deviceBusy:
-            Logger.warn("Blocked hardware transfer for locked or busy Trezor '\(walletId)'", context: "TransferViewModel")
+            Logger.warn("Blocked hardware transfer for locked or busy device '\(walletId)'", context: "TransferViewModel")
         case .firmwareReconnect:
-            Logger.warn("Received Trezor firmware error for '\(walletId)'", context: "TransferViewModel")
+            Logger.warn("Received hardware firmware error for '\(walletId)'", context: "TransferViewModel")
         case .passphraseMismatch:
             Logger.warn("Rejected wrong passphrase for hardware wallet '\(walletId)'", context: "TransferViewModel")
+        case .walletMismatch:
+            Logger.warn("Rejected hardware device holding another wallet for '\(walletId)'", context: "TransferViewModel")
         case let .funding(message):
             Logger.warn("Failed to compose hardware funding for '\(walletId)': \(message ?? "")", context: "TransferViewModel")
         case .generic:
@@ -929,11 +1051,16 @@ class TransferViewModel: ObservableObject {
             hwTransferError = .passphraseMismatch
             return
         }
-        if error.isTrezorDeviceBusy() {
-            hwTransferError = .deviceBusy
+        if error is HwWalletMismatchError {
+            Logger.warn("Rejected hardware device holding another wallet for '\(walletId)'", context: "TransferViewModel")
+            hwTransferError = .walletMismatch
             return
         }
-        if error.isTrezorFirmwareError() {
+        if let vendor = error.hwBusyVendor {
+            hwTransferError = .deviceBusy(vendor)
+            return
+        }
+        if error.isHwFirmwareError() {
             hwTransferError = .firmwareReconnect
             return
         }
@@ -944,7 +1071,7 @@ class TransferViewModel: ObservableObject {
             }
             clearPendingHwFundingBroadcast()
         }
-        hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
+        hwTransferError = .generic(HwErrorPresenter.jadeMessage(from: error) ?? (error as? AppError)?.message ?? error.localizedDescription)
     }
 
     // MARK: - Balance Calculation
@@ -1360,19 +1487,19 @@ class TransferViewModel: ObservableObject {
                 _,
                 _,
                 fundingTxo
-            ) = event {
+            ) = event,
                 // Match by user channel ID
-                if eventUserChannelId.description == userChannelId {
-                    Task {
-                        await channelCapture.setChannelData(
-                            channelId: eventChannelId.description,
-                            fundingTxId: fundingTxo.txid.description
-                        )
-                        Logger.debug(
-                            "Captured channel pending event: channelId=\(eventChannelId.description) userChannelId=\(userChannelId) fundingTxId=\(fundingTxo.txid.description)",
-                            context: "TransferViewModel"
-                        )
-                    }
+               eventUserChannelId.description == userChannelId
+            {
+                Task {
+                    await channelCapture.setChannelData(
+                        channelId: eventChannelId.description,
+                        fundingTxId: fundingTxo.txid.description
+                    )
+                    Logger.debug(
+                        "Captured channel pending event: channelId=\(eventChannelId.description) userChannelId=\(userChannelId) fundingTxId=\(fundingTxo.txid.description)",
+                        context: "TransferViewModel"
+                    )
                 }
             }
         }
@@ -1810,8 +1937,8 @@ class TransferViewModel: ObservableObject {
         // routing failure for the paid hold invoice and resumes the failure wait below. The
         // returned payment id may land in either the event's payment id or its payment hash field.
         onEvent(eventId) { event in
-            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, reason) = event else { return }
-            guard [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
+            guard case let .paymentFailed(eventPaymentId, eventPaymentHash, reason) = event,
+                  [eventPaymentId, eventPaymentHash].compactMap({ $0 }).contains(paymentId) else { return }
             Task { await paymentFailure.markFailed(reason: reason) }
         }
 

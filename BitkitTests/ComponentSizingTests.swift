@@ -1,0 +1,75 @@
+@testable import Bitkit
+import BitkitCore
+import SwiftUI
+import XCTest
+
+@MainActor
+final class ComponentSizingTests: XCTestCase {
+    func testButtonsPreserveDefaultHeightsAndGrowForLargeText() {
+        for variant in [CustomButton.Variant.primary, .secondary, .tertiary] {
+            for isLoading in [false, true] {
+                let button = CustomButton(title: "Continue", variant: variant, isLoading: isLoading)
+                XCTAssertEqual(height(of: button, width: 343, size: .large), 56, accuracy: 1)
+            }
+            let title = "Cross-Network Deposits"
+            let button = CustomButton(title: title, variant: variant)
+            let textHeight = height(of: BodySSBText(title).fixedSize(horizontal: false, vertical: true), width: 311, size: .accessibility5)
+            XCTAssertGreaterThanOrEqual(height(of: button, width: 343, size: .accessibility5), textHeight + 24)
+        }
+        let manualEntry = RectangleButton(icon: "pencil", title: "Enter Manually", testID: "ManualEntry", action: {})
+        XCTAssertEqual(height(of: manualEntry, width: 343, size: .large), 72, accuracy: 1)
+        XCTAssertGreaterThan(height(of: manualEntry, width: 343, size: .accessibility5), 72)
+        for variant in [CustomButton.Variant.primary, .secondary] {
+            XCTAssertEqual(height(of: CustomButton(title: "Details", variant: variant, size: .small), width: 160, size: .large), 40, accuracy: 1)
+        }
+    }
+
+    func testTitlesAndCameraPermissionGrowForLargeText() {
+        let header = NavigationBar(title: "Cross-Network Deposits")
+            .environmentObject(AppViewModel()).environmentObject(NavigationViewModel())
+        XCTAssertEqual(height(of: header, width: 343, size: .large), 48, accuracy: 1)
+        XCTAssertGreaterThan(height(of: header, width: 343, size: .accessibility5), 100)
+        let sheet = SheetHeader(title: "Select Network", showBackButton: true)
+        XCTAssertGreaterThan(height(of: sheet, width: 280, size: .accessibility5), height(of: sheet, width: 280, size: .large))
+        let permission = ScannerPermissionRequest(onRequestPermission: {}).fixedSize(horizontal: false, vertical: true)
+        XCTAssertGreaterThan(height(of: permission, width: 280, size: .accessibility5), height(of: permission, width: 280, size: .large))
+    }
+
+    func testDepositRowsGrowToShowNetworkStatusAndAmountAtAccessibilitySizes() {
+        let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
+                                  sourceTx: "0x" + String(repeating: "ab", count: 32), status: "held",
+                                  code: "standing_route_unavailable", refundTx: nil)
+        let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
+        let amount = usdtOverviewAmount(50_000_001)
+        for width: CGFloat in [280, 320] {
+            let textWidth = width - 32
+            let networkHeight = height(of: BodyMSBText(deposit.networkLabel, kerning: 0, lineHeight: 22)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let statusHeight = height(of: CaptionBText(deposit.statusText, kerning: 0, lineHeight: 18)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let amountHeight = height(of: BodyMSBText(amount + " USDT", kerning: 0, lineHeight: 22)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let fiatHeight = height(of: CaptionBText("$" + amount, textColor: .textSecondary, kerning: 0, lineHeight: 18)
+                .fixedSize(horizontal: false, vertical: true), width: textWidth, size: .accessibility5)
+            let contentHeight = 40 + networkHeight + statusHeight + amountHeight + fiatHeight
+            XCTAssertEqual(height(of: row, width: width, size: .accessibility5), contentHeight + 64, accuracy: 1)
+        }
+    }
+
+    func testDepositRowsUseTheFullAvailableWidthWithLargeText() {
+        for network in ["polygon", "tron"] {
+            let deposit = UsdtDeposit(id: "deposit", network: network, asset: "USDT", amount: 1_000_000,
+                                      sourceTx: "0x" + String(repeating: "ab", count: 32), status: "pending", code: nil, refundTx: nil)
+            let row = UsdtDepositRow(deposit: deposit, hideBalance: false)
+            for width: CGFloat in [280, 320] {
+                let controller = UIHostingController(rootView: row.environment(\.dynamicTypeSize, .accessibility1))
+                XCTAssertEqual(controller.sizeThatFits(in: CGSize(width: width, height: 10000)).width, width, accuracy: 1)
+            }
+        }
+    }
+
+    private func height(of view: some View, width: CGFloat, size: DynamicTypeSize) -> CGFloat {
+        let controller = UIHostingController(rootView: view.environment(\.dynamicTypeSize, size))
+        return controller.sizeThatFits(in: CGSize(width: width, height: 10000)).height
+    }
+}

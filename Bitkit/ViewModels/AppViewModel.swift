@@ -28,21 +28,48 @@ struct ContactPaymentContext: Equatable {
     let id: UUID
     let publicKey: String
     let privatePaymentContext: PrivatePaykitPaymentContext?
-    let incomingPaymentRequest: PaykitPaymentRequest?
+    var incomingPaymentRequest: PaykitPaymentRequest?
     let isInitialSubscriptionPayment: Bool
+    let endpoints: [PublicPaykitService.Endpoint]
+
+    var requiresAssetSelection: Bool {
+        endpoints.contains { $0.methodId == .usdtArbitrum } ||
+            incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
+    }
+
+    func prefersUsdt(
+        onchainBalanceSats: UInt64,
+        canSendLightning: Bool = false,
+        usdtBalance: UInt64 = 0,
+        isUsdtEnabled: Bool = true
+    ) -> Bool {
+        guard endpoints.contains(where: { $0.methodId == .usdtArbitrum }) else { return false }
+        if !endpoints.contains(where: { $0.methodId != .usdtArbitrum }) {
+            return true
+        }
+        guard isUsdtEnabled else { return false }
+        if let request = incomingPaymentRequest, request.amount.asset != .btc {
+            let now = Date()
+            guard let payment = try? request.payment(using: .usdtArbitrum, at: now), payment.isValid(at: now) else { return false }
+            return usdtBalance >= payment.amount.atomic
+        }
+        return onchainBalanceSats == 0 && !canSendLightning && usdtBalance > 0
+    }
 
     init(
         id: UUID = UUID(),
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext? = nil,
         incomingPaymentRequest: PaykitPaymentRequest? = nil,
-        isInitialSubscriptionPayment: Bool = false
+        isInitialSubscriptionPayment: Bool = false,
+        endpoints: [PublicPaykitService.Endpoint] = []
     ) {
         self.id = id
         self.publicKey = publicKey
         self.privatePaymentContext = privatePaymentContext
         self.incomingPaymentRequest = incomingPaymentRequest
         self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
+        self.endpoints = endpoints
     }
 }
 
@@ -50,6 +77,7 @@ enum ManualEntryValidationResult: Equatable {
     case valid
     case empty
     case invalid
+    case onchainOnly
     case insufficientSavings
     case insufficientSpending
     case expiredLightningOnly
@@ -86,7 +114,27 @@ struct ScanPaymentOperations {
 }
 
 @MainActor
+struct PostMigrationSyncOperations {
+    var syncPayments: () async -> Void
+    var markActivitiesSeen: () async -> Void
+    var reapplyMetadata: (Bool) async -> Void
+
+    static func live(migrations: MigrationsService) -> Self {
+        Self(
+            syncPayments: { try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? []) },
+            markActivitiesSeen: { _ = await CoreService.shared.activity.markAllUnseenActivitiesAsSeen() },
+            reapplyMetadata: { await migrations.reapplyMetadataAfterSync(includeLocalMetadata: $0) }
+        )
+    }
+}
+
+@MainActor
 class AppViewModel: ObservableObject {
+    private var isSyncingMigration = false
+    private var isResettingMigration = false
+    private(set) var postMigrationSyncTask: Task<Void, Never>?
+    private let migrations: MigrationsService
+    private let postMigrationSyncOperations: PostMigrationSyncOperations
     // Send flow
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedOnchainInvoice: OnChainInvoice?
@@ -95,13 +143,38 @@ class AppViewModel: ObservableObject {
     @Published var isManualEntryInputValid: Bool = false
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
     @Published var contactPaymentContext: ContactPaymentContext?
-    private(set) var didRejectScannedPaymentForInsufficientBalance = false
+    private(set) var didRejectScannedPayment = false
+    @Published var paykitUsesUsdt = false
+    @Published var paykitReviewedAmount: PaykitAmount?
+    @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
+
+    var fixedLightningAmountSats: UInt64? {
+        guard !paykitUsesUsdt, selectedWalletToPayFrom == .lightning else { return nil }
+        if let amount = scannedLightningInvoice?.amountSatoshis, amount > 0 {
+            return amount
+        }
+        return lnurlPayData?.isFixedAmount == true ? lnurlPayData?.minSendableSat : nil
+    }
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
     @Published private(set) var pendingDeepLinkURL: URL?
+    /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
+    private var deepLinkAfterPubkyAuth: URL?
+    private var deepLinksRetainedWhileLocked: Set<URL> = []
+    private var lockedDeepLinkRoutesInFlight = 0
+    /// True while a deep link that arrived behind the PIN lock routes, so a payment opens for review instead of QuickPay.
+    var isRoutingDeepLinkFromLock: Bool {
+        lockedDeepLinkRoutesInFlight > 0
+    }
+
+    /// The last routed deep link. On a cold start the same link reaches the app twice (`onOpenURL` and the scene
+    /// delegate replay), and the startup gates can route the first delivery before the second arrives.
+    private var lastRoutedDeepLink: (url: URL, date: Date)?
+    static let duplicateDeepLinkWindow: TimeInterval = 3
+    var currentDate: () -> Date = Date.init
 
     // Onboarding
     @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
@@ -155,6 +228,7 @@ class AppViewModel: ObservableObject {
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
+    @Published private(set) var paykitOnchainPaymentResolution: PaykitOnchainPaymentResolution?
 
     /// App status init - shows "ready" until node is actually running
     /// This prevents flashing error status during startup/background transitions
@@ -165,7 +239,33 @@ class AppViewModel: ObservableObject {
         appStatusInit = true
     }
 
-    func retainDeepLink(_ url: URL) {
+    func retainDeepLink(_ url: URL, whileLocked: Bool = false) {
+        if let lastRoutedDeepLink, lastRoutedDeepLink.url == url,
+           currentDate().timeIntervalSince(lastRoutedDeepLink.date) < Self.duplicateDeepLinkWindow
+        {
+            Logger.debug("Ignoring duplicate delivery of a routed deep link", context: "AppViewModel")
+            return
+        }
+        if whileLocked {
+            deepLinksRetainedWhileLocked.insert(url)
+        }
+        let isPubkyAuth = Self.isPubkyAuthDeepLink(url)
+        if let pending = pendingDeepLinkURL, pending != url {
+            let pendingIsPubkyAuth = Self.isPubkyAuthDeepLink(pending)
+            if pendingIsPubkyAuth, !isPubkyAuth {
+                deepLinkAfterPubkyAuth = url
+                Logger.debug("Holding a deep link until the pending sign-in link is handled", context: "AppViewModel")
+                return
+            }
+            if !pendingIsPubkyAuth, isPubkyAuth {
+                deepLinkAfterPubkyAuth = pending
+                pendingDeepLinkURL = url
+                return
+            }
+        } else if pendingDeepLinkURL == nil, deepLinkAfterPubkyAuth != nil, !isPubkyAuth {
+            deepLinkAfterPubkyAuth = url
+            return
+        }
         pendingDeepLinkURL = url
     }
 
@@ -175,7 +275,14 @@ class AppViewModel: ObservableObject {
         pubkyContactsAreReady: Bool = true,
         handler: (URL) async -> Void
     ) async {
-        guard isReady, let url = pendingDeepLinkURL else { return }
+        guard isReady else { return }
+        // A link held behind a sign-in link whose sheet has just closed is only promoted here. Its change of
+        // `pendingDeepLinkURL` routes it through the caller's own preparation, such as a contact link waiting for a
+        // restore or a deletion.
+        guard !promoteDeepLinkAfterPubkyAuthIfIdle(), let url = pendingDeepLinkURL else { return }
+        if sheetViewModel.isPubkyAuthApprovalShownOrPending, !Self.isPubkyAuthDeepLink(url) {
+            return
+        }
         if PubkyContactLink.publicKey(from: url) != nil, !pubkyContactsAreReady {
             return
         }
@@ -183,7 +290,31 @@ class AppViewModel: ObservableObject {
             return
         }
         pendingDeepLinkURL = nil
+        lastRoutedDeepLink = (url, currentDate())
+        let isFromLock = deepLinksRetainedWhileLocked.remove(url) != nil
+        if isFromLock {
+            lockedDeepLinkRoutesInFlight += 1
+        }
         await handler(url)
+        if isFromLock {
+            lockedDeepLinkRoutesInFlight -= 1
+        }
+        deepLinksRetainedWhileLocked.formIntersection([pendingDeepLinkURL, deepLinkAfterPubkyAuth].compactMap { $0 })
+        promoteDeepLinkAfterPubkyAuthIfIdle()
+    }
+
+    @discardableResult
+    private func promoteDeepLinkAfterPubkyAuthIfIdle() -> Bool {
+        guard pendingDeepLinkURL == nil, !sheetViewModel.isPubkyAuthApprovalShownOrPending,
+              let next = deepLinkAfterPubkyAuth
+        else { return false }
+        deepLinkAfterPubkyAuth = nil
+        pendingDeepLinkURL = next
+        return true
+    }
+
+    private static func isPubkyAuthDeepLink(_ url: URL) -> Bool {
+        PubkyAuthRequest.isProtocolURL(url.absoluteString.removingLightningSchemes())
     }
 
     private static func requiresLightningNode(_ url: URL) -> Bool {
@@ -195,14 +326,14 @@ class AppViewModel: ObservableObject {
         }
         if url.scheme?.lowercased() == "bitkit",
            url.host?.lowercased() == "pubky-auth",
-           url.path == "/setup"
+           ["/setup", "/signin"].contains(url.path)
         {
             return false
         }
         if SamRockSetupRequest.isProtocolURL(url.absoluteString) {
             return false
         }
-        if url.scheme?.lowercased() == "bitcoin" {
+        if let scheme = url.scheme?.lowercased(), scheme == "bitcoin" || scheme == "ethereum" {
             return false
         }
         if isBolt11Invoice(url) {
@@ -226,6 +357,7 @@ class AppViewModel: ObservableObject {
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
     private let scanPaymentOperations: ScanPaymentOperations
+    private let usdtBalance: () -> UInt64?
     private var scannedDataHandlingId: UUID?
     private var manualEntryValidationSequence: UInt64 = 0
 
@@ -238,13 +370,19 @@ class AppViewModel: ObservableObject {
         coreService: CoreService = .shared,
         sheetViewModel: SheetViewModel,
         navigationViewModel: NavigationViewModel,
-        scanPaymentOperations: ScanPaymentOperations? = nil
+        scanPaymentOperations: ScanPaymentOperations? = nil,
+        usdtBalance: @escaping () -> UInt64? = { nil },
+        migrations: MigrationsService = .shared,
+        postMigrationSyncOperations: PostMigrationSyncOperations? = nil
     ) {
+        self.migrations = migrations
+        self.postMigrationSyncOperations = postMigrationSyncOperations ?? .live(migrations: migrations)
         self.lightningService = lightningService
         self.coreService = coreService
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
         self.scanPaymentOperations = scanPaymentOperations ?? .live(lightningService: lightningService)
+        self.usdtBalance = usdtBalance
 
         setupManualEntryValidationDebounce()
 
@@ -270,7 +408,7 @@ class AppViewModel: ObservableObject {
 
     /// Shows insufficient spending balance toast with amount-specific or generic description
     private func showInsufficientSpendingToast(invoiceAmount: UInt64, spendingBalance: UInt64) {
-        didRejectScannedPaymentForInsufficientBalance = true
+        didRejectScannedPayment = true
         let amountNeeded = invoiceAmount > spendingBalance ? invoiceAmount - spendingBalance : 0
         let description = amountNeeded > 0
             ? t(
@@ -287,11 +425,27 @@ class AppViewModel: ObservableObject {
         )
     }
 
-    /// Validates onchain balance and shows toast if insufficient. Returns true if sufficient.
+    private func validateIncomingOnchainPaymentRequestAmount(_ amount: UInt64) -> Bool {
+        guard contactPaymentContext?.incomingPaymentRequest != nil, amount < Env.dustLimit else { return true }
+        didRejectScannedPayment = true
+        toast(
+            type: .error,
+            title: t("wallet__lnurl_pay__error_min__title"),
+            description: t(
+                "wallet__lnurl_pay__error_min__description",
+                variables: ["amount": CurrencyFormatter.formatSats(UInt64(Env.dustLimit))]
+            ),
+            accessibilityIdentifier: "PaymentRequestAmountTooLowToast"
+        )
+        return false
+    }
+
+    /// Validates the onchain request amount and balance, showing feedback when invalid.
     private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
+        guard validateIncomingOnchainPaymentRequestAmount(invoiceAmount) else { return false }
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
-                didRejectScannedPaymentForInsufficientBalance = true
+                didRejectScannedPayment = true
                 let amountNeeded = invoiceAmount - onchainBalance
                 toast(
                     type: .error,
@@ -307,7 +461,7 @@ class AppViewModel: ObservableObject {
         } else {
             // Zero-amount invoice: user must have some balance to proceed
             guard onchainBalance > 0 else {
-                didRejectScannedPaymentForInsufficientBalance = true
+                didRejectScannedPayment = true
                 toast(
                     type: .error,
                     title: t("other__pay_insufficient_savings"),
@@ -328,6 +482,13 @@ class AppViewModel: ObservableObject {
                 title: t("other__scan_err_decoding"),
                 description: t("other__scan__error__generic"),
                 accessibilityIdentifier: "InvalidAddressToast"
+            )
+        case .onchainOnly:
+            toast(
+                type: .error,
+                title: t("hardware__send_onchain_only_title"),
+                description: t("hardware__send_onchain_only_text"),
+                accessibilityIdentifier: "HardwareOnchainOnlyToast"
             )
         case .insufficientSavings:
             toast(
@@ -426,10 +587,10 @@ extension AppViewModel {
     }
 
     func toast(_ error: Error) {
-        if error is CancellationError || error.isTrezorUserCancellation() {
+        if error is CancellationError || error.isHwUserCancellation() {
             return
         }
-        toast(type: .error, title: "Error", description: error.localizedDescription)
+        toast(type: .error, title: "Error", description: HwErrorPresenter.jadeMessage(from: error) ?? error.localizedDescription)
     }
 
     func toast(_ error: HwTransferError) {
@@ -464,8 +625,8 @@ extension AppViewModel {
                 title: t("hardware__send_broadcast_failed_title"),
                 description: t("hardware__send_broadcast_failed_text")
             )
-        case .deviceBusy:
-            toast(type: .info, title: t("hardware__device_busy"))
+        case let .deviceBusy(vendor):
+            toast(type: .info, title: HwErrorPresenter.deviceBusyMessage(for: vendor))
         case .firmwareReconnect:
             toast(
                 type: .error,
@@ -474,6 +635,8 @@ extension AppViewModel {
             )
         case .passphraseMismatch:
             toast(type: .error, title: t("common__error"), description: t("hardware__passphrase_mismatch"))
+        case .walletMismatch:
+            toast(type: .error, title: t("common__error"), description: t("hardware__wallet_mismatch"))
         case let .funding(message):
             toast(type: .error, title: t("common__error"), description: message ?? t("common__error_body"))
         case let .generic(message):
@@ -502,6 +665,17 @@ extension AppViewModel {
         pendingContactPaymentContexts[hash] = context
     }
 
+    func prepareResolvedOnchainContactContext(_ resolution: PaykitOnchainPaymentResolution, isHardware: Bool) {
+        if isHardware {
+            // Verified hardware activity already owns its contact, including later user edits.
+            consumeContactPaymentContext(forPendingPaymentHash: resolution.transactionId)
+        } else {
+            addPendingContactPaymentContext(
+                resolution.transactionId, context: ContactPaymentContext(publicKey: resolution.requestId.counterparty)
+            )
+        }
+    }
+
     func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
         pendingContactPaymentContexts[hash]
     }
@@ -516,6 +690,18 @@ extension AppViewModel {
         sendSheetPendingResolution = nil
     }
 
+    func retainPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, identity: String?) {
+        guard PubkyPublicKeyFormat.matches(resolution.identity, identity),
+              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId
+        else { return }
+        paykitOnchainPaymentResolution = resolution
+    }
+
+    func consumePaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
+        guard paykitOnchainPaymentResolution == resolution else { return }
+        paykitOnchainPaymentResolution = nil
+    }
+
     func beginQuickPay(paymentHash: String) {
         isQuickPayActive = true
         quickPayPaymentHash = paymentHash
@@ -528,6 +714,22 @@ extension AppViewModel {
     func resetQuickPay() {
         isQuickPayActive = false
         quickPayPaymentHash = nil
+    }
+}
+
+extension AppViewModel {
+    var paykitPaymentMethod: PublicPaykitService.MethodId {
+        if paykitUsesUsdt {
+            return .usdtArbitrum
+        }
+        return paykitBitcoinMethod(for: selectedWalletToPayFrom)
+    }
+
+    func paykitBitcoinMethod(for wallet: WalletType) -> PublicPaykitService.MethodId {
+        if wallet == .lightning {
+            return lnurlPayData != nil ? .bitcoinLightningLnurl : .bitcoinLightningBolt11
+        }
+        return PublicPaykitService.onchainMethodId(for: scannedOnchainInvoice?.address ?? "")
     }
 }
 
@@ -547,14 +749,49 @@ extension AppViewModel {
             }
         }
         scannedDataHandlingId = handlingId
-        didRejectScannedPaymentForInsufficientBalance = false
+        didRejectScannedPayment = false
         defer {
             if scannedDataHandlingId == handlingId {
                 scannedDataHandlingId = nil
             }
         }
 
-        let rawUri = uri
+        if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
+            resetSendState(preservingContactPaymentContext: true)
+            for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
+                switch try await decode(invoice: endpoint.paymentRequest) {
+                case let .onChain(invoice): scannedOnchainInvoice = invoice
+                case let .lightning(invoice): scannedLightningInvoice = invoice
+                case let .lnurlPay(data): lnurlPayData = data
+                default: break
+                }
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
+            }
+            let state = scanPaymentOperations.state()
+            let lightningMethod: PublicPaykitService.MethodId = lnurlPayData == nil ? .bitcoinLightningBolt11 : .bitcoinLightningLnurl
+            let lightningAmount = (try? context.incomingPaymentRequest?.payment(using: lightningMethod).amount.atomic) ??
+                scannedLightningInvoice?.amountSatoshis ?? lnurlPayData?.minSendableSat ?? 0
+            let hasLightning = scannedLightningInvoice != nil || lnurlPayData != nil
+            let canUseLightning = hasLightning && scanPaymentOperations.canSendLightning(max(1, lightningAmount))
+            paykitUsesUsdt = context.prefersUsdt(
+                onchainBalanceSats: max(state.spendableOnchainBalanceSats, alternativeOnchainBalanceSats),
+                canSendLightning: canUseLightning,
+                usdtBalance: usdtBalance() ?? 0,
+                isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
+            ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
+            selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
+            return
+        }
+
+        let rawUri: String
+        if scope == .onchainPayments, let context = claimedContactPaymentContext, !context.endpoints.isEmpty {
+            guard let endpoint = context.endpoints.first(where: { $0.methodId.onchainNetwork != nil }) else {
+                throw ScanHandlingError.unsupportedRequest
+            }
+            rawUri = endpoint.paymentRequest
+        } else {
+            rawUri = uri
+        }
         let sourceURI = rawUri.removingLightningSchemes()
         let uri = PubkyAuthRequest.normalizedProtocolURL(sourceURI)
         if let claimedContactPaymentContext, PubkyAuthRequest.isProtocolURL(sourceURI) {
@@ -639,7 +876,6 @@ extension AppViewModel {
             data = try await decode(invoice: uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
-        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
         let paymentState = scanPaymentOperations.state()
 
         if scope == .onchainPayments {
@@ -649,6 +885,9 @@ extension AppViewModel {
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
+            let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(
+                using: PublicPaykitService.onchainMethodId(for: invoice.address)
+            ).amount.atomic
             // Check network first - treat wrong network as decoding error
             let addressValidation = try? validateBitcoinAddress(address: invoice.address)
             let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
@@ -673,14 +912,17 @@ extension AppViewModel {
 
                     if lnNetworkMatch, !lightningInvoice.isExpired,
                        contactPaymentContext?.incomingPaymentRequest?
-                       .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
+                           .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
                     {
                         let nodeIsRunning = paymentState.isNodeRunning
 
                         if nodeIsRunning {
                             // Node is running → we have fresh balances; validate immediately.
                             // Prefer lightning; if insufficient or no channels/capacity, fall back to onchain.
-                            let canSendLightning = scanPaymentOperations.canSendLightning(requestedAmount ?? lightningInvoice.amountSatoshis)
+                            let canSendLightning = try scanPaymentOperations.canSendLightning(
+                                contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic ??
+                                    lightningInvoice.amountSatoshis
+                            )
 
                             if canSendLightning {
                                 handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
@@ -725,7 +967,7 @@ extension AppViewModel {
             }
 
             // Fallback to on-chain if address is available
-            guard !invoice.address.isEmpty else { return }
+            guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -743,6 +985,7 @@ extension AppViewModel {
 
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
+            let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningBolt11).amount.atomic
             // Check network first - treat wrong network as decoding error
             let invoiceNetwork = NetworkValidationHelper.convertNetworkType(invoice.networkType)
             if NetworkValidationHelper.isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network) {
@@ -877,6 +1120,23 @@ extension AppViewModel {
         }
     }
 
+    func handleRetainedHardwarePayment(_ proof: PendingPaykitPaymentProof, context: ContactPaymentContext) throws {
+        guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
+              context.publicKey == request.counterparty,
+              PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
+              let address = proof.onchainAddress, let amount = proof.onchainAmountSats,
+              let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier)
+        else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        paykitPaymentTerms = try request.payment(using: method, quoteId: proof.conversionQuoteId)
+        paykitReviewedAmount = paykitPaymentTerms?.amount
+        // This route submits an existing transaction, so it never admits fresh inputs against a balance.
+        handleScannedOnchainInvoice(OnChainInvoice(
+            address: address, amountSatoshis: amount, label: nil, message: nil, params: nil
+        ))
+    }
+
     private func handleScannedOnchainInvoice(_ invoice: OnChainInvoice) {
         selectedWalletToPayFrom = .onchain
         scannedOnchainInvoice = invoice
@@ -884,7 +1144,7 @@ extension AppViewModel {
     }
 
     func handleLnurlPayInvoice(_ data: LnurlPayData) throws {
-        let requestedAmount = contactPaymentContext?.incomingPaymentRequest?.amountSats
+        let requestedAmount = try contactPaymentContext?.incomingPaymentRequest?.payment(using: .bitcoinLightningLnurl, at: Date()).amount.atomic
         if let requestedAmount,
            requestedAmount < data.minSendableSat || requestedAmount > data.maxSendableSat
         {
@@ -906,7 +1166,8 @@ extension AppViewModel {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
-                description: t("other__lnurl_pay_error_no_capacity")
+                description: t("other__lnurl_pay_error_no_capacity"),
+                accessibilityIdentifier: "LnurlPayNoCapacityToast"
             )
             return
         }
@@ -982,9 +1243,17 @@ extension AppViewModel {
 
         if request.isSignup {
             do {
-                guard try !PubkyProfileManager.hasStoredIdentity() else {
+                let hasIdentity = try PubkyProfileManager.hasStoredIdentity()
+                if hasIdentity, !request.isGrantSignup {
                     sheetViewModel.hideSheetIfActive(.scanner, reason: "Pubky identity already exists")
                     toast(type: .info, title: t("pubky_auth__already_signed_in"))
+                    return
+                }
+                if !hasIdentity {
+                    sheetViewModel.showSheet(
+                        .pubkyAuthApproval,
+                        data: PubkyAuthApprovalConfig(request: request)
+                    )
                     return
                 }
             } catch {
@@ -993,12 +1262,6 @@ extension AppViewModel {
                 toast(type: .error, title: t("pubky_auth__approval_failed"), description: error.localizedDescription)
                 return
             }
-
-            sheetViewModel.showSheet(
-                .pubkyAuthApproval,
-                data: PubkyAuthApprovalConfig(request: request)
-            )
-            return
         }
 
         let hasSession = (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false
@@ -1037,10 +1300,13 @@ extension AppViewModel {
     }
 
     var hasSendPaymentTarget: Bool {
-        scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
+        paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }
 
     func resetSendState(preservingContactPaymentContext: Bool = false) {
+        paykitUsesUsdt = false
+        paykitReviewedAmount = nil
+        paykitPaymentTerms = nil
         scannedLightningInvoice = nil
         scannedOnchainInvoice = nil
         selectedWalletToPayFrom = .onchain // Reset to default
@@ -1048,6 +1314,7 @@ extension AppViewModel {
         lnurlWithdrawData = nil
         if !preservingContactPaymentContext {
             contactPaymentContext = nil
+            paykitOnchainPaymentResolution = nil
         }
         resetQuickPay()
     }
@@ -1068,7 +1335,12 @@ extension AppViewModel {
     }
 
     /// Queue validation with debounce
-    func validateManualEntryInput(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) {
+    func validateManualEntryInput(
+        _ rawValue: String,
+        savingsBalanceSats: Int,
+        spendingBalanceSats: Int,
+        scope: ScanHandlingScope = .unrestricted
+    ) {
         // Increment sequence first so any pending debounced requests become stale
         manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
@@ -1079,6 +1351,14 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
+            return
+        }
+
+        let paymentInput = normalized.removingLightningSchemes().lowercased()
+        if scope == .onchainPayments, paymentInput.hasPrefix("ethereum:") || paymentInput.hasPrefix("0x") {
+            manualEntryValidationResult = .onchainOnly
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .onchainOnly)
             return
         }
 
@@ -1115,6 +1395,16 @@ extension AppViewModel {
             } else {
                 manualEntryValidationResult = .invalid
                 isManualEntryInputValid = false
+                showValidationErrorToast(for: .invalid)
+            }
+            return
+        }
+
+        if normalized.lowercased().hasPrefix("ethereum:") || normalized.lowercased().hasPrefix("0x") {
+            let valid = (try? resolveUsdtPaymentRoute(input: normalized)) != nil
+            manualEntryValidationResult = valid ? .valid : .invalid
+            isManualEntryInputValid = valid
+            if !valid {
                 showValidationErrorToast(for: .invalid)
             }
             return
@@ -1242,8 +1532,7 @@ extension AppViewModel {
     ) async {
         defer { isCompletingRestoreHold = false }
         let restoreStartedAt = SettingsViewModel.shared.pendingRestoreActivitySeenSince
-        guard restoreStartedAt > 0 else { return }
-        guard await markAllSeen(restoreStartedAt) else { return }
+        guard restoreStartedAt > 0, await markAllSeen(restoreStartedAt) else { return }
         SettingsViewModel.shared.restoreSyncedBlockHeight = syncedBlockHeight
         SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
 
@@ -1314,8 +1603,7 @@ extension AppViewModel {
         isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync,
         restoreSyncedBlockHeight: UInt32? = nil
     ) -> Bool {
-        guard !isMigrating else { return false }
-        guard blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
+        guard !isMigrating, blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
         let age = abs(now.timeIntervalSince1970 - TimeInterval(confirmationTime))
         return age <= maxConfirmedOnlyReceiveAge
     }
@@ -1350,6 +1638,64 @@ extension AppViewModel {
         }
     }
 
+    /// Invalidates captured retries and drains queued activity writes before databases/defaults are wiped.
+    func cancelMigrationSyncForWipe() async {
+        isResettingMigration = true
+        migrations.invalidatePendingRetries()
+        postMigrationSyncTask?.cancel()
+        await postMigrationSyncTask?.value
+    }
+
+    /// Keep the retiring app paused on success, but resume retained metadata if the wipe aborts.
+    func withMigrationSyncPausedForWipe(_ wipe: () async throws -> Void) async rethrows {
+        await cancelMigrationSyncForWipe()
+        do {
+            try await wipe()
+        } catch {
+            isResettingMigration = false
+            throw error
+        }
+    }
+
+    private func beginPostMigrationSync() {
+        guard !isResettingMigration, !isSyncingMigration,
+              migrations.needsPostMigrationSync || migrations.shouldRetryPendingMigrationData
+        else { return }
+        let completingMigration = migrations.needsPostMigrationSync
+        let generation = migrations.retryGeneration
+        isSyncingMigration = true
+        postMigrationSyncTask = Task { @MainActor in
+            defer {
+                self.isSyncingMigration = false
+                self.postMigrationSyncTask = nil
+            }
+            guard migrations.isRetryCurrent(generation) else { return }
+            if completingMigration {
+                await postMigrationSyncOperations.syncPayments()
+                guard migrations.isRetryCurrent(generation) else { return }
+                await postMigrationSyncOperations.markActivitiesSeen()
+                guard migrations.isRetryCurrent(generation) else { return }
+            }
+            await postMigrationSyncOperations.reapplyMetadata(completingMigration)
+            guard migrations.isRetryCurrent(generation) else { return }
+            migrations.needsPostMigrationSync = false
+            migrations.recordPendingMigrationRetry()
+
+            if migrations.canCleanupAfterMigration {
+                if migrations.isShowingMigrationLoading {
+                    try? await LightningService.shared.restart()
+                    guard migrations.isRetryCurrent(generation) else { return }
+                }
+                SettingsViewModel.shared.updatePinEnabledState()
+                migrations.cleanupAfterMigration()
+            } else {
+                Logger.info("Post-migration sync incomplete, pending data will retry with backoff", context: "AppViewModel")
+            }
+            migrations.isRestoringFromRNRemoteBackup = false
+            migrations.isShowingMigrationLoading = false
+        }
+    }
+
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case let .paymentReceived(paymentId, _, amountMsat, _):
@@ -1370,7 +1716,7 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-            Task {
+            _ = Task {
                 // Use channelCache instead of cachedChannels array, as it's updated immediately
                 if let channel = await lightningService.getChannelFromCache(channelId: channelId) {
                     let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
@@ -1431,6 +1777,7 @@ extension AppViewModel {
                     paymentHash: paymentHash,
                     preimage: paymentPreimage
                 )
+                await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: true)
             }
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
@@ -1464,7 +1811,10 @@ extension AppViewModel {
             )
             let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
             if let paymentHash = paymentHash ?? paymentId {
-                Task { await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash) }
+                Task {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: false)
+                }
             }
             let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
             if let hash, awaitingSheet {
@@ -1592,30 +1942,7 @@ extension AppViewModel {
                 }
             }
 
-            if MigrationsService.shared.needsPostMigrationSync {
-                Task { @MainActor in
-                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.listPayments() ?? [])
-                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
-                    await MigrationsService.shared.reapplyMetadataAfterSync()
-
-                    if MigrationsService.shared.canCleanupAfterMigration {
-                        if MigrationsService.shared.isShowingMigrationLoading {
-                            try? await LightningService.shared.restart()
-                        }
-
-                        SettingsViewModel.shared.updatePinEnabledState()
-                        MigrationsService.shared.cleanupAfterMigration()
-                        MigrationsService.shared.needsPostMigrationSync = false
-                        MigrationsService.shared.isRestoringFromRNRemoteBackup = false
-                    } else {
-                        Logger.info("Post-migration sync incomplete, will retry on next sync", context: "AppViewModel")
-                    }
-
-                    if MigrationsService.shared.isShowingMigrationLoading {
-                        MigrationsService.shared.isShowingMigrationLoading = false
-                    }
-                }
-            }
+            beginPostMigrationSync()
 
         // MARK: Balance Events
 

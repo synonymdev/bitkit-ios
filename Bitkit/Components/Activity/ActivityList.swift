@@ -2,17 +2,10 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityList: View {
-    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
-
+    @Environment(UsdtWalletManager.self) private var usdt
     @EnvironmentObject var activity: ActivityListViewModel
-    @EnvironmentObject var contactsManager: ContactsManager
-    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
 
     let viewType: ActivityViewType
-
-    private var isPaykitUIActive: Bool {
-        PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled
-    }
 
     enum ActivityViewType {
         case all
@@ -22,31 +15,38 @@ struct ActivityList: View {
 
     var body: some View {
         let activities = getActivities()
-        let groupedItems = activity.groupActivities(activities)
-
-        if !groupedItems.isEmpty {
+        let rows = WalletActivity.grouped(WalletActivity.merged(activities, filteredUsdt))
+        if !rows.isEmpty {
             LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(zip(groupedItems.indices, groupedItems)), id: \.1) { index, groupItem in
-                    switch groupItem {
+                ForEach(Array(rows.enumerated()), id: \.element) { index, item in
+                    switch item {
                     case let .header(title):
-                        CaptionMText(title)
-                            .frame(height: 34, alignment: .bottom)
-
-                    case let .activity(item):
-                        NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(
-                                item: item,
-                                feeEstimates: feeEstimatesManager.estimates,
-                                contact: isPaykitUIActive ? item.contact(in: contactsManager.contacts) : nil
-                            )
-                        }
-                        .accessibilityIdentifier("Activity-\(index)")
+                        CaptionMText(title).frame(height: 34, alignment: .bottom)
+                    case let .activity(activity):
+                        WalletActivityRow(item: activity).accessibilityIdentifier("Activity-\(index)")
                     }
                 }
             }
         } else {
-            BodyMText(t("wallet__activity_no"))
-                .padding()
+            BodyMText(t("wallet__activity_no")).padding()
+        }
+    }
+
+    private var filteredUsdt: [UsdtTransfer] {
+        guard viewType == .all, activity.selectedTags.isEmpty else { return [] }
+        return usdt.transfers.filter { transfer in
+            let matchesTab: Bool = switch activity.selectedTab {
+            case .all: true
+            case .sent: !transfer.isIncoming
+            case .received: transfer.isIncoming
+            case .other: false
+            }
+            let date = Date(timeIntervalSince1970: TimeInterval(transfer.timestamp))
+            let start = activity.startDate.map { Calendar.current.startOfDay(for: $0) }
+            let end = activity.endDate.flatMap { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: $0)) }
+            let search = activity.searchText
+            return matchesTab && (start.map { date >= $0 } ?? true) && (end.map { date < $0 } ?? true) &&
+                transfer.matchesActivitySearch(search)
         }
     }
 
@@ -56,5 +56,12 @@ struct ActivityList: View {
         case .lightning: return activity.lightningActivities ?? []
         case .onchain: return activity.onchainActivities ?? []
         }
+    }
+}
+
+extension UsdtTransfer {
+    func matchesActivitySearch(_ search: String) -> Bool {
+        search.isEmpty || search.caseInsensitiveCompare("USDT") == .orderedSame ||
+            recipient.localizedCaseInsensitiveContains(search) || txHash?.localizedCaseInsensitiveContains(search) == true
     }
 }

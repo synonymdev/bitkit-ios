@@ -80,11 +80,11 @@ struct SnapCarousel<Item: Identifiable, Content: View>: UIViewRepresentable {
         }
 
         @objc func itemTapped(_ sender: UITapGestureRecognizer) {
-            if let itemView = sender.view, let stackView = itemView.superview as? UIStackView {
-                // Find the index in the stack view (accounting for the padding view at index 0)
-                if let index = stackView.arrangedSubviews.firstIndex(of: itemView), index > 0, index - 1 < parent.items.count {
-                    parent.onItemTap(parent.items[index - 1])
-                }
+            if let itemView = sender.view, let stackView = itemView.superview as? UIStackView,
+               // Find the index in the stack view (accounting for the padding view at index 0)
+               let index = stackView.arrangedSubviews.firstIndex(of: itemView), index > 0, index - 1 < parent.items.count
+            {
+                parent.onItemTap(parent.items[index - 1])
             }
         }
 

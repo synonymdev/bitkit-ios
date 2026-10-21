@@ -10,6 +10,7 @@ enum ScannerContext {
 
 @MainActor
 class ScannerManager: ObservableObject {
+    private let playScanSuccess: () -> Void
     private var app: AppViewModel?
     private var contactsManager: ContactsManager?
     private var currency: CurrencyViewModel?
@@ -20,6 +21,10 @@ class ScannerManager: ObservableObject {
     private var wallet: WalletViewModel?
     private weak var hwWalletManager: HwWalletManager?
     private var isHandlingScan = false
+
+    init(playScanSuccess: @escaping () -> Void = { Haptics.play(.scanSuccess) }) {
+        self.playScanSuccess = playScanSuccess
+    }
 
     func configure(
         app: AppViewModel,
@@ -55,16 +60,17 @@ class ScannerManager: ObservableObject {
         let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uri.isEmpty else { return }
 
-        Haptics.play(.scanSuccess)
-
         switch context {
         case .addContact:
+            playScanSuccess()
             handleAddContactScan(uri)
         case .main:
+            playScanSuccess()
             await handleMainScan(uri)
         case .send:
             await processSendScan(uri) { _ in }
         case .electrum:
+            playScanSuccess()
             await handleElectrumScan(uri)
         }
     }
@@ -91,6 +97,16 @@ class ScannerManager: ObservableObject {
         guard let app else { return }
 
         do {
+            if let route = try resolveUsdtPaymentRoute(input: uri) {
+                guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else { return }
+                let path = navigation?.path
+                sheets?.hideSheetBeforePerforming(reason: "Scanner routed USDT payment") { [weak self] in
+                    guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
+                          navigation?.path == path else { return }
+                    navigation?.navigate(route)
+                }
+                return
+            }
             if handlePubkyRouteIfNeeded(uri) {
                 return
             }
@@ -139,7 +155,7 @@ class ScannerManager: ObservableObject {
            let wallet
         {
             Task {
-                await contactsManager.refreshContactReceiverPaths(publicKey: publicKey, wallet: wallet)
+                await contactsManager.refreshContactLink(publicKey: publicKey, wallet: wallet)
             }
         }
         return true
@@ -167,8 +183,6 @@ class ScannerManager: ObservableObject {
             return
         }
 
-        Haptics.play(.scanSuccess)
-
         guard !PubkyAuthRequest.isProtocolURL(uri) else {
             app.toast(
                 type: .error,
@@ -179,7 +193,17 @@ class ScannerManager: ObservableObject {
             return
         }
 
+        playScanSuccess()
+
         do {
+            if scope == .unrestricted, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
+                guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else {
+                    completion(nil)
+                    return
+                }
+                completion(.usdtAddress(recipient: recipient, amount: amount))
+                return
+            }
             if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
                 completion(nil)
                 return
@@ -232,8 +256,12 @@ class ScannerManager: ObservableObject {
 
     private func handleElectrumScan(_ uri: String) async {
         guard let settings else { return }
+        let generation = settings.serverConnectionGeneration
+        guard settings.isCurrentServerConnection(generation) else { return }
+        let result = await settings.onElectrumScan(uri)
+        guard settings.isCurrentServerConnection(generation) else { return }
 
-        if let result = await settings.onElectrumScan(uri) {
+        if let result {
             if result.success {
                 app?.toast(
                     type: .success,
@@ -272,7 +300,9 @@ class ScannerManager: ObservableObject {
             return
         }
 
-        await handleScan(uri.trimmingCharacters(in: .whitespacesAndNewlines), context: context)
+        let value = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = ClipboardPromptHistory().recordInspection(changeCount: UIPasteboard.general.changeCount, supportedValue: value)
+        await handleScan(value, context: context)
     }
 
     func handleImageSelection(

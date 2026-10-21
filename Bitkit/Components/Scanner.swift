@@ -226,6 +226,8 @@ private struct ScannerCornerButtons: View {
 // MARK: - Scanner Component
 
 struct Scanner: View {
+    var accentColor: Color = .brandAccent
+    var permissionDescription: String = t("other__camera_no_text")
     @Environment(CameraManager.self) private var cameraManager
 
     let onScan: (QRCodePayload) async -> Void
@@ -237,7 +239,7 @@ struct Scanner: View {
         ZStack {
             if cameraManager.hasPermission {
                 #if targetEnvironment(simulator)
-                    Color.black
+                    Color.black.allowsHitTesting(false)
                 #else
                     ScannerCamera(
                         isTorchOn: isTorchOn,
@@ -245,6 +247,7 @@ struct Scanner: View {
                             await onScan(payload)
                         }
                     )
+                    .allowsHitTesting(false)
                 #endif
 
                 ScannerCornerButtons(
@@ -254,10 +257,15 @@ struct Scanner: View {
                     }
                 )
             } else {
-                ScannerPermissionRequest(onRequestPermission: cameraManager.requestPermission)
+                ScannerPermissionRequest(
+                    accentColor: accentColor,
+                    description: permissionDescription,
+                    onRequestPermission: cameraManager.requestPermission
+                )
             }
         }
         .cornerRadius(16)
+        .contentShape(Rectangle())
         .onAppear {
             guard !cameraManager.hasPermission else { return }
             cameraManager.requestPermissionIfNeeded()
@@ -266,26 +274,27 @@ struct Scanner: View {
 }
 
 struct ScannerPermissionRequest: View {
+    var accentColor: Color = .brandAccent
+    var description: String = t("other__camera_no_text")
     let onRequestPermission: () -> Void
 
     var body: some View {
-        Color.black
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                VStack(spacing: 0) {
-                    DisplayText(t("other__camera_no_title"), accentColor: .brandAccent)
-                        .padding(.bottom, 8)
-                    BodyMText(t("other__camera_no_text"))
-                        .padding(.bottom, 32)
-                    CustomButton(
-                        title: t("other__camera_no_button"),
-                        icon: Image("camera").foregroundColor(.textPrimary)
-                    ) {
-                        onRequestPermission()
-                    }
-                }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 16)
+        VStack(spacing: 0) {
+            DisplayText(t("other__camera_no_title"), accentColor: accentColor)
+                .padding(.bottom, 8)
+            BodyMText(description)
+                .padding(.bottom, 32)
+            CustomButton(
+                title: t("other__camera_no_button"),
+                icon: Image("camera").foregroundColor(.textPrimary)
+            ) {
+                onRequestPermission()
             }
+        }
+        .padding(.horizontal, 32)
+        .padding(.vertical, 16)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 }

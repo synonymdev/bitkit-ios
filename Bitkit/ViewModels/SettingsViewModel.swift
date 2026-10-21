@@ -99,6 +99,8 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .normal
     @AppStorage("hideBalance") var hideBalance: Bool = false
+    @AppStorage(UsdtPreference.key) var usdtPreference: UsdtPreference = .undecided
+
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
@@ -129,6 +131,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     @Published var rgsIsLoading: Bool = false
     @Published var rgsUrlIsValid: Bool = false
     private var rgsValidationCancellable: AnyCancellable?
+    private(set) var serverConnectionGeneration = UUID()
+    private var serverConnectionTasks: [UUID: Task<Void, Never>] = [:]
+    private var isWipingServerSettings = false
 
     // Services
     let lightningService: LightningService
@@ -210,9 +215,11 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Call after removePersistentDomain; singleton retains stale @AppStorage values.
     func resetToDefaults() {
+        invalidateServerConnections()
         _swipeBalanceToHide = true
         defaultTransactionSpeed = .normal
         hideBalance = false
+        usdtPreference = .undecided
         hideBalanceOnOpen = false
         readClipboard = false
         warnWhenSendingOver100 = false
@@ -241,10 +248,77 @@ class SettingsViewModel: NSObject, ObservableObject {
         BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
+        lastAddressTypeError = nil
         restoredMonitoredTypesFromBackup = false
+
+        loadElectrumSettings()
+        electrumIsConnected = false
+        electrumIsLoading = false
+
+        rgsValidationCancellable?.cancel()
+        loadRgsSettings()
+        rgsIsLoading = false
+        rgsUrlIsValid = false
+        setupRgsValidationDebounce()
+    }
+
+    func isCurrentServerConnection(_ generation: UUID) -> Bool {
+        generation == serverConnectionGeneration && !isWipingServerSettings && !Task.isCancelled
+    }
+
+    /// Invalidated attempts return nil so callers suppress stale toasts and navigation.
+    func withServerConnection<Result>(_ operation: @escaping @MainActor (UUID) async -> Result?) async -> Result? {
+        guard !isWipingServerSettings, !Task.isCancelled else { return nil }
+        let generation = serverConnectionGeneration
+        let id = UUID()
+        var result: Result?
+        let task = Task { result = await operation(generation) }
+        serverConnectionTasks[id] = task
+        defer { serverConnectionTasks.removeValue(forKey: id) }
+
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard isCurrentServerConnection(generation) else { return nil }
+        return result
+    }
+
+    func beginServerSettingsWipe() async {
+        isWipingServerSettings = true
+        invalidateServerConnections()
+        // Rust restarts are not cooperatively cancellable; drain them before wiping node storage.
+        let tasks = Array(serverConnectionTasks.values)
+        for task in tasks {
+            await task.value
+        }
+    }
+
+    func endServerSettingsWipe() {
+        isWipingServerSettings = false
+    }
+
+    private func invalidateServerConnections() {
+        serverConnectionGeneration = UUID()
+        electrumIsLoading = false
+        rgsIsLoading = false
+        for task in serverConnectionTasks.values {
+            task.cancel()
+        }
     }
 
     // MARK: - Computed Properties
+
+    var isUsdtEnabled: Bool {
+        Env.isUsdtEnabled && usdtPreference == .enabled
+    }
+
+    func protectUsdtFunds(_ hasProtectedFunds: Bool) {
+        if hasProtectedFunds {
+            usdtPreference = .enabled
+        }
+    }
 
     var electrumHasEdited: Bool {
         let formHost = electrumHost.trimmingCharacters(in: .whitespaces)
@@ -349,8 +423,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
-        guard !isChangingAddressType else { return false }
-        guard enabled || addressType != .nativeSegwit else { return false }
+        guard !isChangingAddressType, enabled || addressType != .nativeSegwit else { return false }
 
         isChangingAddressType = true
         lastAddressTypeError = nil
@@ -840,10 +913,10 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty {
-            if let server = parseElectrumServerUrlForRestore(electrumServerUrl) {
-                electrumConfigService.saveServerConfig(server)
-            }
+        if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
+           let server = parseElectrumServerUrlForRestore(electrumServerUrl)
+        {
+            electrumConfigService.saveServerConfig(server)
         }
 
         if let rgsServerUrl = dict["rgsServerUrl"] as? String, !rgsServerUrl.isEmpty {
@@ -866,6 +939,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
     private func syncAppStorageFromDefaults() {
+        usdtPreference = UsdtPreference(rawValue: defaults.string(forKey: UsdtPreference.key) ?? "") ?? .undecided
         _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
         defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "")
         hideBalance = defaults.bool(forKey: "hideBalance")
@@ -907,7 +981,8 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            blocktankRefundAddress: refundAddress
+            blocktankRefundAddress: refundAddress,
+            detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
         )
     }
 
@@ -936,5 +1011,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         } else {
             refundAddressStore.clear()
         }
+        CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
     }
 }

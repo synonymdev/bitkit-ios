@@ -59,6 +59,21 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
 
+    func testContactPaymentErrorsDoNotExposeSdkDetails() {
+        for error: Error in [
+            PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "peer operation in progress"),
+            PaykitError.SharedStateBusy(code: "shared_state_busy", context: "pending write"),
+            PaykitError.Transport(code: "transport", context: "private request failed"),
+        ] {
+            XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), t("other__try_again"))
+            XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(Bitkit.AppError(error: error)), t("other__try_again"))
+        }
+        XCTAssertNil(PaymentNavigationHelper.contactPaymentErrorDescription(CancellationError()))
+        XCTAssertNil(PaymentNavigationHelper.contactPaymentErrorDescription(Bitkit.AppError(error: CancellationError())))
+        let error = PrivatePaykitError.invalidPublicKey
+        XCTAssertEqual(PaymentNavigationHelper.contactPaymentErrorDescription(error), error.localizedDescription)
+    }
+
     func testEligibleInvoiceUsesQuickpayUnderDailyCap() {
         XCTAssertEqual(sendRoute(for: appWithEligibleInvoice), .quickpay)
     }
@@ -175,6 +190,25 @@ final class PaymentNavigationHelperTests: XCTestCase {
         XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
     }
 
+    func testContactWithUsdtLocksOnlyFixedLightningFunding() {
+        let app = appWithInvoice(paymentHash: "fixed", amountSatoshis: 10000)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkycontact", endpoints: [
+            .init(methodId: .usdtArbitrum, value: "0x1111111111111111111111111111111111111111", min: nil, max: nil, rawPayload: ""),
+        ])
+        XCTAssertEqual(contactPaymentRoute(for: app), .amount)
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 10000)
+        app.paykitUsesUsdt = true
+        XCTAssertNil(app.fixedLightningAmountSats)
+        app.paykitUsesUsdt = false
+        app.selectedWalletToPayFrom = .onchain
+        XCTAssertNil(app.fixedLightningAmountSats)
+        app.selectedWalletToPayFrom = .lightning
+        XCTAssertEqual(app.fixedLightningAmountSats, 10000)
+        app.scannedLightningInvoice = appWithInvoice(paymentHash: "amountless", amountSatoshis: 0).scannedLightningInvoice
+        XCTAssertNil(app.fixedLightningAmountSats)
+    }
+
     func testReserveRaceFallsBackToConfirm() {
         XCTAssertEqual(
             PaymentNavigationHelper.confirmRouteAfterQuickPayCap(app: appWithEligibleInvoice),
@@ -242,7 +276,6 @@ final class PaymentNavigationHelperTests: XCTestCase {
     private func incomingPaymentRequest(endpointIdentifier: String) throws -> PaykitPaymentRequest {
         let record = try PaymentRequestRecord(
             counterparty: "pubkycontact",
-            counterpartyReceiverPath: "bitkit/wallet",
             paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
             localRole: .payer,
             state: .proposed,
@@ -250,12 +283,17 @@ final class PaymentNavigationHelperTests: XCTestCase {
             proposalOutboundMessageId: nil,
             proposalOutboundStatus: nil,
             proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
                 acceptedPaymentEndpointIdentifiers: [endpointIdentifier],
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
                 conversion: nil,
                 paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")

@@ -4,14 +4,8 @@ import Foundation
 
 extension PrivatePaykitService {
     func closeAndClear() async {
-        initialLinkBurstTask?.cancel()
-        initialLinkBurstTask = nil
-        initialLinkBurstPublicKeys.removeAll()
-        initialLinkBurstGeneration += 1
-        pendingMessageDrainRetryTask?.cancel()
-        pendingMessageDrainRetryTask = nil
-        pendingMessageDrainRetryKeys.removeAll()
-        pendingMessageDrainRetryGeneration += 1
+        invalidateContactPreparation()
+        unavailableLinkRetryAt.removeAll()
         privatePaymentListConsumptions.removeAll()
         state = PrivatePaykitState(contacts: [:])
         knownSavedContactKeys.removeAll()
@@ -22,17 +16,25 @@ extension PrivatePaykitService {
     }
 
     func clearContactState(publicKey: String) async {
-        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else { return }
-        privatePaymentListConsumptions = privatePaymentListConsumptions.filter { $0.key.publicKey != normalizedKey }
-        let consumedVersions = state.contacts[normalizedKey]?.consumedPrivatePaymentListVersionsByReceiverPath ?? [:]
-        if consumedVersions.isEmpty {
-            state.contacts[normalizedKey] = nil
-        } else {
-            var contactState = ContactState()
-            contactState.consumedPrivatePaymentListVersionsByReceiverPath = consumedVersions
-            state.contacts[normalizedKey] = contactState
+        await clearContactStates(publicKeys: [publicKey])
+    }
+
+    func clearContactStates(publicKeys: [String]) async {
+        let keys = Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized))
+        guard !keys.isEmpty else { return }
+        privatePaymentListConsumptions = privatePaymentListConsumptions.filter { !keys.contains($0.key.publicKey) }
+        for key in keys {
+            unavailableLinkRetryAt[key] = nil
+            let consumedVersion = state.contacts[key]?.consumedPrivatePaymentListVersion
+            if consumedVersion == nil {
+                state.contacts[key] = nil
+            } else {
+                var contactState = ContactState()
+                contactState.consumedPrivatePaymentListVersion = consumedVersion
+                state.contacts[key] = contactState
+            }
         }
-        await PrivatePaykitAddressReservationStore.shared.clearContactAssignment(publicKey: normalizedKey)
+        await PrivatePaykitAddressReservationStore.shared.clearContactAssignments(publicKeys: Array(keys))
         persistState(markWalletBackup: true)
     }
 

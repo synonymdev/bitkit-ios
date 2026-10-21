@@ -18,6 +18,13 @@ extension LnurlPayData {
         minSendable == maxSendable || (minSendable > 0 && minSendableSat > maxSendableSat)
     }
 
+    func accepts(amountSats: UInt64) -> Bool {
+        if isFixedAmount {
+            return amountSats == minSendableSat
+        }
+        return amountSats >= max(1, minSendableSat) && amountSats <= maxSendableSat
+    }
+
     /// Returns the amount in millisatoshis for the LNURL-pay callback.
     ///
     /// For fixed-amount requests the original msat value is returned verbatim,

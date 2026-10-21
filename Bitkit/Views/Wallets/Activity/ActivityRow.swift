@@ -62,7 +62,7 @@ struct ActivityRow: View {
     }
 
     var body: some View {
-        Group {
+        ActivityRowContainer {
             switch item {
             case let .lightning(activity):
                 ActivityRowLightning(item: activity, contact: rowContactAvatar, titleOverride: rowTitleOverride)
@@ -70,8 +70,111 @@ struct ActivityRow: View {
                 ActivityRowOnchain(item: activity, feeEstimates: feeEstimates, contact: rowContactAvatar, titleOverride: rowTitleOverride)
             }
         }
-        .padding(16)
-        .background(Color.gray6)
-        .cornerRadius(16)
+    }
+}
+
+struct ActivityRowContainer<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content().padding(16).background(Color.gray6).cornerRadius(16)
+    }
+}
+
+struct ActivityRowContent<Icon: View, Amount: View>: View {
+    let title: String
+    let subtitle: String
+    var textKerning: CGFloat = 0.4
+    var titleLineHeight: CGFloat?
+    var subtitleLineHeight: CGFloat?
+    var textSpacing: CGFloat = 2
+    var stacked = false
+    @ViewBuilder var icon: () -> Icon
+    @ViewBuilder var amount: () -> Amount
+
+    var body: some View {
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(spacing: 16))
+        layout {
+            icon()
+            VStack(alignment: .leading, spacing: textSpacing) {
+                BodyMSBText(title, kerning: textKerning, lineHeight: titleLineHeight).lineLimit(stacked ? nil : 1)
+                CaptionBText(subtitle, kerning: textKerning, lineHeight: subtitleLineHeight).lineLimit(stacked ? nil : 1)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            if !stacked {
+                Spacer(minLength: 0)
+            }
+            amount()
+        }
+        .frame(maxWidth: stacked ? .infinity : nil, alignment: .leading)
+    }
+}
+
+enum WalletActivity: Hashable {
+    case bitcoin(Activity)
+    case usdt(UsdtTransfer)
+
+    enum GroupItem: Hashable {
+        case header(String)
+        case activity(WalletActivity)
+    }
+
+    var timestamp: UInt64 {
+        switch self {
+        case let .bitcoin(.lightning(item)): item.timestamp
+        case let .bitcoin(.onchain(item)): item.timestamp
+        case let .usdt(item): item.timestamp
+        }
+    }
+
+    static func merged(_ bitcoin: [Activity], _ usdt: [UsdtTransfer]) -> [WalletActivity] {
+        (bitcoin.map(Self.bitcoin) + usdt.map(Self.usdt)).sorted { $0.timestamp > $1.timestamp }
+    }
+
+    static func grouped(_ activities: [WalletActivity]) -> [GroupItem] {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        let boundaries = [
+            today,
+            calendar.date(byAdding: .day, value: -1, to: today) ?? today,
+            calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? today,
+            calendar.dateInterval(of: .month, for: now)?.start ?? today,
+            calendar.dateInterval(of: .year, for: now)?.start ?? today,
+        ]
+        var result: [GroupItem] = []
+        var groupStart = Date.distantFuture
+        for activity in activities {
+            let date = Date(timeIntervalSince1970: TimeInterval(activity.timestamp))
+            if result.isEmpty || date < groupStart {
+                groupStart = boundaries.first { date >= $0 }
+                    ?? calendar.dateInterval(of: .year, for: date)?.start ?? date
+                result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: min(date, now))))
+            }
+            result.append(.activity(activity))
+        }
+        return result
+    }
+}
+
+struct WalletActivityRow: View {
+    let item: WalletActivity
+    @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
+    @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
+    @EnvironmentObject private var contactsManager: ContactsManager
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    var body: some View {
+        switch item {
+        case let .bitcoin(activity):
+            NavigationLink(value: Route.activityDetail(activity)) {
+                ActivityRow(item: activity, feeEstimates: feeEstimatesManager.estimates,
+                            contact: PaykitFeatureFlags.isUIAvailable && isPaykitUIEnabled ? activity.contact(in: contactsManager.contacts) : nil)
+            }
+        case let .usdt(transfer):
+            NavigationLink(value: Route.usdtActivity(transferId: transfer.id)) {
+                UsdtActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
+            }
+        }
     }
 }

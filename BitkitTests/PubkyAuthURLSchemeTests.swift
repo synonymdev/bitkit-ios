@@ -41,7 +41,7 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
 
         let sheets = SheetViewModel()
         let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
-        let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
                 "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
         var routeCount = 0
@@ -81,13 +81,13 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
 
         XCTAssertNil(sheets.activeSheetConfiguration)
 
-        let duplicateRelayURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let duplicateRelayURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2Fa&relay=https%3A%2F%2Fb" +
             "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"
         try await app.handleScannedData(duplicateRelayURL)
         XCTAssertNil(sheets.activeSheetConfiguration)
 
-        let duplicateSecretURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let duplicateSecretURL = "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
             "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
             "&secret=first&secret=second\(grantRequester)&x-bitkit-claim=watch-only-account-v1"
         try await app.handleScannedData(duplicateSecretURL)
@@ -95,9 +95,37 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
     }
 
     @MainActor
+    func testColdStartDuplicateDeliveryOfRoutedURLRoutesOnce() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        var now = Date()
+        app.currentDate = { now }
+        let url = try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=/pub/locks.app/:rw" +
+                "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)"))
+        var routeCount = 0
+
+        // onOpenURL delivers the link and the startup gate routes it.
+        app.retainDeepLink(url)
+        await app.routePendingDeepLinkIfReady(true) { _ in routeCount += 1 }
+
+        // The scene delegate replays the same link 350 ms later.
+        now += 0.35
+        app.retainDeepLink(url)
+        XCTAssertNil(app.pendingDeepLinkURL)
+        await app.routePendingDeepLinkIfReady(true) { _ in routeCount += 1 }
+        XCTAssertEqual(routeCount, 1)
+
+        // Opening the same link again later still routes it.
+        now += AppViewModel.duplicateDeepLinkWindow
+        app.retainDeepLink(url)
+        await app.routePendingDeepLinkIfReady(true) { _ in routeCount += 1 }
+        XCTAssertEqual(routeCount, 2)
+    }
+
+    @MainActor
     func testNonNodeDeepLinksReleaseAfterStartupGatesWithoutWaitingForLDK() async throws {
         let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
-        let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.watchOnlyAccountCapabilities)" +
+        let pubkyURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/setup?caps=\(PubkyAuthClaim.requiredCapabilities)" +
                 "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
                 "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)&x-bitkit-claim=watch-only-account-v1"))
         let lightningPubkyAuthURL = try XCTUnwrap(URL(string: "lightning:pubkyauth://signin"))
@@ -118,6 +146,15 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         app.retainDeepLink(pubkyURL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
             XCTAssertEqual(routedURL, pubkyURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
+        let signinURL = try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=/pub/locks.app/:rw" +
+                "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)"))
+        app.retainDeepLink(signinURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, signinURL)
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 
@@ -163,6 +200,18 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
         }
         XCTAssertNil(app.pendingDeepLinkURL)
 
+        let usdtURL =
+            try XCTUnwrap(URL(string: "ethereum:\(PaykitUsdt.token)@42161/transfer?address=0x18503bD685aF84E6A7bC289898bAa1C3f5d8527E&uint256=10001"))
+        app.retainDeepLink(usdtURL)
+        await app.routePendingDeepLinkIfReady(false, nodeIsRunning: false) { _ in
+            XCTFail("USDT links must respect wallet startup gates")
+        }
+        XCTAssertEqual(app.pendingDeepLinkURL, usdtURL)
+        await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
+            XCTAssertEqual(routedURL, usdtURL)
+        }
+        XCTAssertNil(app.pendingDeepLinkURL)
+
         app.retainDeepLink(bolt11URL)
         await app.routePendingDeepLinkIfReady(true, nodeIsRunning: false) { routedURL in
             XCTAssertEqual(routedURL, bolt11URL)
@@ -185,5 +234,176 @@ final class PubkyAuthURLSchemeTests: XCTestCase {
             XCTAssertEqual(routedURL, lnurlURL)
         }
         XCTAssertNil(app.pendingDeepLinkURL)
+    }
+
+    @MainActor
+    func testPendingSignInLinkRoutesBeforeALaterLinkInEitherOrder() async throws {
+        let signinURL = try signinLink()
+        let bitcoinURL = try XCTUnwrap(URL(string: "bitcoin:bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080?amount=0.0001"))
+
+        for links in [[signinURL, bitcoinURL], [bitcoinURL, signinURL]] {
+            let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+            var routed: [URL] = []
+            for link in links {
+                app.retainDeepLink(link)
+            }
+
+            await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+            await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+
+            XCTAssertEqual(routed, [signinURL, bitcoinURL])
+            XCTAssertNil(app.pendingDeepLinkURL)
+        }
+    }
+
+    @MainActor
+    func testLinkWaitsUntilTheOpenPubkyAuthSheetCloses() async throws {
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        let signinURL = try signinLink()
+        let olderURL = try XCTUnwrap(URL(string: "bitcoin:bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080?amount=0.0001"))
+        let newerURL = try XCTUnwrap(URL(string: "bitcoin:bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080?amount=0.0002"))
+        var routed: [URL] = []
+
+        app.retainDeepLink(signinURL)
+        app.retainDeepLink(olderURL)
+        await app.routePendingDeepLinkIfReady(true) { url in
+            routed.append(url)
+            sheets.showSheet(.pubkyAuthApproval)
+        }
+        app.retainDeepLink(newerURL)
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        XCTAssertEqual(routed, [signinURL])
+
+        sheets.hideSheet()
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+
+        XCTAssertEqual(routed, [signinURL, newerURL])
+    }
+
+    @MainActor
+    func testHeldContactLinkIsPromotedWithoutRoutingSoItsPreparationRuns() async throws {
+        let sheets = SheetViewModel()
+        let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+        let contactURL = try XCTUnwrap(URL(string: "bitkit://contact?pubky=pubky\(String(repeating: "y", count: 52))"))
+        XCTAssertNotNil(PubkyContactLink.publicKey(from: contactURL))
+        let signinURL = try signinLink()
+        var routed: [URL] = []
+
+        // A contact link the app is holding while a sign-in link arrives waits behind it.
+        app.retainDeepLink(contactURL)
+        app.retainDeepLink(signinURL)
+        await app.routePendingDeepLinkIfReady(true) { url in
+            routed.append(url)
+            sheets.showSheet(.pubkyAuthApproval)
+        }
+        XCTAssertEqual(routed, [signinURL])
+        XCTAssertNil(app.pendingDeepLinkURL, "The contact link stays held while the sign-in sheet is open")
+
+        // When the sheet closes, the next call promotes the held contact link without routing it, so the view's
+        // restore or deletion preparation sees it before it opens.
+        sheets.hideSheet()
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        XCTAssertEqual(routed, [signinURL])
+        XCTAssertEqual(app.pendingDeepLinkURL, contactURL)
+
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        XCTAssertEqual(routed, [signinURL, contactURL])
+    }
+
+    @MainActor
+    func testNewerSignInLinkReplacesAnOlderPendingOne() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let olderURL = try signinLink(caps: "/pub/older/:rw")
+        let newerURL = try signinLink(caps: "/pub/newer/:rw")
+        var routed: [URL] = []
+
+        app.retainDeepLink(olderURL)
+        app.retainDeepLink(newerURL)
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+        await app.routePendingDeepLinkIfReady(true) { routed.append($0) }
+
+        XCTAssertEqual(routed, [newerURL])
+    }
+
+    @MainActor
+    func testPendingPubkyAuthSheetStaysTrackedWhenAnotherSheetShowsDuringItsReplacement() {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send)
+        sheets.showSheet(.pubkyAuthApproval)
+        XCTAssertTrue(sheets.isPubkyAuthApprovalShownOrPending)
+
+        sheets.showSheet(.receivedTx)
+
+        XCTAssertTrue(sheets.isPubkyAuthApprovalShownOrPending)
+    }
+
+    @MainActor
+    func testLinksThatCrossedThePinLockRouteWithoutQuickpay() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let signinURL = try signinLink()
+        let lockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1lockedpayment"))
+        let unlockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1unlockedpayment"))
+        var routedFromLock: [URL: Bool] = [:]
+
+        app.retainDeepLink(lockedURL, whileLocked: true)
+        app.retainDeepLink(signinURL, whileLocked: true)
+        await app.routePendingDeepLinkIfReady(true) { routedFromLock[$0] = app.isRoutingDeepLinkFromLock }
+        await app.routePendingDeepLinkIfReady(true) { routedFromLock[$0] = app.isRoutingDeepLinkFromLock }
+        app.retainDeepLink(unlockedURL)
+        await app.routePendingDeepLinkIfReady(true) { routedFromLock[$0] = app.isRoutingDeepLinkFromLock }
+
+        XCTAssertEqual(routedFromLock, [signinURL: true, lockedURL: true, unlockedURL: false])
+        XCTAssertFalse(app.isRoutingDeepLinkFromLock)
+    }
+
+    @MainActor
+    func testLockedLinkKeepsTheFromLockFlagWhileAnUnlockedLinkRoutesConcurrently() async throws {
+        let app = AppViewModel(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
+        let lockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1lockedpayment"))
+        let unlockedURL = try XCTUnwrap(URL(string: "lightning:lnbcrt1unlockedpayment"))
+        var lockedContinuation: CheckedContinuation<Void, Never>?
+        var unlockedContinuation: CheckedContinuation<Void, Never>?
+        var lockedFlagAfterResume: Bool?
+        var unlockedFlagAfterResume: Bool?
+
+        app.retainDeepLink(lockedURL, whileLocked: true)
+        let lockedRoute = Task { @MainActor in
+            await app.routePendingDeepLinkIfReady(true) { _ in
+                XCTAssertTrue(app.isRoutingDeepLinkFromLock, "locked link must start routing from lock")
+                await withCheckedContinuation { lockedContinuation = $0 }
+                lockedFlagAfterResume = app.isRoutingDeepLinkFromLock
+            }
+        }
+        while lockedContinuation == nil {
+            await Task.yield()
+        }
+
+        app.retainDeepLink(unlockedURL)
+        let unlockedRoute = Task { @MainActor in
+            await app.routePendingDeepLinkIfReady(true) { _ in
+                await withCheckedContinuation { unlockedContinuation = $0 }
+                unlockedFlagAfterResume = app.isRoutingDeepLinkFromLock
+            }
+        }
+        while unlockedContinuation == nil {
+            await Task.yield()
+        }
+
+        unlockedContinuation?.resume()
+        await unlockedRoute.value
+        lockedContinuation?.resume()
+        await lockedRoute.value
+
+        XCTAssertNotNil(unlockedFlagAfterResume)
+        XCTAssertEqual(lockedFlagAfterResume, true, "locked link lost its from-lock flag to a concurrent unlocked route")
+        XCTAssertFalse(app.isRoutingDeepLinkFromLock)
+    }
+
+    private func signinLink(caps: String = "/pub/locks.app/:rw") throws -> URL {
+        try XCTUnwrap(URL(string: "bitkit://pubky-auth/signin?caps=\(caps)" +
+                "&relay=https%3A%2F%2Fhttprelay.pubky.app%2Finbox%2F" +
+                "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s\(grantRequester)"))
     }
 }

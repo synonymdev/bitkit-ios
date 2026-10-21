@@ -3,14 +3,18 @@ import SwiftUI
 enum SendFundingSource: Equatable {
     case spending
     case savings
+    case usdt
     case hardware(walletId: String)
 }
 
 struct SendAmountView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
 
     @Binding var navigationPath: [SendRoute]
@@ -20,14 +24,27 @@ struct SendAmountView: View {
     @State private var maxSendableAmount: UInt64?
     @State private var routingFee: UInt64 = 0
     @State private var isContinuing = false
+    @State private var usdtAmount = ""
+    @State private var amountConversion = PaykitAmountEntryConversion()
+    @State private var conversionError: String?
+    @State private var showingFundingSources = false
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
     }
 
+    private var canEditAmount: Bool {
+        app.contactPaymentContext?.incomingPaymentRequest == nil && app.fixedLightningAmountSats == nil
+    }
+
     private var fundingSources: [SendFundingSource] {
+        if let request = app.contactPaymentContext?.incomingPaymentRequest,
+           PaykitUsdtPaymentService.shared.hasBinding(for: request.id)
+        {
+            return [.usdt]
+        }
         var sources: [SendFundingSource] = []
-        if app.scannedLightningInvoice != nil {
+        if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
             sources.append(.spending)
         }
         if app.scannedOnchainInvoice != nil {
@@ -39,10 +56,18 @@ struct SendAmountView: View {
                 return .hardware(walletId: hardwareWallet.walletId)
             })
         }
+        if settings.isUsdtEnabled,
+           app.contactPaymentContext?.endpoints.contains(where: { $0.methodId == .usdtArbitrum }) == true
+        {
+            sources.append(.usdt)
+        }
         return sources
     }
 
     private var selectedFundingSource: SendFundingSource {
+        if app.paykitUsesUsdt {
+            return .usdt
+        }
         if let walletId = hwSend.walletId {
             return .hardware(walletId: walletId)
         }
@@ -54,23 +79,11 @@ struct SendAmountView: View {
     }
 
     private var selectedSourceLabel: String {
-        return switch selectedFundingSource {
-        case .spending:
-            t("wallet__spending__title")
-        case .savings:
-            t("wallet__savings__title")
-        case let .hardware(walletId):
-            hwWalletManager.wallets.first(where: { $0.id == walletId })?.name
-                ?? t("hardware__device_model_trezor")
-        }
+        fundingSourceLabel(selectedFundingSource)
     }
 
     private var selectedSourceColor: Color {
-        switch selectedFundingSource {
-        case .spending: .purpleAccent
-        case .savings: .brandAccent
-        case .hardware: .blueAccent
-        }
+        fundingSourceColor(selectedFundingSource)
     }
 
     private var assetButtonTestIdentifier: String {
@@ -80,6 +93,7 @@ struct SendAmountView: View {
         return switch selectedFundingSource {
         case .spending: "spending"
         case .savings: "savings"
+        case .usdt: "usdt"
         case .hardware: "trezor"
         }
     }
@@ -100,92 +114,150 @@ struct SendAmountView: View {
     }
 
     private var isValidAmount: Bool {
+        if app.paykitUsesUsdt {
+            return (try? parsePaykitAmountInput(asset: .usdt, value: usdtAmount)).map { $0.atomic > 0 && $0.atomic <= (usdt.balance ?? 0) } ?? false
+        }
         let minAmount = app.selectedWalletToPayFrom == .lightning ? 1 : Env.dustLimit
 
+        if app.selectedWalletToPayFrom == .lightning, let data = app.lnurlPayData,
+           !data.accepts(amountSats: amountSats)
+        {
+            return false
+        }
         return amountSats >= minAmount && amountSats <= availableAmount
     }
 
     /// Determines if the current amount is a max amount send
     var isMaxAmountSend: Bool {
-        guard app.selectedWalletToPayFrom == .onchain else { return false }
+        guard app.selectedWalletToPayFrom == .onchain, app.contactPaymentContext?.incomingPaymentRequest == nil else { return false }
         return amountSats == availableAmount && amountSats > 0
     }
 
     var body: some View {
+        if app.paykitUsesUsdt, !settings.isUsdtEnabled {
+            UsdtIntroContent(isEnablePrompt: true, onDecline: { dismiss() },
+                             onEnable: { settings.usdtPreference = .enabled })
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             SheetHeader(
-                title: t("wallet__send_amount"),
+                title: t(app.paykitUsesUsdt ? "usdt__amount" : "wallet__send_amount"),
                 showBackButton: true,
-                action: AnyView(SendContactHeaderAvatar())
+                action: AnyView(SendContactHeaderAvatar()),
+                topPadding: app.paykitUsesUsdt ? 28 : 32,
+                bottomPadding: app.paykitUsesUsdt ? 22 : 24,
+                dragIndicatorTopPadding: app.paykitUsesUsdt ? 8 : nil
             )
 
             VStack(alignment: .leading, spacing: 0) {
-                NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
-                    .onTapGesture {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
-                    }
+                if app.paykitUsesUsdt {
+                    UsdtAmountHeader(amount: usdtAmount.isEmpty ? "0" : usdtAmount)
+                        .accessibilityIdentifier("SendNumberField")
+                } else {
+                    NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
+                        .onTapGesture { amountViewModel.togglePrimaryDisplay(currency: currency) }
+                }
+                if let conversionError {
+                    BodySText(conversionError, textColor: .brandAccent).padding(.top, 12)
+                }
 
                 Spacer()
 
                 // Available balance section
                 HStack(alignment: .bottom) {
-                    AvailableAmount(
-                        label: t("wallet__send_available"),
-                        amount: Int(availableAmount),
-                        testIdentifier: "AvailableAmount"
-                    )
-                    .onTapGesture {
-                        amountViewModel.updateFromSats(availableAmount, currency: currency)
+                    if app.paykitUsesUsdt {
+                        VStack(alignment: .leading, spacing: 4) {
+                            CaptionMText(t("wallet__send_available"), kerning: 1, lineHeight: 18)
+                            BodySSBText(settings.hideBalance ? "•••••" : "<accent>$</accent> " + (usdt.balance.map { usdtOverviewAmount($0) } ?? "—"),
+                                        accentColor: .textSecondary, kerning: 0, lineHeight: 20)
+                        }
+                    } else {
+                        AvailableAmount(
+                            label: t("wallet__send_available"),
+                            amount: Int(availableAmount),
+                            testIdentifier: "AvailableAmount"
+                        )
+                        .onTapGesture {
+                            guard canEditAmount else { return }
+                            amountConversion.reset()
+                            amountViewModel.updateFromSats(availableAmount, currency: currency)
 
-                        if app.selectedWalletToPayFrom == .lightning {
-                            app.toast(
-                                type: .info,
-                                title: t("wallet__send_max_spending__title"),
-                                description: t("wallet__send_max_spending__description")
-                            )
+                            if app.selectedWalletToPayFrom == .lightning {
+                                app.toast(
+                                    type: .info,
+                                    title: t("wallet__send_max_spending__title"),
+                                    description: t("wallet__send_max_spending__description")
+                                )
+                            }
                         }
                     }
-
                     Spacer()
 
                     NumberPadActionButton(
                         text: selectedSourceLabel,
                         imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        titleKerning: app.paykitUsesUsdt ? 1 : 0.8,
+                        titleLineHeight: app.paykitUsesUsdt ? 18 : nil,
                         color: selectedSourceColor,
                         variant: canSwitchFundingSource ? .primary : .secondary,
-                        disabled: !canSwitchFundingSource || isContinuing,
+                        disabled: isContinuing,
                         isLoading: hwSend.isFundingSourceLoading
                     ) {
-                        selectNextFundingSource()
+                        showingFundingSources = true
                     }
                     .accessibilityIdentifier("AssetButton-\(assetButtonTestIdentifier)")
-
-                    NumberPadActionButton(
-                        text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                        imageName: "arrow-up-down",
-                        color: .brandAccent
-                    ) {
-                        withAnimation {
-                            amountViewModel.togglePrimaryDisplay(currency: currency)
-                        }
+                    .popover(isPresented: $showingFundingSources, arrowEdge: .bottom) {
+                        fundingSourceMenu
+                            .presentationCompactAdaptation(.popover)
+                            .presentationBackground(Color.gray6)
                     }
-                    .accessibilityIdentifier("SendNumberPadUnit")
+
+                    if !app.paykitUsesUsdt {
+                        NumberPadActionButton(
+                            text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
+                            imageName: "arrow-up-down",
+                            color: .brandAccent
+                        ) {
+                            withAnimation {
+                                amountViewModel.togglePrimaryDisplay(currency: currency)
+                            }
+                        }
+                        .accessibilityIdentifier("SendNumberPadUnit")
+                    }
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, app.paykitUsesUsdt ? 16 : 12)
 
                 Divider()
 
                 NumberPad(
-                    type: amountViewModel.getNumberPadType(currency: currency),
-                    errorKey: amountViewModel.errorKey
+                    type: app.paykitUsesUsdt ? .decimal : amountViewModel.getNumberPadType(currency: currency),
+                    decimalSeparator: app.paykitUsesUsdt ? Locale.current.decimalSeparator ?? "." : ".",
+                    errorKey: amountViewModel.errorKey,
+                    isDisabled: !canEditAmount
                 ) { key in
-                    amountViewModel.handleNumberPadInput(key, currency: currency)
+                    amountConversion.reset()
+                    if app.paykitUsesUsdt {
+                        usdtAmount = NumberPadInputHandler.handleInput(
+                            key: key,
+                            current: usdtAmount,
+                            maxLength: 21,
+                            maxDecimals: 6
+                        )
+                    } else {
+                        amountViewModel.handleNumberPadInput(key, currency: currency)
+                    }
                 }
 
                 CustomButton(
                     title: t("common__continue"),
-                    isDisabled: !isValidAmount || hwSend.isFundingSourceLoading,
-                    isLoading: isContinuing
+                    isDisabled: !isValidAmount || conversionError != nil || hwSend.isFundingSourceLoading,
+                    isLoading: isContinuing,
+                    titleKerning: app.paykitUsesUsdt ? 0 : 0.4,
+                    titleLineHeight: app.paykitUsesUsdt ? 20 : nil
                 ) {
                     await onContinue()
                 }
@@ -196,7 +268,8 @@ struct SendAmountView: View {
         .accessibilityIdentifier("SendAmount")
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: app.paykitUsesUsdt ? .gray7 : .black, applyGradient: !app.paykitUsesUsdt))
+        .preference(key: SheetBackgroundPreferenceKey.self, value: app.paykitUsesUsdt ? .gray7 : nil)
         .onAppear {
             if !fundingSources.contains(selectedFundingSource), let firstSource = fundingSources.first {
                 selectFundingSource(firstSource)
@@ -216,6 +289,9 @@ struct SendAmountView: View {
                 amountViewModel.updateFromSats(existingAmount, currency: currency)
             }
 
+            updateRequestAmount()
+            updateFixedLightningAmount()
+
             // Calculate max sendable amount for onchain transactions
             if hwSend.isActive || app.selectedWalletToPayFrom == .onchain {
                 Task {
@@ -227,6 +303,12 @@ struct SendAmountView: View {
                 }
             }
         }
+        .task {
+            if usdt.shouldRefresh(enabled: settings.isUsdtEnabled) {
+                await usdt.refresh()
+            }
+        }
+        .onChange(of: paymentRequests.pendingRequests) { updateRequestAmount() }
         .onChange(of: app.selectedWalletToPayFrom) { _, newValue in
             // Recalculate max sendable amount when switching wallet types
             if hwSend.isActive || newValue == .onchain {
@@ -264,6 +346,29 @@ struct SendAmountView: View {
         defer { isContinuing = false }
 
         do {
+            if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                let terms = try request.payment(using: app.paykitPaymentMethod)
+                guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+                let expected = terms.amount
+                let entered = app.paykitUsesUsdt ? try parsePaykitAmountInput(asset: .usdt, value: usdtAmount) : PaykitAmount(
+                    asset: .btc,
+                    atomic: amountSats
+                )
+                guard expected == entered else { updateRequestAmount(); return }
+                app.paykitPaymentTerms = terms
+            }
+            if app.contactPaymentContext != nil {
+                app.paykitReviewedAmount = app.paykitUsesUsdt ? try parsePaykitAmountInput(asset: .usdt, value: usdtAmount) : PaykitAmount(
+                    asset: .btc,
+                    atomic: amountSats
+                )
+            }
+            if app.paykitUsesUsdt {
+                guard let recipient = app.contactPaymentContext?.endpoints.first(where: { $0.methodId == .usdtArbitrum })?.value else { return }
+                let amount = try parsePaykitAmountInput(asset: .usdt, value: usdtAmount)
+                navigationPath.append(.usdt(recipient: recipient, amount: amount.inputValue))
+                return
+            }
             wallet.sendAmountSats = amountSats
             wallet.isMaxAmountSend = isMaxAmountSend
 
@@ -294,7 +399,7 @@ struct SendAmountView: View {
                     return
                 }
 
-                navigationPath.append(.confirm)
+                navigationPath.append(app.lnurlPayData != nil && app.scannedLightningInvoice == nil ? .lnurlPayConfirm : .confirm)
                 return
             }
 
@@ -347,14 +452,126 @@ struct SendAmountView: View {
         amountViewModel.maxAmountOverride = availableAmount > 0 ? availableAmount : nil
     }
 
-    private func selectNextFundingSource() {
-        guard canSwitchFundingSource else { return }
-        let currentIndex = fundingSources.firstIndex(of: selectedFundingSource) ?? -1
-        selectFundingSource(fundingSources[(currentIndex + 1) % fundingSources.count])
+    private var fundingSourceMenu: some View {
+        let sources: [SendFundingSource] = [.savings, .spending] + hwWalletManager.wallets.map {
+            .hardware(walletId: $0.walletId)
+        } + (settings.isUsdtEnabled || app.paykitUsesUsdt ? [.usdt] : [])
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(sources.indices, id: \.self) { index in
+                let source = sources[index]
+                let enabled = fundingSources.contains(source)
+                Button {
+                    showingFundingSources = false
+                    selectFundingSource(source)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            CaptionMText(fundingSourceLabel(source), kerning: 1, lineHeight: 18).lineLimit(1)
+                            if case let .hardware(walletId) = source,
+                               let hardwareWallet = hwWalletManager.wallets.first(where: { $0.walletId == walletId })
+                            {
+                                HwWalletConnectionIcon(isConnected: hardwareWallet.isConnected)
+                                    .frame(width: 16, height: 16)
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            Image(fundingSourceIcon(source)).resizable().scaledToFit().frame(width: 24, height: 24)
+                            if source == .usdt {
+                                BodyMSBText(settings.hideBalance ? "•••••" : usdt.balance.map { usdtOverviewAmount($0) } ?? "—",
+                                            kerning: 0, lineHeight: 22)
+                            } else {
+                                MoneyText(sats: Int(fundingSourceBalance(source)), forceUnit: .bitcoin, size: .bodyMSB,
+                                          symbol: false, enableHide: true, fillsWidth: false, kerning: 0, lineHeight: 22)
+                            }
+                            Spacer(minLength: 0)
+                            if source == selectedFundingSource {
+                                Image("check-mark").resizable().scaledToFit().frame(width: 16, height: 16)
+                                    .foregroundStyle(fundingSourceColor(source))
+                            }
+                        }
+                    }
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(NoAnimationButtonStyle())
+                .disabled(!enabled || hwSend.isFundingSourceLoading)
+                .opacity(enabled ? 1 : 0.30)
+                .accessibilityIdentifier("SendFundingSource-\(index)")
+                if index < sources.count - 1 {
+                    CustomDivider()
+                }
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 12)
+        .frame(width: 250)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("SendFundingSources")
+    }
+
+    private func fundingSourceLabel(_ source: SendFundingSource) -> String {
+        switch source {
+        case .savings: t("wallet__savings__title")
+        case .spending: t("wallet__spending__title")
+        case .usdt: "USDT"
+        case let .hardware(walletId):
+            hwWalletManager.wallets.first { $0.walletId == walletId }?.name ?? hwWalletManager.vendor(walletId: walletId).modelName
+        }
+    }
+
+    private func fundingSourceColor(_ source: SendFundingSource) -> Color {
+        switch source {
+        case .savings: .brandAccent
+        case .spending: .purpleAccent
+        case .usdt: .usdtAccent
+        case .hardware: .blueAccent
+        }
+    }
+
+    private func fundingSourceIcon(_ source: SendFundingSource) -> String {
+        switch source {
+        case .savings: "btc"
+        case .spending: "ln"
+        case .usdt: "tether-circle"
+        case .hardware: "btc-circle-blue"
+        }
+    }
+
+    private func fundingSourceBalance(_ source: SendFundingSource) -> UInt64 {
+        switch source {
+        case .savings: UInt64(wallet.spendableOnchainBalanceSats)
+        case .spending: UInt64(wallet.maxSendLightningSats)
+        case let .hardware(walletId): hwWalletManager.fundingBalance(walletId: walletId)
+        case .usdt: 0
+        }
     }
 
     private func selectFundingSource(_ source: SendFundingSource) {
+        guard source != selectedFundingSource, fundingSources.contains(source) else { return }
+        let target: PaykitAsset = source == .usdt ? .usdt : .btc
+        let selectsFixedLightning = source == .spending &&
+            ((app.scannedLightningInvoice?.amountSatoshis ?? 0) > 0 || app.lnurlPayData?.isFixedAmount == true)
+        if app.contactPaymentContext?.incomingPaymentRequest != nil || (!selectsFixedLightning && app.paykitUsesUsdt != (source == .usdt)) {
+            do {
+                let value = app.contactPaymentContext?.incomingPaymentRequest?.amount ??
+                    (app.paykitUsesUsdt ? (try? parsePaykitAmountInput(asset: .usdt, value: usdtAmount)) : PaykitAmount(
+                        asset: .btc,
+                        atomic: amountSats
+                    ))
+                let converted = try app.contactPaymentContext?.incomingPaymentRequest?
+                    .payment(using: source == .usdt ? .usdtArbitrum : app.paykitBitcoinMethod(for: source == .spending ? .lightning : .onchain))
+                    .amount ?? amountConversion.converted(value, to: target, rate: currency.paykitRate, at: Date())
+                if target == .usdt {
+                    usdtAmount = converted.atomic == 0 ? "" : converted.inputValue
+                } else {
+                    amountViewModel.updateFromSats(converted.atomic, currency: currency)
+                }
+            } catch { conversionError = t("wallet__payment_request_rate_unavailable"); return }
+        }
+        conversionError = nil
+        app.paykitUsesUsdt = source == .usdt
         switch source {
+        case .usdt:
+            hwSend.selectWallet(nil)
         case .spending:
             hwSend.selectWallet(nil)
             app.selectedWalletToPayFrom = .lightning
@@ -374,6 +591,32 @@ struct SendAmountView: View {
             )
             app.selectedWalletToPayFrom = .onchain
         }
+        updateFixedLightningAmount()
+    }
+
+    private func updateFixedLightningAmount() {
+        guard app.contactPaymentContext?.incomingPaymentRequest == nil, let amount = app.fixedLightningAmountSats else { return }
+        amountViewModel.updateFromSats(amount, currency: currency)
+        wallet.sendAmountSats = amount
+    }
+
+    private func updateRequestAmount() {
+        guard let original = app.contactPaymentContext?.incomingPaymentRequest else { return }
+        let request = paymentRequests.pendingRequests.first { $0.id == original.id } ?? original
+        if request != original {
+            app.contactPaymentContext?.incomingPaymentRequest = request
+        }
+        do {
+            let terms = try request.payment(using: app.paykitPaymentMethod)
+            guard terms.isValid(at: Date()) else { throw PaykitPaymentRequestError.requestExpired }
+            let converted = terms.amount
+            if app.paykitUsesUsdt {
+                usdtAmount = converted.inputValue
+            } else {
+                amountViewModel.updateFromSats(converted.atomic, currency: currency)
+            }
+            conversionError = nil
+        } catch { conversionError = t("wallet__payment_request_rate_unavailable") }
     }
 
     private func showMaxExceededToast() {
@@ -399,8 +642,7 @@ struct SendAmountView: View {
             return
         }
 
-        guard let address = app.scannedOnchainInvoice?.address else { return }
-        guard let feeRate = wallet.selectedFeeRateSatsPerVByte else { return }
+        guard let address = app.scannedOnchainInvoice?.address, let feeRate = wallet.selectedFeeRateSatsPerVByte else { return }
 
         do {
             let maxAmount = try await wallet.calculateMaxSendableAmount(
@@ -421,8 +663,7 @@ struct SendAmountView: View {
     }
 
     private func calculateRoutingFee() async {
-        guard app.selectedWalletToPayFrom == .lightning else { return }
-        guard let bolt11 = app.scannedLightningInvoice?.bolt11 else { return }
+        guard app.selectedWalletToPayFrom == .lightning, let bolt11 = app.scannedLightningInvoice?.bolt11 else { return }
 
         let buffer: UInt64 = 2 // TODO: find out why this is needed
 

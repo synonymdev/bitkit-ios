@@ -43,15 +43,7 @@ struct ReceiveTag: View {
         defer { isLoading = false }
 
         do {
-            guard let paymentId = await wallet.paymentId(), !paymentId.isEmpty else {
-                app.toast(type: .error, title: "Failed to add tag", description: "Payment ID not available")
-                return
-            }
-
-            try await CoreService.shared.activity.addPreActivityMetadataTags(
-                paymentId: paymentId,
-                tags: [tag]
-            )
+            try await wallet.mutateReceiveTags(.add([tag]))
 
             tagManager.addTagToSelection(tag)
 

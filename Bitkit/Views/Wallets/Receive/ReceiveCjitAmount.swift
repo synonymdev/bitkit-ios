@@ -109,11 +109,7 @@ struct ReceiveCjitAmount: View {
     }
 
     private func onContinue() async {
-        guard !isCreatingCjit else {
-            return
-        }
-
-        guard canContinue else {
+        guard !isCreatingCjit, canContinue else {
             return
         }
 
