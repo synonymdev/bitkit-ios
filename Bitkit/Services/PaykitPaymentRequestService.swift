@@ -2236,6 +2236,7 @@ final class PaykitPaymentRequestManager {
         automaticPresentationDiagnosticReasons = [:]
         expiredRequestedPresentations = []
         reportedSilentExpirationIds = []
+        silentlyExpiredRequests = []
         unavailableRequestedPresentations = []
         requestedPresentationId = nil
         requestedSubscriptionProposalId = nil
@@ -2813,6 +2814,7 @@ final class PaykitPaymentRequestManager {
     private func recordSilentExpirations(at date: Date, excluding handledIds: [PaykitPaymentRequest.ID]) {
         let expired = pendingRequests.filter {
             $0.id != requestedPresentationId && !handledIds.contains($0.id) && !reportedSilentExpirationIds.contains($0.id)
+                && !processingRequestIds.contains($0.id)
                 && $0.direction == .incoming && $0.billingPeriod == nil && $0.lifecycleState == .proposed
                 && $0.isExpired(at: date)
         }
@@ -2835,6 +2837,7 @@ final class PaykitPaymentRequestManager {
         else { return nil }
 
         expiredRequestedPresentations.append(expiredRequest)
+        reportedSilentExpirationIds.insert(expiredRequest.id)
         requestedPresentationExpirationTrigger += 1
         return requestedPresentationId
     }

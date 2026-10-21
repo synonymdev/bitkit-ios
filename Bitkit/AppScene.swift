@@ -371,6 +371,7 @@ struct AppScene: View {
     @State private var foregroundReturnTracker = ForegroundReturnTracker()
     @State private var paykitLifecycleTask: Task<Void, Never>?
     @State private var isPaykitSceneActive = false
+    @State private var hasPendingExpiryToast = false
     @State private var isContactRefreshForeground = false
     @State private var shopContactImport: (id: UUID, task: Task<Void, Never>)?
     @State private var foregroundWalletSync: Task<Void, Never>?
@@ -540,6 +541,7 @@ struct AppScene: View {
             .onChange(of: jadeManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
+                    showPendingExpiryToast()
                     Task { await hwWalletManager.reconnectOnForeground() }
                     Task { await presentNextIncomingPaykitItem() }
                 }
@@ -705,8 +707,9 @@ struct AppScene: View {
                 handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
             .onChange(of: paykitPaymentRequestManager.silentExpirationTrigger) {
-                toastSilentlyExpiredPaymentRequests()
+                queueSilentExpiryToast()
             }
+            .onChange(of: scenePhase) { showPendingExpiryToast() }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
@@ -1827,9 +1830,22 @@ struct AppScene: View {
         IncomingPaykitPaymentRequestPresentationState(paykitPaymentRequestManager)
     }
 
-    private func toastSilentlyExpiredPaymentRequests() {
+    private func queueSilentExpiryToast() {
         let payingRequestId = app.contactPaymentContext?.incomingPaymentRequest?.id
         guard paykitPaymentRequestManager.silentlyExpiredRequests.contains(where: { $0.id != payingRequestId }) else { return }
+        hasPendingExpiryToast = true
+        showPendingExpiryToast()
+    }
+
+    /// Waits until the app is in front and unlocked, so the toast isn't shown, and lost, behind the PIN screen.
+    private func showPendingExpiryToast() {
+        guard hasPendingExpiryToast else { return }
+        guard PaykitFeatureFlags.isUIEnabled else {
+            hasPendingExpiryToast = false
+            return
+        }
+        guard scenePhase == .active, isPinVerified || !settings.pinEnabled else { return }
+        hasPendingExpiryToast = false
         app.toast(
             type: .error,
             title: t("wallet__payment_request"),
