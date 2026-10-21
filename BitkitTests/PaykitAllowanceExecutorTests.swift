@@ -608,6 +608,60 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(exceeds, "Only an allowance active now can take a request")
     }
 
+    func testFailedAutomaticPaymentReleasesThePaymentListItConsumed() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(
+                attemptId: "sent", request: request, stage: .sent, paymentHash: AllowanceHarness.paymentHash, paymentListVersion: 7
+            )]),
+            identity: Fixtures.identityKey
+        )
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: false)
+
+        let released = await harness.payer.releasedLists
+        XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 7, previousVersion: 6)])
+    }
+
+    func testRecoveryReleasesThePaymentListOfAnAttemptKilledBeforeSending() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-killed", attempts: [Fixtures.attemptRecord(id: "killed", status: .submitted)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "killed", request: request, stage: .submitted, paymentListVersion: 3)]),
+            identity: Fixtures.identityKey
+        )
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let released = await harness.payer.releasedLists
+        XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 3, previousVersion: 2)])
+    }
+
+    func testRecoveryReleasesThePaymentListOfAnAttemptReconciliationFailed() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-failed", attempts: [Fixtures.attemptRecord(id: "failed", status: .failed)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "failed", request: request, stage: .sent, paymentListVersion: 5)]),
+            identity: Fixtures.identityKey
+        )
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.failed])
+        let released = await harness.payer.releasedLists
+        XCTAssertEqual(released, [.init(publicKey: Fixtures.counterpartyKey, version: 5, previousVersion: 4)])
+    }
+
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()
@@ -1227,7 +1281,8 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         attemptId: String,
         request: PaykitPaymentRequest,
         stage: PaykitAllowanceLocalState.Stage,
-        paymentHash: String? = nil
+        paymentHash: String? = nil,
+        paymentListVersion: UInt64? = nil
     ) -> PaykitAllowanceLocalState.JournalEntry {
         PaykitAllowanceLocalState.JournalEntry(
             attemptId: attemptId,
@@ -1240,7 +1295,9 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
             onchainAddress: nil,
             transactionId: nil,
             stage: stage,
-            createdAt: Fixtures.now
+            createdAt: Fixtures.now,
+            paymentListVersion: paymentListVersion,
+            previousPaymentListVersion: paymentListVersion.map { $0 - 1 }
         )
     }
 }
@@ -1523,6 +1580,23 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
     ) async {
         called("resolvePaymentList")
         paymentListOutcomes.append(outcome)
+    }
+
+    struct ReleasedList: Equatable {
+        let publicKey: String
+        let version: UInt64
+        let previousVersion: UInt64?
+    }
+
+    private(set) var releasedLists: [ReleasedList] = []
+
+    func previousPaymentListVersion(publicKey: String, attemptId: UUID) async -> UInt64? {
+        nil
+    }
+
+    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) async {
+        called("releaseConsumedPaymentList")
+        releasedLists.append(ReleasedList(publicKey: publicKey, version: version, previousVersion: previousVersion))
     }
 
     func claimForExecution(_ request: PaykitPaymentRequest) async throws {

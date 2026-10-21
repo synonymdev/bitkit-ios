@@ -346,6 +346,28 @@ extension PrivatePaykitService {
         )
     }
 
+    /// Rolls back a list version a failed automatic payment consumed, which a restart may have left without its
+    /// in-memory consumption record. A newer consumption is left alone.
+    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) throws {
+        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            throw PrivatePaykitError.invalidPublicKey
+        }
+        guard var contactState = state.contacts[publicKey], contactState.consumedPrivatePaymentListVersion == version else { return }
+        let previousContactState = state.contacts[publicKey]
+        contactState.consumedPrivatePaymentListVersion = previousVersion
+        state.contacts[publicKey] = contactState
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[publicKey] = previousContactState
+            throw error
+        }
+        Logger.info(
+            "Released private Paykit payment list version \(version) for \(PubkyPublicKeyFormat.redacted(publicKey)) after a failed automatic payment",
+            context: "PrivatePaykit"
+        )
+    }
+
     func consumedPaymentListVersion(publicKey: String, attemptId: UUID? = nil) -> UInt64? {
         guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { return nil }
         if let attemptId, let consumption = privatePaymentListConsumptions[PrivatePaymentListConsumptionKey(attemptId: attemptId, publicKey: key)] {
