@@ -69,7 +69,7 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
     @ObservationIgnored private var isAcceptingOffers = false
-    @ObservationIgnored private var updateDepth = 0
+    private var updateDepth = 0
 
     /// Whether allowances are being refreshed or a pass is deciding requests, so a covered request may still change hands.
     var isUpdating: Bool {
@@ -382,9 +382,12 @@ final class PaykitAllowanceManager {
         return await executor.isHandling(request.id)
     }
 
-    /// Whether this wallet grants, or was asked to grant, the request's contact an allowance in any state.
+    /// Whether an allowance this wallet grants, or was asked to grant, could start covering the request's contact.
     func mayCover(_ request: PaykitPaymentRequest) -> Bool {
-        allowances.contains { $0.isAllower && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) }
+        allowances.contains {
+            $0.isAllower && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty) &&
+                ($0.lifecycleState == .proposed || $0.status(at: now()) == .active)
+        }
     }
 
     private func isAwaitingAutomaticPayment(_ request: PaykitPaymentRequest) -> Bool {

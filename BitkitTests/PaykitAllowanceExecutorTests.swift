@@ -210,6 +210,16 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerMayNotCoverAContactWhoseAllowanceEnded() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(state: .ended, terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertFalse(try manager.mayCover(Fixtures.paymentRequest()), "An ended allowance can't start covering a request")
+    }
+
+    @MainActor
     func testManagerKeepsADeferredRequestOffTheSendSheet() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -606,6 +616,20 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         )
 
         XCTAssertTrue(exceeds, "Only an allowance active now can take a request")
+    }
+
+    func testPaymentListReleasedBeforeBroadcastIsNeverReleasedAgain() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setLightningError(AllowanceMockError.unsupported)
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.definitePreBroadcastFailure])
+        let released = await harness.payer.releasedLists
+        XCTAssertEqual(released, [], "A second release could clear another payment's consumption of the same version")
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.paymentListVersion), [nil])
     }
 
     func testFailedAutomaticPaymentReleasesThePaymentListItConsumed() async throws {
