@@ -130,7 +130,9 @@ protocol PaykitAllowancePaying: Sendable {
     func claimForExecution(_ request: PaykitPaymentRequest) async throws
     /// Keeps this device the local owner of the request across the automatic Acceptance, as the manual flow does, so a
     /// request that was accepted but never paid comes back to the payer as an ordinary Payment Request.
-    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws
+    /// Returns whether this call added the intent, so a refused acceptance never drops one the manual flow saved.
+    @discardableResult
+    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws -> Bool
     func discardAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async
     func ensurePaymentAllowed(_ request: PaykitPaymentRequest) async throws
     func prepareProof(_ request: PaykitPaymentRequest, paymentAppId: String, paymentEndpointIdentifier: String, allowanceId: String?) async throws
@@ -172,11 +174,13 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         try await PaykitPaymentRequestService().claimForPayment(request)
     }
 
-    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws {
+    @discardableResult
+    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws -> Bool {
         let store = PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
         var ids = try store.load(identity: identity)
-        ids.insert(request.id)
+        guard ids.insert(request.id).inserted else { return false }
         try store.save(ids, identity: identity)
+        return true
     }
 
     func discardAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async {
@@ -383,6 +387,9 @@ actor PaykitAllowanceExecutor {
                         continue
                     }
                     try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
+                    if outcome == .succeeded {
+                        announceAutomaticPayment(attemptId: attempt.attemptId, identity: identity)
+                    }
                 case .succeeded, .failed:
                     continue
                 }
@@ -390,6 +397,30 @@ actor PaykitAllowanceExecutor {
         } catch {
             Logger.warn("Paykit allowance recovery failed: \(error)", context: "PaykitAllowance")
         }
+    }
+
+    /// Recovery settles payments no settlement event reported, so it raises the same contact link and notification.
+    private func announceAutomaticPayment(attemptId: String, identity: String) {
+        guard let entry = localState(identity: identity).journal.first(where: { $0.attemptId == attemptId }),
+              entry.isAutomatic, let paymentHash = entry.paymentHash
+        else { return }
+        Self.eventSubject.send(
+            .paidAutomatically(counterparty: entry.requestId.counterparty, amountSats: entry.amountSats, paymentId: paymentHash.lowercased())
+        )
+    }
+
+    /// Whether a covered request is over every limit of the contact's accepted allowances, decided without the node.
+    func exceedsLimits(_ request: PaykitPaymentRequest, allowances: [PaykitAllowance], identity: String) async -> Bool {
+        let covering = allowances.filter {
+            $0.isAllower && $0.lifecycleState == .accepted && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
+        }
+        guard !covering.isEmpty else { return false }
+        let attempts = await automaticAttempts()
+        guard !covering.contains(where: {
+            PaykitAllowanceCapacity.fits(amountSats: request.allowanceAmountSats, allowance: $0, attempts: attempts, now: now())
+        }) else { return false }
+        notifyLimitReached(request, identity: identity)
+        return true
     }
 
     private func verifiedOutcome(for attempt: Paykit.PaymentAttemptRecord, identity: String) async -> Paykit.PaymentOutcome? {
@@ -540,7 +571,7 @@ actor PaykitAllowanceExecutor {
         let paymentAppId = try payment.context.paymentAppId(for: endpointIdentifier)
         // The SDK requires this app to hold the shared execution claim before it queues an automatic Acceptance.
         try await payer.claimForExecution(request)
-        try await payer.recordAcceptanceIntent(request, identity: identity)
+        let recordedAcceptanceIntent = try await payer.recordAcceptanceIntent(request, identity: identity)
         let association: Paykit.AllowanceAssociationRecord
         do {
             association = try await sdk.acceptPaymentRequestAutomatically(
@@ -554,7 +585,9 @@ actor PaykitAllowanceExecutor {
             case is CancellationError, PaykitError.Transport, PaykitError.Storage, PaykitError.Identity:
                 break
             default:
-                await payer.discardAcceptanceIntent(request, identity: identity)
+                if recordedAcceptanceIntent {
+                    await payer.discardAcceptanceIntent(request, identity: identity)
+                }
             }
             throw error
         }
@@ -594,10 +627,17 @@ actor PaykitAllowanceExecutor {
 
         // Begin fetches nothing, so pull the link first: an End or a cancellation must be seen before the handoff.
         _ = try? await sdk.receivePrivateMessages(counterparty: request.counterparty)
-        let handoff = try await sdk.beginPaymentExecution(
-            attemptId: prepared.attemptId,
-            checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: trustedTime(identity: identity))
-        )
+        let handoff: Paykit.PaymentAttemptDecision
+        do {
+            handoff = try await sdk.beginPaymentExecution(
+                attemptId: prepared.attemptId,
+                checks: checks(request, endpointIdentifier: endpointIdentifier, trustedTime: trustedTime(identity: identity))
+            )
+        } catch {
+            // Nothing left the wallet, so release the reservation before the request goes back to manual payment.
+            try? await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
+            throw error
+        }
         guard case let .ready(submitted) = handoff else {
             try await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
             return .manual

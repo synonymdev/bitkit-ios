@@ -2194,6 +2194,15 @@ final class PaykitPaymentRequestManager {
         return true
     }
 
+    /// Ends a requested presentation the allowance flow owns, so it does not hold every other Paykit sheet back.
+    func releaseRequestedPresentation(_ request: PaykitPaymentRequest) {
+        guard requestedPresentationId == request.id else { return }
+        requestedPresentationId = nil
+        presentationRetryAttempts.removeValue(forKey: request.id)
+        presentationRetryDeadlines.removeValue(forKey: request.id)
+        presentationGeneration += 1
+    }
+
     func dismissPreparingRequest(_ request: PaykitPaymentRequest) {
         guard pendingRequests.contains(where: { $0.id == request.id }),
               requestedPresentationId == nil || requestedPresentationId == request.id,

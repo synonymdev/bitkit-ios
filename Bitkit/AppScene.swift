@@ -1422,7 +1422,11 @@ struct AppScene: View {
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
-            let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(paykitPaymentRequestManager.pendingRequests)
+            // A request whose manual sheet is already open stays with the user.
+            let manualRequestId = incomingPaymentRequestPreparation.flatMap { $0.ownsSheet(sheets) ? $0.request?.id : nil }
+            let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(
+                paykitPaymentRequestManager.pendingRequests.filter { $0.id != manualRequestId }
+            )
             let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
             if handledAutomatically || adoptedAcceptances, canRefresh() {
                 await paykitPaymentRequestManager.refresh(mode: .stored, canRefresh: canRefresh)
@@ -1589,6 +1593,7 @@ struct AppScene: View {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
                 if await paykitAllowanceManager.isAutomaticallyHandling(request) {
                     // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
+                    paykitPaymentRequestManager.releaseRequestedPresentation(request)
                     shouldPresentNextRequest = false
                     continue
                 }
