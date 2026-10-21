@@ -1956,7 +1956,8 @@ final class PaykitPaymentRequestManager {
                 request,
                 resultingState: .accepted,
                 markApprovedForPayment: true,
-                preservePending: !request.requiresAcceptance
+                preservePending: !request.requiresAcceptance,
+                failureRefreshMode: .stored
             ) {
                 guard $0.billingPeriod != nil || $0.requiresAcceptance || acceptedRequestIds.contains($0.id) else {
                     throw PaykitPaymentRequestError.requestUnavailable
@@ -2714,6 +2715,7 @@ final class PaykitPaymentRequestManager {
         resultingState: Paykit.PaymentRequestLifecycleState,
         markApprovedForPayment: Bool = false,
         preservePending: Bool = false,
+        failureRefreshMode: PaykitPaymentRequestRefreshMode = .full,
         operation: (PaykitPaymentRequest) async throws -> Void
     ) async throws {
         guard !request.isExpired(at: now()) else {
@@ -2764,7 +2766,7 @@ final class PaykitPaymentRequestManager {
         } catch {
             guard actionGeneration == stateGeneration else { throw error }
             invalidateRefresh()
-            await refresh(excludingProtectedRequestId: request.id, forceFresh: true)
+            await refresh(excludingProtectedRequestId: request.id, mode: failureRefreshMode, forceFresh: true)
             throw error
         }
     }
