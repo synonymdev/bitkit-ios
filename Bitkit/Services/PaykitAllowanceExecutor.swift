@@ -814,8 +814,9 @@ actor PaykitAllowanceExecutor {
     /// Reports a user-approved payment of an incoming request to the shared ledger before it leaves the wallet.
     /// Throws `alreadyRecorded` when another live attempt exists for the request, so the same request is never paid twice.
     func beginManualPayment(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String) async throws -> String? {
+        // The ledger counts bitcoin only, so a payment made over another rail stays out of it.
         guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming,
-              request.isAllowancePayable
+              request.isAllowancePayable, PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier).map({ $0 != .usdtArbitrum }) == true
         else { return nil }
         do {
             try await ensureReconciled(identity: identity)
