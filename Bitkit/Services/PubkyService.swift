@@ -1237,7 +1237,9 @@ actor PaykitSdkService {
         expectedProposalStreamItemId: UInt64
     ) async throws -> Paykit.AllowanceRecord {
         try await withStateRevisionTracking(priority: .interactive) { sdk in
-            try await sdk.acceptAllowance(
+            // Checked under the SDK lock, right before the write: profile deletion sets the flag before its own SDK work.
+            guard await !PrivatePaykitService.shared.isDeletingProfile else { throw PubkyServiceError.sessionNotActive }
+            return try await sdk.acceptAllowance(
                 counterparty: counterparty,
                 allowanceId: allowanceId,
                 expectedProposalStreamItemId: expectedProposalStreamItemId
