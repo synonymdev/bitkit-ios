@@ -166,6 +166,38 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerHandsBackARequestAboveTheLimitsWhileWaitingForAChannel() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { false }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        let aboveLimit = try Fixtures.paymentRequest(amount: "0.0001")
+        let withinLimits = try Fixtures.paymentRequest(id: "550e8400-e29b-41d4-a716-446655440002")
+        let events = AllowanceEventRecorder()
+
+        let handedBack = await manager.processIncomingRequests([aboveLimit, withinLimits])
+
+        XCTAssertTrue(handedBack)
+        let ownsAboveLimit = await manager.isAutomaticallyHandling(aboveLimit)
+        let ownsWithinLimits = await manager.isAutomaticallyHandling(withinLimits)
+        XCTAssertFalse(ownsAboveLimit, "A request over the limits goes to the Send sheet without waiting for a channel")
+        XCTAssertTrue(ownsWithinLimits, "A request within the limits waits for the channel")
+        XCTAssertEqual(events.events.filter {
+            if case .limitReached = $0 {
+                true
+            } else {
+                false
+            }
+        }.count, 1)
+        XCTAssertFalse(harness.log.entries.contains("payLightning"))
+    }
+
+    @MainActor
     func testManagerKeepsADeferredRequestOffTheSendSheet() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
@@ -441,6 +473,51 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         }
         XCTAssertEqual(paidEvents.count, 1)
         XCTAssertEqual(harness.log.entries.filter { $0 == "payLightning" || $0 == "payOnchain" }, [])
+    }
+
+    func testExecutionStartupErrorReleasesTheReservation() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setBeginError(AllowanceMockError.unsupported)
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: AllowanceSdkMock.automaticAttemptId, outcome: .failed)])
+        XCTAssertFalse(harness.log.entries.contains("payLightning"))
+    }
+
+    func testRefusedAcceptanceKeepsAnIntentTheManualFlowSaved() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        await harness.payer.seedAcceptanceIntent(request.id)
+        await harness.sdk.setAcceptError(AllowanceMockError.unsupported)
+
+        _ = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        let intents = await harness.payer.acceptanceIntents
+        XCTAssertEqual(intents, [request.id])
+        XCTAssertFalse(harness.log.entries.contains("discardAcceptanceIntent"))
+    }
+
+    func testRecoveryAnnouncesAnAutomaticPaymentItSettles() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-sent-paid", attempts: [Fixtures.attemptRecord(id: "sent-paid", status: .submitted)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(attemptId: "sent-paid", request: request, stage: .sent, paymentHash: paidHash)]),
+            identity: Fixtures.identityKey
+        )
+        await harness.lookup.setStatuses([paidHash: .succeeded(preimage: String(repeating: "0", count: 64))])
+        let events = AllowanceEventRecorder()
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let paid = events.events.filter { $0 == .paidAutomatically(counterparty: Fixtures.counterpartyKey, amountSats: 1000, paymentId: paidHash) }
+        XCTAssertEqual(paid.count, 1)
     }
 
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {
@@ -1349,9 +1426,15 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         claimedRequestIds.append(request.id)
     }
 
-    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws {
+    func recordAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async throws -> Bool {
         called("recordAcceptanceIntent")
+        guard !acceptanceIntents.contains(request.id) else { return false }
         acceptanceIntents.append(request.id)
+        return true
+    }
+
+    func seedAcceptanceIntent(_ id: PaykitPaymentRequest.ID) {
+        acceptanceIntents.append(id)
     }
 
     func discardAcceptanceIntent(_ request: PaykitPaymentRequest, identity: String) async {
@@ -1414,6 +1497,7 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
     private var automaticReservation: Paykit.PaymentAttemptDecision?
     private var manualReservation: Paykit.PaymentAttemptDecision?
     private var beginDecision: Paykit.PaymentAttemptDecision?
+    private var beginError: Error?
     private var acceptError: Error?
     private var acceptAllowanceError: Error?
     private var proposeGate: AllowanceGate?
@@ -1470,6 +1554,10 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func setProposeGate(_ gate: AllowanceGate?) {
         proposeGate = gate
+    }
+
+    func setBeginError(_ error: Error?) {
+        beginError = error
     }
 
     func linkedPeers() async throws -> [LinkedPeerRecord] {
@@ -1620,6 +1708,9 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
 
     func beginPaymentExecution(attemptId: String, checks: Paykit.PaymentExecutionChecks) async throws -> Paykit.PaymentAttemptDecision {
         log.append("beginPaymentExecution")
+        if let beginError {
+            throw beginError
+        }
         if let beginDecision {
             return beginDecision
         }

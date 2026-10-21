@@ -322,16 +322,22 @@ final class PaykitAllowanceManager {
 
     // MARK: Automatic payments
 
-    /// Pays incoming requests that an active Allowance covers. Returns whether any request was handled, so the
-    /// caller refreshes before presenting the rest for manual payment.
+    /// Pays incoming requests that an active Allowance covers. Returns whether any request was handled or handed back
+    /// for manual payment, so the caller refreshes before presenting the rest.
     func processIncomingRequests(_ requests: [PaykitPaymentRequest]) async -> Bool {
         guard let identity, !isProcessingRequests else { return false }
         let signature = allowancesSignature
         let covered = requests.filter(isAwaitingAutomaticPayment)
         guard !covered.isEmpty else { return false }
         guard canPayNow() else {
-            Logger.info("Holding \(covered.count) covered request(s) until the node has a usable channel", context: "PaykitAllowance")
-            return false
+            // A request over the limits needs the user anyway, so it is handed back before waiting for a channel.
+            var handedBack = false
+            for request in covered where await executor.exceedsLimits(request, allowances: allowances, identity: identity) {
+                manualRequestIds[request.id] = signature
+                handedBack = true
+            }
+            Logger.info("Holding covered requests until the node has a usable channel", context: "PaykitAllowance")
+            return handedBack
         }
 
         isProcessingRequests = true
