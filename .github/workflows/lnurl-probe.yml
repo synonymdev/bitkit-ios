@@ -16,9 +16,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: ios-26.2-a, os: "26.2" }
-          - { name: ios-26.2-b, os: "26.2" }
-          - { name: ios-26.0.1, os: "26.0.1" }
+          - { name: fix-a, os: "26.2" }
+          - { name: fix-b, os: "26.2" }
+          - { name: fix-c, os: "26.2" }
+          - { name: fix-d, os: "26.2" }
     name: lnurl ${{ matrix.name }}
     runs-on: namespace-profile-mac
     timeout-minutes: 60
@@ -117,7 +118,6 @@ jobs:
 
       - name: Run @lnurl_1
         id: test
-        continue-on-error: true
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "@lnurl_1"
         env:
