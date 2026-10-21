@@ -55,6 +55,7 @@ struct UsdtActivityDetail: View {
     let transferId: String
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @Environment(UsdtWalletManager.self) private var usdt
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var contacts: ContactsManager
@@ -174,9 +175,16 @@ struct UsdtActivityDetail: View {
     @ViewBuilder
     private func technicalDetails(_ transfer: UsdtTransfer) -> some View {
         if let txHash = transfer.txHash {
-            SendSectionView(t("wallet__activity_tx_id"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
-                BodySSBText(txHash, kerning: 0, lineHeight: 20).textSelection(.enabled)
+            Button {
+                UIPasteboard.general.string = txHash
+                app.toast(type: .success, title: t("common__copied"), description: txHash)
+            } label: {
+                SendSectionView(t("wallet__activity_tx_id"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
+                    BodySSBText(txHash, kerning: 0, lineHeight: 20)
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("UsdtActivityTxId")
         }
         if let sender = transfer.sender ?? (!transfer.isIncoming && !usdt.address.isEmpty ? usdt.address : nil) {
             SendSectionView(t("usdt__from_address"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {

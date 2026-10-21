@@ -7,6 +7,8 @@ struct UsdtSendView: View {
     var initialRecipient = ""
     var initialAmount = ""
     var embedded = false
+    /// Shown inside the send sheet's navigation stack: back from the amount step returns to the address step.
+    var hosted = false
     var paymentContext: ContactPaymentContext?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
     var onReviewChange: ((Bool) -> Void)?
@@ -47,6 +49,7 @@ struct UsdtSendView: View {
         initialRecipient: String = "",
         initialAmount: String = "",
         embedded: Bool = false,
+        hosted: Bool = false,
         paymentContext: ContactPaymentContext? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
         onReviewChange: ((Bool) -> Void)? = nil,
@@ -57,6 +60,7 @@ struct UsdtSendView: View {
         self.initialRecipient = initialRecipient
         self.initialAmount = initialAmount
         self.embedded = embedded
+        self.hosted = hosted
         self.paymentContext = paymentContext
         self.sendPayment = sendPayment
         self.onReviewChange = onReviewChange
@@ -136,7 +140,7 @@ struct UsdtSendView: View {
                         dismiss()
                     }
                 }, onEnable: { settings.usdtPreference = .enabled })
-            } else if embedded {
+            } else if embedded || hosted {
                 content
             } else {
                 NavigationStack { content }
@@ -661,7 +665,7 @@ struct UsdtSendView: View {
         if showingNetworks {
             showingNetworks = false; return
         }
-        if let onBack {
+        if let onBack, embedded || (hosted && quote == nil) {
             onBack(); return
         }
         if quote != nil {
@@ -717,7 +721,7 @@ struct UsdtSendView: View {
         guard let quote, !busy, !submitted else { return }
         var warnings: [String] = []
         if let balance = usdt.balance, quote.amount > balance / 2 {
-            warnings.append("wallet__send_dialog2")
+            warnings.append("wallet__send_dialog2_usdt")
         }
         if settings.warnWhenSendingOver100, quote.amount > 100_000_000 {
             warnings.append("wallet__send_dialog1")
