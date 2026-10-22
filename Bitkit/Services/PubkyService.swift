@@ -356,8 +356,8 @@ enum PubkyService {
         try await PaykitSdkService.shared.uploadAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
-    static func deletePaykitProfile() async throws {
-        try await PaykitSdkService.shared.deletePaykitProfile()
+    static func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
+        try await PaykitSdkService.shared.deletePaykitProfile(expectedIdentity: expectedIdentity)
     }
 
     // MARK: - Contacts
@@ -818,8 +818,11 @@ actor PaykitSdkService {
         return record.uri
     }
 
-    func deletePaykitProfile() async throws {
+    func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
         try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
             guard let publicKey = try await sdk.identityStatus()?.publicKey else { throw PubkyServiceError.sessionNotActive }
             guard let current = try await sdk.fetchPaykitProfile(publicKey: publicKey) else { return }
             try await sdk.deletePaykitProfile(expectedRevision: current.revision)
