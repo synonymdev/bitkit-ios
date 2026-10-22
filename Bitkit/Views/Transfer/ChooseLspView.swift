@@ -43,6 +43,7 @@ struct ChooseLspView: View {
                                 openURL(provider.url)
                             } label: {
                                 SettingsRow(title: provider.name)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("ChooseLspProvider")
