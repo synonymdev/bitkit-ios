@@ -10,15 +10,18 @@ enum ActivityBannerType {
 struct ActivityBanner: View {
     let type: ActivityBannerType
     let remainingDuration: String?
+    /// Shrinks the title to fit one line instead of truncating it.
+    let autoSizeTitle: Bool
 
     @State private var innerShadowOpacity: Double = 0.32
     @State private var dropShadowOpacity: Double = 1.0
     @State private var radialGradientOpacity: Double = 0.4
     @State private var borderOpacity: Double = 0.32
 
-    init(type: ActivityBannerType, remainingDuration: String? = nil) {
+    init(type: ActivityBannerType, remainingDuration: String? = nil, autoSizeTitle: Bool = false) {
         self.type = type
         self.remainingDuration = remainingDuration
+        self.autoSizeTitle = autoSizeTitle
     }
 
     private var accentColor: Color {
@@ -57,7 +60,7 @@ struct ActivityBanner: View {
                 .textCase(.uppercase)
                 .kerning(0)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(autoSizeTitle ? 12.0 / 20.0 : 1)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .frame(height: 72)

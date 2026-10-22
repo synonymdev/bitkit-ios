@@ -95,7 +95,7 @@ struct HomeWalletView: View {
 
             if wallet.hasTrustedChannels {
                 Button { navigation.navigate(.spendingWallet) } label: {
-                    ActivityBanner(type: .channelsClosing)
+                    ActivityBanner(type: .channelsClosing, autoSizeTitle: true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("ChannelsClosingBanner")
