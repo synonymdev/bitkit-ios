@@ -60,7 +60,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testTransientSendUnmountKeepsCurrentLnurlState() async throws {
         let (app, sheets, prompt, window, _) = makeHost()
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
@@ -82,7 +82,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testRemountDoesNotRepeatOptionsSetupAfterLnurlScan() async throws {
         let (app, sheets, prompt, window, wallet) = makeHost()
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         sheets.showSheet(.send, data: SendConfig(view: .options))
         try await Task.sleep(for: .seconds(1))
         app.resetSendState()
@@ -108,7 +108,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testRemountPreservesVariableLnurlEnteredAmount() async throws {
         let (app, sheets, prompt, window, wallet) = makeHost()
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = LnurlPayData(
             uri: "https://example.com/variable", callback: "https://example.com/callback",
             minSendable: 149_500, maxSendable: 200_999,
@@ -132,7 +132,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testRemountRetainsLnurlNavigationAndAmountDraft() async throws {
         let (app, sheets, prompt, window, wallet) = makeHost()
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = LnurlPayData(
             uri: "https://example.com/variable", callback: "https://example.com/callback",
             minSendable: 149_500, maxSendable: 200_999,
@@ -167,7 +167,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testNewScanStartsANewAmountDraftWithinTheSamePresentation() async throws {
         let (app, sheets, _, window, _) = makeHost()
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
@@ -187,7 +187,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testClosingUnmountedSendStillCleansPresentationState() async throws {
         let (app, sheets, prompt, window, wallet) = makeHost()
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
@@ -204,7 +204,7 @@ final class SendSheetLifecycleTests: XCTestCase {
 
     func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
         let (app, sheets, prompt, window, _) = makeHost(isEmbedded: true)
-        defer { window.isHidden = true; window.rootViewController = nil }
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         try await Task.sleep(for: .seconds(1))
@@ -228,6 +228,8 @@ final class SendSheetLifecycleTests: XCTestCase {
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         let app = AppViewModel()
         let wallet = WalletViewModel()
+        wallet.channelCount = 0
+        wallet.channels = []
         wallet.nodeLifecycleState = .running
         let sheets = SheetViewModel()
         if isEmbedded {
