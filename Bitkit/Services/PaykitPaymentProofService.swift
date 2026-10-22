@@ -51,6 +51,8 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
     let paymentEndpointIdentifier: String
     let kind: PaykitPaymentProofKind
     let billingPeriod: PaykitBillingPeriod?
+    /// Set only for an automatic Allowance payment, from its succeeded attempt. Manual payments omit it.
+    var allowanceId: String?
     var paymentStarted: Bool
     var paymentIdentifier: String?
     var proofData: String?
@@ -102,6 +104,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind,
         billingPeriod: PaykitBillingPeriod? = nil,
+        allowanceId: String? = nil,
         paymentStarted: Bool = false,
         paymentIdentifier: String?,
         proofData: String?,
@@ -119,6 +122,7 @@ struct PendingPaykitPaymentProof: Codable, Equatable {
         self.paymentEndpointIdentifier = paymentEndpointIdentifier
         self.kind = kind
         self.billingPeriod = billingPeriod
+        self.allowanceId = allowanceId
         self.paymentStarted = paymentStarted
         self.paymentIdentifier = paymentIdentifier
         self.proofData = proofData
@@ -350,7 +354,8 @@ actor PaykitPaymentProofService {
         paymentAppId: String,
         paymentEndpointIdentifier: String,
         kind: PaykitPaymentProofKind,
-        paymentTerms: PaykitRequestPricing.Payment? = nil
+        paymentTerms: PaykitRequestPricing.Payment? = nil,
+        allowanceId: String? = nil
     ) async throws {
         if try await attemptService.hasAttempt(for: request.id) {
             if kind == .onchain,
@@ -377,6 +382,7 @@ actor PaykitPaymentProofService {
         if kind == .onchain {
             proof.onchainAmountSats = payment.amount.atomic
         }
+        proof.allowanceId = allowanceId
         try await mutationLock.withLock { try await prepareLocked(request: request, proof: proof) }
     }
 
@@ -1682,7 +1688,7 @@ actor PaykitPaymentProofService {
                         billingPeriod: pendingProof.billingPeriod?.sdkValue,
                         paymentAppId: pendingProof.paymentAppId,
                         paymentEndpointIdentifier: pendingProof.paymentEndpointIdentifier,
-                        allowanceId: nil,
+                        allowanceId: pendingProof.allowanceId,
                         conversionQuoteId: pendingProof.conversionQuoteId,
                         proof: Paykit.PrivateJsonObject(text: proofText)
                     ),
