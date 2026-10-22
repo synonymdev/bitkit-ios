@@ -48,15 +48,15 @@ class ScannerManager: ObservableObject {
         self.hwWalletManager = hwWalletManager
     }
 
-    func handleScan(_ uri: String, context: ScannerContext) async {
-        guard !isHandlingScan else { return }
+    func handleScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+        guard !isHandlingScan, isCurrent() else { return }
         isHandlingScan = true
         defer { isHandlingScan = false }
 
-        await processScan(uri, context: context)
+        await processScan(uri, context: context, isCurrent: isCurrent)
     }
 
-    private func processScan(_ uri: String, context: ScannerContext) async {
+    private func processScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool) async {
         let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uri.isEmpty else { return }
 
@@ -66,21 +66,21 @@ class ScannerManager: ObservableObject {
             handleAddContactScan(uri)
         case .main:
             playScanSuccess()
-            await handleMainScan(uri)
+            await handleMainScan(uri, isCurrent: isCurrent)
         case .send:
-            await processSendScan(uri) { _ in }
+            await processSendScan(uri, isCurrent: isCurrent) { _ in }
         case .electrum:
             playScanSuccess()
             await handleElectrumScan(uri)
         }
     }
 
-    func handleScan(_ payload: QRCodePayload, context: ScannerContext) async {
+    func handleScan(_ payload: QRCodePayload, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
         guard let uri = payload.string else {
             showUnsupportedQRCodeError()
             return
         }
-        await handleScan(uri, context: context)
+        await handleScan(uri, context: context, isCurrent: isCurrent)
     }
 
     private func handleAddContactScan(_ input: String) {
@@ -93,7 +93,7 @@ class ScannerManager: ObservableObject {
         navigation?.navigate(.addContact(publicKey: input))
     }
 
-    private func handleMainScan(_ uri: String) async {
+    private func handleMainScan(_ uri: String, isCurrent: () -> Bool) async {
         guard let app else { return }
 
         do {
@@ -113,9 +113,10 @@ class ScannerManager: ObservableObject {
 
             try await app.handleScannedData(
                 uri,
-                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0
+                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
+                isCurrentScan: isCurrent
             )
-            guard shouldOpenPaymentFlow(for: uri) else { return }
+            guard isCurrent(), shouldOpenPaymentFlow(for: uri) else { return }
 
             if let currency, let settings, let sheets {
                 PaymentNavigationHelper.openPaymentSheet(
@@ -126,6 +127,7 @@ class ScannerManager: ObservableObject {
                 )
             }
         } catch {
+            guard isCurrent(), !(error is CancellationError) else { return }
             Logger.error(error, context: "Failed to read data from QR")
             app.toast(
                 type: .error,
@@ -164,18 +166,20 @@ class ScannerManager: ObservableObject {
     func handleSendScan(
         _ uri: String,
         scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
-        guard !isHandlingScan else { return }
+        guard !isHandlingScan, isCurrent() else { return }
         isHandlingScan = true
         defer { isHandlingScan = false }
 
-        await processSendScan(uri, scope: scope, completion: completion)
+        await processSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
     private func processSendScan(
         _ uri: String,
         scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
         guard let app, let currency, let settings else {
@@ -213,8 +217,10 @@ class ScannerManager: ObservableObject {
                 uri,
                 scope: scope,
                 alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
-                sendPresentationID: sheets?.activeSheetConfiguration?.presentationID
+                sendPresentationID: sheets?.activeSheetConfiguration?.presentationID,
+                isCurrentScan: isCurrent
             )
+            guard isCurrent() else { return }
             guard shouldOpenPaymentFlow(for: uri) else {
                 completion(nil)
                 return
@@ -228,6 +234,7 @@ class ScannerManager: ObservableObject {
 
             completion(route)
         } catch {
+            guard isCurrent(), !(error is CancellationError) else { return }
             Logger.error(error, context: "Failed to read data from QR")
             app.toast(
                 type: .error,
@@ -241,6 +248,7 @@ class ScannerManager: ObservableObject {
     func handleSendScan(
         _ payload: QRCodePayload,
         scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
         guard let uri = payload.string else {
@@ -248,7 +256,7 @@ class ScannerManager: ObservableObject {
             completion(nil)
             return
         }
-        await handleSendScan(uri, scope: scope, completion: completion)
+        await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {
@@ -336,9 +344,9 @@ class ScannerManager: ObservableObject {
             let payload = try await decode()
             guard isCurrentOrigin() else { return }
             if context == .send {
-                await handleSendScan(payload, scope: scope, completion: completion)
+                await handleSendScan(payload, scope: scope, isCurrent: isCurrentOrigin, completion: completion)
             } else {
-                await handleScan(payload, context: context)
+                await handleScan(payload, context: context, isCurrent: isCurrentOrigin)
             }
         } catch {
             guard isCurrentOrigin(), !(error is CancellationError) else { return }

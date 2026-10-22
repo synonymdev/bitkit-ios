@@ -749,8 +749,10 @@ extension AppViewModel {
         claimedContactPaymentContext: ContactPaymentContext? = nil,
         scope: ScanHandlingScope = .unrestricted,
         alternativeOnchainBalanceSats: UInt64 = 0,
-        sendPresentationID: UUID? = nil
+        sendPresentationID: UUID? = nil,
+        isCurrentScan: () -> Bool = { true }
     ) async throws {
+        guard isCurrentScan(), !Task.isCancelled else { throw CancellationError() }
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext), scannedDataHandlingId == nil else {
@@ -769,7 +771,7 @@ extension AppViewModel {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
                 let data = try await scanPaymentOperations.decodeInvoice(endpoint.paymentRequest)
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context, isCurrentScan: isCurrentScan)
                 switch data {
                 case let .onChain(invoice): scannedOnchainInvoice = invoice
                 case let .lightning(invoice): scannedLightningInvoice = invoice
@@ -831,7 +833,11 @@ extension AppViewModel {
                 return
             }
             let data = try await scanPaymentOperations.decodeInvoice(uri)
-            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            try ensureScannedDataHandlingOwnership(
+                handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScan
+            )
             guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
             prevalidatedPaymentRequest = data
         } else {
@@ -884,7 +890,11 @@ extension AppViewModel {
             data = prevalidatedPaymentRequest
         } else {
             data = try await scanPaymentOperations.decodeInvoice(uri)
-            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            try ensureScannedDataHandlingOwnership(
+                handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScan
+            )
         }
         let paymentState = scanPaymentOperations.state()
 
@@ -914,7 +924,11 @@ extension AppViewModel {
             if scope != .onchainPayments, let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
                 let lightningData = try await scanPaymentOperations.decodeInvoice(lnInvoice)
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+                try ensureScannedDataHandlingOwnership(
+                    handlingId,
+                    claimedContactPaymentContext: claimedContactPaymentContext,
+                    isCurrentScan: isCurrentScan
+                )
                 if case let .lightning(lightningInvoice) = lightningData {
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
@@ -1089,9 +1103,10 @@ extension AppViewModel {
 
     private func ensureScannedDataHandlingOwnership(
         _ handlingId: UUID,
-        claimedContactPaymentContext: ContactPaymentContext?
+        claimedContactPaymentContext: ContactPaymentContext?,
+        isCurrentScan: () -> Bool
     ) throws {
-        guard scannedDataHandlingId == handlingId else { throw CancellationError() }
+        guard scannedDataHandlingId == handlingId, isCurrentScan(), !Task.isCancelled else { throw CancellationError() }
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext) else { throw CancellationError() }
         }

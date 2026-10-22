@@ -225,6 +225,7 @@ final class ScannerManagerTests: XCTestCase {
     }
 
     func testImageResolutionCannotCompleteAfterOriginDismissalOrReplacement() async throws {
+        let oldOnchainResult = try await decode(invoice: paymentURI)
         snapshotAppDefaultsDomain()
         UserDefaults.standard.set(false, forKey: ToastWindowManager.disableAllToastsKey)
         let previousToast = ToastWindowManager.shared.currentToast
@@ -262,11 +263,12 @@ final class ScannerManagerTests: XCTestCase {
                 if failResolution {
                     try XCTUnwrap(continuation).resume(throwing: QRCodeImageDecoderError.invalidImage)
                 } else {
-                    try XCTUnwrap(continuation).resume(returning: .lnurlPay(data: imageTestLnurl(amount: 999_000)))
+                    try XCTUnwrap(continuation).resume(returning: replace ? oldOnchainResult : .lnurlPay(data: imageTestLnurl(amount: 999_000)))
                 }
                 await task.value
                 XCTAssertEqual(app.sendStateGeneration, generation)
                 XCTAssertEqual(app.lnurlPayData?.minSendable, replace ? 222_222 : nil)
+                XCTAssertNil(app.scannedOnchainInvoice)
                 XCTAssertTrue(routes.isEmpty)
                 XCTAssertNil(ToastWindowManager.shared.currentToast)
             }
