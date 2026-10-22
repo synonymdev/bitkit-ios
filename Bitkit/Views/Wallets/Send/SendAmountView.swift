@@ -165,11 +165,7 @@ struct SendAmountView: View {
                     BodySText(conversionError, textColor: .brandAccent).padding(.top, 12)
                 }
 
-                if app.paykitUsesUsdt {
-                    Spacer().frame(height: 32)
-                } else {
-                    Spacer()
-                }
+                Spacer()
 
                 // Available balance section
                 HStack(alignment: .bottom) {
@@ -255,7 +251,6 @@ struct SendAmountView: View {
                         amountViewModel.handleNumberPadInput(key, currency: currency)
                     }
                 }
-                .frame(maxHeight: app.paykitUsesUsdt ? .infinity : nil)
 
                 CustomButton(
                     title: t("common__continue"),
