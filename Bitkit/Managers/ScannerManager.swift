@@ -325,33 +325,44 @@ class ScannerManager: ObservableObject {
         completion: @escaping (SendRoute?) -> Void = { _ in }
     ) async {
         guard let app else { return }
+        let presentationID = sheets?.activeSheetConfiguration?.presentationID
+        let navigationPath = navigation?.path
+        func isCurrentOrigin() -> Bool {
+            !Task.isCancelled && sheets?.activeSheetConfiguration?.presentationID == presentationID &&
+                navigation?.path == navigationPath
+        }
 
         do {
             let payload = try await decode()
+            guard isCurrentOrigin() else { return }
             if context == .send {
                 await handleSendScan(payload, scope: scope, completion: completion)
             } else {
                 await handleScan(payload, context: context)
             }
-        } catch QRCodeImageDecoderError.invalidImage {
-            app.toast(
-                type: .error,
-                title: t("common__error"),
-                description: t("other__qr_error_load_image")
-            )
-        } catch QRCodeImageDecoderError.noQRCode {
-            app.toast(
-                type: .error,
-                title: t("other__qr_error_no_qr_title"),
-                description: t("other__qr_error_no_qr_description")
-            )
         } catch {
-            Logger.error(error, context: "Failed to process image")
-            app.toast(
-                type: .error,
-                title: t("other__qr_error_detection_title"),
-                description: t("other__qr_error_detection_description")
-            )
+            guard isCurrentOrigin(), !(error is CancellationError) else { return }
+            switch error {
+            case QRCodeImageDecoderError.invalidImage:
+                app.toast(
+                    type: .error,
+                    title: t("common__error"),
+                    description: t("other__qr_error_load_image")
+                )
+            case QRCodeImageDecoderError.noQRCode:
+                app.toast(
+                    type: .error,
+                    title: t("other__qr_error_no_qr_title"),
+                    description: t("other__qr_error_no_qr_description")
+                )
+            default:
+                Logger.error(error, context: "Failed to process image")
+                app.toast(
+                    type: .error,
+                    title: t("other__qr_error_detection_title"),
+                    description: t("other__qr_error_detection_description")
+                )
+            }
         }
     }
 

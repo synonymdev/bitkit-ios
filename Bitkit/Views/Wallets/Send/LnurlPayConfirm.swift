@@ -166,7 +166,7 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
-                isLoading: hasStartedAutomaticPayment,
+                isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment
             ) {
                 try await submitPayment()
@@ -211,6 +211,7 @@ struct LnurlPayConfirm: View {
 
     @MainActor
     static func withSubmissionLock(isSubmitting: Binding<Bool>, operation: () async throws -> Void) async throws {
+        guard !isSubmitting.wrappedValue else { return }
         isSubmitting.wrappedValue = true
         defer { isSubmitting.wrappedValue = false }
         try await operation()
