@@ -319,7 +319,8 @@ struct SendSheet: View {
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
         .onChange(of: app.sendStateGeneration) {
-            if isCurrentPresentation {
+            // External links can decode while this sheet is still open; only adopt our own scans.
+            if isCurrentPresentation, let ownerID = app.sendStateOwnerID, ownerID == config.presentationID {
                 flow.ownedSendStateGeneration = app.sendStateGeneration
             }
         }
@@ -421,7 +422,7 @@ struct SendSheet: View {
         flow.incomingPaymentRequest = nil
         // A scan may have replaced this send's state before its dismiss animation finishes.
         guard ownsSendState else { return }
-        app.resetSendState()
+        app.resetSendState(ownerID: config.presentationID)
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         app.resetQuickPay()
         QuickPayPaymentCoordinator.shared.detach()
@@ -447,7 +448,7 @@ struct SendSheet: View {
                 tagManager.clearSelectedTags()
             }
             guard paykitPaymentRequestManager.markPresentedIfPending(request) else {
-                app.resetSendState()
+                app.resetSendState(ownerID: config.presentationID)
                 sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
                 return
             }
@@ -466,7 +467,7 @@ struct SendSheet: View {
         flow.hasValidatedAfterSync = false
         flow.syncTimedOut = false
         if currentRoot == .options {
-            app.resetSendState()
+            app.resetSendState(ownerID: config.presentationID)
         }
         flow.ownedSendStateGeneration = app.sendStateGeneration
         flow.setupTask?.cancel()
@@ -1309,7 +1310,7 @@ struct SendSheet: View {
             return
         }
 
-        app.resetSendState()
+        app.resetSendState(ownerID: config.presentationID)
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         _ = paykitPaymentRequestManager.requestPresentation(request)
         sheets.hideSheet(reason: "Retrying incoming payment request with fresh private payment details")
@@ -1319,7 +1320,7 @@ struct SendSheet: View {
     private func retryEmbeddedInitialSubscriptionPayment(_ request: PaykitPaymentRequest) async {
         guard sheets.activeSheetConfiguration?.id == .subscription else { return }
 
-        app.resetSendState()
+        app.resetSendState(ownerID: config.presentationID)
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
 
         let resolution: PublicPaykitPaymentLaunchResult
@@ -1351,14 +1352,15 @@ struct SendSheet: View {
             try await app.handleScannedData(
                 paymentTarget,
                 claimedContactPaymentContext: context,
-                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats,
+                sendPresentationID: config.presentationID
             )
         } catch {
             guard sheets.activeSheetConfiguration?.id == .subscription,
                   app.ownsContactPaymentContext(context)
             else {
                 if app.ownsContactPaymentContext(context) {
-                    app.resetSendState()
+                    app.resetSendState(ownerID: config.presentationID)
                 }
                 return
             }
@@ -1387,7 +1389,7 @@ struct SendSheet: View {
               app.ownsContactPaymentContext(context)
         else {
             if app.ownsContactPaymentContext(context) {
-                app.resetSendState()
+                app.resetSendState(ownerID: config.presentationID)
             }
             return
         }
@@ -1422,7 +1424,7 @@ struct SendSheet: View {
     ) {
         guard sheets.activeSheetConfiguration?.id == .subscription else {
             if let existingContext, app.ownsContactPaymentContext(existingContext) {
-                app.resetSendState()
+                app.resetSendState(ownerID: config.presentationID)
             }
             return
         }

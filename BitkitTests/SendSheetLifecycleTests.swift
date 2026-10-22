@@ -48,7 +48,7 @@ final class SendSheetLifecycleTests: XCTestCase {
             XCTAssertEqual(sheets.sendSheetItem?.initialRoute, .lnurlPayConfirm)
             // Scanning again inside the current send transfers ownership to its new state.
             let current = app.lnurlPayData
-            app.resetSendState()
+            app.resetSendState(ownerID: sheets.activeSheetConfiguration?.presentationID)
             app.lnurlPayData = current
             app.selectedWalletToPayFrom = .lightning
             try await Task.sleep(for: .milliseconds(100))
@@ -116,7 +116,7 @@ final class SendSheetLifecycleTests: XCTestCase {
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         sheets.showSheet(.send, data: SendConfig(view: .options))
         try await Task.sleep(for: .seconds(1))
-        app.resetSendState()
+        app.resetSendState(ownerID: sheets.activeSheetConfiguration?.presentationID)
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         wallet.sendAmountSats = 150
@@ -206,7 +206,7 @@ final class SendSheetLifecycleTests: XCTestCase {
         let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
         let first = try XCTUnwrap(flow.lnurlAmountInput)
         first.updateFromSats(150, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()))
-        app.resetSendState()
+        app.resetSendState(ownerID: sheets.activeSheetConfiguration?.presentationID)
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         try await Task.sleep(for: .milliseconds(500))

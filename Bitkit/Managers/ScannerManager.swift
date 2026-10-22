@@ -212,7 +212,8 @@ class ScannerManager: ObservableObject {
             try await app.handleScannedData(
                 uri,
                 scope: scope,
-                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0
+                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
+                sendPresentationID: sheets?.activeSheetConfiguration?.presentationID
             )
             guard shouldOpenPaymentFlow(for: uri) else {
                 completion(nil)

@@ -160,6 +160,8 @@ class AppViewModel: ObservableObject {
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
     @Published private(set) var sendStateGeneration = UUID()
+    // Only a scan started inside this presentation may transfer cleanup ownership to it.
+    private(set) var sendStateOwnerID: UUID?
 
     @Published private(set) var pendingDeepLinkURL: URL?
     /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
@@ -741,7 +743,8 @@ extension AppViewModel {
         _ uri: String,
         claimedContactPaymentContext: ContactPaymentContext? = nil,
         scope: ScanHandlingScope = .unrestricted,
-        alternativeOnchainBalanceSats: UInt64 = 0
+        alternativeOnchainBalanceSats: UInt64 = 0,
+        sendPresentationID: UUID? = nil
     ) async throws {
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
@@ -758,7 +761,7 @@ extension AppViewModel {
         }
 
         if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
-            resetSendState(preservingContactPaymentContext: true)
+            resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
                 switch try await decode(invoice: endpoint.paymentRequest) {
                 case let .onChain(invoice): scannedOnchainInvoice = invoice
@@ -830,7 +833,7 @@ extension AppViewModel {
         }
 
         // Reset send state before handling new data
-        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil)
+        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil, ownerID: sendPresentationID)
 
         if scope == .unrestricted, let samRockSetup = SamRockSetupRequest.parse(uri) {
             handleBTCPayConnection(samRockSetup)
@@ -1304,7 +1307,8 @@ extension AppViewModel {
         paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }
 
-    func resetSendState(preservingContactPaymentContext: Bool = false) {
+    func resetSendState(preservingContactPaymentContext: Bool = false, ownerID: UUID? = nil) {
+        sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
         paykitReviewedAmount = nil

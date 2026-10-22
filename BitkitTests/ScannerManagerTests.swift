@@ -53,6 +53,12 @@ final class ScannerManagerTests: XCTestCase {
         var hapticCount = 0
         let scanner = ScannerManager { hapticCount += 1 }
         let app = configure(scanner)
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        scanner.configure(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheets: sheets
+        )
         var completionCount = 0
 
         await scanner.handleSendScan(paymentURI) { route in
@@ -63,6 +69,7 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertEqual(completionCount, 1)
         XCTAssertEqual(hapticCount, 1)
         XCTAssertNotNil(app.scannedOnchainInvoice)
+        XCTAssertEqual(app.sendStateOwnerID, sheets.activeSheetConfiguration?.presentationID)
     }
 
     func testGenericSendPaymentScanPlaysOneSuccessHaptic() async {
