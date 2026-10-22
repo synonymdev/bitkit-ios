@@ -47,7 +47,7 @@
     <action>Wait 30 seconds on Bitcoin Sent, then tap Details (id "Details")</action>
     <action>Verify the activity details open and the payment review (id "ReviewAmount") does not reappear for the paid request within 10 seconds</action>
     <action>Return to Home; if the requests bell (id "PaymentRequestsBell") is visible, tap it and check whether the requests sheet (id "PaymentRequestsSheet") still lists the paid request</action>
-    <action>If it does, tap its Pay button (id "PaymentRequestPay-&lt;payment-request-id&gt;") and verify the payment is refused: a preparing confirmation may appear with its swipe disabled, then it closes without ever enabling the swipe</action>
+    <action>If it does, tap its Pay button (id "PaymentRequestPay-&lt;payment-request-id&gt;") and verify the payment is refused: if the preparing confirmation (id "PaymentRequestConfirm") appears, its swipe (id "GRAB") stays disabled until the sheet closes</action>
     <action>Verify the fixture mempool contains exactly one transaction for this request, with an amount-matched output</action>
     <action>Mine one block with the fixture and wait for both Bitkit and the marketplace status to refresh</action>
     <action>Open the latest sent on-chain activity and verify its amount (id "ActivityAmount") and transaction details (id "ActivityTxDetails")</action>
