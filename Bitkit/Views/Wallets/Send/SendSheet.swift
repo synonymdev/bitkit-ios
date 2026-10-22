@@ -415,7 +415,9 @@ struct SendSheet: View {
         if isPreparingRequest {
             return
         }
-        let ownsSendState = flow.ownedSendStateGeneration == app.sendStateGeneration
+        // The reset's owner is available synchronously, even before SwiftUI delivers onChange.
+        let ownsSendState = flow.ownedSendStateGeneration == app.sendStateGeneration ||
+            (app.sendStateOwnerID != nil && app.sendStateOwnerID == config.presentationID)
         if let request = flow.incomingPaymentRequest ?? (ownsSendState ? app.contactPaymentContext?.incomingPaymentRequest : nil) {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
         }
