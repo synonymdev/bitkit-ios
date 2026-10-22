@@ -2584,11 +2584,12 @@ final class PrivatePaykitServiceTests: XCTestCase {
     @MainActor
     func testBackgroundPreparationRetainsDeferredPublicationWithoutHoldingItsLock() async throws {
         PrivatePaykitService.setContactSharingCleanupPending(false)
-        for stage in ["availability", "identity", "peers", "publication"] {
+        for stage in ["availability", "identity", "peers", "publication", "failedPublicationIdentity"] {
             let key = "pubky" + String(repeating: "y", count: 52)
             let deferred = expectation(description: "Background \(stage) deferred")
             var review: UUID?
             var didDefer = false
+            var publicationFailed = false
             var publications = 0
             let deferOnce: (String) async throws -> Void = { currentStage in
                 if currentStage == stage, !didDefer {
@@ -2602,11 +2603,18 @@ final class PrivatePaykitServiceTests: XCTestCase {
                 methodId: .regtestOnchainP2wpkh, value: "bcrt1qendpoint", min: nil, max: nil, rawPayload: "{}"
             )
             let operations = PrivatePaykitService.EndpointPublicationOperations(
-                currentPublicKey: { try await deferOnce("identity"); return "identity" },
-                ensureLink: { _ in .linked },
+                currentPublicKey: {
+                    try await deferOnce(publicationFailed ? "failedPublicationIdentity" : "identity")
+                    return "identity"
+                },
+                ensureLink: { _ in stage == "failedPublicationIdentity" && !publicationFailed ? .linking : .linked },
                 buildEndpoints: { _ in [endpoint] },
                 syncPaymentLists: { updates in
                     try await deferOnce("publication")
+                    if stage == "failedPublicationIdentity", !publicationFailed {
+                        publicationFailed = true
+                        throw PaykitError.Transport(code: "offline", context: "Unavailable homeserver")
+                    }
                     XCTAssertEqual(updates.map(\.counterparty), [key])
                     publications += 1
                     return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])

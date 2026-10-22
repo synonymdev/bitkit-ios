@@ -1305,6 +1305,128 @@ actor PaykitSdkService {
         }
     }
 
+    func listAllowances(filter: Paykit.AllowanceFilter) async throws -> [Paykit.AllowanceRecord] {
+        try await operationLock.withLock {
+            try await handle().listAllowances(filter: filter)
+        }
+    }
+
+    func proposeAllowance(
+        counterparty: String,
+        localRole: Paykit.AllowanceLocalRole,
+        terms: Paykit.AllowanceTerms
+    ) async throws -> Paykit.AllowanceRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.proposeAllowance(
+                counterparty: counterparty,
+                localRole: localRole,
+                terms: terms
+            )
+        }
+    }
+
+    func acceptAllowance(
+        counterparty: String,
+        allowanceId: String,
+        expectedProposalStreamItemId: UInt64
+    ) async throws -> Paykit.AllowanceRecord {
+        // Checked under the SDK lock, right before the write: profile deletion sets the flag before its own SDK work.
+        try await withStateRevisionTracking(priority: .interactive, admit: {
+            guard await !PrivatePaykitService.shared.isDeletingProfile else { throw PubkyServiceError.sessionNotActive }
+        }) { sdk in
+            try await sdk.acceptAllowance(
+                counterparty: counterparty,
+                allowanceId: allowanceId,
+                expectedProposalStreamItemId: expectedProposalStreamItemId
+            )
+        }
+    }
+
+    func rejectAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.rejectAllowance(counterparty: counterparty, allowanceId: allowanceId)
+        }
+    }
+
+    func endAllowance(counterparty: String, allowanceId: String) async throws -> Paykit.AllowanceRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.endAllowance(counterparty: counterparty, allowanceId: allowanceId)
+        }
+    }
+
+    func allowanceAccountingState() async throws -> Paykit.AllowanceAccountingState? {
+        try await operationLock.withLock {
+            try await handle().allowanceAccountingState()
+        }
+    }
+
+    func reconcileAllowanceAccounting(
+        _ reconciliation: Paykit.AllowanceAccountingReconciliation
+    ) async throws -> Paykit.AllowanceAccountingState {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.reconcileAllowanceAccounting(reconciliation: reconciliation)
+        }
+    }
+
+    func evaluateAllowanceCandidates(scope: Paykit.PaymentRequestScope, trustedTime: String) async throws -> [Paykit.AllowanceCandidate] {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.evaluateAllowanceCandidates(scope: scope, trustedTime: trustedTime)
+        }
+    }
+
+    func acceptPaymentRequestAutomatically(
+        scope: Paykit.PaymentRequestScope,
+        selection: Paykit.AllowanceSelectionInput,
+        checks: Paykit.PaymentExecutionChecks
+    ) async throws -> Paykit.AllowanceAssociationRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.acceptPaymentRequestAutomatically(scope: scope, selection: selection, checks: checks)
+        }
+    }
+
+    func reserveAutomaticPayment(
+        occurrence: Paykit.PaymentOccurrence,
+        expectedAssociationRevision: UInt64,
+        checks: Paykit.PaymentExecutionChecks
+    ) async throws -> Paykit.PaymentAttemptDecision {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.reserveAutomaticPayment(
+                occurrence: occurrence,
+                expectedAssociationRevision: expectedAssociationRevision,
+                checks: checks
+            )
+        }
+    }
+
+    func reserveManualPayment(
+        occurrence: Paykit.PaymentOccurrence,
+        checks: Paykit.PaymentExecutionChecks
+    ) async throws -> Paykit.PaymentAttemptDecision {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.reserveManualPayment(occurrence: occurrence, checks: checks)
+        }
+    }
+
+    func beginPaymentExecution(attemptId: String, checks: Paykit.PaymentExecutionChecks) async throws -> Paykit.PaymentAttemptDecision {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.beginPaymentExecution(attemptId: attemptId, checks: checks)
+        }
+    }
+
+    @discardableResult
+    func recordPaymentOutcome(_ report: Paykit.PaymentOutcomeReport) async throws -> Paykit.PaymentAttemptRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.recordPaymentOutcome(report: report)
+        }
+    }
+
+    @discardableResult
+    func markPaymentManualOnly(occurrence: Paykit.PaymentOccurrence) async throws -> Paykit.PaymentOccurrenceRecord {
+        try await withStateRevisionTracking { sdk in
+            try await sdk.markPaymentManualOnly(occurrence: occurrence)
+        }
+    }
+
     func linkedPeers() async throws -> [LinkedPeerRecord] {
         try await linkedPeers(priority: .ordered)
     }
@@ -1596,6 +1718,7 @@ actor PaykitSdkService {
         deferDuringPayment: Bool = false,
         operationName: StaticString = #function,
         beforeOperation: () async throws -> Void = {},
+        admit: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
         try await withSdk(
@@ -1607,6 +1730,7 @@ actor PaykitSdkService {
                     guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
                     try Task.checkCancellation()
                 }
+                try await admit()
             }) { try await operation(sdk) }
         }
     }
