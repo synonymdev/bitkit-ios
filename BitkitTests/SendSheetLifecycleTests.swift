@@ -89,11 +89,15 @@ final class SendSheetLifecycleTests: XCTestCase {
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
         wallet.sendAmountSats = 150
+        let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        flow.navigationPath = [.lnurlPayConfirm]
         try await Task.sleep(for: .milliseconds(100))
         prompt.isSendMounted = false
         try await Task.sleep(for: .milliseconds(500))
         prompt.isSendMounted = true
         try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(flow.rootRoute, .options)
+        XCTAssertEqual(flow.navigationPath, [.lnurlPayConfirm])
         XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222, "Recreated options-root Send must not clear its scanned target")
         XCTAssertEqual(wallet.sendAmountSats, 150, "Recreated Send must not reset the entered amount")
         sheets.hideSheet(reason: "Close remounted send")
@@ -121,6 +125,58 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertEqual(app.lnurlPayData?.minSendable, 149_500)
         XCTAssertEqual(wallet.sendAmountSats, 150, "Recreated amount-root Send must retain its confirmed amount")
         sheets.hideSheet(reason: "Close remounted variable send")
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(app.lnurlPayData)
+        XCTAssertNil(wallet.sendAmountSats)
+    }
+
+    func testRemountRetainsLnurlNavigationAndAmountDraft() async throws {
+        let (app, sheets, prompt, window, wallet) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/variable", callback: "https://example.com/callback",
+            minSendable: 149_500, maxSendable: 200_999,
+            metadataStr: "[]", commentAllowed: 12, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
+        try await Task.sleep(for: .seconds(1))
+        let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        let input = try XCTUnwrap(flow.lnurlAmountInput)
+        input.updateFromSats(150, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()))
+        wallet.sendAmountSats = 150
+        flow.navigationPath = [.lnurlPayConfirm]
+        flow.routingCacheResetAttempted = true
+        prompt.isSendMounted = false
+        try await Task.sleep(for: .milliseconds(500))
+        prompt.isSendMounted = true
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertTrue(sheets.sendSheetItem?.state === flow)
+        XCTAssertEqual(flow.rootRoute, .lnurlPayAmount)
+        XCTAssertEqual(flow.navigationPath, [.lnurlPayConfirm])
+        XCTAssertEqual(flow.lnurlAmountInput?.amountSats, 150)
+        XCTAssertTrue(flow.lnurlAmountInput === input)
+        XCTAssertTrue(flow.routingCacheResetAttempted)
+        XCTAssertEqual(wallet.sendAmountSats, 150)
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 149_500)
+        sheets.hideSheet(reason: "Close remounted review")
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(app.lnurlPayData)
+        XCTAssertNil(wallet.sendAmountSats)
+    }
+
+    func testClosingUnmountedSendStillCleansPresentationState() async throws {
+        let (app, sheets, prompt, window, wallet) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        try await Task.sleep(for: .seconds(1))
+        wallet.sendAmountSats = 150
+        prompt.isSendMounted = false
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNotNil(app.lnurlPayData)
+        sheets.hideSheet(reason: "Close while content is absent")
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertNil(app.lnurlPayData)
         XCTAssertNil(wallet.sendAmountSats)

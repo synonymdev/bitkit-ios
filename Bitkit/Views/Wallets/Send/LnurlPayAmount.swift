@@ -7,7 +7,12 @@ struct LnurlPayAmount: View {
 
     @Binding var navigationPath: [SendRoute]
 
-    @State private var amountViewModel = AmountInputViewModel()
+    @State private var amountViewModel: AmountInputViewModel
+
+    init(navigationPath: Binding<[SendRoute]>, amountViewModel: AmountInputViewModel? = nil) {
+        _navigationPath = navigationPath
+        _amountViewModel = State(initialValue: amountViewModel ?? AmountInputViewModel())
+    }
 
     var maxAmount: UInt64 {
         // TODO: subtract fee

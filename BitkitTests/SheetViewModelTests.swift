@@ -3,6 +3,24 @@ import XCTest
 
 @MainActor
 final class SheetViewModelTests: XCTestCase {
+    func testSendStateBelongsToThePresentationRatherThanTheConfig() throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send)
+        let ordinary = try XCTUnwrap(sheets.sendSheetItem)
+        XCTAssertTrue(sheets.sendSheetItem?.state === ordinary.state)
+        sheets.hideSheet()
+        let config = SendConfig(view: .lnurlPayAmount)
+        sheets.showSheet(.send, data: config)
+        let first = try XCTUnwrap(sheets.sendSheetItem)
+        first.state.navigationPath = [.lnurlPayConfirm]
+        sheets.hideSheet()
+        sheets.showSheet(.send, data: config)
+        let second = try XCTUnwrap(sheets.sendSheetItem)
+        XCTAssertFalse(first.state === second.state)
+        XCTAssertTrue(second.state.navigationPath.isEmpty)
+        XCTAssertFalse(second.state.didStartSetup)
+    }
+
     func testSendPresentationIdentityIsStableUntilTheNextSend() throws {
         let sheets = SheetViewModel()
         sheets.showSheet(.send, data: SendConfig(view: .options))
