@@ -209,7 +209,20 @@ struct LnurlPayConfirm: View {
         }
     }
 
+    @MainActor
+    static func withSubmissionLock(isSubmitting: Binding<Bool>, operation: () async throws -> Void) async throws {
+        isSubmitting.wrappedValue = true
+        defer { isSubmitting.wrappedValue = false }
+        try await operation()
+    }
+
     private func submitPayment() async throws {
+        try await Self.withSubmissionLock(isSubmitting: $isSubmittingPayment) {
+            try await authorizeAndPerformPayment()
+        }
+    }
+
+    private func authorizeAndPerformPayment() async throws {
         // Check if we need to show warning for amounts over $100 USD
         if settings.warnWhenSendingOver100 {
             let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
@@ -263,8 +276,6 @@ struct LnurlPayConfirm: View {
     }
 
     private func performPayment() async throws {
-        isSubmittingPayment = true
-        defer { isSubmittingPayment = false }
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }

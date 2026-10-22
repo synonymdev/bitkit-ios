@@ -5,6 +5,68 @@ import XCTest
 
 @MainActor
 final class LnurlPayConfirmTests: XCTestCase {
+    func testRecreatedConfirmationCannotStartAnotherPaymentDuringAuthorizationOrDispatch() async throws {
+        for suspendedStage in ["authorization", "callback"] {
+            let flow = SendPresentationState(initialRoute: .lnurlPayConfirm)
+            let firstBinding = Binding(get: { flow.isSubmittingPayment }, set: { flow.isSubmittingPayment = $0 })
+            let started = expectation(description: "First attempt suspended at \(suspendedStage)")
+            var continuation: CheckedContinuation<Void, Never>?
+            var authorizations = 0
+            var callbacks = 0
+            var dispatches = 0
+            let task = Task {
+                try await LnurlPayConfirm.withSubmissionLock(isSubmitting: firstBinding) {
+                    authorizations += 1
+                    if suspendedStage == "authorization" {
+                        await withCheckedContinuation { continuation = $0; started.fulfill() }
+                    }
+                    callbacks += 1
+                    if suspendedStage == "callback" {
+                        await withCheckedContinuation { continuation = $0; started.fulfill() }
+                    }
+                    dispatches += 1
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            XCTAssertTrue(flow.isSubmittingPayment)
+            // A recreated confirmation has fresh local state but binds the same presentation.
+            let remountedBinding = Binding(get: { flow.isSubmittingPayment }, set: { flow.isSubmittingPayment = $0 })
+            try await LnurlPayConfirm.withSubmissionLock(isSubmitting: remountedBinding) {
+                authorizations += 1
+                callbacks += 1
+                dispatches += 1
+            }
+            XCTAssertTrue(flow.isSubmittingPayment, "Rejected re-entry must not release the original attempt's lock")
+            XCTAssertEqual(authorizations, 1)
+            XCTAssertEqual(dispatches, 0)
+            try XCTUnwrap(continuation).resume()
+            try await task.value
+            XCTAssertEqual(callbacks, 1)
+            XCTAssertEqual(dispatches, 1)
+            XCTAssertFalse(flow.isSubmittingPayment)
+        }
+    }
+
+    func testSubmissionFailureAndCancellationReleaseLockForExplicitRetry() async throws {
+        enum Failure: Error { case callback }
+        for error: Error in [Failure.callback, CancellationError()] {
+            let flow = SendPresentationState(initialRoute: .lnurlPayConfirm)
+            let binding = Binding(get: { flow.isSubmittingPayment }, set: { flow.isSubmittingPayment = $0 })
+            do {
+                try await LnurlPayConfirm.withSubmissionLock(isSubmitting: binding) { throw error }
+                XCTFail("The original attempt's error must propagate")
+            } catch {}
+            XCTAssertFalse(flow.isSubmittingPayment)
+            var retries = 0
+            try await LnurlPayConfirm.withSubmissionLock(isSubmitting: binding) {
+                XCTAssertTrue(flow.isSubmittingPayment)
+                retries += 1
+            }
+            XCTAssertEqual(retries, 1)
+            XCTAssertFalse(flow.isSubmittingPayment)
+        }
+    }
+
     func testAmountScreenSurvivesContextResetDuringDismissal() async {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")

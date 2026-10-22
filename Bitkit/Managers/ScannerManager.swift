@@ -312,10 +312,22 @@ class ScannerManager: ObservableObject {
         scope: ScanHandlingScope = .unrestricted,
         completion: @escaping (SendRoute?) -> Void = { _ in }
     ) async {
-        guard let app, let item else { return }
+        guard let item else { return }
+        await handleImageScan(context: context, scope: scope, decode: {
+            try await QRCodeImageDecoder.decode(item)
+        }, completion: completion)
+    }
+
+    func handleImageScan(
+        context: ScannerContext,
+        scope: ScanHandlingScope = .unrestricted,
+        decode: () async throws -> QRCodePayload,
+        completion: @escaping (SendRoute?) -> Void = { _ in }
+    ) async {
+        guard let app else { return }
 
         do {
-            let payload = try await QRCodeImageDecoder.decode(item)
+            let payload = try await decode()
             if context == .send {
                 await handleSendScan(payload, scope: scope, completion: completion)
             } else {
