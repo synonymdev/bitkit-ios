@@ -89,6 +89,24 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertNil(app.lnurlPayData, "The replacement must still clean up its own state")
     }
 
+    func testImmediateOwnedResetDismissalReleasesContactContext() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { sheets.hideSheet(reason: "Test cleanup"); app.resetSendState(); window.isHidden = true; window.rootViewController = nil }
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        try await Task.sleep(for: .seconds(1))
+        let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: "first-contact")))
+        app.resetSendState(preservingContactPaymentContext: true, ownerID: presentationID)
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        // Real dismissal can happen before SwiftUI delivers the generation onChange.
+        sheets.hideSheet(reason: "Close immediately after own scan reset")
+        XCTAssertNil(app.lnurlPayData)
+        XCTAssertNil(app.contactPaymentContext, "Closing must release this Send's contact operation")
+        XCTAssertTrue(app.claimContactPaymentContext(ContactPaymentContext(publicKey: "next-contact")),
+                      "A later contact payment must not be blocked by the dismissed Send")
+    }
+
     func testTransientSendUnmountKeepsCurrentLnurlState() async throws {
         let (app, sheets, prompt, window, _) = makeHost()
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
