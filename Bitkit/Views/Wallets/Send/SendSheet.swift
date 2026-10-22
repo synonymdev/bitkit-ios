@@ -53,6 +53,7 @@ enum SendRoute: Hashable {
     case manual
     case amount
     case usdt(recipient: String, amount: String)
+    case usdtAddress(recipient: String, amount: String)
     case utxoSelection
     case confirm
     case hardwareSign
@@ -250,8 +251,14 @@ struct SendSheet: View {
         .sheet(isPresented: reconnectPairingBinding) {
             HardwarePairingSheet(config: HardwarePairingSheetItem())
         }
-        .sheet(isPresented: Binding(get: { usdtDetails != nil }, set: { if !$0 { usdtDetails = nil } })) {
-            if let id = usdtDetails { UsdtActivityDetail(transferId: id) }
+        .sheet(isPresented: Binding(get: { usdtDetails != nil }, set: {
+            if !$0 {
+                usdtDetails = nil
+            }
+        })) {
+            if let id = usdtDetails {
+                UsdtActivityDetail(transferId: id)
+            }
         }
         .offlineSheetOverlay(
             title: t("wallet__send_bitcoin"),
@@ -437,10 +444,12 @@ struct SendSheet: View {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
             if let request = incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true || app.paykitPaymentTerms != nil {
-                guard isCurrentIncomingRequest(request.id) else { return }
-                guard let amount = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId).amount.atomic,
-                      await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id) else { return }
-                guard isCurrentIncomingRequest(request.id) else { return }
+                guard isCurrentIncomingRequest(request.id), let amount = try? request.payment(
+                    using: app.paykitPaymentMethod,
+                    quoteId: app.paykitPaymentTerms?.quoteId
+                ).amount.atomic,
+                    await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id),
+                    isCurrentIncomingRequest(request.id) else { return }
                 if !shouldShowSyncOverlay {
                     validatePaymentAfterSync()
                 }
@@ -652,8 +661,12 @@ struct SendSheet: View {
                     app.scannedLightningInvoice = nil
 
                     let onchainAmount = try? request?.payment(using: app.paykitPaymentMethod).amount.atomic
-                    if request != nil && onchainAmount == nil { return .failed }
-                    if let onchainAmount { wallet.sendAmountSats = onchainAmount }
+                    if request != nil && onchainAmount == nil {
+                        return .failed
+                    }
+                    if let onchainAmount {
+                        wallet.sendAmountSats = onchainAmount
+                    }
 
                     // Validate onchain balance BEFORE navigating
                     let onchainBalance = max(
@@ -856,10 +869,17 @@ struct SendSheet: View {
                 try await prepareIncomingPaymentRequest()
                 guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 try await PaykitUsdtPaymentService.shared.send(quote, context: context, paymentTerms: paymentTerms, wallet: wallet.usdtWallet) {
-                    if let request = context.incomingPaymentRequest { try await paykitPaymentRequestManager.ensurePaymentAllowed(request) }
+                    if let request = context.incomingPaymentRequest {
+                        try await paykitPaymentRequestManager.ensurePaymentAllowed(request)
+                    }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
             }, onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+        case let .usdtAddress(recipient, amount):
+            UsdtSendView(onDetails: { id in
+                usdtDetails = id
+            }, initialRecipient: recipient, initialAmount: amount, hosted: true,
+            onBack: { navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
@@ -1279,7 +1299,7 @@ struct SendSheet: View {
             return
         }
 
-        /// The retry task outlives the sheet, so it must not set the rate of a send opened after it.
+        // The retry task outlives the sheet, so it must not set the rate of a send opened after it.
         func isCurrentRetry() -> Bool {
             sheets.activeSheetConfiguration?.id == .subscription && app.ownsContactPaymentContext(context)
         }

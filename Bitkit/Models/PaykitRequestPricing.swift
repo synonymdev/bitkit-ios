@@ -41,14 +41,18 @@ struct PaykitRequestPricing: Hashable {
                 guard let period else { throw PaykitAmountError.invalidAmount }
                 selected = quotes.last { quote in
                     guard let quotedPeriod = PaykitBillingPeriod(sdkPeriod: quote.billingPeriod), quotedPeriod == period else { return false }
-                    if let quoteId { return quote.eventId == quoteId }
+                    if let quoteId {
+                        return quote.eventId == quoteId
+                    }
                     guard let start = PaykitPaymentRequest.parseDate(quote.validFrom),
                           let end = PaykitPaymentRequest.parseDate(quote.expiresAt)
                     else { return false }
                     return date >= start && date <= end
                 }
                 guard let selected else { throw PaykitAmountError.rateUnavailable }
-                if requested.asset != asset { rates = selected.rates }
+                if requested.asset != asset {
+                    rates = selected.rates
+                }
             }
         case nil:
             guard quoteId == nil else { throw PaykitAmountError.invalidAmount }

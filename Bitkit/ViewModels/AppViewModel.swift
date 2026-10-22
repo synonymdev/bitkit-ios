@@ -560,6 +560,8 @@ extension AppViewModel {
         visibilityTime: Double = 4.0,
         accessibilityIdentifier: String? = nil
     ) {
+        guard !ToastWindowManager.areToastsDisabled() else { return }
+
         switch type {
         case .error:
             Haptics.notify(.error)
@@ -910,7 +912,7 @@ extension AppViewModel {
 
                     if lnNetworkMatch, !lightningInvoice.isExpired,
                        contactPaymentContext?.incomingPaymentRequest?
-                       .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
+                           .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
                     {
                         let nodeIsRunning = paymentState.isNodeRunning
 
@@ -965,8 +967,7 @@ extension AppViewModel {
             }
 
             // Fallback to on-chain if address is available
-            guard !invoice.address.isEmpty else { return }
-            guard validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
+            guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -1123,9 +1124,9 @@ extension AppViewModel {
         guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
               context.publicKey == request.counterparty,
               PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
-              let address = proof.onchainAddress, let amount = proof.onchainAmountSats
-        else { throw PaykitPaymentRequestError.requestUnavailable }
-        guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier) else {
+              let address = proof.onchainAddress, let amount = proof.onchainAmountSats,
+              let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         paykitPaymentTerms = try request.payment(using: method, quoteId: proof.conversionQuoteId)
@@ -1531,8 +1532,7 @@ extension AppViewModel {
     ) async {
         defer { isCompletingRestoreHold = false }
         let restoreStartedAt = SettingsViewModel.shared.pendingRestoreActivitySeenSince
-        guard restoreStartedAt > 0 else { return }
-        guard await markAllSeen(restoreStartedAt) else { return }
+        guard restoreStartedAt > 0, await markAllSeen(restoreStartedAt) else { return }
         SettingsViewModel.shared.restoreSyncedBlockHeight = syncedBlockHeight
         SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
 
@@ -1603,8 +1603,7 @@ extension AppViewModel {
         isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync,
         restoreSyncedBlockHeight: UInt32? = nil
     ) -> Bool {
-        guard !isMigrating else { return false }
-        guard blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
+        guard !isMigrating, blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
         let age = abs(now.timeIntervalSince1970 - TimeInterval(confirmationTime))
         return age <= maxConfirmedOnlyReceiveAge
     }
@@ -1717,7 +1716,7 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-            Task {
+            _ = Task {
                 // Use channelCache instead of cachedChannels array, as it's updated immediately
                 if let channel = await lightningService.getChannelFromCache(channelId: channelId) {
                     let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
@@ -1778,6 +1777,7 @@ extension AppViewModel {
                     paymentHash: paymentHash,
                     preimage: paymentPreimage
                 )
+                await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: true)
             }
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
@@ -1811,7 +1811,10 @@ extension AppViewModel {
             )
             let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
             if let paymentHash = paymentHash ?? paymentId {
-                Task { await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash) }
+                Task {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: false)
+                }
             }
             let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
             if let hash, awaitingSheet {

@@ -116,12 +116,16 @@ struct NumberPadAmountText: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if !isSymbolSuffix { symbolView }
+            if !isSymbolSuffix {
+                symbolView
+            }
             (Text(value).foregroundColor(.textPrimary)
                 + Text(placeholder).foregroundColor(isFocused ? .textSecondary : .textPrimary))
                 .font(.custom(Fonts.black, size: 44))
                 .lineLimit(1).minimumScaleFactor(0.5)
-            if isSymbolSuffix { symbolView }
+            if isSymbolSuffix {
+                symbolView
+            }
         }
     }
 

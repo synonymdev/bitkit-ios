@@ -177,7 +177,9 @@ final class PubkyContactLinkTests: XCTestCase {
                     return .restorationDeferred
                 }
             }
-            if restoringSession { await fulfillment(of: [started], timeout: 2) }
+            if restoringSession {
+                await fulfillment(of: [started], timeout: 2)
+            }
             XCTAssertEqual(profile.isRestoringSession, restoringSession)
             let ready = try await preparePubkyContactLink(profile: profile, contacts: contacts, hasStoredIdentity: { restoringSession })
             XCTAssertEqual(ready, !restoringSession)
@@ -251,7 +253,9 @@ final class PubkyContactLinkTests: XCTestCase {
 
             for unreadableCredentials in [false, true] {
                 try await routePendingLink {
-                    if unreadableCredentials { throw PubkyServiceError.sessionNotActive }
+                    if unreadableCredentials {
+                        throw PubkyServiceError.sessionNotActive
+                    }
                     return true
                 }
                 XCTAssertEqual(app.pendingDeepLinkURL, url)
@@ -261,7 +265,9 @@ final class PubkyContactLinkTests: XCTestCase {
                 XCTAssertFalse(routePublicContactIfSignedOut(
                     publicKey: key, profile: profile, navigation: navigation,
                     hasStoredIdentity: {
-                        if unreadableCredentials { throw PubkyServiceError.sessionNotActive }
+                        if unreadableCredentials {
+                            throw PubkyServiceError.sessionNotActive
+                        }
                         return true
                     }
                 ))

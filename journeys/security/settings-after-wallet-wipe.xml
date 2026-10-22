@@ -1,0 +1,40 @@
+<journey name="settings defaults after wallet wipe">
+  <description>
+    Precondition: a disposable, unfunded wallet without a PIN, on an English device, using an
+    E2E_BUILD app with the local regtest backend from journeys/README.md. The default Electrum
+    endpoint is 127.0.0.1:60001 and must also be reachable as localhost:60001.
+    The RGS steps also require internet access to bitkit.stag0.blocktank.to, the default RGS
+    snapshot host for regtest; it is not part of the local stack.
+    Start with no custom server setting. This deletes the wallet. Keep Bitkit running throughout so the settings
+    singleton survives the reset.
+  </description>
+  <actions>
+    <action>Open Settings, select Advanced (id "Tab-advanced"), and verify Electrum Server (id "ElectrumConfig") shows Auto</action>
+    <action>Open Electrum Server (id "ElectrumConfig"), change Host (id "HostInput") to "localhost", keep port 60001 and TCP, and tap Connect (id "ConnectToHost")</action>
+    <action>Wait for the successful connection and verify the connected server (id "Connected") reads "localhost:60001"</action>
+    <action>Return to Advanced settings and verify Electrum Server (id "ElectrumConfig") shows "localhost"</action>
+    <action>Open Rapid-Gossip-Sync (id "RGSServer") and record the default URL shown by id "ConnectedUrl"</action>
+    <action>Change only the hostname in the URL (id "RGSUrl") to uppercase, keeping the scheme and path unchanged, and tap Connect (id "ConnectToHost")</action>
+    <action>Wait for the successful update toast (id "RgsUpdatedToast"), return to Advanced settings, reopen Rapid-Gossip-Sync, and verify the changed URL is still saved</action>
+    <action>Return to Advanced settings</action>
+    <action>Select Security (id "Tab-security") and turn on Read Clipboard (id "AutoReadClipboard")</action>
+    <action>Turn off Swipe Balance to Hide (id "SwipeBalanceToHide") and verify both toggles show the chosen values</action>
+    <action>Open PIN Code (id "PINCode"), tap Enable PIN (id "EnablePin"), enter "1234", and enter "1234" again to confirm</action>
+    <action>Leave biometrics off and tap Continue; if the Phone Settings screen appears instead, tap Skip (id "SkipButton")</action>
+    <action>On Wallet Secured, turn on Also require for payments (id "ToggleBioForPayments") and tap OK</action>
+    <action>Verify PIN Code (id "PINCode") shows Enabled and Require PIN for payments (id "EnablePinForPayments") is on</action>
+    <action>Open Reset wallet (id "ResetAndRestore"), tap Reset Wallet, and confirm the reset</action>
+    <action>Wait for Terms of Use, tap Continue, tap Skip Intro, and tap New Wallet (id "NewWallet")</action>
+    <action>Wait for Home without a prompt for the old PIN; if offered security setup for the new wallet, tap Later</action>
+    <action>Open Settings and select Security (id "Tab-security")</action>
+    <action>Verify Read Clipboard (id "AutoReadClipboard") is off and Swipe Balance to Hide (id "SwipeBalanceToHide") is on</action>
+    <action>Verify PIN Code (id "PINCode") shows Disabled and Require PIN for payments (id "EnablePinForPayments") is absent</action>
+    <action>Select Advanced (id "Tab-advanced") and verify Electrum Server (id "ElectrumConfig") shows Auto before opening the server screen</action>
+    <action>Open Electrum Server (id "ElectrumConfig") and verify Host (id "HostInput") is "127.0.0.1", Port (id "PortInput") is "60001", TCP is selected, and no loading indicator remains</action>
+    <action>Return to Advanced settings and open Rapid-Gossip-Sync (id "RGSServer")</action>
+    <action>Verify the connected URL (id "ConnectedUrl") and URL field (id "RGSUrl") match the original default recorded before the wipe, and no loading indicator remains</action>
+    <action>Change only the hostname in the URL (id "RGSUrl") to uppercase again, tap Connect (id "ConnectToHost"), and wait for the successful update toast (id "RgsUpdatedToast")</action>
+    <action>Return to Advanced settings, open Electrum Server (id "ElectrumConfig"), change Host (id "HostInput") to "localhost", keep port 60001 and TCP, and tap Connect (id "ConnectToHost")</action>
+    <action>Wait for the successful connection and verify the connected server (id "Connected") reads "localhost:60001" with no loading indicator remaining</action>
+  </actions>
+</journey>

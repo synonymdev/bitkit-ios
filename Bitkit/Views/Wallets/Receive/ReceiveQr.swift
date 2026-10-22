@@ -89,7 +89,9 @@ struct ReceiveQr: View {
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
         }
-        if settings.isUsdtEnabled, cjitInvoice == nil { items.append(TabItem(.usdt)) }
+        if settings.isUsdtEnabled, cjitInvoice == nil {
+            items.append(TabItem(.usdt))
+        }
         return items
     }
 
@@ -127,20 +129,48 @@ struct ReceiveQr: View {
         )
     }
 
+    /// A page of the receive `TabView`. The wrap pages sit before the first and after the last tab, so a swipe past
+    /// either end pages on and then selects the tab at the other end. They are hidden from accessibility, so their
+    /// copies of the end tab's buttons never match an identifier lookup.
+    private enum ReceivePage: Hashable {
+        case tab(ReceiveTab)
+        case wrapToLast
+        case wrapToFirst
+    }
+
+    private var pageSelection: Binding<ReceivePage> {
+        Binding(
+            get: { .tab(selectedTab) },
+            set: { page in
+                let tabs = availableTabItems.map(\.tab)
+                switch page {
+                case let .tab(tab):
+                    selectedTabBinding.wrappedValue = tab
+                case .wrapToLast:
+                    if let last = tabs.last {
+                        selectedTabBinding.wrappedValue = last
+                    }
+                case .wrapToFirst:
+                    if let first = tabs.first {
+                        selectedTabBinding.wrappedValue = first
+                    }
+                }
+            }
+        )
+    }
+
     var showingCjitOnboarding: Bool {
         return !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
-        Group {
-            if selectedTab == .usdt, !settings.isUsdtEnabled {
-                UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
-                                 onEnable: { settings.usdtPreference = .enabled })
-            } else if selectedTab == .usdt {
-                UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
-            } else {
-                bitcoinContent
-            }
+        if selectedTab == .usdt, !settings.isUsdtEnabled {
+            UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
+                             onEnable: { settings.usdtPreference = .enabled })
+        } else if selectedTab == .usdt {
+            UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
+        } else {
+            bitcoinContent
         }
     }
 
@@ -155,7 +185,11 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
-                TabView(selection: selectedTabBinding) {
+                TabView(selection: pageSelection) {
+                    if let last = availableTabItems.last?.tab {
+                        wrapPage(showing: last, tag: .wrapToLast)
+                    }
+
                     if selectedHardwareWalletId != nil {
                         tabContent(for: .hardware)
                     }
@@ -167,7 +201,13 @@ struct ReceiveQr: View {
                     }
 
                     tabContent(for: .spending)
-                    if settings.isUsdtEnabled, cjitInvoice == nil { Color.clear.tag(ReceiveTab.usdt) }
+                    if settings.isUsdtEnabled, cjitInvoice == nil {
+                        Color.clear.tag(ReceivePage.tab(.usdt))
+                    }
+
+                    if let first = availableTabItems.first?.tab {
+                        wrapPage(showing: first, tag: .wrapToFirst)
+                    }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
@@ -332,7 +372,17 @@ struct ReceiveQr: View {
         )
     }
 
-    func tabContent(for tab: ReceiveTab) -> some View {
+    @ViewBuilder
+    private func wrapPage(showing tab: ReceiveTab, tag: ReceivePage) -> some View {
+        if tab == .usdt {
+            Color.clear.tag(tag)
+        } else {
+            tabContent(for: tab, tag: tag)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func tabContent(for tab: ReceiveTab, tag: ReceivePage? = nil) -> some View {
         VStack(spacing: 0) {
             if needsInvoiceRefresh && tab != .hardware {
                 if invoiceRefreshFailed {
@@ -361,7 +411,7 @@ struct ReceiveQr: View {
             Spacer()
         }
         .padding(.horizontal)
-        .tag(tab)
+        .tag(tag ?? .tab(tab))
     }
 
     @ViewBuilder

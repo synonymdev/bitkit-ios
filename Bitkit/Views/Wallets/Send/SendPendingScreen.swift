@@ -178,7 +178,11 @@ struct SendPendingScreen: View {
         }
         .alert(retryApprovalTitle, isPresented: Binding(
             get: { retryApprovalMessage != nil },
-            set: { if !$0 { finishRetryApproval(false) } }
+            set: {
+                if !$0 {
+                    finishRetryApproval(false)
+                }
+            }
         )) {
             Button(t("common__cancel"), role: .cancel) { finishRetryApproval(false) }
             Button(t("wallet__send_yes")) { finishRetryApproval(true) }
@@ -348,8 +352,8 @@ struct SendPendingScreen: View {
                     }
                     if attempt.requestId != nil {
                         let authorization = try await paymentRequests.ensureOnchainRecoveryAllowed(attempt, proofService: proofService)
-                        guard authorization.paymentDeadline == paymentDeadline else { throw PaykitPaymentRequestError.requestUnavailable }
-                        guard let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
+                        guard authorization.paymentDeadline == paymentDeadline,
+                              let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
                         try await proofService.requireRecoveryPayer(payer)
                     } else if let orderId = attempt.orderId {
                         let orders = try await CoreService.shared.blocktank.orders(orderIds: [orderId], refresh: true)
@@ -442,7 +446,7 @@ struct SendPendingScreen: View {
     @MainActor
     private func refreshOriginalOutcome(context: OnchainSendPendingContext) async throws {
         onchainAttempt = try await attemptService.pendingAttempt(context: context)
-        guard let original = onchainAttempt, original.status == .accepted, let txid = original.txid else { return }
+        guard let original = onchainAttempt, original.status == .accepted, original.txid != nil else { return }
         if let requestId = original.requestId {
             await proofService.reconcile()
             if let payer = original.recoveryContext?.paymentIdentity,
@@ -460,8 +464,7 @@ struct SendPendingScreen: View {
     }
 
     private func applyOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
-        guard !ordinarySendResolved else { return }
-        guard resolution.requestId == paykitPaymentRequestId,
+        guard !ordinarySendResolved, resolution.requestId == paykitPaymentRequestId,
               let identity = pubkyProfile.publicKey,
               PubkyPublicKeyFormat.matches(resolution.identity, identity)
         else { return }

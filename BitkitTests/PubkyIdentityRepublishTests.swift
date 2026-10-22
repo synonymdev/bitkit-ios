@@ -10,7 +10,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         for published in [true, false] {
             let bootstrap = RepublishBootstrap(noPointer: .init())
             bootstrap.operation = { _ in published }
-            let service = PaykitSdkService { _, _ in bootstrap }
+            let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
 
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(30 * 86400))
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now)
@@ -23,10 +23,10 @@ final class PubkyIdentityRepublishTests: XCTestCase {
     func testSuccessfulPublicationIsThrottledAndReusesBootstrap() async {
         let bootstrap = RepublishBootstrap(noPointer: .init())
         var factories = 0
-        let service = PaykitSdkService { _, _ in
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in
             factories += 1
             return bootstrap
-        }
+        })
 
         await service.republishIdentityIfNeeded(publicKey: publicKey, now: now)
         await service.republishIdentityIfNeeded(publicKey: "pubky\(publicKey)", now: now.addingTimeInterval(1799))
@@ -40,7 +40,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         for result in [Result<Bool, Error>.success(false), .failure(PubkyServiceError.profileNotFound)] {
             let bootstrap = RepublishBootstrap(noPointer: .init())
             bootstrap.operation = { _ in try result.get() }
-            let service = PaykitSdkService { _, _ in bootstrap }
+            let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
 
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now)
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(59))
@@ -52,7 +52,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
 
     func testNewIdentityDoesNotInheritPreviousIdentityThrottle() async {
         let bootstrap = RepublishBootstrap(noPointer: .init())
-        let service = PaykitSdkService { _, _ in bootstrap }
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
         let otherKey = String(publicKey.dropLast()) + "y"
 
         await service.republishIdentityIfNeeded(publicKey: publicKey, now: now)
@@ -72,7 +72,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             }
             return true
         }
-        let service = PaykitSdkService { _, _ in bootstrap }
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
         let first = Task { await service.republishIdentityIfNeeded(publicKey: publicKey, now: now) }
         await fulfillment(of: [started], timeout: 1)
 
@@ -99,7 +99,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             finished.fulfill()
             return result
         }
-        let service = PaykitSdkService { _, _ in bootstrap }
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
         let caller = Task {
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now, timeout: .milliseconds(20))
             returned.fulfill()
@@ -117,7 +117,9 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         let deadline = ContinuousClock.now.advanced(by: .seconds(1))
         repeat {
             await service.republishIdentityIfNeeded(publicKey: publicKey, now: now.addingTimeInterval(3600))
-            if bootstrap.publicKeys.count == 2 { break }
+            if bootstrap.publicKeys.count == 2 {
+                break
+            }
             await Task.yield()
         } while ContinuousClock.now < deadline
         XCTAssertEqual(bootstrap.publicKeys.count, 2)
@@ -143,7 +145,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             finished.fulfill()
             return true
         }
-        let service = PaykitSdkService { _, _ in bootstrap }
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
 
         await service.startIdentityRepublish(publicKey: publicKey)
         await fulfillment(of: [started], timeout: 1)
@@ -164,7 +166,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             let proceeded = expectation(description: "\(kind) approval proceeded")
             let gate = AsyncStream<Void>.makeStream()
             let bootstrap = RepublishBootstrap(noPointer: .init())
-            let service = PaykitSdkService { _, _ in bootstrap }
+            let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
             bootstrap.operation = { _ in
                 started.fulfill()
                 for await _ in gate.stream {
@@ -200,7 +202,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             for await _ in gate.stream {}
             return true
         }
-        let service = PaykitSdkService { _, _ in bootstrap }
+        let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
         await service.startIdentityRepublish(publicKey: publicKey)
         await fulfillment(of: [started], timeout: 1)
 
@@ -217,7 +219,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
         for kind in [Approval.ordinary, .companion] {
             for result in [Result<Bool, Error>.success(true), .failure(PubkyServiceError.profileNotFound)] {
                 let bootstrap = RepublishBootstrap(noPointer: .init())
-                let service = PaykitSdkService { _, _ in bootstrap }
+                let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
                 let expectedKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: String(repeating: "01", count: 32))
                 var approved = false
                 bootstrap.operation = { _ in try result.get() }
@@ -239,7 +241,7 @@ final class PubkyIdentityRepublishTests: XCTestCase {
             let started = expectation(description: "Publication started for \(kind)")
             let gate = AsyncStream<Void>.makeStream()
             let bootstrap = RepublishBootstrap(noPointer: .init())
-            let service = PaykitSdkService { _, _ in bootstrap }
+            let service = PaykitSdkService(bootstrapFactory: { _, _ in bootstrap })
             bootstrap.operation = { _ in
                 started.fulfill()
                 for await _ in gate.stream {}

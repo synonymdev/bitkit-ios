@@ -188,15 +188,17 @@ class TransferService {
                 }
             } else {
                 // No channel ID resolved - check if order is expired/terminal
-                if let orderId = transfer.lspOrderId {
-                    if let orders = try? await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false),
-                       let order = orders.first,
-                       order.state2 == .expired
-                    {
-                        try await markSettled(id: transfer.id)
-                        Logger.info("Order \(orderId) expired, settled transfer: \(transfer.id)", context: "TransferService")
-                        continue
-                    }
+                if let orderId = transfer.lspOrderId, let orders = try? await blocktankService.orders(
+                    orderIds: [orderId],
+                    filter: nil,
+                    refresh: false
+                ),
+                    let order = orders.first,
+                   order.state2 == .expired
+                {
+                    try await markSettled(id: transfer.id)
+                    Logger.info("Order \(orderId) expired, settled transfer: \(transfer.id)", context: "TransferService")
+                    continue
                 }
                 Logger.debug(
                     "Could not resolve channel for transfer: \(transfer.id) orderId: \(transfer.lspOrderId ?? "none")",

@@ -31,7 +31,7 @@ struct TrezorPairingCodeInput: View {
                 .frame(width: 1, height: 1)
                 .opacity(0.01) // Nearly invisible but still functional
                 .accessibilityIdentifier("TrezorPairingCodeInput")
-                .onChange(of: code) { newValue in
+                .onChange(of: code) { _, newValue in
                     // Filter to only digits and limit length
                     let filtered = newValue.filter(\.isNumber)
                     if filtered.count <= digitCount {

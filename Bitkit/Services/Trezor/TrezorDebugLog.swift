@@ -10,7 +10,7 @@ import Observation
 @Observable
 @MainActor
 class TrezorDebugLog {
-    static let shared = TrezorDebugLog()
+    nonisolated static let shared = TrezorDebugLog()
 
     /// Observed entries — updated at most every `flushInterval`
     var entries: [String] = []
@@ -18,20 +18,20 @@ class TrezorDebugLog {
     private static let maxEntries = 300
 
     /// Minimum interval between flushes to @Published
-    private static let flushInterval: TimeInterval = 0.25
+    private nonisolated static let flushInterval: TimeInterval = 0.25
 
-    private nonisolated(unsafe) let formatter: DateFormatter = {
+    private let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
         return f
     }()
 
     /// Thread-safe buffer for incoming log messages
-    private nonisolated(unsafe) let bufferLock = NSLock()
-    private nonisolated(unsafe) var buffer: [String] = []
-    private nonisolated(unsafe) var flushScheduled = false
+    private let bufferLock = NSLock()
+    @ObservationIgnored private nonisolated(unsafe) var buffer: [String] = []
+    @ObservationIgnored private nonisolated(unsafe) var flushScheduled = false
 
-    private init() {}
+    private nonisolated init() {}
 
     /// Add a timestamped log entry.
     /// Can be called from any thread — messages are buffered and

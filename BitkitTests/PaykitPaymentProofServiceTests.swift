@@ -321,7 +321,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         proof.conversionQuoteId = "original"
         // The app dies right after the proof removal: the attempt deletion never runs.
         let store = PaymentProofMemoryStore(onSave: { saved in
-            if saved.isEmpty { attemptsStore.failSave = true }
+            if saved.isEmpty {
+                attemptsStore.failSave = true
+            }
         })
         await store.seed([proof])
         let service = paymentProofService(
@@ -693,12 +695,16 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         let resolution = PaykitOnchainPaymentResolution(identity: identity, requestId: request.id, transactionId: txid, walletId: hardwareWalletId)
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink {
-            if $0.requestId == request.id { resolutions.append($0) }
+            if $0.requestId == request.id {
+                resolutions.append($0)
+            }
         }
         defer { subscription.cancel() }
         let reconciliation = Task { await service.reconcile() }
         for _ in 0 ..< 100 {
-            if await sdk.submissionCount() > 0 { break }
+            if await sdk.submissionCount() > 0 {
+                break
+            }
             try? await Task.sleep(for: .milliseconds(10))
         }
         let startedSubmissions = await sdk.submissionCount()
@@ -751,7 +757,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         var observing = false
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
-            if observing, resolution.requestId == request.id { resolutions.append(resolution) }
+            if observing, resolution.requestId == request.id {
+                resolutions.append(resolution)
+            }
         }
         observing = true
         defer { subscription.cancel() }
@@ -1174,7 +1182,7 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         await store.resumeSave()
         await completion.value
         try await marking.value
-        let proofs = try await store.load()
+        let proofs = await store.load()
         XCTAssertEqual(proofs.first(where: { $0.requestId == request.id })?.paymentStarted, true)
         XCTAssertEqual(proofs.first(where: { $0.requestId == lightningId })?.proofData, preimage)
     }
@@ -1953,7 +1961,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
         var isObservingResolutions = false
         var resolutions: [PaykitOnchainPaymentResolution] = []
         let subscription = PaykitPaymentProofService.onchainPaymentResolutionPublisher.sink { resolution in
-            if isObservingResolutions, resolution.requestId == request.id { resolutions.append(resolution) }
+            if isObservingResolutions, resolution.requestId == request.id {
+                resolutions.append(resolution)
+            }
         }
         isObservingResolutions = true
         defer { subscription.cancel() }
@@ -2681,7 +2691,9 @@ final class PaykitPaymentProofServiceTests: XCTestCase {
                     paymentDeadline: PaykitPreciseInstant(date: deadline),
                     beforeBroadcastAttempt: {
                         try await service.markOnchainPaymentStarted(request, address: self.onchainAddress, paymentIdentity: self.identity)
-                        if failCleanup { await store.failNextSave() }
+                        if failCleanup {
+                            await store.failNextSave()
+                        }
                     },
                     onPreDispatchFailure: { _ in
                         XCTAssertEqual(attemptsStore.snapshot().first?.requestId, request.id)
@@ -3389,7 +3401,7 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
             billingPeriod: proof.billingPeriod,
             paymentAppId: proof.paymentAppId,
             paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
-            allowanceId: nil,
+            allowanceId: proof.allowanceId,
             conversionQuoteId: nil,
             proof: proof.proof,
             recordedAt: "2027-01-15T08:01:00Z"

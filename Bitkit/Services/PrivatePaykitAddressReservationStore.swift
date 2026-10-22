@@ -197,8 +197,7 @@ actor PrivatePaykitAddressReservationStore {
 
     func reconcileReservedIndexesWithLdk() async {
         for (addressTypeString, highestReserved) in highestReservedReceiveIndexByAddressType() {
-            guard let addressType = LDKNode.AddressType.from(string: addressTypeString) else { continue }
-            guard isAddressTypeMonitored(addressType) else { continue }
+            guard let addressType = LDKNode.AddressType.from(string: addressTypeString), isAddressTypeMonitored(addressType) else { continue }
 
             do {
                 try await reconcileAddressTypeWithLdk(addressType, highestReserved: highestReserved)

@@ -1,8 +1,0 @@
-[main]
-host = https://app.transifex.com
-
-[o:synonym:p:bitkit:r:localizablestrings]
-file_filter = Bitkit/Resources/Localization/<lang>.lproj/Localizable.strings
-source_file = Bitkit/Resources/Localization/en.lproj/Localizable.strings
-source_lang = en
-type = IOS

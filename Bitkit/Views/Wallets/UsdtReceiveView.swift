@@ -43,10 +43,18 @@ struct UsdtReceiveView: View {
             SheetHeader(title: title, showBackButton: page != .address, action: page == .address ? contactAction : nil,
                         topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8,
                         onBack: {
-                            if page == .amount { draftAmount = amount; error = nil }
-                            if page == .fees { page = .amount }
-                            else if page == .amount, network != nil, deposit == nil { page = .networks }
-                            else { if deposit == nil { network = nil }; page = .address }
+                            if page == .amount {
+                                draftAmount = amount; error = nil
+                            }
+                            if page == .fees {
+                                page = .amount
+                            } else if page == .amount, network != nil, deposit == nil {
+                                page = .networks
+                            } else {
+                                if deposit == nil {
+                                    network = nil
+                                }; page = .address
+                            }
                         })
                         .disabled(busy)
             switch page {
@@ -62,12 +70,15 @@ struct UsdtReceiveView: View {
                     onEdit: { draftAmount = amount; page = .amount },
                     onNetwork: { page = .networks }
                 )
+                .swipeSegmentedTabs(selection: Binding(get: { .usdt }, set: onSelectTab), tabs: tabs.map(\.tab), wrapAround: true, simultaneous: true)
             case .networks:
                 networkList
             case .amount:
                 amountEntry
             case .fees:
-                if let deposit { feeEstimate(deposit) }
+                if let deposit {
+                    feeEstimate(deposit)
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -92,7 +103,9 @@ struct UsdtReceiveView: View {
                 networkRow(nil)
                 ForEach(networks, id: \.self) { networkRow($0) }
             }
-            if let error { BodySText(error, textColor: .textSecondary) }
+            if let error {
+                BodySText(error, textColor: .textSecondary)
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 16) {
             if usdt.depositsConfigured {
@@ -110,7 +123,9 @@ struct UsdtReceiveView: View {
         UsdtNetworkRow(title: item?.label ?? "Arbitrum One", selected: network == item,
                        identifier: "UsdtNetwork-\(item?.label ?? "Arbitrum")")
         {
-            if network != item { deposit = nil; amount = ""; draftAmount = ""; error = nil }
+            if network != item {
+                deposit = nil; amount = ""; draftAmount = ""; error = nil
+            }
             network = item
             page = item == nil || deposit != nil ? .address : .amount
         }
@@ -197,8 +212,11 @@ struct UsdtReceiveAddressContent: View {
                     QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
                            copyValue: address, shareText: shareText, onEdit: onEdit)
                 }
-            } else if let error { BodySText(error, textColor: .brandAccent) }
-            else { ProgressView() }
+            } else if let error {
+                BodySText(error, textColor: .brandAccent)
+            } else {
+                ProgressView()
+            }
         }
         CustomButton(
             title: networkTitle,

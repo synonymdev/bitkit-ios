@@ -34,9 +34,15 @@ struct SendEnterManuallyView: View {
         )
     }
 
+    private var isUsdtInput: Bool {
+        guard !hwSend.isActive, settings.isUsdtEnabled else { return false }
+        let input = app.manualEntryInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return input.hasPrefix("0x") || input.hasPrefix("ethereum:")
+    }
+
     var body: some View {
         VStack {
-            SheetHeader(title: t("wallet__send_bitcoin"), showBackButton: true)
+            SheetHeader(title: t(isUsdtInput ? "usdt__send_title" : "wallet__send_bitcoin"), showBackButton: true)
 
             CaptionMText(t("wallet__send_to"))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -82,7 +88,9 @@ struct SendEnterManuallyView: View {
 
         if uri.lowercased().hasPrefix("ethereum:") || uri.lowercased().hasPrefix("0x") {
             await scanner.handleSendScan(uri, scope: hwSend.isActive ? .onchainPayments : .unrestricted) { route in
-                if let route { navigationPath.append(route) }
+                if let route {
+                    navigationPath.append(route)
+                }
             }
             return
         }

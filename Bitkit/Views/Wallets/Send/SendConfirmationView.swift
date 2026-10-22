@@ -147,8 +147,7 @@ struct SendConfirmationView: View {
     }
 
     var canSwitchWallet: Bool {
-        guard !hwSend.isActive else { return false }
-        guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
+        guard !hwSend.isActive, app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
         let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
         return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
     }
@@ -212,10 +211,8 @@ struct SendConfirmationView: View {
     }
 
     private var canEditAmount: Bool {
-        guard preparingRequest == nil else { return false }
-        guard app.contactPaymentContext?.incomingPaymentRequest == nil else { return false }
-        guard app.selectedWalletToPayFrom == .lightning else { return true }
-        guard let invoice = app.scannedLightningInvoice else { return true }
+        guard preparingRequest == nil, app.contactPaymentContext?.incomingPaymentRequest == nil else { return false }
+        guard app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice else { return true }
 
         return invoice.amountSatoshis == 0
     }
@@ -966,7 +963,9 @@ struct SendConfirmationView: View {
             guard invoiceAmountSats == 0 || invoiceAmountSats == reviewedAmountSats else {
                 throw PaykitPaymentRequestError.amountMismatch
             }
-            if let request { try await authorize(request) }
+            if let request {
+                try await authorize(request)
+            }
         } catch {
             await onAuthorizationFailure(error)
             throw error
@@ -1142,7 +1141,8 @@ struct SendConfirmationView: View {
     }
 
     private var contactSectionTitle: String {
-        oneOffPaymentRequest == nil ? t("wallet__send_to") : t("wallet__payment_request_contact")
+        guard let request = oneOffPaymentRequest else { return t("wallet__send_to") }
+        return request.isMerchantRequest ? t("wallet__send_to") : t("wallet__payment_request_contact")
     }
 
     private var oneOffPaymentRequestNote: String? {
@@ -1168,6 +1168,7 @@ struct SendConfirmationView: View {
         var lightningPaymentSubmitted = false
         var originalPaymentIdentity: String?
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
+        var manualAllowanceAttemptId: String?
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -1202,6 +1203,13 @@ struct SendConfirmationView: View {
                 return
             }
 
+            if let incomingPaymentRequest, let preparedPaymentProof {
+                manualAllowanceAttemptId = try await PaykitAllowanceExecutor.shared.beginManualPayment(
+                    incomingPaymentRequest,
+                    paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
+                )
+            }
+
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for other screens
@@ -1214,6 +1222,9 @@ struct SendConfirmationView: View {
                         incomingPaymentRequest,
                         paymentHash: paymentHash
                     )
+                }
+                if let manualAllowanceAttemptId {
+                    await PaykitAllowanceExecutor.shared.manualLightningPaymentSent(attemptId: manualAllowanceAttemptId, paymentHash: paymentHash)
                 }
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
@@ -1305,6 +1316,9 @@ struct SendConfirmationView: View {
                     onAuthorized: { _ in
                         onchainPaymentStarted = true
                         privatePaymentListOutcome = .uncertain
+                        if let manualAllowanceAttemptId {
+                            await PaykitAllowanceExecutor.shared.manualOnchainPaymentSending(attemptId: manualAllowanceAttemptId)
+                        }
                     },
                     send: { beforeBroadcastAttempt in
                         try await wallet.send(
@@ -1341,6 +1355,9 @@ struct SendConfirmationView: View {
                         title: t("wallet__onchain_broadcast_rejected"),
                         description: t("wallet__onchain_broadcast_rejected_note", variables: ["reason": reason])
                     )
+                    if let manualAllowanceAttemptId {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .unknown)
+                    }
                     await navigationPath.append(Self.onchainPendingRoute(txid: rejectedTxid, requestId: incomingPaymentRequest?.id))
                     return
                 case let .unknown(unknownTxid):
@@ -1351,11 +1368,21 @@ struct SendConfirmationView: View {
                         title: t("wallet__onchain_broadcast_unconfirmed"),
                         description: t("wallet__onchain_broadcast_unconfirmed_note")
                     )
+                    if let manualAllowanceAttemptId {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .unknown)
+                    }
                     await navigationPath.append(Self.onchainPendingRoute(txid: unknownTxid, requestId: incomingPaymentRequest?.id))
                     return
                 }
                 privatePaymentListOutcome = .succeeded
                 await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
+                if let manualAllowanceAttemptId {
+                    await PaykitAllowanceExecutor.shared.finishManualPayment(
+                        attemptId: manualAllowanceAttemptId,
+                        outcome: .succeeded,
+                        transactionId: txid
+                    )
+                }
                 var proofSaved = true
                 if let incomingPaymentRequest, let preparedPaymentProof {
                     proofSaved = await PaykitPaymentProofService.shared.completeOnchainPayment(
@@ -1400,6 +1427,9 @@ struct SendConfirmationView: View {
                 )
             }
         } catch is CancellationError {
+            if let manualAllowanceAttemptId, !lightningPaymentSubmitted, !onchainPaymentStarted {
+                await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
@@ -1437,6 +1467,9 @@ struct SendConfirmationView: View {
                 case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable,
                      .preDispatchCleanupFailed:
                     await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
+                    if let manualAllowanceAttemptId {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .unknown)
+                    }
                     shouldCancelPaymentProof = false
                     app.toast(attemptError)
                     await navigationPath.append(Self.onchainPendingRoute(requestId: incomingPaymentRequest?.id))
@@ -1445,10 +1478,16 @@ struct SendConfirmationView: View {
                     break
                 }
             }
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
+            if let manualAllowanceAttemptId {
+                await PaykitAllowanceExecutor.shared.finishManualPayment(
+                    attemptId: manualAllowanceAttemptId,
+                    outcome: lightningPaymentSubmitted || onchainPaymentStarted ? .unknown : .failed
+                )
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
-            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             Logger.error("Payment failed: \(error)")
 
             if let paymentId = createdMetadataPaymentId {
@@ -1552,20 +1591,14 @@ struct SendConfirmationView: View {
         }
 
         // Check if amount > $100 and warning is enabled
-        if settings.warnWhenSendingOver100 {
-            if let usdAmount = currency.convert(sats: amount, to: "USD") {
-                if usdAmount.value > 100.0 {
-                    warnings.append(.amount)
-                }
-            }
+        if settings.warnWhenSendingOver100, let usdAmount = currency.convert(sats: amount, to: "USD"), usdAmount.value > 100.0 {
+            warnings.append(.amount)
         }
 
         // Check if fee > $10 (only for onchain)
         if app.selectedWalletToPayFrom == .onchain {
-            if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD") {
-                if feeUsd.value > 10.0 {
-                    warnings.append(.fee)
-                }
+            if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD"), feeUsd.value > 10.0 {
+                warnings.append(.fee)
             }
 
             // Check if fee > 50% of send amount
@@ -1610,8 +1643,7 @@ struct SendConfirmationView: View {
         feeRate: UInt32? = nil,
         isCurrentSend: () -> Bool = { true }
     ) async -> Bool {
-        guard wallet.isMaxAmountSend else { return false }
-        guard let rate = feeRate ?? wallet.selectedFeeRateSatsPerVByte else { return false }
+        guard wallet.isMaxAmountSend, let rate = feeRate ?? wallet.selectedFeeRateSatsPerVByte else { return false }
 
         do {
             let currentMaxSendable = try await wallet.calculateMaxSendableAmount(
@@ -1774,7 +1806,9 @@ struct SendConfirmationView: View {
         for _ in 0 ..< 3 {
             let startedFrom = feeCalculationId
             await calculateTransactionFee()
-            if feeCalculationId == startedFrom + 1 { return }
+            if feeCalculationId == startedFrom + 1 {
+                return
+            }
         }
     }
 

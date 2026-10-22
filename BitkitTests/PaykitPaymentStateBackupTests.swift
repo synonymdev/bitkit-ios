@@ -149,6 +149,37 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testUsdtReceiptsReconcileBeforeOpeningTheWallet() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        let preference = SettingsViewModel.shared.usdtPreference
+        SettingsViewModel.shared.usdtPreference = .enabled
+        defer { SettingsViewModel.shared.usdtPreference = preference }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mnemonic = "test test test test test test test test test test test junk"
+        let owner = try usdtAddress(mnemonic: mnemonic, passphrase: nil).lowercased()
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "pubky" + String(repeating: "y", count: 52))
+        let receipt = PaykitUsdtPaymentService.Receipt(wallet: owner, identity: identity, requestId: requestId,
+                                                       paymentId: "payment", proofEventId: "proof", verified: true,
+                                                       transferId: "transfer", amount: PaykitAmount(asset: .usdt, atomic: 50000),
+                                                       receivedAt: Date(timeIntervalSince1970: 1000), underpaid: false, afterExpiry: false)
+        let service = PaykitUsdtPaymentService()
+        try service.restoreBackup(PaykitUsdtStateBackup(attempts: [], receipts: [.init(receipt)]))
+        let nativeSdk = UsdtReceiptSdk(noPointer: .init())
+        nativeSdk.identity = identity
+        let sdk = PaykitSdkService(sdkFactory: { nativeSdk })
+        for passphrase: String? in [nil, "another-wallet", nil] {
+            let wallet = UsdtWalletManager(storageDirectory: directory, rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1",
+                                           loadCredentials: { (mnemonic, passphrase) })
+            await service.reconcile(wallet: wallet, sdk: sdk)
+            XCTAssertEqual(service.receipts, passphrase == nil ? [receipt] : [])
+            XCTAssertEqual(try service.satisfiedProofs(identity: identity)[requestId], passphrase == nil ? ["proof"] : nil)
+            XCTAssertEqual(wallet.address, "")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        }
+    }
+
+    @MainActor
     func testUnsubmittedUsdtBindingRequiresCurrentJournalEvidenceAfterRestart() async throws {
         let service = PaykitUsdtPaymentService()
         var attempt = unsubmittedUsdtAttempt()
@@ -524,6 +555,28 @@ final class PaykitPaymentStateBackupTests: XCTestCase {
             XCTAssertEqual(snapshot.requestId?.billingPeriodStartsAt, timestamp)
             XCTAssertEqual(snapshot.requestId?.billingPeriodStartsAt, paymentState.pendingProofs.first?.requestId.billingPeriodStartsAt)
         }
+    }
+
+    func testAutomaticAllowancePaymentProofKeepsItsAllowanceIdThroughBackup() throws {
+        let proof = PendingPaykitPaymentProof(
+            identity: identity,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "allowance-request", counterparty: identity),
+            paymentAppId: "bitkit",
+            paymentEndpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+            kind: .lightning,
+            allowanceId: "allowance-1",
+            paymentStarted: true,
+            paymentIdentifier: "payment-hash",
+            proofData: nil
+        )
+        let encoded = try JSONEncoder().encode(PaykitPaymentStateBackup.Proof(proof))
+        let restored = try JSONDecoder().decode(PaykitPaymentStateBackup.Proof.self, from: encoded).restored()
+        XCTAssertEqual(restored.allowanceId, "allowance-1")
+
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacy.removeValue(forKey: "allowanceId")
+        let legacyProof = try JSONDecoder().decode(PaykitPaymentStateBackup.Proof.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(try legacyProof.restored().allowanceId, "Backups written before allowances still restore")
     }
 
     func testHardwareBackupRequiresCompleteSignedReceipt() throws {
@@ -1231,5 +1284,17 @@ private actor BackupWriteEvents {
     private(set) var values: [Int] = []
     func append(_ value: Int) {
         values.append(value)
+    }
+}
+
+private final class UsdtReceiptSdk: PaykitSdk, @unchecked Sendable {
+    var identity: String?
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: identity, capability: .privateLinkCapable)
+    }
+
+    override func paymentRequests() async throws -> [PaymentRequestRecord] {
+        []
     }
 }

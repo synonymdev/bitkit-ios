@@ -67,9 +67,9 @@ target list. If an element the journey names is missing from `snapshot-ui`, chec
 `--identifier X --predicate exists` before concluding it is gone. `wait-for-ui` requires the complete
 identifier and does not support prefix matching.
 
-**Identifiers built from localized text are English-only.** `SegmentedControl` derives its identifier
-from the tab's display name, so `Tab-all` is `Tab-todas` when the app runs in Spanish. Journeys that
-name a `Tab-*` identifier assume an English device.
+**Tab identifiers do not follow the app language.** `SegmentedControl` derives its identifier from the
+tab's English name, so `Tab-all` stays `Tab-all` when the app runs in Spanish. A tab given an explicit
+label keeps it, so a hardware wallet tab is `Tab-trezor` or `Tab-jade` in every language.
 
 Prefer `snapshot-ui` over screenshots: it names elements by their accessibility identifier, which is
 what the journeys assert on, and it avoids the image-size limits the Android runner has to work around.
@@ -235,6 +235,10 @@ after staging signup. Android also supports this signup flow, but this journey h
 `contacts/contacts-entry-points.xml` covers onboarding without an identity and the
 authenticated Contacts list. It has not yet been ported to Android.
 
+`receive/receive-tabs-wraparound.xml` has a matching Android journey with the same name and actions.
+On Android a swipe that starts at the screen edge is the system back gesture, which closes the sheet on
+every tab; start the swipes away from the edge.
+
 `payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
@@ -242,6 +246,10 @@ iOS-only feature.
 `usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
 A submitted payment must return to the wallet without reopening the paid draft on either platform.
+
+`usdt-send-review-and-details.xml` is adapted: on iOS the Swipe To Pay knob stays at the end of the
+track while a USDT send warning is open and returns to the start on Cancel. Android master returns the
+knob to the start as soon as the warning opens, so its fee-warning action has no knob assertion.
 
 `coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
 name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.
