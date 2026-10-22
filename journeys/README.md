@@ -114,7 +114,7 @@ wallet however you normally do against regtest and skip the helper.
 ### Getting a Lightning channel
 
 Blocktank is winding down, and this build no longer buys channels from it (synonymdev/bitkit-ios#1097):
-Transfer To Spending opens a "No automatic transfer" sheet, and the Receive sheet's CJIT button and gift codes are gone. A journey that needs a
+Transfer To Spending opens a "Transfer Unavailable" sheet, and the Receive sheet's CJIT button and gift codes are gone. A journey that needs a
 Lightning channel as its precondition says "a wallet with an open Lightning channel"; get one in either way:
 
 - Install a build from before that change (master before synonymdev/bitkit-ios#1097), open a channel with

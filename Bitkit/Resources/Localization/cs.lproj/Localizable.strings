@@ -372,9 +372,9 @@
 "lightning__channel_point" = "Bod kanálu";
 "lightning__channels_closing_banner" = "KANÁLY SE ZAVŘOU {date}";
 "lightning__channels_closing_notice" = "Vaše Lightning kanály budou uzavřeny {date}. Do té doby převeďte zůstatek útrat do úspor.";
-"lightning__channels_unavailable__button" = "Otevřít kanál";
-"lightning__channels_unavailable__text" = "Služba pro automatický převod prostředků na zůstatek útrat bohužel již není k dispozici. Stále můžete ručně otevřít Lightning kanál a doplnit si zůstatek útrat.";
-"lightning__channels_unavailable__title" = "Žádný automatický převod";
+"lightning__channels_unavailable__nav_title" = "Převod není dostupný";
+"lightning__channels_unavailable__text" = "Automatické převody na zůstatek útrat již nejsou k dispozici. Použijte vlastní uzel nebo si nastavte připojení u jiného poskytovatele.";
+"lightning__channels_unavailable__title" = "<accent>Vyžadováno ruční</accent>\nnastavení";
 "lightning__choose_lsp__explanation" = "Až vám dají QR kód pro připojení nebo převzetí Lightning kanálu, klepněte níže a QR kód naskenujte nebo vložte.";
 "lightning__choose_lsp__text" = "Objednejte si kanál u poskytovatele služeb Lightning (LSP). Níže je několik možností. Bitkit je neprovozuje, nedoporučuje ani nepodporuje.";
 "lightning__choose_lsp__title" = "Vyberte\n<accent>poskytovatele Lightning</accent>";

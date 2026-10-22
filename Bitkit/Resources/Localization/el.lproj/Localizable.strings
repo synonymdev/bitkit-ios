@@ -343,9 +343,9 @@
 "lightning__channel_point" = "Channel point";
 "lightning__channels_closing_banner" = "ΤΑ ΚΑΝΑΛΙΑ ΚΛΕΙΝΟΥΝ ΣΤΙΣ {date}";
 "lightning__channels_closing_notice" = "Τα κανάλια Lightning σας θα κλείσουν στις {date}. Μεταφέρετε το υπόλοιπο δαπανών σε αποταμιεύσεις πριν από τότε.";
-"lightning__channels_unavailable__button" = "Άνοιγμα καναλιού";
-"lightning__channels_unavailable__text" = "Δυστυχώς, η υπηρεσία αυτόματης μεταφοράς κεφαλαίων στο υπόλοιπο δαπανών δεν είναι πλέον διαθέσιμη. Μπορείτε ακόμα να ανοίξετε χειροκίνητα ένα κανάλι Lightning για να αναπληρώσετε το υπόλοιπο δαπανών.";
-"lightning__channels_unavailable__title" = "Χωρίς αυτόματη μεταφορά";
+"lightning__channels_unavailable__nav_title" = "Μεταφορά μη διαθέσιμη";
+"lightning__channels_unavailable__text" = "Οι αυτόματες μεταφορές στο υπόλοιπο δαπανών δεν είναι πλέον διαθέσιμες. Χρησιμοποιήστε τον δικό σας κόμβο ή ρυθμίστε σύνδεση με άλλον πάροχο.";
+"lightning__channels_unavailable__title" = "<accent>Απαιτείται χειροκίνητη</accent>\nρύθμιση";
 "lightning__choose_lsp__explanation" = "Όταν σας δώσουν ένα QR για σύνδεση ή διεκδίκηση του καναλιού Lightning, πατήστε παρακάτω για σάρωση ή επικόλληση του QR.";
 "lightning__choose_lsp__text" = "Παραγγείλετε ένα κανάλι από έναν πάροχο υπηρεσιών Lightning (LSP). Παρακάτω υπάρχουν μερικές επιλογές. Το Bitkit δεν τις λειτουργεί, δεν τις προτείνει και δεν τις υποστηρίζει.";
 "lightning__choose_lsp__title" = "Επιλέξτε\n<accent>πάροχο Lightning</accent>";

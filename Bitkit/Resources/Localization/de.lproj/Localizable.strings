@@ -370,9 +370,9 @@
 "lightning__channel_point" = "Kanalpunkt";
 "lightning__channels_closing_banner" = "KANÄLE SCHLIESSEN AM {date}";
 "lightning__channels_closing_notice" = "Deine Lightning-Kanäle werden am {date} geschlossen. Übertrage dein Guthaben vorher auf das Sparkonto.";
-"lightning__channels_unavailable__button" = "Kanal öffnen";
-"lightning__channels_unavailable__text" = "Leider ist der Dienst, der Guthaben automatisch auf dein Ausgabenkonto überträgt, nicht mehr verfügbar. Du kannst weiterhin manuell einen Lightning-Kanal öffnen, um dein Ausgabenkonto aufzuladen.";
-"lightning__channels_unavailable__title" = "Keine automatische Übertragung";
+"lightning__channels_unavailable__nav_title" = "Übertragung nicht verfügbar";
+"lightning__channels_unavailable__text" = "Automatische Übertragungen auf dein Ausgabenkonto sind nicht mehr verfügbar. Nutze deinen eigenen Node oder richte eine Verbindung mit einem anderen Anbieter ein.";
+"lightning__channels_unavailable__title" = "<accent>Manuelle Einrichtung</accent>\nerforderlich";
 "lightning__choose_lsp__explanation" = "Wenn du einen QR-Code zum Verbinden oder Einlösen des Lightning-Kanals erhältst, tippe unten, um ihn zu scannen oder einzufügen.";
 "lightning__choose_lsp__text" = "Bestelle einen Kanal bei einem Lightning Service Provider (LSP). Unten findest du einige Optionen. Bitkit betreibt, empfiehlt oder unterstützt diese nicht.";
 "lightning__choose_lsp__title" = "Wähle einen\n<accent>Lightning-Anbieter</accent>";

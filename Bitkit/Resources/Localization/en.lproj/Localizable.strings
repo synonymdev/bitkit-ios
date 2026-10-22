@@ -365,9 +365,9 @@
 "lightning__channel_point" = "Channel point";
 "lightning__channels_closing_banner" = "CHANNELS CLOSE ON {date}";
 "lightning__channels_closing_notice" = "Your Lightning channels will be closed on {date}. Move your spending balance to savings before then.";
-"lightning__channels_unavailable__button" = "Open Channel";
-"lightning__channels_unavailable__text" = "Unfortunately, the service to automatically transfer funds to your spending balance is no longer available. You can still manually open a Lightning channel to top up your spending balance.";
-"lightning__channels_unavailable__title" = "No automatic transfer";
+"lightning__channels_unavailable__nav_title" = "Transfer Unavailable";
+"lightning__channels_unavailable__text" = "Automatic transfers to your spending balance are no longer available. Use your own node, or set up a connection with another provider.";
+"lightning__channels_unavailable__title" = "<accent>Manual setup</accent>\nrequired";
 "lightning__choose_lsp__explanation" = "When they give you a QR to connect or claim the Lightning channel, tap below to scan or paste the QR.";
 "lightning__choose_lsp__text" = "Order a channel from a Lightning Service Provider (LSP). Below are some options. Bitkit does not run, endorse, or support these.";
 "lightning__choose_lsp__title" = "Choose a\n<accent>Lightning provider</accent>";

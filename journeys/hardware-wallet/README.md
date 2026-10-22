@@ -143,7 +143,7 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 `transfer-to-spending-node-warmup.xml`, `passphrase-transfer-to-spending.xml` and the iOS-only
 `transfer-to-spending-over-max.xml` were retired because Blocktank channel purchases were removed
 (synonymdev/bitkit-ios#1097): the hardware wallet's Transfer To Spending button (`HardwareTransferToSpending`) now
-opens the "No automatic transfer" sheet. The `HardwareTransfer*` and `HwTransferPassphrase*` screens
+opens the "Transfer Unavailable" sheet. The `HardwareTransfer*` and `HwTransferPassphrase*` screens
 and identifiers are still in code but nothing in the UI reaches them.
 
 ## Local Payment Completion

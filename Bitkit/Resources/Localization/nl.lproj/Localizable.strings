@@ -370,9 +370,9 @@
 "lightning__channel_point" = "Kanaalpunt";
 "lightning__channels_closing_banner" = "KANALEN SLUITEN OP {date}";
 "lightning__channels_closing_notice" = "Je Lightning-kanalen worden op {date} gesloten. Boek je bestedingssaldo vóór die datum over naar spaargeld.";
-"lightning__channels_unavailable__button" = "Kanaal openen";
-"lightning__channels_unavailable__text" = "Helaas is de dienst om automatisch geld naar je bestedingssaldo over te boeken niet meer beschikbaar. Je kunt nog steeds handmatig een Lightning-kanaal openen om je bestedingssaldo aan te vullen.";
-"lightning__channels_unavailable__title" = "Geen automatische overboeking";
+"lightning__channels_unavailable__nav_title" = "Overboeking niet beschikbaar";
+"lightning__channels_unavailable__text" = "Automatische overboekingen naar je bestedingssaldo zijn niet meer beschikbaar. Gebruik je eigen node of stel een verbinding in met een andere aanbieder.";
+"lightning__channels_unavailable__title" = "<accent>Handmatige instelling</accent>\nvereist";
 "lightning__choose_lsp__explanation" = "Als je een QR krijgt om het Lightning-kanaal te verbinden of te claimen, tik dan hieronder om de QR te scannen of te plakken.";
 "lightning__choose_lsp__text" = "Bestel een kanaal bij een Lightning Service Provider (LSP). Hieronder staan enkele opties. Bitkit beheert, onderschrijft of ondersteunt deze niet.";
 "lightning__choose_lsp__title" = "Kies een\n<accent>Lightning-aanbieder</accent>";

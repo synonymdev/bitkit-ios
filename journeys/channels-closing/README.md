@@ -15,12 +15,11 @@ The Android twin is synonymdev/bitkit-android#1669.
   same Blocktank-channel condition.
 - The date is a placeholder constant (Dec 15, 2026) until the shutdown date is final. Journeys assert the
   banner and the notice agree and read the date from the screen instead of hardcoding it.
-- **"No automatic transfer" sheet** `ChannelsUnavailableSheet`: Savings "Transfer To Spending"
+- **"Transfer Unavailable" sheet** `ChannelsUnavailableSheet` ("Manual setup required"): Savings "Transfer To Spending"
   (`TransferToSpending`), Spending "Transfer from Savings" (`TransferFromSavings`) and hardware wallet
   "Transfer To Spending" (`HardwareTransferToSpending`) keep their visibility rules and open it instead of
-  the transfer flow. For a wallet with a Blocktank channel it adds the close date
-  (`ChannelsUnavailableCloseDate`). "Cancel" (`ChannelsUnavailableButton`) closes it; "Open Channel"
-  (`ChannelsUnavailableOpenChannel`) opens Choose LSP.
+  the transfer flow. "Cancel" (`ChannelsUnavailableSheetCancel`) closes it; "Continue"
+  (`ChannelsUnavailableSheetContinue`) opens Choose LSP.
 - **Choose LSP** (Figma "Third-party LSP › Choose LSP"): four third-party providers (`ChooseLspProvider`),
   LNBIG, ZEUS Olympus, Megalithic and Amboss Magma, each opening its channel order page in the browser,
   plus "Manual Setup" (`ChooseLspManual`, the existing manual channel setup) and "QR Code"
@@ -42,14 +41,15 @@ The Android twin is synonymdev/bitkit-android#1669.
 
 | Journey | Covers |
 | --- | --- |
-| `channels-closing-notice.xml` | Banner on Home → tap → Spending wallet notice and Transfer To Savings; Savings Transfer To Spending opens the channels unavailable sheet with the close date |
-| `choose-lsp-from-transfer.xml` | Transfer To Spending → sheet → Open Channel → Choose LSP: provider rows open the browser, QR Code opens the scanner, Manual Setup opens the manual channel setup |
-| [`../receive/receive-onchain-only-without-channel.xml`](../receive/receive-onchain-only-without-channel.xml) | The opposite precondition: a funded wallet with no channels shows no banner, no Spend card and a Savings-only Receive sheet; the transfer buttons open the sheet without the close date |
+| `channels-closing-notice.xml` | Banner on Home → tap → Spending wallet notice and Transfer To Savings; Savings Transfer To Spending opens the Transfer Unavailable sheet |
+| `choose-lsp-from-transfer.xml` | Transfer To Spending → sheet → Continue → Choose LSP: provider rows open the browser, QR Code opens the scanner, Manual Setup opens the manual channel setup |
+| [`../receive/receive-onchain-only-without-channel.xml`](../receive/receive-onchain-only-without-channel.xml) | The opposite precondition: a funded wallet with no channels shows no banner, no Spend card and a Savings-only Receive sheet; the transfer buttons open the Transfer Unavailable sheet |
 
 ## Identifiers used
 
 `ChannelsClosingBanner`, `ChannelsClosingNotice`, `ActivitySavings`, `ActivitySpending`,
 `TotalBalance-primary` (Android `TotalBalance`), `TransferToSavings`, `NavigationBack`,
 `TransferToSpending`, `TransferFromSavings`, `HardwareTransferToSpending`, `ChannelsUnavailableSheet`,
-`ChannelsUnavailableCloseDate`, `ChannelsUnavailableButton`, `ChannelsUnavailableOpenChannel`, `ChooseLspProvider`,
+`ChannelsUnavailableSheetTitle`, `ChannelsUnavailableSheetImage`, `ChannelsUnavailableSheetDescription`,
+`ChannelsUnavailableSheetCancel`, `ChannelsUnavailableSheetContinue`, `ChooseLspProvider`,
 `ChooseLspManual`, `ChooseLspScan`, `NodeIdInput`, `HostInput`, `PortInput`.
