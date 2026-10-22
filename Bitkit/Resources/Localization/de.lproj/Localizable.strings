@@ -1235,7 +1235,6 @@
 "profile__pay_contacts_description" = "Teile Zahlungsdetails privat mit deinen Kontakten. Öffentliche Zahlungen bleiben aus, bis du sie in den Einstellungen aktivierst.";
 "profile__private_payments_toggle" = "Private Kontaktzahlungen";
 "profile__public_payments_toggle" = "Öffentliche Zahlungen";
-"profile__public_payments_warning" = "Deine Zahlungsdetails werden öffentlich und mit deinem Profil verknüpft. Jeder kann sie sehen.";
 "profile__payments_pending" = "Änderungen stehen noch aus. Zuvor geteilte Zahlungsdetails sind möglicherweise weiterhin verfügbar.";
 "profile__add_link_title" = "Link hinzufügen";
 "profile__add_link_label" = "BEZEICHNUNG";

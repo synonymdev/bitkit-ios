@@ -1149,7 +1149,6 @@
 "profile__pay_contacts_description" = "Comparte datos de pago de forma privada con tus contactos. Los pagos públicos permanecen desactivados hasta que los actives en Ajustes.";
 "profile__private_payments_toggle" = "Pagos privados con contactos";
 "profile__public_payments_toggle" = "Pagos públicos";
-"profile__public_payments_warning" = "Tus datos de pago serán públicos y estarán vinculados a tu perfil. Cualquiera podrá verlos.";
 "profile__payments_pending" = "Hay cambios pendientes. Los datos de pago compartidos anteriormente pueden seguir disponibles.";
 "profile__add_link_title" = "Añadir enlace";
 "profile__add_link_label" = "ETIQUETA";

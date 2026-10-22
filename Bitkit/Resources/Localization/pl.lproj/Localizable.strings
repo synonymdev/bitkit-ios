@@ -1247,7 +1247,6 @@
 "profile__pay_contacts_description" = "Udostępniaj dane płatności prywatnie swoim kontaktom. Płatności publiczne pozostają wyłączone, dopóki nie włączysz ich w Ustawieniach.";
 "profile__private_payments_toggle" = "Prywatne płatności z kontaktami";
 "profile__public_payments_toggle" = "Płatności publiczne";
-"profile__public_payments_warning" = "Twoje dane płatności będą publiczne i powiązane z Twoim profilem. Każdy będzie mógł je zobaczyć.";
 "profile__payments_pending" = "Zmiany oczekują na zastosowanie. Wcześniej udostępnione dane płatności mogą nadal być dostępne.";
 "profile__add_link_title" = "Dodaj link";
 "profile__add_link_label" = "ETYKIETA";

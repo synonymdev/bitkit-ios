@@ -1237,7 +1237,6 @@
 "profile__pay_contacts_description" = "Sdílejte platební údaje soukromě se svými kontakty. Veřejné platby zůstanou vypnuté, dokud je nepovolíte v nastavení.";
 "profile__private_payments_toggle" = "Soukromé platby s kontakty";
 "profile__public_payments_toggle" = "Veřejné platby";
-"profile__public_payments_warning" = "Vaše platební údaje budou veřejné a propojené s vaším profilem. Uvidí je kdokoli.";
 "profile__payments_pending" = "Změny čekají na dokončení. Dříve sdílené platební údaje mohou být stále dostupné.";
 "profile__add_link_title" = "Vložit odkaz";
 "profile__add_link_label" = "ŠTÍTEK";

@@ -159,9 +159,6 @@ struct GeneralSettingsView: View {
                         isPending: isPublicSharingCleanupPending,
                         identifier: "PublicPaymentsToggle"
                     )
-                    BodySText(t("profile__public_payments_warning"), textColor: .textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.vertical, 8)
                 }
 
                 if usdt.isConfigured {

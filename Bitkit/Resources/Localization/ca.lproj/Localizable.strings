@@ -1132,7 +1132,6 @@
 "profile__pay_contacts_description" = "Comparteix les dades de pagament en privat amb els teus contactes. Els pagaments públics continuen desactivats fins que els activis a Configuració.";
 "profile__private_payments_toggle" = "Pagaments privats a contactes";
 "profile__public_payments_toggle" = "Pagaments públics";
-"profile__public_payments_warning" = "Les teves dades de pagament seran públiques i estaran vinculades al teu perfil. Qualsevol persona les podrà veure.";
 "profile__payments_pending" = "Hi ha canvis pendents. Les dades de pagament compartides anteriorment poden continuar disponibles.";
 "profile__add_link_title" = "Afegir enllaç";
 "profile__add_link_label" = "ETIQUETA";
