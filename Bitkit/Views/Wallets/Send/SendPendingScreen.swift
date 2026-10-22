@@ -356,7 +356,7 @@ struct SendPendingScreen: View {
                               let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
                         try await proofService.requireRecoveryPayer(payer)
                     } else if let orderId = attempt.orderId {
-                        let orders = try await CoreService.shared.blocktank.orders(orderIds: [orderId], refresh: true)
+                        let orders = try await CoreService.shared.blocktank.orders(orderIds: [orderId], refresh: false)
                         guard let order = orders.first(where: { $0.id == orderId }), order.state2 == .created,
                               order.payment?.onchain?.address == attempt.address,
                               order.clientBalanceSat == attempt.transferContext?.clientBalanceSats,

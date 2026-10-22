@@ -634,18 +634,6 @@ class TransferViewModel: ObservableObject {
         return trackingSaved
     }
 
-    func startWatchingOrderFromRestart(_ order: IBtOrder) async {
-        Logger.info("Starting to watch order from restart: \(order.id)")
-
-        uiState.order = order
-        uiState.clientBalanceSat = order.clientBalanceSat
-        uiState.lspBalanceSat = order.lspBalanceSat
-        uiState.feeSat = order.feeSat
-        uiState.isAdvanced = false
-
-        watchOrder(orderId: order.id)
-    }
-
     private func watchOrder(orderId: String, frequencyMs: Double = 15000) {
         stopPolling()
 

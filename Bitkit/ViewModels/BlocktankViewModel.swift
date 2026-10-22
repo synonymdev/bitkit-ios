@@ -94,31 +94,9 @@ class BlocktankViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        Logger.debug("Refreshing orders...")
-
-        // Sync UI instantly from cache
         orders = try await coreService.blocktank.orders(refresh: false)
         cJitEntries = try await coreService.blocktank.cjitOrders(refresh: false)
-
-        // The update from server
-        orders = try await coreService.blocktank.orders(refresh: true)
-        cJitEntries = try await coreService.blocktank.cjitOrders(refresh: true)
-
-        Logger.debug("Orders refreshed")
         coreService.blocktank.notifyStateChanged()
-    }
-
-    func refreshOrder(id: String) async throws -> IBtOrder? {
-        let refreshedOrders = try await coreService.blocktank.orders(orderIds: [id], refresh: true)
-        guard let refreshedOrder = refreshedOrders.first else { return nil }
-
-        // Update the order in the published array if it exists
-        if let index = orders?.firstIndex(where: { $0.id == id }) {
-            orders?[index] = refreshedOrder
-        }
-
-        coreService.blocktank.notifyStateChanged()
-        return refreshedOrder
     }
 
     func createCjit(amountSats: UInt64, description: String) async throws -> IcJitEntry {
@@ -418,26 +396,6 @@ class BlocktankViewModel: ObservableObject {
         } catch {
             Logger.error("Failed to refresh minCjitSats: \(error)")
             throw error
-        }
-    }
-
-    /// Checks for pending orders and notifies TransferViewModel to start watching them
-    /// This should be called on app startup to resume watching orders after app restart
-    func startWatchingPendingOrders(transferViewModel: TransferViewModel) async {
-        guard let orders else { return }
-
-        let pendingOrders = orders.filter { order in
-            // Watch orders that are created or paid but not yet completed
-            order.state2 == .created || order.state2 == .paid
-        }
-
-        if !pendingOrders.isEmpty {
-            Logger.info("Found \(pendingOrders.count) pending orders to watch: \(pendingOrders.map(\.id))")
-
-            // Notify TransferViewModel to start watching each pending order
-            for order in pendingOrders {
-                await transferViewModel.startWatchingOrderFromRestart(order)
-            }
         }
     }
 }
