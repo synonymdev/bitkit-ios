@@ -10,9 +10,11 @@
     accepts GET /generate/pay?minSendable=149500&amp;maxSendable=200999&amp;commentAllowed=12 for the
     variable fixture, and GET /generate/pay?minSendable=N&amp;maxSendable=N&amp;commentAllowed=0 for
     fixed fixtures. Obtain links for N=222000, 222538, 222222 and 500500. These are millisatoshis.
-    Use the returned lnurl strings, not BOLT11 invoice strings. No payment is authorized in this journey.
+    Use the returned lnurl strings, not BOLT11 invoice strings. Quick Pay must be off so fixed
+    fixtures show confirmation instead of automatically paying. No payment is authorized in this journey.
   </description>
   <actions>
+    <action>Open Settings, General, Quick Pay. Continue through its introduction if shown. Record the enabled state of "QuickpayToggle", turn it off if needed, verify it is off, and return to wallet home. Leave its amount and daily limits unchanged</action>
     <action>Open Send (id "Send"), close it, and verify the wallet home screen is visible</action>
     <action>Open the home QR scanner, then the E2E manual scan prompt (id "ScanPrompt")</action>
     <action>Enter the variable LNURL fixture in "QRInput" and tap "DialogConfirm"</action>
@@ -23,5 +25,6 @@
     <action>For each fixed LNURL fixture in order (222000, 222538, 222222, 500500 msat), open the home QR scanner, enter its link through "ScanPrompt", "QRInput" and "DialogConfirm", and verify "ReviewAmount-primary" is visible with 222, 223, 223 and 501 sats respectively; "CommentInput" is absent and no amount-entry step is required</action>
     <action>After each fixed confirmation, dismiss it without paying and verify the wallet home screen remains responsive before scanning the next fixture</action>
     <action>Repeat the variable and fixed scan sequence five times, including opening and closing Send before a sequence; verify no empty payment sheet or app exit occurs</action>
+    <action>With all payment sheets closed, return to Quick Pay settings, restore "QuickpayToggle" to its recorded enabled state, verify it, and return to wallet home</action>
   </actions>
 </journey>

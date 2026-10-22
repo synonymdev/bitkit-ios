@@ -41,3 +41,7 @@ Payment Request on a wallet that has that balance.
 scanner, including repeated close/reopen and fractional-satoshi amounts. It needs a usable funded
 regtest channel and the regular `lnurl-server` generator on port 23000; it stops before authorizing
 any payment. Its setup is separate from the unfunded capacity-warning journey above.
+
+Before scanning, record whether Quick Pay is enabled, disable it and verify it is off. Fixed LNURLs
+can otherwise pay automatically. Leave the amount and daily limits unchanged, close every payment
+sheet before cleanup, and restore the original enabled state after the journey.
