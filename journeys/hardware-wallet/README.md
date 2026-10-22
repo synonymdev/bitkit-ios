@@ -1,7 +1,7 @@
 # Hardware wallet journeys
 
 Cover pairing a Trezor, the home tile and detail screen, the Hardware Wallets settings surface,
-passphrase (hidden) wallets, wallet-scoped activity, and the watch-only Transfer To Spending flow.
+passphrase (hidden) wallets, wallet-scoped activity, and on-chain send.
 
 ## Transport: Bridge, not USB
 
@@ -51,10 +51,8 @@ Several journeys mutate pairing state. Run them in this order, or re-pair betwee
 1. `connect-home-tile.xml` — pairs the emulator; every other journey assumes it ran.
 2. `settings-hardware-wallets.xml`, `connect-flow.xml`, `suggestion-intro-sheet.xml` — each forgets
    and re-pairs the device, ending paired.
-3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `transfer-to-spending*.xml`, `reconnect.xml`,
-   `send-onchain.xml`.
-4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-transfer-to-spending.xml` →
-   `passphrase-settings-remove.xml`.
+3. `activity-blue-icons.xml`, `activity-detail-hw-tags.xml`, `reconnect.xml`, `send-onchain.xml`.
+4. `passphrase-pairing.xml` → `passphrase-duplicate.xml` → `passphrase-settings-remove.xml`.
 5. `detail-overview.xml` **last** — its final step forgets the device.
 
 ## Approving prompts on the emulator
@@ -70,9 +68,12 @@ container (`docker compose --profile trezor-emulator exec -T trezor-emulator
 /trezor-user-env/.venv/bin/python3 /opt/bitkit-trezor/trezor-controller.py send-json
 '{"type":"emulator-press-yes"}'`), which is how a stack that cannot use the host helper presses Yes.
 
-`send-onchain.xml` spends from the emulator's account, so it needs funds beyond what the transfer
-journeys leave; fund the account's receive address again from the regtest node before it, and send
-to an address of that node.
+`send-onchain.xml` spends from the emulator's account, so fund the account's receive address from the
+regtest node before it, and send to an address of that node.
+
+The activity journeys use a fixture with two confirmed hardware receives carrying distinct amounts and
+one hardware Transfer To Spending transaction. The Transfer row cannot be created on this build; take
+it from a build from before synonymdev/bitkit-ios#1097.
 
 ## Checking for passphrase leaks
 
@@ -108,15 +109,8 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
 - Row identifiers are inconsistent in the app and this is not a typo in the journeys:
   `HardwareWalletRowName<id>` has **no** separator, while `HardwareWalletRowDelete_<id>` and
   `HardwareWalletRow_<id>` use an underscore. The `<id>` is the full `trezor:<hex>` device id.
-- **The amount number pad was ungated.** `SpendingAmountHw` observed `maxAllowed` without
-  `initial: true`, and that value lives on the shared `TransferViewModel`, so a screen that opens
-  with the limits already computed has no change to observe and the fresh `AmountInputViewModel`
-  keeps `maxAmountOverride` nil. Nine taps on `N9` entered **999 999 999** against an AVAILABLE of
-  610 015, with no toast and no snap; Continue stayed disabled, so no unaffordable order was
-  reachable. Fixed in #686 and covered by `transfer-to-spending-over-max.xml`.
 - Confirmed resolving without the emulator: `HardwareWalletsSettings`, `HardwareWalletsScreen`,
   `AddHardwareWallet`, `HardwareWalletIntroScreen`/`Continue`/`Cancel`, `HardwareWalletScreen`,
-  `HardwareTransferToSpending`, `HardwareTransferAmount` and its Available/25%/MAX/Continue controls,
   and the number pad keys.
 
 ## Identifiers used
@@ -135,18 +129,22 @@ Walked as far as a simulator allows, against a wallet with two Trezor identities
   `RenameHardwareWalletInput`, `RenameHardwareWalletSave`.
 - Home and detail: tile `ActivityHardware`, screen `HardwareWalletScreen`, `RemoveHardwareWallet`,
   `RemoveHwWalletDialog`, `HwRemoveKeepBackupToggle`.
-- Transfer: `HardwareTransferToSpending`, `HardwareTransferAmount`,
-  `HardwareTransferAmountAvailable`/`Quarter`/`Max`/`Continue`,
-  over-max toast `HardwareTransferAmountExceededToast`, `HardwareTransferSign`,
-  `HardwareTransferSignLearnMore`/`SignAdvanced`/`SignDefault`,
-  `HardwareTransferOpenTrezorConnect`, `HardwareTransferSigned`,
-  `HwTransferPassphraseSheet`/`Input`/`Continue`/`Cancel`.
+- Transfer: `HardwareTransferToSpending`, asserted absent by `detail-overview.xml`.
 - Activity: `ActivityShowAll` (home only). Rows use **two different schemes** — `ActivityShort-<index>`
   in the home recent list, `Activity-<index>` in All Activity and on the hardware wallet screen.
   Tabs `Tab-all`/`Tab-sent`/`Tab-received`/`Tab-other`,
   Tag button `ActivityTag` (labelled "Tag"), tag field `TagInput`, submit `ActivityTagsSubmit`,
   detail chip list `ActivityTags` (only rendered once a tag exists), All Activity tag filter
   `TagsPrompt` (not `ActivityTags` — that one is detail-screen only), explorer `ActivityTxDetails`.
+
+## Retired journeys
+
+`transfer-to-spending.xml`, `transfer-to-spending-max-lsp-cap.xml`,
+`transfer-to-spending-node-warmup.xml`, `passphrase-transfer-to-spending.xml` and the iOS-only
+`transfer-to-spending-over-max.xml` were retired because Blocktank channel purchases were removed
+(synonymdev/bitkit-ios#1097): the hardware wallet detail screen no longer has a Transfer To Spending
+button (`HardwareTransferToSpending`). The `HardwareTransfer*` and `HwTransferPassphrase*` screens and
+identifiers are still in code but nothing in the UI reaches them.
 
 ## Local Payment Completion
 

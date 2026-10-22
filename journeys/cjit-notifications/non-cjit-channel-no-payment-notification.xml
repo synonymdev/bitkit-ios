@@ -1,27 +1,35 @@
 <journey name="non-cjit channel opening shows no payment notification">
   <description>
     Opening a regular (non-CJIT) Lightning channel must NOT be reported as a received payment: no
-    "Incoming Payment" notification, and never several duplicates. The correct notification for this
-    path is the orderPaymentConfirmed copy, "Spending Balance Ready". When the app is in the
-    foreground the only feedback is the in-app "Spending balance ready" toast.
+    "Incoming Payment" notification, and never several duplicates. When the app is in the
+    foreground the only feedback is the in-app "Spending balance ready" toast. A manual channel is
+    not a Blocktank order, so Blocktank sends no orderPaymentConfirmed push for it and no Bitkit
+    notification is expected at all.
 
     No extension log assertion here: with the app in the foreground the node holds the .lightning
     process lock, and NotificationService returns on that lock before it decrypts or logs anything.
     The observable evidence is the toast plus the absence of an "Incoming Payment" notification.
 
-    Precondition: physical device with an onboarded regtest wallet connected to the LSP and a
-    positive on-chain balance to fund the transfer. No CJIT entry is involved — this is a manual
-    Transfer channel opening (orderPaymentConfirmed), not a CJIT receive.
+    Precondition: physical device with an onboarded regtest wallet connected to the LSP, with a
+    positive on-chain balance to fund the channel and no other Lightning channel (the toast shows
+    only for the wallet's first channel). No CJIT entry is involved here — this is a manual channel
+    opening, not a CJIT receive. This build cannot buy a channel from Blocktank
+    (synonymdev/bitkit-ios#1097), so the channel is opened to the LSP node by hand (see ../README.md,
+    Getting a Lightning channel).
+
+    iOS: the bottom "Get Started"/"Add Connection" button has no identifier (Android
+    "add_connection_button"); the navigation bar "+" (id "NavigationAction") opens the same screen.
   </description>
   <actions>
-    <action>Keep the app in the foreground on the wallet home screen</action>
-    <action>Open a regular spending channel via Transfer → Spending, funding some sats and confirming</action>
-    <action>Mine confirmations if required, using the sibling Android checkout's helper (no iOS copy yet, see #694): ../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'</action>
+    <action>Start on the wallet home screen</action>
+    <action>Open Settings, then the "Advanced" tab (id "Tab-advanced"), then "Lightning Connections" (id "Channels"), tap "Get Started" or "Add Connection" (or the navigation bar "+", id "NavigationAction") and tap "Manual Setup" (id "FundManual")</action>
+    <action>Enter the LSP node id (id "NodeIdInput"), host (id "HostInput") and port (id "PortInput") from ../bitkit-android/lsp GET /info, tap Continue (id "ExternalContinue"), enter an amount within the available maximum, then continue and confirm to open the channel</action>
+    <action>Mine confirmations, using the sibling Android checkout's helper (no iOS copy yet, see #694): ../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'</action>
+    <action>Return to the wallet home screen and keep the app in the foreground</action>
     <action>Wait for the ChannelReady event (~5-10s)</action>
     <action>Verify an in-app "Spending balance ready" toast appears (id "SpendingBalanceReadyToast")</action>
     <action>Open Notification Center and inspect the Bitkit entries</action>
     <action>Verify NO "Incoming Payment" notification was posted for this channel opening</action>
-    <action>Verify any notification posted for it uses the "Spending Balance Ready" copy and not the "Incoming Payment" copy</action>
     <action>Verify there are not multiple duplicate channel-ready notifications stacked in Notification Center</action>
   </actions>
 </journey>

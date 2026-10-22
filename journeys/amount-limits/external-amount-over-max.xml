@@ -8,12 +8,15 @@
     port from `../bitkit-android/lsp GET /info`, borrowed from the sibling Android checkout because
     there is no iOS copy of that helper yet (see #694). Start on the wallet home screen.
 
+    iOS: the bottom "Get Started"/"Add Connection" button has no identifier (Android
+    "add_connection_button"); the navigation bar "+" (id "NavigationAction") opens the same screen.
+
     Do NOT assert that Continue is disabled at the over-max input: the input is capped (never left in
     an over-max state), so the capped value is valid and Continue stays enabled.
   </description>
   <actions>
     <action>Open Settings, then the "Advanced" tab, then "Lightning Connections"</action>
-    <action>Tap "Get Started" to open the funding options screen</action>
+    <action>Tap "Get Started" ("Add Connection" when a connection already exists, or the navigation bar "+" with id "NavigationAction") to open the Funding Advanced screen, which offers LNURL Channel QR and Manual Setup</action>
     <action>Tap "Manual Setup" (id "FundManual")</action>
     <action>Type the node id into the node id field (id "NodeIdInput")</action>
     <action>Type the host into the host field (id "HostInput")</action>

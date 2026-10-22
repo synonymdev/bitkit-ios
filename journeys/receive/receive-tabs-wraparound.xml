@@ -6,12 +6,13 @@
     the Receive sheet, also when it is released above the sheet, and a tap on a QR still copies it.
 
     Precondition: onboarded dev wallet with USDT enabled (introductory sheet or Settings, General,
-    Payments), no open Spending channel, no CJIT invoice pending and no hardware wallet paired, so the
-    tabs are Savings, Spending and USDT; a usable channel adds the Auto tab. Start on the wallet home
+    Payments), no Lightning channel and no hardware wallet paired, so the tabs are Savings and USDT.
+    Without a channel with inbound liquidity the Receive sheet has no Spending or Auto tab, since
+    Blocktank channel purchases were removed (synonymdev/bitkit-ios#1097). Start on the wallet home
     screen. The USDT address loads without funding; wait for the QR before swiping.
 
     Swipe with AXe across the middle of the QR, about 60% of its width, in 300 ms (`axe swipe
-    --start-x 80 --start-y 440 --end-x 330 --end-y 440 --duration 0.3 --udid <udid>` to the right on a
+    --start-x 80 --start-y 440 --end-x 330 --end-y 440 --duration 0.3 --udid &lt;udid&gt;` to the right on a
     402 pt wide simulator).
 
     iOS: the paged `TabView` holds an extra page before the first tab and after the last one; paging
@@ -24,16 +25,11 @@
     <action>Swipe left across the USDT QR; verify the Savings tab is selected</action>
     <action>Start a screen recording, tap the USDT tab (id "Tab-usdt") and wait until the USDT QR is visible, then swipe left across the USDT QR; verify the Savings tab is selected and the recording goes straight from the USDT QR to the Savings QR, with no Auto or Spending QR and no second USDT screen in between</action>
     <action>Start a screen recording, tap the USDT tab and wait until the USDT QR is visible, then tap the Savings tab; verify the Savings tab is selected and the recording shows the same direct change from USDT to Savings</action>
-    <action>Swipe left across the Savings QR in 1200 ms (`axe swipe --start-x 330 --start-y 440 --end-x 80 --end-y 440 --duration 1.2`); verify the Spending tab (id "Tab-spending") is selected</action>
-    <action>Swipe left across the Spending content in 1200 ms; verify the USDT tab is selected and wait until its QR is visible</action>
+    <action>Verify there is no Spending tab (id "Tab-spending") and no Auto tab (id "Tab-auto") in the tab row</action>
+    <action>Swipe left across the Savings QR in 1200 ms (`axe swipe --start-x 330 --start-y 440 --end-x 80 --end-y 440 --duration 1.2`); verify the USDT tab is selected and wait until its QR is visible</action>
     <action>Swipe left from the top right of the USDT QR to above the sheet (`axe swipe --start-x 360 --start-y 300 --end-x 30 --end-y 60 --duration 0.3`); verify the Receive sheet is still open and the Savings tab is selected</action>
     <action>Swipe right from the top left of the Savings QR to above the sheet (`axe swipe --start-x 40 --start-y 300 --end-x 380 --end-y 60 --duration 0.3`); verify the Receive sheet is still open and the USDT tab is selected</action>
     <action>Swipe left across the USDT QR, then tap the Savings QR once; verify the "copied" tooltip appears</action>
-    <action>Close Receive, turn USDT off (Settings, General, Payments), return to the wallet home screen and tap Receive; verify the Savings tab is selected and only Savings and Spending show</action>
-    <action>Swipe right across the Savings QR; verify the Spending tab is selected</action>
-    <action>Swipe right across the Spending content; verify the Savings tab is selected</action>
-    <action>Swipe left across the Savings QR; verify the Spending tab is selected</action>
-    <action>Swipe left across the Spending content; verify the Savings tab is selected</action>
-    <action>Swipe left across the Savings QR; verify the Spending tab is selected</action>
+    <action>Close Receive, turn USDT off (Settings, General, Payments), return to the wallet home screen and tap Receive; verify the Savings tab is selected and there is no Spending tab (id "Tab-spending"), no Auto tab and no USDT tab (id "Tab-usdt")</action>
   </actions>
 </journey>

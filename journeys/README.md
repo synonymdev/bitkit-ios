@@ -25,7 +25,7 @@ separately confirmed the app is wrong.
   <description>What this proves, and the preconditions needed to prove it.</description>
   <actions>
     <action>Tap the Spending balance card on the home screen</action>
-    <action>Verify the spending amount screen (id "SpendingAmount") is visible</action>
+    <action>Verify the spending wallet screen (id "TotalBalance-primary") is visible</action>
   </actions>
 </journey>
 ```
@@ -49,7 +49,7 @@ xcodebuildmcp simulator snapshot-ui                   # semantic snapshot with e
 xcodebuildmcp ui-automation tap --element-ref e12     # tap one ref from the latest snapshot
 xcodebuildmcp ui-automation type-text --element-ref e8 --text "..."
 xcodebuildmcp ui-automation wait-for-ui --predicate textContains --text "Spending Balance Maximum"
-xcodebuildmcp ui-automation wait-for-ui --identifier SpendingAmount --predicate exists
+xcodebuildmcp ui-automation wait-for-ui --identifier TotalBalance-primary --predicate exists
 xcodebuildmcp simulator screenshot                    # only when a snapshot cannot settle a question
 ```
 
@@ -111,6 +111,22 @@ script, and there is no iOS copy yet — #694 tracks porting it. The relative pa
 journeys already reach for `../bitkit-docker` the same way. If you do not have that clone, fund the
 wallet however you normally do against regtest and skip the helper.
 
+### Getting a Lightning channel
+
+Blocktank is winding down, and this build no longer buys channels from it (synonymdev/bitkit-ios#1097):
+Transfer To Spending, the Receive sheet's CJIT button and gift codes are gone. A journey that needs a
+Lightning channel as its precondition says "a wallet with an open Lightning channel"; get one in either way:
+
+- Install a build from before that change (master before synonymdev/bitkit-ios#1097), open a channel with
+  Transfer To Spending, then install this build over it. The wallet, its channel and its balances carry over.
+- Or open a manual channel to the LSP node on this build: Settings › Advanced › Lightning
+  Connections › add connection ("Get Started", "Add Connection" or the navigation bar `+`, id
+  `NavigationAction`; it opens Funding Advanced) › Manual Setup (id `FundManual`), then enter the node id,
+  host and port from `../bitkit-android/lsp GET /info`, pick an amount, confirm, and mine blocks with
+  `../bitkit-android/lsp POST /regtest/chain/mine '{"count":3}'`. The Spending balance is available once
+  the channel is ready. A channel this wallet opens holds outbound liquidity only, so a journey that
+  receives over Lightning needs the first route, which buys inbound capacity.
+
 ### Paykit amount-entry rates
 
 `paykit-quoted-usdt.xml` preserves the originally entered amount across denomination switches until
@@ -166,6 +182,8 @@ Known naming differences:
 | Send available balance | `AvailableAmount` and `available_balance` (Android emits both) | `AvailableAmount` |
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
+| Wallet screen balance | `TotalBalance` | `TotalBalance-primary` |
+| Lightning Connections add connection | `add_connection_button` | — *(no identifier on the bottom "Get Started"/"Add Connection" button; the navigation bar `+` is `NavigationAction`)* |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
 | Hardware wallet receive tab | `Tab-hardware` (after bitkit-android#1231) | `Tab-trezor` for a Trezor wallet, `Tab-jade` for a Jade |
 | Hardware sign amount | `HardwareSendAmount` | `HardwareSendSignAmount` |
@@ -180,7 +198,8 @@ subscription carries the same `paymentRequestId` and they can list together — 
 and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
 Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
-`External*`, `Hardware*`, `Widget*` — matches Android exactly.
+`External*`, `Hardware*`, `Widget*`, `ChannelsClosingBanner`, `ChannelsClosingNotice` — matches Android
+exactly.
 
 ## Capabilities
 
@@ -197,16 +216,33 @@ journey PR, which is what made this file conflict on every merge.
 | USDT wallet navigation without funding | an onboarded build with USDT configured; wallet syncing remains silent while offline; payment-action errors remain available — [USDT QA](../Docs/USDT-QA.md) |
 | Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
-| Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |
+| Lightning channels and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer; this build opens channels only through Lightning Connections › add connection — [Getting a Lightning channel](#getting-a-lightning-channel), [amount-limits](amount-limits/README.md) |
 | A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
-| Push notifications to a backgrounded or killed app | a real APNs round trip on an attached physical device, never the simulator, read back from Notification Center — [cjit-notifications](cjit-notifications/README.md) |
-| The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild — [notification-permission](notification-permission/README.md) |
+| Notifications read back from Notification Center | an attached physical device, never the simulator — [cjit-notifications](cjit-notifications/README.md). Push to a backgrounded or killed app via a CJIT order is retired with CJIT |
+| The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild; no journey uses it since the suite was retired — [notification-permission](notification-permission/README.md) |
 | An incoming Payment Request from a linked issuer | the fixture issuer, saved as a contact and linked as identities — [payment-requests](payment-requests/README.md) |
 | A Pubky identity and a two-wallet marketplace purchase | a Bitkit-generated Pubky profile, plus the integration fixture runtime: Pubky testnet, Paykit Server, regtest bitcoind and Fulcrum — [pubky-auth](pubky-auth/README.md), [pubky-marketplace](pubky-marketplace/README.md) |
 | LNURL pay, withdraw, channel and auth, and Lightning Addresses | the `bitkit-docker` `lnurl-server` on local regtest, reached by a simulator app built with `E2E_BUILD`, whose default `E2E_BACKEND=local` targets the host at `127.0.0.1`; it issues memo invoices, so a check that needs a description-hash invoice needs another endpoint |
 | Deep links handed to the app | `xcrun simctl openurl <device> "<uri>"`; only `bitkit://pubky-auth/setup` and `/signin`, `bitkit://contact?pubky=`, web URLs, Pubky callbacks and payment URIs route — there is no screen or sheet router — [pubky-auth](pubky-auth/README.md), [deeplinks](deeplinks), [Not ported](#not-ported) |
 
 Device-clock fault injection requires a separate manual run: [Paykit clock changes](paykit-clock-changes.md).
+
+## Retired journeys
+
+Blocktank channel purchases were removed in synonymdev/bitkit-ios#1097, so every journey whose route
+buys a channel went with them. They are listed here rather than left as stale files; the Android twin
+(synonymdev/bitkit-android#1669) retires its counterparts, named in the last column where they differ.
+
+| Retired journey | Route it covered | Android counterpart |
+| --- | --- | --- |
+| `amount-limits/transfer-spending-over-max.xml`, `transfer-spending-advanced-over-max.xml` | Transfer To Spending amount and Receiving Capacity number pads | same names |
+| `cjit-notifications/cjit-background-notification.xml` | CJIT notification with the app backgrounded | `cjit-foreground-service-notification.xml` |
+| `cjit-notifications/cjit-push-single-notification.xml` | CJIT notification from a push to a killed app | same name |
+| `hardware-wallet/transfer-to-spending.xml`, `transfer-to-spending-max-lsp-cap.xml`, `transfer-to-spending-node-warmup.xml`, `passphrase-transfer-to-spending.xml` | Hardware wallet Transfer To Spending (the `HardwareTransferToSpending` button is gone) | same names |
+| `hardware-wallet/transfer-to-spending-over-max.xml` | Hardware wallet Transfer To Spending amount cap | none — iOS-only |
+| `notification-permission/receive-cjit-confirm-notification-toggle.xml`, `receive-cjit-liquidity-notification-toggle.xml`, `transfer-spending-confirm-notification-toggle.xml` | The background-setup toggle on the CJIT and Spending Confirm screens, which nothing navigates to now | same names |
+| `notification-permission/toggle-off-and-system-settings-route.xml` | Toggle off on the CJIT confirm screen, then Settings › Notifications into the iOS Settings app | `toggle-off-opens-system-settings.xml` |
+| `transfer/spending-confirm-amount-change.xml` | Spending Confirm amount rebuilt at swipe | same name |
 
 ## Not ported
 
@@ -228,8 +264,8 @@ required to run the suite.
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
 
-Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
-spending maximum differently, `cjit-notifications` because the notification copy differs, and
+Some suites are adapted rather than ported verbatim: `amount-limits` because
+`custom-fee-wallet-switch.xml` is iOS-only, `cjit-notifications` because the notification copy differs, and
 `pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
 watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
 `grant-signup-existing-identity.xml` are shared with Android.
