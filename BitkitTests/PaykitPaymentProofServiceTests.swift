@@ -3799,7 +3799,7 @@ actor PaymentProofSdkMock: PaykitPaymentProofSdkHandling {
             billingPeriod: proof.billingPeriod,
             paymentAppId: proof.paymentAppId,
             paymentEndpointIdentifier: proof.paymentEndpointIdentifier,
-            allowanceId: nil,
+            allowanceId: proof.allowanceId,
             conversionQuoteId: nil,
             proof: proof.proof,
             recordedAt: "2027-01-15T08:01:00Z"
