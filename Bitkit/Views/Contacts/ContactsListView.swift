@@ -8,6 +8,7 @@ struct ContactsListView: View {
 
     @State private var searchText = ""
     @State private var showAddContactSheet = false
+    @State private var loadGeneration = 0
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
@@ -47,7 +48,7 @@ struct ContactsListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .task {
+        .task(id: loadGeneration) {
             await loadContacts()
         }
         .sheet(isPresented: $showAddContactSheet) {
@@ -243,7 +244,7 @@ struct ContactsListView: View {
             }
 
             CustomButton(title: t("profile__retry_load"), variant: .secondary) {
-                await loadContacts()
+                loadGeneration += 1
             }
             .accessibilityIdentifier("ContactsRetry")
 
@@ -289,15 +290,23 @@ struct ContactsListView: View {
     private func loadContacts() async {
         guard let pk = pubkyProfile.publicKey else { return }
 
+        let session = pubkyProfile.currentSession
         do {
-            try await contactsManager.loadObservedContacts(for: pk)
-            guard !Task.isCancelled else { return }
+            while true {
+                try Task.checkCancellation()
+                guard pubkyProfile.publicKey == pk, pubkyProfile.currentSession == session else { return }
+                do {
+                    try await contactsManager.loadObservedContacts(for: pk)
+                    break
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    try await PaykitPaymentActivity.shared.waitUntilIdle(includingReviews: true)
+                }
+            }
+            guard !Task.isCancelled, pubkyProfile.publicKey == pk, pubkyProfile.currentSession == session else { return }
             if !contactsManager.contacts.isEmpty {
                 app.hasSeenContactsIntro = true
             }
         } catch is CancellationError {
-            return
-        } catch PaykitPaymentRequestError.operationInProgress {
             return
         } catch {
             guard !Task.isCancelled else { return }
