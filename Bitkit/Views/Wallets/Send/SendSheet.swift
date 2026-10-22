@@ -100,13 +100,21 @@ struct SendConfig {
 }
 
 struct SendSheetItem: SheetItem {
-    let id: SheetID = .send
+    let id: UUID
+    let presentationID: UUID?
     let size: SheetSize = .large
     let initialRoute: SendRoute
     let hardwareWalletId: String?
     let preparation: IncomingPaykitPaymentRequestPreparation?
 
-    init(initialRoute: SendRoute = .options, hardwareWalletId: String? = nil, preparation: IncomingPaykitPaymentRequestPreparation? = nil) {
+    init(
+        presentationID: UUID? = nil,
+        initialRoute: SendRoute = .options,
+        hardwareWalletId: String? = nil,
+        preparation: IncomingPaykitPaymentRequestPreparation? = nil
+    ) {
+        self.presentationID = presentationID
+        id = presentationID ?? UUID()
         self.initialRoute = initialRoute
         self.hardwareWalletId = hardwareWalletId
         self.preparation = preparation
@@ -147,6 +155,14 @@ struct SendSheet: View {
     /// Starts pending so a confirmation rendered before `setUpSend` runs does not read setup as finished.
     @State private var isSetupPending = true
     @State private var isFallbackFundingPending = false
+    @State private var ownedSendStateGeneration: UUID?
+
+    private var isCurrentPresentation: Bool {
+        guard let presentationID = config.presentationID else {
+            return sheets.activeSheetConfiguration?.id == (isEmbedded ? .subscription : .send)
+        }
+        return sheets.activeSheetConfiguration?.presentationID == presentationID
+    }
 
     init(config: SendSheetItem, isEmbedded: Bool = false) {
         self.config = config
@@ -272,6 +288,11 @@ struct SendSheet: View {
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
         }
+        .onChange(of: app.sendStateGeneration) {
+            if isCurrentPresentation {
+                ownedSendStateGeneration = app.sendStateGeneration
+            }
+        }
         .task(id: config.preparation?.resolvedRoute) {
             if let preparation = config.preparation {
                 guard let route = preparation.resolvedRoute, preparation.ownsSheet(sheets),
@@ -359,10 +380,13 @@ struct SendSheet: View {
         if isPreparingRequest {
             return
         }
-        if let request = incomingPaymentRequest ?? app.contactPaymentContext?.incomingPaymentRequest {
+        let ownsSendState = ownedSendStateGeneration == app.sendStateGeneration
+        if let request = incomingPaymentRequest ?? (ownsSendState ? app.contactPaymentContext?.incomingPaymentRequest : nil) {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
         }
         incomingPaymentRequest = nil
+        // A scan may have replaced this send's state before its dismiss animation finishes.
+        guard ownsSendState else { return }
         app.resetSendState()
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         app.resetQuickPay()
@@ -370,6 +394,7 @@ struct SendSheet: View {
     }
 
     private func setUpSend() {
+        guard isCurrentPresentation else { return }
         wallet.resetSendState(speed: settings.defaultTransactionSpeed)
         if let walletId = config.hardwareWalletId {
             let balance = hwWalletManager.fundingBalance(walletId: walletId)
@@ -405,6 +430,7 @@ struct SendSheet: View {
         if currentRoot == .options {
             app.resetSendState()
         }
+        ownedSendStateGeneration = app.sendStateGeneration
         setupTask?.cancel()
         isSetupPending = true
         setupTask = Task {

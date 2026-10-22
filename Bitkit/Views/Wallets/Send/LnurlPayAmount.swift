@@ -11,7 +11,8 @@ struct LnurlPayAmount: View {
 
     var maxAmount: UInt64 {
         // TODO: subtract fee
-        min(app.lnurlPayData!.maxSendableSat, UInt64(wallet.totalLightningSats))
+        guard let data = app.lnurlPayData else { return 0 }
+        return min(data.maxSendableSat, UInt64(wallet.totalLightningSats))
     }
 
     var amount: UInt64 {
@@ -19,7 +20,7 @@ struct LnurlPayAmount: View {
     }
 
     var isValid: Bool {
-        amount >= 0 && amount <= maxAmount
+        app.lnurlPayData != nil && amount >= 0 && amount <= maxAmount
     }
 
     var body: some View {
@@ -90,8 +91,9 @@ struct LnurlPayAmount: View {
     }
 
     private func showMaxExceededToast() {
+        guard let data = app.lnurlPayData else { return }
         // The cap is min(invoice max, spending balance); word the message for whichever bound is hit.
-        let isInvoiceCapped = app.lnurlPayData!.maxSendableSat < UInt64(wallet.totalLightningSats)
+        let isInvoiceCapped = data.maxSendableSat < UInt64(wallet.totalLightningSats)
 
         app.toast(
             type: .warning,
@@ -103,7 +105,8 @@ struct LnurlPayAmount: View {
     }
 
     private func onContinue() {
-        let minSendableSats = max(1, app.lnurlPayData!.minSendableSat)
+        guard let data = app.lnurlPayData else { return }
+        let minSendableSats = max(1, data.minSendableSat)
 
         if amount < minSendableSats {
             app.toast(

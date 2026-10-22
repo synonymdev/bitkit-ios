@@ -5,6 +5,43 @@ import XCTest
 
 @MainActor
 final class LnurlPayConfirmTests: XCTestCase {
+    func testAmountScreenSurvivesContextResetDuringDismissal() async {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 149_500, maxSendable: 200_999,
+            metadataStr: "[]", commentAllowed: 12, allowsNostr: false, nostrPubkey: nil
+        )
+        var path: [SendRoute] = []
+        let view = LnurlPayAmount(navigationPath: Binding(get: { path }, set: { path = $0 }))
+            .environmentObject(app)
+            .environmentObject(wallet)
+            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+            .environmentObject(SettingsViewModel.shared)
+            .environmentObject(ContactsManager())
+        let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        app.resetSendState()
+        await Task.yield()
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        XCTAssertGreaterThan(host.sizeThatFits(in: window.bounds.size).height, 0)
+        XCTAssertNil(app.lnurlPayData)
+        XCTAssertNil(wallet.sendAmountSats)
+        XCTAssertTrue(path.isEmpty)
+    }
+
     func testFixedLnurlLocksReviewedAmountAndPreservesMillisatoshis() {
         let data = LnurlPayData(
             uri: "https://example.com/pay", callback: "https://example.com/callback",

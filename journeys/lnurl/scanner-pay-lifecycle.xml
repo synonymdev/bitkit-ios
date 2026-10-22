@@ -1,0 +1,27 @@
+<journey name="lnurl scanner presentation keeps the active payment">
+  <description>
+    Regression for iOS issue 1087: replacing the QR scanner with LNURL amount or confirmation must
+    keep the current payment data. Closing a payment must not clear the data for a later payment.
+    This is an iOS presentation lifecycle regression, not a change to Android payment behavior.
+
+    Use an onboarded regtest E2E build, a running Lightning node, and a usable channel with more
+    than 1000 sats of spending balance. Resolve introductory sheets before starting. Use a local
+    LNURL server reachable by the simulator. The regular bitkit-docker lnurl-server on port 23000
+    accepts GET /generate/pay?minSendable=149500&amp;maxSendable=200999&amp;commentAllowed=12 for the
+    variable fixture, and GET /generate/pay?minSendable=N&amp;maxSendable=N&amp;commentAllowed=0 for
+    fixed fixtures. Obtain links for N=222000, 222538, 222222 and 500500. These are millisatoshis.
+    Use the returned lnurl strings, not BOLT11 invoice strings. No payment is authorized in this journey.
+  </description>
+  <actions>
+    <action>Open Send (id "Send"), close it, and verify the wallet home screen is visible</action>
+    <action>Open the home QR scanner, then the E2E manual scan prompt (id "ScanPrompt")</action>
+    <action>Enter the variable LNURL fixture in "QRInput" and tap "DialogConfirm"</action>
+    <action>Verify "SendNumberField" and "ContinueAmount" are visible and the app remains open</action>
+    <action>Enter 150 sats and tap "ContinueAmount"</action>
+    <action>Verify "ReviewAmount-primary" shows 150 and "CommentInput" is visible; do not swipe to pay</action>
+    <action>Dismiss the payment sheet and verify the wallet home screen is visible</action>
+    <action>For each fixed LNURL fixture in order (222000, 222538, 222222, 500500 msat), open the home QR scanner, enter its link through "ScanPrompt", "QRInput" and "DialogConfirm", and verify "ReviewAmount-primary" is visible with 222, 223, 223 and 501 sats respectively; "CommentInput" is absent and no amount-entry step is required</action>
+    <action>After each fixed confirmation, dismiss it without paying and verify the wallet home screen remains responsive before scanning the next fixture</action>
+    <action>Repeat the variable and fixed scan sequence five times, including opening and closing Send before a sequence; verify no empty payment sheet or app exit occurs</action>
+  </actions>
+</journey>

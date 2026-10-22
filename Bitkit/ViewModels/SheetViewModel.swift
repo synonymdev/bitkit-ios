@@ -498,6 +498,7 @@ class SheetViewModel: ObservableObject {
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
             return SendSheetItem(
+                presentationID: config.presentationID,
                 initialRoute: initialRoute,
                 hardwareWalletId: sendConfig?.hardwareWalletId,
                 preparation: sendConfig?.preparation

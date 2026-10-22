@@ -159,6 +159,7 @@ class AppViewModel: ObservableObject {
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
+    @Published private(set) var sendStateGeneration = UUID()
 
     @Published private(set) var pendingDeepLinkURL: URL?
     /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
@@ -1304,6 +1305,7 @@ extension AppViewModel {
     }
 
     func resetSendState(preservingContactPaymentContext: Bool = false) {
+        sendStateGeneration = UUID()
         paykitUsesUsdt = false
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
