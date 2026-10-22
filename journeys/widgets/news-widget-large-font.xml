@@ -16,6 +16,9 @@
     largest text size is `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`
     and the default is `content_size large`. iOS words the time as a relative date ("last month",
     "5 months ago"), so the check is that the time is shown whole, not that it ends with "ago".
+    "Shown whole" is horizontal: every character, no ellipsis. On Home the card has a fixed 86 pt
+    content height, so at the largest size the bottom of the row's glyphs is clipped; that clipping
+    predates this fix and is not checked here.
     Before this fix iOS cut both texts ("Cyphe…", "last m…") instead of wrapping the time.
   </description>
   <actions>
@@ -27,7 +30,7 @@
     <action>Verify from a screenshot that the source is at the left of the row and the time at the right, each on one line</action>
     <action>Run `xcrun simctl ui booted content_size accessibility-extra-extra-extra-large`</action>
     <action>Scroll Home until the source row is visible again</action>
-    <action>Verify from a screenshot that the time is on one line, shown whole without an ellipsis, and right-aligned in the row</action>
+    <action>Verify from a screenshot that the time is on one line, with every character shown and no ellipsis, and right-aligned in the row; ignore the bottom of the glyphs being clipped by the card</action>
     <action>Verify from the same screenshot that the source is on one line and ends before the time; when the source is long, verify that it ends with an ellipsis</action>
     <action>Run `xcrun simctl ui booted content_size large`</action>
   </actions>
