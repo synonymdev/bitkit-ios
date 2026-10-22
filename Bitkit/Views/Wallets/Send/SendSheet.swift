@@ -87,6 +87,7 @@ final class SendPresentationState {
     var navigationPath: [SendRoute] = []
     var rootOverride: SendRoute?
     var quickPaySession = 0
+    let quickPayPresentationID = UUID()
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
@@ -1020,7 +1021,13 @@ struct SendSheet: View {
             SendQuickpay(
                 navigationPath: $flow.navigationPath,
                 routingCacheResetAttempted: flow.routingCacheResetAttempted,
-                replaceQuickPay: replaceQuickPay(with:)
+                replaceQuickPay: replaceQuickPay(with:),
+                sessionID: QuickPayPaymentCoordinator.SessionID(
+                    presentationID: flow.quickPayPresentationID,
+                    sendStateGeneration: app.sendStateGeneration,
+                    attempt: flow.quickPaySession
+                ),
+                isCurrentPresentation: { isCurrentPresentation }
             )
             .id(flow.quickPaySession)
         case .pin:
