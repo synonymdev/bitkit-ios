@@ -767,13 +767,14 @@ extension AppViewModel {
         if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
-                switch try await decode(invoice: endpoint.paymentRequest) {
+                let data = try await decode(invoice: endpoint.paymentRequest)
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
+                switch data {
                 case let .onChain(invoice): scannedOnchainInvoice = invoice
                 case let .lightning(invoice): scannedLightningInvoice = invoice
                 case let .lnurlPay(data): lnurlPayData = data
                 default: break
                 }
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
             }
             let state = scanPaymentOperations.state()
             let lightningMethod: PublicPaykitService.MethodId = lnurlPayData == nil ? .bitcoinLightningBolt11 : .bitcoinLightningLnurl
