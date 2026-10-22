@@ -1916,6 +1916,7 @@
 "subscriptions__allowance_status_active" = "Активен";
 "subscriptions__allowance_status_waiting" = "Ожидает ответа";
 "subscriptions__allowance_status_needs_answer" = "Ожидает вашего ответа";
+"subscriptions__allowance_status_setting_up" = "Настройка лимита автооплаты";
 "subscriptions__allowance_status_scheduled" = "Ещё не активен";
 "subscriptions__allowance_status_expired" = "Истёк";
 "subscriptions__allowance_status_declined" = "Отклонён";
@@ -1939,6 +1940,8 @@
 "subscriptions__allowance_payment_in_progress" = "Этот запрос уже оплачивается.";
 "subscriptions__allowance_executed_title" = "Платёж Выполнен";
 "subscriptions__allowance_executed_description" = "Автооплата отправила {amount} пользователю {name}";
+"subscriptions__allowance_offer_accepted_title" = "Лимит автооплаты добавлен";
+"subscriptions__allowance_offer_accepted_description" = "Пользователь {name} настроил для вас лимит автооплаты";
 "subscriptions__allowance_limit_title" = "Лимит Достигнут";
 "subscriptions__allowance_limit_description" = "Запрос на {amount} от {name} превышает ваш лимит автооплаты. Проверьте его, чтобы оплатить.";
 "subscriptions__allowance_auto_paid" = "Оплачено автоматически";

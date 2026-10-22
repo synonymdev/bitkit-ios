@@ -1797,6 +1797,7 @@
 "subscriptions__allowance_status_active" = "Active";
 "subscriptions__allowance_status_waiting" = "Waiting for an answer";
 "subscriptions__allowance_status_needs_answer" = "Waiting for your answer";
+"subscriptions__allowance_status_setting_up" = "Setting up the allowance";
 "subscriptions__allowance_status_scheduled" = "Not active yet";
 "subscriptions__allowance_status_expired" = "Expired";
 "subscriptions__allowance_status_declined" = "Declined";
@@ -1822,6 +1823,8 @@
 "subscriptions__allowance_executed_description" = "Auto-pay sent {amount} to {name}";
 "subscriptions__allowance_limit_title" = "Limit Reached";
 "subscriptions__allowance_limit_description" = "A {amount} request from {name} is above your allowance. Review it to pay.";
+"subscriptions__allowance_offer_accepted_title" = "Allowance Added";
+"subscriptions__allowance_offer_accepted_description" = "{name} set up an allowance for you";
 "subscriptions__allowance_auto_paid" = "Auto-paid";
 
 // On-chain acceptance and original-payment follow-up

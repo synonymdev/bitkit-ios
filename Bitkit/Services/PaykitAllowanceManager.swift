@@ -68,6 +68,7 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private let canPayNow: @MainActor () -> Bool
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
+    @ObservationIgnored private var isAcceptingOffers = false
     private var updateDepth = 0
 
     /// Whether allowances are being refreshed or a pass is deciding requests, so a covered request may still change hands.
@@ -224,8 +225,8 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
-    func accept(_ entry: PaykitAllowanceEntry) async throws {
-        try await respond(to: entry) { allowance in
+    func accept(_ entry: PaykitAllowanceEntry, showsProgress: Bool = true) async throws {
+        try await respond(to: entry, showsProgress: showsProgress) { allowance in
             guard let proposalStreamItemId = allowance.proposalStreamItemId else { throw PaykitAllowanceError.unavailable }
             return try await self.sdk.acceptAllowance(
                 counterparty: allowance.counterparty,
@@ -254,9 +255,51 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
-    private func respond(to entry: PaykitAllowanceEntry, _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord) async throws {
-        isWorking = true
-        defer { isWorking = false }
+    /// Accepts the offers that make this wallet the allowee, and returns the ones now active so the caller can tell the
+    /// user. A failed accept stays unanswered and is tried again on the next refresh. `canContinue` gates each further
+    /// accept; an accept already made is still returned while this identity is active and `canAnnounce` holds, since
+    /// the offer is no longer answerable afterwards and nothing else would tell the user about it.
+    func acceptOffersFromAllowers(
+        canContinue: @MainActor () -> Bool = { true },
+        canAnnounce: @MainActor () -> Bool = { true }
+    ) async -> [PaykitAllowanceEntry] {
+        guard let identity, !isAcceptingOffers else { return [] }
+        let offers = entries.filter { entry in
+            let answerable = entry.allowances.filter(\.isAnswerable)
+            return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
+        }
+        guard !offers.isEmpty else { return [] }
+
+        isAcceptingOffers = true
+        defer { isAcceptingOffers = false }
+        var accepted: [PaykitAllowanceEntry] = []
+        for offer in offers {
+            guard self.identity == identity, canContinue() else { break }
+            do {
+                // A background accept must not clear the progress flag of a proposal the user has in flight.
+                try await accept(offer, showsProgress: false)
+                accepted.append(offer)
+            } catch {
+                Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
+            }
+        }
+        return self.identity == identity && canAnnounce() ? accepted : []
+    }
+
+    private func respond(
+        to entry: PaykitAllowanceEntry,
+        showsProgress: Bool = true,
+        _ response: (PaykitAllowance) async throws -> Paykit.AllowanceRecord
+    ) async throws {
+        let initiatingIdentity = identity
+        if showsProgress {
+            isWorking = true
+        }
+        defer {
+            if showsProgress {
+                isWorking = false
+            }
+        }
         var respondedAny = false
         for allowance in entry.allowances where allowance.isAnswerable {
             _ = try await response(allowance)
@@ -264,7 +307,7 @@ final class PaykitAllowanceManager {
             _ = try? await sdk.processOutboundPrivateMessages(counterparty: allowance.counterparty)
         }
         guard respondedAny else { throw PaykitAllowanceError.unavailable }
-        if let identity {
+        if let identity, identity == initiatingIdentity {
             let ids = entry.allowances.map(\.scopedId)
             await executor.updateLocalState(identity: identity) { $0.presentedProposalIds.formUnion(ids) }
         }
@@ -275,7 +318,7 @@ final class PaykitAllowanceManager {
 
     func proposalForPresentation() -> PaykitAllowanceEntry? {
         entries.first { entry in
-            entry.allowances.contains(where: \.isAnswerable) &&
+            entry.allowances.contains(where: { $0.isAnswerable && !$0.isOfferFromAllower }) &&
                 !entry.allowances.contains { localState.presentedProposalIds.contains($0.scopedId) }
         }
     }

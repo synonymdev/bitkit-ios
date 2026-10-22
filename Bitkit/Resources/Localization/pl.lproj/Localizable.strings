@@ -1935,6 +1935,7 @@
 "subscriptions__allowance_status_active" = "Aktywny";
 "subscriptions__allowance_status_waiting" = "Czeka na odpowiedź";
 "subscriptions__allowance_status_needs_answer" = "Czeka na Twoją odpowiedź";
+"subscriptions__allowance_status_setting_up" = "Konfigurowanie przydziału";
 "subscriptions__allowance_status_scheduled" = "Jeszcze nieaktywny";
 "subscriptions__allowance_status_expired" = "Wygasł";
 "subscriptions__allowance_status_declined" = "Odrzucony";
@@ -1958,6 +1959,8 @@
 "subscriptions__allowance_payment_in_progress" = "To żądanie jest już opłacane.";
 "subscriptions__allowance_executed_title" = "Płatność wykonana";
 "subscriptions__allowance_executed_description" = "Autopłatność wysłała {amount} do {name}";
+"subscriptions__allowance_offer_accepted_title" = "Przydział dodany";
+"subscriptions__allowance_offer_accepted_description" = "Użytkownik {name} ustawił dla Ciebie przydział";
 "subscriptions__allowance_limit_title" = "Osiągnięto limit";
 "subscriptions__allowance_limit_description" = "Żądanie {amount} od {name} przekracza Twój przydział. Przejrzyj je, aby zapłacić.";
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";

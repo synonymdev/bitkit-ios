@@ -1434,6 +1434,12 @@ struct AppScene: View {
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
+            let isAutomaticSession = { pubkyProfile.automaticPaykitSession == session && !pubkyProfile.isDeletingProfile }
+            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers(
+                canContinue: { canRefresh() && isAutomaticSession() },
+                canAnnounce: isAutomaticSession
+            )
+            announceAcceptedAllowanceOffers(acceptedOffers)
             // A request whose manual sheet is already open stays with the user.
             let manualRequestId = incomingPaymentRequestPreparation.flatMap { $0.ownsSheet(sheets) ? $0.request?.id : nil }
             let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(
@@ -2003,6 +2009,16 @@ struct AppScene: View {
             })
         case .ledgerChanged:
             Task { await paykitAllowanceManager.refresh() }
+        }
+    }
+
+    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
+        for offer in offers {
+            let title = t("subscriptions__allowance_offer_accepted_title")
+            let description = t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(offer.counterparty)])
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
+            })
         }
     }
 

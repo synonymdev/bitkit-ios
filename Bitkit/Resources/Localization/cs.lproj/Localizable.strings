@@ -1925,6 +1925,7 @@
 "subscriptions__allowance_status_active" = "Aktivní";
 "subscriptions__allowance_status_waiting" = "Čeká na odpověď";
 "subscriptions__allowance_status_needs_answer" = "Čeká na vaši odpověď";
+"subscriptions__allowance_status_setting_up" = "Nastavuje se povolení plateb";
 "subscriptions__allowance_status_scheduled" = "Zatím neaktivní";
 "subscriptions__allowance_status_expired" = "Vypršelo";
 "subscriptions__allowance_status_declined" = "Odmítnuto";
@@ -1948,6 +1949,8 @@
 "subscriptions__allowance_payment_in_progress" = "Tato žádost se již platí.";
 "subscriptions__allowance_executed_title" = "Platba provedena";
 "subscriptions__allowance_executed_description" = "Automatická platba odeslala {amount} uživateli {name}";
+"subscriptions__allowance_offer_accepted_title" = "Povolení plateb přidáno";
+"subscriptions__allowance_offer_accepted_description" = "Uživatel {name} vám nastavil povolení plateb";
 "subscriptions__allowance_limit_title" = "Limit dosažen";
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";

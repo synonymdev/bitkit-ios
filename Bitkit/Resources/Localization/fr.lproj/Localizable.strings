@@ -1936,6 +1936,7 @@
 "subscriptions__allowance_status_active" = "Active";
 "subscriptions__allowance_status_waiting" = "En attente de réponse";
 "subscriptions__allowance_status_needs_answer" = "En attente de votre réponse";
+"subscriptions__allowance_status_setting_up" = "Configuration de l'allocation";
 "subscriptions__allowance_status_scheduled" = "Pas encore active";
 "subscriptions__allowance_status_expired" = "Expirée";
 "subscriptions__allowance_status_declined" = "Refusée";
@@ -1959,6 +1960,8 @@
 "subscriptions__allowance_payment_in_progress" = "Cette demande est déjà en cours de paiement.";
 "subscriptions__allowance_executed_title" = "Paiement effectué";
 "subscriptions__allowance_executed_description" = "Le paiement automatique a envoyé {amount} à {name}";
+"subscriptions__allowance_offer_accepted_title" = "Allocation ajoutée";
+"subscriptions__allowance_offer_accepted_description" = "{name} a configuré une allocation pour vous";
 "subscriptions__allowance_limit_title" = "Limite atteinte";
 "subscriptions__allowance_limit_description" = "Une demande de {amount} de {name} dépasse votre allocation. Examinez-la pour payer.";
 "subscriptions__allowance_auto_paid" = "Payé automatiquement";

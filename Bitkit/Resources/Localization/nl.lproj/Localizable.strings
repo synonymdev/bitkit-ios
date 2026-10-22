@@ -1930,6 +1930,7 @@
 "subscriptions__allowance_status_active" = "Actief";
 "subscriptions__allowance_status_waiting" = "Wacht op antwoord";
 "subscriptions__allowance_status_needs_answer" = "Wacht op uw antwoord";
+"subscriptions__allowance_status_setting_up" = "Toelage wordt ingesteld";
 "subscriptions__allowance_status_scheduled" = "Nog niet actief";
 "subscriptions__allowance_status_expired" = "Verlopen";
 "subscriptions__allowance_status_declined" = "Geweigerd";
@@ -1953,6 +1954,8 @@
 "subscriptions__allowance_payment_in_progress" = "Dit verzoek wordt al betaald.";
 "subscriptions__allowance_executed_title" = "Betaling uitgevoerd";
 "subscriptions__allowance_executed_description" = "Automatisch betalen heeft {amount} naar {name} gestuurd";
+"subscriptions__allowance_offer_accepted_title" = "Toelage toegevoegd";
+"subscriptions__allowance_offer_accepted_description" = "{name} heeft een toelage voor je ingesteld";
 "subscriptions__allowance_limit_title" = "Limiet bereikt";
 "subscriptions__allowance_limit_description" = "Een verzoek van {amount} van {name} overschrijdt uw toelage. Bekijk het om te betalen.";
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";
