@@ -228,6 +228,7 @@
 "lightning__transfer_hw__sign_title" = "Podepište\n<accent>svým zařízením</accent>";
 "lightning__transfer_hw__signed_title" = "Transakce\n<accent>podepsána</accent>";
 "lightning__transfer_to_savings_button" = "Převést do úspor";
+"lightning__transfer_to_spending_button" = "Převést do útraty";
 "lightning__spending_intro__title" = "Převést\n<accent>do výdajů</accent>";
 "lightning__spending_intro__text" = "Převeďte peníze na svůj disponibilní zůstatek a využívejte okamžité a levné transakce s přáteli, rodinou a obchodníky.";
 "lightning__spending_intro__button" = "Začít";
@@ -371,6 +372,8 @@
 "lightning__channel_point" = "Bod kanálu";
 "lightning__channels_closing_banner" = "KANÁLY SE ZAVŘOU {date}";
 "lightning__channels_closing_notice" = "Vaše Lightning kanály budou uzavřeny {date}. Do té doby převeďte zůstatek útrat do úspor.";
+"lightning__channels_unavailable__text" = "Bitkit už nenabízí nové Lightning kanály, takže nemůžete převádět prostředky z úspor do útrat.";
+"lightning__channels_unavailable__title" = "Nové kanály nejsou dostupné";
 "lightning__closure_reason" = "Důvod uzavření";
 "lightning__support" = "Podpora";
 "lightning__connection_closed__title" = "Připojení uzavřeno";

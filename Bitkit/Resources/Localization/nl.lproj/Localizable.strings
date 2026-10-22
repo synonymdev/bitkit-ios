@@ -228,6 +228,7 @@
 "lightning__transfer_hw__sign_title" = "Onderteken met\n<accent>uw apparaat</accent>";
 "lightning__transfer_hw__signed_title" = "Transactie\n<accent>ondertekend</accent>";
 "lightning__transfer_to_savings_button" = "Overboeken Naar Spaargeld";
+"lightning__transfer_to_spending_button" = "Overboeken Naar Bestedingssaldo";
 "lightning__spending_intro__title" = "Overboeking\n<accent>naar bestedingssaldo</accent>";
 "lightning__spending_intro__text" = "Boek geld over naar uw bestedingssaldo om te genieten van directe en goedkope transacties met vrienden, familie en winkeliers.";
 "lightning__spending_intro__button" = "Starten";
@@ -369,6 +370,8 @@
 "lightning__channel_point" = "Kanaalpunt";
 "lightning__channels_closing_banner" = "KANALEN SLUITEN OP {date}";
 "lightning__channels_closing_notice" = "Je Lightning-kanalen worden op {date} gesloten. Boek je bestedingssaldo vóór die datum over naar spaargeld.";
+"lightning__channels_unavailable__text" = "Bitkit biedt geen nieuwe Lightning-kanalen meer aan, dus je kunt geen geld van spaargeld naar je bestedingssaldo overboeken.";
+"lightning__channels_unavailable__title" = "Nieuwe kanalen niet beschikbaar";
 "lightning__closure_reason" = "Reden van sluiting";
 "lightning__support" = "Ondersteuning";
 "lightning__connection_closed__title" = "Verbinding Gesloten";

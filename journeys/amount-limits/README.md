@@ -88,6 +88,6 @@ gate.
 `transfer-spending-over-max.xml` and `transfer-spending-advanced-over-max.xml` were retired because
 Blocktank channel purchases were removed (synonymdev/bitkit-ios#1097), and so was
 `../hardware-wallet/transfer-to-spending-over-max.xml`. Their routes started at the Savings wallet's
-"Transfer To Spending" button or the hardware wallet's, which are gone. Their identifiers
-(`TransferToSpending`, `SpendingAmount*`, `SpendingAdvanced*`, `HardwareTransferAmount*`) are no
-longer reachable from the UI.
+"Transfer To Spending" button or the hardware wallet's, which now open the "New Channels Unavailable"
+sheet. The amount screens' identifiers (`SpendingAmount*`, `SpendingAdvanced*`,
+`HardwareTransferAmount*`) are no longer reachable from the UI.

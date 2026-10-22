@@ -227,6 +227,7 @@
 "lightning__transfer_hw__sign_title" = "Подпишите на\n<accent>устройстве</accent>";
 "lightning__transfer_hw__signed_title" = "Транзакция\n<accent>подписана</accent>";
 "lightning__transfer_to_savings_button" = "Перевести в Сбережения";
+"lightning__transfer_to_spending_button" = "Перевести на Расходы";
 "lightning__spending_intro__title" = "Перевод\n<accent>на Расходы</accent>";
 "lightning__spending_intro__text" = "Переведите средства на свой баланс расходов, чтобы наслаждаться мгновенными и недорогими транзакциями с друзьями, семьёй и продавцами.";
 "lightning__spending_intro__button" = "Начать";
@@ -366,6 +367,8 @@
 "lightning__channel_point" = "Точка Канала";
 "lightning__channels_closing_banner" = "КАНАЛЫ ЗАКРОЮТСЯ {date}";
 "lightning__channels_closing_notice" = "Ваши каналы Lightning будут закрыты {date}. До этой даты переведите баланс расходов в сбережения.";
+"lightning__channels_unavailable__text" = "Bitkit больше не открывает новые каналы Lightning, поэтому перевести средства из сбережений в расходы нельзя.";
+"lightning__channels_unavailable__title" = "Новые каналы недоступны";
 "lightning__closure_reason" = "Причина Закрытия";
 "lightning__support" = "Поддержка";
 "lightning__connection_closed__title" = "Соединение Закрыто";

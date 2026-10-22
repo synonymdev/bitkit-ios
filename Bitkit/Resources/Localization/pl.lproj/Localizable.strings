@@ -228,6 +228,7 @@
 "lightning__transfer_hw__sign_title" = "Podpisz\n<accent>urządzeniem</accent>";
 "lightning__transfer_hw__signed_title" = "Transakcja\n<accent>podpisana</accent>";
 "lightning__transfer_to_savings_button" = "Prześlij na oszczędności";
+"lightning__transfer_to_spending_button" = "Prześlij na wydatki";
 "lightning__spending_intro__title" = "Prześlij \n<accent>na saldo wydatków</accent>";
 "lightning__spending_intro__text" = "Przelewaj środki na swoje saldo wydatków, aby cieszyć się natychmiastowymi i tanimi transakcjami z przyjaciółmi, rodziną i sprzedawcami.";
 "lightning__spending_intro__button" = "Rozpocznij";
@@ -371,6 +372,8 @@
 "lightning__channel_point" = "Punkt kanału";
 "lightning__channels_closing_banner" = "KANAŁY ZOSTANĄ ZAMKNIĘTE {date}";
 "lightning__channels_closing_notice" = "Twoje kanały Lightning zostaną zamknięte {date}. Przed tym terminem prześlij saldo wydatków na oszczędności.";
+"lightning__channels_unavailable__text" = "Bitkit nie oferuje już nowych kanałów Lightning, więc nie możesz przesyłać środków z oszczędności na wydatki.";
+"lightning__channels_unavailable__title" = "Nowe kanały niedostępne";
 "lightning__closure_reason" = "Powód zamknięcia";
 "lightning__support" = "Wsparcie";
 "lightning__connection_closed__title" = "Połączenie zamknięte";

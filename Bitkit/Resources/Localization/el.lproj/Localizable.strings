@@ -223,6 +223,7 @@
 "lightning__transfer_hw__sign_title" = "Υπόγραψε με\n<accent>τη συσκευή σου</accent>";
 "lightning__transfer_hw__signed_title" = "Η συναλλαγή\n<accent>υπογράφηκε</accent>";
 "lightning__transfer_to_savings_button" = "Μεταφορά στις Αποταμιεύσεις";
+"lightning__transfer_to_spending_button" = "Μεταφορά στις Δαπάνες";
 "lightning__spending_intro__title" = "Μεταφορά\n<accent>στις δαπάνες</accent>";
 "lightning__spending_intro__text" = "Μεταφέρετε κεφάλαια στο υπόλοιπο δαπανών σας για να απολαύσετε άμεσες και φθηνές συναλλαγές με φίλους, οικογένεια και εμπόρους.";
 "lightning__spending_intro__button" = "Ξεκινήστε";
@@ -342,6 +343,8 @@
 "lightning__channel_point" = "Channel point";
 "lightning__channels_closing_banner" = "ΤΑ ΚΑΝΑΛΙΑ ΚΛΕΙΝΟΥΝ ΣΤΙΣ {date}";
 "lightning__channels_closing_notice" = "Τα κανάλια Lightning σας θα κλείσουν στις {date}. Μεταφέρετε το υπόλοιπο δαπανών σε αποταμιεύσεις πριν από τότε.";
+"lightning__channels_unavailable__text" = "Το Bitkit δεν προσφέρει πλέον νέα κανάλια Lightning, οπότε δεν μπορείτε να μεταφέρετε κεφάλαια από τις αποταμιεύσεις στις δαπάνες.";
+"lightning__channels_unavailable__title" = "Νέα κανάλια μη διαθέσιμα";
 "lightning__closure_reason" = "Λόγος κλεισίματος";
 "lightning__support" = "Υποστήριξη";
 "lightning__connection_closed__title" = "Η Σύνδεση Έκλεισε";

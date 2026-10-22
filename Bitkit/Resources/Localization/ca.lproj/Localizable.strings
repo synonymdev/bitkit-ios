@@ -227,6 +227,7 @@
 "lightning__transfer_hw__sign_title" = "Signa amb\n<accent>el teu dispositiu</accent>";
 "lightning__transfer_hw__signed_title" = "Transacció\n<accent>signada</accent>";
 "lightning__transfer_to_savings_button" = "Transferir a estalvis";
+"lightning__transfer_to_spending_button" = "Transferir a despesa";
 "lightning__spending_intro__title" = "Transferir\n<accent>a despesa</accent>";
 "lightning__spending_intro__text" = "Transfereix fons al teu saldo de despesa per gaudir de transaccions instantànies i barates amb amics, família i comerciants.";
 "lightning__spending_intro__button" = "Començar";
@@ -355,6 +356,8 @@
 "lightning__channel_point" = "Punt del canal";
 "lightning__channels_closing_banner" = "ELS CANALS ES TANQUEN EL {date}";
 "lightning__channels_closing_notice" = "Els teus canals Lightning es tancaran el {date}. Transfereix el teu saldo de despesa a estalvis abans d'aquesta data.";
+"lightning__channels_unavailable__text" = "Bitkit ja no ofereix canals Lightning nous, així que no pots transferir fons d'estalvis a despesa.";
+"lightning__channels_unavailable__title" = "Canals nous no disponibles";
 "lightning__closure_reason" = "Motiu del tancament";
 "lightning__support" = "Suport";
 "lightning__connection_closed__title" = "Connexió tancada";

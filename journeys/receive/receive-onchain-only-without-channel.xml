@@ -26,6 +26,8 @@
     <action>Verify there is no "Receive Lightning funds" button anywhere on the sheet</action>
     <action>Tap "Edit" (id "SpecifyInvoiceButton"), tap the amount field (id "ReceiveNumberPadTextField"), enter a small amount (for example "N1" then "N0" twice), tap Continue (id "ReceiveNumberPadSubmit") and then "QR Code" (id "ShowQrReceive")</action>
     <action>Verify the sheet returns to the QR screen with no liquidity or channel confirm screen in between, the Savings tab is still selected and there is still no Spending tab (id "Tab-spending")</action>
-    <action>Close the sheet, open the Savings wallet (id "ActivitySavings") and verify no "Transfer To Spending" button (id "TransferToSpending") is shown, then open the Spending wallet (id "ActivitySpending") and verify no "Transfer from Savings" button (id "TransferFromSavings") and no notice (id "ChannelsClosingNotice") is shown</action>
+    <action>Close the sheet, open the Savings wallet (id "ActivitySavings") and tap "Transfer To Spending" (id "TransferToSpending")</action>
+    <action>Verify the "New Channels Unavailable" sheet (id "ChannelsUnavailableSheet") opens with its text and without the close date paragraph (id "ChannelsUnavailableCloseDate"), then tap "OK" (id "ChannelsUnavailableButton")</action>
+    <action>Open the Spending wallet (id "ActivitySpending"), verify no notice (id "ChannelsClosingNotice") is shown, tap "Transfer from Savings" (id "TransferFromSavings") and verify the same sheet opens, then tap "OK"</action>
   </actions>
 </journey>

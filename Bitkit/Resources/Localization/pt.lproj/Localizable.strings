@@ -254,6 +254,7 @@
 "lightning__transfer_hw__sign_title" = "Assine com\n<accent>o seu dispositivo</accent>";
 "lightning__transfer_hw__signed_title" = "Transação\n<accent>assinada</accent>";
 "lightning__transfer_to_savings_button" = "Transferir Para Poupança";
+"lightning__transfer_to_spending_button" = "Transferir Para Gastos";
 "lightning__spending_intro__title" = "Transferir\n<accent>para gastos</accent>";
 "lightning__spending_intro__text" = "Transfira fundos para seu saldo de gastos para desfrutar de transações instantâneas e baratas com amigos, familiares e comerciantes.";
 "lightning__spending_intro__button" = "Começar";
@@ -371,6 +372,8 @@
 "lightning__channel_point" = "Ponto do canal";
 "lightning__channels_closing_banner" = "CANAIS FECHAM A {date}";
 "lightning__channels_closing_notice" = "Os seus canais Lightning serão fechados a {date}. Transfira o seu saldo de gastos para a poupança antes dessa data.";
+"lightning__channels_unavailable__text" = "O Bitkit já não oferece novos canais Lightning, por isso não pode transferir fundos da poupança para gastos.";
+"lightning__channels_unavailable__title" = "Novos canais indisponíveis";
 "lightning__closure_reason" = "Motivo do fechamento";
 "lightning__support" = "Suporte";
 "lightning__connection_closed__title" = "Ligação fechada";

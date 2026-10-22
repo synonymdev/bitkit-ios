@@ -116,6 +116,14 @@ struct MainNavView: View {
             config in BackupSheet(config: config)
         }
         .sheet(
+            item: $sheets.channelsUnavailableSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.channelsUnavailable, reason: "Channels unavailable sheet dismissed")
+            }
+        ) {
+            config in ChannelsUnavailableSheet(config: config)
+        }
+        .sheet(
             item: $sheets.connectionClosedSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.connectionClosed, reason: "Connection closed sheet dismissed")

@@ -4,6 +4,7 @@ struct SavingsWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var shouldShowOnboarding: Bool {
@@ -49,6 +50,12 @@ struct SavingsWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
+                        if !GeoService.shared.isGeoBlocked {
+                            transferButton
+                                .transition(.move(edge: .leading).combined(with: .opacity))
+                                .padding(.top, 28)
+                        }
+
                         ActivityList(viewType: .onchain)
 
                         CustomButton(title: t("common__show_all"), variant: .tertiary) {
@@ -105,6 +112,21 @@ struct SavingsWalletScreen: View {
         }
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalOnchainSats)
+    }
+
+    var transferButton: some View {
+        CustomButton(
+            title: t("lightning__transfer_to_spending_button"),
+            variant: .secondary,
+            icon: Image("arrow-up-down")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundColor(.white80)
+        ) {
+            sheets.showSheet(.channelsUnavailable)
+        }
+        .accessibilityIdentifier("TransferToSpending")
     }
 }
 

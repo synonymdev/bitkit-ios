@@ -221,6 +221,7 @@
 "lightning__transfer_hw__sign_title" = "Sign with\n<accent>your device</accent>";
 "lightning__transfer_hw__signed_title" = "Transaction\n<accent>signed</accent>";
 "lightning__transfer_to_savings_button" = "Transfer To Savings";
+"lightning__transfer_to_spending_button" = "Transfer To Spending";
 "lightning__spending_intro__title" = "Transfer\n<accent>to spending</accent>";
 "lightning__spending_intro__text" = "Transfer funds to your spending balance to enjoy instant and cheap transactions with friends, family, and merchants.";
 "lightning__spending_intro__button" = "Get Started";
@@ -364,6 +365,8 @@
 "lightning__channel_point" = "Channel point";
 "lightning__channels_closing_banner" = "CHANNELS CLOSE ON {date}";
 "lightning__channels_closing_notice" = "Your Lightning channels will be closed on {date}. Move your spending balance to savings before then.";
+"lightning__channels_unavailable__text" = "Bitkit no longer offers new Lightning channels, so you can't move funds from savings to spending.";
+"lightning__channels_unavailable__title" = "New Channels Unavailable";
 "lightning__closure_reason" = "Closure reason";
 "lightning__support" = "Support";
 "lightning__connection_closed__title" = "Connection Closed";

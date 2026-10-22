@@ -4,6 +4,7 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var shouldShowOnboarding: Bool {
@@ -41,6 +42,12 @@ struct SpendingWalletScreen: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 16)
                         .accessibilityIdentifier("ChannelsClosingNotice")
+                    }
+
+                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 && !GeoService.shared.isGeoBlocked {
+                        transferFromSavingsButton
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                            .padding(.top, 28)
                     }
 
                     if !shouldShowOnboarding {
@@ -106,6 +113,21 @@ struct SpendingWalletScreen: View {
         }
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalLightningSats)
+    }
+
+    var transferFromSavingsButton: some View {
+        CustomButton(
+            title: t("lightning__transfer_to_spending_button"),
+            variant: .secondary,
+            icon: Image("arrow-up-down")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundColor(.white80)
+        ) {
+            sheets.showSheet(.channelsUnavailable)
+        }
+        .accessibilityIdentifier("TransferFromSavings")
     }
 
     var transferButton: some View {

@@ -11,6 +11,7 @@ enum SheetID: String, CaseIterable {
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
+    case channelsUnavailable
     case pubkyAuthApproval
     case notifications
     case paymentRequests
@@ -260,6 +261,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .connectionClosed else { return nil }
             return ConnectionClosedSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var channelsUnavailableSheetItem: ChannelsUnavailableSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .channelsUnavailable else { return nil }
+            return ChannelsUnavailableSheetItem()
         }
         set {
             if newValue == nil {

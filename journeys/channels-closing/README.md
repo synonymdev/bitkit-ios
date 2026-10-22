@@ -15,9 +15,12 @@ The Android twin is synonymdev/bitkit-android#1669.
   same Blocktank-channel condition.
 - The date is a placeholder constant (Dec 15, 2026) until the shutdown date is final. Journeys assert the
   banner and the notice agree and read the date from the screen instead of hardcoding it.
-- **Removed:** Savings "Transfer To Spending" (`TransferToSpending`), Spending "Transfer from Savings"
-  (`TransferFromSavings`), hardware wallet "Transfer To Spending" (`HardwareTransferToSpending`), the
-  Home "Spend" suggestion card (`Suggestion-lightning`), the Receive sheet's CJIT button and Spending
+- **Channels unavailable sheet** `ChannelsUnavailableSheet`, "New Channels Unavailable": Savings
+  "Transfer To Spending" (`TransferToSpending`), Spending "Transfer from Savings" (`TransferFromSavings`)
+  and hardware wallet "Transfer To Spending" (`HardwareTransferToSpending`) keep their visibility rules
+  and open it instead of the transfer flow. For a wallet with a Blocktank channel it adds the close date
+  (`ChannelsUnavailableCloseDate`); "OK" (`ChannelsUnavailableButton`) closes it.
+- **Removed:** the Home "Spend" suggestion card (`Suggestion-lightning`), the Receive sheet's CJIT button and Spending
   onboarding, the Edit Invoice CJIT offer, the TabBar Receive shortcut into the CJIT amount screen and
   gift codes. Transfer To Savings, send, receive over an existing channel, LNURL channel and manual
   external node stay.
@@ -33,11 +36,12 @@ The Android twin is synonymdev/bitkit-android#1669.
 
 | Journey | Covers |
 | --- | --- |
-| `channels-closing-notice.xml` | Banner on Home → tap → Spending wallet notice and Transfer To Savings; Savings wallet has no Transfer To Spending |
-| [`../receive/receive-onchain-only-without-channel.xml`](../receive/receive-onchain-only-without-channel.xml) | The opposite precondition: a funded wallet with no channels shows no banner, no Spend card and a Savings-only Receive sheet |
+| `channels-closing-notice.xml` | Banner on Home → tap → Spending wallet notice and Transfer To Savings; Savings Transfer To Spending opens the channels unavailable sheet with the close date |
+| [`../receive/receive-onchain-only-without-channel.xml`](../receive/receive-onchain-only-without-channel.xml) | The opposite precondition: a funded wallet with no channels shows no banner, no Spend card and a Savings-only Receive sheet; the transfer buttons open the sheet without the close date |
 
 ## Identifiers used
 
 `ChannelsClosingBanner`, `ChannelsClosingNotice`, `ActivitySavings`, `ActivitySpending`,
 `TotalBalance-primary` (Android `TotalBalance`), `TransferToSavings`, `NavigationBack`,
-`TransferToSpending` (asserted absent).
+`TransferToSpending`, `TransferFromSavings`, `HardwareTransferToSpending`, `ChannelsUnavailableSheet`,
+`ChannelsUnavailableCloseDate`, `ChannelsUnavailableButton`.

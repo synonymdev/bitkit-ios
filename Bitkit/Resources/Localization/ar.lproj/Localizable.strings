@@ -201,6 +201,7 @@
 "lightning__transfer_hw__sign_title" = "وقّع باستخدام\n<accent>جهازك</accent>";
 "lightning__transfer_hw__signed_title" = "تم توقيع\n<accent>المعاملة</accent>";
 "lightning__transfer_to_savings_button" = "تحويل إلى المدخرات";
+"lightning__transfer_to_spending_button" = "تحويل إلى الإنفاق";
 "lightning__spending_intro__title" = "تحويل\n<accent>إلى الإنفاق</accent>";
 "lightning__spending_intro__text" = "حوّل الأموال إلى رصيد إنفاقك للاستمتاع بمعاملات فورية ورخيصة مع الأصدقاء والعائلة والتجار.";
 "lightning__spending_intro__button" = "ابدأ";
@@ -318,6 +319,8 @@
 "lightning__channel_point" = "نقطة القناة";
 "lightning__channels_closing_banner" = "تُغلق القنوات في {date}";
 "lightning__channels_closing_notice" = "ستُغلق قنوات Lightning الخاصة بك في {date}. انقل رصيد الإنفاق إلى المدخرات قبل ذلك.";
+"lightning__channels_unavailable__text" = "لم يعد Bitkit يوفّر قنوات Lightning جديدة، لذا لا يمكنك نقل الأموال من المدخرات إلى الإنفاق.";
+"lightning__channels_unavailable__title" = "القنوات الجديدة غير متاحة";
 "lightning__closure_reason" = "سبب الإغلاق";
 "lightning__support" = "الدعم";
 "lightning__connection_closed__title" = "تم إغلاق الاتصال";

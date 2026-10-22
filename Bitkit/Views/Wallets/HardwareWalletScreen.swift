@@ -3,13 +3,15 @@ import SwiftUI
 
 /// Detail overview of a paired hardware wallet, tracked as a watch-only balance. Mirrors the
 /// Savings/Spending screens: device name + blue Bitcoin icon in the top bar, balance header, the
-/// device's on-chain activity grouped by date (blue hardware icons), and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
+/// device's on-chain activity grouped by date (blue hardware icons), a Transfer-To-Spending action
+/// on funded devices, and a Remove action. Ports bitkit-android's `HardwareWalletScreen`.
 struct HardwareWalletScreen: View {
     let walletId: String
 
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
 
@@ -40,6 +42,9 @@ struct HardwareWalletScreen: View {
         .task(id: wallet?.walletId) {
             await loadActivities()
         }
+        .task {
+            await app.checkGeoStatus()
+        }
         .onReceive(activity.activitiesChangedPublisher) { _ in
             Task { await loadActivities() }
         }
@@ -59,6 +64,8 @@ struct HardwareWalletScreen: View {
 
     private func content(for wallet: HwWallet) -> some View {
         let hasActivity = !activities.isEmpty
+        // Only the native-segwit account can currently fund a transfer to spending.
+        let canTransferToSpending = wallet.fundingBalanceSats > 0
 
         return VStack(spacing: 0) {
             ScrollView(showsIndicators: false) {
@@ -69,6 +76,11 @@ struct HardwareWalletScreen: View {
                     enableHide: true,
                     testIdPrefix: "TotalBalance"
                 )
+
+                if canTransferToSpending {
+                    transferButton
+                        .padding(.top, 28)
+                }
 
                 if hasActivity {
                     HardwareWalletActivityList(activities: activities)
@@ -106,6 +118,22 @@ struct HardwareWalletScreen: View {
             .clipped()
             // Align the device's top with the balance header and bleed off the trailing edge.
             .offset(x: placement.trailingOverhang, y: ScreenLayout.topPaddingWithoutSafeArea)
+    }
+
+    private var transferButton: some View {
+        CustomButton(
+            title: t("lightning__transfer_to_spending_button"),
+            variant: .secondary,
+            icon: Image("arrow-up-down")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundColor(.white80),
+            isDisabled: GeoService.shared.isGeoBlocked
+        ) {
+            sheets.showSheet(.channelsUnavailable)
+        }
+        .accessibilityIdentifier("HardwareTransferToSpending")
     }
 
     private func removeButton(for wallet: HwWallet) -> some View {

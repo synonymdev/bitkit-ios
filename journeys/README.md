@@ -114,7 +114,7 @@ wallet however you normally do against regtest and skip the helper.
 ### Getting a Lightning channel
 
 Blocktank is winding down, and this build no longer buys channels from it (synonymdev/bitkit-ios#1097):
-Transfer To Spending, the Receive sheet's CJIT button and gift codes are gone. A journey that needs a
+Transfer To Spending opens a "New Channels Unavailable" sheet, and the Receive sheet's CJIT button and gift codes are gone. A journey that needs a
 Lightning channel as its precondition says "a wallet with an open Lightning channel"; get one in either way:
 
 - Install a build from before that change (master before synonymdev/bitkit-ios#1097), open a channel with
@@ -238,7 +238,7 @@ buys a channel went with them. They are listed here rather than left as stale fi
 | `amount-limits/transfer-spending-over-max.xml`, `transfer-spending-advanced-over-max.xml` | Transfer To Spending amount and Receiving Capacity number pads | same names |
 | `cjit-notifications/cjit-background-notification.xml` | CJIT notification with the app backgrounded | `cjit-foreground-service-notification.xml` |
 | `cjit-notifications/cjit-push-single-notification.xml` | CJIT notification from a push to a killed app | same name |
-| `hardware-wallet/transfer-to-spending.xml`, `transfer-to-spending-max-lsp-cap.xml`, `transfer-to-spending-node-warmup.xml`, `passphrase-transfer-to-spending.xml` | Hardware wallet Transfer To Spending (the `HardwareTransferToSpending` button is gone) | same names |
+| `hardware-wallet/transfer-to-spending.xml`, `transfer-to-spending-max-lsp-cap.xml`, `transfer-to-spending-node-warmup.xml`, `passphrase-transfer-to-spending.xml` | Hardware wallet Transfer To Spending (`HardwareTransferToSpending` now opens the channels unavailable sheet) | same names |
 | `hardware-wallet/transfer-to-spending-over-max.xml` | Hardware wallet Transfer To Spending amount cap | none — iOS-only |
 | `notification-permission/receive-cjit-confirm-notification-toggle.xml`, `receive-cjit-liquidity-notification-toggle.xml`, `transfer-spending-confirm-notification-toggle.xml` | The background-setup toggle on the CJIT and Spending Confirm screens, which nothing navigates to now | same names |
 | `notification-permission/toggle-off-and-system-settings-route.xml` | Toggle off on the CJIT confirm screen, then Settings › Notifications into the iOS Settings app | `toggle-off-opens-system-settings.xml` |

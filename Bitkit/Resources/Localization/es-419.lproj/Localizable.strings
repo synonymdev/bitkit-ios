@@ -229,6 +229,7 @@
 "lightning__transfer_hw__sign_title" = "Firme con\n<accent>su dispositivo</accent>";
 "lightning__transfer_hw__signed_title" = "Transacción\n<accent>firmada</accent>";
 "lightning__transfer_to_savings_button" = "Transferir a ahorros";
+"lightning__transfer_to_spending_button" = "Transferir a gastos";
 "lightning__spending_intro__title" = "Transferir\n<accent>a gastos</accent>";
 "lightning__spending_intro__text" = "Transfiera fondos a su saldo de gastos para disfrutar de transacciones baratas e instantáneas con amigos y comercios.";
 "lightning__spending_intro__button" = "Empezar";
@@ -372,6 +373,8 @@
 "lightning__channel_point" = "Punto del canal";
 "lightning__channels_closing_banner" = "LOS CANALES CIERRAN EL {date}";
 "lightning__channels_closing_notice" = "Tus canales Lightning se cerrarán el {date}. Transfiere tu saldo de gasto a ahorros antes de esa fecha.";
+"lightning__channels_unavailable__text" = "Bitkit ya no ofrece canales Lightning nuevos, así que no puedes transferir fondos de ahorros a gasto.";
+"lightning__channels_unavailable__title" = "Canales nuevos no disponibles";
 "lightning__closure_reason" = "Motivo del cierre";
 "lightning__support" = "Soporte";
 "lightning__connection_closed__title" = "Conexión cerrada";
