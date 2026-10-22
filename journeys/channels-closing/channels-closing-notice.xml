@@ -6,7 +6,7 @@
     wallet, which shows "Your Lightning channels will be closed on Dec 15, 2026. Move your spending
     balance to savings before then." (id "ChannelsClosingNotice") under the balance header, and
     Transfer To Savings (id "TransferToSavings") is still offered. The Savings wallet's
-    Transfer To Spending button (id "TransferToSpending") opens the "New Channels Unavailable" sheet
+    Transfer To Spending button (id "TransferToSpending") opens the "No automatic transfer" sheet
     (id "ChannelsUnavailableSheet") instead of the transfer flow, since new channels can no longer be
     bought; for this wallet the sheet also shows the close date (id "ChannelsUnavailableCloseDate"). The date is a placeholder constant until the shutdown date is final; assert whatever
     date the build shows, and keep the banner and the notice in agreement.
@@ -29,8 +29,8 @@
     <action>Verify the "Transfer To Savings" button (id "TransferToSavings") is visible</action>
     <action>Press the system back button, then tap the Savings balance card (id "ActivitySavings")</action>
     <action>Verify the Savings wallet screen is open, then tap "Transfer To Spending" (id "TransferToSpending")</action>
-    <action>Verify the "New Channels Unavailable" sheet (id "ChannelsUnavailableSheet") opens with "Bitkit no longer offers new Lightning channels, so you can't move funds from savings to spending." and the close date paragraph (id "ChannelsUnavailableCloseDate") with the same date the banner showed, and no transfer amount screen opens</action>
-    <action>Tap "OK" (id "ChannelsUnavailableButton") and verify the sheet closes and the Savings wallet screen is still shown</action>
+    <action>Verify the sheet (id "ChannelsUnavailableSheet") opens with the title "No automatic transfer" and the text "Unfortunately, the service to automatically transfer funds to your spending balance is no longer available. You can still manually open a Lightning channel to top up your spending balance.", and that the line (id "ChannelsUnavailableCloseDate") reads "Your Lightning channels will be closed on Dec 15, 2026. Move your spending balance to savings before then." with the same date the banner showed</action>
+    <action>Tap "Cancel" (id "ChannelsUnavailableButton") and verify the sheet closes and the Savings wallet screen is still shown</action>
     <action>Press the system back button, tap the Spending balance card (id "ActivitySpending") and verify the notice (id "ChannelsClosingNotice") is still shown</action>
   </actions>
 </journey>

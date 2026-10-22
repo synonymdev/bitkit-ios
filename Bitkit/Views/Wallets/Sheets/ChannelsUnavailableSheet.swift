@@ -5,10 +5,12 @@ struct ChannelsUnavailableSheetItem: SheetItem {
     let size: SheetSize = .medium
 }
 
-/// Shown where the app used to start a transfer to spending: Blocktank no longer opens new channels.
+/// Shown where the app used to start a transfer to spending: Blocktank no longer opens new channels, so it points to
+/// opening one with another provider instead.
 struct ChannelsUnavailableSheet: View {
     let config: ChannelsUnavailableSheetItem
 
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
@@ -38,10 +40,18 @@ struct ChannelsUnavailableSheet: View {
 
                 Spacer()
 
-                CustomButton(title: t("common__ok")) {
-                    sheets.hideSheet()
+                HStack(spacing: 16) {
+                    CustomButton(title: t("common__cancel"), variant: .secondary) {
+                        sheets.hideSheet()
+                    }
+                    .accessibilityIdentifier("ChannelsUnavailableButton")
+
+                    CustomButton(title: t("lightning__channels_unavailable__button")) {
+                        sheets.hideSheet()
+                        navigation.navigate(.chooseLsp)
+                    }
+                    .accessibilityIdentifier("ChannelsUnavailableOpenChannel")
                 }
-                .accessibilityIdentifier("ChannelsUnavailableButton")
             }
             .padding(.horizontal, 16)
         }

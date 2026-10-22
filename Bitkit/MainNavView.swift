@@ -560,6 +560,7 @@ struct MainNavView: View {
                 case .transferLearnMore: TransferLearnMoreView()
                 case .settingUp: SettingUpView()
                 case .fundingAdvanced: FundAdvancedOptions()
+                case .chooseLsp: ChooseLspView()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)

@@ -372,8 +372,12 @@
 "lightning__channel_point" = "Ponto do canal";
 "lightning__channels_closing_banner" = "CANAIS FECHAM EM {date}";
 "lightning__channels_closing_notice" = "Seus canais Lightning serão fechados em {date}. Transfira seu saldo de gastos para a poupança antes dessa data.";
-"lightning__channels_unavailable__text" = "O Bitkit não oferece mais novos canais Lightning, então você não pode transferir fundos da poupança para gastos.";
-"lightning__channels_unavailable__title" = "Novos canais indisponíveis";
+"lightning__channels_unavailable__button" = "Abrir canal";
+"lightning__channels_unavailable__text" = "Infelizmente, o serviço de transferência automática de fundos para o seu saldo de gastos não está mais disponível. Você ainda pode abrir manualmente um canal Lightning para recarregar seu saldo de gastos.";
+"lightning__channels_unavailable__title" = "Sem transferência automática";
+"lightning__choose_lsp__explanation" = "Quando derem um QR para conectar ou resgatar o canal Lightning, toque abaixo para escanear ou colar o QR.";
+"lightning__choose_lsp__text" = "Peça um canal a um provedor de serviços Lightning (LSP). Abaixo estão algumas opções. O Bitkit não opera, endossa nem oferece suporte a elas.";
+"lightning__choose_lsp__title" = "Escolha um\n<accent>provedor Lightning</accent>";
 "lightning__closure_reason" = "Motivo do fechamento";
 "lightning__support" = "Suporte";
 "lightning__connection_closed__title" = "Conexão Desativada";

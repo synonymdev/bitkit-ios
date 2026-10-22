@@ -367,8 +367,12 @@
 "lightning__channel_point" = "Точка Канала";
 "lightning__channels_closing_banner" = "КАНАЛЫ ЗАКРОЮТСЯ {date}";
 "lightning__channels_closing_notice" = "Ваши каналы Lightning будут закрыты {date}. До этой даты переведите баланс расходов в сбережения.";
-"lightning__channels_unavailable__text" = "Bitkit больше не открывает новые каналы Lightning, поэтому перевести средства из сбережений в расходы нельзя.";
-"lightning__channels_unavailable__title" = "Новые каналы недоступны";
+"lightning__channels_unavailable__button" = "Открыть канал";
+"lightning__channels_unavailable__text" = "К сожалению, сервис автоматического перевода средств на баланс расходов больше недоступен. Вы по-прежнему можете вручную открыть канал Lightning, чтобы пополнить баланс расходов.";
+"lightning__channels_unavailable__title" = "Нет автоматического перевода";
+"lightning__choose_lsp__explanation" = "Когда вам дадут QR-код для подключения или получения канала Lightning, нажмите ниже, чтобы отсканировать или вставить QR-код.";
+"lightning__choose_lsp__text" = "Закажите канал у провайдера услуг Lightning (LSP). Ниже несколько вариантов. Bitkit не управляет ими, не рекомендует и не поддерживает их.";
+"lightning__choose_lsp__title" = "Выберите\n<accent>провайдера Lightning</accent>";
 "lightning__closure_reason" = "Причина Закрытия";
 "lightning__support" = "Поддержка";
 "lightning__connection_closed__title" = "Соединение Закрыто";

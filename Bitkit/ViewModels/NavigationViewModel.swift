@@ -52,6 +52,7 @@ enum Route: Hashable {
     case transferLearnMore
     case settingUp
     case fundingAdvanced
+    case chooseLsp
     case fundManual(nodeUri: String?)
     case fundManualAmount(lnPeer: LnPeer)
     case fundManualConfirm(lnPeer: LnPeer, amountSats: UInt64)

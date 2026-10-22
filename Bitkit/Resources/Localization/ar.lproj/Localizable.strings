@@ -319,8 +319,12 @@
 "lightning__channel_point" = "نقطة القناة";
 "lightning__channels_closing_banner" = "تُغلق القنوات في {date}";
 "lightning__channels_closing_notice" = "ستُغلق قنوات Lightning الخاصة بك في {date}. انقل رصيد الإنفاق إلى المدخرات قبل ذلك.";
-"lightning__channels_unavailable__text" = "لم يعد Bitkit يوفّر قنوات Lightning جديدة، لذا لا يمكنك نقل الأموال من المدخرات إلى الإنفاق.";
-"lightning__channels_unavailable__title" = "القنوات الجديدة غير متاحة";
+"lightning__channels_unavailable__button" = "فتح قناة";
+"lightning__channels_unavailable__text" = "للأسف، لم تعد خدمة التحويل التلقائي للأموال إلى رصيد الإنفاق متاحة. لا يزال بإمكانك فتح قناة Lightning يدويًا لتعبئة رصيد الإنفاق.";
+"lightning__channels_unavailable__title" = "لا يوجد تحويل تلقائي";
+"lightning__choose_lsp__explanation" = "عندما يقدّمون لك رمز QR للاتصال بقناة Lightning أو المطالبة بها، اضغط أدناه لمسح رمز QR أو لصقه.";
+"lightning__choose_lsp__text" = "اطلب قناة من مزوّد خدمة Lightning ‏(LSP). فيما يلي بعض الخيارات. لا يدير Bitkit هذه الخدمات ولا يؤيدها ولا يدعمها.";
+"lightning__choose_lsp__title" = "اختر\n<accent>مزوّد Lightning</accent>";
 "lightning__closure_reason" = "سبب الإغلاق";
 "lightning__support" = "الدعم";
 "lightning__connection_closed__title" = "تم إغلاق الاتصال";
