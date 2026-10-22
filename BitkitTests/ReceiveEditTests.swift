@@ -36,15 +36,4 @@ final class ReceiveEditTests: XCTestCase {
             ]
         )
     }
-
-    func testReplacingEditedQrRouteCanNavigateToFreshCjitFlow() {
-        var navigationPath: [ReceiveRoute] = [
-            .qr(cjitInvoice: "stale-cjit-invoice", tab: .spending),
-            .edit(tab: .spending, onchainOnly: false, replacesCurrentQr: true),
-        ]
-
-        ReceiveEdit.replaceEditedQrRoute(in: &navigationPath, with: .cjitAmount)
-
-        XCTAssertEqual(navigationPath, [.cjitAmount])
-    }
 }

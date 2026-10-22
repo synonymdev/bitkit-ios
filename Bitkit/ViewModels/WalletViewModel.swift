@@ -111,6 +111,12 @@ class WalletViewModel: ObservableObject {
     @Published var currentBlockHeight: UInt32 = 0
     @Published var isRetryingLightningPayment = false
 
+    /// Whether any channel, open or pending, is with a Blocktank node, which closes them on `ChannelsClosing.CHANNELS_CLOSE_DATE`.
+    var hasTrustedChannels: Bool {
+        guard let channels else { return false }
+        return !lightningService.separateTrustedChannels(channels).trusted.isEmpty
+    }
+
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,

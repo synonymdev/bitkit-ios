@@ -9,8 +9,6 @@
 "cards__notifications__title" = "Get Paid";
 "cards__invite__title" = "Invite";
 "cards__invite__description" = "Share Bitkit";
-"cards__lightning__title" = "Spend";
-"cards__lightning__description" = "Instant payments";
 "cards__lightningSettingUp__title" = "Transfer";
 "cards__lightningSettingUp__description" = "In progress...";
 "cards__lightningConnecting__title" = "Connecting";
@@ -223,7 +221,6 @@
 "lightning__transfer_hw__sign_title" = "Sign with\n<accent>your device</accent>";
 "lightning__transfer_hw__signed_title" = "Transaction\n<accent>signed</accent>";
 "lightning__transfer_to_savings_button" = "Transfer To Savings";
-"lightning__transfer_to_spending_button" = "Transfer To Spending";
 "lightning__spending_intro__title" = "Transfer\n<accent>to spending</accent>";
 "lightning__spending_intro__text" = "Transfer funds to your spending balance to enjoy instant and cheap transactions with friends, family, and merchants.";
 "lightning__spending_intro__button" = "Get Started";
@@ -365,6 +362,8 @@
 "lightning__channel_node_id" = "Peer ID";
 "lightning__channel_id" = "Channel ID";
 "lightning__channel_point" = "Channel point";
+"lightning__channels_closing_banner" = "CHANNELS CLOSE ON {date}";
+"lightning__channels_closing_notice" = "Your Lightning channels will be closed on {date}. Move your spending balance to savings before then.";
 "lightning__closure_reason" = "Closure reason";
 "lightning__support" = "Support";
 "lightning__connection_closed__title" = "Connection Closed";
@@ -563,15 +562,6 @@
 "other__transfer_notification__body" = "Open Bitkit to complete your transfer";
 "other__scan__error__generic" = "Bitkit is unable to read the provided data.";
 "other__scan__error__expired" = "This Lightning invoice has expired.";
-"other__gift__claimed__text" = "Sorry, you're too late! All gifts for this code have already been claimed.";
-"other__gift__claiming__text" = "Claiming your Bitkit gift code...";
-"other__gift__claiming__title" = "Claiming Gift";
-"other__gift__error__title" = "Gift Code Error";
-"other__gift__error__text" = "Bitkit couldn\'t claim the funds. Please try again later or contact us.";
-"other__gift__error__button" = "OK";
-"other__gift__used__title" = "Used Code";
-"other__gift__used__text" = "This Bitkit gift code has already been used, and the funds have been paid out.";
-"other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Shop";
 "other__shop__intro__description" = "Get your life on the Bitcoin standard. Spend your Bitcoin on digital gift cards, eSIMs, phone refills, and more.";
 "other__shop__intro__button" = "Get Started";
@@ -1410,9 +1400,6 @@
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
 "wallet__receive_background_setup_text" = "Enable background setup to safely exit Bitkit while your balance is being configured.";
 "wallet__receive_background_setup_toggle" = "Enable background setup";
-"wallet__receive_spending" = "Receive Lightning Funds";
-"wallet__receive_spending_text" = "Enjoy instant and cheap bitcoin payments on the Lightning Network.";
-"wallet__receive_spending_title" = "Receive on <accent>spending balance</accent>";
 "wallet__receive_connect_initial" = "To set up your spending balance, a <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted.";
 "wallet__receive_connect_additional" = "To receive more instant Bitcoin, Bitkit has to increase your liquidity. A <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted from the amount you specified.";
 "wallet__receive_liquidity__nav_title" = "Spending Balance Setup";

@@ -33,10 +33,14 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 && !GeoService.shared.isGeoBlocked {
-                        transferFromSavingsButton
-                            .transition(.move(edge: .leading).combined(with: .opacity))
-                            .padding(.top, 28)
+                    if wallet.hasTrustedChannels {
+                        BodyMText(
+                            t("lightning__channels_closing_notice", variables: ["date": ChannelsClosing.formattedCloseDate()]),
+                            textColor: .white64
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 16)
+                        .accessibilityIdentifier("ChannelsClosingNotice")
                     }
 
                     if !shouldShowOnboarding {
@@ -102,25 +106,6 @@ struct SpendingWalletScreen: View {
         }
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalLightningSats)
-    }
-
-    var transferFromSavingsButton: some View {
-        CustomButton(
-            title: t("lightning__transfer_to_spending_button"),
-            variant: .secondary,
-            icon: Image("arrow-up-down")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 16, height: 16)
-                .foregroundColor(.white80)
-        ) {
-            if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmount)
-            } else {
-                navigation.navigate(.spendingIntro)
-            }
-        }
-        .accessibilityIdentifier("TransferFromSavings")
     }
 
     var transferButton: some View {

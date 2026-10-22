@@ -8,8 +8,6 @@
 "cards__notifications__title" = "Přijímat platby";
 "cards__invite__title" = "Pozvat";
 "cards__invite__description" = "Sdílet Bitkit";
-"cards__lightning__title" = "Utratit";
-"cards__lightning__description" = "Okamžité platby";
 "cards__lightningSettingUp__title" = "Převod";
 "cards__lightningSettingUp__description" = "Probíhá...";
 "cards__lightningConnecting__title" = "Připojování";
@@ -230,7 +228,6 @@
 "lightning__transfer_hw__sign_title" = "Podepište\n<accent>svým zařízením</accent>";
 "lightning__transfer_hw__signed_title" = "Transakce\n<accent>podepsána</accent>";
 "lightning__transfer_to_savings_button" = "Převést do úspor";
-"lightning__transfer_to_spending_button" = "Převést do útraty";
 "lightning__spending_intro__title" = "Převést\n<accent>do výdajů</accent>";
 "lightning__spending_intro__text" = "Převeďte peníze na svůj disponibilní zůstatek a využívejte okamžité a levné transakce s přáteli, rodinou a obchodníky.";
 "lightning__spending_intro__button" = "Začít";
@@ -372,6 +369,8 @@
 "lightning__channel_node_id" = "ID uzlu";
 "lightning__channel_id" = "ID kanálu";
 "lightning__channel_point" = "Bod kanálu";
+"lightning__channels_closing_banner" = "KANÁLY SE ZAVŘOU {date}";
+"lightning__channels_closing_notice" = "Vaše Lightning kanály budou uzavřeny {date}. Do té doby převeďte zůstatek útrat do úspor.";
 "lightning__closure_reason" = "Důvod uzavření";
 "lightning__support" = "Podpora";
 "lightning__connection_closed__title" = "Připojení uzavřeno";
@@ -573,15 +572,6 @@
 "other__transfer_notification__body" = "Otevřete Bitkit pro dokončení přenosu";
 "other__scan__error__generic" = "Bitkit není schopen přečíst zadaná data.";
 "other__scan__error__expired" = "Platnost lightning faktury vypršela.";
-"other__gift__claimed__text" = "Je nám líto, přišli jste pozdě! Všechny dary pro tento kód již byly vyzvednuty.";
-"other__gift__claiming__text" = "Uplatnění dárkového kódu Bitkit...";
-"other__gift__claiming__title" = "Uplatnění daru";
-"other__gift__error__title" = "Chyba dárkového kódu";
-"other__gift__error__text" = "Bitkit nemohl nárokovat prostředky. Zkuste to prosím znovu později nebo nás kontaktujte.";
-"other__gift__error__button" = "OK";
-"other__gift__used__title" = "Použitý kód";
-"other__gift__used__text" = "Tento dárkový kód BitKitu již byl použit a prostředky byly vyplaceny.";
-"other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Nakoupit";
 "other__shop__intro__description" = "Zařiď si život podle Bitcoin standardu. Utrácej své Bitcoiny za digitální dárkové karty, eSIMky, dobíjení kreditu a mnohem víc.";
 "other__shop__intro__button" = "Začít";
@@ -1396,9 +1386,6 @@
 "wallet__receive_text_lnfunds" = "Chcete obdržet prostředky <accent>lightning</accent>?";
 "wallet__receive_background_setup_text" = "Povolte nastavení na pozadí pro bezpečné ukončení Bitkitu, zatímco se váš zůstatek konfiguruje.";
 "wallet__receive_background_setup_toggle" = "Povolit nastavení na pozadí";
-"wallet__receive_spending" = "Přijmout Lightning prostředky";
-"wallet__receive_spending_text" = "Užívejte si okamžité a levné bitcoinové platby v síti Lightning.";
-"wallet__receive_spending_title" = "Přijmout na <accent>disponibilní zůstatek</accent>";
 "wallet__receive_connect_initial" = "Chcete-li nastavit disponibilní zůstatek, bude odečten síťový poplatek <accent>{networkFee}</accent>  a <accent>{serviceFee}</accent> poplatek poskytovateli služeb.";
 "wallet__receive_connect_additional" = "Chcete-li získat více okamžitých bitcoinů, musí Bitkit navýšit vaši likviditu. Od vámi zadané částky bude odečten síťový poplatek <accent>{networkFee}</accent> a <accent>{serviceFee}</accent> poplatek poskytovatele služeb  .";
 "wallet__receive_liquidity__nav_title" = "Nastavení disponibilního zůstatku";

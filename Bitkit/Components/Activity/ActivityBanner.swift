@@ -4,6 +4,7 @@ import SwiftUI
 enum ActivityBannerType {
     case spending
     case savings
+    case channelsClosing
 }
 
 struct ActivityBanner: View {
@@ -21,11 +22,21 @@ struct ActivityBanner: View {
     }
 
     private var accentColor: Color {
-        type == .spending ? .purpleAccent : .brandAccent
+        switch type {
+        case .spending: .purpleAccent
+        case .savings: .brandAccent
+        case .channelsClosing: .yellowAccent
+        }
+    }
+
+    private var iconName: String {
+        type == .channelsClosing ? "warning" : "transfer"
     }
 
     private var bannerText: String {
-        if let duration = remainingDuration {
+        if type == .channelsClosing {
+            return t("lightning__channels_closing_banner", variables: ["date": ChannelsClosing.formattedCloseDate()])
+        } else if let duration = remainingDuration {
             return t("wallet__activity_transfer_ready_in", variables: ["duration": duration])
         } else {
             return t("wallet__activity_transfer_in_progress")
@@ -34,7 +45,7 @@ struct ActivityBanner: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image("transfer")
+            Image(iconName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 20, height: 20)
@@ -46,6 +57,7 @@ struct ActivityBanner: View {
                 .textCase(.uppercase)
                 .kerning(0)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .frame(height: 72)

@@ -4,7 +4,6 @@ struct TabBar: View {
     @Environment(CalculatorInputManager.self) private var calculatorInput
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
-    @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
         if calculatorInput.isPresented {
@@ -69,18 +68,6 @@ struct TabBar: View {
                     hardwareWalletId: walletId
                 )
             )
-            return
-        }
-
-        let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
-
-        if Self.shouldOpenSpendingCjitEntry(
-            isSpendingWallet: navigation.currentRoute == .spendingWallet,
-            wallet: wallet,
-            hasPendingTransfersToSpending: hasPendingTransfersToSpending
-        ) {
-            // On spending wallet screen, show CJIT flow when user can't receive normally
-            sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
         } else {
             sheets.showSheet(.receive)
         }
@@ -88,14 +75,6 @@ struct TabBar: View {
 
     private func onScanPress() {
         sheets.showSheet(.scanner)
-    }
-
-    static func shouldOpenSpendingCjitEntry(
-        isSpendingWallet: Bool,
-        wallet: WalletViewModel,
-        hasPendingTransfersToSpending: Bool
-    ) -> Bool {
-        isSpendingWallet && !wallet.canCreateReceiveLightningInvoice(amountSats: nil) && !hasPendingTransfersToSpending
     }
 }
 

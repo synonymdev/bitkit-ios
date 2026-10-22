@@ -49,12 +49,6 @@ struct SavingsWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
-                        if !GeoService.shared.isGeoBlocked {
-                            transferButton
-                                .transition(.move(edge: .leading).combined(with: .opacity))
-                                .padding(.top, 28)
-                        }
-
                         ActivityList(viewType: .onchain)
 
                         CustomButton(title: t("common__show_all"), variant: .tertiary) {
@@ -111,25 +105,6 @@ struct SavingsWalletScreen: View {
         }
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalOnchainSats)
-    }
-
-    var transferButton: some View {
-        CustomButton(
-            title: t("lightning__transfer_to_spending_button"),
-            variant: .secondary,
-            icon: Image("arrow-up-down")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 16, height: 16)
-                .foregroundColor(.white80)
-        ) {
-            if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmount)
-            } else {
-                navigation.navigate(.spendingIntro)
-            }
-        }
-        .accessibilityIdentifier("TransferToSpending")
     }
 }
 

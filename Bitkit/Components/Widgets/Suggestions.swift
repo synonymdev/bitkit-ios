@@ -20,7 +20,6 @@ enum SuggestionAction: Hashable {
     case secure
     case shop
     case support
-    case transferToSpending
 }
 
 /// Wallet state used to choose which suggestion cards to show and in what order.
@@ -33,8 +32,8 @@ enum WalletSuggestionState {
 /// Ordered suggestion card IDs per wallet state (priority: first = highest).
 /// Max 4 cards are shown; when one is dismissed or completed, the next in this list is shown.
 private let suggestionOrderByState: [WalletSuggestionState: [String]] = [
-    .empty: ["buyBitcoin", "transferToSpending", "hardware", "support", "backupSeedPhrase", "pin", "profile", "invite"],
-    .onchain: ["backupSeedPhrase", "pin", "transferToSpending", "hardware", "support", "profile", "invite", "buyBitcoin"],
+    .empty: ["buyBitcoin", "hardware", "support", "backupSeedPhrase", "pin", "profile", "invite"],
+    .onchain: ["backupSeedPhrase", "pin", "hardware", "support", "profile", "invite", "buyBitcoin"],
     .spending: ["quickpay", "notifications", "shop", "hardware", "profile", "support", "invite", "buyBitcoin"],
 ]
 
@@ -46,14 +45,6 @@ let cards: [SuggestionCardData] = [
         imageName: "safe",
         color: .blue24,
         action: .backup
-    ),
-    SuggestionCardData(
-        id: "transferToSpending",
-        title: t("cards__lightning__title"),
-        description: t("cards__lightning__description"),
-        imageName: "lightning",
-        color: .purple24,
-        action: .transferToSpending
     ),
     SuggestionCardData(
         id: "pin",
@@ -154,8 +145,6 @@ extension SuggestionCardData {
             return "shop"
         case .support:
             return "support"
-        case .transferToSpending:
-            return "lightning"
         }
     }
 }
@@ -170,7 +159,7 @@ struct Suggestions: View {
 
     var previewCardIds: [String]?
 
-    static let previewSheetCardIds = ["backupSeedPhrase", "pin", "transferToSpending", "support"]
+    static let previewSheetCardIds = ["backupSeedPhrase", "pin", "buyBitcoin", "support"]
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -373,8 +362,6 @@ struct Suggestions: View {
             route = .support
         case .hardware:
             sheets.showSheet(.hardwareConnect)
-        case .transferToSpending:
-            route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
         }
 
         if let route {

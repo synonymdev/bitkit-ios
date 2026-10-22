@@ -77,13 +77,14 @@ struct ReceiveQr: View {
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        var items: [TabItem<ReceiveTab>] = [
-            TabItem(.savings),
-            TabItem(.spending),
-        ]
+        var items: [TabItem<ReceiveTab>] = [TabItem(.savings)]
 
         if canShowUnifiedReceive {
-            items.insert(TabItem(.unified), at: 1)
+            items.append(TabItem(.unified))
+        }
+
+        if canShowSpendingReceive {
+            items.append(TabItem(.spending))
         }
 
         if selectedHardwareWalletId != nil {
@@ -111,6 +112,10 @@ struct ReceiveQr: View {
     private var displayedHardwareAddress: HwReceiveAddress? {
         guard let walletId = selectedHardwareWalletId else { return nil }
         return hwWalletManager.watcherReceiveAddress(walletId: walletId) ?? hardwareAddress
+    }
+
+    private var canShowSpendingReceive: Bool {
+        wallet.canCreateReceiveLightningInvoice || cjitInvoice != nil
     }
 
     private var canShowUnifiedReceive: Bool {
@@ -159,10 +164,6 @@ struct ReceiveQr: View {
         )
     }
 
-    var showingCjitOnboarding: Bool {
-        return !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil && selectedTab == .spending
-    }
-
     var body: some View {
         if selectedTab == .usdt, !settings.isUsdtEnabled {
             UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
@@ -200,7 +201,10 @@ struct ReceiveQr: View {
                         tabContent(for: .unified)
                     }
 
-                    tabContent(for: .spending)
+                    if canShowSpendingReceive {
+                        tabContent(for: .spending)
+                    }
+
                     if settings.isUsdtEnabled, cjitInvoice == nil {
                         Color.clear.tag(ReceivePage.tab(.usdt))
                     }
@@ -215,22 +219,7 @@ struct ReceiveQr: View {
                 Spacer()
 
                 Group {
-                    if showingCjitOnboarding {
-                        CustomButton(
-                            title: t("wallet__receive_spending"),
-                            icon: Image("bolt")
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.purpleAccent),
-                            isDisabled: wallet.nodeLifecycleState != .running
-                        ) {
-                            if GeoService.shared.isGeoBlocked {
-                                navigationPath.append(.cjitGeoBlocked)
-                            } else if !wallet.canCreateReceiveLightningInvoice {
-                                navigationPath.append(.cjitAmount)
-                            }
-                        }
-                    } else if showDetails {
+                    if showDetails {
                         VStack(spacing: 16) {
                             if selectedTab == .hardware {
                                 CustomButton(
@@ -280,6 +269,7 @@ struct ReceiveQr: View {
                 }
             }
             .onAppear {
+                selectSavingsIfSpendingUnavailable()
                 applyDefaultTabIfNeeded()
             }
         }
@@ -331,6 +321,7 @@ struct ReceiveQr: View {
                 selectedTab = .savings
             }
 
+            selectSavingsIfSpendingUnavailable()
             applyDefaultTabIfNeeded()
         }
         .onDisappear {
@@ -339,6 +330,12 @@ struct ReceiveQr: View {
             passphraseTask?.cancel()
             passphraseTask = nil
             engagedSession.release(through: hwWalletManager)
+        }
+    }
+
+    private func selectSavingsIfSpendingUnavailable() {
+        if selectedTab == .spending, !canShowSpendingReceive {
+            selectedTab = .savings
         }
     }
 
@@ -398,8 +395,6 @@ struct ReceiveQr: View {
                 } else {
                     ProgressView()
                 }
-            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
-                cjitOnboarding
             } else if receiveUnavailable(for: tab) {
                 receiveRefreshStatus(for: tab)
             } else if showDetails {
@@ -512,39 +507,6 @@ struct ReceiveQr: View {
             return (uri: usdt.receiveUri, imageAsset: "tether-circle", accentColor: .usdtAccent)
         case .hardware:
             return (uri: "", imageAsset: "btc-circle-blue", accentColor: .blueAccent)
-        }
-    }
-
-    var cjitOnboarding: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            DisplayText(t("wallet__receive_spending_title"), accentColor: .purpleAccent)
-                .padding(.bottom, 12)
-
-            BodyMText(t("wallet__receive_spending_text"))
-
-            Spacer()
-
-            HStack {
-                Spacer()
-                Image("bolt")
-                    .resizable()
-                    .frame(width: 64, height: 64)
-                    .foregroundColor(.purpleAccent)
-                Spacer()
-            }
-        }
-        .padding(32)
-        .background(Color.black)
-        .cornerRadius(8)
-        .aspectRatio(1, contentMode: .fit)
-        .overlay(alignment: .bottomLeading) {
-            if !UIScreen.main.isSmall {
-                Image("arrow-cjit")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 210)
-                    .offset(x: 70, y: 110)
-            }
         }
     }
 

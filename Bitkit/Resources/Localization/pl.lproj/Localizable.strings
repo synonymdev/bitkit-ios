@@ -8,8 +8,6 @@
 "cards__notifications__title" = "Otrzymuj płatności";
 "cards__invite__title" = "Zaproś";
 "cards__invite__description" = "Udostępnij Bitkit";
-"cards__lightning__title" = "Wydawaj";
-"cards__lightning__description" = "Płatności natychmiastowe";
 "cards__lightningSettingUp__title" = "Transfer";
 "cards__lightningSettingUp__description" = "W toku...";
 "cards__lightningConnecting__title" = "Łączenie";
@@ -230,7 +228,6 @@
 "lightning__transfer_hw__sign_title" = "Podpisz\n<accent>urządzeniem</accent>";
 "lightning__transfer_hw__signed_title" = "Transakcja\n<accent>podpisana</accent>";
 "lightning__transfer_to_savings_button" = "Prześlij na oszczędności";
-"lightning__transfer_to_spending_button" = "Prześlij na wydatki";
 "lightning__spending_intro__title" = "Prześlij \n<accent>na saldo wydatków</accent>";
 "lightning__spending_intro__text" = "Przelewaj środki na swoje saldo wydatków, aby cieszyć się natychmiastowymi i tanimi transakcjami z przyjaciółmi, rodziną i sprzedawcami.";
 "lightning__spending_intro__button" = "Rozpocznij";
@@ -372,6 +369,8 @@
 "lightning__channel_node_id" = "ID węzła";
 "lightning__channel_id" = "ID kanału";
 "lightning__channel_point" = "Punkt kanału";
+"lightning__channels_closing_banner" = "KANAŁY ZOSTANĄ ZAMKNIĘTE {date}";
+"lightning__channels_closing_notice" = "Twoje kanały Lightning zostaną zamknięte {date}. Przed tym terminem prześlij saldo wydatków na oszczędności.";
 "lightning__closure_reason" = "Powód zamknięcia";
 "lightning__support" = "Wsparcie";
 "lightning__connection_closed__title" = "Połączenie zamknięte";
@@ -573,15 +572,6 @@
 "other__transfer_notification__body" = "Otwórz Bitkit, aby dokończyć transfer";
 "other__scan__error__generic" = "Bitkit nie może odczytać dostarczonych danych.";
 "other__scan__error__expired" = "Ta faktura Lightning wygasła.";
-"other__gift__claimed__text" = "Przepraszamy, spóźniłeś się! Wszystkie prezenty dla tego kodu zostały już odebrane.";
-"other__gift__claiming__text" = "Odbiór kodu podarunkowego Bitkit...";
-"other__gift__claiming__title" = "Odbiór prezentu";
-"other__gift__error__title" = "Błąd kodu podarunkowego";
-"other__gift__error__text" = "Bitkit nie mógł odebrać środków. Proszę spróbować ponownie później lub skontaktować się z nami.";
-"other__gift__error__button" = "OK";
-"other__gift__used__title" = "Użyty kod";
-"other__gift__used__text" = "Ten kod podarunkowy Bitkit został już wykorzystany, a środki zostały wypłacone.";
-"other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Sklep";
 "other__shop__intro__description" = "Przestaw się na standard Bitcoina. Wydawaj swoje Bitcoiny na karty podarunkowe, eSIM-y, doładowania telefonu i inne usługi.";
 "other__shop__intro__button" = "Rozpocznij";
@@ -1406,9 +1396,6 @@
 "wallet__receive_text_lnfunds" = "Chcesz otrzymać fundusze <accent>Lightning</accent>?";
 "wallet__receive_background_setup_text" = "Włącz konfigurację w tle, aby bezpiecznie wyjść z Bitkit podczas konfigurowania salda.";
 "wallet__receive_background_setup_toggle" = "Włącz konfigurację w tle";
-"wallet__receive_spending" = "Odbierz środki Lightning";
-"wallet__receive_spending_text" = "Korzystaj z natychmiastowych i tanich płatności bitcoin w sieci Lightning.";
-"wallet__receive_spending_title" = "Odbierz na <accent>saldo wydatków</accent>";
 "wallet__receive_connect_initial" = "Aby skonfigurować saldo wydatków, zostanie pobrana opłata sieciowa <accent>{networkFee}</accent> oraz opłata dostawcy usługi <accent>{serviceFee}</accent>";
 "wallet__receive_connect_additional" = "Bitkit musi zwiększyć Twoją płynność, abyś mógł otrzymywać więcej natychmiastowych płatności. Od wskazanej kwoty zostanie pobrana opłata sieciowa <accent>{networkFee}</accent> i serwisowa <accent>{serviceFee}</accent>.";
 "wallet__receive_liquidity__nav_title" = "Konfiguracja salda wydatków";

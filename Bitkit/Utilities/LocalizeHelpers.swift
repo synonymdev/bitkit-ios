@@ -19,7 +19,7 @@ enum LocalizationHelper {
         $languageOverride.withValue("en", operation: body)
     }
 
-    private static var currentLanguageCode: String {
+    static var currentLanguageCode: String {
         if let languageOverride {
             return languageOverride
         }

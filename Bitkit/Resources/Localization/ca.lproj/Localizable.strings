@@ -8,8 +8,6 @@
 "cards__notifications__title" = "Rebre pagaments";
 "cards__invite__title" = "Convidar";
 "cards__invite__description" = "Comparteix Bitkit";
-"cards__lightning__title" = "Gastar";
-"cards__lightning__description" = "Pagaments instantanis";
 "cards__lightningSettingUp__title" = "Transferència";
 "cards__lightningSettingUp__description" = "En progrés...";
 "cards__lightningConnecting__title" = "Conectant";
@@ -229,7 +227,6 @@
 "lightning__transfer_hw__sign_title" = "Signa amb\n<accent>el teu dispositiu</accent>";
 "lightning__transfer_hw__signed_title" = "Transacció\n<accent>signada</accent>";
 "lightning__transfer_to_savings_button" = "Transferir a estalvis";
-"lightning__transfer_to_spending_button" = "Transferir a despesa";
 "lightning__spending_intro__title" = "Transferir\n<accent>a despesa</accent>";
 "lightning__spending_intro__text" = "Transfereix fons al teu saldo de despesa per gaudir de transaccions instantànies i barates amb amics, família i comerciants.";
 "lightning__spending_intro__button" = "Començar";
@@ -356,6 +353,8 @@
 "lightning__channel_node_id" = "ID de node parell";
 "lightning__channel_id" = "ID de canal";
 "lightning__channel_point" = "Punt del canal";
+"lightning__channels_closing_banner" = "ELS CANALS ES TANQUEN EL {date}";
+"lightning__channels_closing_notice" = "Els teus canals Lightning es tancaran el {date}. Transfereix el teu saldo de despesa a estalvis abans d'aquesta data.";
 "lightning__closure_reason" = "Motiu del tancament";
 "lightning__support" = "Suport";
 "lightning__connection_closed__title" = "Connexió tancada";
@@ -533,15 +532,6 @@
 "other__try_again" = "Torna-ho a provar.";
 "other__scan__error__generic" = "Bitkit no pot llegir les dades proporcionades.";
 "other__scan__error__expired" = "Aquesta factura Lightning ha caducat.";
-"other__gift__claimed__text" = "Ho sentim, arribes tard! Tots els regals per a aquest codi ja s\'han reclamat.";
-"other__gift__claiming__text" = "Reclamant el teu codi de regal de Bitkit...";
-"other__gift__claiming__title" = "Reclamant regal";
-"other__gift__error__title" = "Error del codi de regal";
-"other__gift__error__text" = "Bitkit no ha pogut reclamar els fons. Si us plau, torna-ho a provar més tard o contacta amb nosaltres.";
-"other__gift__error__button" = "OK";
-"other__gift__used__title" = "Codi usat";
-"other__gift__used__text" = "Aquest codi de regal de Bitkit ja s\'ha utilitzat i els fons s\'han pagat.";
-"other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Botiga";
 "other__shop__intro__description" = "Viu la teva vida amb l\'estàndard Bitcoin. Gasta els teus Bitcoin en targetes regal digitals, eSIM, recàrregues de telèfon i molt més.";
 "other__shop__intro__button" = "Començar";
@@ -1282,9 +1272,6 @@
 "wallet__receive_show_qr" = "Mostra el codi QR";
 "wallet__receive_background_setup_text" = "Activa la configuració en segon pla per sortir de Bitkit amb seguretat mentre el teu saldo s\'està configurant.";
 "wallet__receive_background_setup_toggle" = "Activa la configuració en segon pla";
-"wallet__receive_spending" = "Rebre fons Lightning";
-"wallet__receive_spending_text" = "Gaudeix de pagaments de bitcoin instantanis i barats a la xarxa Lightning.";
-"wallet__receive_spending_title" = "Rebre al <accent>saldo de despesa</accent>";
 "wallet__receive_connect_initial" = "Per configurar el teu saldo de despesa, es descomptarà una comissió de xarxa de <accent>{networkFee}</accent> i una comissió de proveïdor de servei de <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "Per rebre més Bitcoin instantani, Bitkit ha d\'augmentar la teva liquiditat. Una comissió de xarxa de <accent>{networkFee}</accent> i una comissió de proveïdor de servei de <accent>{serviceFee}</accent> es descomptaran de l\'import que has especificat.";
 "wallet__receive_liquidity__nav_title" = "Configuració del saldo de despesa";

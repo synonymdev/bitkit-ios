@@ -8,8 +8,6 @@
 "cards__notifications__title" = "Ontvang";
 "cards__invite__title" = "Uitnodiging";
 "cards__invite__description" = "Deel Bitkit";
-"cards__lightning__title" = "Besteed";
-"cards__lightning__description" = "Onmiddellijke betalingen";
 "cards__lightningSettingUp__title" = "Overboeken";
 "cards__lightningSettingUp__description" = "Bezig...";
 "cards__lightningConnecting__title" = "Verbinding aan het maken";
@@ -230,7 +228,6 @@
 "lightning__transfer_hw__sign_title" = "Onderteken met\n<accent>uw apparaat</accent>";
 "lightning__transfer_hw__signed_title" = "Transactie\n<accent>ondertekend</accent>";
 "lightning__transfer_to_savings_button" = "Overboeken Naar Spaargeld";
-"lightning__transfer_to_spending_button" = "Overboeken Naar Bestedingssaldo";
 "lightning__spending_intro__title" = "Overboeking\n<accent>naar bestedingssaldo</accent>";
 "lightning__spending_intro__text" = "Boek geld over naar uw bestedingssaldo om te genieten van directe en goedkope transacties met vrienden, familie en winkeliers.";
 "lightning__spending_intro__button" = "Starten";
@@ -370,6 +367,8 @@
 "lightning__channel_node_id" = "Peer-ID";
 "lightning__channel_id" = "Kanaal-ID";
 "lightning__channel_point" = "Kanaalpunt";
+"lightning__channels_closing_banner" = "KANALEN SLUITEN OP {date}";
+"lightning__channels_closing_notice" = "Je Lightning-kanalen worden op {date} gesloten. Boek je bestedingssaldo vóór die datum over naar spaargeld.";
 "lightning__closure_reason" = "Reden van sluiting";
 "lightning__support" = "Ondersteuning";
 "lightning__connection_closed__title" = "Verbinding Gesloten";
@@ -571,15 +570,6 @@
 "other__transfer_notification__body" = "Öffnen Sie Bitkit, um Ihre Übertragung abzuschließen";
 "other__scan__error__generic" = "Bitkit kan de verstrekte data niet lezen.";
 "other__scan__error__expired" = "Deze Lightning factuur is verlopen.";
-"other__gift__claimed__text" = "Sorry, u bent te laat! Alle cadeaus voor deze code zijn al geclaimd.";
-"other__gift__claiming__text" = "Uw Bitkit cadeau code wordt geclaimd...";
-"other__gift__claiming__title" = "Cadeau Claimen";
-"other__gift__error__title" = "Cadeau Code Fout";
-"other__gift__error__text" = "Bitkit kon het geld niet claimen. Probeer het later opnieuw of neem contact met ons op.";
-"other__gift__error__button" = "OK";
-"other__gift__used__title" = "Gebruikte Code";
-"other__gift__used__text" = "Deze Bitkit cadeau code is al gebruikt en het geld is uitbetaald.";
-"other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Winkel";
 "other__shop__intro__description" = "Zet uw leven op de Bitcoin standaard. Besteed uw Bitcoin aan digitale cadeaukaarten, eSIMs, telefoon opwaarderingen en meer.";
 "other__shop__intro__button" = "Starten";
@@ -1402,9 +1392,6 @@
 "wallet__receive_text_lnfunds" = "Wilt u <accent>Lightning</accent> ₿ ontvangen?";
 "wallet__receive_background_setup_text" = "Schakel achtergrondinstallatie in om Bitkit veilig te verlaten terwijl uw saldo wordt geconfigureerd.";
 "wallet__receive_background_setup_toggle" = "Achtergrondinstallatie inschakelen";
-"wallet__receive_spending" = "Ontvang Lightning-geld";
-"wallet__receive_spending_text" = "Geniet van directe en goedkope bitcoin-betalingen op het Lightning Network.";
-"wallet__receive_spending_title" = "Ontvang op <accent>bestedingssaldo</accent>";
 "wallet__receive_connect_initial" = "Om uw bestedingssaldo in te stellen, worden een <accent>{networkFee}</accent> netwerkvergoeding en <accent>{serviceFee}</accent> serviceprovidervergoeding afgetrokken.";
 "wallet__receive_connect_additional" = "Om meer direct Bitcoin te ontvangen, moet Bitkit uw liquiditeit verhogen. Een <accent>{networkFee}</accent> netwerkvergoeding en <accent>{serviceFee}</accent> serviceprovidervergoeding worden afgetrokken van het bedrag dat u heeft opgegeven.";
 "wallet__receive_liquidity__nav_title" = "Bestedingssaldo Instellen";

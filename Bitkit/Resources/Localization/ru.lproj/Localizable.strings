@@ -8,8 +8,6 @@
 "cards__notifications__title" = "Получайте Платежи";
 "cards__invite__title" = "Пригласить";
 "cards__invite__description" = "Поделитесь Bitkit";
-"cards__lightning__title" = "Тратить";
-"cards__lightning__description" = "Мгновенные платежи";
 "cards__lightningSettingUp__title" = "Перенос";
 "cards__lightningSettingUp__description" = "Идёт процесс...";
 "cards__lightningConnecting__title" = "Подключение";
@@ -229,7 +227,6 @@
 "lightning__transfer_hw__sign_title" = "Подпишите на\n<accent>устройстве</accent>";
 "lightning__transfer_hw__signed_title" = "Транзакция\n<accent>подписана</accent>";
 "lightning__transfer_to_savings_button" = "Перевести в Сбережения";
-"lightning__transfer_to_spending_button" = "Перевести на Расходы";
 "lightning__spending_intro__title" = "Перевод\n<accent>на Расходы</accent>";
 "lightning__spending_intro__text" = "Переведите средства на свой баланс расходов, чтобы наслаждаться мгновенными и недорогими транзакциями с друзьями, семьёй и продавцами.";
 "lightning__spending_intro__button" = "Начать";
@@ -367,6 +364,8 @@
 "lightning__channel_node_id" = "ID Узла";
 "lightning__channel_id" = "ID Канала";
 "lightning__channel_point" = "Точка Канала";
+"lightning__channels_closing_banner" = "КАНАЛЫ ЗАКРОЮТСЯ {date}";
+"lightning__channels_closing_notice" = "Ваши каналы Lightning будут закрыты {date}. До этой даты переведите баланс расходов в сбережения.";
 "lightning__closure_reason" = "Причина Закрытия";
 "lightning__support" = "Поддержка";
 "lightning__connection_closed__title" = "Соединение Закрыто";
@@ -568,15 +567,6 @@
 "other__transfer_notification__body" = "Откройте Bitkit, чтобы завершить перевод";
 "other__scan__error__generic" = "Bitkit не может прочитать предоставленные данные.";
 "other__scan__error__expired" = "Срок действия этого Lightning инвойса истёк.";
-"other__gift__claimed__text" = "Извините, вы опоздали! Все подарки по этому коду уже получены.";
-"other__gift__claiming__text" = "Получение подарочного кода Bitkit...";
-"other__gift__claiming__title" = "Получение Подарка";
-"other__gift__error__title" = "Ошибка Подарочного Кода";
-"other__gift__error__text" = "Bitkit не удалось получить средства. Пожалуйста, попробуйте позже или свяжитесь с нами.";
-"other__gift__error__button" = "Ок";
-"other__gift__used__title" = "Использованный Код";
-"other__gift__used__text" = "Этот подарочный код Bitkit уже был использован, и средства были выплачены.";
-"other__gift__used__button" = "Ок";
 "other__shop__intro__title" = "Магазин";
 "other__shop__intro__description" = "Переходите на биткоин-стандарт. Тратьте свои Bitcoin на цифровые подарочные карты, eSIM, пополнение телефона и многое другое.";
 "other__shop__intro__button" = "Начать";
@@ -1390,9 +1380,6 @@
 "wallet__receive_text_lnfunds" = "Хотите получить <accent>Лайтнинг</accent> средства?";
 "wallet__receive_background_setup_text" = "Включите фоновую настройку, чтобы безопасно выйти из Bitkit пока настраивается ваш баланс.";
 "wallet__receive_background_setup_toggle" = "Включить фоновую настройку";
-"wallet__receive_spending" = "Получить Lightning средства";
-"wallet__receive_spending_text" = "Наслаждайтесь мгновенными и дешёвыми биткоин-платежами в сети Lightning.";
-"wallet__receive_spending_title" = "Получить на <accent>баланс расходов</accent>";
 "wallet__receive_connect_initial" = "Для настройки вашего баланса расходов будет удержана сетевая комиссия <accent>{networkFee}</accent> и комиссия провайдера услуг <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "Чтобы получить больше мгновенных Bitcoin, Bitkit должен увеличить вашу ликвидность. Из указанной суммы будет удержана сетевая комиссия <accent>{networkFee}</accent> и комиссия провайдера услуг <accent>{serviceFee}</accent>.";
 "wallet__receive_liquidity__nav_title" = "Настройка Баланса Расходов";

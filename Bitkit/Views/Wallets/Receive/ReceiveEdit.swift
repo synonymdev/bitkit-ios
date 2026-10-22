@@ -3,7 +3,6 @@ import SwiftUI
 
 struct ReceiveEdit: View {
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
@@ -26,19 +25,6 @@ struct ReceiveEdit: View {
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
-    }
-
-    private var liquiditySource: ReceiveLiquiditySource {
-        switch sourceTab {
-        case .savings:
-            return .savings
-        case .unified:
-            return .auto
-        case .spending:
-            return .spending
-        case .hardware, .usdt:
-            return .savings
-        }
     }
 
     var body: some View {
@@ -228,36 +214,9 @@ struct ReceiveEdit: View {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
-                var maxCjitAmountSats: UInt64?
-                if needsCjitLimitsForAdditionalLiquidity() {
-                    try? await blocktank.refreshMinCjitSats()
-                    maxCjitAmountSats = try? await blocktank.maxCjitAmountSats()
-                }
-
-                switch additionalLiquidityAction(maxCjitAmountSats: maxCjitAmountSats) {
-                case .none:
-                    try await wallet.refreshBip21(forceRefreshBolt11: true)
-                    finishWithQr()
-                case .chooseAmount:
-                    try await wallet.refreshBip21(forceRefreshBolt11: true)
-                    finishWithRoute(.cjitAmount)
-                case let .createCjit(amountSats):
-                    let entry = try await blocktank.createCjit(amountSats: amountSats, description: note)
-                    finishWithRoute(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: true))
-                case .geoBlocked:
-                    finishWithRoute(.cjitGeoBlocked)
-                }
+                try await wallet.refreshBip21(forceRefreshBolt11: true)
+                finishWithQr()
             } catch {
-                if error.isCjitNodeCapacityExceeded {
-                    showNodeCapacityExceededToast()
-                    return
-                }
-
-                if error.isChannelSizeExceedsMaximum {
-                    finishWithRoute(.cjitAmount)
-                    return
-                }
-
                 app.toast(error)
             }
         } else {
@@ -278,22 +237,6 @@ struct ReceiveEdit: View {
         }
     }
 
-    private func finishWithRoute(_ route: ReceiveRoute) {
-        if replacesCurrentQr {
-            Self.replaceEditedQrRoute(in: &navigationPath, with: route)
-        } else {
-            navigationPath.append(route)
-        }
-    }
-
-    private func showNodeCapacityExceededToast() {
-        app.toast(
-            type: .warning,
-            title: t("wallet__receive_cjit_error_node_capacity__title"),
-            description: t("wallet__receive_cjit_error_node_capacity__description")
-        )
-    }
-
     private func deleteTag(_ tag: String) async {
         do {
             try await wallet.mutateReceiveTags(.remove([tag]))
@@ -304,26 +247,6 @@ struct ReceiveEdit: View {
         } catch {
             app.toast(type: .error, title: "Failed to delete tag", description: error.localizedDescription)
         }
-    }
-
-    private func additionalLiquidityAction(maxCjitAmountSats: UInt64?) -> ReceiveAdditionalLiquidityAction {
-        ReceiveLiquidityDecision.additionalLiquidityAction(
-            source: liquiditySource,
-            invoiceAmountSats: amountViewModel.amountSats,
-            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
-            minCjitSats: blocktank.minCjitSats,
-            maxCjitAmountSats: maxCjitAmountSats,
-            isGeoBlocked: GeoService.shared.isGeoBlocked
-        )
-    }
-
-    private func needsCjitLimitsForAdditionalLiquidity() -> Bool {
-        ReceiveLiquidityDecision.needsCjitLimitsForAdditionalLiquidity(
-            source: liquiditySource,
-            invoiceAmountSats: amountViewModel.amountSats,
-            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
-            isGeoBlocked: GeoService.shared.isGeoBlocked
-        )
     }
 
     @ViewBuilder
