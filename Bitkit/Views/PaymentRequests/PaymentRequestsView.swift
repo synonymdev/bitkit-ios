@@ -266,6 +266,7 @@ struct PaymentRequestsSheet: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
 
     let config: PaymentRequestsSheetItem
 
@@ -319,8 +320,15 @@ struct PaymentRequestsSheet: View {
                 navigation.navigate(.paymentRequestDetail(request.id))
             },
             onPay: {
-                sheets.hideSheetBeforePerforming(reason: "Paying payment request") {
-                    _ = paymentRequests.requestPresentation(request)
+                Task {
+                    // Closing the sheet first would leave nothing on screen behind the toast.
+                    if await allowances.isAutomaticallyHandling(request) {
+                        app.toast(type: .info, title: t("subscriptions__allowance_payment_in_progress"))
+                        return
+                    }
+                    sheets.hideSheetBeforePerforming(reason: "Paying payment request") {
+                        _ = paymentRequests.requestPresentation(request)
+                    }
                 }
             },
             onReject: paymentRequests.canDismiss(request) ? {
@@ -377,6 +385,7 @@ struct PaymentRequestsView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @Environment(PaykitAllowanceManager.self) private var allowances
 
     var body: some View {
         Group {
@@ -502,7 +511,9 @@ struct PaymentRequestsView: View {
 
     private func historyDate(for request: PaykitPaymentRequest) -> String {
         guard let createdAt = request.createdAt else { return status(for: request) }
-        return Self.dateFormatter.string(from: createdAt)
+        let date = Self.dateFormatter.string(from: createdAt)
+        guard allowances.autoPaidRequestIds.contains(request.id) else { return date }
+        return date + " · " + t("subscriptions__allowance_auto_paid")
     }
 
     private static let dateFormatter: DateFormatter = {

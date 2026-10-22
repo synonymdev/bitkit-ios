@@ -140,6 +140,11 @@ iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabula
 journey usually names the same string on both platforms. Where a container needs to be queryable,
 iOS pairs the identifier with `.accessibilityElement(children: .contain)`.
 
+A payment request's preparing confirmation is the one exception: Android tags its disabled swipe
+`PaymentRequestPreparing`, while iOS identifies the sheet as `PaymentRequestConfirm` and keeps its
+swipe (`GRAB`) disabled and loading. `ReviewAmount` on that sheet is the requested amount, not a
+paid request reopening.
+
 ### On-chain payment safety adaptations
 
 The shared names and action prose in `send/onchain-original-payment-retry.xml`,

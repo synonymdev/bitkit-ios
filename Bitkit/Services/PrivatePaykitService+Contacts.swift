@@ -893,7 +893,14 @@ extension PrivatePaykitService {
             firstError = firstError ?? error
             if !linkRetryKeys.isEmpty {
                 let sessionIsCurrent = await isSessionCurrent?() ?? true
-                let currentIdentity = try? await operations.currentPublicKey()
+                let currentIdentity: String?
+                do {
+                    currentIdentity = try await operations.currentPublicKey()
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    return PaykitPaymentRequestError.operationInProgress
+                } catch {
+                    currentIdentity = nil
+                }
                 if !Task.isCancelled, sessionIsCurrent, generation == preparationGeneration, currentIdentity == identity,
                    !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
                 {
