@@ -380,6 +380,9 @@ struct SendSheet: View {
         if isPreparingRequest {
             return
         }
+        // SwiftUI may recreate Send content while the same sheet stays presented.
+        // Embedded Send still ends when its parent leaves the payment route.
+        guard isEmbedded || !isCurrentPresentation else { return }
         let ownsSendState = ownedSendStateGeneration == app.sendStateGeneration
         if let request = incomingPaymentRequest ?? (ownsSendState ? app.contactPaymentContext?.incomingPaymentRequest : nil) {
             Task { await paykitPaymentRequestManager.finishPayment(request) }
