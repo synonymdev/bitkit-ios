@@ -6,35 +6,9 @@ import XCTest
 @MainActor
 final class SendSheetLifecycleTests: XCTestCase {
     func testScannerReplacementPreservesLnurlConfirmation() async throws {
-        snapshotAppDefaultsDomain()
-        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        let app = AppViewModel()
-        let wallet = WalletViewModel()
-        wallet.nodeLifecycleState = .running
-        let sheets = SheetViewModel()
-        let prompt = ScanPromptState()
-        let root = SendPresentationHarness(sheets: sheets, prompt: prompt)
-            .environment(PaykitPaymentRequestManager())
-            .environment(HwWalletManager())
-            .environment(TrezorManager())
-            .environment(CameraManager.shared)
-            .environmentObject(app)
-            .environmentObject(wallet)
-            .environmentObject(NetworkMonitor())
-            .environmentObject(SettingsViewModel.shared)
-            .environmentObject(TagManager())
-            .environmentObject(PubkyProfileManager())
-            .environmentObject(ActivityListViewModel())
-            .environmentObject(ContactsManager())
-            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
-            .environmentObject(FeeEstimatesManager())
-            .environmentObject(ScannerManager())
-            .environmentObject(NavigationViewModel())
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        window.rootViewController = UIHostingController(rootView: root)
-        window.makeKeyAndVisible()
-        window.rootViewController?.view.layoutIfNeeded()
+        let (app, sheets, prompt, window) = makeHost()
         defer {
+            sheets.hideSheet(reason: "Test cleanup")
             window.isHidden = true
             window.rootViewController = nil
         }
@@ -83,28 +57,118 @@ final class SendSheetLifecycleTests: XCTestCase {
             XCTAssertNil(app.lnurlPayData, "Closing the current send must still clean up its state")
         }
     }
+
+    func testTransientSendUnmountKeepsCurrentLnurlState() async throws {
+        let (app, sheets, prompt, window) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        try await Task.sleep(for: .seconds(1))
+        let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222)
+        // Nested sheet dismissal may recreate Send content without ending its presentation.
+        prompt.isSendMounted = false
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentationID)
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222, "A transient unmount must retain the active scan")
+        prompt.isSendMounted = true
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222, "Replacement content needs the active scan")
+        sheets.hideSheet(reason: "Close current presentation")
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(app.lnurlPayData, "Ending the presentation must still clean up")
+    }
+
+    func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
+        let (app, sheets, prompt, window) = makeHost(isEmbedded: true)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        try await Task.sleep(for: .seconds(1))
+        let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222)
+        prompt.isSendMounted = false
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .subscription)
+        XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentationID)
+        XCTAssertNil(app.lnurlPayData, "Leaving embedded Send must clean up even while its parent stays open")
+    }
+
+    private func makeLnurlData() -> LnurlPayData {
+        LnurlPayData(uri: "https://example.com/current", callback: "https://example.com/callback",
+                     minSendable: 222_222, maxSendable: 222_222, metadataStr: "[]",
+                     commentAllowed: nil, allowsNostr: false, nostrPubkey: nil)
+    }
+
+    private func makeHost(isEmbedded: Bool = false) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow) {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        wallet.nodeLifecycleState = .running
+        let sheets = SheetViewModel()
+        if isEmbedded {
+            sheets.showSheet(.subscription)
+        }
+        let prompt = ScanPromptState()
+        let root = SendPresentationHarness(sheets: sheets, prompt: prompt, isEmbedded: isEmbedded)
+            .environment(PaykitPaymentRequestManager())
+            .environment(HwWalletManager())
+            .environment(TrezorManager())
+            .environment(CameraManager.shared)
+            .environmentObject(app)
+            .environmentObject(wallet)
+            .environmentObject(NetworkMonitor())
+            .environmentObject(SettingsViewModel.shared)
+            .environmentObject(TagManager())
+            .environmentObject(PubkyProfileManager())
+            .environmentObject(ActivityListViewModel())
+            .environmentObject(ContactsManager())
+            .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+            .environmentObject(FeeEstimatesManager())
+            .environmentObject(ScannerManager())
+            .environmentObject(NavigationViewModel())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(rootView: root)
+        window.makeKeyAndVisible()
+        window.rootViewController?.view.layoutIfNeeded()
+        return (app, sheets, prompt, window)
+    }
 }
 
 private struct SendPresentationHarness: View {
     @ObservedObject var sheets: SheetViewModel
     @ObservedObject var prompt: ScanPromptState
+    var isEmbedded = false
     var body: some View {
-        Color.black
-            .sheet(item: $sheets.scannerSheetItem, onDismiss: {
-                sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
-            }) { _ in
-                Text("Scanner fixture")
-                    .sheet(isPresented: $prompt.isPresented) { Text("Manual entry fixture") }
-            }
-            .sheet(item: $sheets.sendSheetItem, onDismiss: {
-                sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
-            }) { config in
-                SendSheet(config: config)
+        if isEmbedded {
+            if prompt.isSendMounted {
+                SendSheet(config: SendSheetItem(presentationID: sheets.activeSheetConfiguration?.presentationID,
+                                                initialRoute: .lnurlPayConfirm), isEmbedded: true)
                     .environmentObject(sheets)
             }
+        } else {
+            Color.black
+                .sheet(item: $sheets.scannerSheetItem, onDismiss: {
+                    sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
+                }) { _ in
+                    Text("Scanner fixture")
+                        .sheet(isPresented: $prompt.isPresented) { Text("Manual entry fixture") }
+                }
+                .sheet(item: $sheets.sendSheetItem, onDismiss: {
+                    sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
+                }) { config in
+                    if prompt.isSendMounted {
+                        SendSheet(config: config)
+                            .environmentObject(sheets)
+                    }
+                }
+        }
     }
 }
 
 private final class ScanPromptState: ObservableObject {
     @Published var isPresented = false
+    @Published var isSendMounted = true
 }
