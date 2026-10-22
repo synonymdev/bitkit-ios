@@ -335,6 +335,7 @@ class ScannerManager: ObservableObject {
         guard let app else { return }
         let presentationID = sheets?.activeSheetConfiguration?.presentationID
         let navigationPath = navigation?.path
+        let inputGeneration = app.sendStateGeneration
         func isCurrentOrigin() -> Bool {
             !Task.isCancelled && sheets?.activeSheetConfiguration?.presentationID == presentationID &&
                 navigation?.path == navigationPath
@@ -342,14 +343,15 @@ class ScannerManager: ObservableObject {
 
         do {
             let payload = try await decode()
-            guard isCurrentOrigin() else { return }
+            guard isCurrentOrigin(), context != .send || app.sendStateGeneration == inputGeneration else { return }
             if context == .send {
                 await handleSendScan(payload, scope: scope, isCurrent: isCurrentOrigin, completion: completion)
             } else {
                 await handleScan(payload, context: context, isCurrent: isCurrentOrigin)
             }
         } catch {
-            guard isCurrentOrigin(), !(error is CancellationError) else { return }
+            guard isCurrentOrigin(), context != .send || app.sendStateGeneration == inputGeneration,
+                  !(error is CancellationError) else { return }
             switch error {
             case QRCodeImageDecoderError.invalidImage:
                 app.toast(

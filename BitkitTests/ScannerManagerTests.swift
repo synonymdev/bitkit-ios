@@ -143,6 +143,59 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertTrue(routes.isEmpty, "The retiring image's completion must not navigate")
     }
 
+    func testDelayedImageCannotOverwriteNewerScanInSameSend() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(false, forKey: ToastWindowManager.disableAllToastsKey)
+        let previousToast = ToastWindowManager.shared.currentToast
+        defer { ToastWindowManager.shared.currentToast = previousToast }
+        for fails in [false, true] {
+            ToastWindowManager.shared.currentToast = nil
+            var haptics = 0
+            let scanner = ScannerManager { haptics += 1 }
+            let sheets = SheetViewModel()
+            let app = configure(scanner, sheets: sheets)
+            scanner.configure(app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+                              settings: SettingsViewModel.shared, sheets: sheets)
+            sheets.showSheet(.send, data: SendConfig(view: .options))
+            let presentation = try XCTUnwrap(sheets.activeSheetConfiguration)
+            let flow = try XCTUnwrap(presentation.sendState)
+            let started = expectation(description: "Older photo decoding suspended")
+            var continuation: CheckedContinuation<QRCodePayload, Error>?
+            var staleRoutes: [SendRoute?] = []
+            let task = Task {
+                await scanner.handleImageScan(context: .send, decode: {
+                    try await withCheckedThrowingContinuation {
+                        continuation = $0
+                        started.fulfill()
+                    }
+                }) { staleRoutes.append($0) }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            await scanner.handleSendScan(paymentURI + "?amount=0.000002") { route in
+                if let route {
+                    flow.navigationPath.append(route)
+                }
+            }
+            XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, 200)
+            let generation = app.sendStateGeneration
+            let path = flow.navigationPath
+            XCTAssertFalse(path.isEmpty)
+            if fails {
+                try XCTUnwrap(continuation).resume(throwing: QRCodeImageDecoderError.invalidImage)
+            } else {
+                try XCTUnwrap(continuation).resume(returning: QRCodePayload(string: paymentURI, data: nil))
+            }
+            await task.value
+            XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentation.presentationID)
+            XCTAssertEqual(app.sendStateGeneration, generation)
+            XCTAssertEqual(app.scannedOnchainInvoice?.amountSatoshis, 200)
+            XCTAssertEqual(flow.navigationPath, path)
+            XCTAssertTrue(staleRoutes.isEmpty)
+            XCTAssertEqual(haptics, 1)
+            XCTAssertNil(ToastWindowManager.shared.currentToast)
+        }
+    }
+
     func testDelayedImageIsIgnoredAfterDismissalOrTaskCancellation() async throws {
         for cancelTask in [false, true] {
             let scanner = ScannerManager { XCTFail("Dismissed/cancelled image must not play a success haptic") }
