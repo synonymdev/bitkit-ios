@@ -80,11 +80,23 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertNil(app.lnurlPayData, "Ending the presentation must still clean up")
     }
 
-    func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
-        let (app, sheets, prompt, window) = makeHost(isEmbedded: true)
+    func testMissingLnurlDataClosesItsPresentation() async throws {
+        let (app, sheets, _, window) = makeHost()
         defer { window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(sheets.activeSheetConfiguration, "A confirmation without LNURL data must close instead of staying blank")
+    }
+
+    func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
+        // Subscriptions route embedded Send to LNURL confirmation only once its data is set.
+        let (app, sheets, prompt, window) = makeHost(isEmbedded: true, lnurlPayData: makeLnurlData())
+        defer { window.isHidden = true; window.rootViewController = nil }
         try await Task.sleep(for: .seconds(1))
         let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
         XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222)
@@ -101,10 +113,17 @@ final class SendSheetLifecycleTests: XCTestCase {
                      commentAllowed: nil, allowsNostr: false, nostrPubkey: nil)
     }
 
-    private func makeHost(isEmbedded: Bool = false) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow) {
+    private func makeHost(
+        isEmbedded: Bool = false,
+        lnurlPayData: LnurlPayData? = nil
+    ) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow) {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         let app = AppViewModel()
+        if let lnurlPayData {
+            app.lnurlPayData = lnurlPayData
+            app.selectedWalletToPayFrom = .lightning
+        }
         let wallet = WalletViewModel()
         wallet.nodeLifecycleState = .running
         let sheets = SheetViewModel()

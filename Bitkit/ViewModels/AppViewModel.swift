@@ -360,6 +360,10 @@ class AppViewModel: ObservableObject {
     private let scanPaymentOperations: ScanPaymentOperations
     private let usdtBalance: () -> UInt64?
     private var scannedDataHandlingId: UUID?
+    var isHandlingScannedData: Bool {
+        scannedDataHandlingId != nil
+    }
+
     private var manualEntryValidationSequence: UInt64 = 0
 
     // Combine infrastructure for debounced validation
