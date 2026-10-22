@@ -44,7 +44,7 @@ struct SpendingWalletScreen: View {
                         .accessibilityIdentifier("ChannelsClosingNotice")
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 && !GeoService.shared.isGeoBlocked {
+                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)

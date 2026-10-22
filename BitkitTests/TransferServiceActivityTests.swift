@@ -91,8 +91,7 @@ final class TransferServiceActivityTests: XCTestCase {
         Bitkit.TransferService(
             storage: Bitkit.TransferStorage(defaults: transferDefaults),
             lightningService: .shared,
-            blocktankService: Bitkit.CoreService.shared.blocktank,
-            isGeoBlocked: { false }
+            blocktankService: Bitkit.CoreService.shared.blocktank
         )
     }
 
@@ -1473,8 +1472,7 @@ final class TransferServiceActivityTests: XCTestCase {
     func testConcurrentPaidOrderFollowupCreatesOneOriginalRecord() async throws {
         let storage = ConcurrentPaidOrderStorage(defaults: transferDefaults)
         let service = Bitkit.TransferService(
-            storage: storage, lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank,
-            isGeoBlocked: { false }
+            storage: storage, lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank
         )
         let txid = String(repeating: "ab", count: 32)
         let first = Task.detached {

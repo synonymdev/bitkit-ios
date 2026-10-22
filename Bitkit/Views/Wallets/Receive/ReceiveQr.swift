@@ -5,7 +5,6 @@ struct ReceiveQr: View {
 
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
@@ -297,16 +296,7 @@ struct ReceiveQr: View {
             abandonHardwareVerification()
         }
         .task {
-            do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask { await refreshBip21() }
-                    group.addTask { try await blocktank.refreshInfo() }
-                    try await group.waitForAll()
-                }
-            } catch {
-                app.toast(error)
-            }
-            await app.checkGeoStatus()
+            await refreshBip21()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, newState in
             // They may open this view before node has started

@@ -138,14 +138,6 @@ enum Env {
         }
     }
 
-    static var isGeoblockingEnabled: Bool {
-        #if CHECK_GEOBLOCK
-            return true
-        #else
-            return ProcessInfo.processInfo.environment["GEO"] == "true"
-        #endif
-    }
-
     /// The current execution context of the app
     static var currentExecutionContext: ExecutionContext {
         let isNotificationExtension = Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true
@@ -304,7 +296,6 @@ enum Env {
         }
     }
 
-    // TODO: remove this to load from BT API instead
     static var trustedLnPeers: [LnPeer] {
         switch network {
         case .bitcoin:
@@ -356,8 +347,6 @@ enum Env {
 
     static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
     static let fxRateStaleThreshold: TimeInterval = 10 * 60 // After this we notify the user that the rates are stale due to a failed refresh
-
-    static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
     static var pushNotificationFeatures: [BlocktankNotificationType] = [
         .incomingHtlc,
@@ -433,7 +422,6 @@ enum Env {
 
     static let termsOfServiceUrl = "https://www.bitkit.to/terms-of-use"
     static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
-    static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
     static let bitrefillRef = "AL6dyZYt"
     static let btcMapUrl = "https://btcmap.org/map"
     static let helpUrl = "https://help.bitkit.to"

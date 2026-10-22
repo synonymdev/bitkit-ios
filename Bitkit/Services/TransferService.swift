@@ -8,17 +8,14 @@ class TransferService {
     private let storage: TransferStorage
     private let lightningService: LightningService
     private let blocktankService: BlocktankService
-    private let isGeoBlocked: () -> Bool
     private let coreService: CoreService
 
     init(
         storage: TransferStorage = TransferStorage.shared,
         lightningService: LightningService,
         blocktankService: BlocktankService,
-        coreService: CoreService = .shared,
-        isGeoBlocked: @escaping () -> Bool = { GeoService.shared.isGeoBlocked }
+        coreService: CoreService = .shared
     ) {
-        self.isGeoBlocked = isGeoBlocked
         self.storage = storage
         self.lightningService = lightningService
         self.blocktankService = blocktankService
@@ -58,17 +55,6 @@ class TransferService {
             guard existing.fundingTxId == fundingTxId else { throw OnchainSendAttemptError.duplicate }
             return existing.id
         }
-        // When geoblocked, block transfers to spending that involve LSP (Blocktank)
-        // toSpending with lspOrderId means it's a Blocktank LSP channel order
-        let isGeoblocked = isGeoBlocked()
-        if isGeoblocked && type.isToSpending() && lspOrderId != nil {
-            Logger.error("Cannot create LSP transfer when geoblocked", context: "TransferService")
-            throw AppError(
-                message: "Transfer unavailable",
-                debugMessage: "Transfer to spending via Blocktank is not available in your region."
-            )
-        }
-
         let id = UUID().uuidString
         let createdAt = UInt64(Date().timeIntervalSince1970)
 

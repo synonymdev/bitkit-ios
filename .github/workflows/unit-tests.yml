@@ -59,7 +59,6 @@ jobs:
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/BlocktankTests \
             -skip-testing:BitkitTests/PaymentFlowTests \
-            -skip-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
             -skip-testing:BitkitTests/AddressTypeIntegrationTests \
             -skip-testing:BitkitTests/RNMigrationCleanupTests \
             | xcbeautify --report junit

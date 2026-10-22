@@ -366,22 +366,12 @@ class LightningService {
         return modificationDate
     }
 
-    func connectToTrustedPeers(remotePeers: [LnPeer]? = nil) async throws {
+    func connectToTrustedPeers() async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        let peers: [LnPeer]
-        let usingRemotePeers: Bool
-        if let remotePeers, !remotePeers.isEmpty {
-            Logger.info("Using \(remotePeers.count) trusted peers from Blocktank API")
-            peers = remotePeers
-            usingRemotePeers = true
-        } else {
-            Logger.warn("No remote peers available, falling back to preconfigured env peers")
-            peers = Env.trustedLnPeers
-            usingRemotePeers = false
-        }
+        let peers = Env.trustedLnPeers
 
         try await ServiceQueue.background(.ldk) {
             for peer in peers {
@@ -392,35 +382,6 @@ class LightningService {
                     Logger.error(error, context: "Peer: \(peer.nodeId)")
                 }
             }
-
-            if usingRemotePeers {
-                self.verifyTrustedPeersOrFallback(node: node, trustedPeers: peers)
-            }
-        }
-    }
-
-    private func verifyTrustedPeersOrFallback(node: Node, trustedPeers: [LnPeer]) {
-        let connectedPeerIds = Set(node.listPeers().filter(\.isConnected).map(\.nodeId))
-        let trustedConnected = trustedPeers.filter { connectedPeerIds.contains($0.nodeId) }.count
-        let trustedPeerIds = Set(trustedPeers.map(\.nodeId))
-
-        if trustedConnected == 0, !trustedPeers.isEmpty {
-            let fallbackPeers = Env.trustedLnPeers.filter { !trustedPeerIds.contains($0.nodeId) }
-            if fallbackPeers.isEmpty {
-                Logger.warn("No trusted peers connected. All preconfigured env peers overlap with API peers (not retrying with stale addresses).")
-            } else {
-                Logger.warn("No trusted peers connected, trying \(fallbackPeers.count) preconfigured env peer(s) not in API list")
-                for peer in fallbackPeers {
-                    do {
-                        try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
-                        Logger.info("Connected to fallback peer: \(peer.nodeId)")
-                    } catch {
-                        Logger.error(error, context: "Fallback peer: \(peer.nodeId)")
-                    }
-                }
-            }
-        } else {
-            Logger.info("Connected to \(trustedConnected)/\(trustedPeers.count) trusted peers")
         }
     }
 

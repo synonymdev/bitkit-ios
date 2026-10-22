@@ -8,14 +8,6 @@ struct FundingOptions: View {
 
     @State private var showNoFundsAlert = false
 
-    var text: String {
-        if GeoService.shared.isGeoBlocked {
-            return t("lightning__funding__text_blocked")
-        } else {
-            return t("lightning__funding__text")
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
@@ -27,7 +19,7 @@ struct FundingOptions: View {
             )
             .padding(.bottom, 8)
 
-            BodyMText(text)
+            BodyMText(t("lightning__funding__text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 32)
 
@@ -35,7 +27,6 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundTransfer"
                 ) {
                     if wallet.totalOnchainSats == 0 {
@@ -50,7 +41,6 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "qr",
                     title: t("lightning__funding__button2"),
-                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundReceive"
                 ) {
                     navigation.reset()
@@ -83,8 +73,5 @@ struct FundingOptions: View {
             Text(t("lightning__no_funds__description"))
         }
         .tint(.purpleAccent)
-        .task {
-            await app.checkGeoStatus()
-        }
     }
 }

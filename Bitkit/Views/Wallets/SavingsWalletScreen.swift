@@ -50,11 +50,9 @@ struct SavingsWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
-                        if !GeoService.shared.isGeoBlocked {
-                            transferButton
-                                .transition(.move(edge: .leading).combined(with: .opacity))
-                                .padding(.top, 28)
-                        }
+                        transferButton
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                            .padding(.top, 28)
 
                         ActivityList(viewType: .onchain)
 

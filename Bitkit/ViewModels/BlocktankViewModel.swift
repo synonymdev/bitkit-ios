@@ -65,67 +65,22 @@ class BlocktankViewModel: ObservableObject {
     private let lightningService: LightningService
     private let currencyService: CurrencyService
     private let orderClient: BlocktankOrderClient
-    private let refundAddressProvider: any BlocktankRefundAddressProviding
-    private var refreshTimer: Timer?
-    private var refreshTask: Task<Void, Never>?
 
     init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         orderClient: BlocktankOrderClient? = nil,
-        refundAddressProvider: (any BlocktankRefundAddressProviding)? = nil,
-        startPolling: Bool = true
+        refreshInfoOnInit: Bool = true
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
         self.orderClient = orderClient ?? BlocktankOrderClient(coreService: coreService, lightningService: lightningService)
-        self.refundAddressProvider = refundAddressProvider ?? BlocktankRefundAddressProvider(
-            lightningService: lightningService,
-            utilityService: coreService.utility
-        )
 
-        if startPolling {
+        if refreshInfoOnInit {
             Task { try? await refreshInfo() }
-            self.startPolling()
         }
-    }
-
-    deinit {
-        Task { @MainActor [weak self] in
-            Logger.debug("Stopping poll for orders")
-            self?.stopPolling()
-        }
-    }
-
-    private func startPolling() {
-        stopPolling()
-
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: Env.blocktankOrderRefreshInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                refreshTask?.cancel()
-                refreshTask = Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    try? await refreshOrders()
-                }
-            }
-        }
-
-        // Initial refresh
-        refreshTask?.cancel()
-        refreshTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            try? await refreshOrders()
-        }
-    }
-
-    private func stopPolling() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        refreshTask?.cancel()
-        refreshTask = nil
     }
 
     func refreshInfo() async throws {
@@ -352,11 +307,7 @@ class BlocktankViewModel: ObservableObject {
             throw CustomServiceError.nodeNotStarted
         }
         try Task.checkCancellation()
-        let refundAddress = try await refundAddressProvider.addressForOrder()
-        let options = try await defaultCreateOrderOptions(
-            clientBalanceSat: clientBalance,
-            refundOnchainAddress: refundAddress
-        )
+        let options = try await defaultCreateOrderOptions(clientBalanceSat: clientBalance)
 
         Logger.debug(
             "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats), clientBalanceSat: \(clientBalance), expiryWeeks: \(defaultChannelExpiryWeeks)"
