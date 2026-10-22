@@ -1829,6 +1829,7 @@
 "usdt__track_bridge" = "Suivre la livraison inter-réseaux";
 "usdt__replaced" = "Remplacé par un autre paiement";
 "usdt__receive_title" = "Recevoir des dollars";
+"usdt__receive_copied" = "Adresse copiée dans le presse-papiers.\nAssurez-vous que les USDT sont envoyés uniquement sur le réseau sélectionné.";
 "usdt__send_title" = "Envoyer des USDT";
 "usdt__deposit_attention" = "Ce dépôt nécessite l'intervention du prestataire. Contactez le support Bitkit avec la référence du dépôt.";
 "usdt__deposit_cost" = "Déduction estimée (USDT)";
