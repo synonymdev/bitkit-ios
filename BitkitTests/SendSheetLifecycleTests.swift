@@ -251,11 +251,88 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertNil(wallet.sendAmountSats)
     }
 
-    func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
-        let (app, sheets, prompt, window, _) = makeHost(isEmbedded: true)
+    func testMissingLnurlDataClosesItsPresentation() async throws {
+        let (app, sheets, _, window, _) = makeHost()
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(sheets.activeSheetConfiguration, "A confirmation without LNURL data must close instead of staying blank")
+    }
+
+    func testMissingLnurlDataClosesAmountRootedPresentation() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/variable", callback: "https://example.com/callback",
+            minSendable: 149_500, maxSendable: 200_999,
+            metadataStr: "[]", commentAllowed: 12, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(sheets.activeSheetConfiguration, "An amount root without LNURL data must close, not stay unusable")
+    }
+
+    func testMissingDataClosesAmountRootAfterContinuingToReview() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
+        try await Task.sleep(for: .seconds(1))
+        let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        flow.navigationPath = [.lnurlPayConfirm]
+        try await Task.sleep(for: .milliseconds(500))
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(sheets.activeSheetConfiguration, "An unavailable LNURL root must close even after continuing to review")
+    }
+
+    func testMissingDataReturnsToRouteBeforeLnurlEntry() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        try await Task.sleep(for: .seconds(1))
+        let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
+        let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        flow.navigationPath = [.manual, .lnurlPayAmount, .lnurlPayConfirm]
+        try await Task.sleep(for: .milliseconds(500))
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentationID)
+        XCTAssertEqual(flow.navigationPath, [.manual], "Leave every unavailable LNURL route and retain the preceding recipient screen")
+    }
+
+    func testMissingDataWaitsForPaymentSubmissionToFinish() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        try await Task.sleep(for: .seconds(1))
+        let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        flow.isSubmittingPayment = true
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        flow.isSubmittingPayment = false
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(sheets.activeSheetConfiguration, "Recheck unavailable data after the active submission ends")
+    }
+
+    func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
+        let (app, sheets, prompt, window, _) = makeHost(isEmbedded: true, lnurlPayData: makeLnurlData())
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
         try await Task.sleep(for: .seconds(1))
         let presentationID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
         XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222)
@@ -272,10 +349,16 @@ final class SendSheetLifecycleTests: XCTestCase {
                      commentAllowed: nil, allowsNostr: false, nostrPubkey: nil)
     }
 
-    private func makeHost(isEmbedded: Bool = false) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel) {
+    private func makeHost(isEmbedded: Bool = false,
+                          lnurlPayData: LnurlPayData? = nil) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
+    {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         let app = AppViewModel()
+        if let lnurlPayData {
+            app.lnurlPayData = lnurlPayData
+            app.selectedWalletToPayFrom = .lightning
+        }
         let wallet = WalletViewModel()
         wallet.channelCount = 0
         wallet.channels = []

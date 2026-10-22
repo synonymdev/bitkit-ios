@@ -209,6 +209,15 @@ struct SendSheet: View {
         config.preparation != nil && flow.incomingPaymentRequest == nil
     }
 
+    private var isMissingLnurlPayData: Bool {
+        guard app.lnurlPayData == nil, !app.isHandlingScannedData, !flow.isSubmittingPayment else { return false }
+        return Self.isLnurlPayRoute(flow.navigationPath.last ?? currentRoot)
+    }
+
+    private static func isLnurlPayRoute(_ route: SendRoute) -> Bool {
+        route == .lnurlPayAmount || route == .lnurlPayConfirm
+    }
+
     private var shouldDismissUnavailableRequest: Bool {
         guard let request = flow.incomingPaymentRequest else { return false }
         return Self.shouldDismissUnavailableRequest(
@@ -314,6 +323,10 @@ struct SendSheet: View {
         .onChange(of: shouldDismissUnavailableRequest) { _, shouldDismiss in
             guard shouldDismiss else { return }
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
+        }
+        .onChange(of: isMissingLnurlPayData, initial: true) { _, isMissing in
+            guard isMissing, isCurrentPresentation else { return }
+            exitMissingLnurlPayment()
         }
         .onChange(of: shouldShowSyncOverlay, initial: true) { _, isShowing in
             Logger.debug("shouldShowSyncOverlay: \(isShowing) (node: \(wallet.nodeLifecycleState))", context: "SendSheet")
@@ -1288,6 +1301,14 @@ struct SendSheet: View {
         }
 
         flow.navigationPath = [route]
+    }
+
+    private func exitMissingLnurlPayment() {
+        if !Self.isLnurlPayRoute(currentRoot), let index = flow.navigationPath.firstIndex(where: Self.isLnurlPayRoute) {
+            flow.navigationPath.removeSubrange(index...)
+        } else {
+            sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "LNURL payment data is no longer available")
+        }
     }
 
     private func replaceRootRoute(with route: SendRoute) {
