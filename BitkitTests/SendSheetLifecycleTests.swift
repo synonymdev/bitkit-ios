@@ -6,7 +6,7 @@ import XCTest
 @MainActor
 final class SendSheetLifecycleTests: XCTestCase {
     func testScannerReplacementPreservesLnurlConfirmation() async throws {
-        let (app, sheets, prompt, window) = makeHost()
+        let (app, sheets, prompt, window, _) = makeHost()
         defer {
             sheets.hideSheet(reason: "Test cleanup")
             window.isHidden = true
@@ -59,7 +59,7 @@ final class SendSheetLifecycleTests: XCTestCase {
     }
 
     func testTransientSendUnmountKeepsCurrentLnurlState() async throws {
-        let (app, sheets, prompt, window) = makeHost()
+        let (app, sheets, prompt, window, _) = makeHost()
         defer { window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
@@ -80,8 +80,54 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertNil(app.lnurlPayData, "Ending the presentation must still clean up")
     }
 
+    func testRemountDoesNotRepeatOptionsSetupAfterLnurlScan() async throws {
+        let (app, sheets, prompt, window, wallet) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        try await Task.sleep(for: .seconds(1))
+        app.resetSendState()
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 150
+        try await Task.sleep(for: .milliseconds(100))
+        prompt.isSendMounted = false
+        try await Task.sleep(for: .milliseconds(500))
+        prompt.isSendMounted = true
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222, "Recreated options-root Send must not clear its scanned target")
+        XCTAssertEqual(wallet.sendAmountSats, 150, "Recreated Send must not reset the entered amount")
+        sheets.hideSheet(reason: "Close remounted send")
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(app.lnurlPayData)
+        XCTAssertNil(wallet.sendAmountSats)
+    }
+
+    func testRemountPreservesVariableLnurlEnteredAmount() async throws {
+        let (app, sheets, prompt, window, wallet) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/variable", callback: "https://example.com/callback",
+            minSendable: 149_500, maxSendable: 200_999,
+            metadataStr: "[]", commentAllowed: 12, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
+        try await Task.sleep(for: .seconds(1))
+        wallet.sendAmountSats = 150
+        prompt.isSendMounted = false
+        try await Task.sleep(for: .milliseconds(500))
+        prompt.isSendMounted = true
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 149_500)
+        XCTAssertEqual(wallet.sendAmountSats, 150, "Recreated amount-root Send must retain its confirmed amount")
+        sheets.hideSheet(reason: "Close remounted variable send")
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(app.lnurlPayData)
+        XCTAssertNil(wallet.sendAmountSats)
+    }
+
     func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
-        let (app, sheets, prompt, window) = makeHost(isEmbedded: true)
+        let (app, sheets, prompt, window, _) = makeHost(isEmbedded: true)
         defer { window.isHidden = true; window.rootViewController = nil }
         app.lnurlPayData = makeLnurlData()
         app.selectedWalletToPayFrom = .lightning
@@ -101,7 +147,7 @@ final class SendSheetLifecycleTests: XCTestCase {
                      commentAllowed: nil, allowsNostr: false, nostrPubkey: nil)
     }
 
-    private func makeHost(isEmbedded: Bool = false) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow) {
+    private func makeHost(isEmbedded: Bool = false) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel) {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         let app = AppViewModel()
@@ -133,7 +179,7 @@ final class SendSheetLifecycleTests: XCTestCase {
         window.rootViewController = UIHostingController(rootView: root)
         window.makeKeyAndVisible()
         window.rootViewController?.view.layoutIfNeeded()
-        return (app, sheets, prompt, window)
+        return (app, sheets, prompt, window, wallet)
     }
 }
 
