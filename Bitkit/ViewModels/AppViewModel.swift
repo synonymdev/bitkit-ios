@@ -359,7 +359,7 @@ class AppViewModel: ObservableObject {
     private let navigationViewModel: NavigationViewModel
     private let scanPaymentOperations: ScanPaymentOperations
     private let usdtBalance: () -> UInt64?
-    private var scannedDataHandlingId: UUID?
+    @Published private var scannedDataHandlingId: UUID?
     var isHandlingScannedData: Bool {
         scannedDataHandlingId != nil
     }

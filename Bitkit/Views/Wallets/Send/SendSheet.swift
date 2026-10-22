@@ -1263,7 +1263,7 @@ struct SendSheet: View {
     }
 
     private func exitMissingLnurlPayment() {
-        if let index = navigationPath.firstIndex(where: Self.isLnurlPayRoute) {
+        if !Self.isLnurlPayRoute(currentRoot), let index = navigationPath.firstIndex(where: Self.isLnurlPayRoute) {
             navigationPath.removeSubrange(index...)
         } else {
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "LNURL payment data is no longer available")

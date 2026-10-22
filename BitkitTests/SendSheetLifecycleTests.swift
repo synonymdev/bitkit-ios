@@ -93,6 +93,23 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertNil(sheets.activeSheetConfiguration, "A confirmation without LNURL data must close instead of staying blank")
     }
 
+    func testMissingLnurlDataClosesAmountRootedPresentation() async throws {
+        let (app, sheets, _, window) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/variable", callback: "https://example.com/callback",
+            minSendable: 149_500, maxSendable: 200_999,
+            metadataStr: "[]", commentAllowed: 12, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
+        app.lnurlPayData = nil
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(sheets.activeSheetConfiguration, "An amount root without LNURL data must close, not stay unusable")
+    }
+
     func testEmbeddedSendExitCleansStateWhileSubscriptionRemainsActive() async throws {
         // Subscriptions route embedded Send to LNURL confirmation only once its data is set.
         let (app, sheets, prompt, window) = makeHost(isEmbedded: true, lnurlPayData: makeLnurlData())
