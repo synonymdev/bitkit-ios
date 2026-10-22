@@ -58,6 +58,37 @@ final class SendSheetLifecycleTests: XCTestCase {
         }
     }
 
+    func testExternalLnurlHandoffDoesNotTransferOwnershipToOpenSend() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
+        SettingsViewModel.shared.enableQuickpay = false
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        try await Task.sleep(for: .seconds(1))
+        let previousID = try XCTUnwrap(sheets.activeSheetConfiguration?.presentationID)
+        let previousFlow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        let previousGeneration = app.sendStateGeneration
+
+        // External handleScannedData resets before awaiting decode while the old Send is still current.
+        app.resetSendState()
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(previousFlow.ownedSendStateGeneration, previousGeneration,
+                       "An unrelated scan must not transfer its state to the open Send")
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        PaymentNavigationHelper.openPaymentSheet(
+            app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+            settings: SettingsViewModel.shared, sheetViewModel: sheets
+        )
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertNotEqual(sheets.activeSheetConfiguration?.presentationID, previousID)
+        XCTAssertEqual(sheets.sendSheetItem?.initialRoute, .lnurlPayConfirm)
+        XCTAssertEqual(app.lnurlPayData?.minSendable, 222_222,
+                       "Retiring Send must not clear the external replacement target")
+        sheets.hideSheet(reason: "Close external replacement")
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertNil(app.lnurlPayData, "The replacement must still clean up its own state")
+    }
+
     func testTransientSendUnmountKeepsCurrentLnurlState() async throws {
         let (app, sheets, prompt, window, _) = makeHost()
         defer { sheets.hideSheet(reason: "Test cleanup"); window.isHidden = true; window.rootViewController = nil }
