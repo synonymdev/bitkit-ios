@@ -224,9 +224,68 @@ final class ScannerManagerTests: XCTestCase {
         XCTAssertNil(ToastWindowManager.shared.currentToast)
     }
 
-    private func configure(_ scanner: ScannerManager) -> AppViewModel {
+    func testImageResolutionCannotCompleteAfterOriginDismissalOrReplacement() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(false, forKey: ToastWindowManager.disableAllToastsKey)
+        let previousToast = ToastWindowManager.shared.currentToast
+        defer { ToastWindowManager.shared.currentToast = previousToast }
+        for replace in [false, true] {
+            for failResolution in [false, true] {
+                ToastWindowManager.shared.currentToast = nil
+                let sheets = SheetViewModel()
+                let started = expectation(description: "Payment target resolution suspended")
+                var continuation: CheckedContinuation<BitkitCore.Scanner, Error>?
+                let scanner = ScannerManager {}
+                let app = configure(scanner, sheets: sheets, decodeInvoice: { _ in
+                    try await withCheckedThrowingContinuation {
+                        continuation = $0
+                        started.fulfill()
+                    }
+                })
+                scanner.configure(app: app, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()),
+                                  settings: SettingsViewModel.shared, sheets: sheets)
+                sheets.showSheet(.send, data: SendConfig(view: .options))
+                var routes: [SendRoute?] = []
+                let task = Task {
+                    await scanner.handleImageScan(context: .send, decode: {
+                        QRCodePayload(string: "https://example.com/old-image", data: nil)
+                    }) { routes.append($0) }
+                }
+                await fulfillment(of: [started], timeout: 2)
+                sheets.hideSheet(reason: "Retire image during payment resolution")
+                app.resetSendState()
+                if replace {
+                    sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+                    app.lnurlPayData = imageTestLnurl(amount: 222_222)
+                }
+                let generation = app.sendStateGeneration
+                if failResolution {
+                    try XCTUnwrap(continuation).resume(throwing: QRCodeImageDecoderError.invalidImage)
+                } else {
+                    try XCTUnwrap(continuation).resume(returning: .lnurlPay(data: imageTestLnurl(amount: 999_000)))
+                }
+                await task.value
+                XCTAssertEqual(app.sendStateGeneration, generation)
+                XCTAssertEqual(app.lnurlPayData?.minSendable, replace ? 222_222 : nil)
+                XCTAssertTrue(routes.isEmpty)
+                XCTAssertNil(ToastWindowManager.shared.currentToast)
+            }
+        }
+    }
+
+    private func imageTestLnurl(amount: UInt64) -> LnurlPayData {
+        LnurlPayData(uri: "https://example.com/pay", callback: "https://example.com/callback",
+                     minSendable: amount, maxSendable: amount,
+                     metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil)
+    }
+
+    private func configure(
+        _ scanner: ScannerManager,
+        sheets: SheetViewModel = SheetViewModel(),
+        decodeInvoice: @escaping (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
+    ) -> AppViewModel {
         let app = AppViewModel(
-            sheetViewModel: SheetViewModel(),
+            sheetViewModel: sheets,
             navigationViewModel: NavigationViewModel(),
             scanPaymentOperations: ScanPaymentOperations(
                 state: {
@@ -238,7 +297,8 @@ final class ScannerManagerTests: XCTestCase {
                         hasUsableChannels: false
                     )
                 },
-                canSendLightning: { _ in false }
+                canSendLightning: { _ in false },
+                decodeInvoice: decodeInvoice
             )
         )
         scanner.configure(

@@ -94,6 +94,7 @@ struct ScanPaymentState {
 struct ScanPaymentOperations {
     let state: () -> ScanPaymentState
     let canSendLightning: (_ amountSats: UInt64) -> Bool
+    var decodeInvoice: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -767,7 +768,7 @@ extension AppViewModel {
         if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
-                let data = try await decode(invoice: endpoint.paymentRequest)
+                let data = try await scanPaymentOperations.decodeInvoice(endpoint.paymentRequest)
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
                 switch data {
                 case let .onChain(invoice): scannedOnchainInvoice = invoice
@@ -829,7 +830,7 @@ extension AppViewModel {
                 )
                 return
             }
-            let data = try await decode(invoice: uri)
+            let data = try await scanPaymentOperations.decodeInvoice(uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
             guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
             prevalidatedPaymentRequest = data
@@ -882,7 +883,7 @@ extension AppViewModel {
         if let prevalidatedPaymentRequest {
             data = prevalidatedPaymentRequest
         } else {
-            data = try await decode(invoice: uri)
+            data = try await scanPaymentOperations.decodeInvoice(uri)
             try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
         }
         let paymentState = scanPaymentOperations.state()
@@ -912,7 +913,7 @@ extension AppViewModel {
 
             if scope != .onchainPayments, let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
-                let lightningData = try await decode(invoice: lnInvoice)
+                let lightningData = try await scanPaymentOperations.decodeInvoice(lnInvoice)
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
                 if case let .lightning(lightningInvoice) = lightningData {
                     // Check lightning invoice network

@@ -67,6 +67,74 @@ final class LnurlPayConfirmTests: XCTestCase {
         }
     }
 
+    func testAutomaticConfirmationRemountDoesNotRepeatAuthorization() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let previousPinEnabled = settings.pinEnabled
+        defer { settings.pinEnabled = previousPinEnabled }
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "test-contact", isInitialSubscriptionPayment: true)
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 222_222, maxSendable: 222_222,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        let flow = SendPresentationState(initialRoute: .lnurlPayConfirm)
+        let wallet = WalletViewModel()
+        let sheets = SheetViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        let manager = PaykitPaymentRequestManager()
+        let started = expectation(description: "Automatic confirmation awaiting PIN")
+        var pinContinuation: CheckedContinuation<Bool, Never>?
+        var pinRequests = 0
+        func makeView() -> some View {
+            LnurlPayConfirm(
+                navigationPath: Binding(get: { flow.navigationPath }, set: { flow.navigationPath = $0 }),
+                isSubmittingPayment: Binding(get: { flow.isSubmittingPayment }, set: { flow.isSubmittingPayment = $0 }),
+                requestPinCheck: {
+                    pinRequests += 1
+                    guard pinRequests == 1 else { return false }
+                    return await withCheckedContinuation { pinContinuation = $0; started.fulfill() }
+                },
+                prepareIncomingPaymentRequest: { XCTFail("Cancelled authorization must not prepare or dispatch") },
+                routingCacheResetAttempted: false
+            )
+            .environment(manager)
+            .environmentObject(app)
+            .environmentObject(wallet)
+            .environmentObject(sheets)
+            .environmentObject(currency)
+            .environmentObject(settings)
+            .environmentObject(ContactsManager())
+        }
+        let host = UIHostingController(rootView: AnyView(makeView()))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        host.view.layoutIfNeeded()
+        await fulfillment(of: [started], timeout: 3)
+        XCTAssertTrue(flow.isSubmittingPayment)
+        host.rootView = AnyView(Color.clear)
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        host.rootView = AnyView(makeView().id(UUID()))
+        host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(pinRequests, 1)
+        XCTAssertTrue(flow.isSubmittingPayment)
+        try XCTUnwrap(pinContinuation).resume(returning: false)
+        let deadline = ContinuousClock.now + .seconds(2)
+        while flow.isSubmittingPayment, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(flow.isSubmittingPayment)
+    }
+
     func testAmountScreenSurvivesContextResetDuringDismissal() async {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
