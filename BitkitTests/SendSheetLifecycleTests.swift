@@ -165,6 +165,26 @@ final class SendSheetLifecycleTests: XCTestCase {
         XCTAssertNil(wallet.sendAmountSats)
     }
 
+    func testNewScanStartsANewAmountDraftWithinTheSamePresentation() async throws {
+        let (app, sheets, _, window, _) = makeHost()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
+        try await Task.sleep(for: .seconds(1))
+        let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+        let first = try XCTUnwrap(flow.lnurlAmountInput)
+        first.updateFromSats(150, currency: CurrencyViewModel(currencyService: OfflineCurrencyService()))
+        app.resetSendState()
+        app.lnurlPayData = makeLnurlData()
+        app.selectedWalletToPayFrom = .lightning
+        try await Task.sleep(for: .milliseconds(500))
+        let second = try XCTUnwrap(flow.lnurlAmountInput)
+        XCTAssertFalse(first === second, "A distinct scan must not inherit the old amount draft")
+        XCTAssertEqual(second.amountSats, 0)
+        sheets.hideSheet(reason: "Close new scan")
+    }
+
     func testClosingUnmountedSendStillCleansPresentationState() async throws {
         let (app, sheets, prompt, window, wallet) = makeHost()
         defer { window.isHidden = true; window.rootViewController = nil }

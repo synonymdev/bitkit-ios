@@ -45,3 +45,8 @@ any payment. Its setup is separate from the unfunded capacity-warning journey ab
 Before scanning, record whether Quick Pay is enabled, disable it and verify it is off. Fixed LNURLs
 can otherwise pay automatically. Leave the amount and daily limits unchanged, close every payment
 sheet before cleanup, and restore the original enabled state after the journey.
+
+`send-scanner-pay-lifecycle.xml` uses the same funded setup to scan from inside ordinary Send,
+retain the variable amount when returning from confirmation, then open a fresh fixed-amount flow.
+Production-host unit tests additionally force content recreation and verify route, draft and
+presentation-end cleanup, including closing while Send content is temporarily absent.

@@ -1,0 +1,20 @@
+<journey name="lnurl scanned inside send keeps its route and amount">
+  <description>
+    Use the funded regtest E2E setup and variable/fixed LNURL fixtures described in
+    scanner-pay-lifecycle.xml. Quick Pay must be off. This covers an ordinary Send
+    presentation whose initial route stays options while the scanner adds payment routes.
+    Do not authorize a payment. The production-host unit regressions force content
+    recreation to verify the retained navigation, amount draft and final cleanup.
+  </description>
+  <actions>
+    <action>Record the Quick Pay enabled state, disable it if needed, verify it is off, and return home without changing its limits</action>
+    <action>Open Send (id "Send") and verify recipient options are visible</action>
+    <action>Use the in-Send scanner E2E prompt (id "ScanPrompt"), enter the variable LNURL in "QRInput" and tap "DialogConfirm"</action>
+    <action>Verify "SendNumberField" and "ContinueAmount" are visible, enter 150 sats and tap "ContinueAmount"</action>
+    <action>Verify "ReviewAmount-primary" shows 150 and "CommentInput" is visible; do not swipe to pay</action>
+    <action>Navigate back to the LNURL amount screen and verify "SendNumberField" still shows the entered 150 sats, then continue and verify the 150-sat confirmation again</action>
+    <action>Close the payment and open a fresh Send; verify recipient options appear without the previous LNURL amount or comment</action>
+    <action>Use its in-Send scan prompt with the fixed 500500-msat fixture; verify "ReviewAmount-primary" shows 501, "CommentInput" is absent and no amount-entry step is required</action>
+    <action>Close all Send sheets, restore the recorded Quick Pay enabled state, verify it, and return home</action>
+  </actions>
+</journey>

@@ -103,8 +103,20 @@ final class SendPresentationState {
     var didStartSetup = false
     var didFinish = false
     var onDismiss: (() -> Void)?
-    var hwSend: HwSendCoordinator?
-    var lnurlAmountInput: AmountInputViewModel?
+    @ObservationIgnored var hwSend: HwSendCoordinator?
+    @ObservationIgnored private(set) var lnurlAmountInput: AmountInputViewModel?
+    @ObservationIgnored private var lnurlAmountGeneration: UUID?
+
+    @MainActor
+    func amountInput(for generation: UUID) -> AmountInputViewModel {
+        if lnurlAmountGeneration == generation, let lnurlAmountInput {
+            return lnurlAmountInput
+        }
+        let input = AmountInputViewModel()
+        lnurlAmountInput = input
+        lnurlAmountGeneration = generation
+        return input
+    }
 
     init(initialRoute: SendRoute) {
         rootRoute = initialRoute
@@ -172,7 +184,6 @@ struct SendSheet: View {
 
     @State private var flow: SendPresentationState
     @State private var hwSend: HwSendCoordinator
-    @State private var lnurlAmountInput: AmountInputViewModel
 
     private var isCurrentPresentation: Bool {
         guard let presentationID = config.presentationID else {
@@ -188,9 +199,6 @@ struct SendSheet: View {
         let hwSend = config.state.hwSend ?? HwSendCoordinator(walletId: config.hardwareWalletId)
         config.state.hwSend = hwSend
         _hwSend = State(initialValue: hwSend)
-        let amountInput = config.state.lnurlAmountInput ?? AmountInputViewModel()
-        config.state.lnurlAmountInput = amountInput
-        _lnurlAmountInput = State(initialValue: amountInput)
     }
 
     private var currentRoot: SendRoute {
@@ -1057,7 +1065,8 @@ struct SendSheet: View {
                     : nil
             )
         case .lnurlPayAmount:
-            LnurlPayAmount(navigationPath: $flow.navigationPath, amountViewModel: lnurlAmountInput)
+            LnurlPayAmount(navigationPath: $flow.navigationPath, amountViewModel: flow.amountInput(for: app.sendStateGeneration))
+                .id(app.sendStateGeneration)
         case .lnurlPayConfirm:
             LnurlPayConfirm(
                 navigationPath: $flow.navigationPath,
