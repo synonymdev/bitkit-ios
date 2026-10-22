@@ -1,0 +1,348 @@
+import Foundation
+import Paykit
+
+/// An Allowance between this wallet's identity and one contact's identity, built from the SDK record.
+/// Eligibility runs on the trusted time passed in by the caller and never on `SubscriptionClock`, so a clock offset cannot move an allowance window.
+struct PaykitAllowance: Identifiable, Hashable {
+    struct ID: Codable, Hashable {
+        let counterparty: String
+        let allowanceId: String
+    }
+
+    enum Role: String, Codable, Hashable {
+        case allower
+        case allowee
+    }
+
+    enum Status: Hashable {
+        /// Sent by this wallet; the other side has not answered yet.
+        case awaitingAnswer
+        /// Received; this wallet must accept or decline.
+        case awaitingMyAnswer
+        case active
+        case notYetActive
+        case expired
+        case declined
+        case ended
+        case conflicted
+    }
+
+    let id: ID
+    let role: Role
+    let lifecycleState: Paykit.AllowanceLifecycleState
+    let isProposedByMe: Bool
+    let perPaymentMaxSats: UInt64?
+    let monthlyLimitSats: UInt64?
+    let monthlyAnchor: Date?
+    let activeFrom: Date?
+    let expiresAt: Date?
+    let allowedPaymentEndpointIdentifiers: [String]?
+    let lastEventAt: Date?
+    /// The proposal's stream item as displayed; acceptance names it so a re-sent proposal asks again.
+    let proposalStreamItemId: UInt64?
+
+    var counterparty: String {
+        id.counterparty
+    }
+
+    var allowanceId: String {
+        id.allowanceId
+    }
+
+    /// Allowance ids are unique only within one link, so local state keys an allowance by its counterparty too.
+    var scopedId: String {
+        Self.scopedId(counterparty: counterparty, allowanceId: allowanceId)
+    }
+
+    static func scopedId(counterparty: String, allowanceId: String) -> String {
+        "\(PubkyPublicKeyFormat.normalized(counterparty) ?? counterparty)/\(allowanceId)"
+    }
+
+    init?(record: Paykit.AllowanceRecord) {
+        guard let localRole = record.localRole,
+              let role = Role(localRole),
+              let terms = record.terms,
+              terms.asset() == PaykitIssuerInterop.bitcoinAsset
+        else { return nil }
+
+        let monthly = terms.periodLimits().first { Self.isMonthly($0.period()) }
+        let perPaymentMaxSats = terms.perPaymentAmount().flatMap { Self.sats(fromBitcoinAmount: $0.maximum()) }
+        let monthlyLimitSats = monthly?.amountLimit().flatMap { Self.sats(fromBitcoinAmount: $0) }
+        let monthlyAnchor = monthly?.period().anchor().flatMap(PaykitAllowanceTime.parse)
+        // This wallet pays only under limits it can show: terms whose caps don't parse to sats with a monthly anchor are dropped.
+        if role == .allower, perPaymentMaxSats == nil || monthlyLimitSats == nil || monthlyAnchor == nil {
+            return nil
+        }
+        id = ID(counterparty: record.counterparty, allowanceId: record.allowanceId)
+        self.role = role
+        lifecycleState = record.state
+        isProposedByMe = record.proposalOutboundMessageId != nil
+        self.perPaymentMaxSats = perPaymentMaxSats
+        self.monthlyLimitSats = monthlyLimitSats
+        self.monthlyAnchor = monthlyAnchor
+        activeFrom = terms.activeFrom().flatMap(PaykitAllowanceTime.parse)
+        expiresAt = terms.expiresAt().flatMap(PaykitAllowanceTime.parse)
+        allowedPaymentEndpointIdentifiers = terms.allowedPaymentEndpointIdentifiers()
+        lastEventAt = record.lastEventAt.flatMap(PaykitAllowanceTime.parse)
+        proposalStreamItemId = record.proposalStreamItemId
+    }
+
+    init(
+        id: ID,
+        role: Role,
+        lifecycleState: Paykit.AllowanceLifecycleState,
+        isProposedByMe: Bool,
+        perPaymentMaxSats: UInt64?,
+        monthlyLimitSats: UInt64?,
+        monthlyAnchor: Date?,
+        activeFrom: Date? = nil,
+        expiresAt: Date? = nil,
+        allowedPaymentEndpointIdentifiers: [String]? = nil,
+        lastEventAt: Date? = nil,
+        proposalStreamItemId: UInt64? = nil
+    ) {
+        self.id = id
+        self.role = role
+        self.lifecycleState = lifecycleState
+        self.isProposedByMe = isProposedByMe
+        self.perPaymentMaxSats = perPaymentMaxSats
+        self.monthlyLimitSats = monthlyLimitSats
+        self.monthlyAnchor = monthlyAnchor
+        self.activeFrom = activeFrom
+        self.expiresAt = expiresAt
+        self.allowedPaymentEndpointIdentifiers = allowedPaymentEndpointIdentifiers
+        self.lastEventAt = lastEventAt
+        self.proposalStreamItemId = proposalStreamItemId
+    }
+
+    func status(at now: Date) -> Status {
+        switch lifecycleState {
+        case .proposed:
+            return isProposedByMe ? .awaitingAnswer : .awaitingMyAnswer
+        case .accepted:
+            if let expiresAt, now >= expiresAt {
+                return .expired
+            }
+            if let activeFrom, now < activeFrom {
+                return .notYetActive
+            }
+            return .active
+        case .rejected:
+            return .declined
+        case .ended:
+            return .ended
+        case .conflicted, .unknown:
+            return .conflicted
+        }
+    }
+
+    /// The payer side: this wallet pays the counterparty's requests automatically.
+    var isAllower: Bool {
+        role == .allower
+    }
+
+    var canEnd: Bool {
+        switch lifecycleState {
+        case .accepted: true
+        case .proposed: isProposedByMe
+        default: false
+        }
+    }
+
+    var isAnswerable: Bool {
+        lifecycleState == .proposed && !isProposedByMe
+    }
+
+    /// A received proposal whose proposer took the allower role, which leaves this wallet the allowee. The money and the
+    /// decision are the allower's, so Bitkit accepts it without asking. A received proposal that makes this wallet the
+    /// allower (a payee asking for an allowance) is not an offer and waits for the user's decision.
+    var isOfferFromAllower: Bool {
+        isAnswerable && role == .allowee
+    }
+
+    static func isMonthly(_ period: Paykit.AllowancePeriod) -> Bool {
+        period.kind() == "anchored" && period.every() == 1 && period.unit() == "month"
+    }
+
+    static func sats(fromBitcoinAmount amount: String) -> UInt64? {
+        if amount.split(separator: ".").allSatisfy({ $0.allSatisfy { $0 == "0" } }) {
+            return 0
+        }
+        return PaykitPaymentRequest.sats(fromBitcoinAmount: amount)
+    }
+}
+
+extension Paykit.AllowanceLifecycleState {
+    var rawDescription: String {
+        switch self {
+        case .proposed: "proposed"
+        case .accepted: "accepted"
+        case .rejected: "rejected"
+        case .ended: "ended"
+        case .conflicted: "conflicted"
+        case .unknown: "unknown"
+        }
+    }
+}
+
+extension PaykitAllowance.Role {
+    init?(_ role: Paykit.AllowanceLocalRole) {
+        switch role {
+        case .allower: self = .allower
+        case .allowee: self = .allowee
+        case .unknown: return nil
+        }
+    }
+}
+
+/// Limits picked in USD on the Set Allowance sheet, converted once to whole-sat BTC terms.
+struct PaykitAllowanceLimits: Codable, Hashable {
+    let perPaymentUsd: Decimal
+    let monthlyUsd: Decimal
+    let perPaymentSats: UInt64
+    let monthlySats: UInt64
+
+    static let perPaymentStopsUsd: [Decimal] = [1, 5, 10, 20, 50]
+    static let monthlyStopsUsd: [Decimal] = [10, 50, 100, 200, 500]
+
+    /// Terms Bitkit proposes: per-payment range 0...max, an anchored UTC calendar month, and the endpoints Bitkit pays.
+    func terms(monthAnchor: Date, allowedPaymentEndpointIdentifiers: [String]) throws -> Paykit.AllowanceTerms {
+        let perPayment = try Paykit.AllowanceAmountRange(
+            minimum: "0",
+            maximum: WalletViewModel.formatBitcoinAmount(sats: perPaymentSats)
+        )
+        let month = try Paykit.AllowancePeriod(
+            kind: "anchored",
+            every: 1,
+            unit: "month",
+            anchor: PaykitAllowanceTime.format(monthAnchor)
+        )
+        let monthly = try Paykit.AllowancePeriodLimit(
+            amountLimit: WalletViewModel.formatBitcoinAmount(sats: monthlySats),
+            paymentCountLimit: nil,
+            period: month
+        )
+        return try Paykit.AllowanceTerms(
+            asset: PaykitIssuerInterop.bitcoinAsset,
+            perPaymentAmount: perPayment,
+            periodLimits: [monthly],
+            lifetimeAmountLimit: nil,
+            activeFrom: nil,
+            expiresAt: nil,
+            allowedPaymentEndpointIdentifiers: allowedPaymentEndpointIdentifiers
+        )
+    }
+}
+
+enum PaykitAllowanceTime {
+    static func format(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
+    }
+
+    static func parse(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+
+    /// First instant of the UTC calendar month that contains `date`.
+    static func monthStart(containing date: Date) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let components = calendar.dateComponents([.year, .month], from: date)
+        return calendar.date(from: components) ?? date
+    }
+
+    /// The anchored monthly window `[start, end)` that contains `date`. Anchors on a day that a short month lacks
+    /// clamp to that month's last day, as the spec's anchored-period arithmetic does.
+    static func monthlyWindow(anchor: Date, containing date: Date) -> (start: Date, end: Date) {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let boundary: (Int) -> Date = { calendar.date(byAdding: .month, value: $0, to: anchor) ?? anchor }
+        let anchorMonth = calendar.dateComponents([.year, .month], from: anchor)
+        let dateMonth = calendar.dateComponents([.year, .month], from: date)
+        // Every boundary counts from the original anchor, so a clamped February never shortens later months.
+        var index = ((dateMonth.year ?? 0) - (anchorMonth.year ?? 0)) * 12 + (dateMonth.month ?? 0) - (anchorMonth.month ?? 0)
+        while boundary(index) > date {
+            index -= 1
+        }
+        while boundary(index + 1) <= date {
+            index += 1
+        }
+        return (boundary(index), boundary(index + 1))
+    }
+}
+
+/// Wallet-side capacity preflight. The SDK checks capacity only after automatic Acceptance, so Bitkit sums this
+/// Allowance's live automatic attempts in the current month first and keeps an over-cap request on the manual flow.
+enum PaykitAllowanceCapacity {
+    struct Attempt: Equatable {
+        let counterparty: String
+        let allowanceId: String
+        let amountSats: UInt64
+        let admittedAt: Date
+        let isLive: Bool
+    }
+
+    /// Allowance ids are unique only within one link, so attempts count toward an allowance only under its counterparty.
+    static func usedSats(counterparty: String, allowanceId: String, attempts: [Attempt], anchor: Date, now: Date) -> UInt64 {
+        let window = PaykitAllowanceTime.monthlyWindow(anchor: anchor, containing: now)
+        return attempts
+            .filter {
+                $0.allowanceId == allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, counterparty) && $0.isLive &&
+                    $0.admittedAt >= window.start && $0.admittedAt < window.end
+            }
+            .reduce(0) { $0 + $1.amountSats }
+    }
+
+    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date) -> Bool {
+        if let perPaymentMaxSats = allowance.perPaymentMaxSats, amountSats > perPaymentMaxSats {
+            return false
+        }
+        // Terms without both ceilings never pay automatically, whatever the SDK accepts.
+        guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
+            return false
+        }
+        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
+        return used + amountSats <= monthlyLimitSats
+    }
+
+    static func attempts(from history: Paykit.AllowanceAccountingHistory) -> [Attempt] {
+        history.occurrences.flatMap { occurrence in
+            occurrence.attempts.map { (counterparty: occurrence.key.request.counterparty, attempt: $0) }
+        }.compactMap { counterparty, attempt in
+            guard attempt.mode == .automatic,
+                  let allowanceId = attempt.allowanceId,
+                  let admittedAt = PaykitAllowanceTime.parse(attempt.admittedAt),
+                  let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
+            else { return nil }
+            return Attempt(
+                counterparty: counterparty,
+                allowanceId: allowanceId,
+                amountSats: amountSats,
+                admittedAt: admittedAt,
+                isLive: attempt.status != .failed
+            )
+        }
+    }
+}
+
+extension PaykitPaymentRequest {
+    /// Allowances cover only requests priced in bitcoin, paid over a bitcoin rail. A conversion only prices other rails, and
+    /// the SDK requires a bitcoin rail to pay the bitcoin amount, so it does not keep a request manual.
+    var isAllowancePayable: Bool {
+        amount.asset == .btc
+    }
+
+    /// The requested amount in sats, read only for a request where `isAllowancePayable` holds.
+    var allowanceAmountSats: UInt64 {
+        amount.atomic
+    }
+}
