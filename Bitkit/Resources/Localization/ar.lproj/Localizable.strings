@@ -1248,6 +1248,7 @@
 "usdt__track_bridge" = "تتبّع التسليم عبر الشبكات";
 "usdt__replaced" = "استُبدل بدفعة أخرى";
 "usdt__receive_title" = "استلام الدولارات";
+"usdt__receive_copied" = "تم نسخ العنوان إلى الحافظة.\nتأكد من إرسال USDT على الشبكة المحددة فقط.";
 "usdt__send_title" = "إرسال USDT";
 "usdt__deposit_attention" = "يحتاج هذا الإيداع إلى مساعدة من المزود. تواصل مع دعم Bitkit وأرفق مرجع الإيداع.";
 "usdt__deposit_cost" = "الخصم المقدّر (USDT)";

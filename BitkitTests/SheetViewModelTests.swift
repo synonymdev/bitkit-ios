@@ -3,6 +3,39 @@ import XCTest
 
 @MainActor
 final class SheetViewModelTests: XCTestCase {
+    func testSendStateBelongsToThePresentationRatherThanTheConfig() throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send)
+        let ordinary = try XCTUnwrap(sheets.sendSheetItem)
+        XCTAssertTrue(sheets.sendSheetItem?.state === ordinary.state)
+        sheets.hideSheet()
+        let config = SendConfig(view: .lnurlPayAmount)
+        sheets.showSheet(.send, data: config)
+        let first = try XCTUnwrap(sheets.sendSheetItem)
+        first.state.navigationPath = [.lnurlPayConfirm]
+        sheets.hideSheet()
+        sheets.showSheet(.send, data: config)
+        let second = try XCTUnwrap(sheets.sendSheetItem)
+        XCTAssertFalse(first.state === second.state)
+        XCTAssertTrue(second.state.navigationPath.isEmpty)
+        XCTAssertFalse(second.state.didStartSetup)
+    }
+
+    func testSendPresentationIdentityIsStableUntilTheNextSend() throws {
+        let sheets = SheetViewModel()
+        sheets.showSheet(.send, data: SendConfig(view: .options))
+        let first = try XCTUnwrap(sheets.sendSheetItem)
+        XCTAssertEqual(first.id, sheets.sendSheetItem?.id)
+        XCTAssertEqual(first.presentationID, sheets.activeSheetConfiguration?.presentationID)
+
+        sheets.hideSheet(reason: "Close previous send")
+        sheets.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
+        let replacement = try XCTUnwrap(sheets.sendSheetItem)
+        XCTAssertNotEqual(first.id, replacement.id)
+        XCTAssertEqual(replacement.id, sheets.sendSheetItem?.id)
+        XCTAssertEqual(replacement.initialRoute, .lnurlPayConfirm)
+    }
+
     func testReceivedTransactionCanReplaceOnlyReceive() {
         let sheets = SheetViewModel()
         XCTAssertTrue(sheets.canPresentReceivedTx)

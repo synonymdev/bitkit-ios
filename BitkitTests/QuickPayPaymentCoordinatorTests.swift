@@ -543,6 +543,73 @@ final class QuickPayPaymentCoordinatorTests: XCTestCase {
         sendCont?.resume(returning: invoiceHash)
     }
 
+    func testSameSessionReattachesResultWithoutDispatchingAgain() async throws {
+        let app = appWithInvoice
+        let session = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        let started = expectation(description: "Dispatch suspended")
+        let delivered = expectation(description: "Reattached result delivered")
+        var continuation: CheckedContinuation<Void, Never>?
+        var sendCount = 0
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in
+            sendCount += 1
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+            throw NodeError.InvalidInvoice(message: "Fixture rejection")
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        let wallet = WalletViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: {}),
+                        sessionID: session)
+        await fulfillment(of: [started], timeout: 2)
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { route in
+                            guard case .failure = route else { return XCTFail("Expected rejection result") }
+                            delivered.fulfill()
+                        }, onConfirm: {}), sessionID: session)
+        try XCTUnwrap(continuation).resume()
+        await fulfillment(of: [delivered], timeout: 2)
+        XCTAssertEqual(sendCount, 1)
+    }
+
+    func testSameSessionReattachesAfterEarlySettlement() async throws {
+        let invoiceHash = try Self.invoiceHash
+        let app = appWithInvoice
+        let session = QuickPayPaymentCoordinator.SessionID(
+            presentationID: UUID(), sendStateGeneration: app.sendStateGeneration, attempt: 0
+        )
+        let started = expectation(description: "Dispatch suspended before return")
+        let delivered = expectation(description: "Reattached settled result delivered")
+        var continuation: CheckedContinuation<Void, Never>?
+        let coordinator = QuickPayPaymentCoordinator(store: store, sendBolt11: { _ in
+            await withCheckedContinuation {
+                continuation = $0
+                started.fulfill()
+            }
+            return invoiceHash
+        }, listRows: { [] })
+        defer { coordinator.detach() }
+        let wallet = WalletViewModel()
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { _ in XCTFail("Retired callback must not navigate") }, onConfirm: {}),
+                        sessionID: session)
+        await fulfillment(of: [started], timeout: 2)
+        XCTAssertTrue(coordinator.complete(paymentId: nil, paymentHash: invoiceHash, success: true).wasQuickPay)
+        coordinator.pay(app: app, wallet: wallet, settings: settings, currency: currency,
+                        presentation: presentation(onRoute: { route in
+                            guard case .success = route else { return XCTFail("Expected settled result") }
+                            delivered.fulfill()
+                        }, onConfirm: {}), sessionID: session)
+        try XCTUnwrap(continuation).resume()
+        await fulfillment(of: [delivered], timeout: 2)
+    }
+
     func testHasOpenIsTrueForLiveOpOrRecoveredRow() async throws {
         let invoiceHash = try Self.invoiceHash
         let coordinator = QuickPayPaymentCoordinator(

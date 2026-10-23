@@ -9,7 +9,8 @@ struct SendQuickpay: View {
     @Binding var navigationPath: [SendRoute]
     let routingCacheResetAttempted: Bool
     var replaceQuickPay: (SendRoute) -> Void
-    @State private var didStartPayment = false
+    let sessionID: QuickPayPaymentCoordinator.SessionID
+    let isCurrentPresentation: () -> Bool
     @State private var displayedSats: UInt64?
 
     private var paymentSats: UInt64? {
@@ -39,11 +40,10 @@ struct SendQuickpay: View {
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            guard isCurrentPresentation(), !app.isHandlingScannedData else { return }
             if displayedSats == nil {
                 displayedSats = app.lnurlPayData?.minSendableSat ?? app.scannedLightningInvoice?.amountSatoshis
             }
-            guard !didStartPayment else { return }
-            didStartPayment = true
             QuickPayPaymentCoordinator.shared.pay(
                 app: app,
                 wallet: wallet,
@@ -54,11 +54,9 @@ struct SendQuickpay: View {
                     replaceQuickPay: replaceQuickPay,
                     addPendingPaymentHash: { app.addPendingPaymentHash($0) },
                     routingCacheResetAttempted: routingCacheResetAttempted
-                )
+                ),
+                sessionID: sessionID
             )
-        }
-        .onDisappear {
-            QuickPayPaymentCoordinator.shared.detach()
         }
     }
 }
