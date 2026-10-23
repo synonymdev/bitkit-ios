@@ -205,11 +205,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 await sdk.setIncomingRecords([incoming])
                 let manager = paymentRequestManager(sdk: sdk)
 
-                if priority == .ordered {
-                    await manager.refresh(mode: mode)
-                } else {
-                    await manager.refresh(mode: mode, messagePriority: priority)
-                }
+                await manager.refresh(mode: mode, forceFresh: priority == .ordered)
 
                 let expectedIds = mode == .stored ? [stored.paymentRequestId] : [stored.paymentRequestId, incoming.paymentRequestId]
                 XCTAssertEqual(Set(manager.pendingRequests.map(\.paymentRequestId)), Set(expectedIds), context)
@@ -220,7 +216,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 let priorities = await sdk.operationPriorities
                 XCTAssertEqual(priorities["pending"] ?? [], mode == .full ? [priority] : [], context)
                 XCTAssertEqual(priorities["receive"] ?? [], mode >= .inbox ? [priority] : [], context)
-                XCTAssertEqual(priorities["observation"], [.background], context)
+                XCTAssertEqual(priorities["observation"], [priority], context)
                 XCTAssertNil(priorities["requests"], context)
                 XCTAssertNil(priorities["peers"], context)
             }
@@ -262,12 +258,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
                 let priorities = await sdk.operationPriorities
                 XCTAssertEqual(
                     priorities["pending"] ?? [],
-                    initialMode == .full ? [.background] : requestedMode == .full ? [.ordered] : [],
+                    initialMode == .full ? [.background] : requestedMode == .full ? [.background] : [],
                     context
                 )
                 XCTAssertEqual(
                     priorities["receive"] ?? [],
-                    (initialMode >= .inbox ? [.background] : []) + (upgrades ? [.ordered] : []),
+                    (initialMode >= .inbox ? [.background] : []) + (upgrades ? [.background] : []),
                     context
                 )
             }
@@ -392,6 +388,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let priorities = await sdk.operationPriorities
         XCTAssertEqual(priorities["pending"], [.background, .ordered])
         XCTAssertEqual(priorities["receive"], [.background, .ordered])
+        XCTAssertEqual(priorities["observation"], [.background, .ordered])
     }
 
     func testFreshRefreshRereadsProofStateChangedDuringNotificationSynchronization() async throws {
@@ -4167,6 +4164,28 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertEqual(app.selectedWalletToPayFrom, .lightning)
     }
 
+    func testDeferredRefreshPreservesRequestsAndAllowsRecoveryAndRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        let loaded = await manager.refresh(mode: .stored)
+        XCTAssertTrue(loaded)
+        let pending = manager.pendingRequests
+        await sdk.failNextProcess(with: PaykitPaymentRequestError.operationInProgress)
+        let deferred = await manager.refresh()
+        XCTAssertFalse(deferred)
+        XCTAssertEqual(manager.pendingRequests, pending)
+        let skipped = await sdk.snapshot()
+        XCTAssertEqual(skipped.receiveCallCount, 0)
+        let recovered = await manager.refresh(forceFresh: true)
+        XCTAssertTrue(recovered)
+        let priorities = await sdk.operationPriorities
+        XCTAssertEqual(priorities["observation"], [.background, .ordered])
+        await sdk.setRecords([])
+        let retried = await manager.refresh()
+        XCTAssertTrue(retried)
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+    }
+
     func testRefreshContinuesWhenPendingResponseDeliveryFails() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         await sdk.failNextProcess()
@@ -5670,6 +5689,92 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
     }
 
+    func testInlineRequestClaimsDuringAcceptanceWithoutSeparateClaim() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [
+            paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy"),
+        ])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let peerReadsBeforeAcceptance = await sdk.linkedPeersCalls()
+
+        try await manager.prepareForPayment(request)
+
+        let snapshot = await sdk.snapshot()
+        let peerReadsAfterAcceptance = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReadsAfterAcceptance, peerReadsBeforeAcceptance)
+        XCTAssertEqual(snapshot.executionClaimCallCount, 0)
+        XCTAssertEqual(snapshot.acceptedRequests.map(\.paymentRequestId), [request.paymentRequestId])
+        XCTAssertTrue(manager.isApprovedForPayment(request))
+
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: request.counterparty, state: .blocked)],
+            requestCapabilitiesByPublicKey: [:]
+        )
+        do {
+            try await manager.ensurePaymentAllowed(request)
+            XCTFail("The final authorization must reject a newly blocked peer")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .requestUnavailable)
+        }
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
+    func testInlineAcceptanceRejectsPeerBlockedWhileSdkAcceptanceIsPending() async throws {
+        let record = try paymentRequestRecord(counterparty: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xy")
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let store = PaymentRequestPresentationMemoryStore()
+        let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        let peerReadsBeforeAcceptance = await sdk.linkedPeersCalls()
+        await sdk.pauseNextAccept()
+
+        let acceptance = Task { try await manager.prepareForPayment(request) }
+        try await waitUntil { await sdk.acceptIsPaused() }
+        let peerReadsDuringAcceptance = await sdk.linkedPeersCalls()
+        XCTAssertEqual(peerReadsDuringAcceptance, peerReadsBeforeAcceptance)
+        await sdk.configureRecipients(
+            peers: [linkedPeer(counterparty: request.counterparty, state: .blocked)],
+            requestCapabilitiesByPublicKey: [:]
+        )
+        await sdk.resumeAccept()
+
+        do {
+            try await acceptance.value
+            XCTFail("Atomic acceptance must reject the current blocked peer")
+        } catch {
+            guard case PaykitError.Policy = error else { return XCTFail("Unexpected error: \(error)") }
+        }
+        let snapshot = await sdk.snapshot()
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+        XCTAssertEqual(snapshot.executionClaimCallCount, 0)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        XCTAssertTrue(try store.load(identity: "pubky\(String(repeating: "z", count: 52))").isEmpty)
+    }
+
+    func testInlineRequestCannotAcceptAnotherAppsExecutionClaim() async throws {
+        var record = try paymentRequestRecord()
+        let sdk = PaymentRequestSdkMock(records: [record])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        record.executionClaimAppId = "other-app"
+        await sdk.setRecords([record])
+
+        do {
+            try await manager.prepareForPayment(request)
+            XCTFail("Expected execution claim rejection")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .requestMissing)
+        }
+
+        let snapshot = await sdk.snapshot()
+        XCTAssertEqual(snapshot.executionClaimCallCount, 0)
+        XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+    }
+
     func testPreparationConsumesBeforeAccepting() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)
@@ -5680,6 +5785,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         try await manager.prepareForPayment(request) {
             let snapshot = await sdk.snapshot()
             XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+            XCTAssertEqual(snapshot.executionClaimCallCount, 1)
             didConsume = true
         }
 
@@ -7234,10 +7340,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             requestId: PaykitPaymentRequest.ID(paymentRequestId: "other", counterparty: request.counterparty),
             transactionId: "other-tx"
         )
+        var publications = 0
+        let subscription = app.$paykitOnchainPaymentResolution.dropFirst().sink { _ in publications += 1 }
+        defer { subscription.cancel() }
 
         app.retainPaykitOnchainPaymentResolution(resolution, identity: otherIdentity)
         XCTAssertNil(app.paykitOnchainPaymentResolution)
         app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
+        app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
+        XCTAssertEqual(publications, 1)
         app.retainPaykitOnchainPaymentResolution(unrelated, identity: identity)
         app.consumePaykitOnchainPaymentResolution(unrelated)
         app.resetSendState(preservingContactPaymentContext: true)
@@ -7248,6 +7359,54 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         app.retainPaykitOnchainPaymentResolution(resolution, identity: identity)
         app.resetSendState()
         XCTAssertNil(app.paykitOnchainPaymentResolution)
+    }
+
+    func testOnchainResolutionCoalescesReplaysUntilFollowupFinishes() async throws {
+        let app = AppViewModel()
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: paymentRequestRecord(), now: Date()))
+        let resolution = PaykitOnchainPaymentResolution(identity: "identity", requestId: request.id, transactionId: "tx")
+        let (started, signalStarted) = AsyncStream<Void>.makeStream()
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        var handled: [PaykitOnchainPaymentResolution] = []
+        let first = Task {
+            await app.withPaykitOnchainPaymentResolution(resolution) {
+                handled.append(resolution)
+                signalStarted.yield()
+                for await _ in gate {
+                    break
+                }
+            }
+        }
+        defer { release.finish(); first.cancel() }
+        for await _ in started {
+            break
+        }
+        for _ in 0 ..< 20 {
+            await app.withPaykitOnchainPaymentResolution(resolution) {
+                XCTFail("A replay must not start another activity sync while follow-up is pending")
+            }
+        }
+        let distinct = [
+            PaykitOnchainPaymentResolution(identity: "other", requestId: request.id, transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: .init(paymentRequestId: "other", counterparty: request.counterparty),
+                                           transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: .init(paymentRequestId: request.paymentRequestId, counterparty: "other"),
+                                           transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: .init(paymentRequestId: request.paymentRequestId,
+                                                                                  counterparty: request.counterparty,
+                                                                                  billingPeriodStartsAt: Date(timeIntervalSince1970: 1)),
+                                           transactionId: "tx"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: request.id, transactionId: "other"),
+            PaykitOnchainPaymentResolution(identity: "identity", requestId: request.id, transactionId: "tx", walletId: "hardware"),
+        ]
+        for next in distinct {
+            await app.withPaykitOnchainPaymentResolution(next) { handled.append(next) }
+        }
+        XCTAssertEqual(handled, [resolution] + distinct)
+        release.finish()
+        await first.value
+        await app.withPaykitOnchainPaymentResolution(resolution) { handled.append(resolution) }
+        XCTAssertEqual(handled, [resolution] + distinct + [resolution], "A later recovery attempt must remain possible")
     }
 
     func testAcceptInvalidatesAnOverlappingRefreshSnapshot() async throws {
@@ -9173,6 +9332,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var processedCounterparties: [String] = []
     private var receiveCallCount = 0
     private var processFailuresRemaining = 0
+    private var processFailure: Error = PaymentRequestSdkMockError.process
     private var processCancellationsRemaining = 0
     private var processReports: [OutboundPrivateCounterpartySendReport] = []
     private var shouldPauseNextProcess = false
@@ -9182,6 +9342,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var receiveError: PaymentRequestSdkMockError?
     private var receiveReports: [PrivateStreamCounterpartyIntakeReport] = []
     private var acceptedRequests: [PaymentRequestInvocation] = []
+    private var executionClaimCallCount = 0
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
     private var acceptanceResponseError: Error?
@@ -9216,6 +9377,12 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         return processReports
     }
 
+    func processOutboundPrivateMessages(
+        counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
+    ) async throws -> OutboundPrivateSendReport {
+        try await processOutboundPrivateMessages(counterparty: counterparty, priority: priority)
+    }
+
     func processOutboundPrivateMessages(counterparty: String) async throws -> OutboundPrivateSendReport {
         processedCounterparties.append(counterparty)
         try await processMessages(counterparty: counterparty)
@@ -9244,7 +9411,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         }
         guard processFailuresRemaining > 0 else { return }
         processFailuresRemaining -= 1
-        throw PaymentRequestSdkMockError.process
+        throw processFailure
     }
 
     func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) throws -> [PrivateStreamCounterpartyIntakeReport] {
@@ -9256,6 +9423,15 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         records.append(contentsOf: incomingRecords)
         incomingRecords = []
         return receiveReports
+    }
+
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async -> PaymentRequestRead {
+        let status = identityStatus()
+        guard status?.capability == .privateLinkCapable,
+              expectedIdentity == nil || PubkyPublicKeyFormat.matches(status?.publicKey, expectedIdentity)
+        else { return PaymentRequestRead(identityStatus: status, paymentRequests: []) }
+        let records = await paymentRequests().filter { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
+        return PaymentRequestRead(identityStatus: status, paymentRequests: records)
     }
 
     func paymentRequests() async -> [PaymentRequestRecord] {
@@ -9322,7 +9498,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     func submitPaymentProof(
         counterparty _: String,
         paymentRequestId _: String,
-        proof _: PaymentProofSubmission
+        proof _: PaymentProofSubmission,
+        priority _: PaykitSdkOperationLock.Priority
     ) throws -> PaymentRequestRecord {
         XCTFail("Failure cleanup must not submit a payment proof")
         throw PaymentRequestSdkMockError.process
@@ -9422,6 +9599,11 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     }
 
     func claimPaymentRequestForExecution(counterparty: String, paymentRequestId: String) throws -> PaymentRequestRecord {
+        executionClaimCallCount += 1
+        return try claimExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
+    }
+
+    private func claimExecution(counterparty: String, paymentRequestId: String) throws -> PaymentRequestRecord {
         guard let index = records.firstIndex(where: {
             $0.counterparty == counterparty && $0.paymentRequestId == paymentRequestId
         }), records[index].executionClaimAppId == nil || records[index].executionClaimAppId == "bitkit" else {
@@ -9443,6 +9625,12 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             isAcceptPaused = false
         }
 
+        if peerRecords.contains(where: {
+            $0.state == .blocked && PubkyPublicKeyFormat.matches($0.counterparty, counterparty)
+        }) {
+            throw PaykitError.Policy(code: "policy", context: "counterparty is blocked")
+        }
+        _ = try claimExecution(counterparty: counterparty, paymentRequestId: paymentRequestId)
         let record: PaymentRequestRecord
         guard records.contains(where: {
             $0.counterparty == counterparty && $0.paymentRequestId == paymentRequestId &&
@@ -9513,7 +9701,8 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         )
     }
 
-    func failNextProcess() {
+    func failNextProcess(with error: Error = PaymentRequestSdkMockError.process) {
+        processFailure = error
         processFailuresRemaining += 1
     }
 
@@ -9675,6 +9864,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             receiveCallCount: receiveCallCount,
             paymentRequestListCallCount: paymentRequestListCallCount,
             acceptedRequests: acceptedRequests,
+            executionClaimCallCount: executionClaimCallCount,
             rejectedRequests: rejectedRequests,
             proposedRequests: proposedRequests
         )
@@ -9701,6 +9891,7 @@ private struct PaymentRequestSdkSnapshot {
     let receiveCallCount: Int
     let paymentRequestListCallCount: Int
     let acceptedRequests: [PaymentRequestInvocation]
+    let executionClaimCallCount: Int
     let rejectedRequests: [PaymentRequestInvocation]
     let proposedRequests: [ProposedPaymentRequestInvocation]
 }

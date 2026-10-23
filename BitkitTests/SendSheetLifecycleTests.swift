@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import Paykit
 import SwiftUI
 import XCTest
 
@@ -127,6 +128,60 @@ final class SendSheetLifecycleTests: XCTestCase {
         sheets.hideSheet(reason: "Close current presentation")
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertNil(app.lnurlPayData, "Ending the presentation must still clean up")
+    }
+
+    func testRemountRetainsOnlyItsPaymentReviewUntilDismissal() async throws {
+        let request = try XCTUnwrap(PaykitPaymentRequest(record: PaymentRequestRecord(
+            counterparty: "pubkypayee", paymentRequestId: UUID().uuidString,
+            localRole: .payer, state: .proposed, proposalStreamItemId: 1,
+            proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
+            proposalEventId: UUID().uuidString, proposalAppId: "bitkit",
+            payerAppId: nil, executionClaimAppId: nil,
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "0.00001", asset: "btc"),
+                paymentReference: PaymentReference(text: "pending-review"),
+                proposalExpiresAt: nil, recurrence: nil,
+                acceptedPaymentEndpointIdentifiers: [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue],
+                paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
+                metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
+            canceledEventId: nil, canceledOutboundStatus: nil, conversionQuotes: [], paymentProofs: [],
+            lastStreamItemId: 1, lastOutboundMessageId: nil, lastOutboundStatus: nil,
+            lastEventAt: nil, invalidReason: nil
+        ), now: Date()))
+        for preparation: IncomingPaykitPaymentRequestPreparation? in [
+            nil, IncomingPaykitPaymentRequestPreparation(request: request, session: nil),
+        ] {
+            let (_, sheets, prompt, window, _) = makeHost(scenePhase: .active)
+            let activity = PaykitPaymentActivity.shared
+            XCTAssertFalse(activity.shouldDeferRefresh)
+            let otherReview = activity.beginReview()
+            defer {
+                sheets.hideSheet(reason: "Test cleanup")
+                activity.endReview(otherReview)
+                window.isHidden = true
+                window.rootViewController = nil
+            }
+            sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation))
+            try await Task.sleep(for: .seconds(1))
+            let flow = try XCTUnwrap(sheets.sendSheetItem?.state)
+            let review = try XCTUnwrap(flow.paymentReview)
+            XCTAssertEqual(flow.didStartSetup, preparation == nil)
+            prompt.isSendMounted = false
+            try await Task.sleep(for: .milliseconds(500))
+            XCTAssertEqual(flow.paymentReview, review)
+            prompt.isSendMounted = true
+            try await Task.sleep(for: .milliseconds(500))
+            XCTAssertEqual(flow.paymentReview, review, "Recreated content must not acquire a second review token")
+            prompt.isSendMounted = false
+            try await Task.sleep(for: .milliseconds(500))
+            sheets.hideSheet(reason: "Close unmounted review")
+            XCTAssertNil(flow.paymentReview)
+            XCTAssertTrue(activity.shouldDeferRefresh, "Closing Send must retain another review's admission")
+            activity.endReview(otherReview)
+            XCTAssertFalse(activity.shouldDeferRefresh, "Closing the presentation must release its review token")
+        }
     }
 
     func testRemountDoesNotRepeatOptionsSetupAfterLnurlScan() async throws {
@@ -350,7 +405,8 @@ final class SendSheetLifecycleTests: XCTestCase {
     }
 
     private func makeHost(isEmbedded: Bool = false,
-                          lnurlPayData: LnurlPayData? = nil) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
+                          lnurlPayData: LnurlPayData? = nil,
+                          scenePhase: ScenePhase? = nil) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
     {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -369,6 +425,11 @@ final class SendSheetLifecycleTests: XCTestCase {
         }
         let prompt = ScanPromptState()
         let root = SendPresentationHarness(sheets: sheets, prompt: prompt, isEmbedded: isEmbedded)
+            .transformEnvironment(\.scenePhase) { value in
+                if let scenePhase {
+                    value = scenePhase
+                }
+            }
             .environment(PaykitPaymentRequestManager())
             .environment(HwWalletManager())
             .environment(TrezorManager())

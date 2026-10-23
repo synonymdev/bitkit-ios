@@ -684,8 +684,10 @@ struct AppScene: View {
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { @MainActor in
-                    app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
-                    await associateResolvedPaykitOnchainPayment(resolution)
+                    await app.withPaykitOnchainPaymentResolution(resolution) {
+                        app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
+                        await associateResolvedPaykitOnchainPayment(resolution)
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .paykitSubscriptionPaymentDue)) { _ in
@@ -1407,7 +1409,7 @@ struct AppScene: View {
         presentItems: Bool = true,
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        messagePriority: PaykitSdkOperationLock.Priority = .background,
         onlyWhileActive: Bool = false,
         automatic: Bool = true
     ) async -> Bool {
@@ -1425,6 +1427,12 @@ struct AppScene: View {
                 (automatic ? pubkyProfile.automaticPaykitSession : pubkyProfile.currentSession) == session
         }
         guard canRefresh() else { return false }
+        if automatic, mode == .full {
+            do {
+                try await PaykitPaymentActivity.shared.waitUntilIdle()
+            } catch { return false }
+            guard canRefresh(), PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true else { return false }
+        }
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
