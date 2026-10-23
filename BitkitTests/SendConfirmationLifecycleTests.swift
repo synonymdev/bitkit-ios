@@ -2,6 +2,7 @@
 import BitkitCore
 import Combine
 import LDKNode
+import Paykit
 import SwiftUI
 import XCTest
 
@@ -26,6 +27,211 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
 
         XCTAssertEqual(wallet.sendAmountSats, 10000)
+    }
+
+    func testQuotedWalletSwitchRebindsAmountOnConfirmation() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let request = try quotedOnchainRequest(acceptsLightning: true)
+        let wallet = ControlledSendWallet(operation: .selection)
+        let app = AppViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.scannedOnchainInvoice = invoice
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 0,
+            timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+            description: nil, networkType: .regtest, payeeNodeId: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+        wallet.sendAmountSats = app.paykitReviewedAmount?.atomic
+        wallet.selectedFeeRateSatsPerVByte = 2
+        SettingsViewModel.shared.coinSelectionMethod = .autopilot
+        var path: [SendRoute] = []
+        let window = host(app: app, wallet: wallet, sheets: sheets, path: Binding(get: { path }, set: { path = $0 }))
+        defer { close(window) }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(wallet.sendAmountSats, 5000)
+
+        app.selectedWalletToPayFrom = .onchain
+        await fulfillment(of: [wallet.started], timeout: 3)
+        XCTAssertTrue(path.isEmpty)
+        XCTAssertEqual(wallet.sendAmountSats, 2500)
+        XCTAssertEqual(app.paykitPaymentTerms, try request.payment(using: app.paykitPaymentMethod))
+        XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
+        wallet.resume()
+        await fulfillment(of: [wallet.finished], timeout: 3)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(path.isEmpty)
+
+        app.selectedWalletToPayFrom = .lightning
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(path.isEmpty)
+        XCTAssertEqual(wallet.sendAmountSats, 5000)
+        XCTAssertEqual(app.paykitPaymentTerms, try request.payment(using: app.paykitPaymentMethod))
+        XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
+        XCTAssertEqual(wallet.routingAmounts.last, 5000)
+    }
+
+    func testQuotedWalletSwitchRequiresReviewForUnavailableExpiredOrBelowMinimumTerms() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        for failure in ["unavailable", "expired", "minimum"] {
+            let request = try quotedOnchainRequest(acceptsLightning: true)
+            let wallet = ControlledSendWallet(operation: .fee)
+            let app = AppViewModel()
+            let sheets = SheetViewModel()
+            sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+            app.scannedOnchainInvoice = invoice
+            app.lnurlPayData = LnurlPayData(
+                uri: "https://example.com/pay", callback: "https://example.com/callback",
+                minSendable: 1_000_000, maxSendable: 100_000_000,
+                metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+            )
+            app.selectedWalletToPayFrom = .onchain
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            wallet.sendAmountSats = app.paykitReviewedAmount?.atomic
+            var path: [SendRoute] = []
+            let window = host(app: app, wallet: wallet, sheets: sheets, path: Binding(get: { path }, set: { path = $0 }))
+            defer { close(window) }
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertTrue(path.isEmpty)
+
+            var rates = [ConversionRate(asset: "btc-regtest", value: "0.00001")]
+            if failure != "unavailable" {
+                rates.append(ConversionRate(asset: "btc-lightning", value: failure == "minimum" ? "0.000001" : "0.00002"))
+            }
+            let changed = try quotedOnchainRequest(
+                acceptsLightning: true, rates: rates,
+                deadline: failure == "expired" ? .at(timestamp: "2000-01-01T00:00:00Z") : nil
+            )
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: changed)
+            app.selectedWalletToPayFrom = .lightning
+            try await Task.sleep(for: .milliseconds(100))
+
+            XCTAssertEqual(path, [.amount], failure)
+            XCTAssertNil(app.paykitPaymentTerms, failure)
+            XCTAssertNil(app.paykitReviewedAmount, failure)
+            XCTAssertTrue(wallet.routingAmounts.isEmpty, failure)
+        }
+    }
+
+    func testDirectQuotedOnchainReviewPreparesSavedCoinSelection() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let request = try quotedOnchainRequest()
+        for (manual, fails, retryRate) in [
+            (false, false, false), (true, false, false), (false, true, false), (true, true, false), (false, false, true),
+        ] {
+            let wallet = ControlledSendWallet(operation: manual ? .manualUtxos : .selection, fails: fails)
+            let app = AppViewModel()
+            let sheets = SheetViewModel()
+            sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+            app.scannedOnchainInvoice = invoice
+            app.selectedWalletToPayFrom = .onchain
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            wallet.sendAmountSats = app.paykitPaymentTerms?.amount.atomic
+            wallet.selectedFeeRateSatsPerVByte = retryRate ? nil : 2
+            if retryRate {
+                try? await wallet.loadFeeRateWithRetry(speed: .normal, retryDelay: .milliseconds(1)) { _ in
+                    throw Bitkit.AppError(message: "Fee unavailable", debugMessage: nil)
+                }
+            }
+            SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
+            SettingsViewModel.shared.coinSelectionAlgorithm = .largestFirst
+            let navigation = SendConfirmationTestNavigation()
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation
+            )
+            defer {
+                close(window)
+                ToastWindowManager.shared.hideToast()
+            }
+            if retryRate {
+                try await navigation.waitForAppearance(.confirm)
+                try await Task.sleep(for: .milliseconds(100))
+                XCTAssertEqual(wallet.preparationCount, 0)
+                XCTAssertEqual(navigation.path, [.confirm])
+                try await wallet.loadFeeRateWithRetry(speed: .normal) { _ in
+                    wallet.selectedFeeRateSatsPerVByte = 2
+                }
+            }
+            await fulfillment(of: [wallet.started], timeout: 3)
+            wallet.resume()
+            await fulfillment(of: [wallet.finished], timeout: 3)
+            try await Task.sleep(for: .milliseconds(100))
+
+            XCTAssertEqual(wallet.sendAmountSats, 2500)
+            XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
+            XCTAssertEqual(navigation.path, fails ? [.amount] : manual ? [.confirm, .utxoSelection] : [.confirm])
+            if !manual {
+                XCTAssertEqual(wallet.selectedAlgorithm, .largestFirst)
+                XCTAssertEqual(wallet.selectedUtxos != nil, !fails)
+                XCTAssertEqual(wallet.feeUtxos != nil, !fails)
+            }
+        }
+    }
+
+    func testQuotedRequestManualPickerBackReturnsToConfirmation() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let request = try quotedOnchainRequest()
+        let wallet = ControlledSendWallet(operation: .manualUtxos)
+        let app = AppViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.scannedOnchainInvoice = invoice
+        app.selectedWalletToPayFrom = .onchain
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+        wallet.sendAmountSats = app.paykitPaymentTerms?.amount.atomic
+        wallet.selectedFeeRateSatsPerVByte = 2
+        SettingsViewModel.shared.coinSelectionMethod = .manual
+        let navigation = SendConfirmationTestNavigation()
+        let window = host(
+            app: app, wallet: wallet, sheets: sheets,
+            path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation
+        )
+        defer {
+            close(window)
+            ToastWindowManager.shared.hideToast()
+        }
+        await fulfillment(of: [wallet.started], timeout: 3)
+        wallet.resume()
+        await fulfillment(of: [wallet.finished], timeout: 3)
+        try await navigation.waitForAppearance(.utxoSelection)
+        try await Task.sleep(for: .milliseconds(300))
+        let loadsBeforeBack = wallet.preparationCount
+
+        navigation.path.removeLast()
+        try await navigation.waitForAppearance(.confirm)
+        try await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertEqual(navigation.path, [.confirm])
+        XCTAssertEqual(wallet.preparationCount, loadsBeforeBack)
+        XCTAssertNil(wallet.selectedUtxos)
+        do {
+            try await SendConfirmationView.requireManualCoinSelection(
+                walletType: app.selectedWalletToPayFrom,
+                isHardwarePayment: false,
+                coinSelectionMethod: SettingsViewModel.shared.coinSelectionMethod,
+                selectedUtxos: wallet.selectedUtxos
+            ) {
+                try await wallet.loadAvailableUtxos()
+                navigation.path.append(.utxoSelection)
+            }
+            XCTFail("Missing coins must not continue to payment authorization")
+        } catch is CancellationError {}
+        try await navigation.waitForAppearance(.utxoSelection)
     }
 
     func testSuspendedPreparationCannotChangeClosedOrReplacementSend() async throws {
@@ -210,14 +416,17 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(navigation.path, [.confirm, .feeRate])
 
             navigation.path.removeLast()
-            try await navigation.waitForAppearance(.confirm)
             await fulfillment(of: [wallet.started], timeout: 3)
             guard wallet.preparationCount > 0 else { continue }
             wallet.resume()
             await fulfillment(of: [wallet.finished], timeout: 3)
-            try await Task.sleep(for: .milliseconds(100))
+            try await navigation.waitForAppearance(operation == .manualUtxos ? .utxoSelection : .confirm)
 
-            XCTAssertEqual(wallet.preparationCount, 1)
+            XCTAssertEqual(wallet.successfulCoinPreparations, 1)
+            // SwiftUI can restart a cancelled task while the navigation transition settles.
+            if wallet.preparationCount > 1 {
+                XCTAssertTrue(wallet.wasCancelled)
+            }
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
             if operation == .selection {
@@ -547,6 +756,58 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         window.rootViewController = nil
     }
 
+    private func quotedOnchainRequest(
+        acceptsLightning: Bool = false,
+        rates: [ConversionRate] = [
+            ConversionRate(asset: "btc", value: "0.00001"),
+            ConversionRate(asset: "btc-lightning", value: "0.00002"),
+        ],
+        deadline: Paykit.PaymentDeadline? = nil
+    ) throws -> PaykitPaymentRequest {
+        let record = try PaymentRequestRecord(
+            counterparty: "pubkycontact",
+            paymentRequestId: "550e8400-e29b-41d4-a716-446655440000",
+            localRole: .payer,
+            state: .proposed,
+            proposalStreamItemId: 1,
+            proposalOutboundMessageId: nil,
+            proposalOutboundStatus: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000",
+            proposalAppId: "bitkit",
+            payerAppId: nil,
+            executionClaimAppId: nil,
+            terms: PaymentRequestTerms(
+                amount: PaymentRequestAmount(value: "2.50", asset: "usd"),
+                paymentReference: PaymentReference(text: "invoice-123"),
+                proposalExpiresAt: nil,
+                recurrence: nil,
+                acceptedPaymentEndpointIdentifiers: acceptsLightning ? [
+                    PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue,
+                    PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue,
+                ] : [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue],
+                paymentEndpoints: nil,
+                requiredAppId: "bitkit",
+                conversion: .fixed(rates: rates),
+                paymentDeadline: deadline,
+                metadata: PrivateJsonObject(text: "{}")
+            ),
+            acceptedEventId: nil,
+            acceptedOutboundStatus: nil,
+            rejectedEventId: nil,
+            rejectedOutboundStatus: nil,
+            canceledEventId: nil,
+            canceledOutboundStatus: nil,
+            conversionQuotes: [],
+            paymentProofs: [],
+            lastStreamItemId: 1,
+            lastOutboundMessageId: nil,
+            lastOutboundStatus: nil,
+            lastEventAt: "2027-01-15T08:00:00Z",
+            invalidReason: nil
+        )
+        return try XCTUnwrap(PaykitPaymentRequest(record: record, now: Date(timeIntervalSince1970: 0)))
+    }
+
     private var invoice: OnChainInvoice {
         OnChainInvoice(address: "bcrt1qexample", amountSatoshis: 6007, label: nil, message: nil, params: nil)
     }
@@ -596,6 +857,10 @@ private final class ControlledSendWallet: WalletViewModel {
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var wasCancelled = false
     private(set) var preparationCount = 0
+    private(set) var successfulCoinPreparations = 0
+    private(set) var selectedAlgorithm: CoinSelectionAlgorithm?
+    private(set) var feeUtxos: [SpendableUtxo]?
+    private(set) var routingAmounts: [UInt64?] = []
 
     init(operation: Operation, fails: Bool = false) {
         self.operation = operation
@@ -618,6 +883,7 @@ private final class ControlledSendWallet: WalletViewModel {
     override func loadAvailableUtxos(isCurrentSend: () -> Bool = { true }) async throws {
         try await suspend()
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        successfulCoinPreparations += 1
         availableUtxos = []
     }
 
@@ -627,17 +893,25 @@ private final class ControlledSendWallet: WalletViewModel {
         listSpendable: (() async throws -> [SpendableUtxo])? = nil,
         selectForAmount: ((UInt64, UInt32, CoinSelectionAlgorithm) async throws -> [SpendableUtxo])? = nil
     ) async throws {
+        selectedAlgorithm = coinSelectionAlgorythm
         if operation == .selection {
             try await suspend()
         }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        successfulCoinPreparations += 1
         selectedUtxos = []
     }
 
     override func calculateTotalFee(address: String, amountSats: UInt64, satsPerVByte: UInt32,
                                     utxosToSpend: [SpendableUtxo]? = nil) async throws -> UInt64
     {
-        10
+        feeUtxos = utxosToSpend
+        return 10
+    }
+
+    override func refreshRoutingFeeEstimate(bolt11: String, amountSats: UInt64?) async {
+        routingAmounts.append(amountSats)
+        routingFeeEstimateSats = 10
     }
 
     func resume() {
@@ -647,13 +921,14 @@ private final class ControlledSendWallet: WalletViewModel {
 
     private func suspend() async throws {
         preparationCount += 1
-        guard preparationCount == 1 else { return }
-        await withCheckedContinuation { continuation in
-            self.continuation = continuation
-            started.fulfill()
+        if preparationCount == 1 {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                started.fulfill()
+            }
+            wasCancelled = Task.isCancelled
+            finished.fulfill()
         }
-        wasCancelled = Task.isCancelled
-        finished.fulfill()
         if fails {
             throw AppError(message: "UTXO selection unavailable", debugMessage: nil)
         }

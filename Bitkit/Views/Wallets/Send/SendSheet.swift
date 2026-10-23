@@ -250,7 +250,7 @@ struct SendSheet: View {
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
-            (app.contactPaymentContext?.requiresAssetSelection == true && flow.navigationPath.isEmpty)
+            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             return false
         }

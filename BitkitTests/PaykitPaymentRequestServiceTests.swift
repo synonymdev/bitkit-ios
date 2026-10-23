@@ -4763,11 +4763,12 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
-    func testBelowMinimumUnifiedRequestClosesSheetAfterSyncFallback() async throws {
+    func testBelowMinimumQuotedRequestWaitsForSyncBeforeFallback() async throws {
         snapshotAppDefaults("channelCount")
         let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
-            amount: "0.000001", endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
+            amount: "0.10", asset: "usd", conversion: .fixed(rates: [ConversionRate(asset: "btc", value: "0.00001")]),
+            endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
         )])
         let manager = paymentRequestManager(sdk: sdk)
         await manager.refresh()
@@ -4791,6 +4792,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             amountSatoshis: 0, timestampSeconds: 0, expirySeconds: 0, isExpired: false,
             description: nil, networkType: .regtest, payeeNodeId: nil
         )
+        app.paykitPaymentTerms = try request.payment(using: .bitcoinLightningBolt11)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
         sheets.showSheet(.send, data: SendConfig(view: .confirm, onDismiss: {
             manager.dismissPreparingRequest(request)
             app.resetSendState()
@@ -4819,7 +4822,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             window.rootViewController = nil
             ToastWindowManager.shared.hideToast()
         }
-        try await waitUntil { wallet.sendAmountSats == request.amount.atomic }
+        try await waitUntil { wallet.sendAmountSats == app.paykitPaymentTerms?.amount.atomic }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(sheets.activeSheetConfiguration, "Confirmation must wait for wallet synchronization")
 
         wallet.nodeLifecycleState = .running
         try await waitUntil { sheets.activeSheetConfiguration == nil }
