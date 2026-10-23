@@ -512,6 +512,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                             }
                         }
                 }
+                .transaction { transaction in
+                    // Avoid an automatic push racing an animated pop in this test host.
+                    transaction.disablesAnimations = true
+                }
             } else {
                 confirmation
             }

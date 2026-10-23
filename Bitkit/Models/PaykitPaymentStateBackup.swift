@@ -77,6 +77,7 @@ struct PaykitPaymentStateBackup: Codable {
         let proofData: String?
         let conversionQuoteId: String?
         let billingPeriod: Period?
+        let allowanceId: String?
         let onchainAddress: String?
         let onchainAmountSats: UInt64?
         let onchainWalletId: String?
@@ -101,6 +102,7 @@ struct PaykitPaymentStateBackup: Codable {
             proofData = proof.proofData
             conversionQuoteId = proof.conversionQuoteId
             billingPeriod = proof.billingPeriod.map { Period(startsAt: $0.sdkValue.startsAt, endsAt: $0.sdkValue.endsAt) }
+            allowanceId = proof.allowanceId
             onchainAddress = proof.onchainAddress
             onchainAmountSats = proof.onchainAmountSats
             onchainWalletId = proof.onchainWalletId
@@ -129,6 +131,7 @@ struct PaykitPaymentStateBackup: Codable {
                 paymentEndpointIdentifier: paymentEndpointIdentifier,
                 kind: kind,
                 billingPeriod: period,
+                allowanceId: allowanceId,
                 paymentStarted: paymentStarted,
                 paymentIdentifier: paymentIdentifier,
                 proofData: proofData,

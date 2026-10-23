@@ -5,6 +5,12 @@ import LDKNode
 final class QuickPayPaymentCoordinator {
     static let shared = QuickPayPaymentCoordinator()
 
+    struct SessionID: Equatable {
+        let presentationID: UUID
+        let sendStateGeneration: UUID
+        let attempt: Int
+    }
+
     struct Presentation {
         var appendRoute: (SendRoute) -> Void
         var replaceQuickPay: (SendRoute) -> Void
@@ -44,6 +50,10 @@ final class QuickPayPaymentCoordinator {
     private var operations: [String: InFlightOp] = [:]
     private var generation = UUID()
     private var payRequested = false
+    private var sessionID: SessionID?
+    private var activePresentation: Presentation?
+    /// Settlement can remove the ledger entry before dispatch returns its UI result.
+    private var currentOperation: InFlightOp?
 
     var liveSubmittingHashes: Set<String> {
         Set(operations.values.map(\.invoiceHash))
@@ -71,6 +81,10 @@ final class QuickPayPaymentCoordinator {
     func detach() {
         generation = UUID()
         payRequested = false
+        sessionID = nil
+        activePresentation = nil
+        currentOperation?.presentation = nil
+        currentOperation = nil
         for op in uniqueOps {
             op.presentation = nil
         }
@@ -81,19 +95,31 @@ final class QuickPayPaymentCoordinator {
         wallet: WalletViewModel,
         settings: SettingsViewModel,
         currency: CurrencyViewModel,
-        presentation: Presentation
+        presentation: Presentation,
+        sessionID: SessionID? = nil
     ) {
+        if let sessionID {
+            if self.sessionID == sessionID {
+                activePresentation = presentation
+                currentOperation?.presentation = presentation
+                return
+            }
+            detach()
+            self.sessionID = sessionID
+        }
         guard !payRequested else { return }
         payRequested = true
+        activePresentation = presentation
         let capturedGeneration = generation
+        let sendStateGeneration = app.sendStateGeneration
         Task {
             await run(
                 generation: capturedGeneration,
+                sendStateGeneration: sendStateGeneration,
                 app: app,
                 wallet: wallet,
                 settings: settings,
-                currency: currency,
-                presentation: presentation
+                currency: currency
             )
         }
     }
@@ -190,13 +216,13 @@ final class QuickPayPaymentCoordinator {
 
     private func run(
         generation: UUID,
+        sendStateGeneration: UUID,
         app: AppViewModel,
         wallet: WalletViewModel,
         settings: SettingsViewModel,
-        currency: CurrencyViewModel,
-        presentation: Presentation
+        currency: CurrencyViewModel
     ) async {
-        guard generation == self.generation else { return }
+        guard generation == self.generation, app.sendStateGeneration == sendStateGeneration else { return }
 
         var bolt11: String?
         do {
@@ -211,12 +237,14 @@ final class QuickPayPaymentCoordinator {
                 bolt11 = scannedInvoice.bolt11
             }
         } catch {
-            guard generation == self.generation else { return }
+            guard generation == self.generation, app.sendStateGeneration == sendStateGeneration,
+                  let presentation = activePresentation else { return }
             fail(presentation, error: error, bolt11: nil)
             return
         }
 
-        guard generation == self.generation else { return }
+        guard generation == self.generation, app.sendStateGeneration == sendStateGeneration,
+              let presentation = activePresentation else { return }
         guard let bolt11 else {
             fail(presentation, error: AppError(message: t("common__error_body"), debugMessage: "No Lightning invoice found"), bolt11: nil)
             return
@@ -233,6 +261,7 @@ final class QuickPayPaymentCoordinator {
         app.beginQuickPay(paymentHash: invoiceHash)
 
         if let existing = operations[invoiceHash] {
+            currentOperation = existing
             existing.presentation = presentation
             if existing.emitted {
                 replayPending(existing)
@@ -463,6 +492,7 @@ final class QuickPayPaymentCoordinator {
     }
 
     private func register(_ op: InFlightOp) {
+        currentOperation = op
         operations[op.invoiceHash] = op
         if let paymentId = op.paymentId, !paymentId.isEmpty, paymentId != op.invoiceHash {
             operations[paymentId] = op
