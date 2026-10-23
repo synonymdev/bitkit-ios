@@ -1571,6 +1571,30 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testRingAdoptedIdentityRequiresARingReferenceToTheSignedInPubky() {
+        let savedReference = AdoptedPubkyReference.current
+        defer { AdoptedPubkyReference.current = savedReference }
+        let manager = PubkyProfileManager()
+        manager.publicKey = ringKeyA
+
+        AdoptedPubkyReference.current = nil
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Bitkit-created identity")
+
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, bareRingKeyA)
+        XCTAssertTrue(manager.isRingAdoptedIdentity, "Ring reference matches the signed-in pubky")
+
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, ringKeyB)
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Ring reference to another pubky")
+
+        AdoptedPubkyReference.current = ("to.bitkit.other", ringKeyA)
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Reference from another app")
+
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, ringKeyA)
+        manager.publicKey = nil
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Signed out")
+    }
+
+    @MainActor
     func testFailedSignOutMarksEnabledPaykitStateForReconciliation() {
         var publicPending = false
         var privatePending = false

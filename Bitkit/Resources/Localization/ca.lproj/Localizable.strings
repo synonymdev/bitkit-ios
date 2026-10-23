@@ -1119,6 +1119,7 @@
 "profile__edit_saved" = "Perfil actualitzat";
 "profile__pubky_copied" = "pubky copiat al porta-retalls";
 "profile__edit_delete_section" = "ELIMINAR";
+"profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Tingues en compte que la informació del perfil es desa en fitxers públics.";
 "profile__delete_title" = "Eliminar el perfil?";
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
@@ -1126,6 +1127,12 @@
 "profile__delete_error_title" = "No s'ha pogut eliminar el perfil";
 "profile__delete_error_description" = "No hem pogut eliminar les dades del teu perfil. Torna-ho a provar o desconnecta aquest pubky de Bitkit.";
 "profile__delete_label" = "Eliminar perfil";
+"profile__unlink_title" = "Desvincular el pubky?";
+"profile__unlink_description" = "Això eliminarà les teves dades de Paykit i desvincularà aquest pubky de Bitkit. Continuarà disponible a Pubky Ring.";
+"profile__unlink_confirm" = "Sí, desvincula";
+"profile__unlink_error_title" = "No s'ha pogut desvincular el pubky";
+"profile__unlink_error_description" = "No hem pogut eliminar les teves dades de Paykit. Torna-ho a provar o desconnecta aquest pubky de Bitkit.";
+"profile__unlink_label" = "Desvincular el pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar contactes";
 "profile__pay_contacts_title" = "Deixa que els teus contactes\n<accent>et paguin</accent>";
