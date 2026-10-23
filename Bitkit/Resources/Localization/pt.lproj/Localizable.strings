@@ -1475,6 +1475,7 @@
 "usdt__track_bridge" = "Acompanhar entrega entre redes";
 "usdt__replaced" = "Substituído por outro pagamento";
 "usdt__receive_title" = "Receber dólares";
+"usdt__receive_copied" = "Endereço copiado para a área de transferência.\nCertifica-te de que USDT é enviado apenas pela rede selecionada.";
 "usdt__send_title" = "Enviar USDT";
 "usdt__deposit_attention" = "Este depósito requer assistência do fornecedor. Contacte o suporte da Bitkit com a referência do depósito.";
 "usdt__deposit_cost" = "Dedução estimada (USDT)";

@@ -4832,6 +4832,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testBelowMinimumUnifiedRequestClosesSheetAfterSyncFallback() async throws {
+        snapshotAppDefaults("channelCount")
         let onchainMethod = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh)
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord(
             amount: "0.000001", endpoints: [onchainMethod.rawValue, PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue]
@@ -4842,6 +4843,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         let sheets = SheetViewModel()
         let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
         let wallet = PaymentRequestSendWallet()
+        // A persisted channel count would wait for peers instead of exercising the no-channel fallback.
+        wallet.channelCount = 0
+        wallet.channels = []
         let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [
             .init(methodId: onchainMethod, value: "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x", min: nil, max: nil, rawPayload: ""),
         ])
