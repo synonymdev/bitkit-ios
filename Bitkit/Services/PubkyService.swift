@@ -70,6 +70,16 @@ enum PubkyService {
         try? await PaykitSdkService.shared.currentPublicKey()
     }
 
+    static func currentPublicKey(priority: PaykitSdkOperationLock.Priority) async throws -> String? {
+        do {
+            return try await PaykitSdkService.shared.currentPublicKey(priority: priority)
+        } catch PaykitPaymentRequestError.operationInProgress {
+            throw PaykitPaymentRequestError.operationInProgress
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Auth Approval (Bitkit as authenticator)
 
     /// Parse a pubkyauth:// URL to extract details for UI display.
@@ -614,12 +624,13 @@ actor PaykitSdkService {
         }
     }
 
-    func currentPublicKey() async throws -> String? {
-        try await withSdk { sdk in
+    func currentPublicKey(priority: PaykitSdkOperationLock.Priority = .ordered) async throws -> String? {
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             if let status = try await sdk.identityStatus(), let publicKey = status.publicKey {
                 return publicKey
             }
 
+            try await checkRefreshAdmission(priority)
             guard let publicKey = try await sdk.initialize().publicKey else {
                 return nil
             }
@@ -633,8 +644,11 @@ actor PaykitSdkService {
     }
 
     func identityStatus(priority: PaykitSdkOperationLock.Priority) async throws -> IdentityStatus? {
-        try await withSdk(priority: priority) { sdk in
-            try await readRetryingSharedStateBusy { try await sdk.identityStatus() }
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
+            try await readRetryingSharedStateBusy {
+                try await self.checkRefreshAdmission(priority)
+                return try await sdk.identityStatus()
+            }
         }
     }
 
@@ -983,10 +997,18 @@ actor PaykitSdkService {
 
     func syncPrivatePaymentListsWithReservations(
         _ updates: [PrivatePaymentListReservationUpdateInput],
-        clearUnlistedLinkedPeers: Bool
+        clearUnlistedLinkedPeers: Bool,
+        isBackgroundWork: Bool = false
     ) async throws -> PrivatePaymentListDeliveryReport {
         let withdraws = clearUnlistedLinkedPeers || updates.contains { $0.reservations.isEmpty }
-        return try await withStateRevisionTracking(priority: withdraws ? .ordered : .background) { sdk in
+        return try await withStateRevisionTracking(
+            priority: withdraws ? .ordered : .background,
+            beforeOperation: {
+                if isBackgroundWork, !withdraws {
+                    try await self.checkRefreshAdmission(.background)
+                }
+            }
+        ) { sdk in
             try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: clearUnlistedLinkedPeers
@@ -999,7 +1021,7 @@ actor PaykitSdkService {
         maxAdvanceSteps: UInt32 = 1,
         priority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws -> LinkedPeerHandshakeReport {
-        try await withStateRevisionTracking(priority: priority) { sdk in
+        try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.ensureLinkWithPeer(counterparty: counterparty, maxAdvanceSteps: maxAdvanceSteps)
         }
     }
@@ -1371,21 +1393,27 @@ actor PaykitSdkService {
     }
 
     func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [LinkedPeerRecord] {
-        try await withSdk(priority: priority) { sdk in
-            try await readRetryingSharedStateBusy { try await sdk.linkedPeers() }
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
+            try await readRetryingSharedStateBusy {
+                try await self.checkRefreshAdmission(priority)
+                return try await sdk.linkedPeers()
+            }
         }
     }
 
     func privateMessageSchedulingSnapshot(
         priority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws -> Paykit.PrivateMessageSchedulingSnapshot {
-        try await withSdk(priority: priority) { sdk in
-            try await readRetryingSharedStateBusy { try await sdk.privateMessageSchedulingSnapshot() }
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
+            try await readRetryingSharedStateBusy {
+                try await self.checkRefreshAdmission(priority)
+                return try await sdk.privateMessageSchedulingSnapshot()
+            }
         }
     }
 
     func pendingOutboundPrivateCounterparties(priority: PaykitSdkOperationLock.Priority = .ordered) async throws -> [String] {
-        try await withSdk(priority: priority) { sdk in
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.pendingOutboundPrivateCounterparties()
         }
     }
