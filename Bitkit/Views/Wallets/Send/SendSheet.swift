@@ -220,6 +220,9 @@ struct SendSheet: View {
 
     private func updatePaymentReview(_ reviewing: Bool) {
         if reviewing, flow.paymentReview == nil {
+            if !isEmbedded {
+                flow.onDismiss = { cleanup() }
+            }
             flow.paymentReview = PaykitPaymentActivity.shared.beginReview()
         } else if !reviewing, let paymentReview = flow.paymentReview {
             PaykitPaymentActivity.shared.endReview(paymentReview)
