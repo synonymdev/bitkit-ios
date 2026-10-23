@@ -1,0 +1,10 @@
+<journey name="usdt submission failure">
+  <description>Requires an onboarded wallet with owned local test USDT, a controlled RPC/bundler fixture and a VSS failure-injection proxy. The standard journey environment does not supply the VSS proxy; report blocked without it. Configure the proxy to reject the required wallet backup after the signed transfer is saved. Track the transfer id and bundler submissions. Use only the owned local test recipient and funds.</description>
+  <actions>
+    <action>Open USDT Send, enter the owned local recipient and a small test amount, continue and approve. With the required backup failing, verify the screen immediately shows Error and the explanation that the payment could not be backed up and will be retried when backup is available. It must not claim that the payment request expired or keep approval controls disabled behind a submission spinner.</action>
+    <action>Verify Details and Close are available, the transfer remains Pending, and the bundler has received no submission. Verify the failed result does not offer another Swipe To Pay for the same operation.</action>
+    <action>Allow the backup proxy to acknowledge the next backup. Let pending tracking resume the original transfer, then let the local bundler confirm it. Verify the original transfer id is retained, success replaces the error title and backup explanation, and only the original operation was submitted.</action>
+    <action>Repeat with a fixture payment request whose submission deadline expires after its transfer is saved. Verify the expiration explanation remains specific to the payment request and no new operation is created.</action>
+    <action>With another local fixture, recover from the backup error into a failed or replaced transfer, or into bridge progress, attention or refund. Verify the current status replaces the old backup explanation and does not promise another backup retry after the transfer has finished.</action>
+  </actions>
+</journey>
