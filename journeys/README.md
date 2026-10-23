@@ -220,6 +220,10 @@ and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs,
 and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
 
+**`pubky-auth/loading-toast-long-locale.xml`.** It covers the close-button inset on Android's "Loading Your
+Pubky Profile" toast, which iOS does not show. `settings/applying-toast-close-button.xml` checks the same
+inset on the address-type toast, on both platforms.
+
 **`subscriptions` Discover.** The subscriptions suite covers create, review, cancel/delete and
 the Payments tab, but not Discover — it is unimplemented on iOS. Two linked Bitkit instances are
 required to run the suite.
