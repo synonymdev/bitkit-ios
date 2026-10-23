@@ -958,7 +958,13 @@ struct SendSheet: View {
                     }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
-            }, onBack: { flow.navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+            }, onBack: {
+                if flow.navigationPath.isEmpty {
+                    sheets.hideSheet()
+                } else {
+                    flow.navigationPath.removeLast()
+                }
+            }, onClose: { sheets.hideSheet() })
         case let .usdtAddress(recipient, amount):
             UsdtSendView(onDetails: { id in
                 flow.usdtDetails = id
@@ -1448,7 +1454,13 @@ struct SendSheet: View {
                 return
             }
         }
-        flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            flow.pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
+        } else {
+            flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        }
         flow.hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }
         validatePaymentAfterSync()

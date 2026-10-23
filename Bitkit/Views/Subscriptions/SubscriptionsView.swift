@@ -244,6 +244,12 @@ struct SubscriptionsView: View {
     }
 }
 
+func subscriptionPayments(subscription: PaykitSubscription, history: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
+    subscription.isCreatedByUser
+        ? subscription.receivedPaymentRequests()
+        : history.filter { $0.belongs(to: subscription) && $0.lifecycleState == .proofSubmitted }
+}
+
 func subscriptionMonthlyCostSats(amounts: [PaykitAmount], rate: PaykitExchangeRate?, now: Date = Date()) -> Int? {
     var total = 0
     for amount in amounts {
@@ -523,9 +529,7 @@ struct SubscriptionDetailView: View {
 
     @ViewBuilder
     private func payments(_ subscription: PaykitSubscription) -> some View {
-        let payments = subscription.isCreatedByUser
-            ? subscription.receivedPaymentRequests()
-            : paymentRequests.historyRequests.filter { $0.belongs(to: subscription) }
+        let payments = subscriptionPayments(subscription: subscription, history: paymentRequests.historyRequests)
         if !payments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 CaptionMText(t("subscriptions__payments").localizedUppercase, textColor: .white64)
@@ -785,8 +789,16 @@ struct SubscriptionSheet: View {
             return
         }
 
-        let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-        route = .payment(sendRoute)
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(),
+           let recipient = context.endpoints.first?.value
+        {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            route = .payment(.usdt(recipient: recipient, amount: terms.amount.value))
+        } else {
+            let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            route = .payment(sendRoute)
+        }
     }
 
     @MainActor
@@ -922,7 +934,9 @@ struct SubscriptionSuccessView: View {
 
     var body: some View {
         ZStack {
-            if let animation = confettiAnimation {
+            if paymentProofKind == .usdt {
+                PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent, isUsdt: true)
+            } else if let animation = confettiAnimation {
                 LottieView(animation: animation)
                     .playing(loopMode: .loop)
                     .scaleEffect(1.9)
