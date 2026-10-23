@@ -37,6 +37,7 @@ struct NewsWidgetWideContent: View {
                     if options.showDate {
                         BodySSBText(timeAgo, textColor: palette.secondary)
                             .lineLimit(1)
+                            .layoutPriority(1)
                     }
                 }
                 .frame(maxWidth: .infinity)
