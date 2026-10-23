@@ -210,7 +210,8 @@ struct SendSheet: View {
     }
 
     private var isReviewingPayment: Bool {
-        guard isCurrentPresentation, !flow.didFinish, scenePhase != .background else { return false }
+        guard isCurrentPresentation, !flow.didFinish, scenePhase != .background,
+              config.preparation?.isSuspendedForAppLock != true else { return false }
         switch flow.navigationPath.last ?? currentRoot {
         case .confirm, .pin, .hardwareSign: return true
         case .usdt, .usdtAddress: return flow.isReviewingUsdtPayment
@@ -446,10 +447,9 @@ struct SendSheet: View {
 
     private func cleanup() {
         // Content recreation keeps the presentation, its setup and its payment operation alive.
-        guard isEmbedded || !isCurrentPresentation, !flow.didFinish else { return }
+        guard isEmbedded || !isCurrentPresentation || config.preparation?.isSuspendedForAppLock == true,
+              !flow.didFinish else { return }
         updatePaymentReview(false)
-        flow.didFinish = true
-        flow.onDismiss = nil
         flow.setupTask?.cancel()
         flow.setupTask = nil
         let retainsReview = config.preparation?.retainReviewOnAppLock(
@@ -461,11 +461,19 @@ struct SendSheet: View {
             app: app,
             sheets: sheets
         ) == true
-        if !retainsReview {
-            config.preparation?.isSuspendedForAppLock = false
+        if retainsReview {
+            flow.didStartSetup = false
+            flow.isSetupPending = true
+            flow.rootOverride = nil
+            flow.navigationPath = []
+            resolvePinCheck(false)
+            return
         }
+        flow.didFinish = true
+        flow.onDismiss = nil
+        config.preparation?.isSuspendedForAppLock = false
         hwSend.cancel()
-        if isPreparingRequest || retainsReview {
+        if isPreparingRequest {
             return
         }
         // The reset's owner is available synchronously, even before SwiftUI delivers onChange.
