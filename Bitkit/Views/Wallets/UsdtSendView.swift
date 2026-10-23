@@ -33,6 +33,7 @@ struct UsdtSendView: View {
     @State private var editingAmount = false
     @State private var busy = false
     @State private var error: String?
+    @State private var submissionError: SubmissionFailure?
     @State private var pin = false
     @State private var submitted = false
     @State private var paymentComplete = false
@@ -92,6 +93,11 @@ struct UsdtSendView: View {
         usdt.transfers.first { $0.id == quote?.id }?.status
     }
 
+    private var currentSubmissionFailure: SubmissionFailure? {
+        guard let submissionError, submissionError.isCurrent(for: submittedStatus) else { return nil }
+        return submissionError
+    }
+
     private var submissionFailed: Bool {
         submittedStatus == .failed || submittedStatus == .replaced
     }
@@ -108,8 +114,8 @@ struct UsdtSendView: View {
             if submittedStatus == .confirmed {
                 return t("usdt__payment_sent")
             }
-            if error != nil {
-                return t("wallet__payment_request_expired")
+            if let currentSubmissionFailure {
+                return currentSubmissionFailure.title
             }
             if submittedStatus == .bridgeRefunded {
                 return t("usdt__deposit_refunded")
@@ -559,8 +565,8 @@ struct UsdtSendView: View {
                 UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
                     .padding(.bottom, 32)
             }
-            if let error {
-                BodyMText(error, textColor: .textSecondary)
+            if let currentSubmissionFailure {
+                BodyMText(currentSubmissionFailure.message, textColor: .textSecondary)
             } else if submittedStatus == .bridgeRefunded {
                 BodyMText(t("usdt__bridge_refunded_description"), textColor: .textSecondary)
             } else if submittedStatus != .confirmed {
@@ -755,12 +761,37 @@ struct UsdtSendView: View {
         }
     }
 
+    struct SubmissionFailure {
+        let title: String
+        let message: String
+        let transferStatus: UsdtTransferStatus?
+
+        func isCurrent(for status: UsdtTransferStatus?) -> Bool {
+            status != nil && status != .confirmed && status == transferStatus
+        }
+    }
+
+    static func submissionFailure(for error: Error, transferStatus: UsdtTransferStatus? = nil) -> SubmissionFailure {
+        let title = if case UsdtError.SubmissionDeadlineExpired = error {
+            t("wallet__payment_request_expired")
+        } else {
+            t("common__error")
+        }
+        let message = if error is UsdtError {
+            UsdtWalletManager.message(for: error)
+        } else {
+            (error as? LocalizedError)?.errorDescription ?? UsdtWalletManager.message(for: error)
+        }
+        return SubmissionFailure(title: title, message: message, transferStatus: transferStatus)
+    }
+
     private func send() async {
         guard let quote, !busy else { return }
         let paymentActivity = PaykitPaymentActivity.shared.begin()
         defer { PaykitPaymentActivity.shared.end(paymentActivity) }
         busy = true
         error = nil
+        submissionError = nil
         maximumQuote = nil
         preparedQuote = nil
         defer {
@@ -777,17 +808,13 @@ struct UsdtSendView: View {
             submitted = true
             Task { await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt) }
         } catch is CancellationError {} catch {
-            if usdt.transfers.contains(where: { $0.id == quote.id }) {
+            if let transfer = usdt.transfers.first(where: { $0.id == quote.id }) {
                 submitted = true
-                if case UsdtError.SubmissionDeadlineExpired = error {
-                    self.error = UsdtWalletManager.message(for: error)
-                }
+                // A durable pending row prevents another send, but does not prove broadcast succeeded.
+                submissionError = Self.submissionFailure(for: error, transferStatus: transfer.status)
+                busy = false
             } else {
-                self.error = if error is UsdtError {
-                    UsdtWalletManager.message(for: error)
-                } else {
-                    (error as? LocalizedError)?.errorDescription ?? UsdtWalletManager.message(for: error)
-                }
+                self.error = Self.submissionFailure(for: error).message
                 self.quote = nil
             }
             Logger.warn("Failed to send USDT: \(UsdtWalletManager.message(for: error))", context: "UsdtSendView")
