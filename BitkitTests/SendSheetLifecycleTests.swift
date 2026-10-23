@@ -153,7 +153,7 @@ final class SendSheetLifecycleTests: XCTestCase {
         for preparation: IncomingPaykitPaymentRequestPreparation? in [
             nil, IncomingPaykitPaymentRequestPreparation(request: request, session: nil),
         ] {
-            let (_, sheets, prompt, window, _) = makeHost()
+            let (_, sheets, prompt, window, _) = makeHost(scenePhase: .active)
             let activity = PaykitPaymentActivity.shared
             XCTAssertFalse(activity.shouldDeferRefresh)
             let otherReview = activity.beginReview()
@@ -405,7 +405,8 @@ final class SendSheetLifecycleTests: XCTestCase {
     }
 
     private func makeHost(isEmbedded: Bool = false,
-                          lnurlPayData: LnurlPayData? = nil) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
+                          lnurlPayData: LnurlPayData? = nil,
+                          scenePhase: ScenePhase? = nil) -> (AppViewModel, SheetViewModel, ScanPromptState, UIWindow, WalletViewModel)
     {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
@@ -424,6 +425,9 @@ final class SendSheetLifecycleTests: XCTestCase {
         }
         let prompt = ScanPromptState()
         let root = SendPresentationHarness(sheets: sheets, prompt: prompt, isEmbedded: isEmbedded)
+            .transformEnvironment(\.scenePhase) { value in
+                if let scenePhase { value = scenePhase }
+            }
             .environment(PaykitPaymentRequestManager())
             .environment(HwWalletManager())
             .environment(TrezorManager())
