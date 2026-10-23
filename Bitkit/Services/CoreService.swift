@@ -113,6 +113,7 @@ class ActivityService {
 
     private let addressSearchCoordinator: AddressSearchCoordinator
     private let channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)?
+    private let nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)?
 
     // MARK: - BoostTxIds Cache
 
@@ -201,9 +202,25 @@ class ActivityService {
     }
 
     func getTransactionDetails(txid: String, walletId: String = WalletScope.default) async throws -> BitkitCore.TransactionDetails? {
-        try await ServiceQueue.background(.core) {
+        if let stored = try await ServiceQueue.background(.core, {
             try BitkitCore.getTransactionDetails(walletId: walletId, txId: txid)
+        }) {
+            return stored
         }
+
+        guard walletId == WalletScope.default,
+              txid.utf8.count == 64,
+              txid.utf8.allSatisfy({ (48 ... 57).contains($0) || (65 ... 70).contains($0) || (97 ... 102).contains($0) })
+        else { return nil }
+
+        // Restored history can outlive the cached details written by payment events.
+        // Read the matching node's local wallet without adding network work or a delayed database write.
+        let details = if let nodeTransactionLookup {
+            await nodeTransactionLookup(txid)
+        } else {
+            await LightningService.shared.getTransactionDetails(txid: txid, walletIndex: coreService.walletIndex)
+        }
+        return details.map { mapToCoreTransactionDetails(txid: txid, $0) }
     }
 
     // MARK: - Seen Tracking
@@ -406,10 +423,12 @@ class ActivityService {
 
     init(
         coreService: CoreService,
-        channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil
+        channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil,
+        nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)? = nil
     ) {
         self.coreService = coreService
         self.channelLookup = channelLookup
+        self.nodeTransactionLookup = nodeTransactionLookup
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
@@ -2601,7 +2620,7 @@ class UtilityService {
 
 class CoreService {
     static let shared = CoreService()
-    private let walletIndex: Int
+    fileprivate let walletIndex: Int
 
     lazy var activity: ActivityService = .init(coreService: self)
     lazy var blocktank: BlocktankService = .init(coreService: self)
