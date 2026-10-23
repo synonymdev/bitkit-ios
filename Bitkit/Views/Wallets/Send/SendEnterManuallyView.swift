@@ -34,9 +34,15 @@ struct SendEnterManuallyView: View {
         )
     }
 
+    private var isUsdtInput: Bool {
+        guard !hwSend.isActive, settings.isUsdtEnabled else { return false }
+        let input = app.manualEntryInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return input.hasPrefix("0x") || input.hasPrefix("ethereum:")
+    }
+
     var body: some View {
         VStack {
-            SheetHeader(title: t("wallet__send_bitcoin"), showBackButton: true)
+            SheetHeader(title: t(isUsdtInput ? "usdt__send_title" : "wallet__send_bitcoin"), showBackButton: true)
 
             CaptionMText(t("wallet__send_to"))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -69,6 +75,7 @@ struct SendEnterManuallyView: View {
         let uri = app.normalizeManualEntry(app.manualEntryInput).removingLightningSchemes()
 
         guard !uri.isEmpty, app.isManualEntryInputValid else { return }
+        let presentationID = sheets.activeSheetConfiguration?.presentationID
 
         if let route = resolvePubkyRoute(
             input: uri,
@@ -98,10 +105,12 @@ struct SendEnterManuallyView: View {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
 
+            guard sheets.activeSheetConfiguration?.presentationID == presentationID else { return }
             try await app.handleScannedData(
                 uri,
                 scope: hwSend.isActive ? .onchainPayments : .unrestricted,
-                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats,
+                sendPresentationID: presentationID
             )
 
             if let route = PaymentNavigationHelper.appropriateSendRoute(

@@ -1,3 +1,4 @@
+import BitkitCore
 import Foundation
 import Paykit
 
@@ -345,6 +346,28 @@ extension PrivatePaykitService {
         )
     }
 
+    /// Rolls back a list version a failed automatic payment consumed, which a restart may have left without its
+    /// in-memory consumption record. A newer consumption is left alone.
+    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) throws {
+        guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            throw PrivatePaykitError.invalidPublicKey
+        }
+        guard var contactState = state.contacts[publicKey], contactState.consumedPrivatePaymentListVersion == version else { return }
+        let previousContactState = state.contacts[publicKey]
+        contactState.consumedPrivatePaymentListVersion = previousVersion
+        state.contacts[publicKey] = contactState
+        do {
+            try persistStateOrThrow(markWalletBackup: true)
+        } catch {
+            state.contacts[publicKey] = previousContactState
+            throw error
+        }
+        Logger.info(
+            "Released private Paykit payment list version \(version) for \(PubkyPublicKeyFormat.redacted(publicKey)) after a failed automatic payment",
+            context: "PrivatePaykit"
+        )
+    }
+
     func consumedPaymentListVersion(publicKey: String, attemptId: UUID? = nil) -> UInt64? {
         guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { return nil }
         if let attemptId, let consumption = privatePaymentListConsumptions[PrivatePaymentListConsumptionKey(attemptId: attemptId, publicKey: key)] {
@@ -512,6 +535,66 @@ extension PrivatePaykitService {
         contactState.cachedResolvedEndpoints = filteredEntries
         state.contacts[normalizedKey] = contactState
         persistState(markWalletBackup: true)
+    }
+
+    /// Resolves the payee's current private endpoint for an automatic Allowance payment. Only endpoints the Allowance and
+    /// the request both accept qualify, and only ones this wallet can pay without asking: a bolt11 invoice for exactly
+    /// the requested amount (or amount-less), or an unused on-chain address. Public endpoints are never used.
+    func resolveAllowancePayment(
+        _ request: PaykitPaymentRequest,
+        eligibleIdentifiers: [String]
+    ) async throws -> PrivatePaykitAllowancePayment? {
+        guard !request.isExpired(at: Date()),
+              let publicKey = PubkyPublicKeyFormat.normalized(request.counterparty)
+        else { return nil }
+
+        let consumedVersion = state.contacts[publicKey]?.consumedPrivatePaymentListVersion
+        // Resolve through the request, as the manual flow does, so its required app and bound destination apply.
+        let prepared = try await PaykitSdkService.shared.prepareAndResolvePrivatePaymentRequest(
+            counterparty: publicKey,
+            paymentRequestId: request.paymentRequestId,
+            afterPrivatePaymentListVersion: consumedVersion
+        )
+        if prepared.resolution.state == .recoveryPending || prepared.resolution.status == .waitingForUpdatedPaymentList {
+            // The last list was already paid from; a new one arrives once the payee sees that payment settle.
+            schedulePrivatePaymentRecovery(for: publicKey)
+            throw PaykitAllowanceError.paymentListPending
+        }
+        // Without a payment list version nothing limits how often the payee's endpoints can be paid, so the request asks.
+        guard let paymentListVersion = prepared.resolution.privatePaymentListVersion else { return nil }
+
+        let eligible = Set(eligibleIdentifiers).intersection(request.acceptedPaymentEndpointIdentifiers)
+        let candidates = resolvedEndpoints(from: prepared.resolution).filter {
+            eligible.contains($0.methodId.rawValue) &&
+                ($0.methodId == .bitcoinLightningBolt11 || $0.methodId.onchainNetwork != nil) && $0.appId != nil
+        }
+        let payable = await privatePayableEndpoints(from: candidates, publicKey: publicKey)
+
+        for methodId in PublicPaykitService.MethodId.payablePreferenceOrder {
+            guard let endpoint = payable.first(where: { $0.methodId == methodId }), let appId = endpoint.appId else { continue }
+            let context = PrivatePaykitPaymentContext(
+                paymentAppsByEndpoint: [methodId.rawValue: appId],
+                paymentListVersion: paymentListVersion
+            )
+            if methodId == .bitcoinLightningBolt11 {
+                guard case let .lightning(invoice) = try? await decode(invoice: endpoint.value),
+                      invoice.amountSatoshis == 0 || invoice.amountSatoshis == request.allowanceAmountSats
+                else { continue }
+                return PrivatePaykitAllowancePayment(
+                    endpoint: endpoint,
+                    context: context,
+                    lightningPaymentHash: invoice.paymentHash.hex,
+                    lightningInvoiceHasAmount: invoice.amountSatoshis != 0
+                )
+            }
+            return PrivatePaykitAllowancePayment(
+                endpoint: endpoint,
+                context: context,
+                lightningPaymentHash: nil,
+                lightningInvoiceHasAmount: false
+            )
+        }
+        return nil
     }
 
     private func resolvedEndpoints(from resolution: PrivateContactPaymentResolution) -> [PublicPaykitService.Endpoint] {

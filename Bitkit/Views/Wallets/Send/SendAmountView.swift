@@ -165,11 +165,7 @@ struct SendAmountView: View {
                     BodySText(conversionError, textColor: .brandAccent).padding(.top, 12)
                 }
 
-                if app.paykitUsesUsdt {
-                    Spacer().frame(height: 32)
-                } else {
-                    Spacer()
-                }
+                Spacer()
 
                 // Available balance section
                 HStack(alignment: .bottom) {
@@ -203,11 +199,11 @@ struct SendAmountView: View {
 
                     NumberPadActionButton(
                         text: selectedSourceLabel,
-                        imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        trailingImageName: canSwitchFundingSource ? "chevron-down" : nil,
                         titleKerning: app.paykitUsesUsdt ? 1 : 0.8,
                         titleLineHeight: app.paykitUsesUsdt ? 18 : nil,
                         color: selectedSourceColor,
-                        variant: canSwitchFundingSource ? .primary : .secondary,
+                        variant: .secondary,
                         disabled: isContinuing,
                         isLoading: hwSend.isFundingSourceLoading
                     ) {
@@ -254,7 +250,6 @@ struct SendAmountView: View {
                         amountViewModel.handleNumberPadInput(key, currency: currency)
                     }
                 }
-                .frame(maxHeight: app.paykitUsesUsdt ? .infinity : nil)
 
                 CustomButton(
                     title: t("common__continue"),
