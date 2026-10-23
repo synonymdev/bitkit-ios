@@ -994,6 +994,16 @@ struct SendConfirmationView: View {
         }
     }
 
+    static func isUnsentBlockedRequest(
+        _ requestId: PaykitPaymentRequest.ID?, onchainPaymentStarted: Bool, error: Error
+    ) -> Bool {
+        guard !onchainPaymentStarted, let requestId,
+              let attemptError = error as? OnchainSendAttemptError,
+              case let .blocked(previous) = attemptError, let previous
+        else { return false }
+        return previous.requestId != requestId
+    }
+
     static func isFeeRateMissing(walletType: WalletType, isHardwarePayment: Bool, feeRate: UInt32?) -> Bool {
         walletType == .onchain && !isHardwarePayment && feeRate == nil
     }
@@ -1464,11 +1474,19 @@ struct SendConfirmationView: View {
             }
             if let attemptError = error as? OnchainSendAttemptError {
                 switch attemptError {
-                case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable,
+                case .unresolved, .blocked, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable,
                      .preDispatchCleanupFailed:
-                    await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
+                    let unsentRequest = Self.isUnsentBlockedRequest(
+                        incomingPaymentRequest?.id, onchainPaymentStarted: onchainPaymentStarted, error: attemptError
+                    )
+                    await contactPaymentContext?.resolvePrivatePaymentListConsumption(unsentRequest ? .definitePreBroadcastFailure : .uncertain)
                     if let manualAllowanceAttemptId {
-                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .unknown)
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(
+                            attemptId: manualAllowanceAttemptId, outcome: unsentRequest ? .failed : .unknown
+                        )
+                    }
+                    if unsentRequest, let incomingPaymentRequest {
+                        await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
                     }
                     shouldCancelPaymentProof = false
                     app.toast(attemptError)
