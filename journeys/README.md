@@ -143,6 +143,11 @@ iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabula
 journey usually names the same string on both platforms. Where a container needs to be queryable,
 iOS pairs the identifier with `.accessibilityElement(children: .contain)`.
 
+A payment request's preparing confirmation is the one exception: Android tags its disabled swipe
+`PaymentRequestPreparing`, while iOS identifies the sheet as `PaymentRequestConfirm` and keeps its
+swipe (`GRAB`) disabled and loading. `ReviewAmount` on that sheet is the requested amount, not a
+paid request reopening.
+
 ### On-chain payment safety adaptations
 
 The shared names and action prose in `send/onchain-original-payment-retry.xml`,
@@ -249,6 +254,10 @@ iOS-only feature.
 `usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
 A submitted payment must return to the wallet without reopening the paid draft on either platform.
+
+`usdt-send-review-and-details.xml` is adapted: on iOS the Swipe To Pay knob stays at the end of the
+track while a USDT send warning is open and returns to the start on Cancel. Android master returns the
+knob to the start as soon as the warning opens, so its fee-warning action has no knob assertion.
 
 `coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
 name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.

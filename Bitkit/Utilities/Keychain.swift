@@ -16,6 +16,7 @@ enum KeychainEntryType {
     case paykitKeyGeneration(publicKey: String)
     case paykitRecoveryBackup
     case paykitPendingBackupRestore
+    case paykitAllowanceState
     case pubkySecretKey
 
     var storageKey: String {
@@ -34,6 +35,7 @@ enum KeychainEntryType {
         case let .paykitKeyGeneration(publicKey): "paykit_key_generation_\(publicKey)"
         case .paykitRecoveryBackup: "paykit_recovery_backup"
         case .paykitPendingBackupRestore: "paykit_pending_backup_restore"
+        case .paykitAllowanceState: "paykit_allowance_state"
         case .pubkySecretKey: "pubky_secret_key"
         }
     }
