@@ -48,15 +48,15 @@ class ScannerManager: ObservableObject {
         self.hwWalletManager = hwWalletManager
     }
 
-    func handleScan(_ uri: String, context: ScannerContext) async {
-        guard !isHandlingScan else { return }
+    func handleScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
+        guard !isHandlingScan, isCurrent() else { return }
         isHandlingScan = true
         defer { isHandlingScan = false }
 
-        await processScan(uri, context: context)
+        await processScan(uri, context: context, isCurrent: isCurrent)
     }
 
-    private func processScan(_ uri: String, context: ScannerContext) async {
+    private func processScan(_ uri: String, context: ScannerContext, isCurrent: () -> Bool) async {
         let uri = uri.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uri.isEmpty else { return }
 
@@ -66,21 +66,21 @@ class ScannerManager: ObservableObject {
             handleAddContactScan(uri)
         case .main:
             playScanSuccess()
-            await handleMainScan(uri)
+            await handleMainScan(uri, isCurrent: isCurrent)
         case .send:
-            await processSendScan(uri) { _ in }
+            await processSendScan(uri, isCurrent: isCurrent) { _ in }
         case .electrum:
             playScanSuccess()
             await handleElectrumScan(uri)
         }
     }
 
-    func handleScan(_ payload: QRCodePayload, context: ScannerContext) async {
+    func handleScan(_ payload: QRCodePayload, context: ScannerContext, isCurrent: () -> Bool = { true }) async {
         guard let uri = payload.string else {
             showUnsupportedQRCodeError()
             return
         }
-        await handleScan(uri, context: context)
+        await handleScan(uri, context: context, isCurrent: isCurrent)
     }
 
     private func handleAddContactScan(_ input: String) {
@@ -93,7 +93,7 @@ class ScannerManager: ObservableObject {
         navigation?.navigate(.addContact(publicKey: input))
     }
 
-    private func handleMainScan(_ uri: String) async {
+    private func handleMainScan(_ uri: String, isCurrent: () -> Bool) async {
         guard let app else { return }
 
         do {
@@ -113,9 +113,10 @@ class ScannerManager: ObservableObject {
 
             try await app.handleScannedData(
                 uri,
-                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0
+                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
+                isCurrentScan: isCurrent
             )
-            guard shouldOpenPaymentFlow(for: uri) else { return }
+            guard isCurrent(), shouldOpenPaymentFlow(for: uri) else { return }
 
             if let currency, let settings, let sheets {
                 PaymentNavigationHelper.openPaymentSheet(
@@ -126,6 +127,7 @@ class ScannerManager: ObservableObject {
                 )
             }
         } catch {
+            guard isCurrent(), !(error is CancellationError) else { return }
             Logger.error(error, context: "Failed to read data from QR")
             app.toast(
                 type: .error,
@@ -164,18 +166,20 @@ class ScannerManager: ObservableObject {
     func handleSendScan(
         _ uri: String,
         scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
-        guard !isHandlingScan else { return }
+        guard !isHandlingScan, isCurrent() else { return }
         isHandlingScan = true
         defer { isHandlingScan = false }
 
-        await processSendScan(uri, scope: scope, completion: completion)
+        await processSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
     private func processSendScan(
         _ uri: String,
         scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
         guard let app, let currency, let settings else {
@@ -196,18 +200,12 @@ class ScannerManager: ObservableObject {
         playScanSuccess()
 
         do {
-            if scope == .unrestricted, let route = try resolveUsdtPaymentRoute(input: uri) {
+            if scope == .unrestricted, case let .usdtPayment(recipient, amount)? = try resolveUsdtPaymentRoute(input: uri) {
                 guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else {
                     completion(nil)
                     return
                 }
-                let path = navigation?.path
-                sheets?.hideSheetBeforePerforming(reason: "Send scanner routed USDT payment") { [weak self] in
-                    guard let self, app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false,
-                          navigation?.path == path else { return }
-                    navigation?.navigate(route)
-                }
-                completion(nil)
+                completion(.usdtAddress(recipient: recipient, amount: amount))
                 return
             }
             if handlePubkyRouteIfNeeded(uri, hiding: .send, reason: "Send scanner routed pubky key") {
@@ -218,8 +216,11 @@ class ScannerManager: ObservableObject {
             try await app.handleScannedData(
                 uri,
                 scope: scope,
-                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0
+                alternativeOnchainBalanceSats: hwWalletManager?.maximumFundingBalanceSats ?? 0,
+                sendPresentationID: sheets?.activeSheetConfiguration?.presentationID,
+                isCurrentScan: isCurrent
             )
+            guard isCurrent() else { return }
             guard shouldOpenPaymentFlow(for: uri) else {
                 completion(nil)
                 return
@@ -233,6 +234,7 @@ class ScannerManager: ObservableObject {
 
             completion(route)
         } catch {
+            guard isCurrent(), !(error is CancellationError) else { return }
             Logger.error(error, context: "Failed to read data from QR")
             app.toast(
                 type: .error,
@@ -246,6 +248,7 @@ class ScannerManager: ObservableObject {
     func handleSendScan(
         _ payload: QRCodePayload,
         scope: ScanHandlingScope = .unrestricted,
+        isCurrent: () -> Bool = { true },
         completion: @escaping (SendRoute?) -> Void
     ) async {
         guard let uri = payload.string else {
@@ -253,7 +256,7 @@ class ScannerManager: ObservableObject {
             completion(nil)
             return
         }
-        await handleSendScan(uri, scope: scope, completion: completion)
+        await handleSendScan(uri, scope: scope, isCurrent: isCurrent, completion: completion)
     }
 
     private func shouldOpenPaymentFlow(for uri: String) -> Bool {
@@ -262,8 +265,12 @@ class ScannerManager: ObservableObject {
 
     private func handleElectrumScan(_ uri: String) async {
         guard let settings else { return }
+        let generation = settings.serverConnectionGeneration
+        guard settings.isCurrentServerConnection(generation) else { return }
+        let result = await settings.onElectrumScan(uri)
+        guard settings.isCurrentServerConnection(generation) else { return }
 
-        if let result = await settings.onElectrumScan(uri) {
+        if let result {
             if result.success {
                 app?.toast(
                     type: .success,
@@ -313,34 +320,59 @@ class ScannerManager: ObservableObject {
         scope: ScanHandlingScope = .unrestricted,
         completion: @escaping (SendRoute?) -> Void = { _ in }
     ) async {
-        guard let app, let item else { return }
+        guard let item else { return }
+        await handleImageScan(context: context, scope: scope, decode: {
+            try await QRCodeImageDecoder.decode(item)
+        }, completion: completion)
+    }
+
+    func handleImageScan(
+        context: ScannerContext,
+        scope: ScanHandlingScope = .unrestricted,
+        decode: () async throws -> QRCodePayload,
+        completion: @escaping (SendRoute?) -> Void = { _ in }
+    ) async {
+        guard let app else { return }
+        let presentationID = sheets?.activeSheetConfiguration?.presentationID
+        let navigationPath = navigation?.path
+        let inputGeneration = app.sendStateGeneration
+        func isCurrentOrigin() -> Bool {
+            !Task.isCancelled && sheets?.activeSheetConfiguration?.presentationID == presentationID &&
+                navigation?.path == navigationPath
+        }
 
         do {
-            let payload = try await QRCodeImageDecoder.decode(item)
+            let payload = try await decode()
+            guard isCurrentOrigin(), context != .send || app.sendStateGeneration == inputGeneration else { return }
             if context == .send {
-                await handleSendScan(payload, scope: scope, completion: completion)
+                await handleSendScan(payload, scope: scope, isCurrent: isCurrentOrigin, completion: completion)
             } else {
-                await handleScan(payload, context: context)
+                await handleScan(payload, context: context, isCurrent: isCurrentOrigin)
             }
-        } catch QRCodeImageDecoderError.invalidImage {
-            app.toast(
-                type: .error,
-                title: t("common__error"),
-                description: t("other__qr_error_load_image")
-            )
-        } catch QRCodeImageDecoderError.noQRCode {
-            app.toast(
-                type: .error,
-                title: t("other__qr_error_no_qr_title"),
-                description: t("other__qr_error_no_qr_description")
-            )
         } catch {
-            Logger.error(error, context: "Failed to process image")
-            app.toast(
-                type: .error,
-                title: t("other__qr_error_detection_title"),
-                description: t("other__qr_error_detection_description")
-            )
+            guard isCurrentOrigin(), context != .send || app.sendStateGeneration == inputGeneration,
+                  !(error is CancellationError) else { return }
+            switch error {
+            case QRCodeImageDecoderError.invalidImage:
+                app.toast(
+                    type: .error,
+                    title: t("common__error"),
+                    description: t("other__qr_error_load_image")
+                )
+            case QRCodeImageDecoderError.noQRCode:
+                app.toast(
+                    type: .error,
+                    title: t("other__qr_error_no_qr_title"),
+                    description: t("other__qr_error_no_qr_description")
+                )
+            default:
+                Logger.error(error, context: "Failed to process image")
+                app.toast(
+                    type: .error,
+                    title: t("other__qr_error_detection_title"),
+                    description: t("other__qr_error_detection_description")
+                )
+            }
         }
     }
 

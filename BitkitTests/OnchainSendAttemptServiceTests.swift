@@ -29,6 +29,56 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testBlockedRequestReleasesOnlyItsUnsentReservation() async throws {
+        let request = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "merchant", billingPeriodStartsAt: nil)
+        let other = PaykitPaymentRequest.ID(paymentRequestId: "other", counterparty: "merchant", billingPeriodStartsAt: nil)
+        let otherPeer = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "other-merchant", billingPeriodStartsAt: nil)
+        let otherPeriod = PaykitPaymentRequest.ID(paymentRequestId: "request", counterparty: "merchant",
+                                                  billingPeriodStartsAt: Date(timeIntervalSince1970: 123))
+        for previousRequest in [nil, request, other, otherPeer, otherPeriod] as [PaykitPaymentRequest.ID?] {
+            let store = MemoryAttemptStore()
+            let original = OnchainSendAttempt(id: UUID(), walletId: walletId, requestId: previousRequest, orderId: nil,
+                                              address: "original", amountSats: 1000, isMaxAmount: false, status: .unknown, txid: txid)
+            try store.save([original])
+            let service = OnchainSendAttemptService(store: store)
+            let node = AttemptNodeMock(result: .accepted(txid: txid))
+            do {
+                _ = try await service.send(using: node, address: "new", amountSats: 2000, satsPerVbyte: 1,
+                                           utxosToSpend: nil, isMaxAmount: false, requestId: request,
+                                           beforeBroadcastAttempt: { XCTFail("Blocked request must not reach authorization") })
+                XCTFail("An unresolved attempt must still block the send")
+            } catch {
+                XCTAssertEqual(SendConfirmationView.isUnsentBlockedRequest(request, onchainPaymentStarted: false, error: error),
+                               previousRequest != request)
+                XCTAssertFalse(SendConfirmationView.isUnsentBlockedRequest(request, onchainPaymentStarted: true, error: error))
+                XCTAssertFalse(SendConfirmationView.isUnsentBlockedRequest(nil, onchainPaymentStarted: false, error: error))
+                XCTAssertFalse(String(describing: error).contains("merchant"), "Errors must not log the blocker identity")
+            }
+            XCTAssertEqual(node.calls, 0)
+            XCTAssertEqual(store.snapshot(), [original])
+            let route = await SendConfirmationView.onchainPendingRoute(requestId: request, using: service)
+            guard case let .onchainOperationPending(context, routeRequest) = route else {
+                return XCTFail("Keep the original payment recovery route")
+            }
+            XCTAssertEqual(context.attemptId, original.id)
+            XCTAssertEqual(routeRequest, previousRequest)
+            store.failLoad = true
+            do {
+                _ = try await service.send(using: node, address: "new", amountSats: 2000, satsPerVbyte: 1,
+                                           utxosToSpend: nil, isMaxAmount: false, requestId: request)
+                XCTFail("Unreadable storage must retain the guard")
+            } catch let error as OnchainSendAttemptError {
+                guard case .unresolved = error else { return XCTFail("Unreadable admission must stay uncertain") }
+            }
+            XCTAssertEqual(node.calls, 0)
+            XCTAssertEqual(store.snapshot(), [original])
+        }
+        for error in [OnchainSendAttemptError.unresolved, .blocked(nil), .duplicate, .preDispatchCleanupFailed] {
+            XCTAssertFalse(SendConfirmationView.isUnsentBlockedRequest(request, onchainPaymentStarted: false, error: error))
+        }
+    }
+
     func testAcceptedConfirmationStaysPendingUntilOriginalFollowupCompletes() async throws {
         let shopRequest = PaykitPaymentRequest.ID(
             paymentRequestId: "original-shop-order",
@@ -1308,6 +1358,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(store.snapshot().first?.status, .pending)
     }
 
+    @MainActor
     func testActualSendSerializesFixedMaxAndTransferBeforeNodeDispatch() async {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)
@@ -1327,6 +1378,19 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
             )
         }
         await preparation.waitForStart()
+        let request = PaykitPaymentRequest.ID(paymentRequestId: "new-request", counterparty: "merchant", billingPeriodStartsAt: nil)
+        for unreadable in [false, true] {
+            store.failLoad = unreadable
+            do {
+                _ = try await service.send(using: node, address: "new", amountSats: 2000, satsPerVbyte: 1,
+                                           utxosToSpend: nil, isMaxAmount: false, requestId: request,
+                                           beforeBroadcastAttempt: { XCTFail("Competing request was authorized") })
+                XCTFail("Competing request was admitted")
+            } catch {
+                XCTAssertEqual(SendConfirmationView.isUnsentBlockedRequest(request, onchainPaymentStarted: false, error: error), !unreadable)
+            }
+        }
+        store.failLoad = false
         let competingSends = await withTaskGroup(of: Bool.self) { group in
             for index in 1 ..< 20 {
                 group.addTask {

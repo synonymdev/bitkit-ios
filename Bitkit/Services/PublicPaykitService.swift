@@ -36,6 +36,13 @@ struct PrivatePaykitPaymentContext: Equatable {
     }
 }
 
+struct PrivatePaykitAllowancePayment: Equatable {
+    let endpoint: PublicPaykitService.Endpoint
+    let context: PrivatePaykitPaymentContext
+    let lightningPaymentHash: String?
+    let lightningInvoiceHasAmount: Bool
+}
+
 enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
     case noSupportedEndpoint = "no_supported_endpoint"
     case endpointNotPayable = "endpoint_not_payable"

@@ -36,13 +36,35 @@ struct SheetConfiguration {
     let id: SheetID
     let data: Any?
     let presentationID = UUID()
+    let sendState: SendPresentationState?
+
+    init(id: SheetID, data: Any?) {
+        self.id = id
+        self.data = data
+        if id == .send {
+            let item = data as? SendSheetItem
+            let route = (data as? SendConfig)?.initialRoute ?? item?.initialRoute ?? .options
+            sendState = item?.state ?? SendPresentationState(initialRoute: route)
+        } else {
+            sendState = nil
+        }
+    }
 }
 
 class SheetViewModel: ObservableObject {
     /// How long a closing sheet animates out before the next sheet may be shown.
     static let replacementDelaySeconds: TimeInterval = 0.7
 
-    @Published var activeSheetConfiguration: SheetConfiguration? = nil
+    @Published var activeSheetConfiguration: SheetConfiguration? = nil {
+        didSet {
+            if oldValue?.presentationID != activeSheetConfiguration?.presentationID {
+                let cleanup = oldValue?.sendState?.onDismiss
+                oldValue?.sendState?.onDismiss = nil
+                cleanup?()
+            }
+        }
+    }
+
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
     @Published private(set) var replacingSheetID: SheetID?
@@ -498,6 +520,8 @@ class SheetViewModel: ObservableObject {
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
             return SendSheetItem(
+                presentationID: config.presentationID,
+                state: config.sendState,
                 initialRoute: initialRoute,
                 hardwareWalletId: sendConfig?.hardwareWalletId,
                 preparation: sendConfig?.preparation

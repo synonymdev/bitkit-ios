@@ -2,7 +2,13 @@
 
 `delete-profile.xml` verifies visible progress and completion when deleting a disposable profile. Use a test identity that may be deleted.
 
+With network fault injection, interrupt profile deletion after private endpoint withdrawal but before profile deletion or final App Registry synchronization. Verify the existing cleanup marker survives restart, normal reconciliation uses the current sharing preference, and failed withdrawal or registry publication remains pending until a successful retry. Successful deletion must still remove public endpoints, synchronize the App Registry with private sharing disabled, and sign out. Ordinary disconnect, contact deletion and sharing-setting changes must continue to synchronize immediately. Use the same disposable identity and record confirmation-to-onboarding time before and after; do not shorten uncertain-write safety waits or treat a small request reduction as a general latency guarantee.
+
+While deletion is paused after private withdrawal, trigger foreground or network-restoration reconciliation. Verify it does not start public reconciliation or acknowledge the pending marker until deletion ends; already admitted work may complete.
+
 During profile deletion, automatic contact refresh, request intake and endpoint publication must not start new work. Already admitted operations and explicit deletion cleanup still finish. After a failed deletion, normal automatic work must resume for the retained identity. Verifying SDK admission and a controlled cleanup failure requires operation gates beyond the journey runner capabilities; this remains a manual check rather than a timed deletion guarantee.
+
+Hold private withdrawal or an admitted profile delete, then attempt Ring adoption, identity creation, Disconnect or session-backup restoration. Each must be refused before changing credentials or the active session; cancellation must not release that protection before admitted deletion work drains. After failure, verify identity operations and a new deletion attempt work again. Separately revoke the original session with a controlled hook, release cleanup, and verify the old attempt does not clear another owner's repair markers, contacts, profile or session. Repeat with a new session for the same key and inspect remote profile state, not only navigation. These checks require session-replacement and operation gates beyond the journey runner capabilities.
 
 With a contact link held during deletion, let deletion succeed and verify that the retained link opens the public contact profile while signed out, without a QR error or a private contact-list read. For failed deletion, hold contact preparation until after cleanup fails, then release it and verify that the retained link retries once preparation is available without a repeated error loop. Controlling this ordering requires preparation and cleanup-failure gates beyond the journey runner capabilities.
 
@@ -25,6 +31,8 @@ While enabling contact payments, invalidate the public invoice during address pr
 On iOS, these channel-refresh checks cover public endpoints. Private endpoint preparation retains its existing cleanup and reconciliation behavior.
 
 Hold initial session restoration before sign-in completes, make a Lightning channel usable or ready, then release restoration while public publication remains blocked. Restore readiness or connectivity without another channel event. Normal public maintenance must retain the forced invoice refresh for the restored identity, including after a deferred or failed restoration and a skipped or failed publication. Work retained for the stored identity or an existing signed-in session must not transfer to a replacement identity or a new session for the same key. These checks require restoration, channel and publication gates beyond the journey runner capabilities.
+
+`unlink-ring-pubky.xml` verifies that a pubky adopted from Pubky Ring shows "Unlink pubky" instead of "Delete Profile" in Edit Profile, returns to profile onboarding after unlinking, and stays available in Pubky Ring. It needs Pubky Ring on the same simulator, signed by the same Apple team, which is not a listed capability. Use a disposable Ring identity; a profile created in Bitkit keeps "Delete Profile", covered by `delete-profile.xml`.
 
 `signup-create-profile.xml` verifies that signup through staging.pubky.app can finish profile creation without a false Profile Error toast. Use a fresh, unfunded test wallet and keep the app process alive. The profile must use the same public key as the authorized signup.
 

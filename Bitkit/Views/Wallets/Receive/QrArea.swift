@@ -6,6 +6,7 @@ struct QrArea: View {
     let accentColor: Color
     var copyValue: String?
     var shareText: String?
+    var copyMessage: String?
     var onEdit: (() -> Void)?
 
     @State private var showCopyTooltip = false
@@ -28,7 +29,8 @@ struct QrArea: View {
             }
 
             if showCopyTooltip {
-                Tooltip(text: t("wallet__receive_copied"))
+                Tooltip(text: copyMessage ?? t("wallet__receive_copied"))
+                    .multilineTextAlignment(.center)
                     .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     .offset(y: 80)
                     .allowsHitTesting(false)

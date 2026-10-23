@@ -16,6 +16,8 @@ enum AppReset {
     ) async throws {
         try await PaykitSdkService.shared.withWalletWipe {
             try await app.withMigrationSyncPausedForWipe {
+                await SettingsViewModel.shared.beginServerSettingsWipe()
+                defer { SettingsViewModel.shared.endServerSettingsWipe() }
                 try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
             }
         }
@@ -63,6 +65,7 @@ enum AppReset {
 
         // Wipe keychain
         try Keychain.wipeEntireKeychain()
+        PaykitUsdtPaymentService.shared.resetForWipe()
 
         // Delete installation marker so next install can detect orphaned keychain
         try? InstallationMarker.delete()
