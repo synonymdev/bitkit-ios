@@ -75,6 +75,7 @@ struct SendEnterManuallyView: View {
         let uri = app.normalizeManualEntry(app.manualEntryInput).removingLightningSchemes()
 
         guard !uri.isEmpty, app.isManualEntryInputValid else { return }
+        let presentationID = sheets.activeSheetConfiguration?.presentationID
 
         if let route = resolvePubkyRoute(
             input: uri,
@@ -104,10 +105,12 @@ struct SendEnterManuallyView: View {
                 Logger.error("Failed to set default fee rate: \(error)")
             }
 
+            guard sheets.activeSheetConfiguration?.presentationID == presentationID else { return }
             try await app.handleScannedData(
                 uri,
                 scope: hwSend.isActive ? .onchainPayments : .unrestricted,
-                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats,
+                sendPresentationID: presentationID
             )
 
             if let route = PaymentNavigationHelper.appropriateSendRoute(
