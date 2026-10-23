@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ProfileEditFormView<Avatar: View>: View {
     enum DeleteActionStyle {
-        case buttonWithIcon
+        case buttonWithIcon(icon: String = "trash", isSystemIcon: Bool = false)
         case textOnly
     }
 
@@ -20,8 +20,6 @@ struct ProfileEditFormView<Avatar: View>: View {
     let footerNote: String?
     let deleteLabel: String?
     var deleteSectionCaption: String = t("profile__edit_delete_section")
-    var deleteIcon: String = "trash"
-    var isDeleteIconSystem: Bool = false
     let deleteActionStyle: DeleteActionStyle
     let onSave: () async -> Void
     let onCancel: () -> Void
@@ -224,10 +222,10 @@ struct ProfileEditFormView<Avatar: View>: View {
             CaptionMText(deleteSectionCaption, textColor: .white64)
 
             switch deleteActionStyle {
-            case .buttonWithIcon:
+            case let .buttonWithIcon(icon, isSystemIcon):
                 IconActionButton(
-                    icon: deleteIcon,
-                    isSystemIcon: isDeleteIconSystem,
+                    icon: icon,
+                    isSystemIcon: isSystemIcon,
                     title: label,
                     tint: .brandAccent,
                     accessibilityId: "ProfileEditDelete",
