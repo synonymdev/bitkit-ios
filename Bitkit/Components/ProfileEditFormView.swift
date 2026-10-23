@@ -19,6 +19,9 @@ struct ProfileEditFormView<Avatar: View>: View {
     let isSaving: Bool
     let footerNote: String?
     let deleteLabel: String?
+    var deleteSectionCaption: String = t("profile__edit_delete_section")
+    var deleteIcon: String = "trash"
+    var isDeleteIconSystem: Bool = false
     let deleteActionStyle: DeleteActionStyle
     let onSave: () async -> Void
     let onCancel: () -> Void
@@ -218,12 +221,13 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     private func deleteSection(label: String, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("profile__edit_delete_section"), textColor: .white64)
+            CaptionMText(deleteSectionCaption, textColor: .white64)
 
             switch deleteActionStyle {
             case .buttonWithIcon:
                 IconActionButton(
-                    icon: "trash",
+                    icon: deleteIcon,
+                    isSystemIcon: isDeleteIconSystem,
                     title: label,
                     tint: .brandAccent,
                     accessibilityId: "ProfileEditDelete",

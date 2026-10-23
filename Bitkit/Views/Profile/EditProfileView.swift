@@ -19,6 +19,8 @@ struct EditProfileView: View {
     @State private var avatarImage: UIImage?
 
     var body: some View {
+        let isUnlink = pubkyProfile.isRingAdoptedIdentity
+
         ZStack {
             ProfileEditFormView(
                 navigationTitle: t("profile__edit_nav_title"),
@@ -31,7 +33,10 @@ struct EditProfileView: View {
                 bioPlaceholder: t("profile__create_bio_placeholder"),
                 isSaving: isSaving,
                 footerNote: t("profile__edit_public_note"),
-                deleteLabel: t("profile__delete_label"),
+                deleteLabel: isUnlink ? t("profile__unlink_label") : t("profile__delete_label"),
+                deleteSectionCaption: isUnlink ? t("profile__edit_unlink_section") : t("profile__edit_delete_section"),
+                deleteIcon: isUnlink ? "link" : "trash",
+                isDeleteIconSystem: isUnlink,
                 deleteActionStyle: .buttonWithIcon,
                 onSave: { await saveProfile() },
                 onCancel: { navigation.navigateBack() },
@@ -57,15 +62,15 @@ struct EditProfileView: View {
         .task {
             loadProfileData()
         }
-        .alert(t("profile__delete_title"), isPresented: $showDeleteConfirmation) {
-            Button(t("profile__delete_confirm"), role: .destructive) {
+        .alert(isUnlink ? t("profile__unlink_title") : t("profile__delete_title"), isPresented: $showDeleteConfirmation) {
+            Button(isUnlink ? t("profile__unlink_confirm") : t("profile__delete_confirm"), role: .destructive) {
                 Task { await deleteProfile() }
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("profile__delete_description"))
+            Text(isUnlink ? t("profile__unlink_description") : t("profile__delete_description"))
         }
-        .alert(t("profile__delete_error_title"), isPresented: $showDeleteFailureOptions) {
+        .alert(isUnlink ? t("profile__unlink_error_title") : t("profile__delete_error_title"), isPresented: $showDeleteFailureOptions) {
             Button(t("common__retry")) {
                 Task { await deleteProfile() }
             }
@@ -74,7 +79,7 @@ struct EditProfileView: View {
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("profile__delete_error_description"))
+            Text(isUnlink ? t("profile__unlink_error_description") : t("profile__delete_error_description"))
         }
     }
 
