@@ -426,7 +426,9 @@ final class SendSheetLifecycleTests: XCTestCase {
         let prompt = ScanPromptState()
         let root = SendPresentationHarness(sheets: sheets, prompt: prompt, isEmbedded: isEmbedded)
             .transformEnvironment(\.scenePhase) { value in
-                if let scenePhase { value = scenePhase }
+                if let scenePhase {
+                    value = scenePhase
+                }
             }
             .environment(PaykitPaymentRequestManager())
             .environment(HwWalletManager())
