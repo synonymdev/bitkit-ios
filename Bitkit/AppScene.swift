@@ -1488,6 +1488,7 @@ struct AppScene: View {
             mode: mode, forceFresh: forceFresh, messagePriority: messagePriority,
             refreshPriority: refreshPriority, canRefresh: canRefresh
         )
+        guard refreshed else { return false }
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
