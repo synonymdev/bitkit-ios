@@ -79,13 +79,26 @@ final class PaykitUsdtPaymentService {
     private var preparing = false
     private var stateGeneration = 0
     private var sending = false
-    private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = []
+    private var reconcilingResumableRequests: Set<PaykitPaymentRequest.ID> = []
+    private(set) var resumableRequests: Set<PaykitPaymentRequest.ID> = [] {
+        didSet {
+            if !reconciling, oldValue != resumableRequests {
+                Self.paymentProtectionChanged.send()
+            }
+        }
+    }
+
     private var releasedAttempts: [Attempt] = []
     private var boundRequestIds: Set<PaykitPaymentRequest.ID>?
 
     private nonisolated(unsafe) static let stateChanged = PassthroughSubject<Void, Never>()
     nonisolated static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
         stateChanged.eraseToAnyPublisher()
+    }
+
+    private nonisolated(unsafe) static let paymentProtectionChanged = PassthroughSubject<Void, Never>()
+    nonisolated static var paymentProtectionChangedPublisher: AnyPublisher<Void, Never> {
+        paymentProtectionChanged.eraseToAnyPublisher()
     }
 
     func backupSnapshot() throws -> PaykitUsdtStateBackup {
@@ -97,8 +110,11 @@ final class PaykitUsdtPaymentService {
     func restoreBackup(_ backup: PaykitUsdtStateBackup) throws {
         boundRequestIds = nil
         stateGeneration &+= 1
+        activeWallet = nil
+        activeIdentity = nil
         releasedAttempts = []
         resumableRequests = []
+        reconcilingResumableRequests = []
         var state = try load()
         for attempt in try backup.attempts.map({ try $0.restored() }) {
             if let index = state.attempts.firstIndex(where: { $0.wallet == attempt.wallet && $0.quoteId == attempt.quoteId }) {
@@ -120,6 +136,18 @@ final class PaykitUsdtPaymentService {
         try save(state)
     }
 
+    func resetForWipe() {
+        stateGeneration &+= 1
+        activeWallet = nil
+        activeIdentity = nil
+        boundRequestIds = nil
+        releasedAttempts = []
+        resumableRequests = []
+        reconcilingResumableRequests = []
+        publish(State())
+        Self.paymentProtectionChanged.send()
+    }
+
     func send(_ quote: UsdtQuote, context: ContactPaymentContext, paymentTerms: PaykitRequestPricing.Payment?,
               wallet: UsdtWalletManager, authorize: @escaping @MainActor () async throws -> Void) async throws
     {
@@ -128,7 +156,7 @@ final class PaykitUsdtPaymentService {
         sending = true
         stateGeneration += 1
         defer { sending = false }
-        try setPaymentStarted(quoteId: quote.id, started: true)
+        let wasResumable = try setPaymentStarted(quoteId: quote.id, started: true)
         do {
             try await wallet.send(quote, submissionDeadline: submissionDeadline) {
                 do {
@@ -144,29 +172,38 @@ final class PaykitUsdtPaymentService {
                         else { throw PaykitPaymentRequestError.amountMismatch }
                     }
                 } catch {
-                    try? self.setPaymentStarted(quoteId: quote.id, started: false)
+                    _ = try? self.setPaymentStarted(quoteId: quote.id, started: false, resumable: wasResumable)
                     throw error
                 }
             }
         } catch {
             // Core persists signed operations before broadcast. Only this completed send can establish non-submission.
             if !(error is CancellationError), await (try? wallet.storedTransfer(quote.id) == nil) == true {
-                try? setPaymentStarted(quoteId: quote.id, started: false)
+                _ = try? setPaymentStarted(quoteId: quote.id, started: false, resumable: wasResumable)
             }
             throw error
         }
     }
 
-    private func setPaymentStarted(quoteId: String, started: Bool) throws {
+    @discardableResult
+    private func setPaymentStarted(quoteId: String, started: Bool, resumable: Bool = false) throws -> Bool {
         var state = try load()
         guard let index = state.attempts.firstIndex(where: {
             $0.quoteId == quoteId && $0.wallet == activeWallet && $0.identity == activeIdentity
         }) else { throw PaykitPaymentRequestError.requestUnavailable }
         state.attempts[index].paymentStarted = started
-        if started, let id = state.attempts[index].requestId {
-            resumableRequests.remove(id)
+        let requestId = state.attempts[index].requestId
+        let wasResumable = requestId.map { resumableRequests.contains($0) || reconcilingResumableRequests.contains($0) } ?? false
+        if let requestId {
+            if started {
+                resumableRequests.remove(requestId)
+                reconcilingResumableRequests.remove(requestId)
+            } else if resumable {
+                resumableRequests.insert(requestId)
+            }
         }
         try save(state)
+        return wasResumable
     }
 
     private func load() throws -> State {
@@ -179,6 +216,7 @@ final class PaykitUsdtPaymentService {
         try Keychain.upsert(key: .paykitUsdtPayments, data: JSONEncoder().encode(state))
         publish(state)
         Self.stateChanged.send()
+        Self.paymentProtectionChanged.send()
     }
 
     private func publish(_ state: State) {
@@ -201,7 +239,9 @@ final class PaykitUsdtPaymentService {
     {
         var inFlight = Set<PaykitPaymentRequest.ID>()
         var completed: [PaykitPaymentRequest.ID: PaykitPaymentProofKind] = [:]
-        for attempt in try load().attempts where PubkyPublicKeyFormat.matches(attempt.identity, identity) && !attempt.proofQueued {
+        for attempt in try load().attempts where PubkyPublicKeyFormat.matches(attempt.identity, identity) &&
+            (activeWallet == nil || attempt.wallet == activeWallet) && !attempt.proofQueued
+        {
             guard let id = attempt.requestId,
                   attempt.wallet != activeWallet || !PubkyPublicKeyFormat.matches(activeIdentity, identity) || !resumableRequests.contains(id)
             else { continue }
@@ -298,6 +338,10 @@ final class PaykitUsdtPaymentService {
             else { throw PaykitPaymentRequestError.amountMismatch }
         }
         let owner = wallet.address.lowercased()
+        if activeWallet != owner || activeIdentity != identity {
+            resumableRequests = []
+            reconcilingResumableRequests = []
+        }
         activeWallet = owner
         activeIdentity = identity
         let binding: UsdtPaymentProofBinding?
@@ -349,7 +393,6 @@ final class PaykitUsdtPaymentService {
             current.attempts.append(attempt)
         }
         releasedAttempts = []
-        resumableRequests = []
         try save(current)
     }
 
@@ -358,6 +401,7 @@ final class PaykitUsdtPaymentService {
             boundRequestIds = nil
             releasedAttempts = []
             resumableRequests = []
+            reconcilingResumableRequests = []
             return
         }
         await reconcile(
@@ -384,15 +428,27 @@ final class PaykitUsdtPaymentService {
     ) async {
         guard !reconciling, !sending, !preparing else { return }
         let generation = stateGeneration
+        let previousProtection = (activeWallet, activeIdentity, resumableRequests)
         reconciling = true
-        defer { reconciling = false }
+        defer {
+            resumableRequests.formUnion(reconcilingResumableRequests)
+            reconcilingResumableRequests = []
+            reconciling = false
+            if !previousProtection.2.isEmpty || previousProtection != (activeWallet, activeIdentity, resumableRequests) {
+                Self.paymentProtectionChanged.send()
+            }
+        }
         boundRequestIds = nil
         releasedAttempts = []
+        reconcilingResumableRequests = resumableRequests
         resumableRequests = []
         do {
             try Task.checkCancellation()
             guard let (owner, identity) = try await context() else { return }
             guard stateGeneration == generation else { return }
+            if activeWallet != owner || activeIdentity != identity {
+                reconcilingResumableRequests = []
+            }
             activeWallet = owner
             activeIdentity = identity
             let state = try load()
@@ -414,6 +470,8 @@ final class PaykitUsdtPaymentService {
                     let unexecuted = (transfer == nil && !attempt.paymentStarted) || transfer?.status == .failed || transfer?.status == .replaced
                     if unexecuted, attempt.proof == nil, !attempt.proofQueued {
                         released.append(attempt)
+                    } else {
+                        reconcilingResumableRequests.remove(requestId)
                     }
                     guard !attempt.proofQueued, let binding = attempt.binding,
                           attempt.proof != nil || transfer?.status == .confirmed else { continue }
@@ -461,6 +519,7 @@ final class PaykitUsdtPaymentService {
                 $0.wallet == owner && $0.identity == identity && !releasedAttempts.contains($0)
             }
             resumableRequests = Set(releasedAttempts.compactMap(\.requestId)).subtracting(protected.compactMap(\.requestId))
+            reconcilingResumableRequests = []
             publish(currentState)
             try Task.checkCancellation()
             for record in try await paymentRequests() where record.localRole == .payee {

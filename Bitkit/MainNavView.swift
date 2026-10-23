@@ -865,8 +865,10 @@ struct MainNavView: View {
                     )
                 }
             } catch {
-                Logger.error(error, context: "Failed to read data from clipboard")
-                showScanError()
+                if !(error is CancellationError) {
+                    Logger.error(error, context: "Failed to read data from clipboard")
+                    showScanError()
+                }
             }
 
             // Clear stored URI after processing
@@ -988,6 +990,8 @@ struct MainNavView: View {
                     sheetViewModel: sheets
                 )
             }
+        } catch is CancellationError {
+            return
         } catch {
             Logger.error(error, context: "Failed to handle deeplink")
             showScanError()
