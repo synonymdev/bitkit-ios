@@ -1828,6 +1828,7 @@
 "usdt__track_bridge" = "Śledź dostarczenie między sieciami";
 "usdt__replaced" = "Zastąpiona inną płatnością";
 "usdt__receive_title" = "Otrzymaj dolary";
+"usdt__receive_copied" = "Adres skopiowany do schowka.\nUpewnij się, że USDT jest wysyłany tylko przez wybraną sieć.";
 "usdt__send_title" = "Wyślij USDT";
 "usdt__deposit_attention" = "Ta wpłata wymaga pomocy dostawcy. Skontaktuj się z pomocą Bitkit i podaj identyfikator wpłaty.";
 "usdt__deposit_cost" = "Szacowane potrącenie (USDT)";

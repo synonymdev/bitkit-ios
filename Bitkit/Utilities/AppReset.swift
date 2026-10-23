@@ -65,6 +65,7 @@ enum AppReset {
 
         // Wipe keychain
         try Keychain.wipeEntireKeychain()
+        PaykitUsdtPaymentService.shared.resetForWipe()
 
         // Delete installation marker so next install can detect orphaned keychain
         try? InstallationMarker.delete()

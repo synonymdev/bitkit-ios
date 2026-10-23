@@ -17,6 +17,7 @@ struct CopyAddressCard: View {
     @Binding var navigationPath: [ReceiveRoute]
     var editRoute: ReceiveRoute?
     var accentColor: Color?
+    var copyMessage: String?
     var onShare: (() -> Void)?
     @State private var showTooltipForIndex: Int? = nil
 
@@ -87,7 +88,8 @@ struct CopyAddressCard: View {
                             Spacer()
                                 .frame(height: 60) // Position below address text
 
-                            Tooltip(text: t("wallet__receive_copied"))
+                            Tooltip(text: copyMessage ?? t("wallet__receive_copied"))
+                                .multilineTextAlignment(.center)
                                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
