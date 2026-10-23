@@ -346,8 +346,8 @@ enum PubkyService {
         try await PaykitSdkService.shared.uploadAvatar(bytes: bytes, contentType: contentType, expectedIdentity: expectedIdentity)
     }
 
-    static func deletePaykitProfile() async throws {
-        try await PaykitSdkService.shared.deletePaykitProfile()
+    static func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
+        try await PaykitSdkService.shared.deletePaykitProfile(expectedIdentity: expectedIdentity)
     }
 
     // MARK: - Contacts
@@ -804,8 +804,11 @@ actor PaykitSdkService {
         return record.uri
     }
 
-    func deletePaykitProfile() async throws {
+    func deletePaykitProfile(expectedIdentity: String? = nil) async throws {
         try await withStateRevisionTracking { sdk in
+            if let expectedIdentity {
+                try await Self.requireSignedInIdentity(expectedIdentity, in: sdk)
+            }
             guard let publicKey = try await sdk.identityStatus()?.publicKey else { throw PubkyServiceError.sessionNotActive }
             guard let current = try await sdk.fetchPaykitProfile(publicKey: publicKey) else { return }
             try await sdk.deletePaykitProfile(expectedRevision: current.revision)
@@ -1236,7 +1239,10 @@ actor PaykitSdkService {
         allowanceId: String,
         expectedProposalStreamItemId: UInt64
     ) async throws -> Paykit.AllowanceRecord {
-        try await withStateRevisionTracking(priority: .interactive) { sdk in
+        // Checked under the SDK lock, right before the write: profile deletion sets the flag before its own SDK work.
+        try await withStateRevisionTracking(priority: .interactive, admit: {
+            guard await !PrivatePaykitService.shared.isDeletingProfile else { throw PubkyServiceError.sessionNotActive }
+        }) { sdk in
             try await sdk.acceptAllowance(
                 counterparty: counterparty,
                 allowanceId: allowanceId,
@@ -1562,6 +1568,7 @@ actor PaykitSdkService {
     private func withStateRevisionTracking<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
         deferDuringPayment: Bool = false,
+        admit: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
         try await withSdk(priority: priority, deferDuringPayment: deferDuringPayment) { sdk in
@@ -1581,6 +1588,7 @@ actor PaykitSdkService {
                         guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
                         try Task.checkCancellation()
                     }
+                    try await admit()
                 },
                 operation: { try await operation(sdk) }
             )

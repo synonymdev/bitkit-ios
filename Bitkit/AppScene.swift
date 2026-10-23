@@ -660,7 +660,10 @@ struct AppScene: View {
                 else { return }
                 paykitPaymentRequestManager.startEligibleTargetRefresh(publicKey: completion.publicKey)
             }
-            .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
+            .onReceive(PaykitPaymentProofService.proofStateChangedPublisher
+                .merge(with: PaykitUsdtPaymentService.paymentProtectionChangedPublisher)
+                .receive(on: DispatchQueue.main))
+            {
                 paykitProofRefresh.invalidate(session: pubkyProfile.currentSession)
             }
             .onChange(of: pubkyProfile.currentSession) { _, session in
@@ -1435,6 +1438,12 @@ struct AppScene: View {
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
+            let isAutomaticSession = { pubkyProfile.automaticPaykitSession == session && !pubkyProfile.isDeletingProfile }
+            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers(
+                canContinue: { canRefresh() && isAutomaticSession() },
+                canAnnounce: isAutomaticSession
+            )
+            announceAcceptedAllowanceOffers(acceptedOffers)
             // A request whose manual sheet is already open stays with the user.
             let manualRequestId = incomingPaymentRequestPreparation.flatMap { $0.ownsSheet(sheets) ? $0.request?.id : nil }
             let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(
@@ -2007,6 +2016,16 @@ struct AppScene: View {
         }
     }
 
+    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
+        for offer in offers {
+            let title = t("subscriptions__allowance_offer_accepted_title")
+            let description = t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(offer.counterparty)])
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
+            })
+        }
+    }
+
     private func contactName(_ publicKey: String) -> String {
         contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }?.displayName
             ?? PubkyPublicKeyFormat.displayTruncated(publicKey)
@@ -2029,7 +2048,7 @@ struct AppScene: View {
 
     private func retryPendingPaykitEndpointRemoval() async {
         guard let session = pubkyProfile.automaticPaykitSession else { return }
-        await ContactPaymentsService.reconcilePendingEndpoints {
+        await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
             guard pubkyProfile.automaticPaykitSession == session else { return }
             let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
             await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
@@ -2039,7 +2058,7 @@ struct AppScene: View {
             if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
                 PublicPaykitService.setCleanupPending(true)
             }
-
+        }) {
             if PublicPaykitService.isCleanupPending, pubkyProfile.automaticPaykitSession == session {
                 do {
                     switch PublicPaykitService.pendingReconciliationMode() {

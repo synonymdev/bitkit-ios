@@ -34,3 +34,19 @@ the journey environment does not provide on an isolated stack. The failing and r
 callback (the send failure screen with a retry that succeeds once the callback is healthy) therefore
 has no journey here yet. `payment-requests/definite-pre-broadcast-retry.xml` covers it for a
 Payment Request on a wallet that has that balance.
+
+## Scanner presentation lifecycle
+
+`scanner-pay-lifecycle.xml` covers variable and fixed LNURL payment screens opened from the home
+scanner, including repeated close/reopen and fractional-satoshi amounts. It needs a usable funded
+regtest channel and the regular `lnurl-server` generator on port 23000; it stops before authorizing
+any payment. Its setup is separate from the unfunded capacity-warning journey above.
+
+Before scanning, record whether Quick Pay is enabled, disable it and verify it is off. Fixed LNURLs
+can otherwise pay automatically. Leave the amount and daily limits unchanged, close every payment
+sheet before cleanup, and restore the original enabled state after the journey.
+
+`send-scanner-pay-lifecycle.xml` uses the same funded setup to scan from inside ordinary Send,
+retain the variable amount when returning from confirmation, then open a fresh fixed-amount flow.
+Production-host unit tests additionally force content recreation and verify route, draft and
+presentation-end cleanup, including closing while Send content is temporarily absent.

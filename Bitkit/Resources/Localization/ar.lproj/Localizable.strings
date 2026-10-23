@@ -1248,6 +1248,7 @@
 "usdt__track_bridge" = "تتبّع التسليم عبر الشبكات";
 "usdt__replaced" = "استُبدل بدفعة أخرى";
 "usdt__receive_title" = "استلام الدولارات";
+"usdt__receive_copied" = "تم نسخ العنوان إلى الحافظة.\nتأكد من إرسال USDT على الشبكة المحددة فقط.";
 "usdt__send_title" = "إرسال USDT";
 "usdt__deposit_attention" = "يحتاج هذا الإيداع إلى مساعدة من المزود. تواصل مع دعم Bitkit وأرفق مرجع الإيداع.";
 "usdt__deposit_cost" = "الخصم المقدّر (USDT)";
@@ -1602,6 +1603,7 @@
 "subscriptions__allowance_status_active" = "نشط";
 "subscriptions__allowance_status_waiting" = "بانتظار الرد";
 "subscriptions__allowance_status_needs_answer" = "بانتظار ردك";
+"subscriptions__allowance_status_setting_up" = "جارٍ إعداد المخصص";
 "subscriptions__allowance_status_scheduled" = "غير نشط بعد";
 "subscriptions__allowance_status_expired" = "منتهي الصلاحية";
 "subscriptions__allowance_status_declined" = "مرفوض";
@@ -1625,6 +1627,8 @@
 "subscriptions__allowance_payment_in_progress" = "يجري دفع هذا الطلب بالفعل.";
 "subscriptions__allowance_executed_title" = "تم تنفيذ الدفع";
 "subscriptions__allowance_executed_description" = "أرسل الدفع التلقائي {amount} إلى {name}";
+"subscriptions__allowance_offer_accepted_title" = "تمت إضافة مخصص";
+"subscriptions__allowance_offer_accepted_description" = "أعدّ {name} مخصصًا لك";
 "subscriptions__allowance_limit_title" = "تم بلوغ الحد";
 "subscriptions__allowance_limit_description" = "طلب بقيمة {amount} من {name} يتجاوز مخصصك. راجعه للدفع.";
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";

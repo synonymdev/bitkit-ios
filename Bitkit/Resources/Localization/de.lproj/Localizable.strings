@@ -1815,6 +1815,7 @@
 "usdt__track_bridge" = "Netzübergreifende Zustellung verfolgen";
 "usdt__replaced" = "Durch andere Zahlung ersetzt";
 "usdt__receive_title" = "Dollar empfangen";
+"usdt__receive_copied" = "Adresse in die Zwischenablage kopiert.\nStelle sicher, dass USDT nur über das ausgewählte Netzwerk gesendet wird.";
 "usdt__send_title" = "USDT senden";
 "usdt__deposit_attention" = "Diese Einzahlung erfordert Unterstützung durch den Anbieter. Wende dich mit der Einzahlungsreferenz an den Bitkit-Support.";
 "usdt__deposit_cost" = "Geschätzter Abzug (USDT)";
@@ -1922,6 +1923,7 @@
 "subscriptions__allowance_status_active" = "Aktiv";
 "subscriptions__allowance_status_waiting" = "Wartet auf Antwort";
 "subscriptions__allowance_status_needs_answer" = "Wartet auf deine Antwort";
+"subscriptions__allowance_status_setting_up" = "Kontingent wird eingerichtet";
 "subscriptions__allowance_status_scheduled" = "Noch nicht aktiv";
 "subscriptions__allowance_status_expired" = "Abgelaufen";
 "subscriptions__allowance_status_declined" = "Abgelehnt";
@@ -1945,6 +1947,8 @@
 "subscriptions__allowance_payment_in_progress" = "Diese Anforderung wird bereits bezahlt.";
 "subscriptions__allowance_executed_title" = "Zahlung ausgeführt";
 "subscriptions__allowance_executed_description" = "Auto-Pay hat {amount} an {name} gesendet";
+"subscriptions__allowance_offer_accepted_title" = "Kontingent hinzugefügt";
+"subscriptions__allowance_offer_accepted_description" = "{name} hat ein Kontingent für dich eingerichtet";
 "subscriptions__allowance_limit_title" = "Limit erreicht";
 "subscriptions__allowance_limit_description" = "Eine Anforderung über {amount} von {name} übersteigt dein Kontingent. Prüfe sie, um zu bezahlen.";
 "subscriptions__allowance_auto_paid" = "Automatisch bezahlt";

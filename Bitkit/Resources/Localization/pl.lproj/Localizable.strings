@@ -1828,6 +1828,7 @@
 "usdt__track_bridge" = "Śledź dostarczenie między sieciami";
 "usdt__replaced" = "Zastąpiona inną płatnością";
 "usdt__receive_title" = "Otrzymaj dolary";
+"usdt__receive_copied" = "Adres skopiowany do schowka.\nUpewnij się, że USDT jest wysyłany tylko przez wybraną sieć.";
 "usdt__send_title" = "Wyślij USDT";
 "usdt__deposit_attention" = "Ta wpłata wymaga pomocy dostawcy. Skontaktuj się z pomocą Bitkit i podaj identyfikator wpłaty.";
 "usdt__deposit_cost" = "Szacowane potrącenie (USDT)";
@@ -1935,6 +1936,7 @@
 "subscriptions__allowance_status_active" = "Aktywny";
 "subscriptions__allowance_status_waiting" = "Czeka na odpowiedź";
 "subscriptions__allowance_status_needs_answer" = "Czeka na Twoją odpowiedź";
+"subscriptions__allowance_status_setting_up" = "Konfigurowanie przydziału";
 "subscriptions__allowance_status_scheduled" = "Jeszcze nieaktywny";
 "subscriptions__allowance_status_expired" = "Wygasł";
 "subscriptions__allowance_status_declined" = "Odrzucony";
@@ -1958,6 +1960,8 @@
 "subscriptions__allowance_payment_in_progress" = "To żądanie jest już opłacane.";
 "subscriptions__allowance_executed_title" = "Płatność wykonana";
 "subscriptions__allowance_executed_description" = "Autopłatność wysłała {amount} do {name}";
+"subscriptions__allowance_offer_accepted_title" = "Przydział dodany";
+"subscriptions__allowance_offer_accepted_description" = "Użytkownik {name} ustawił dla Ciebie przydział";
 "subscriptions__allowance_limit_title" = "Osiągnięto limit";
 "subscriptions__allowance_limit_description" = "Żądanie {amount} od {name} przekracza Twój przydział. Przejrzyj je, aby zapłacić.";
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";

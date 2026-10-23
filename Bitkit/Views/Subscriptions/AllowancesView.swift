@@ -24,9 +24,9 @@ struct AllowancesTab: View {
             LazyVStack(spacing: 12) {
                 ForEach(allowances.entries) { entry in
                     Button {
-                        let route: SubscriptionSheetItem.Route = entry.primary.isAnswerable
-                            ? .allowanceReview(entry)
-                            : .allowanceDetail(entry)
+                        // An allower's offer is accepted in the background, so only an ask opens the review sheet.
+                        let needsDecision = entry.allowances.contains { $0.isAnswerable && !$0.isOfferFromAllower }
+                        let route: SubscriptionSheetItem.Route = needsDecision ? .allowanceReview(entry) : .allowanceDetail(entry)
                         sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: route))
                     } label: {
                         AllowanceRow(entry: entry, now: context.date)
@@ -117,7 +117,9 @@ struct AllowanceRow: View {
         case .awaitingAnswer:
             return t("subscriptions__allowance_status_waiting")
         case .awaitingMyAnswer:
-            return t("subscriptions__allowance_status_needs_answer")
+            return entry.primary.isOfferFromAllower
+                ? t("subscriptions__allowance_status_setting_up")
+                : t("subscriptions__allowance_status_needs_answer")
         case .notYetActive:
             return t("subscriptions__allowance_status_scheduled")
         case .expired:
@@ -764,7 +766,9 @@ struct AllowanceDetailView: View {
         case .awaitingAnswer:
             t("subscriptions__allowance_status_waiting")
         case .awaitingMyAnswer:
-            t("subscriptions__allowance_status_needs_answer")
+            current.primary.isOfferFromAllower
+                ? t("subscriptions__allowance_status_setting_up")
+                : t("subscriptions__allowance_status_needs_answer")
         case .notYetActive:
             t("subscriptions__allowance_status_scheduled")
         case .expired:

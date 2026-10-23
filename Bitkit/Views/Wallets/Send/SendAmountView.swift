@@ -199,11 +199,11 @@ struct SendAmountView: View {
 
                     NumberPadActionButton(
                         text: selectedSourceLabel,
-                        imageName: canSwitchFundingSource ? "arrow-up-down" : nil,
+                        trailingImageName: canSwitchFundingSource ? "chevron-down" : nil,
                         titleKerning: app.paykitUsesUsdt ? 1 : 0.8,
                         titleLineHeight: app.paykitUsesUsdt ? 18 : nil,
                         color: selectedSourceColor,
-                        variant: canSwitchFundingSource ? .primary : .secondary,
+                        variant: .secondary,
                         disabled: isContinuing,
                         isLoading: hwSend.isFundingSourceLoading
                     ) {

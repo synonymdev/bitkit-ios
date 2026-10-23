@@ -631,7 +631,10 @@ struct SubscriptionSheet: View {
             case let .cancel(subscription):
                 cancel(subscription)
             case let .payment(sendRoute):
-                SendSheet(config: SendSheetItem(initialRoute: sendRoute), isEmbedded: true)
+                SendSheet(
+                    config: SendSheetItem(presentationID: sheets.activeSheetConfiguration?.presentationID, initialRoute: sendRoute),
+                    isEmbedded: true
+                )
             case .allowanceContact:
                 AllowanceContactView { route = .allowanceSet($0) }
             case let .allowanceSet(contact):

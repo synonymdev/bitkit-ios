@@ -1788,6 +1788,7 @@
 "usdt__track_bridge" = "Segui la consegna tra reti";
 "usdt__replaced" = "Sostituito da un altro pagamento";
 "usdt__receive_title" = "Ricevi Dollari";
+"usdt__receive_copied" = "Indirizzo copiato negli appunti.\nAssicurati che USDT venga inviato solo sulla rete selezionata.";
 "usdt__send_title" = "Invia USDT";
 "usdt__deposit_attention" = "Questo deposito richiede l'intervento del fornitore. Contatta il supporto Bitkit indicando il riferimento del deposito.";
 "usdt__deposit_cost" = "Detrazione stimata (USDT)";
@@ -1895,6 +1896,7 @@
 "subscriptions__allowance_status_active" = "Attivo";
 "subscriptions__allowance_status_waiting" = "In attesa di risposta";
 "subscriptions__allowance_status_needs_answer" = "In attesa della tua risposta";
+"subscriptions__allowance_status_setting_up" = "Configurazione del Plafond";
 "subscriptions__allowance_status_scheduled" = "Non ancora attivo";
 "subscriptions__allowance_status_expired" = "Scaduto";
 "subscriptions__allowance_status_declined" = "Rifiutato";
@@ -1918,6 +1920,8 @@
 "subscriptions__allowance_payment_in_progress" = "Questa richiesta è già in fase di pagamento.";
 "subscriptions__allowance_executed_title" = "Pagamento Eseguito";
 "subscriptions__allowance_executed_description" = "Il pagamento automatico ha inviato {amount} a {name}";
+"subscriptions__allowance_offer_accepted_title" = "Plafond Aggiunto";
+"subscriptions__allowance_offer_accepted_description" = "{name} ha impostato un Plafond per te";
 "subscriptions__allowance_limit_title" = "Limite Raggiunto";
 "subscriptions__allowance_limit_description" = "Una richiesta di {amount} da {name} supera il tuo plafond. Controllala per pagare.";
 "subscriptions__allowance_auto_paid" = "Pagato automaticamente";

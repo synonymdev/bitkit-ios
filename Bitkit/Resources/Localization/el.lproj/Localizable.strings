@@ -1549,6 +1549,7 @@
 "usdt__track_bridge" = "Παρακολούθηση παράδοσης μεταξύ δικτύων";
 "usdt__replaced" = "Αντικαταστάθηκε από άλλη πληρωμή";
 "usdt__receive_title" = "Λήψη δολαρίων";
+"usdt__receive_copied" = "Η διεύθυνση αντιγράφηκε στο πρόχειρο.\nΒεβαιώσου ότι το USDT αποστέλλεται μόνο μέσω του επιλεγμένου δικτύου.";
 "usdt__send_title" = "Αποστολή USDT";
 "usdt__deposit_attention" = "Αυτή η κατάθεση χρειάζεται βοήθεια από τον πάροχο. Επικοινώνησε με την υποστήριξη του Bitkit δίνοντας την αναφορά της κατάθεσης.";
 "usdt__deposit_cost" = "Εκτιμώμενη κράτηση (USDT)";
@@ -1657,6 +1658,7 @@
 "subscriptions__allowance_status_active" = "Ενεργή";
 "subscriptions__allowance_status_waiting" = "Αναμονή απάντησης";
 "subscriptions__allowance_status_needs_answer" = "Αναμένεται η απάντησή σου";
+"subscriptions__allowance_status_setting_up" = "Γίνεται ρύθμιση της προέγκρισης";
 "subscriptions__allowance_status_scheduled" = "Δεν είναι ακόμη ενεργή";
 "subscriptions__allowance_status_expired" = "Έληξε";
 "subscriptions__allowance_status_declined" = "Απορρίφθηκε";
@@ -1680,6 +1682,8 @@
 "subscriptions__allowance_payment_in_progress" = "Αυτό το αίτημα πληρώνεται ήδη.";
 "subscriptions__allowance_executed_title" = "Η πληρωμή εκτελέστηκε";
 "subscriptions__allowance_executed_description" = "Η αυτόματη πληρωμή έστειλε {amount} σε {name}";
+"subscriptions__allowance_offer_accepted_title" = "Η προέγκριση προστέθηκε";
+"subscriptions__allowance_offer_accepted_description" = "Ο χρήστης {name} όρισε μια προέγκριση για εσάς";
 "subscriptions__allowance_limit_title" = "Το όριο εξαντλήθηκε";
 "subscriptions__allowance_limit_description" = "Ένα αίτημα {amount} από {name} υπερβαίνει την προέγκρισή σου. Έλεγξέ το για να πληρώσεις.";
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";
