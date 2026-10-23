@@ -1235,6 +1235,7 @@
 "profile__edit_saved" = "Perfil atualizado";
 "profile__pubky_copied" = "pubky copiada para a área de transferência";
 "profile__edit_delete_section" = "EXCLUIR";
+"profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Observe que as informações do perfil são armazenadas em arquivos públicos.";
 "profile__delete_title" = "Excluir Perfil?";
 "profile__delete_description" = "Excluir seu perfil o remove do Pubky. Os contatos ainda podem manter informações de perfil e de pagamento compartilhadas anteriormente com eles.";
@@ -1242,6 +1243,12 @@
 "profile__delete_error_title" = "Não Foi Possível Excluir o Perfil";
 "profile__delete_error_description" = "Não conseguimos excluir os dados do seu perfil. Tente novamente ou desconecte esta pubky da Bitkit.";
 "profile__delete_label" = "Excluir Perfil";
+"profile__unlink_title" = "Desvincular pubky?";
+"profile__unlink_description" = "Isso excluirá seus dados do Paykit e desvinculará esta pubky da Bitkit. Ela continuará disponível no Pubky Ring.";
+"profile__unlink_confirm" = "Sim, Desvincular";
+"profile__unlink_error_title" = "Não Foi Possível Desvincular a Pubky";
+"profile__unlink_error_description" = "Não conseguimos excluir seus dados do Paykit. Tente novamente ou desconecte esta pubky da Bitkit.";
+"profile__unlink_label" = "Desvincular pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar Contatos";
 "profile__pay_contacts_title" = "Deixe seus contatos\n<accent>pagarem você</accent>";

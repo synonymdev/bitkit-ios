@@ -1230,6 +1230,7 @@
 "profile__edit_saved" = "Profiel bijgewerkt";
 "profile__pubky_copied" = "pubky gekopieerd naar klembord";
 "profile__edit_delete_section" = "VERWIJDEREN";
+"profile__edit_unlink_section" = "ONTKOPPELEN";
 "profile__edit_public_note" = "Let op: profielgegevens worden opgeslagen in openbare bestanden.";
 "profile__delete_title" = "Profiel verwijderen?";
 "profile__delete_description" = "Als u uw profiel verwijdert, wordt het van Pubky verwijderd. Contacten kunnen eerder gedeelde profiel- en betaalgegevens nog bewaren.";
@@ -1237,6 +1238,12 @@
 "profile__delete_error_title" = "Kan profiel niet verwijderen";
 "profile__delete_error_description" = "We konden uw profielgegevens niet verwijderen. Probeer het opnieuw, of ontkoppel deze pubky van Bitkit.";
 "profile__delete_label" = "Profiel verwijderen";
+"profile__unlink_title" = "pubky ontkoppelen?";
+"profile__unlink_description" = "Hiermee worden uw Paykit-gegevens verwijderd en wordt deze pubky losgekoppeld van Bitkit. Deze blijft beschikbaar in Pubky Ring.";
+"profile__unlink_confirm" = "Ja, ontkoppelen";
+"profile__unlink_error_title" = "Kan pubky niet ontkoppelen";
+"profile__unlink_error_description" = "We konden uw Paykit-gegevens niet verwijderen. Probeer het opnieuw, of ontkoppel deze pubky van Bitkit.";
+"profile__unlink_label" = "pubky ontkoppelen";
 "profile__edit" = "Bewerken";
 "profile__pay_contacts_nav_title" = "Contacten betalen";
 "profile__pay_contacts_title" = "Laat uw contacten\n<accent>u betalen</accent>";
