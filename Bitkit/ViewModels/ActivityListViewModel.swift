@@ -1,5 +1,6 @@
 import BitkitCore
 import Combine
+import LDKNode
 import SwiftUI
 
 enum ActivityTab: CaseIterable, CustomStringConvertible {
@@ -39,6 +40,7 @@ class ActivityListViewModel: ObservableObject {
     private let coreService: CoreService
     private let lightningService: LightningService
     private let transferService: TransferService
+    private let listPayments: () async -> [LDKNode.PaymentDetails]?
     private var searchCancellable: AnyCancellable?
     private var dateRangeCancellable: AnyCancellable?
     private var tagsCancellable: AnyCancellable?
@@ -63,11 +65,13 @@ class ActivityListViewModel: ObservableObject {
     init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        transferService: TransferService
+        transferService: TransferService,
+        listPayments: (() async -> [LDKNode.PaymentDetails]?)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.transferService = transferService
+        self.listPayments = listPayments ?? { await lightningService.listPayments() }
 
         // Setup search text subscription with debounce
         searchCancellable =
@@ -220,26 +224,20 @@ class ActivityListViewModel: ObservableObject {
             return
         }
 
-        if let ldkPayments = await lightningService.listPayments() {
-            isSyncingLdkNodePayments = true
-            do {
-                try await coreService.activity.syncLdkNodePayments(ldkPayments)
-                await syncState()
+        isSyncingLdkNodePayments = true
+        defer { isSyncingLdkNodePayments = false }
 
-                // This ensures pending transfers are marked as settled when channels become ready
-                do {
-                    try await transferService.syncTransferStates()
-                    Logger.debug("Transfer states synced after LDK payments sync", context: "ActivityListViewModel")
-                } catch {
-                    Logger.error("Failed to sync transfer states after LDK payments sync", context: error.localizedDescription)
-                    // Don't throw - we don't want to fail the entire sync if transfer sync fails
-                }
+        guard let ldkPayments = await listPayments() else { return }
+        try await coreService.activity.syncLdkNodePayments(ldkPayments)
+        await syncState()
 
-                isSyncingLdkNodePayments = false
-            } catch {
-                isSyncingLdkNodePayments = false
-                throw error
-            }
+        // This ensures pending transfers are marked as settled when channels become ready
+        do {
+            try await transferService.syncTransferStates()
+            Logger.debug("Transfer states synced after LDK payments sync", context: "ActivityListViewModel")
+        } catch {
+            Logger.error("Failed to sync transfer states after LDK payments sync", context: error.localizedDescription)
+            // Don't throw - we don't want to fail the entire sync if transfer sync fails
         }
     }
 
