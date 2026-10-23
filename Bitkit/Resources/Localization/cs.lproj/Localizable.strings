@@ -1818,6 +1818,7 @@
 "usdt__track_bridge" = "Sledovat doručení mezi sítěmi";
 "usdt__replaced" = "Nahrazeno jinou platbou";
 "usdt__receive_title" = "Přijmout dolary";
+"usdt__receive_copied" = "Adresa byla zkopírována do schránky.\nUjistěte se, že USDT posíláte pouze prostřednictvím vybrané sítě.";
 "usdt__send_title" = "Odeslat USDT";
 "usdt__deposit_attention" = "Tento vklad vyžaduje pomoc poskytovatele. Kontaktujte podporu Bitkit a uveďte referenci vkladu.";
 "usdt__deposit_cost" = "Odhadovaná srážka (USDT)";

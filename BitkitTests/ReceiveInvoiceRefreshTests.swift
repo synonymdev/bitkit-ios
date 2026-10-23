@@ -466,7 +466,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 )
             }
             await fulfillment(of: [creation.started], timeout: 5)
-            await profile.performProfileDeletion {
+            try await profile.performProfileDeletion {
                 XCTAssertEqual(profile.currentSession, session)
                 creation.release()
                 do {

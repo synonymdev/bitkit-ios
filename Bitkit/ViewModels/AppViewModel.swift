@@ -94,6 +94,7 @@ struct ScanPaymentState {
 struct ScanPaymentOperations {
     let state: () -> ScanPaymentState
     let canSendLightning: (_ amountSats: UInt64) -> Bool
+    var decodeInvoice: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -159,6 +160,9 @@ class AppViewModel: ObservableObject {
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
+    @Published private(set) var sendStateGeneration = UUID()
+    // Only a scan started inside this presentation may transfer cleanup ownership to it.
+    private(set) var sendStateOwnerID: UUID?
 
     @Published private(set) var pendingDeepLinkURL: URL?
     /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
@@ -358,7 +362,11 @@ class AppViewModel: ObservableObject {
     private let navigationViewModel: NavigationViewModel
     private let scanPaymentOperations: ScanPaymentOperations
     private let usdtBalance: () -> UInt64?
-    private var scannedDataHandlingId: UUID?
+    @Published private var scannedDataHandlingId: UUID?
+    var isHandlingScannedData: Bool {
+        scannedDataHandlingId != nil
+    }
+
     private var manualEntryValidationSequence: UInt64 = 0
 
     // Combine infrastructure for debounced validation
@@ -740,8 +748,15 @@ extension AppViewModel {
         _ uri: String,
         claimedContactPaymentContext: ContactPaymentContext? = nil,
         scope: ScanHandlingScope = .unrestricted,
-        alternativeOnchainBalanceSats: UInt64 = 0
+        alternativeOnchainBalanceSats: UInt64 = 0,
+        sendPresentationID: UUID? = nil,
+        isCurrentScan: () -> Bool = { true }
     ) async throws {
+        guard isCurrentScan(), !Task.isCancelled else { throw CancellationError() }
+        var expectedGeneration = sendStateGeneration
+        func isCurrentScanGeneration() -> Bool {
+            isCurrentScan() && sendStateGeneration == expectedGeneration
+        }
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext), scannedDataHandlingId == nil else {
@@ -757,15 +772,17 @@ extension AppViewModel {
         }
 
         if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
-            resetSendState(preservingContactPaymentContext: true)
+            resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
+            expectedGeneration = sendStateGeneration
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
-                switch try await decode(invoice: endpoint.paymentRequest) {
+                let data = try await scanPaymentOperations.decodeInvoice(endpoint.paymentRequest)
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context, isCurrentScan: isCurrentScanGeneration)
+                switch data {
                 case let .onChain(invoice): scannedOnchainInvoice = invoice
                 case let .lightning(invoice): scannedLightningInvoice = invoice
                 case let .lnurlPay(data): lnurlPayData = data
                 default: break
                 }
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
             }
             let state = scanPaymentOperations.state()
             let lightningMethod: PublicPaykitService.MethodId = lnurlPayData == nil ? .bitcoinLightningBolt11 : .bitcoinLightningLnurl
@@ -820,8 +837,12 @@ extension AppViewModel {
                 )
                 return
             }
-            let data = try await decode(invoice: uri)
-            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            let data = try await scanPaymentOperations.decodeInvoice(uri)
+            try ensureScannedDataHandlingOwnership(
+                handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScanGeneration
+            )
             guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
             prevalidatedPaymentRequest = data
         } else {
@@ -829,7 +850,8 @@ extension AppViewModel {
         }
 
         // Reset send state before handling new data
-        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil)
+        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil, ownerID: sendPresentationID)
+        expectedGeneration = sendStateGeneration
 
         if scope == .unrestricted, let samRockSetup = SamRockSetupRequest.parse(uri) {
             handleBTCPayConnection(samRockSetup)
@@ -873,8 +895,12 @@ extension AppViewModel {
         if let prevalidatedPaymentRequest {
             data = prevalidatedPaymentRequest
         } else {
-            data = try await decode(invoice: uri)
-            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            data = try await scanPaymentOperations.decodeInvoice(uri)
+            try ensureScannedDataHandlingOwnership(
+                handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScanGeneration
+            )
         }
         let paymentState = scanPaymentOperations.state()
 
@@ -903,8 +929,12 @@ extension AppViewModel {
 
             if scope != .onchainPayments, let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
-                let lightningData = try await decode(invoice: lnInvoice)
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+                let lightningData = try await scanPaymentOperations.decodeInvoice(lnInvoice)
+                try ensureScannedDataHandlingOwnership(
+                    handlingId,
+                    claimedContactPaymentContext: claimedContactPaymentContext,
+                    isCurrentScan: isCurrentScanGeneration
+                )
                 if case let .lightning(lightningInvoice) = lightningData {
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
@@ -1079,9 +1109,10 @@ extension AppViewModel {
 
     private func ensureScannedDataHandlingOwnership(
         _ handlingId: UUID,
-        claimedContactPaymentContext: ContactPaymentContext?
+        claimedContactPaymentContext: ContactPaymentContext?,
+        isCurrentScan: () -> Bool
     ) throws {
-        guard scannedDataHandlingId == handlingId else { throw CancellationError() }
+        guard scannedDataHandlingId == handlingId, isCurrentScan(), !Task.isCancelled else { throw CancellationError() }
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext) else { throw CancellationError() }
         }
@@ -1303,7 +1334,9 @@ extension AppViewModel {
         paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }
 
-    func resetSendState(preservingContactPaymentContext: Bool = false) {
+    func resetSendState(preservingContactPaymentContext: Bool = false, ownerID: UUID? = nil) {
+        sendStateOwnerID = ownerID
+        sendStateGeneration = UUID()
         paykitUsesUsdt = false
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
