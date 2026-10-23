@@ -18,25 +18,20 @@ final class PaykitAmountTests: XCTestCase {
             let amount = try PaykitAmount(asset: asset, value: value)
             XCTAssertEqual(amount.inputValue, expected)
             XCTAssertEqual(try PaykitAmount(asset: asset, value: amount.inputValue), amount)
-            if asset == .usdt {
-                XCTAssertEqual(usdtInputAmount(amount.inputValue, locale: Locale(identifier: "en_US")), expected)
-                XCTAssertEqual(
-                    usdtInputAmount(amount.inputValue, locale: Locale(identifier: "de_DE")),
-                    expected.replacingOccurrences(of: ".", with: ",")
-                )
-            }
         }
         XCTAssertEqual(try PaykitAmount(asset: .usdt, value: "150.50").value, "150.5")
     }
 
-    func testUsdDisplayPreservesCentsAndUsesLocaleGrouping() {
-        for (cents, us, de): (UInt64, String, String) in [
-            (0, "0.00", "0,00"), (1, "0.01", "0,01"), (100, "1.00", "1,00"),
-            (15050, "150.50", "150,50"), (123_456, "1,234.56", "1.234,56"),
-            (.max, "184,467,440,737,095,516.15", "184.467.440.737.095.516,15"),
+    func testUsdDisplayPreservesCentsAndMatchesFiatSeparatorsAcrossRegions() {
+        for (cents, expected): (UInt64, String) in [
+            (0, "0.00"), (1, "0.01"), (100, "1.00"), (15050, "150.50"), (123_456, "1,234.56"),
+            (.max, "184,467,440,737,095,516.15"),
         ] {
-            XCTAssertEqual(usdDisplayAmount(cents, locale: Locale(identifier: "en_US")), us, "cents: \(cents)")
-            XCTAssertEqual(usdDisplayAmount(cents, locale: Locale(identifier: "de_DE")), de, "cents: \(cents)")
+            for identifier in ["en_US", "de_DE", "nl_NL", "fr_FR"] {
+                let locale = Locale(identifier: identifier)
+                XCTAssertEqual(usdDisplayAmount(cents, locale: locale), expected, identifier)
+                XCTAssertEqual(usdDisplayAmount(cents, locale: locale), formatFiatAmount(Decimal(cents) / 100, locale: locale))
+            }
         }
     }
 

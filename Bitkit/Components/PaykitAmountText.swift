@@ -29,5 +29,5 @@ struct PaykitAmountText: View {
 }
 
 func usdDisplayAmount(_ cents: UInt64, locale: Locale = .current) -> String {
-    (Decimal(cents) / 100).formatted(.number.precision(.fractionLength(2)).locale(locale))
+    formatFiatAmount(Decimal(cents) / 100, locale: locale)
 }
