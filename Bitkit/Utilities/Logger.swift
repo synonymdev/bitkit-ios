@@ -68,18 +68,16 @@ class Logger {
         print(line)
 
         queue.async {
-            writeToFile(line)
+            writeToFile(line, logFilePath: sessionLogFile)
         }
     }
 
-    private static func writeToFile(_ message: String) {
+    static func writeToFile(_ message: String, logFilePath: String) {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
         let timestamp = dateFormatter.string(from: Date())
         let logMessage = "[\(timestamp) UTC] \(message)\n"
-
-        let logFilePath = sessionLogFile
 
         // Write to file
         if FileManager.default.fileExists(atPath: logFilePath) {
@@ -92,6 +90,9 @@ class Logger {
             }
         } else {
             do {
+                // Wallet wipes remove the parent directory while the process retains its session log path.
+                let directory = URL(fileURLWithPath: logFilePath).deletingLastPathComponent()
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 try logMessage.write(toFile: logFilePath, atomically: true, encoding: .utf8)
             } catch {
                 print("Failed to write to log file: \(error)")
