@@ -6,13 +6,14 @@
     receiving capacity. From rc.77 a channel opened by an updated app accepts up to its full value.
     Channels opened before the update keep the 10% limit.
 
-    Precondition: an onboarded regtest wallet with no Lightning channel, connected to the LSP
-    (README.md, Backend preconditions). The LSP node pays the invoices with the lsp helper (borrowed from the sibling Android checkout, see README.md).
+    Precondition: an onboarded regtest wallet with a new channel from the LSP that has receiving
+    capacity, opened on LDK Node 0.7.0-rc.77 or later, connected to the LSP (README.md, Backend
+    preconditions). This build cannot buy a channel from Blocktank (synonymdev/bitkit-ios#1097), so open
+    it on a build from before that change with an rc.77 node, with Transfer To Spending, and install this
+    build over it (README.md, Getting a Lightning channel). The LSP node pays the invoices with the lsp
+    helper (borrowed from the sibling Android checkout, see README.md).
   </description>
   <actions>
-    <action>Open Receive, create a Lightning invoice for 50 000 sats (it opens a channel from the LSP on payment) and copy the invoice</action>
-    <action>Pay it from the LSP node: ../bitkit-android/lsp POST /regtest/lightning/pay '{"invoice":"&lt;bolt11&gt;"}'</action>
-    <action>Verify the received sheet shows 50 000 sats</action>
     <action>Open Settings, then the "Advanced" tab, then "Lightning Connections", open the new connection and note its total size and receiving capacity</action>
     <action>Go back to Receive and create a Lightning invoice for an amount between 15% and 90% of the connection's total size that is also below its receiving capacity (for example 30% of the size)</action>
     <action>Pay it from the LSP node with the same helper call</action>
