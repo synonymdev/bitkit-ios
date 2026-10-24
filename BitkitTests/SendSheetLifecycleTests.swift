@@ -354,6 +354,11 @@ final class SendSheetLifecycleTests: XCTestCase {
     {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let camera = CameraManager.shared
+        let hadCameraPermission = camera.hasPermission
+        addTeardownBlock { @MainActor in camera.hasPermission = hadCameraPermission }
+        // Keep hosted navigation tests from requesting system camera permission.
+        camera.hasPermission = true
         let app = AppViewModel()
         if let lnurlPayData {
             app.lnurlPayData = lnurlPayData
@@ -372,7 +377,7 @@ final class SendSheetLifecycleTests: XCTestCase {
             .environment(PaykitPaymentRequestManager())
             .environment(HwWalletManager())
             .environment(TrezorManager())
-            .environment(CameraManager.shared)
+            .environment(camera)
             .environmentObject(app)
             .environmentObject(wallet)
             .environmentObject(NetworkMonitor())
