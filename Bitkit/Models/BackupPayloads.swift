@@ -13,6 +13,7 @@ struct WalletBackupV1: Codable {
     let watchOnlyAccountAllocationState: WatchOnlyAccountAllocationState?
     var usdtWallet: String? = nil
     var paykitPaymentState: PaykitPaymentStateBackup? = nil
+    var publicPaykitLegacyAddresses: [String]? = nil
 }
 
 struct MetadataBackupV1: Codable {

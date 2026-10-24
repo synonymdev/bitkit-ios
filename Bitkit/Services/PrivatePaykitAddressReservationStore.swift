@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import LDKNode
+import os
 
 actor PrivatePaykitAddressReservationStore {
     static let shared = PrivatePaykitAddressReservationStore()
@@ -13,17 +14,58 @@ actor PrivatePaykitAddressReservationStore {
 
     private static let defaultsKey = "privatePaykitAddressReservations"
     private static let schemaVersion = 1
+    static let legacyPublicAddressesKey = "publicPaykitLegacyAddresses"
+
+    struct AddressOperations {
+        var next: (LDKNode.AddressType) async throws -> LightningService.AddressDerivationInfo
+        var resolve: (LDKNode.AddressType, UInt32) async throws -> String
+        var reveal: (LDKNode.AddressType, UInt32) async throws -> Void
+        var isUsed: (String) async throws -> Bool
+
+        static let live = AddressOperations(
+            next: { try await LightningService.shared.newAddressInfoForType($0) },
+            resolve: { try await LightningService.shared.addressInfoForType($0, atIndex: $1).address },
+            reveal: { try await LightningService.shared.revealReceiveAddresses(to: $1, forType: $0) },
+            isUsed: { try await CoreService.shared.utility.isAddressUsed(address: $0) }
+        )
+    }
 
     private let defaults: UserDefaults
+    private let operations: AddressOperations
+    private nonisolated let publicAssignmentRevision = OSAllocatedUnfairLock(initialState: UUID())
     private(set) var attributionRevision: UInt64 = 0
     private var ledger: Ledger {
-        didSet { attributionRevision &+= 1 }
+        didSet {
+            attributionRevision &+= 1
+            if ledger.publicAssignments != oldValue.publicAssignments {
+                publicAssignmentRevision.withLock { $0 = UUID() }
+            }
+        }
+    }
+
+    struct PublicAddressSnapshot: Sendable {
+        let address: String
+        let publicKey: String
+        private let revision: UUID
+        private let revisionState: OSAllocatedUnfairLock<UUID>
+
+        init(address: String, publicKey: String, revision: UUID, revisionState: OSAllocatedUnfairLock<UUID>) {
+            self.address = address
+            self.publicKey = publicKey
+            self.revision = revision
+            self.revisionState = revisionState
+        }
+
+        func withCurrentReservation(_ acknowledge: (Bool) -> Void) {
+            revisionState.withLock { acknowledge($0 == revision) }
+        }
     }
 
     // MARK: - Initialization
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, operations: AddressOperations = .live) {
         self.defaults = defaults
+        self.operations = operations
 
         if let data = defaults.data(forKey: Self.defaultsKey),
            let decoded = Self.decodeStoredLedger(data)
@@ -45,24 +87,31 @@ actor PrivatePaykitAddressReservationStore {
         return highestReservedReceiveIndexByAddressType
     }
 
-    func restoreBackup(_ highestReservedReceiveIndexByAddressType: [String: UInt32]?) {
-        guard let highestReservedReceiveIndexByAddressType else {
-            ledger = .empty
-            persist()
-            return
+    func legacyPublicAddressesSnapshot() -> [String]? {
+        let addresses = defaults.stringArray(forKey: Self.legacyPublicAddressesKey) ?? []
+        return addresses.isEmpty ? nil : addresses
+    }
+
+    func restoreBackup(_ highestReservedReceiveIndexByAddressType: [String: UInt32]?, legacyPublicAddresses: [String]? = nil) {
+        let legacyAddresses = Set(legacyPublicAddressesSnapshot() ?? []).union(legacyPublicAddresses ?? [])
+        defaults.set(legacyAddresses.sorted(), forKey: Self.legacyPublicAddressesKey)
+        var ceilings = self.highestReservedReceiveIndexByAddressType()
+        for (addressType, ceiling) in highestReservedReceiveIndexByAddressType ?? [:] {
+            ceilings[addressType] = max(ceilings[addressType] ?? 0, ceiling)
         }
 
+        // An older backup cannot release addresses that this wallet already exposed.
         ledger = Ledger(
             version: Self.schemaVersion,
             reservedReceiveIndexesByAddressType: [:],
             contactAssignments: [:],
             contactAssignmentHistory: [:],
-            restoredReservedReceiveIndexCeilingsByAddressType: highestReservedReceiveIndexByAddressType
+            restoredReservedReceiveIndexCeilingsByAddressType: ceilings
         )
         persist()
 
-        if !highestReservedReceiveIndexByAddressType.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "onchainAddress")
+        if !ceilings.isEmpty || !legacyAddresses.isEmpty {
+            defaults.removeObject(forKey: "onchainAddress")
         }
     }
 
@@ -106,7 +155,7 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func currentOrRotatedAddress(for publicKey: String) async throws -> String {
-        let assignmentKey = try Self.contactAssignmentKey(publicKey: publicKey)
+        let assignmentKey = try Self.normalizedPublicKey(publicKey)
         if let existing = try await reservedAddressDetails(forAssignmentKey: assignmentKey) {
             guard isAddressTypeMonitored(existing.addressType) else {
                 clearCurrentContactAssignment(assignmentKey: assignmentKey)
@@ -114,7 +163,7 @@ actor PrivatePaykitAddressReservationStore {
             }
 
             do {
-                let isUsed = try await CoreService.shared.utility.isAddressUsed(address: existing.address)
+                let isUsed = try await operations.isUsed(existing.address)
                 if !isUsed {
                     return existing.address
                 }
@@ -128,6 +177,57 @@ actor PrivatePaykitAddressReservationStore {
         }
 
         return try await allocateAddress(forAssignmentKey: assignmentKey)
+    }
+
+    func currentOrRotatedPublicAddress(for publicKey: String) async throws -> String {
+        try await currentOrRotatedPublicAddressSnapshot(for: publicKey).address
+    }
+
+    func currentOrRotatedPublicAddressSnapshot(for publicKey: String) async throws -> PublicAddressSnapshot {
+        let key = try Self.normalizedPublicKey(publicKey)
+        let revision = publicAssignmentRevision.withLock { $0 }
+        if let assignment = ledger.publicAssignments?[key],
+           let addressType = LDKNode.AddressType.from(string: assignment.addressType),
+           isAddressTypeMonitored(addressType)
+        {
+            let address = try await address(for: addressType, receiveIndex: assignment.receiveIndex)
+            if try await !operations.isUsed(address) {
+                return PublicAddressSnapshot(address: address, publicKey: key, revision: revision, revisionState: publicAssignmentRevision)
+            }
+        }
+
+        let addressType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
+        let receiveAddress = reusableOnchainAddress
+        try await prepareReusableReceive(addressType: addressType)
+        var info = try await nextAvailableAddressInfo(addressType: addressType)
+        if info.address == receiveAddress || info.address == reusableOnchainAddress {
+            try await reconcileAddressTypeWithLdk(addressType, highestReserved: info.index)
+            let previousIndex = info.index
+            info = try await nextAvailableAddressInfo(addressType: addressType)
+            guard info.index > previousIndex, info.address != receiveAddress, info.address != reusableOnchainAddress else {
+                throw AppError(message: "Unable to reserve public payment address", debugMessage: nil)
+            }
+        }
+        try Task.checkCancellation()
+        reserve(info.index, addressType: addressType)
+        var assignments = ledger.publicAssignments ?? [:]
+        assignments[key] = StoredAssignment(addressType: addressType.stringValue, receiveIndex: info.index)
+        ledger.publicAssignments = assignments
+        persist()
+        markWalletBackupDataChanged()
+        return PublicAddressSnapshot(
+            address: info.address, publicKey: key,
+            revision: publicAssignmentRevision.withLock { $0 }, revisionState: publicAssignmentRevision
+        )
+    }
+
+    func isCurrentPublicAddressUsed(for publicKey: String) async throws -> Bool {
+        let key = try Self.normalizedPublicKey(publicKey)
+        guard let assignment = ledger.publicAssignments?[key],
+              let addressType = LDKNode.AddressType.from(string: assignment.addressType)
+        else { return false }
+        let address = try await address(for: addressType, receiveIndex: assignment.receiveIndex)
+        return try await operations.isUsed(address)
     }
 
     private func reservedAddressDetails(forAssignmentKey assignmentKey: String) async throws -> (address: String, addressType: LDKNode.AddressType)? {
@@ -179,7 +279,7 @@ actor PrivatePaykitAddressReservationStore {
             else { continue }
 
             do {
-                if try await CoreService.shared.utility.isAddressUsed(address: address) {
+                if try await operations.isUsed(address) {
                     publicKeys.append(assignmentKey)
                 }
             } catch {
@@ -212,18 +312,14 @@ actor PrivatePaykitAddressReservationStore {
     func nextNonReservedReceiveAddress(addressType: LDKNode.AddressType) async throws -> String {
         try await prepareReusableReceive(addressType: addressType)
 
-        let addressInfo = try await LightningService.shared.newAddressInfoForType(addressType)
-        guard !isUnavailableForReusableReceive(receiveIndex: addressInfo.index, addressType: addressType) else {
-            throw AppError(
-                message: "Unable to generate receive address",
-                debugMessage: "LDK returned unavailable receive index \(addressInfo.index) after reservation reconciliation"
-            )
-        }
-
+        let addressInfo = try await nextAvailableAddressInfo(addressType: addressType)
         return addressInfo.address
     }
 
     func isUnavailableForReusableReceive(address: String, addressType: LDKNode.AddressType) async -> Bool {
+        if legacyPublicAddressesSnapshot()?.contains(address) == true {
+            return true
+        }
         guard !address.isEmpty,
               addressType.matchesAddressFormat(address, network: Env.network)
         else { return false }
@@ -242,6 +338,9 @@ actor PrivatePaykitAddressReservationStore {
 
     func isUnavailableForReusableReceive(address: String) async -> Bool {
         guard !address.isEmpty else { return false }
+        if legacyPublicAddressesSnapshot()?.contains(address) == true {
+            return true
+        }
 
         for addressTypeString in highestReservedReceiveIndexByAddressType().keys {
             guard let addressType = LDKNode.AddressType.from(string: addressTypeString),
@@ -281,6 +380,7 @@ actor PrivatePaykitAddressReservationStore {
     // MARK: - Cleanup
 
     func clear() {
+        defaults.removeObject(forKey: Self.legacyPublicAddressesKey)
         ledger = .empty
         defaults.removeObject(forKey: Self.defaultsKey)
         markWalletBackupDataChanged()
@@ -332,22 +432,14 @@ actor PrivatePaykitAddressReservationStore {
     // MARK: - Private Address Allocation
 
     private func allocateAddress(forAssignmentKey assignmentKey: String) async throws -> String {
-        let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        let addressType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
         let addressTypeKey = addressType.stringValue
 
         try await prepareReusableReceive(addressType: addressType)
 
-        let addressInfo = try await LightningService.shared.newAddressInfoForType(addressType)
-        guard !isUnavailableForReusableReceive(receiveIndex: addressInfo.index, addressType: addressType) else {
-            throw AppError(
-                message: "Unable to reserve private Paykit address",
-                debugMessage: "LDK returned unavailable receive index \(addressInfo.index) after reservation reconciliation"
-            )
-        }
+        let addressInfo = try await nextAvailableAddressInfo(addressType: addressType)
 
-        var reserved = ledger.reservedReceiveIndexesByAddressType[addressTypeKey] ?? []
-        reserved.insert(addressInfo.index)
-        ledger.reservedReceiveIndexesByAddressType[addressTypeKey] = reserved
+        reserve(addressInfo.index, addressType: addressType)
 
         let assignment = StoredAssignment(
             addressType: addressTypeKey,
@@ -362,6 +454,27 @@ actor PrivatePaykitAddressReservationStore {
         return addressInfo.address
     }
 
+    private func reserve(_ index: UInt32, addressType: LDKNode.AddressType) {
+        ledger.reservedReceiveIndexesByAddressType[addressType.stringValue, default: []].insert(index)
+    }
+
+    private func nextAvailableAddressInfo(addressType: LDKNode.AddressType) async throws -> LightningService.AddressDerivationInfo {
+        var info = try await operations.next(addressType)
+        while legacyPublicAddressesSnapshot()?.contains(info.address) == true {
+            reserve(info.index, addressType: addressType)
+            persist()
+            markWalletBackupDataChanged()
+            try await reconcileAddressTypeWithLdk(addressType, highestReserved: info.index)
+            let previousIndex = info.index
+            info = try await operations.next(addressType)
+            guard info.index > previousIndex else { throw AppError(message: "Unable to advance reserved payment address", debugMessage: nil) }
+        }
+        guard !isUnavailableForReusableReceive(receiveIndex: info.index, addressType: addressType) else {
+            throw AppError(message: "Unable to allocate reserved payment address", debugMessage: nil)
+        }
+        return info
+    }
+
     private func rememberContactAssignmentForAttribution(assignmentKey: String, assignment: StoredAssignment) {
         var history = ledger.contactAssignmentHistory[assignmentKey] ?? []
         guard !history.contains(assignment) else { return }
@@ -373,19 +486,18 @@ actor PrivatePaykitAddressReservationStore {
     // MARK: - LDK Address Index APIs
 
     private func reconcileAddressTypeWithLdk(_ addressType: LDKNode.AddressType, highestReserved: UInt32) async throws {
-        try await LightningService.shared.revealReceiveAddresses(to: highestReserved, forType: addressType)
+        try await operations.reveal(addressType, highestReserved)
     }
 
     private func address(for addressType: LDKNode.AddressType, receiveIndex: UInt32) async throws -> String {
-        let addressInfo = try await LightningService.shared.addressInfoForType(addressType, atIndex: receiveIndex)
-        return addressInfo.address
+        try await operations.resolve(addressType, receiveIndex)
     }
 
     private static func assignmentKey(_ assignment: StoredAssignment) -> String {
         "\(assignment.addressType):\(assignment.receiveIndex)"
     }
 
-    private static func contactAssignmentKey(publicKey: String) throws -> String {
+    private static func normalizedPublicKey(_ publicKey: String) throws -> String {
         guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
             throw PrivatePaykitError.privateUnavailable
         }
@@ -395,7 +507,7 @@ actor PrivatePaykitAddressReservationStore {
     // MARK: - Cached Receive Address
 
     private var reusableOnchainAddress: String {
-        UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
+        defaults.string(forKey: "onchainAddress") ?? ""
     }
 
     private func ensureReusableOnchainAddress(afterReserving reservedAddress: String, addressType: LDKNode.AddressType) async {
@@ -407,9 +519,9 @@ actor PrivatePaykitAddressReservationStore {
 
         do {
             let replacement = try await nextNonReservedReceiveAddress(addressType: addressType)
-            UserDefaults.standard.set(replacement, forKey: "onchainAddress")
+            defaults.set(replacement, forKey: "onchainAddress")
         } catch {
-            UserDefaults.standard.set("", forKey: "onchainAddress")
+            defaults.set("", forKey: "onchainAddress")
             Logger.warn("Failed to refresh reusable receive address after private Paykit reservation: \(error)", context: "PrivatePaykit")
         }
     }
@@ -419,7 +531,7 @@ actor PrivatePaykitAddressReservationStore {
         guard !reusableAddress.isEmpty else { return }
 
         if await isUnavailableForReusableReceive(address: reusableAddress) {
-            UserDefaults.standard.set("", forKey: "onchainAddress")
+            defaults.set("", forKey: "onchainAddress")
         }
     }
 
@@ -465,6 +577,7 @@ actor PrivatePaykitAddressReservationStore {
         var contactAssignments: [String: StoredAssignment]
         var contactAssignmentHistory: [String: [StoredAssignment]]
         var restoredReservedReceiveIndexCeilingsByAddressType: [String: UInt32]
+        var publicAssignments: [String: StoredAssignment]?
     }
 
     private struct StoredAssignment: Codable, Equatable {

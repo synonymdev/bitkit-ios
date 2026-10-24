@@ -1,4 +1,5 @@
 @testable import Bitkit
+import os
 import XCTest
 
 @MainActor
@@ -74,9 +75,43 @@ final class WalletViewModelReceiveTests: XCTestCase {
             forceRefreshBolt11: Bool,
             includeOnchain: Bool,
             includeLightning: Bool
-        ) async throws -> (onchainAddress: String, bolt11: String) {
+        ) async throws -> PublicPaykitEndpoints {
             publicEndpointRefreshCount += 1
             throw PublicPaykitError.walletNotReady
+        }
+    }
+
+    func testPublicEndpointUsesReservedAddressWithoutChangingOrdinaryReceive() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky" + String(repeating: "y", count: 52)
+        profile.authState = .authenticated
+        let wallet = ReservedReceiveWallet(pubkyProfile: profile)
+        wallet.onchainAddress = "ordinary-receive"
+        let endpoints = try await wallet.refreshPublicPaykitEndpoints(includeLightning: false)
+        XCTAssertEqual(endpoints.onchainAddress, "public-reservation")
+        XCTAssertEqual(wallet.onchainAddress, "ordinary-receive")
+        XCTAssertEqual(wallet.reservationOwner, profile.publicKey)
+    }
+
+    private final class ReservedReceiveWallet: WalletViewModel {
+        var reservationOwner: String?
+        override func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore
+            .PublicAddressSnapshot
+        {
+            reservationOwner = publicKey
+            let revision = UUID()
+            return .init(
+                address: "public-reservation", publicKey: publicKey,
+                revision: revision, revisionState: OSAllocatedUnfairLock(initialState: revision)
+            )
+        }
+
+        override func refreshReusableOnchainAddress() async throws -> String {
+            XCTFail("Public endpoints must not prepare an ordinary Receive address")
+            return "ordinary-receive"
         }
     }
 }

@@ -2893,10 +2893,11 @@ final class PrivatePaykitServiceTests: XCTestCase {
             try await ContactPaymentsService.setEnabled(
                 false, contactPublicKeys: [publicKey], canUsePrivatePayments: true,
                 operations: .init(
-                    syncPublicEndpoints: { publish, _ in
-                        XCTAssertFalse(publish)
+                    syncPublicEndpoints: { _, _ in XCTFail("Private withdrawal must not change public endpoints") },
+                    syncPrivateCapability: { enabled, _ in
+                        XCTAssertFalse(enabled)
                         XCTAssertEqual(registryUpdates, 1)
-                        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+                        XCTAssertFalse(PublicPaykitService.isCleanupPending)
                     },
                     preparePrivateEndpoints: { _, _, _ in XCTFail("OFF must not publish"); return nil },
                     removePrivateEndpoints: { _ in try await service.removePublishedEndpoints(operations: cleanup) },
@@ -2906,10 +2907,10 @@ final class PrivatePaykitServiceTests: XCTestCase {
             )
         }
         await fulfillment(of: [withdrawing], timeout: 2)
-        XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
         XCTAssertFalse(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
         XCTAssertTrue(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
-        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
         XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
         XCTAssertEqual(PrivatePaykitService.fullCleanupReconciliationMode(), .removePublishedState)
 
