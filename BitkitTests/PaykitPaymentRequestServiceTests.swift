@@ -8710,9 +8710,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testProposalDefaultsToAvailableMethodsAndHonorsRestrictions() async throws {
-        let originalPreference = UserDefaults.standard.object(forKey: UsdtPreference.key)
+        snapshotAppDefaultsDomain()
         UserDefaults.standard.set(UsdtPreference.enabled.rawValue, forKey: UsdtPreference.key)
-        defer { UserDefaults.standard.set(originalPreference, forKey: UsdtPreference.key) }
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let onchain = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh).rawValue
         let lightning = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue

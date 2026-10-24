@@ -88,7 +88,9 @@ final class AddContactViewTests: XCTestCase {
             .environmentObject(SheetViewModel())
             .environmentObject(WalletViewModel())
             .environment(HwWalletManager())
+            .preferredColorScheme(.dark)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.overrideUserInterfaceStyle = .dark
         window.rootViewController = UIHostingController(rootView: view)
         window.makeKeyAndVisible()
         return window
