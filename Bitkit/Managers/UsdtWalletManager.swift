@@ -153,7 +153,6 @@ final class UsdtWalletManager {
             do {
                 balance = try await wallet.balance()
                 transfers = try await wallet.refreshTransfers()
-                recoveryGeneration &+= 1
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -307,7 +306,6 @@ final class UsdtWalletManager {
             guard let transfer = try wallet.history().first(where: { $0.id == id }) else { throw UsdtError.InvalidBackup }
             guard transfer.status == .pending else { return }
             transfers = try await wallet.refreshTransfers()
-            recoveryGeneration &+= 1
         }
     }
 
@@ -520,6 +518,7 @@ final class UsdtWalletManager {
             try usdtAddress(mnemonic: credentials.0, passphrase: credentials.1)
         }
         let path = storageDirectory.appendingPathComponent("usdt-\(address).sqlite").path
+        let backup = UsdtVssBackup { [weak self] in self?.recoveryGeneration &+= 1 }
         let wallet = try await ServiceQueue.background(.core, wrapErrors: false) {
             try UsdtWallet(
                 address: address,
@@ -527,7 +526,7 @@ final class UsdtWalletManager {
                 rpcUrl: rpcUrl,
                 bundlerUrl: bundlerUrl,
                 bridgeUrl: Env.usdtBridgesUrl,
-                backup: UsdtVssBackup()
+                backup: backup
             )
         }
         self.address = wallet.receiveAddress()
@@ -604,10 +603,21 @@ extension String {
     }
 }
 
-private final class UsdtVssBackup: UsdtBackup, @unchecked Sendable {
+final class UsdtVssBackup: UsdtBackup, @unchecked Sendable {
+    private let persistSnapshot: @Sendable (String) async throws -> Void
+    private let onAcknowledged: @MainActor @Sendable () -> Void
+
+    init(persistSnapshot: @escaping @Sendable (String) async throws -> Void = {
+        try await BackupService.shared.persistUsdtRecoveryBackup(snapshot: $0)
+    }, onAcknowledged: @escaping @MainActor @Sendable () -> Void) {
+        self.persistSnapshot = persistSnapshot
+        self.onAcknowledged = onAcknowledged
+    }
+
     func persist(snapshot: String) async throws {
         do {
-            try await BackupService.shared.persistUsdtRecoveryBackup(snapshot: snapshot)
+            try await persistSnapshot(snapshot)
+            await onAcknowledged()
         } catch {
             Logger.error(PaykitResolutionFailureDiagnostics.reason(for: error), context: "USDT recovery backup failed")
             throw UsdtError.BackupUnavailable

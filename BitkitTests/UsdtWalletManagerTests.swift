@@ -77,7 +77,7 @@ final class UsdtWalletManagerTests: XCTestCase {
         wallet.backupUnavailable = false
         try await manager.retryTransfer("original")
         XCTAssertEqual(manager.transfers.map(\.id), ["original"])
-        XCTAssertEqual(manager.recoveryGeneration, 1)
+        XCTAssertEqual(manager.recoveryGeneration, 0, "A refresh without a backup callback is not an acknowledgement")
         XCTAssertEqual(wallet.refreshCalls, 2)
 
         do {
@@ -87,7 +87,27 @@ final class UsdtWalletManagerTests: XCTestCase {
         wallet.transfers = [transfer("original", incoming: false)]
         try await manager.retryTransfer("original")
         XCTAssertEqual(wallet.refreshCalls, 2, "A settled operation must not be recovered again")
-        XCTAssertEqual(manager.recoveryGeneration, 1)
+        XCTAssertEqual(manager.recoveryGeneration, 0, "A refresh without a backup callback is not an acknowledgement")
+    }
+
+    func testRecoveryGenerationRequiresAnAcknowledgedBackupCallback() async throws {
+        var acknowledgements = 0
+        let failed = UsdtVssBackup(persistSnapshot: { _ in throw UsdtError.NetworkUnavailable }) {
+            acknowledgements += 1
+        }
+        do {
+            try await failed.persist(snapshot: "original")
+            XCTFail("Unacknowledged recovery must remain retryable")
+        } catch UsdtError.BackupUnavailable {}
+        XCTAssertEqual(acknowledgements, 0)
+
+        let succeeded = UsdtVssBackup(persistSnapshot: { snapshot in
+            XCTAssertEqual(snapshot, "original")
+        }) {
+            acknowledgements += 1
+        }
+        try await succeeded.persist(snapshot: "original")
+        XCTAssertEqual(acknowledgements, 1)
     }
 
     func testOfflineBackupDoesNotCreateAnUnusedWalletAndPreservesRestoredHistory() async throws {
