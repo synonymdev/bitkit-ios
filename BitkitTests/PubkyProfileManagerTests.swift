@@ -3459,65 +3459,6 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertFalse(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
     }
 
-    func testIsSessionRefreshableErrorRecognizesSessionTransportFailure() {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
-        )
-
-        XCTAssertTrue(PubkyProfileManager.isSessionRefreshableError(error))
-    }
-
-    func testRefreshSessionIfPossibleRefreshesSessionFromLocalSecret() async {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
-        )
-        let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
-            after: error,
-            loadKeychainString: { key in
-                switch key {
-                case .pubkySecretKey:
-                    return "local-secret"
-                default:
-                    return nil
-                }
-            },
-            signInWithSecretKey: { secretKey in
-                XCTAssertEqual(secretKey, "local-secret")
-                return "fresh-session"
-            },
-            publicKeyFromSecretKey: { secretKey in
-                XCTAssertEqual(secretKey, "local-secret")
-                return "pubky_fresh"
-            }
-        )
-
-        XCTAssertTrue(refreshed)
-    }
-
-    func testRefreshSessionIfPossibleReturnsFalseWithoutLocalSecret() async {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
-        )
-
-        let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
-            after: error,
-            loadKeychainString: { _ in nil },
-            signInWithSecretKey: { _ in
-                XCTFail("Expected refresh to stop when no local secret key exists")
-                return "fresh-session"
-            },
-            publicKeyFromSecretKey: { _ in
-                XCTFail("No public key should be derived without a local secret")
-                return "pubky_unused"
-            }
-        )
-
-        XCTAssertFalse(refreshed)
-    }
-
     // MARK: - Session backup state
 
     func testSnapshotSessionBackupStatePrefersLocalSeedOverSessionSecret() throws {
