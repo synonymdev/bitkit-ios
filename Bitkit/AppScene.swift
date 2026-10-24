@@ -1023,10 +1023,6 @@ struct AppScene: View {
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
-            if !PaykitFeatureFlags.isUIEnabled {
-                await retryPendingPaykitEndpointRemoval()
-            }
-
             // Start watching pending orders after wallet is ready
             await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
 
@@ -2069,7 +2065,7 @@ struct AppScene: View {
                 do {
                     switch PublicPaykitService.pendingReconciliationMode() {
                     case .publishEndpoints:
-                        try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: wallet) {
+                        try await wallet.syncReceivePublicPaykitEndpoints {
                             !Task.isCancelled && pubkyProfile.automaticPaykitSession == session &&
                                 PublicPaykitService.pendingReconciliationMode() == .publishEndpoints
                         }

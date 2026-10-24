@@ -1649,14 +1649,8 @@ class WalletViewModel: ObservableObject {
             receiveCommitID = UUID()
             isReceiveInvoiceUpdating = false
 
-            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints,
-               await !PrivatePaykitService.shared.isDeletingProfile
-            {
-                do {
-                    try await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
-                } catch {
-                    Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
-                }
+            if syncPublicPaykit, isSessionCurrent() {
+                PublicPaykitService.queueEndpointReconciliation()
             }
         } catch {
             guard receiveRefreshID == refreshID else {
