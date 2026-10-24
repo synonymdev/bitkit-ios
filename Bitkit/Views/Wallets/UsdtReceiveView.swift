@@ -195,9 +195,12 @@ struct UsdtReceiveAddressContent: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            if !uri.isEmpty {
-                if showDetails {
+        if !uri.isEmpty, !showDetails {
+            QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
+                   copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
+        } else {
+            ScrollView(showsIndicators: false) {
+                if !uri.isEmpty {
                     CopyAddressCard(
                         addresses: [CopyAddressPair(title: network + " " + t("wallet__activity_address"), address: address, type: .onchain,
                                                     shareText: shareText)],
@@ -209,16 +212,14 @@ struct UsdtReceiveAddressContent: View {
                     )
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtReceiveAddress")
+                } else if let error {
+                    BodySText(error, textColor: .brandAccent)
                 } else {
-                    QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
+                    ProgressView()
                 }
-            } else if let error {
-                BodySText(error, textColor: .brandAccent)
-            } else {
-                ProgressView()
             }
         }
+        Spacer(minLength: 0)
         CustomButton(
             title: networkTitle,
             variant: .secondary,
