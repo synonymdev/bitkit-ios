@@ -1010,6 +1010,112 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduledInitializationReturnsWhilePendingAndSharesAwaitedRecovery() async {
+        let manager = RecoveryProfileManager()
+        manager.publicKey = "previous-identity"
+        manager.authState = .authenticated
+        let started = expectation(description: "retained initialization started")
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        manager.scheduleInitializationAfterRestore {
+            started.fulfill()
+            for await _ in stream {}
+            return .restored(publicKey: "restored-identity")
+        }
+        XCTAssertTrue(manager.isRestoringSession)
+        XCTAssertNil(manager.currentSession)
+        XCTAssertNil(manager.automaticPaykitSession)
+        XCTAssertEqual(manager.authState, .idle)
+        await fulfillment(of: [started], timeout: 2)
+        manager.scheduleInitializationAfterRestore {
+            XCTFail("Overlapping scheduling must share the retained operation")
+            return .noSession
+        }
+        let waiting = Task {
+            await manager.initialize {
+                XCTFail("Awaited initialization must share the retained operation")
+                return .noSession
+            }
+        }
+        await Task.yield()
+        release.finish()
+        await waiting.value
+        XCTAssertEqual(manager.publicKey, "restored-identity")
+        XCTAssertFalse(manager.isRestoringSession)
+    }
+
+    @MainActor
+    func testScheduledInitializationCannotApplyAfterIdentityReplacement() async throws {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "scheduled initialization started")
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        manager.scheduleInitializationAfterRestore {
+            started.fulfill()
+            for await _ in stream {}
+            return .restored(publicKey: "old-identity")
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let completion = Task { await manager.initialize { .noSession } }
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil,
+            deleteKeychainValue: { _ in },
+            removeOwnSharedRecords: {},
+            forgetSessionAccess: {
+                release.finish()
+                await completion.value
+            }
+        )
+        XCTAssertNil(manager.currentSession)
+        XCTAssertEqual(manager.authState, .idle)
+        XCTAssertFalse(manager.isRestoringSession)
+    }
+
+    @MainActor
+    func testRestoreSchedulingWaitsForStaleInitializationThenActivatesCurrentCredentialsOnce() async throws {
+        let manager = RecoveryProfileManager()
+        let oldStarted = expectation(description: "old initialization started")
+        let newStarted = expectation(description: "current credentials activated")
+        let (oldStream, releaseOld) = AsyncStream<Void>.makeStream()
+        defer { releaseOld.finish() }
+        let old = Task {
+            await manager.initialize {
+                oldStarted.fulfill()
+                for await _ in oldStream {}
+                return .restored(publicKey: "old-identity")
+            }
+        }
+        await fulfillment(of: [oldStarted], timeout: 2)
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil,
+            deleteKeychainValue: { _ in },
+            removeOwnSharedRecords: {},
+            forgetSessionAccess: {}
+        )
+        let (newStream, releaseNew) = AsyncStream<Void>.makeStream()
+        defer { releaseNew.finish() }
+        manager.scheduleInitializationAfterRestore {
+            newStarted.fulfill()
+            for await _ in newStream {}
+            return .restored(publicKey: "new-identity")
+        }
+        XCTAssertNil(manager.currentSession)
+        releaseOld.finish()
+        await old.value
+        await fulfillment(of: [newStarted], timeout: 2)
+        let waiting = Task {
+            await manager.initialize {
+                XCTFail("Current activation must be shared")
+                return .noSession
+            }
+        }
+        await Task.yield()
+        releaseNew.finish()
+        await waiting.value
+        XCTAssertEqual(manager.publicKey, "new-identity")
+    }
+
+    @MainActor
     func testRecoveryWaitsForStartupAndCoalescesConnectivityEvents() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")

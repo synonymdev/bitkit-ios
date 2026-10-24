@@ -3,6 +3,88 @@ import Paykit
 import XCTest
 
 final class PrivatePaykitServiceTests: XCTestCase {
+    @MainActor
+    func testUnresolvedStoredIdentityCannotReplaceCompleteWalletBackup() async throws {
+        let sdk = BackupIdentitySdk(noPointer: .init())
+        let sdkService = PaykitSdkService(sdkFactory: { sdk })
+        let privateService = PrivatePaykitService()
+        let suite = "PendingIdentityBackup.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var remote = Data("complete-wallet".utf8)
+        var uploads = 0
+        let backup = BackupService(defaults: defaults, backupData: { _ in
+            let snapshot = try await privateService.backupSnapshot(sdkService: sdkService, hasStoredIdentity: { true })
+            return Data((snapshot.state ?? "null").utf8)
+        }, uploadBackup: { _, data in
+            uploads += 1
+            remote = data
+        })
+        await backup.triggerBackup(category: .wallet)
+        XCTAssertEqual(remote, Data("complete-wallet".utf8))
+        XCTAssertEqual(uploads, 0)
+        XCTAssertTrue(backup.getBackupStatus(category: .wallet).isRequired)
+        XCTAssertEqual(sdk.exportCount, 0)
+
+        sdk.publicKey = "restored-identity"
+        await backup.triggerBackup(category: .wallet)
+        XCTAssertEqual(uploads, 1)
+        XCTAssertTrue(String(decoding: remote, as: UTF8.self).contains("fresh-sdk-backup"))
+        XCTAssertFalse(backup.getBackupStatus(category: .wallet).isRequired)
+        backup.setWiping(true)
+        await backup.stopObservingBackups()
+    }
+
+    func testNoIdentityCanProduceEmptyPrivateBackupButUnreadableIdentityCannot() async throws {
+        let sdk = BackupIdentitySdk(noPointer: .init())
+        let sdkService = PaykitSdkService(sdkFactory: { sdk })
+        let service = PrivatePaykitService()
+        let empty = try await service.backupSnapshot(sdkService: sdkService, hasStoredIdentity: { false })
+        XCTAssertNil(empty.state)
+        do {
+            _ = try await service.backupSnapshot(sdkService: sdkService, hasStoredIdentity: {
+                throw PubkyServiceError.sessionNotActive
+            })
+            XCTFail("Unreadable identity must not become an empty backup")
+        } catch PubkyServiceError.sessionNotActive {}
+        XCTAssertEqual(sdk.exportCount, 0)
+    }
+
+    @MainActor
+    func testMalformedStoredCredentialsCannotProduceIdentityFreeBackup() async throws {
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
+        let savedValues = try keys.map { try Keychain.load(key: $0) }
+        let savedReference = AdoptedPubkyReference.current
+        addTeardownBlock {
+            AdoptedPubkyReference.current = savedReference
+            for (key, data) in zip(keys, savedValues) {
+                if let data {
+                    try Keychain.upsert(key: key, data: data)
+                } else {
+                    try Keychain.delete(key: key)
+                }
+            }
+        }
+        AdoptedPubkyReference.current = nil
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        let sdk = BackupIdentitySdk(noPointer: .init())
+        let sdkService = PaykitSdkService(sdkFactory: { sdk })
+        let service = PrivatePaykitService()
+        for key in keys {
+            try Keychain.upsert(key: key, data: Data([0xFF]))
+            do {
+                _ = try await service.backupSnapshot(sdkService: sdkService)
+                XCTFail("Malformed stored credential must prevent an identity-free backup: \(key)")
+            } catch PubkyServiceError.sessionNotActive {}
+            try Keychain.delete(key: key)
+        }
+        XCTAssertEqual(sdk.exportCount, 0)
+        let empty = try await service.backupSnapshot(sdkService: sdkService)
+        XCTAssertNil(empty.state)
+    }
+
     override func setUp() {
         super.setUp()
         // Constructing `PrivatePaykitService` and mutating it writes the real cache state, injecting
@@ -3165,5 +3247,27 @@ private extension PrivatePaykitService {
 
     func clearTestPendingMessageDrainRetries() {
         invalidateContactPreparation()
+    }
+}
+
+private final class BackupIdentitySdk: PaykitSdk, @unchecked Sendable {
+    var publicKey: String?
+    var exportCount = 0
+
+    override func identityStatus() async throws -> IdentityStatus? {
+        IdentityStatus(publicKey: publicKey, capability: .privateLinkCapable)
+    }
+
+    override func initialize() async throws -> IdentityStatus {
+        IdentityStatus(publicKey: publicKey, capability: .privateLinkCapable)
+    }
+
+    override func exportBackupString() async throws -> String {
+        exportCount += 1
+        return "fresh-sdk-backup"
+    }
+
+    override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
+        nil
     }
 }
