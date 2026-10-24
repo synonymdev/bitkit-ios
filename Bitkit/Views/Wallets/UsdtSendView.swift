@@ -356,7 +356,6 @@ struct UsdtSendView: View {
             CustomDivider()
             NumberPad(
                 type: .decimal,
-                decimalSeparator: Locale.current.decimalSeparator ?? ".",
                 isDisabled: busy || embedded,
                 onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false; error = nil },
                 onPress: enterAmount

@@ -1234,6 +1234,7 @@
 "profile__edit_saved" = "Profil zaktualizowany";
 "profile__pubky_copied" = "pubky skopiowany do schowka";
 "profile__edit_delete_section" = "USUWANIE";
+"profile__edit_unlink_section" = "ODŁĄCZANIE";
 "profile__edit_public_note" = "Pamiętaj, że dane profilu są przechowywane w publicznych plikach.";
 "profile__delete_title" = "Usunąć profil?";
 "profile__delete_description" = "Usunięcie profilu usuwa go z Pubky. Kontakty mogą nadal przechowywać udostępnione im wcześniej dane profilu i płatności.";
@@ -1241,6 +1242,12 @@
 "profile__delete_error_title" = "Nie można usunąć profilu";
 "profile__delete_error_description" = "Nie udało się usunąć danych Twojego profilu. Spróbuj ponownie lub odłącz ten pubky od Bitkit.";
 "profile__delete_label" = "Usuń profil";
+"profile__unlink_title" = "Odłączyć pubky?";
+"profile__unlink_description" = "Spowoduje to usunięcie Twoich danych Paykit i odłączenie tego pubky od Bitkit. Nadal będzie dostępny w Pubky Ring.";
+"profile__unlink_confirm" = "Tak, odłącz";
+"profile__unlink_error_title" = "Nie można odłączyć pubky";
+"profile__unlink_error_description" = "Nie udało się usunąć Twoich danych Paykit. Spróbuj ponownie lub odłącz ten pubky od Bitkit.";
+"profile__unlink_label" = "Odłącz pubky";
 "profile__edit" = "Edytuj";
 "profile__pay_contacts_nav_title" = "Płać kontaktom";
 "profile__pay_contacts_title" = "Pozwól kontaktom\n<accent>płacić Ci</accent>";
@@ -1816,7 +1823,6 @@
 "usdt__failed" = "Niepowodzenie";
 "usdt__fee_note" = "Wszystkie opłaty są płacone w USDT. Ostateczna opłata może być niższa.";
 "usdt__hide_details" = "Ukryj szczegóły";
-"usdt__history_sync" = "Starsza aktywność wciąż się synchronizuje. Saldo jest aktualne, gdy połączenie jest dostępne.";
 "usdt__network_warning" = "Wybierz sieć używaną przez odbiorcę. Wysłanie na adres w niewłaściwej sieci może skutkować utratą środków.";
 "usdt__pending" = "W toku";
 "usdt__received" = "Otrzymano";

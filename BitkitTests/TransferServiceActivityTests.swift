@@ -440,8 +440,67 @@ final class TransferServiceActivityTests: XCTestCase {
         for _ in 0 ..< 30 where path.isEmpty {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        XCTAssertEqual(path, [.success(paymentId: txid, walletId: walletId)], "Consumed publisher must not strand durable verified Pending")
+        XCTAssertEqual(path, [.recoveredSuccess(paymentId: txid, walletId: walletId)], "Consumed publisher must not strand durable verified Pending")
         XCTAssertEqual(wallet.sendAmountSats, 9999)
+    }
+
+    @MainActor
+    func testRecoveredSuccessUsesOriginalWalletActivityWithoutReadingTheNewDraft() async throws {
+        let txid = String(repeating: "ab", count: 32)
+        let originalWallet = "trezor:original-ios-wallet"
+        let otherWallet = WalletScope.default
+        for (walletId, amount) in [(originalWallet, UInt64(10000)), (otherWallet, UInt64(30000))] {
+            try await activity.insert(.onchain(OnchainActivity(
+                walletId: walletId, id: txid, txType: .sent, txId: txid, value: amount, fee: 143, feeRate: 1,
+                address: "bcrt1qoriginal", confirmed: false, timestamp: 1, isBoosted: false, boostTxIds: [],
+                isTransfer: false, doesExist: true, confirmTimestamp: nil, channelId: nil, transferTxId: nil,
+                contact: nil, createdAt: 1, updatedAt: 1, seenAt: 1
+            )))
+        }
+        for index in 0 ..< 51 {
+            try await activity.insert(.onchain(OnchainActivity(
+                walletId: originalWallet, id: "newer-\(index)", txType: .sent, txId: "newer-\(index)", value: 500,
+                fee: 143, feeRate: 1, address: "bcrt1qnewer", confirmed: false, timestamp: UInt64(index + 100),
+                isBoosted: false, boostTxIds: [], isTransfer: false, doesExist: true, confirmTimestamp: nil,
+                channelId: nil, transferTxId: nil, contact: nil, createdAt: UInt64(index + 100),
+                updatedAt: UInt64(index + 100), seenAt: UInt64(index + 100)
+            )))
+        }
+        let newest = try await activity.get(filter: .all, limit: 50, walletId: originalWallet)
+        XCTAssertFalse(newest.contains { item in
+            guard case let .onchain(onchain) = item else { return false }
+            return onchain.txId == txid
+        }, "Fixture must exercise recovery outside the newest activity page")
+        do {
+            _ = try await SendSuccess.findRecoveredActivity(paymentId: txid, walletId: "trezor:absent")
+            XCTFail("Recovery crossed wallet scope")
+        } catch {}
+        do {
+            _ = try await SendSuccess.findRecoveredActivity(paymentId: "absent", walletId: originalWallet)
+            XCTFail("Recovery used another transaction")
+        } catch {}
+        let confirmed = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let received = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmed
+            Bitkit.LightningService.shared.onchainTransactionReceived = received
+        }
+        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: MemoryAttemptStore()))
+        wallet.sendAmountSats = 20000
+        var draftReads = 0
+        func draftAmount() -> Int? {
+            draftReads += 1
+            return wallet.sendAmountSats.map(Int.init)
+        }
+        XCTAssertNil(SendSuccess.displayAmountSats(isRecoveredPayment: true, activity: nil, draftAmount: draftAmount()))
+        for (walletId, expected) in [(originalWallet, 10000), (otherWallet, 30000)] {
+            let original = try await SendSuccess.findRecoveredActivity(paymentId: txid, walletId: walletId)
+            XCTAssertEqual(SendSuccess.displayAmountSats(isRecoveredPayment: true, activity: original, draftAmount: draftAmount()), expected)
+        }
+        XCTAssertEqual(draftReads, 0, "Recovery must not read another request's draft, even before activity is available")
+        XCTAssertEqual(wallet.sendAmountSats, 20000)
+        XCTAssertEqual(SendSuccess.displayAmountSats(isRecoveredPayment: false, activity: nil, draftAmount: draftAmount()), 20000)
+        XCTAssertEqual(draftReads, 1, "Ordinary and Quickpay success retain their existing display amount")
     }
 
     @MainActor
@@ -518,7 +577,7 @@ final class TransferServiceActivityTests: XCTestCase {
                 XCTAssertTrue(completed)
             }
             await fulfillment(of: [navigation], timeout: 2)
-            XCTAssertEqual(path, isOriginalContext ? [.success(paymentId: txid, walletId: walletId)] : [])
+            XCTAssertEqual(path, isOriginalContext ? [.recoveredSuccess(paymentId: txid, walletId: walletId)] : [])
             XCTAssertTrue(navigatedOnMainThread)
             window.isHidden = true
             window.rootViewController = nil
@@ -743,7 +802,7 @@ final class TransferServiceActivityTests: XCTestCase {
         for _ in 0 ..< 20 where path.isEmpty {
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        XCTAssertEqual(path, [.success(paymentId: txid, walletId: walletId)])
+        XCTAssertEqual(path, [.recoveredSuccess(paymentId: txid, walletId: walletId)])
         XCTAssertEqual(wallet.sendAmountSats, 9999)
         XCTAssertEqual(savingsStore.loadCount, 0)
     }

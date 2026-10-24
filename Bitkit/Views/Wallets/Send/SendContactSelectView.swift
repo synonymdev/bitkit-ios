@@ -57,6 +57,7 @@ struct SendContactSelectView: View {
 
     private func pay(_ contact: PubkyContact) async {
         guard selectedContactKey == nil else { return }
+        let presentationID = sheets.activeSheetConfiguration?.presentationID
         selectedContactKey = contact.publicKey
         defer { selectedContactKey = nil }
 
@@ -69,7 +70,8 @@ struct SendContactSelectView: View {
                     paymentRequest: paymentRequest,
                     publicKey: contact.publicKey,
                     privatePaymentContext: privatePaymentContext,
-                    endpoints: endpoints
+                    endpoints: endpoints,
+                    presentationID: presentationID
                 )
             case .noEndpoint, .notOpened, .privateLinkPending, .waitingForUpdatedPaymentList:
                 if let messageKey = result.contactPaymentFailureMessageKey {
@@ -93,8 +95,10 @@ struct SendContactSelectView: View {
         paymentRequest: String,
         publicKey: String,
         privatePaymentContext: PrivatePaykitPaymentContext?,
-        endpoints: [PublicPaykitService.Endpoint]
+        endpoints: [PublicPaykitService.Endpoint],
+        presentationID: UUID?
     ) async -> Bool {
+        guard let presentationID, sheets.activeSheetConfiguration?.presentationID == presentationID else { return false }
         let contactPaymentContext = ContactPaymentContext(
             publicKey: publicKey,
             privatePaymentContext: privatePaymentContext,
@@ -107,16 +111,17 @@ struct SendContactSelectView: View {
                 paymentRequest,
                 claimedContactPaymentContext: contactPaymentContext,
                 scope: hwSend.isActive ? .onchainPayments : .unrestricted,
-                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats
+                alternativeOnchainBalanceSats: hwWalletManager.maximumFundingBalanceSats,
+                sendPresentationID: presentationID
             )
         } catch is CancellationError {
             if app.ownsContactPaymentContext(contactPaymentContext) {
-                app.resetSendState()
+                app.resetSendState(ownerID: presentationID)
             }
             return false
         } catch {
             guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
-            app.resetSendState()
+            app.resetSendState(ownerID: presentationID)
             Logger.warn("Failed to decode contact payment request: \(error)", context: "SendContactSelectView")
             app.toast(
                 type: .warning,
@@ -126,9 +131,10 @@ struct SendContactSelectView: View {
             return false
         }
 
-        guard app.ownsContactPaymentContext(contactPaymentContext) else { return false }
+        guard sheets.activeSheetConfiguration?.presentationID == presentationID,
+              app.ownsContactPaymentContext(contactPaymentContext) else { return false }
         guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
-            app.resetSendState()
+            app.resetSendState(ownerID: presentationID)
             return false
         }
 
