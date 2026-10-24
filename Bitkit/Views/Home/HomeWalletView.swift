@@ -93,6 +93,16 @@ struct HomeWalletView: View {
                 .padding(.bottom, 32)
             }
 
+            if wallet.hasTrustedChannels {
+                Button { navigation.navigate(.spendingWallet) } label: {
+                    ActivityBanner(type: .channelsClosing, autoSizeTitle: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("ChannelsClosingBanner")
+                .padding(.bottom, 16)
+                .transition(.opacity)
+            }
+
             if hasActivity {
                 ActivityLatest(showsUsdtWallet: showsUsdt)
 
@@ -112,5 +122,6 @@ struct HomeWalletView: View {
         .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
         .padding(.horizontal)
         .animation(.spring(response: 0.3), value: hasActivity)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: wallet.hasTrustedChannels)
     }
 }

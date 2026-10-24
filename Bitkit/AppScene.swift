@@ -1027,9 +1027,6 @@ struct AppScene: View {
                 await retryPendingPaykitEndpointRemoval()
             }
 
-            // Start watching pending orders after wallet is ready
-            await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
-
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.
             wallet.ensureSwapUpdatesRunning()

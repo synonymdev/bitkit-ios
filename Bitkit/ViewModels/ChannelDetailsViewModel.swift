@@ -199,7 +199,7 @@ class ChannelDetailsViewModel: ObservableObject {
         }
 
         // Create fake channels from pending orders
-        guard let orders = try? await coreService.blocktank.orders(refresh: true) else {
+        guard let orders = try? await coreService.blocktank.orders(refresh: false) else {
             return connections
         }
 

@@ -66,21 +66,6 @@ struct LdkDebugScreen: View {
                             }
                         }
                     }
-
-                    // Peer Simulation
-                    VStack(alignment: .leading, spacing: 8) {
-                        SettingsSectionHeader("Peer Simulation")
-
-                        Picker("Peer Simulation", selection: Binding(
-                            get: { WalletViewModel.peerSimulation },
-                            set: { WalletViewModel.peerSimulation = $0 }
-                        )) {
-                            ForEach(WalletViewModel.BlocktankPeerSimulation.allCases, id: \.self) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                    }
                 }
             }
         }

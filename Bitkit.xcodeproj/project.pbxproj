@@ -171,7 +171,6 @@
 				Models/TransferType.swift,
 				Services/BackupFieldMigration.swift,
 				Services/CoreService.swift,
-				Services/GeoService.swift,
 				Services/HwActivityTagBackup.swift,
 				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
@@ -205,7 +204,6 @@
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
-				Services/GeoService.swift,
 				Services/HwActivityTagBackup.swift,
 				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
@@ -886,7 +884,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -warnings-as-errors -Wwarning DeprecatedDeclaration";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG CHECK_GEOBLOCK $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -941,7 +939,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -warnings-as-errors -Wwarning DeprecatedDeclaration";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CHECK_GEOBLOCK $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;

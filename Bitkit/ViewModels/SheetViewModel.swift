@@ -8,10 +8,10 @@ enum SheetID: String, CaseIterable {
     case connectionClosed
     case forceTransfer
     case forgotPin
-    case gift
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
+    case channelsUnavailable
     case pubkyAuthApproval
     case notifications
     case paymentRequests
@@ -269,10 +269,10 @@ class SheetViewModel: ObservableObject {
         }
     }
 
-    var forgotPinSheetItem: ForgotPinSheetItem? {
+    var channelsUnavailableSheetItem: ChannelsUnavailableSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .forgotPin else { return nil }
-            return ForgotPinSheetItem()
+            guard let config = activeSheetConfiguration, config.id == .channelsUnavailable else { return nil }
+            return ChannelsUnavailableSheetItem()
         }
         set {
             if newValue == nil {
@@ -281,12 +281,10 @@ class SheetViewModel: ObservableObject {
         }
     }
 
-    var giftSheetItem: GiftSheetItem? {
+    var forgotPinSheetItem: ForgotPinSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .gift else { return nil }
-            let giftConfig = config.data as? GiftConfig
-            guard let code = giftConfig?.code, let amount = giftConfig?.amount else { return nil }
-            return GiftSheetItem(code: code, amount: amount)
+            guard let config = activeSheetConfiguration, config.id == .forgotPin else { return nil }
+            return ForgotPinSheetItem()
         }
         set {
             if newValue == nil {

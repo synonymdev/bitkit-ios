@@ -343,11 +343,6 @@ class AppViewModel: ObservableObject {
         if isBolt11Invoice(url) {
             return false
         }
-        if url.scheme?.lowercased() == "bitkit",
-           url.host?.lowercased().hasPrefix("gift-") == true
-        {
-            return false
-        }
         return !PubkyAuthRequest.isProtocolURL(url.absoluteString.removingLightningSchemes())
     }
 
@@ -395,7 +390,6 @@ class AppViewModel: ObservableObject {
         setupManualEntryValidationDebounce()
 
         Task {
-            await checkGeoStatus()
             // Check for app updates on startup
             await AppUpdateService.shared.checkForAppUpdate()
         }
@@ -533,11 +527,6 @@ class AppViewModel: ObservableObject {
     }
 
     deinit {}
-
-    func checkGeoStatus() async {
-        // Delegate to GeoService singleton for centralized geo-blocking management
-        await GeoService.shared.checkGeoStatus()
-    }
 
     func wipe() async throws {
         hasSeenContactsIntro = false
@@ -1099,8 +1088,6 @@ extension AppViewModel {
                 return
             }
             await handlePubkyAuthApproval(sourceURI)
-        case let .gift(code, amount):
-            sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
@@ -1513,7 +1500,7 @@ extension AppViewModel {
                 }
             }
 
-        case .lnurlPay, .lnurlWithdraw, .lnurlChannel, .lnurlAuth, .nodeId, .gift:
+        case .lnurlPay, .lnurlWithdraw, .lnurlChannel, .lnurlAuth, .nodeId:
             // These types are valid if decoded successfully
             result = .valid
 

@@ -2635,35 +2635,4 @@ class CoreService {
             }
         }
     }
-
-    func checkGeoStatus() async throws -> Bool? {
-        if !Env.isGeoblockingEnabled {
-            return false
-        }
-
-        return try await ServiceQueue.background(.core) {
-            Logger.info("Checking geo status...", context: "GeoCheck")
-            guard let url = URL(string: Env.geoCheckUrl) else {
-                Logger.error("Invalid geocheck URL: \(Env.geoCheckUrl)", context: "GeoCheck")
-                return nil as Bool?
-            }
-
-            let (_, response) = try await URLSession.shared.data(from: url)
-            if let httpResponse = response as? HTTPURLResponse {
-                Logger.debug("Received geo status response: \(httpResponse.statusCode)", context: "GeoCheck")
-                switch httpResponse.statusCode {
-                case 200:
-                    Logger.info("Region allowed", context: "GeoCheck")
-                    return false
-                case 403:
-                    Logger.warn("Region blocked", context: "GeoCheck")
-                    return true
-                default:
-                    Logger.warn("Unexpected status code: \(httpResponse.statusCode)", context: "GeoCheck")
-                    return nil as Bool?
-                }
-            }
-            return nil as Bool?
-        }
-    }
 }

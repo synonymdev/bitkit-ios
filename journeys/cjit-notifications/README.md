@@ -1,7 +1,19 @@
-# CJIT notification journeys
+# Channel-ready notification journeys
 
-Verify that a CJIT payment surfaces exactly one notification, and that a regular (non-CJIT) channel
-opening is never reported as a received payment.
+One journey remains: `non-cjit-channel-no-payment-notification.xml`. Opening a regular (non-CJIT)
+Lightning channel must not be reported as a received payment, whether it is an "Incoming Payment"
+notification or a stack of duplicates. When the app is in the foreground the only feedback is the
+in-app "Spending balance ready" toast.
+
+The folder keeps its name so the file path stays stable for the Android twin.
+
+## Retired journeys
+
+`cjit-background-notification.xml` and `cjit-push-single-notification.xml` were retired because
+Blocktank channel purchases, CJIT included, were removed (synonymdev/bitkit-ios#1097). They paid a
+CJIT order through the LSP and asserted a single Blocktank-pushed notification with the app
+backgrounded and killed. Nothing in the app creates a CJIT order now, so there is no way to drive the
+push.
 
 ## Adapted from Android — read this first
 
@@ -21,24 +33,24 @@ Consequences for the port:
 - **Android issue #1 (missing thousands separators) has no iOS counterpart.** iOS never puts an
   amount in the notification, so there is no formatting to assert. Those actions are dropped rather
   than rewritten into something the app was never meant to do.
-- **Android issue #2 (double notification) does port**, as "exactly one notification". iOS has no
-  foreground service and no `WakeNodeWorker`; the Notification Service Extension is the only poster,
-  so the duplicate would have to come from a duplicate push.
-- **Android issue #3 (channel open reported as a payment) ports directly** and is the strongest of
-  the three: `orderPaymentConfirmed` must render as "Spending Balance Ready", never "Incoming Payment".
-- `cjit-foreground-service-notification.xml` becomes `cjit-background-notification.xml` — iOS has no
-  foreground service, so the equivalent state is simply "app backgrounded".
+- **Android issue #2 (double notification)** ported as "exactly one notification" in the retired CJIT
+  journeys. iOS has no foreground service and no `WakeNodeWorker`; the Notification Service Extension
+  is the only poster, so a duplicate would have to come from a duplicate push.
+- **Android issue #3 (channel open reported as a payment) ports directly** and is the journey that
+  remains. A manual channel is not a Blocktank order, so no `orderPaymentConfirmed` push arrives and
+  no Bitkit notification is expected; none may read "Incoming Payment".
 
 ## Preconditions
-- **A physical device, not the simulator.** These journeys need a real APNs round trip: the app must
-  hold a device token Blocktank can push to, and the notification extension must decrypt a real
-  Blocktank payload. Nothing runs this suite automatically, and that is not a gap to
+- **A physical device, not the simulator.** The journey reads Notification Center to prove no
+  payment notification was posted, which needs an app registered for real APNs pushes. Nothing runs this suite automatically, and that is not a gap to
   fill here — `ai-device-tests.yml` runs `TrezorBridgeDashboardUITests` on a simulator and is not a
   journey runner. Run these by hand against an attached device. `test-push-server/` can drive a hand-built push at a known device token when you need to exercise
   the extension without the LSP.
 - Onboarded regtest wallet connected to the LSP, with notifications authorized and
   "Get paid when Bitkit is closed" enabled in Settings → Notifications.
-- A funded CJIT entry ready to pay, and no Lightning channel open yet for the CJIT journeys.
+- A positive on-chain balance and no Lightning channel yet. This build has no Transfer To Spending,
+  so the journey opens a manual channel to the LSP node: Settings › Advanced › Lightning Connections ›
+  add connection › Manual Setup. See [Getting a Lightning channel](../README.md#getting-a-lightning-channel).
 
 ## Inspecting notifications on iOS
 

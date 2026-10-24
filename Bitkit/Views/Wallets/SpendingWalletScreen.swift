@@ -4,6 +4,7 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var shouldShowOnboarding: Bool {
@@ -33,7 +34,17 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 && !GeoService.shared.isGeoBlocked {
+                    if wallet.hasTrustedChannels {
+                        BodyMText(
+                            t("lightning__channels_closing_notice", variables: ["date": ChannelsClosing.formattedCloseDate()]),
+                            textColor: .white64
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 16)
+                        .accessibilityIdentifier("ChannelsClosingNotice")
+                    }
+
+                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)
@@ -114,11 +125,7 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmount)
-            } else {
-                navigation.navigate(.spendingIntro)
-            }
+            sheets.showSheet(.channelsUnavailable)
         }
         .accessibilityIdentifier("TransferFromSavings")
     }

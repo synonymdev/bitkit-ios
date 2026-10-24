@@ -1,0 +1,34 @@
+<journey name="receive onchain only without channel">
+  <description>
+    Verifies that a funded wallet with no Lightning channel can only receive on-chain: the Receive sheet
+    offers the Savings tab and nothing that buys Lightning liquidity, and Home shows neither the Spend
+    suggestion card nor the channels-closing banner. Blocktank channel purchases were removed in
+    synonymdev/bitkit-ios#1097: there is no "Receive Lightning funds" (CJIT) button or onboarding,
+    and the Spending and Auto tabs appear only when the wallet can create a Lightning invoice over a
+    ready channel with inbound liquidity.
+
+    iOS: "Close the sheet" is a swipe down on the Receive sheet. The Spend card is asserted absent by
+    its identifier, which iOS suggestion cards expose as "Suggestion-&lt;id&gt;".
+
+    Precondition: a freshly onboarded dev wallet on the regtest backend with NO Lightning
+    channel (open, pending or closed), USDT disabled and no hardware wallet paired, funded with an
+    on-chain deposit: ../bitkit-android/lsp POST /regtest/chain/deposit with the Savings address from
+    Receive, Show Details (id "ShowDetails"), then ../bitkit-android/lsp POST /regtest/chain/mine
+    '{"count":3}', and wait about 20 seconds for the balance and the activity row to appear (see
+    ../README.md, Backend preconditions). Start on the wallet home screen.
+  </description>
+  <actions>
+    <action>Verify the Savings balance card (id "ActivitySavings") shows the deposit and the Spending balance card (id "ActivitySpending") shows 0</action>
+    <action>Verify the home screen has no Spend suggestion card (id "Suggestion-lightning") and no channels-closing banner (id "ChannelsClosingBanner"), scrolling the suggestions row if needed</action>
+    <action>Tap the Receive button (id "Receive")</action>
+    <action>Verify the Savings tab (id "Tab-savings") is selected and the QR code (id "QRCode") is visible</action>
+    <action>Verify there is no Spending tab (id "Tab-spending") and no Auto tab (id "Tab-auto")</action>
+    <action>Verify there is no "Receive Lightning funds" button anywhere on the sheet</action>
+    <action>Tap "Edit" (id "SpecifyInvoiceButton"), tap the amount field (id "ReceiveNumberPadTextField"), enter a small amount (for example "N1" then "N0" twice), tap Continue (id "ReceiveNumberPadSubmit") and then "QR Code" (id "ShowQrReceive")</action>
+    <action>Verify the sheet returns to the QR screen with no liquidity or channel confirm screen in between, the Savings tab is still selected and there is still no Spending tab (id "Tab-spending")</action>
+    <action>Close the sheet, open the Savings wallet (id "ActivitySavings") and tap "Transfer To Spending" (id "TransferToSpending")</action>
+    <action>Verify the sheet (id "ChannelsUnavailableSheet") opens with the nav title "Transfer Unavailable", the lightning-bolt image (id "ChannelsUnavailableSheetImage"), the title "MANUAL SETUP REQUIRED" with "MANUAL SETUP" in purple (id "ChannelsUnavailableSheetTitle") and the text "Automatic transfers to your spending balance are no longer available. Use your own node, or set up a connection with another provider." (id "ChannelsUnavailableSheetDescription"); tap "Cancel" (id "ChannelsUnavailableSheetCancel") and verify the Savings wallet screen is still shown</action>
+    <action>Open the Spending wallet (id "ActivitySpending"), verify no notice (id "ChannelsClosingNotice") is shown, and tap "Transfer from Savings" (id "TransferFromSavings")</action>
+    <action>Verify the same sheet (id "ChannelsUnavailableSheet") opens, tap "Cancel" (id "ChannelsUnavailableSheetCancel") and verify the Spending wallet screen is still shown</action>
+  </actions>
+</journey>

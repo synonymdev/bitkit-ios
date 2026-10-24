@@ -1,49 +1,21 @@
 # Notification-permission journeys
 
-Verify that the background-setup toggle — shown on the Receive → CJIT confirm screen, the Receive →
-CJIT liquidity screen and the Transfer → Spending confirm screen — drives the iOS notification
-authorization prompt, and that the app's own notification settings own the route into the system
-Settings app.
+This suite is retired. Every journey in it reached the background-setup toggle through a Blocktank
+channel purchase, and those were removed in synonymdev/bitkit-ios#1097:
 
-**The label differs by screen.** The two Receive CJIT screens bind
-`wallet__receive_background_setup_toggle` ("Enable background setup"); Transfer → Spending confirm
-binds `lightning__spending_confirm__background_setup` ("Set up in background"), matching Android.
-The switch identifiers are stable, so prefer those over the copy.
+- `receive-cjit-confirm-notification-toggle.xml` and `toggle-off-and-system-settings-route.xml` used the
+  Receive → CJIT confirm screen (`ReceiveCjitConfirm`), reached through "Receive Lightning funds".
+- `receive-cjit-liquidity-notification-toggle.xml` used the Receive → CJIT liquidity screen
+  (`ReceiveCjitLiquidity`).
+- `transfer-spending-confirm-notification-toggle.xml` used the Transfer → Spending confirm screen
+  (`SpendingConfirmNotificationSwitch`), reached through "Transfer To Spending".
 
-## iOS vs Android
+No button in the UI navigates to those screens any more, so the toggle's permission behaviour (the
+one-shot `UNUserNotificationCenter.requestAuthorization` alert on toggling on; toggling off only
+unregisters push) is no longer reachable on a device through these routes. Settings › Notifications,
+with its "Customize in iOS Bitkit Settings" button (id `NotificationsOpenSystemSettings`), is a
+separate entry point that no journey covers yet.
 
-Android requests `POST_NOTIFICATIONS` at the toggle and, once granted, re-tapping the toggle deep
-links into system settings. iOS differs in two ways that these journeys are written around:
-
-- **The prompt is one-shot and system-owned.** `PushNotificationManager.requestPermission()` calls
-  `UNUserNotificationCenter.requestAuthorization`, which only shows the alert while the status is
-  `notDetermined`. Once the user has answered once, toggling on is silent.
-- **Toggling off does not open system settings.** `MainNavView`'s `onChange(of:)` simply calls
-  `notificationManager.unregister()`. The route into the iOS Settings app is a dedicated button on
-  Settings → Notifications (id `NotificationsOpenSystemSettings`), which is what
-  `toggle-off-and-system-settings-route.xml` covers instead of Android's
-  `toggle-off-opens-system-settings.xml`.
-
-## Preconditions
-- Onboarded dev wallet with the node connected to the LSP so a CJIT order can be quoted, and (for
-  the transfer journey) a positive on-chain Savings balance.
-- **Notification authorization must be `notDetermined`** for the three "requests permission"
-  journeys. The alert is one-shot per install, so reset it by reinstalling the app:
-  `xcrun simctl uninstall <device> to.bitkit` then `xcodebuildmcp simulator build-and-run`.
-  Re-onboarding the wallet is part of that reset.
-- `settings.enableNotifications` must start **off** so the toggles read unchecked.
-
-## Gotcha: one setting, three toggles
-
-All three switches bind to the same `settings.enableNotifications`. Flipping one flips the other two,
-so run these journeys one per app state — do not chain them expecting an unchecked toggle on the
-second screen.
-
-## Identifiers used
-- Receive CJIT: amount screen `ReceiveCjitAmount`, field `ReceiveCjitAmountNumberField`,
-  continue `ReceiveCjitAmountContinue`; confirm screen `ReceiveCjitConfirm` with switch
-  `ReceiveConfirmNotificationSwitch`; liquidity screen `ReceiveCjitLiquidity` with switch
-  `ReceiveLiquidityNotificationSwitch`.
-- Transfer: `SpendingAmount`, `SpendingAmountAvailable`, `SpendingAmountContinue`, and the confirm
-  screen switch `SpendingConfirmNotificationSwitch`.
-- Settings → Notifications: `NotificationsOpenSystemSettings`.
+The reset for a fresh authorization state, should a journey for another entry point be written:
+`xcrun simctl uninstall <device> to.bitkit`, then `xcodebuildmcp simulator build-and-run` and
+re-onboard the wallet.

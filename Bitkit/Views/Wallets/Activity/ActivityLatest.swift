@@ -37,12 +37,15 @@ struct ActivityLatest: View {
     }
 
     /// Three or four vertical slots (by screen size) shared by: hardware wallet rows (two wallets per row),
-    /// transfer banner, widgets onboarding and activity items; only the item count shrinks so the total stays within the cap.
+    /// transfer and channels-closing banners, widgets onboarding and activity items; only the item count shrinks so the total stays within the cap.
     private var maxActivityItemsOnHome: Int {
         let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
         var nonItemSlots = 0
         nonItemSlots += (hwWalletManager.wallets.count + (showsUsdtWallet ? 1 : 0) + 1) / 2
         if shouldShowBanner {
+            nonItemSlots += 1
+        }
+        if wallet.hasTrustedChannels {
             nonItemSlots += 1
         }
         if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint {

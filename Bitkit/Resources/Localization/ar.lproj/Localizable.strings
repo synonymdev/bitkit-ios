@@ -6,8 +6,6 @@
 "cards__notifications__title" = "استلم الأموال";
 "cards__invite__title" = "دعوة";
 "cards__invite__description" = "شارك Bitkit";
-"cards__lightning__title" = "إنفاق";
-"cards__lightning__description" = "مدفوعات فورية";
 "cards__transferPending__description" = "جاهز خلال {duration}";
 "cards__pin__title" = "تأمين";
 "cards__pin__description" = "إعداد رمز PIN";
@@ -319,6 +317,14 @@
 "lightning__channel_node_id" = "معرّف النظير";
 "lightning__channel_id" = "معرّف القناة";
 "lightning__channel_point" = "نقطة القناة";
+"lightning__channels_closing_banner" = "تُغلق القنوات في {date}";
+"lightning__channels_closing_notice" = "ستُغلق قنوات Lightning الخاصة بك في {date}. انقل رصيد الإنفاق إلى المدخرات قبل ذلك.";
+"lightning__channels_unavailable__nav_title" = "التحويل غير متاح";
+"lightning__channels_unavailable__text" = "لم تعد التحويلات التلقائية إلى رصيد الإنفاق متاحة. استخدم عقدتك الخاصة، أو أنشئ اتصالًا مع مزوّد آخر.";
+"lightning__channels_unavailable__title" = "<accent>الإعداد اليدوي</accent>\nمطلوب";
+"lightning__choose_lsp__explanation" = "عندما يقدّمون لك رمز QR للاتصال بقناة Lightning أو المطالبة بها، اضغط أدناه لمسح رمز QR أو لصقه.";
+"lightning__choose_lsp__text" = "اطلب قناة من مزوّد خدمة Lightning ‏(LSP). فيما يلي بعض الخيارات. لا يدير Bitkit هذه الخدمات ولا يؤيدها ولا يدعمها.";
+"lightning__choose_lsp__title" = "اختر\n<accent>مزوّد Lightning</accent>";
 "lightning__closure_reason" = "سبب الإغلاق";
 "lightning__support" = "الدعم";
 "lightning__connection_closed__title" = "تم إغلاق الاتصال";
@@ -462,13 +468,6 @@
 "other__try_again" = "يرجى المحاولة مرة أخرى.";
 "other__scan__error__generic" = "لا يستطيع Bitkit قراءة البيانات المقدمة.";
 "other__scan__error__expired" = "انتهت صلاحية فاتورة Lightning هذه.";
-"other__gift__claimed__text" = "عذرًا، لقد تأخرت! تمت المطالبة بجميع الهدايا لهذا الرمز.";
-"other__gift__claiming__text" = "جارٍ المطالبة برمز هدية Bitkit...";
-"other__gift__claiming__title" = "جارٍ المطالبة بالهدية";
-"other__gift__error__title" = "خطأ في رمز الهدية";
-"other__gift__error__text" = "تعذر على Bitkit المطالبة بالأموال. يرجى المحاولة لاحقًا أو الاتصال بنا.";
-"other__gift__used__title" = "رمز مستخدم";
-"other__gift__used__text" = "تم استخدام رمز هدية Bitkit هذا بالفعل، وتم دفع الأموال.";
 "other__shop__intro__title" = "تسوق";
 "other__shop__intro__description" = "اجعل حياتك على معيار Bitcoin. أنفق Bitcoin على بطاقات الهدايا الرقمية وبطاقات eSIM وشحن الهاتف والمزيد.";
 "other__shop__intro__button" = "ابدأ";
@@ -773,9 +772,6 @@
 "wallet__receive_show_qr" = "عرض رمز QR";
 "wallet__receive_background_setup_text" = "قم بتمكين الإعداد في الخلفية للخروج من Bitkit بأمان أثناء تكوين رصيدك.";
 "wallet__receive_background_setup_toggle" = "تمكين الإعداد في الخلفية";
-"wallet__receive_spending" = "استلام أموال Lightning";
-"wallet__receive_spending_text" = "استمتع بمدفوعات Bitcoin فورية ورخيصة على شبكة Lightning.";
-"wallet__receive_spending_title" = "استلم على <accent>رصيد الإنفاق</accent>";
 "wallet__receive_connect_initial" = "لإعداد رصيد إنفاقك، سيتم خصم رسوم شبكة <accent>{networkFee}</accent> ورسوم مزود الخدمة <accent>{serviceFee}</accent>.";
 "wallet__receive_connect_additional" = "لاستلام المزيد من Bitcoin الفوري، يتعين على Bitkit زيادة سيولتك. سيتم خصم رسوم شبكة <accent>{networkFee}</accent> ورسوم مزود الخدمة <accent>{serviceFee}</accent> من المبلغ الذي حددته.";
 "wallet__receive_liquidity__nav_title" = "إعداد رصيد الإنفاق";

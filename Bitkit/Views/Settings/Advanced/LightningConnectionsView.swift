@@ -19,7 +19,7 @@ struct LightningConnectionsView: View {
             NavigationBar(
                 title: t("lightning__connections"),
                 action: AnyView(
-                    NavigationLink(value: Route.fundingOptions) {
+                    NavigationLink(value: Route.fundingAdvanced) {
                         Image("plus")
                             .resizable()
                             .frame(width: 24, height: 24)
@@ -207,7 +207,7 @@ struct LightningConnectionsView: View {
                             }
 
                             CustomButton(title: buttonText) {
-                                navigation.navigate(.fundingOptions)
+                                navigation.navigate(.fundingAdvanced)
                             }
                         }
                     }

@@ -11,6 +11,7 @@ struct HardwareWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(TrezorManager.self) private var trezorManager
 
@@ -40,9 +41,6 @@ struct HardwareWalletScreen: View {
         .accessibilityIdentifier("HardwareWalletScreen")
         .task(id: wallet?.walletId) {
             await loadActivities()
-        }
-        .task {
-            await app.checkGeoStatus()
         }
         .onReceive(activity.activitiesChangedPublisher) { _ in
             Task { await loadActivities() }
@@ -127,14 +125,9 @@ struct HardwareWalletScreen: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 16, height: 16)
-                .foregroundColor(.white80),
-            isDisabled: GeoService.shared.isGeoBlocked
+                .foregroundColor(.white80)
         ) {
-            if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmountHw(walletId: walletId))
-            } else {
-                navigation.navigate(.spendingIntroHw(walletId: walletId))
-            }
+            sheets.showSheet(.channelsUnavailable)
         }
         .accessibilityIdentifier("HardwareTransferToSpending")
     }

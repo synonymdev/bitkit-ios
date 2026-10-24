@@ -116,12 +116,12 @@ struct MainNavView: View {
             config in BackupSheet(config: config)
         }
         .sheet(
-            item: $sheets.giftSheetItem,
+            item: $sheets.channelsUnavailableSheetItem,
             onDismiss: {
-                sheets.hideSheetIfActive(.gift, reason: "Gift sheet dismissed")
+                sheets.hideSheetIfActive(.channelsUnavailable, reason: "Channels unavailable sheet dismissed")
             }
         ) {
-            config in GiftSheet(config: config)
+            config in ChannelsUnavailableSheet(config: config)
         }
         .sheet(
             item: $sheets.connectionClosedSheetItem,
@@ -560,6 +560,7 @@ struct MainNavView: View {
                 case .transferLearnMore: TransferLearnMoreView()
                 case .settingUp: SettingUpView()
                 case .fundingAdvanced: FundAdvancedOptions()
+                case .chooseLsp: ChooseLspView()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
