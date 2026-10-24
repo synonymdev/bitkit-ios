@@ -41,6 +41,10 @@ final class UsdtWalletManagerTests: XCTestCase {
             try await manager.send(quote) { XCTFail("Submission must not start during cooldown") }
             XCTFail("Expected cooldown")
         } catch UsdtError.RateLimited {}
+        do {
+            try await manager.retryTransfer("recorded-transfer")
+            XCTFail("Recovery must respect the provider cooldown")
+        } catch UsdtError.RateLimited {}
         await manager.refresh(includeHistory: true)
         XCTAssertEqual(attempts, 1)
         now.addTimeInterval(1)
@@ -49,6 +53,41 @@ final class UsdtWalletManagerTests: XCTestCase {
             XCTFail("Expected provider rate limit after cooldown expired")
         } catch UsdtError.RateLimited {}
         XCTAssertEqual(attempts, 2)
+    }
+
+    func testRetryRecoversTheRecordedTransferAfterBackupFailureWithoutCreatingAPayment() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        let wallet = RecoveryUsdtWallet(noPointer: .init())
+        wallet.transfers = [transfer("original", incoming: false, status: .pending)]
+        let manager = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", core: wallet,
+                                        loadCredentials: {
+                                            XCTFail("Retry must not load signing credentials for a new payment")
+                                            throw UsdtError.InvalidCredentials
+                                        })
+        manager.isSendPresented = true
+        do {
+            try await manager.retryTransfer("original")
+            XCTFail("A failed recovery backup must propagate to the caller")
+        } catch UsdtError.BackupUnavailable {}
+        XCTAssertEqual(manager.recoveryGeneration, 0)
+        XCTAssertEqual(wallet.transfers.map(\.id), ["original"])
+
+        // Closing the presentation does not cancel the saved operation.
+        manager.isSendPresented = false
+        wallet.backupUnavailable = false
+        try await manager.retryTransfer("original")
+        XCTAssertEqual(manager.transfers.map(\.id), ["original"])
+        XCTAssertEqual(manager.recoveryGeneration, 1)
+        XCTAssertEqual(wallet.refreshCalls, 2)
+
+        do {
+            try await manager.retryTransfer("unknown")
+            XCTFail("Retry must not create an operation for an unknown ID")
+        } catch UsdtError.InvalidBackup {}
+        wallet.transfers = [transfer("original", incoming: false)]
+        try await manager.retryTransfer("original")
+        XCTAssertEqual(wallet.refreshCalls, 2, "A settled operation must not be recovered again")
+        XCTAssertEqual(manager.recoveryGeneration, 1)
     }
 
     func testOfflineBackupDoesNotCreateAnUnusedWalletAndPreservesRestoredHistory() async throws {
@@ -570,5 +609,40 @@ final class UsdtWalletManagerTests: XCTestCase {
 private final class UnavailableUsdtBackup: UsdtBackup {
     func persist(snapshot _: String) async throws {
         throw UsdtError.BackupUnavailable
+    }
+}
+
+private final class RecoveryUsdtWallet: UsdtWallet, @unchecked Sendable {
+    var transfers: [UsdtTransfer] = []
+    var backupUnavailable = true
+    var refreshCalls = 0
+
+    override func history() throws -> [UsdtTransfer] {
+        transfers
+    }
+
+    override func refreshTransfers() async throws -> [UsdtTransfer] {
+        refreshCalls += 1
+        if backupUnavailable {
+            throw UsdtError.BackupUnavailable
+        }
+        return transfers
+    }
+
+    override func quoteTransfer(recipient _: String, amount _: UInt64, destination _: UsdtDestination) async throws -> UsdtQuote {
+        XCTFail("Recovery must not quote a new payment")
+        throw UsdtError.InvalidAmount
+    }
+
+    override func quoteMaxTransfer(recipient _: String, destination _: UsdtDestination) async throws -> UsdtQuote {
+        XCTFail("Recovery must not quote a new payment")
+        throw UsdtError.InvalidAmount
+    }
+
+    override func sendWithDeadline(quoteId _: String, mnemonic _: String, passphrase _: String?,
+                                   submissionDeadline _: String?) async throws -> UsdtTransfer
+    {
+        XCTFail("Recovery must not create a new payment")
+        throw UsdtError.InvalidCredentials
     }
 }
