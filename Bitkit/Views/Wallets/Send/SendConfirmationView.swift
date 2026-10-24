@@ -994,6 +994,16 @@ struct SendConfirmationView: View {
         }
     }
 
+    static func isUnsentBlockedRequest(
+        _ requestId: PaykitPaymentRequest.ID?, onchainPaymentStarted: Bool, error: Error
+    ) -> Bool {
+        guard !onchainPaymentStarted, let requestId,
+              let attemptError = error as? OnchainSendAttemptError,
+              case let .blocked(previous) = attemptError, let previous
+        else { return false }
+        return previous.requestId != requestId
+    }
+
     static func isFeeRateMissing(walletType: WalletType, isHardwarePayment: Bool, feeRate: UInt32?) -> Bool {
         walletType == .onchain && !isHardwarePayment && feeRate == nil
     }
@@ -1168,6 +1178,7 @@ struct SendConfirmationView: View {
         var lightningPaymentSubmitted = false
         var originalPaymentIdentity: String?
         var privatePaymentListOutcome = PrivatePaymentListSendOutcome.definitePreBroadcastFailure
+        var manualAllowanceAttemptId: String?
 
         do {
             try validateIncomingPaymentRequestContext(contactPaymentContext)
@@ -1202,6 +1213,13 @@ struct SendConfirmationView: View {
                 return
             }
 
+            if let incomingPaymentRequest, let preparedPaymentProof {
+                manualAllowanceAttemptId = try await PaykitAllowanceExecutor.shared.beginManualPayment(
+                    incomingPaymentRequest,
+                    paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
+                )
+            }
+
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for other screens
@@ -1214,6 +1232,9 @@ struct SendConfirmationView: View {
                         incomingPaymentRequest,
                         paymentHash: paymentHash
                     )
+                }
+                if let manualAllowanceAttemptId {
+                    await PaykitAllowanceExecutor.shared.manualLightningPaymentSent(attemptId: manualAllowanceAttemptId, paymentHash: paymentHash)
                 }
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
@@ -1305,6 +1326,9 @@ struct SendConfirmationView: View {
                     onAuthorized: { _ in
                         onchainPaymentStarted = true
                         privatePaymentListOutcome = .uncertain
+                        if let manualAllowanceAttemptId {
+                            await PaykitAllowanceExecutor.shared.manualOnchainPaymentSending(attemptId: manualAllowanceAttemptId)
+                        }
                     },
                     send: { beforeBroadcastAttempt in
                         try await wallet.send(
@@ -1341,6 +1365,9 @@ struct SendConfirmationView: View {
                         title: t("wallet__onchain_broadcast_rejected"),
                         description: t("wallet__onchain_broadcast_rejected_note", variables: ["reason": reason])
                     )
+                    if let manualAllowanceAttemptId {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .unknown)
+                    }
                     await navigationPath.append(Self.onchainPendingRoute(txid: rejectedTxid, requestId: incomingPaymentRequest?.id))
                     return
                 case let .unknown(unknownTxid):
@@ -1351,11 +1378,21 @@ struct SendConfirmationView: View {
                         title: t("wallet__onchain_broadcast_unconfirmed"),
                         description: t("wallet__onchain_broadcast_unconfirmed_note")
                     )
+                    if let manualAllowanceAttemptId {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .unknown)
+                    }
                     await navigationPath.append(Self.onchainPendingRoute(txid: unknownTxid, requestId: incomingPaymentRequest?.id))
                     return
                 }
                 privatePaymentListOutcome = .succeeded
                 await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
+                if let manualAllowanceAttemptId {
+                    await PaykitAllowanceExecutor.shared.finishManualPayment(
+                        attemptId: manualAllowanceAttemptId,
+                        outcome: .succeeded,
+                        transactionId: txid
+                    )
+                }
                 var proofSaved = true
                 if let incomingPaymentRequest, let preparedPaymentProof {
                     proofSaved = await PaykitPaymentProofService.shared.completeOnchainPayment(
@@ -1400,6 +1437,9 @@ struct SendConfirmationView: View {
                 )
             }
         } catch is CancellationError {
+            if let manualAllowanceAttemptId, !lightningPaymentSubmitted, !onchainPaymentStarted {
+                await PaykitAllowanceExecutor.shared.finishManualPayment(attemptId: manualAllowanceAttemptId, outcome: .failed)
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
@@ -1434,9 +1474,20 @@ struct SendConfirmationView: View {
             }
             if let attemptError = error as? OnchainSendAttemptError {
                 switch attemptError {
-                case .unresolved, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable,
+                case .unresolved, .blocked, .duplicate, .outcomeNotSaved, .localFollowupNotSaved, .retryConstruction, .retryUnavailable,
                      .preDispatchCleanupFailed:
-                    await contactPaymentContext?.resolvePrivatePaymentListConsumption(.uncertain)
+                    let unsentRequest = Self.isUnsentBlockedRequest(
+                        incomingPaymentRequest?.id, onchainPaymentStarted: onchainPaymentStarted, error: attemptError
+                    )
+                    await contactPaymentContext?.resolvePrivatePaymentListConsumption(unsentRequest ? .definitePreBroadcastFailure : .uncertain)
+                    if let manualAllowanceAttemptId {
+                        await PaykitAllowanceExecutor.shared.finishManualPayment(
+                            attemptId: manualAllowanceAttemptId, outcome: unsentRequest ? .failed : .unknown
+                        )
+                    }
+                    if unsentRequest, let incomingPaymentRequest {
+                        await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
+                    }
                     shouldCancelPaymentProof = false
                     app.toast(attemptError)
                     await navigationPath.append(Self.onchainPendingRoute(requestId: incomingPaymentRequest?.id))
@@ -1445,10 +1496,16 @@ struct SendConfirmationView: View {
                     break
                 }
             }
+            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
+            if let manualAllowanceAttemptId {
+                await PaykitAllowanceExecutor.shared.finishManualPayment(
+                    attemptId: manualAllowanceAttemptId,
+                    outcome: lightningPaymentSubmitted || onchainPaymentStarted ? .unknown : .failed
+                )
+            }
             if shouldCancelPaymentProof, let incomingPaymentRequest {
                 await PaykitPaymentProofService.shared.cancelPreparation(incomingPaymentRequest)
             }
-            await contactPaymentContext?.resolvePrivatePaymentListConsumption(privatePaymentListOutcome)
             Logger.error("Payment failed: \(error)")
 
             if let paymentId = createdMetadataPaymentId {

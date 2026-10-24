@@ -1,4 +1,5 @@
 @testable import Bitkit
+import os
 import XCTest
 
 @MainActor
@@ -74,7 +75,7 @@ final class WalletViewModelReceiveTests: XCTestCase {
             forceRefreshBolt11: Bool,
             includeOnchain: Bool,
             includeLightning: Bool
-        ) async throws -> (onchainAddress: String, bolt11: String) {
+        ) async throws -> PublicPaykitEndpoints {
             publicEndpointRefreshCount += 1
             throw PublicPaykitError.walletNotReady
         }
@@ -97,9 +98,15 @@ final class WalletViewModelReceiveTests: XCTestCase {
 
     private final class ReservedReceiveWallet: WalletViewModel {
         var reservationOwner: String?
-        override func publicPaykitOnchainAddress(for publicKey: String) async throws -> String {
+        override func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore
+            .PublicAddressSnapshot
+        {
             reservationOwner = publicKey
-            return "public-reservation"
+            let revision = UUID()
+            return .init(
+                address: "public-reservation", publicKey: publicKey,
+                revision: revision, revisionState: OSAllocatedUnfairLock(initialState: revision)
+            )
         }
 
         override func refreshReusableOnchainAddress() async throws -> String {

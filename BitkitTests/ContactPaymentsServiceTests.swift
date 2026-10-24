@@ -660,6 +660,41 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
+    func testForegroundReconciliationRetainsRegistryRepairDuringDeletionOrCancellation() async {
+        snapshotAppDefaultsDomain()
+        for interruption in ["deletion", "deletionAfterPrivate", "cancelAfterPrivate"] {
+            PublicPaykitService.setCleanupPending(true)
+            if interruption == "deletion" {
+                await PrivatePaykitService.shared.beginProfileDeletion()
+            }
+            var registryUpdates = 0
+            let reconciliation = Task {
+                await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
+                    if interruption == "deletionAfterPrivate" {
+                        await PrivatePaykitService.shared.beginProfileDeletion()
+                    }
+                    if interruption == "cancelAfterPrivate" {
+                        withUnsafeCurrentTask { $0?.cancel() }
+                    }
+                }) {
+                    registryUpdates += 1
+                    PublicPaykitService.setCleanupPending(false)
+                }
+            }
+            await reconciliation.value
+            await PrivatePaykitService.shared.endProfileDeletion()
+            XCTAssertEqual(registryUpdates, 0, interruption)
+            XCTAssertTrue(PublicPaykitService.isCleanupPending, interruption)
+
+            await ContactPaymentsService.reconcilePendingEndpoints {
+                registryUpdates += 1
+                PublicPaykitService.setCleanupPending(false)
+            }
+            XCTAssertEqual(registryUpdates, 1, interruption)
+            XCTAssertFalse(PublicPaykitService.isCleanupPending, interruption)
+        }
+    }
+
     func testEnablingWaitsForSuccessfulOrFailedDisable() async throws {
         let ownerKey = try useLocalPubkySecretKey()
         for (disableUI, removalFails) in [(false, false), (false, true), (true, false), (true, true)] {

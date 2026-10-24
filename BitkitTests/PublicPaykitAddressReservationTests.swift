@@ -87,6 +87,219 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
     }
 
     @MainActor
+    func testLatePublicAddressSnapshotRetainsRepairAfterRotation() async throws {
+        for refreshIfNeeded in [false, true] {
+            for cancelAfterAdmission in [false, true] {
+                try await assertLatePublicAddressSnapshotRetainsRepair(
+                    refreshIfNeeded: refreshIfNeeded, cancelAfterAdmission: cancelAfterAdmission
+                )
+            }
+        }
+    }
+
+    @MainActor
+    private func assertLatePublicAddressSnapshotRetainsRepair(refreshIfNeeded: Bool, cancelAfterAdmission: Bool) async throws {
+        snapshotAppDefaultsDomain()
+        let lightning = Bitkit.LightningService.shared
+        let previousCompletion = lightning.onchainActivityWillPersist
+        defer { lightning.onchainActivityWillPersist = previousCompletion }
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        let addresses = AddressWallet()
+        let store = try PrivatePaykitAddressReservationStore(defaults: makeIsolatedDefaults(), operations: addresses.operations)
+        let profile = PubkyProfileManager()
+        profile.publicKey = alice
+        profile.authState = .authenticated
+        let session = try XCTUnwrap(profile.automaticPaykitSession)
+        let wallet = PublicActivityWallet(pubkyProfile: profile)
+        wallet.reservations = store
+        wallet.channels = []
+        let isCurrent = { profile.automaticPaykitSession == session }
+        try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: isCurrent)
+        let first = try XCTUnwrap(wallet.publishedAddresses.last)
+        let captured = expectation(description: "Older public address snapshot")
+        let admitted = cancelAfterAdmission ? expectation(description: "Older public address write") : nil
+        var release: CheckedContinuation<Void, Never>?
+        var finishWrite: CheckedContinuation<Void, Never>?
+        defer {
+            release?.resume()
+            finishWrite?.resume()
+        }
+        wallet.afterEndpointSnapshot = {
+            wallet.afterEndpointSnapshot = nil
+            await withCheckedContinuation {
+                release = $0
+                captured.fulfill()
+            }
+        }
+        let older = Task {
+            try await wallet.publishPublicPaykitEndpoints(refreshIfNeeded: refreshIfNeeded, isSessionCurrent: isCurrent)
+        }
+        await fulfillment(of: [captured], timeout: 5)
+        await addresses.markUsed(first)
+        await wallet.refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isCurrent)
+        let rotated = try XCTUnwrap(wallet.publishedAddresses.last)
+        XCTAssertNotEqual(rotated, first)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        if cancelAfterAdmission {
+            wallet.afterEndpointWrite = {
+                wallet.afterEndpointWrite = nil
+                await withCheckedContinuation {
+                    finishWrite = $0
+                    admitted?.fulfill()
+                }
+                try Task.checkCancellation()
+            }
+        }
+        release?.resume()
+        release = nil
+        if cancelAfterAdmission {
+            try await fulfillment(of: [XCTUnwrap(admitted)], timeout: 5)
+            older.cancel()
+            finishWrite?.resume()
+            finishWrite = nil
+            do {
+                try await older.value
+                XCTFail("Cancelled publication should propagate cancellation")
+            } catch is CancellationError {}
+        } else {
+            try await older.value
+        }
+        XCTAssertEqual(wallet.publishedAddresses, [first, rotated, first])
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        try await PublicPaykitService.retryPendingEndpointReconciliation(
+            wallet: wallet, isSessionCurrent: isCurrent, syncApp: {},
+            applyEndpoints: { wallet.publishedAddresses.append(contentsOf: $0.map(\.value)) }
+        )
+        XCTAssertEqual(wallet.publishedAddresses.last, rotated)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+    }
+
+    @MainActor
+    func testPublicAddressSnapshotDoesNotAdoptRestoreDuringUsageLookup() async throws {
+        let addresses = AddressWallet()
+        let store = try PrivatePaykitAddressReservationStore(defaults: makeIsolatedDefaults(), operations: addresses.operations)
+        let first = try await store.currentOrRotatedPublicAddressSnapshot(for: alice)
+        first.withCurrentReservation { XCTAssertTrue($0) }
+        let checkingUsage = expectation(description: "Public address usage lookup")
+        var release: CheckedContinuation<Void, Never>?
+        defer { release?.resume() }
+        await addresses.beforeNextUsage {
+            await withCheckedContinuation {
+                release = $0
+                checkingUsage.fulfill()
+            }
+        }
+        let older = Task { try await store.currentOrRotatedPublicAddressSnapshot(for: alice) }
+        await fulfillment(of: [checkingUsage], timeout: 5)
+        await store.restoreBackup(store.backupSnapshot())
+        release?.resume()
+        release = nil
+        let stale = try await older.value
+        XCTAssertEqual(stale.address, first.address)
+        stale.withCurrentReservation { XCTAssertFalse($0) }
+        let current = try await store.currentOrRotatedPublicAddressSnapshot(for: alice)
+        XCTAssertNotEqual(current.address, first.address)
+        current.withCurrentReservation { XCTAssertTrue($0) }
+        _ = try await store.currentOrRotatedAddress(for: bob)
+        await store.clearContactAssignments()
+        current.withCurrentReservation { XCTAssertTrue($0) }
+        await store.clear()
+        current.withCurrentReservation { XCTAssertFalse($0) }
+    }
+
+    @MainActor
+    func testCancelledPublicReservationRetainsOnlyItsOriginalSessionsRepair() async throws {
+        snapshotAppDefaultsDomain()
+        let lightning = Bitkit.LightningService.shared
+        let previousCompletion = lightning.onchainActivityWillPersist
+        defer { lightning.onchainActivityWillPersist = previousCompletion }
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        for replaceSession in [false, true] {
+            PublicPaykitService.setCleanupPending(false)
+            let addresses = AddressWallet()
+            let store = try PrivatePaykitAddressReservationStore(defaults: makeIsolatedDefaults(), operations: addresses.operations)
+            let profile = PubkyProfileManager()
+            profile.publicKey = alice
+            profile.authState = .authenticated
+            let session = try XCTUnwrap(profile.currentSession)
+            let wallet = PublicActivityWallet(pubkyProfile: profile)
+            wallet.reservations = store
+            wallet.afterAddressReservation = {
+                if replaceSession {
+                    try? await profile.signOut(performSessionCleanup: { throw PublicPaykitError.publicationFailed })
+                    PublicPaykitService.setCleanupPending(false)
+                }
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+            let preparation = Task {
+                try await wallet.publishPublicPaykitEndpoints(
+                    refreshIfNeeded: false, isSessionCurrent: { !Task.isCancelled && profile.currentSession == session }
+                )
+            }
+            do {
+                try await preparation.value
+                XCTFail("Cancelled publication must not write endpoints")
+            } catch PubkyServiceError.sessionNotActive {
+            } catch is CancellationError {
+            } catch {
+                XCTFail("Unexpected preparation error: \(error)")
+            }
+            XCTAssertEqual(PublicPaykitService.isCleanupPending, !replaceSession)
+            XCTAssertEqual(profile.currentSession == session, !replaceSession)
+            XCTAssertTrue(wallet.publishedAddresses.isEmpty)
+            let retained = await store.backupSnapshot()
+            XCTAssertNotNil(retained?["nativeSegwit"])
+        }
+    }
+
+    @MainActor
+    func testNodeReadinessCannotTransferPublicPreparationToAnotherSession() async throws {
+        snapshotAppDefaultsDomain()
+        let lightning = Bitkit.LightningService.shared
+        let previousCompletion = lightning.onchainActivityWillPersist
+        defer { lightning.onchainActivityWillPersist = previousCompletion }
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        PublicPaykitService.setCleanupPending(false)
+        let addresses = AddressWallet()
+        let store = try PrivatePaykitAddressReservationStore(defaults: makeIsolatedDefaults(), operations: addresses.operations)
+        let before = await store.backupSnapshot()
+        let profile = PubkyProfileManager()
+        profile.publicKey = alice
+        profile.authState = .authenticated
+        let session = try XCTUnwrap(profile.currentSession)
+        let wallet = PublicActivityWallet(pubkyProfile: profile)
+        wallet.reservations = store
+        wallet.beforeNodeReady = {
+            try? await profile.signOut(performSessionCleanup: { throw PublicPaykitError.publicationFailed })
+            PublicPaykitService.setCleanupPending(false)
+        }
+        do {
+            try await wallet.publishPublicPaykitEndpoints(refreshIfNeeded: true, isSessionCurrent: { profile.currentSession == session })
+            XCTFail("An earlier publication cannot prepare for a replacement session")
+        } catch PubkyServiceError.sessionNotActive {
+        } catch {
+            XCTFail("Unexpected publication error: \(error)")
+        }
+        let after = await store.backupSnapshot()
+        XCTAssertEqual(after, before)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        XCTAssertTrue(wallet.publishedAddresses.isEmpty)
+        XCTAssertNotEqual(profile.currentSession, session)
+    }
+
+    @MainActor
     func testPersistedOnchainActivityRotatesPublicAddressWithoutContactsLightningOrReceiveChanges() async throws {
         snapshotAppDefaultsDomain()
         let lightning = Bitkit.LightningService.shared
@@ -372,9 +585,27 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         var failPublication = false
         var usageLookup: (() async throws -> Bool)?
         var usageLookupCount = 0
+        var afterEndpointSnapshot: (() async -> Void)?
+        var afterAddressReservation: (() async -> Void)?
+        var beforeNodeReady: (() async -> Void)?
+        var afterEndpointWrite: (() async throws -> Void)?
 
-        override func publicPaykitOnchainAddress(for publicKey: String) async throws -> String {
-            try await XCTUnwrap(reservations).currentOrRotatedPublicAddress(for: publicKey)
+        override func refreshPublicPaykitEndpoints(
+            forceRefreshBolt11: Bool = false, includeOnchain: Bool = true, includeLightning: Bool = true
+        ) async throws -> PublicPaykitEndpoints {
+            let snapshot = try await super.refreshPublicPaykitEndpoints(
+                forceRefreshBolt11: forceRefreshBolt11, includeOnchain: includeOnchain, includeLightning: includeLightning
+            )
+            await afterEndpointSnapshot?()
+            return snapshot
+        }
+
+        override func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore
+            .PublicAddressSnapshot
+        {
+            let snapshot = try await XCTUnwrap(reservations).currentOrRotatedPublicAddressSnapshot(for: publicKey)
+            await afterAddressReservation?()
+            return snapshot
         }
 
         override func isPublicPaykitAddressUsed(for publicKey: String) async throws -> Bool {
@@ -386,15 +617,27 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         }
 
         override func publishPublicPaykitEndpoints(refreshIfNeeded: Bool, isSessionCurrent: @escaping @MainActor () -> Bool) async throws {
-            try await PublicPaykitService.syncCurrentPublishedEndpoints(
-                wallet: self, isSessionCurrent: isSessionCurrent, syncApp: {},
-                applyEndpoints: { endpoints in
-                    if self.failPublication {
-                        throw AddressWallet.Failure.usage
-                    }
-                    self.publishedAddresses.append(contentsOf: endpoints.map(\.value))
+            let apply: ([PublicPaykitService.Endpoint]) async throws -> Void = { endpoints in
+                if self.failPublication {
+                    throw AddressWallet.Failure.usage
                 }
-            )
+                self.publishedAddresses.append(contentsOf: endpoints.map(\.value))
+                try await self.afterEndpointWrite?()
+            }
+            if refreshIfNeeded {
+                try await PublicPaykitService.syncPublishedEndpoints(
+                    wallet: self, publish: true, isSessionCurrent: isSessionCurrent, syncApp: {}, applyEndpoints: apply
+                )
+            } else {
+                try await PublicPaykitService.syncCurrentPublishedEndpoints(
+                    wallet: self, isSessionCurrent: isSessionCurrent, syncApp: {}, applyEndpoints: apply
+                )
+            }
+        }
+
+        override func waitForNodeToRun(timeoutSeconds: Double = 10.0) async -> Bool {
+            await beforeNodeReady?()
+            return true
         }
     }
 
@@ -413,6 +656,7 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         private var nextIndex: UInt32 = 0
         private var used: Set<String> = []
         private var failsUsage = false
+        private var usageStarted: (() async -> Void)?
 
         nonisolated var operations: PrivatePaykitAddressReservationStore.AddressOperations {
             .init(
@@ -444,7 +688,14 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
             failsUsage = value
         }
 
-        func isUsed(_ address: String) throws -> Bool {
+        func beforeNextUsage(_ operation: @escaping () async -> Void) {
+            usageStarted = operation
+        }
+
+        func isUsed(_ address: String) async throws -> Bool {
+            let operation = usageStarted
+            usageStarted = nil
+            await operation?()
             if failsUsage {
                 throw Failure.usage
             }

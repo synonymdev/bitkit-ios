@@ -199,6 +199,7 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         sheets: SheetViewModel,
         canRetryPreparation: Bool,
         handleSubscriptionNotification: () async -> Void,
+        allowanceProposal: () -> PaykitAllowanceEntry? = { nil },
         presentPaymentRequest: () async -> Void
     ) async {
         guard sheets.activeSheetConfiguration == nil || canRetryPreparation,
@@ -217,6 +218,10 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         }
         if let subscription = manager.subscriptionProposalForPresentation() {
             sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .review(subscription)))
+            return
+        }
+        if let allowance = allowanceProposal() {
+            sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .allowanceReview(allowance)))
             return
         }
         await presentPaymentRequest()
@@ -359,6 +364,7 @@ struct AppScene: View {
     @State private var receivedPaymentBackfillCache = PaykitReceivedPaymentBackfillCache(
         activityChanges: CoreService.shared.activity.activitiesChangedPublisher
     )
+    @State private var paykitAllowanceManager = PaykitAllowanceManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -371,6 +377,7 @@ struct AppScene: View {
     @State private var foregroundReturnTracker = ForegroundReturnTracker()
     @State private var paykitLifecycleTask: Task<Void, Never>?
     @State private var isPaykitSceneActive = false
+    @State private var hasPendingExpiryToast = false
     @State private var isContactRefreshForeground = false
     @State private var shopContactImport: (id: UUID, task: Task<Void, Never>)?
     @State private var foregroundWalletSync: Task<Void, Never>?
@@ -540,6 +547,7 @@ struct AppScene: View {
             .onChange(of: jadeManager.devicesRevision) { _, _ in pushHardwareDevices() }
             .onChange(of: isPinVerified) { _, verified in
                 if verified {
+                    showPendingExpiryToast()
                     Task { await hwWalletManager.reconnectOnForeground() }
                     Task { await presentNextIncomingPaykitItem() }
                 }
@@ -594,6 +602,7 @@ struct AppScene: View {
             .environment(wallet.usdtWallet)
             .environment(calculatorInputManager)
             .environment(paykitPaymentRequestManager)
+            .environment(paykitAllowanceManager)
     }
 
     private var paykitEventContent: some View {
@@ -606,6 +615,7 @@ struct AppScene: View {
                         guard let session = pubkyProfile.automaticPaykitSession,
                               PubkyPublicKeyFormat.matches(pk, session.publicKey)
                         else { return }
+                        await paykitAllowanceManager.activate(identity: pk)
                         await handlePendingPaykitSubscriptionNotification()
                         guard pubkyProfile.automaticPaykitSession == session else { return }
                         try? await contactsManager.loadContacts(for: pk)
@@ -624,6 +634,8 @@ struct AppScene: View {
                 } else if authState == .idle {
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
+                    paykitAllowanceManager.deactivate()
+                    hasPendingExpiryToast = false
                 }
             }
             .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
@@ -648,7 +660,10 @@ struct AppScene: View {
                 else { return }
                 paykitPaymentRequestManager.startEligibleTargetRefresh(publicKey: completion.publicKey)
             }
-            .onReceive(PaykitPaymentProofService.proofStateChangedPublisher) {
+            .onReceive(PaykitPaymentProofService.proofStateChangedPublisher
+                .merge(with: PaykitUsdtPaymentService.paymentProtectionChangedPublisher)
+                .receive(on: DispatchQueue.main))
+            {
                 paykitProofRefresh.invalidate(session: pubkyProfile.currentSession)
             }
             .onChange(of: pubkyProfile.currentSession) { _, session in
@@ -663,6 +678,9 @@ struct AppScene: View {
                 await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true, automatic: false)
                 guard !Task.isCancelled else { return }
                 paykitProofRefresh.complete(request)
+            }
+            .onReceive(PaykitAllowanceExecutor.eventPublisher.receive(on: DispatchQueue.main)) { event in
+                handlePaykitAllowanceEvent(event)
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { @MainActor in
@@ -701,9 +719,19 @@ struct AppScene: View {
                     Task { await presentNextIncomingPaykitItem() }
                 }
             }
+            .onChange(of: paykitAllowanceManager.isUpdating) { _, isUpdating in
+                // A request held back while allowances were updating is presented as soon as they settle.
+                if !isUpdating {
+                    Task { await presentNextIncomingPaykitItem() }
+                }
+            }
             .onChange(of: incomingPaykitPaymentRequestPresentationState) { previous, current in
                 handleIncomingPaykitPaymentRequestPresentationStateChange(from: previous, to: current)
             }
+            .onChange(of: paykitPaymentRequestManager.silentExpirationTrigger) {
+                queueSilentExpiryToast()
+            }
+            .onChange(of: scenePhase) { showPendingExpiryToast() }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
                 guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
                     return
@@ -1407,6 +1435,25 @@ struct AppScene: View {
         let refreshed = await paykitPaymentRequestManager.refresh(
             mode: mode, forceFresh: forceFresh, messagePriority: messagePriority, canRefresh: canRefresh
         )
+        // Deleting the profile withdraws the payment lists an automatic payment would consume.
+        if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
+            await paykitAllowanceManager.refresh()
+            let isAutomaticSession = { pubkyProfile.automaticPaykitSession == session && !pubkyProfile.isDeletingProfile }
+            let acceptedOffers = await paykitAllowanceManager.acceptOffersFromAllowers(
+                canContinue: { canRefresh() && isAutomaticSession() },
+                canAnnounce: isAutomaticSession
+            )
+            announceAcceptedAllowanceOffers(acceptedOffers)
+            // A request whose manual sheet is already open stays with the user.
+            let manualRequestId = incomingPaymentRequestPreparation.flatMap { $0.ownsSheet(sheets) ? $0.request?.id : nil }
+            let handledAutomatically = await paykitAllowanceManager.processIncomingRequests(
+                paykitPaymentRequestManager.pendingRequests.filter { $0.id != manualRequestId }
+            )
+            let adoptedAcceptances = paykitPaymentRequestManager.reloadAcceptedRequestIds()
+            if handledAutomatically || adoptedAcceptances, canRefresh() {
+                await paykitPaymentRequestManager.refresh(mode: .stored, canRefresh: canRefresh)
+            }
+        }
         guard pubkyProfile.authState == .authenticated,
               PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey)
         else { return false }
@@ -1566,6 +1613,20 @@ struct AppScene: View {
             else { return }
             for request in requests {
                 guard paykitPaymentRequestManager.isCurrentPresentation(request) else { return }
+                if await paykitAllowanceManager.isAutomaticallyHandling(request) {
+                    // The next refresh presents it if the allowance flow hands it back; presenting again now would spin on it.
+                    if paykitPaymentRequestManager.requestedPresentationId == request.id {
+                        app.toast(type: .info, title: t("subscriptions__allowance_payment_in_progress"))
+                        paykitPaymentRequestManager.releaseRequestedPresentation(request)
+                    }
+                    shouldPresentNextRequest = false
+                    continue
+                }
+                // A refresh or pass still running may hand this request to the allowance flow; a later round presents it.
+                if paykitAllowanceManager.isUpdating, paykitAllowanceManager.mayCover(request) {
+                    shouldPresentNextRequest = false
+                    continue
+                }
                 let preparation: IncomingPaykitPaymentRequestPreparation
                 if let current = incomingPaymentRequestPreparation, current.ownsSheet(sheets) {
                     guard current.request?.id == request.id else { continue }
@@ -1824,6 +1885,30 @@ struct AppScene: View {
         IncomingPaykitPaymentRequestPresentationState(paykitPaymentRequestManager)
     }
 
+    private func queueSilentExpiryToast() {
+        let payingRequestId = app.contactPaymentContext?.incomingPaymentRequest?.id
+        guard paykitPaymentRequestManager.silentlyExpiredRequests.contains(where: { $0.id != payingRequestId }) else { return }
+        hasPendingExpiryToast = true
+        showPendingExpiryToast()
+    }
+
+    /// Waits until the app is in front and unlocked, so the toast isn't shown, and lost, behind the PIN screen.
+    private func showPendingExpiryToast() {
+        guard hasPendingExpiryToast else { return }
+        guard PaykitFeatureFlags.isUIEnabled else {
+            hasPendingExpiryToast = false
+            return
+        }
+        guard scenePhase == .active, isPinVerified || !settings.pinEnabled else { return }
+        hasPendingExpiryToast = false
+        app.toast(
+            type: .error,
+            title: t("wallet__payment_request"),
+            description: t("wallet__payment_request_expired"),
+            accessibilityIdentifier: "PaymentRequestExpiredToast"
+        )
+    }
+
     private func handleIncomingPaykitPaymentRequestPresentationStateChange(
         from previous: IncomingPaykitPaymentRequestPresentationState,
         to current: IncomingPaykitPaymentRequestPresentationState
@@ -1898,6 +1983,54 @@ struct AppScene: View {
         await presentNextIncomingPaykitPaymentRequest()
     }
 
+    private func handlePaykitAllowanceEvent(_ event: PaykitAllowanceEvent) {
+        switch event {
+        case let .paidAutomatically(counterparty, amountSats, paymentId):
+            let title = t("subscriptions__allowance_executed_title")
+            let description = t(
+                "subscriptions__allowance_executed_description",
+                variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
+            )
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .lightning, title: title, description: description, accessibilityIdentifier: "AllowancePaidToast")
+            })
+            Task {
+                await paykitAllowanceManager.refresh()
+                do {
+                    try await activity.setContact(counterparty, forPaymentId: paymentId)
+                } catch {
+                    Logger.warn("Failed to set contact for an automatic allowance payment: \(error)", context: "AppScene")
+                }
+            }
+        case let .limitReached(counterparty, amountSats):
+            let title = t("subscriptions__allowance_limit_title")
+            let description = t(
+                "subscriptions__allowance_limit_description",
+                variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
+            )
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .warning, title: title, description: description, accessibilityIdentifier: "AllowanceLimitToast")
+            })
+        case .ledgerChanged:
+            Task { await paykitAllowanceManager.refresh() }
+        }
+    }
+
+    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
+        for offer in offers {
+            let title = t("subscriptions__allowance_offer_accepted_title")
+            let description = t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(offer.counterparty)])
+            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+                app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
+            })
+        }
+    }
+
+    private func contactName(_ publicKey: String) -> String {
+        contactsManager.contacts.first { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) }?.displayName
+            ?? PubkyPublicKeyFormat.displayTruncated(publicKey)
+    }
+
     private func presentNextIncomingPaykitItem() async {
         guard scenePhase == .active,
               pubkyProfile.automaticPaykitSession != nil,
@@ -1908,13 +2041,14 @@ struct AppScene: View {
             sheets: sheets,
             canRetryPreparation: canRetryIncomingPaymentRequestPreparation,
             handleSubscriptionNotification: handlePendingPaykitSubscriptionNotification,
+            allowanceProposal: paykitAllowanceManager.proposalForPresentation,
             presentPaymentRequest: presentNextIncomingPaykitPaymentRequest
         )
     }
 
     private func retryPendingPaykitEndpointRemoval() async {
         guard let session = pubkyProfile.automaticPaykitSession else { return }
-        await ContactPaymentsService.reconcilePendingEndpoints {
+        await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
             guard pubkyProfile.automaticPaykitSession == session else { return }
             let privateCleanupPending = UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey)
             await PrivatePaykitService.shared.retryPendingEndpointReconciliation(
@@ -1924,7 +2058,7 @@ struct AppScene: View {
             if privateCleanupPending, !UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey) {
                 PublicPaykitService.setCleanupPending(true)
             }
-
+        }) {
             if PublicPaykitService.isCleanupPending, pubkyProfile.automaticPaykitSession == session {
                 do {
                     try await PublicPaykitService.retryPendingEndpointReconciliation(

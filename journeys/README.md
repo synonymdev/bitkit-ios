@@ -140,6 +140,11 @@ iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabula
 journey usually names the same string on both platforms. Where a container needs to be queryable,
 iOS pairs the identifier with `.accessibilityElement(children: .contain)`.
 
+A payment request's preparing confirmation is the one exception: Android tags its disabled swipe
+`PaymentRequestPreparing`, while iOS identifies the sheet as `PaymentRequestConfirm` and keeps its
+swipe (`GRAB`) disabled and loading. `ReviewAmount` on that sheet is the requested amount, not a
+paid request reopening.
+
 ### On-chain payment safety adaptations
 
 The shared names and action prose in `send/onchain-original-payment-retry.xml`,
@@ -189,7 +194,7 @@ journey PR, which is what made this file conflict on every merge.
 
 | Capability | Provided by |
 | --- | --- |
-| USDT wallet navigation without funding | an onboarded build with USDT configured; provider errors may remain visible while offline — [USDT QA](../Docs/USDT-QA.md) |
+| USDT wallet navigation without funding | an onboarded build with USDT configured; wallet syncing remains silent while offline; payment-action errors remain available — [USDT QA](../Docs/USDT-QA.md) |
 | Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
 | Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |

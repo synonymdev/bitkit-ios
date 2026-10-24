@@ -36,6 +36,13 @@ struct PrivatePaykitPaymentContext: Equatable {
     }
 }
 
+struct PrivatePaykitAllowancePayment: Equatable {
+    let endpoint: PublicPaykitService.Endpoint
+    let context: PrivatePaykitPaymentContext
+    let lightningPaymentHash: String?
+    let lightningInvoiceHasAmount: Bool
+}
+
 enum IncomingPaykitPaymentRequestFailureReason: String, Hashable {
     case noSupportedEndpoint = "no_supported_endpoint"
     case endpointNotPayable = "endpoint_not_payable"
@@ -328,29 +335,42 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
+        let session = wallet.publicPaykitSession
         if publish {
             wallet.preparePendingPublicPaykitInvoiceRefresh()
         }
-        var desiredSnapshot: (endpoints: [Endpoint], invoiceRevision: UUID)?
+        var desiredSnapshot: (
+            endpoints: [Endpoint],
+            invoiceRevision: UUID,
+            publicAddress: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
+        )?
+        let apply = applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
         try await syncPublishedEndpoints(
             publish: publish,
             isSessionCurrent: isSessionCurrent,
             buildEndpoints: {
-                let snapshot = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: true, requireEndpoint: true)
+                let snapshot = try await buildWalletEndpoints(wallet: wallet, session: session, refreshIfNeeded: true, requireEndpoint: true)
                 desiredSnapshot = snapshot
                 return snapshot.endpoints
             },
             syncApp: syncApp ?? { try await syncPaykitApp(priority: appSyncPriority, isSessionCurrent: isSessionCurrent) },
-            applyEndpoints: applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
+            applyEndpoints: { endpoints in
+                if publish {
+                    markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
+                }
+                try await apply(endpoints)
+                if let desiredSnapshot {
+                    acknowledgePublishedEndpoints(
+                        wallet: wallet,
+                        endpoints: desiredSnapshot.endpoints,
+                        invoiceRevision: desiredSnapshot.invoiceRevision,
+                        publicAddress: desiredSnapshot.publicAddress,
+                        session: session,
+                        isSessionCurrent: isSessionCurrent
+                    )
+                }
+            }
         )
-        if let desiredSnapshot {
-            acknowledgePublishedEndpoints(
-                wallet: wallet,
-                endpoints: desiredSnapshot.endpoints,
-                invoiceRevision: desiredSnapshot.invoiceRevision,
-                isSessionCurrent: isSessionCurrent
-            )
-        }
     }
 
     @MainActor
@@ -405,20 +425,32 @@ enum PublicPaykitService {
         syncApp: (() async throws -> Void)? = nil,
         applyEndpoints: (([Endpoint]) async throws -> Void)? = nil
     ) async throws {
+        let session = wallet.publicPaykitSession
         wallet.preparePendingPublicPaykitInvoiceRefresh()
-        let (desiredEndpoints, invoiceRevision) = try await buildWalletEndpoints(wallet: wallet, refreshIfNeeded: false, requireEndpoint: false)
+        let (desiredEndpoints, invoiceRevision, publicAddress) = try await buildWalletEndpoints(
+            wallet: wallet,
+            session: session,
+            refreshIfNeeded: false,
+            requireEndpoint: false
+        )
+        let apply = applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
         try await syncPublishedEndpoints(
             publish: true,
             isSessionCurrent: isSessionCurrent,
             buildEndpoints: { desiredEndpoints },
             syncApp: syncApp ?? { try await syncPaykitApp(isSessionCurrent: isSessionCurrent) },
-            applyEndpoints: applyEndpoints ?? { try await applyPublishedEndpointsLocked($0, isSessionCurrent: isSessionCurrent) }
-        )
-        acknowledgePublishedEndpoints(
-            wallet: wallet,
-            endpoints: desiredEndpoints,
-            invoiceRevision: invoiceRevision,
-            isSessionCurrent: isSessionCurrent
+            applyEndpoints: { endpoints in
+                markPublicationPending(wallet: wallet, session: session, isSessionCurrent: isSessionCurrent)
+                try await apply(endpoints)
+                acknowledgePublishedEndpoints(
+                    wallet: wallet,
+                    endpoints: desiredEndpoints,
+                    invoiceRevision: invoiceRevision,
+                    publicAddress: publicAddress,
+                    session: session,
+                    isSessionCurrent: isSessionCurrent
+                )
+            }
         )
     }
 
@@ -449,21 +481,51 @@ enum PublicPaykitService {
     }
 
     @MainActor
+    private static func markPublicationPending(
+        wallet: WalletViewModel,
+        session: PubkyProfileManager.SignedInSession?,
+        isSessionCurrent: (@MainActor () -> Bool)?
+    ) {
+        guard let isSessionCurrent, !Task.isCancelled, isSessionCurrent(),
+              wallet.publicPaykitSession == session,
+              pendingReconciliationMode() == .publishEndpoints
+        else { return }
+        setCleanupPending(true)
+    }
+
+    @MainActor
     private static func acknowledgePublishedEndpoints(
         wallet: WalletViewModel,
         endpoints: [Endpoint],
         invoiceRevision: UUID,
+        publicAddress: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?,
+        session: PubkyProfileManager.SignedInSession?,
         isSessionCurrent: (@MainActor () -> Bool)?
     ) {
-        // An older snapshot can finish after an invoice invalidation or its replacement.
+        // An older snapshot can finish after an invoice or address replacement.
         guard let isSessionCurrent, !Task.isCancelled, isSessionCurrent(),
+              wallet.publicPaykitSession == session,
               pendingReconciliationMode() == .publishEndpoints
         else { return }
         let publishedCurrentInvoice = !isLightningPaymentOptionEnabled() ||
             (wallet.publicPaykitInvoiceRevision == invoiceRevision && wallet.publicPaykitBolt11 ==
                 (endpoints.first { $0.methodId == .bitcoinLightningBolt11 }?.value ?? ""))
         let publishedUsdt = !isUsdtPaymentOptionEnabled() || endpoints.contains { $0.methodId == .usdtArbitrum }
-        setCleanupPending(!publishedCurrentInvoice || !publishedUsdt)
+        let acknowledge = { (hasCurrentAddress: Bool) in
+            guard !Task.isCancelled, isSessionCurrent(), wallet.publicPaykitSession == session,
+                  pendingReconciliationMode() == .publishEndpoints
+            else { return }
+            setCleanupPending(!hasCurrentAddress || !publishedCurrentInvoice || !publishedUsdt)
+        }
+        if !isOnchainPaymentOptionEnabled() {
+            acknowledge(true)
+        } else if let publicAddress, publicAddress.publicKey == session.flatMap({ PubkyPublicKeyFormat.normalized($0.publicKey) }),
+                  endpoints.contains(where: { $0.value == publicAddress.address && $0.methodId.onchainNetwork != nil })
+        {
+            publicAddress.withCurrentReservation(acknowledge)
+        } else {
+            acknowledge(false)
+        }
     }
 
     static func removePublishedEndpoints() async throws {
@@ -607,9 +669,10 @@ enum PublicPaykitService {
     @MainActor
     private static func buildWalletEndpoints(
         wallet: WalletViewModel,
+        session: PubkyProfileManager.SignedInSession?,
         refreshIfNeeded: Bool,
         requireEndpoint: Bool
-    ) async throws -> (endpoints: [Endpoint], invoiceRevision: UUID) {
+    ) async throws -> (endpoints: [Endpoint], invoiceRevision: UUID, publicAddress: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?) {
         let includeOnchain = isOnchainPaymentOptionEnabled()
         let includeLightning = isLightningPaymentOptionEnabled()
 
@@ -621,6 +684,7 @@ enum PublicPaykitService {
             }
         }
 
+        guard wallet.publicPaykitSession == session else { throw PubkyServiceError.sessionNotActive }
         let publicEndpoints = try await wallet.refreshPublicPaykitEndpoints(
             forceRefreshBolt11: refreshIfNeeded && includeLightning,
             includeOnchain: includeOnchain,
@@ -671,7 +735,7 @@ enum PublicPaykitService {
             throw PublicPaykitError.noSupportedEndpoint
         }
 
-        return (endpoints, invoiceRevision)
+        return (endpoints, invoiceRevision, publicEndpoints.onchainSnapshot)
     }
 
     private static func isPayableEndpoint(_ endpoint: Endpoint) async -> Bool {

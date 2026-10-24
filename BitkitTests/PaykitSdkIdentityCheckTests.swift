@@ -141,6 +141,31 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         XCTAssertEqual(sdk.writes, ["upload"])
     }
 
+    func testProfileDeletionChecksItsOwnerBeforeReadingOrRemovingTheProfile() async throws {
+        for signedIn in [identityA, identityB, nil] {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = signedIn
+            sdk.profileExists = true
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            do {
+                try await service.deletePaykitProfile(expectedIdentity: bareIdentityA)
+                XCTAssertEqual(signedIn, identityA)
+            } catch PubkyServiceError.identityChanged {
+                XCTAssertNotEqual(signedIn, identityA)
+            }
+            XCTAssertEqual(sdk.profileReads, signedIn == identityA ? 1 : 0)
+            XCTAssertEqual(sdk.writes, signedIn == identityA ? ["delete-profile:test"] : [])
+            if signedIn == identityA {
+                XCTAssertEqual(sdk.identitiesAtWrites, [identityA])
+            }
+        }
+        let sdk = IdentitySwitchingSdk(noPointer: .init())
+        sdk.identity = identityA
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        try await service.deletePaykitProfile(expectedIdentity: identityA)
+        XCTAssertTrue(sdk.writes.isEmpty, "Already-missing profile cleanup is idempotent")
+    }
+
     /// Without a live session, a profile or contact avatar upload for the signed-in identity fails with the SDK's own
     /// error, as it did before uploads were bound to an identity, so Edit Profile does not show a payment request error.
     /// The payment request upload still reports `requestUnavailable`.
@@ -215,6 +240,14 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             }),
             ("profile publication", { service in
                 _ = try await service.publishPaykitProfile(testProfile, expectedIdentity: identityA)
+            }, { error in
+                if case .identityChanged? = error as? PubkyServiceError {
+                    return true
+                }
+                return false
+            }),
+            ("profile deletion", { service in
+                try await service.deletePaykitProfile(expectedIdentity: identityA)
             }, { error in
                 if case .identityChanged? = error as? PubkyServiceError {
                     return true
@@ -565,6 +598,8 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var recordedIdentitiesAtWrites: [String?] = []
     private var recordedContactReads = 0
     private var completedLinkedPeersRead = false
+    private var recordedProfileReads = 0
+    private var storedProfileExists = false
     let linkedPeersGate = IdentityCheckGate()
     let linkedPeersStarted = IdentityCheckCallLog()
     let contactRecordsGate = IdentityCheckGate()
@@ -601,6 +636,15 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     var hasReadLinkedPeers: Bool {
         lock.withLock { completedLinkedPeersRead }
+    }
+
+    var profileReads: Int {
+        lock.withLock { recordedProfileReads }
+    }
+
+    var profileExists: Bool {
+        get { lock.withLock { storedProfileExists } }
+        set { lock.withLock { storedProfileExists = newValue } }
     }
 
     private func recordWrite(_ write: String) {
@@ -681,7 +725,16 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func fetchPaykitProfile(publicKey _: String) async throws -> PaykitProfileRecord? {
-        nil
+        lock.withLock { recordedProfileReads += 1 }
+        guard profileExists else { return nil }
+        return PaykitProfileRecord(
+            publicKey: identity ?? "", profile: testProfile, path: "/pub/paykit/profile.json",
+            revision: "test", updatedAt: "2026-10-02T00:00:00Z"
+        )
+    }
+
+    override func deletePaykitProfile(expectedRevision: String) async throws {
+        recordWrite("delete-profile:\(expectedRevision)")
     }
 
     override func publishPaykitProfile(profile: PaykitProfile, expectedRevision _: String?) async throws -> PaykitProfileRecord {

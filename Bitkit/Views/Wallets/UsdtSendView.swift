@@ -334,7 +334,7 @@ struct UsdtSendView: View {
         VStack(alignment: .leading, spacing: 0) {
             UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount)
                 .accessibilityIdentifier("UsdtAmount")
-                .padding(.bottom, 32)
+            Spacer()
             if let error {
                 BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError").padding(.bottom, 16)
             }
@@ -356,12 +356,10 @@ struct UsdtSendView: View {
             CustomDivider()
             NumberPad(
                 type: .decimal,
-                decimalSeparator: Locale.current.decimalSeparator ?? ".",
                 isDisabled: busy || embedded,
                 onDeleteLongPress: { amount = ""; maximumQuote = nil; isMaximumAmount = false; error = nil },
                 onPress: enterAmount
             )
-            .frame(maxHeight: .infinity)
             CustomButton(title: t("common__continue"), isDisabled: busy || (try? parsePaykitAmountInput(asset: .usdt, value: amount)) == nil,
                          isLoading: busy && !preparingMaximum, titleKerning: 0, titleLineHeight: 20)
             {

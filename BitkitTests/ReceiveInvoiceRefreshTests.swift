@@ -1,4 +1,5 @@
 @testable import Bitkit
+import os
 import XCTest
 
 @MainActor
@@ -12,7 +13,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             PublicPaykitService.cleanupPendingKey, PaykitFeatureFlags.uiEnabledKey,
             "publicPaykitBolt11", "publicPaykitBolt11PaymentHash", "publicPaykitBolt11ExpiresAt",
             PublicPaykitService.lightningPaymentOptionEnabledKey, PublicPaykitService.usdtPaymentOptionEnabledKey,
-            PrivatePaykitService.publishingEnabledKey,
+            PrivatePaykitService.publishingEnabledKey, PublicPaykitService.onchainPaymentOptionEnabledKey,
         ].map { (
             $0,
             UserDefaults.standard.object(forKey: $0)
@@ -21,6 +22,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: key)
         }
         UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
     }
 
     override func tearDown() {
@@ -467,7 +469,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 )
             }
             await fulfillment(of: [creation.started], timeout: 5)
-            await profile.performProfileDeletion {
+            try await profile.performProfileDeletion {
                 XCTAssertEqual(profile.currentSession, session)
                 creation.release()
                 do {
@@ -1400,7 +1402,7 @@ private final class GatedReceiveWallet: WalletViewModel {
         forceRefreshBolt11: Bool = false,
         includeOnchain: Bool = true,
         includeLightning: Bool = true
-    ) async throws -> (onchainAddress: String, bolt11: String) {
+    ) async throws -> PublicPaykitEndpoints {
         await beforePublicEndpointRefresh?()
         if failPublicEndpointRefresh {
             throw TestError.failed
@@ -1411,7 +1413,13 @@ private final class GatedReceiveWallet: WalletViewModel {
             }
             let invoice = publicPaykitBolt11
             await afterPublicEndpointSnapshot?()
-            return (publicEndpointAddress, invoice)
+            return PublicPaykitEndpoints(
+                onchainSnapshot: publicEndpointAddress.isEmpty ? nil : publicAddressSnapshot(
+                    publicEndpointAddress,
+                    publicKey: publicPaykitSession?.publicKey ?? ""
+                ),
+                bolt11: invoice
+            )
         }
         return try await super.refreshPublicPaykitEndpoints(
             forceRefreshBolt11: forceRefreshBolt11, includeOnchain: includeOnchain, includeLightning: includeLightning
@@ -1433,8 +1441,19 @@ private final class GatedReceiveWallet: WalletViewModel {
         true
     }
 
-    override func publicPaykitOnchainAddress(for publicKey: String) async throws -> String {
-        try await refreshReusableOnchainAddress()
+    override func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore
+        .PublicAddressSnapshot
+    {
+        let address = try await refreshReusableOnchainAddress()
+        return publicAddressSnapshot(address, publicKey: publicKey)
+    }
+
+    private func publicAddressSnapshot(_ address: String, publicKey: String) -> PrivatePaykitAddressReservationStore.PublicAddressSnapshot {
+        let revision = UUID()
+        return .init(
+            address: address, publicKey: PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey,
+            revision: revision, revisionState: OSAllocatedUnfairLock(initialState: revision)
+        )
     }
 
     override func refreshReusableOnchainAddress() async throws -> String {

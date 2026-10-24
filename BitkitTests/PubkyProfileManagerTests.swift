@@ -57,18 +57,258 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
-    func testEndingDeletionDoesNotRestoreAnEndedOrChangedSession() async {
+    func testEndingDeletionDoesNotRestoreAnEndedOrChangedSession() async throws {
         let manager = PubkyProfileManager()
         manager.publicKey = "pubky" + String(repeating: "y", count: 52)
         manager.authState = .authenticated
         let original = manager.automaticPaykitSession
-        await manager.performProfileDeletion {
+        try await manager.performProfileDeletion {
             manager.publicKey = "pubky" + String(repeating: "o", count: 52)
             XCTAssertNil(manager.automaticPaykitSession)
         }
         XCTAssertNotEqual(manager.automaticPaykitSession, original)
-        await manager.performProfileDeletion { manager.authState = .idle }
+        try await manager.performProfileDeletion { manager.authState = .idle }
         XCTAssertNil(manager.automaticPaykitSession)
+    }
+
+    @MainActor
+    func testProfileDeletionRefusesIdentityChangesBeforeTheyTouchSessionState() async throws {
+        try await withEmptyIdentityStorage {
+            UserDefaults.standard.set(false, forKey: "pubky_profile_setup_pending")
+            for mutation in ["adoption", "creation", "disconnect", "restore"] {
+                let manager = PubkyProfileManager()
+                manager.publicKey = "pubky" + String(repeating: "y", count: 52)
+                manager.authState = .authenticated
+                let session = try XCTUnwrap(manager.currentSession)
+
+                try await manager.performProfileDeletion {
+                    try Task.checkCancellation()
+                    do {
+                        switch mutation {
+                        case "adoption":
+                            _ = try await manager.adoptRingIdentity(
+                                pubky: String(repeating: "o", count: 52),
+                                loadSecret: { _, _ in
+                                    XCTFail("Deletion must reject adoption before reading another identity")
+                                    return nil
+                                }
+                            )
+                        case "creation":
+                            try await manager.createIdentity(name: "Replacement", bio: "", links: [], loadStoredSecretKey: {
+                                XCTFail("Deletion must reject creation before loading credentials")
+                                throw CancellationError()
+                            })
+                        case "disconnect":
+                            try await manager.signOut(performSessionCleanup: {
+                                XCTFail("An unrelated disconnect must not enter deletion's session")
+                                throw CancellationError()
+                            })
+                        default:
+                            try await PubkyProfileManager.restoreSessionBackupState(
+                                nil,
+                                deleteKeychainValue: { _ in XCTFail("Deletion must retain its credentials") },
+                                removeOwnSharedRecords: { XCTFail("Deletion must retain its shared identity") },
+                                forgetSessionAccess: { XCTFail("Deletion must reject restore before ending its session") }
+                            )
+                        }
+                        XCTFail("Identity mutation must be rejected: \(mutation)")
+                    } catch {
+                        guard case PubkyServiceError.identityChanged = error else {
+                            XCTFail("Unexpected error for \(mutation): \(error)")
+                            return
+                        }
+                    }
+                    XCTAssertEqual(manager.currentSession, session, mutation)
+                }
+                XCTAssertEqual(manager.currentSession, session, mutation)
+                XCTAssertFalse(manager.isDeletingProfile, mutation)
+            }
+        }
+    }
+
+    @MainActor
+    func testProfileDeletionDoesNotOverlapSessionInitialization() async throws {
+        try await withEmptyIdentityStorage {
+            let manager = PubkyProfileManager()
+            let started = expectation(description: "Session initialization started")
+            let (resume, continuation) = AsyncStream<Void>.makeStream()
+            defer { continuation.finish() }
+            let initialization = Task {
+                await manager.initialize {
+                    started.fulfill()
+                    for await _ in resume {}
+                    return .noSession
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            do {
+                try await manager.performProfileDeletion { XCTFail("Deletion must wait for session initialization") }
+                XCTFail("Expected deletion to be refused")
+            } catch PubkyServiceError.identityChanged {}
+            continuation.finish()
+            await initialization.value
+            try await manager.performProfileDeletion {
+                await manager.initialize {
+                    XCTFail("Session initialization must wait for deletion")
+                    return .noSession
+                }
+            }
+            let resumed = expectation(description: "Session initialization resumed")
+            await manager.initialize {
+                resumed.fulfill()
+                return .noSession
+            }
+            await fulfillment(of: [resumed], timeout: 2)
+        }
+    }
+
+    @MainActor
+    func testPrivateCleanupRetainsTheCurrentOwnersRepairMarker() async throws {
+        snapshotAppDefaultsDomain()
+        for initiallyPending in [false, true] {
+            for outcome in ["success", "failure", "staleSuccess", "staleFailure", "notAdmitted", "cancelled"] {
+                var isCurrent = outcome != "notAdmitted"
+                UserDefaults.standard.set(initiallyPending, forKey: PrivatePaykitService.cleanupPendingKey)
+                do {
+                    try await PubkyProfileManager.removePrivatePaykitEndpoints(context: "test", isSessionCurrent: { isCurrent }) {
+                        XCTAssertNotEqual(outcome, "notAdmitted")
+                        if outcome.hasPrefix("stale") {
+                            isCurrent = false
+                        }
+                        if outcome == "failure" || outcome == "staleFailure" {
+                            throw PublicPaykitError.publicationFailed
+                        }
+                        if outcome == "cancelled" {
+                            throw CancellationError()
+                        }
+                    }
+                    XCTAssertEqual(outcome, "success")
+                } catch {
+                    XCTAssertNotEqual(outcome, "success")
+                }
+                let expected = !isCurrent ? initiallyPending : outcome != "success"
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey), expected, outcome)
+            }
+        }
+    }
+
+    @MainActor
+    func testDefaultProfileDeletionKeepsOwnershipUntilItsAdmittedWriteDrains() async throws {
+        try await withEmptyIdentityStorage {
+            for outcome in ["failure", "cancellation", "ownerChanged"] {
+                let original = "pubky" + String(repeating: "y", count: 52)
+                let started = expectation(description: "Profile delete admitted")
+                let (resume, continuation) = AsyncStream<Void>.makeStream()
+                defer { continuation.finish() }
+                let manager = PubkyProfileManager(profileDeleter: { expectedIdentity in
+                    XCTAssertEqual(expectedIdentity, original)
+                    started.fulfill()
+                    for await _ in resume {}
+                    if outcome == "failure" {
+                        throw PublicPaykitError.publicationFailed
+                    }
+                })
+                manager.publicKey = original
+                manager.authState = .authenticated
+                let session = try XCTUnwrap(manager.currentSession)
+                UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                UserDefaults.standard.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+                let deletion = Task { try await manager.deleteProfile(cleanPrivatePaykitEndpoints: false) }
+                await fulfillment(of: [started], timeout: 5)
+                XCTAssertTrue(manager.isDeletingProfile)
+                let overlapRejected = expectation(description: "Overlapping deletion refused")
+                let overlappingDeletion = Task {
+                    do {
+                        try await manager.deleteProfile(cleanPrivatePaykitEndpoints: false)
+                        XCTFail("A separate deletion must not share another call's admission")
+                    } catch PubkyServiceError.identityChanged {
+                    } catch {
+                        XCTFail("Unexpected overlapping-deletion error: \(error)")
+                    }
+                    overlapRejected.fulfill()
+                }
+                await fulfillment(of: [overlapRejected], timeout: 2)
+                if outcome == "cancellation" {
+                    deletion.cancel()
+                }
+                if outcome == "ownerChanged" {
+                    manager.publicKey = "pubky" + String(repeating: "o", count: 52)
+                }
+                do {
+                    _ = try await manager.adoptRingIdentity(pubky: original, loadSecret: { _, _ in
+                        XCTFail("Replacement must wait for admitted deletion to drain")
+                        return nil
+                    })
+                    XCTFail("Expected adoption to be refused")
+                } catch PubkyServiceError.identityChanged {
+                } catch {
+                    XCTFail("Unexpected adoption error during deletion: \(error)")
+                }
+                XCTAssertTrue(manager.isDeletingProfile, "Cancellation must not release admitted work")
+                continuation.finish()
+                await overlappingDeletion.value
+                do {
+                    try await deletion.value
+                    XCTFail("Expected deletion to stop before clearing sharing or signing out")
+                } catch {
+                    switch outcome {
+                    case "failure": XCTAssertTrue(error is PublicPaykitError)
+                    case "cancellation": XCTAssertTrue(error is CancellationError)
+                    default:
+                        guard case PubkyServiceError.identityChanged = error else {
+                            return XCTFail("Expected stale deletion to be refused, got \(error)")
+                        }
+                    }
+                }
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey))
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+                XCTAssertFalse(manager.isDeletingProfile)
+                if outcome != "ownerChanged" {
+                    XCTAssertEqual(manager.currentSession, session)
+                }
+                var readSecret = false
+                do {
+                    _ = try await manager.adoptRingIdentity(pubky: original, loadSecret: { _, _ in
+                        readSecret = true
+                        return nil
+                    })
+                    XCTFail("The fixture has no Ring credential")
+                } catch PubkyServiceError.authFailed {}
+                XCTAssertTrue(readSecret, "Identity admission resumes after deletion drains")
+            }
+        }
+    }
+
+    @MainActor
+    func testDeletionSessionRejectsAReplacementAndANewSessionForTheSameKey() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let original = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            let manager = PubkyProfileManager(profileDeleter: { _ in
+                XCTFail("A stale deletion must not reach profile storage")
+            })
+            manager.publicKey = original
+            manager.authState = .authenticated
+            let session = try XCTUnwrap(manager.currentSession)
+            try manager.requireCurrentSession(session)
+            manager.publicKey = "pubky" + String(repeating: "o", count: 52)
+            XCTAssertThrowsError(try manager.requireCurrentSession(session))
+            do {
+                try await manager.deleteProfile(cleanPrivatePaykitEndpoints: false, expectedSession: session)
+                XCTFail("Deletion must reject a replacement identity")
+            } catch PubkyServiceError.identityChanged {}
+            manager.publicKey = original
+            _ = try await manager.adoptRingIdentity(
+                pubky: original, loadSecret: { _, _ in secret }, signIn: { _ in }, fetchProfile: { _ in nil }
+            )
+            XCTAssertEqual(manager.publicKey, original)
+            XCTAssertNotEqual(manager.currentSession, session)
+            XCTAssertThrowsError(try manager.requireCurrentSession(session))
+            do {
+                try await manager.deleteProfile(cleanPrivatePaykitEndpoints: false, expectedSession: session)
+                XCTFail("Deletion must reject a new session for the same key")
+            } catch PubkyServiceError.identityChanged {}
+        }
     }
 
     @MainActor
@@ -1328,6 +1568,30 @@ final class PubkyProfileManagerTests: XCTestCase {
         manager.authState = .authenticated
 
         XCTAssertFalse(manager.isAuthenticated)
+    }
+
+    @MainActor
+    func testRingAdoptedIdentityRequiresARingReferenceToTheSignedInPubky() {
+        let savedReference = AdoptedPubkyReference.current
+        defer { AdoptedPubkyReference.current = savedReference }
+        let manager = PubkyProfileManager()
+        manager.publicKey = ringKeyA
+
+        AdoptedPubkyReference.current = nil
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Bitkit-created identity")
+
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, bareRingKeyA)
+        XCTAssertTrue(manager.isRingAdoptedIdentity, "Ring reference matches the signed-in pubky")
+
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, ringKeyB)
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Ring reference to another pubky")
+
+        AdoptedPubkyReference.current = ("to.bitkit.other", ringKeyA)
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Reference from another app")
+
+        AdoptedPubkyReference.current = (SharedPubkyKeychain.ringSourceApp, ringKeyA)
+        manager.publicKey = nil
+        XCTAssertFalse(manager.isRingAdoptedIdentity, "Signed out")
     }
 
     @MainActor

@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import LDKNode
+import os
 
 actor PrivatePaykitAddressReservationStore {
     static let shared = PrivatePaykitAddressReservationStore()
@@ -31,9 +32,33 @@ actor PrivatePaykitAddressReservationStore {
 
     private let defaults: UserDefaults
     private let operations: AddressOperations
+    private nonisolated let publicAssignmentRevision = OSAllocatedUnfairLock(initialState: UUID())
     private(set) var attributionRevision: UInt64 = 0
     private var ledger: Ledger {
-        didSet { attributionRevision &+= 1 }
+        didSet {
+            attributionRevision &+= 1
+            if ledger.publicAssignments != oldValue.publicAssignments {
+                publicAssignmentRevision.withLock { $0 = UUID() }
+            }
+        }
+    }
+
+    struct PublicAddressSnapshot: Sendable {
+        let address: String
+        let publicKey: String
+        private let revision: UUID
+        private let revisionState: OSAllocatedUnfairLock<UUID>
+
+        init(address: String, publicKey: String, revision: UUID, revisionState: OSAllocatedUnfairLock<UUID>) {
+            self.address = address
+            self.publicKey = publicKey
+            self.revision = revision
+            self.revisionState = revisionState
+        }
+
+        func withCurrentReservation(_ acknowledge: (Bool) -> Void) {
+            revisionState.withLock { acknowledge($0 == revision) }
+        }
     }
 
     // MARK: - Initialization
@@ -155,14 +180,19 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func currentOrRotatedPublicAddress(for publicKey: String) async throws -> String {
+        try await currentOrRotatedPublicAddressSnapshot(for: publicKey).address
+    }
+
+    func currentOrRotatedPublicAddressSnapshot(for publicKey: String) async throws -> PublicAddressSnapshot {
         let key = try Self.normalizedPublicKey(publicKey)
+        let revision = publicAssignmentRevision.withLock { $0 }
         if let assignment = ledger.publicAssignments?[key],
            let addressType = LDKNode.AddressType.from(string: assignment.addressType),
            isAddressTypeMonitored(addressType)
         {
             let address = try await address(for: addressType, receiveIndex: assignment.receiveIndex)
             if try await !operations.isUsed(address) {
-                return address
+                return PublicAddressSnapshot(address: address, publicKey: key, revision: revision, revisionState: publicAssignmentRevision)
             }
         }
 
@@ -185,7 +215,10 @@ actor PrivatePaykitAddressReservationStore {
         ledger.publicAssignments = assignments
         persist()
         markWalletBackupDataChanged()
-        return info.address
+        return PublicAddressSnapshot(
+            address: info.address, publicKey: key,
+            revision: publicAssignmentRevision.withLock { $0 }, revisionState: publicAssignmentRevision
+        )
     }
 
     func isCurrentPublicAddressUsed(for publicKey: String) async throws -> Bool {

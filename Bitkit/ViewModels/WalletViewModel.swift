@@ -1400,24 +1400,41 @@ class WalletViewModel: ObservableObject {
         return address
     }
 
+    struct PublicPaykitEndpoints {
+        let onchainSnapshot: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
+        let bolt11: String
+
+        var onchainAddress: String {
+            onchainSnapshot?.address ?? ""
+        }
+    }
+
+    var publicPaykitSession: PubkyProfileManager.SignedInSession? {
+        pubkyProfile?.currentSession
+    }
+
     func refreshPublicPaykitEndpoints(
         forceRefreshBolt11: Bool = false,
         includeOnchain: Bool = true,
         includeLightning: Bool = true
-    ) async throws -> (onchainAddress: String, bolt11: String) {
+    ) async throws -> PublicPaykitEndpoints {
         guard isPaykitUIActive else {
-            return ("", "")
+            return PublicPaykitEndpoints(onchainSnapshot: nil, bolt11: "")
         }
 
         let initialInvoiceRevision = publicPaykitInvoiceRevision
         let session = pubkyProfile?.currentSession
         let wasSharing = sharesPublicPaykitEndpoints
-        let publicOnchainAddress: String
+        let publicOnchainSnapshot: PrivatePaykitAddressReservationStore.PublicAddressSnapshot?
         if includeOnchain {
             guard let session else { throw PubkyServiceError.sessionNotActive }
-            publicOnchainAddress = try await publicPaykitOnchainAddress(for: session.publicKey)
+            publicOnchainSnapshot = try await publicPaykitOnchainAddressSnapshot(for: session.publicKey)
+            // A reservation committed before cancellation still needs publication or reconciliation.
+            if isPaykitUIActive, sharesPublicPaykitEndpoints, pubkyProfile?.currentSession == session {
+                PublicPaykitService.setCleanupPending(true)
+            }
         } else {
-            publicOnchainAddress = ""
+            publicOnchainSnapshot = nil
         }
 
         for attempt in 0 ..< 2 {
@@ -1457,13 +1474,13 @@ class WalletViewModel: ObservableObject {
                 clearPublicPaykitBolt11()
             }
 
-            return (publicOnchainAddress, includeLightning ? publicPaykitBolt11 : "")
+            return PublicPaykitEndpoints(onchainSnapshot: publicOnchainSnapshot, bolt11: includeLightning ? publicPaykitBolt11 : "")
         }
         throw PublicPaykitError.publicationFailed
     }
 
-    func publicPaykitOnchainAddress(for publicKey: String) async throws -> String {
-        try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedPublicAddress(for: publicKey)
+    func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore.PublicAddressSnapshot {
+        try await PrivatePaykitAddressReservationStore.shared.currentOrRotatedPublicAddressSnapshot(for: publicKey)
     }
 
     func isPublicPaykitAddressUsed(for publicKey: String) async throws -> Bool {
