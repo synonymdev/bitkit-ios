@@ -1762,7 +1762,7 @@
 "usdt__destination" = "Rete destinatario";
 "usdt__error_address" = "Inserisci un indirizzo valido per la rete selezionata.";
 "usdt__error_amount" = "Inserisci un importo valido con al massimo 6 decimali.";
-"usdt__error_backup" = "Impossibile eseguire il backup di questo pagamento. Verrà ritentato quando il backup sarà disponibile.";
+"usdt__error_backup" = "Impossibile eseguire il backup di questo pagamento. Lo stesso pagamento firmato verrà ritentato automaticamente quando il backup sarà disponibile. Chiudere questa schermata non lo annulla.";
 "usdt__error_balance" = "USDT insufficienti per coprire importo e commissioni.";
 "usdt__error_bridge_amount" = "Importo troppo basso per coprire i costi del bridge. Prova con un importo maggiore.";
 "usdt__error_clock" = "Imposta data e ora del dispositivo in automatico, poi riprova.";
