@@ -581,7 +581,42 @@ private final class SendConfirmationTestNavigation {
         while visibleRoutes != [route], ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertEqual(visibleRoutes, [route], file: file, line: line)
+        let observedRoutes = visibleRoutes
+        XCTAssertEqual(observedRoutes, [route], file: file, line: line)
+        guard observedRoutes != [route] else { return }
+
+        XCTContext.runActivity(named: "Navigation appearance deadline") { activity in
+            let state = XCTAttachment(string: "expected=\(route) visible=\(observedRoutes) path=\(path)")
+            state.name = "navigation-state"
+            state.lifetime = .keepAlways
+            activity.add(state)
+
+            func describe(_ view: UIView, depth: Int = 0) -> String {
+                let row = "\(String(repeating: " ", count: depth))\(type(of: view)) frame=\(view.frame) hidden=\(view.isHidden) firstResponder=\(view.isFirstResponder)\n"
+                return row + view.subviews.map { describe($0, depth: depth + 1) }.joined()
+            }
+            func describe(_ controller: UIViewController, depth: Int = 0) -> String {
+                let row = "\(String(repeating: " ", count: depth))\(type(of: controller)) appearing=\(controller.isBeingPresented) disappearing=\(controller.isBeingDismissed) transitioning=\(controller.transitionCoordinator != nil)\n"
+                let children = controller.children.map { describe($0, depth: depth + 1) }.joined()
+                let presented = controller.presentedViewController.map { describe($0, depth: depth + 1) } ?? ""
+                return row + children + presented
+            }
+            let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+            for (index, window) in windows.enumerated() {
+                let controllers = window.rootViewController.map { describe($0) } ?? "No root view controller\n"
+                let hierarchy = XCTAttachment(string: "key=\(window.isKeyWindow)\n" + controllers + describe(window))
+                hierarchy.name = "deadline-window-\(index)-hierarchy"
+                hierarchy.lifetime = .keepAlways
+                activity.add(hierarchy)
+                guard !window.isHidden, !window.bounds.isEmpty else { continue }
+                let screenshot = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+                })
+                screenshot.name = "deadline-window-\(index)"
+                screenshot.lifetime = .keepAlways
+                activity.add(screenshot)
+            }
+        }
     }
 }
 
