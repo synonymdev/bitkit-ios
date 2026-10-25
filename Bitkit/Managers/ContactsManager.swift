@@ -969,22 +969,7 @@ class ContactsManager: ObservableObject {
         stopPendingProfileLookups()
         let contactRecords = contactRecords
         let removeContactRecords = removeContactRecords
-        let records: [ContactRecord]
-        do {
-            records = try await Task.detached {
-                try await contactRecords()
-            }.value
-        } catch {
-            guard Self.isMissingContactsDataError(error) else {
-                throw error
-            }
-
-            Self.clearContactProfileOverrides()
-            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-            contacts.removeAll()
-            Logger.info("Contacts storage missing, treating delete-all as empty", context: "ContactsManager")
-            return
-        }
+        let records = try await Task.detached { try await contactRecords() }.value
 
         let keys = records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
         let removed = try await Task.detached { try await removeContactRecords(keys) }.value
@@ -1001,17 +986,6 @@ class ContactsManager: ObservableObject {
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
         Logger.info("Deleted all contacts", context: "ContactsManager")
-    }
-
-    func deleteAllContactsBestEffort() async {
-        do {
-            try await deleteAllContacts()
-        } catch {
-            Logger.warn("Continuing after contact cleanup failed: \(error)", context: "ContactsManager")
-            Self.clearContactProfileOverrides()
-            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-            contacts.removeAll()
-        }
     }
 
     // MARK: - Remote Contact Discovery

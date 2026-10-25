@@ -12,6 +12,49 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileRemovalStopsBeforeDeletingWhenCleanupIsIncomplete() async throws {
+        snapshotAppDefaultsDomain()
+        for failure in ["private endpoints", "contacts"] {
+            let key = "pubky" + String(repeating: "y", count: 52)
+            let originalError = KeychainError.failedToDelete
+            let manager = PubkyProfileManager(profileDeleter: { _ in
+                XCTFail("Incomplete cleanup must not delete the profile")
+                throw PublicPaykitError.publicationFailed
+            })
+            manager.publicKey = key
+            manager.authState = .authenticated
+            let session = try XCTUnwrap(manager.currentSession)
+            let contact = Bitkit.PubkyProfile.placeholder(publicKey: key)
+            ContactsManager.restoreContactProfileOverrides([key: PubkyProfileData.from(profile: contact)])
+            let contacts = ContactsManager(contactRecords: {
+                XCTAssertEqual(failure, "contacts", "Private withdrawal failure must stop before contact removal")
+                throw originalError
+            })
+            contacts.contacts = [PubkyContact(publicKey: key, profile: contact)]
+
+            do {
+                try await manager.performProfileDeletion {
+                    try await EditProfileView.performDeleteProfile(
+                        session: session, pubkyProfile: manager, contactsManager: contacts
+                    ) {
+                        if failure == "private endpoints" {
+                            throw originalError
+                        }
+                    }
+                }
+                XCTFail("Incomplete cleanup must fail")
+            } catch {
+                XCTAssertTrue(error is KeychainError, "Preserve the cleanup failure, got \(error)")
+            }
+
+            XCTAssertEqual(contacts.contacts.map(\.publicKey), [key])
+            XCTAssertEqual(Set(ContactsManager.backupContactProfileOverrides()?.keys ?? [:].keys), [key])
+            XCTAssertEqual(manager.currentSession, session)
+            XCTAssertFalse(manager.isDeletingProfile)
+        }
+    }
+
+    @MainActor
     func testProfileDeletionPausesAutomaticWorkWithoutEndingTheSession() async throws {
         for outcome in ["success", "failure", "cancellation"] {
             let manager = PubkyProfileManager()

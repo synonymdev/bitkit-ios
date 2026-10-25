@@ -1062,7 +1062,7 @@ class PubkyProfileManager: ObservableObject {
     private func deleteProfile(for session: SignedInSession, cleanPrivatePaykitEndpoints: Bool) async throws {
         try requireCurrentSession(session)
         if cleanPrivatePaykitEndpoints {
-            await Self.removePrivatePaykitEndpointsBestEffort(
+            try await Self.removePrivatePaykitEndpoints(
                 context: "PubkyProfileManager.deleteProfile", deferAppSync: true,
                 isSessionCurrent: { self.currentSession == session }
             )
