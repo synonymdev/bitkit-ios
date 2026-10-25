@@ -45,13 +45,18 @@ these are not ordinary UI journey capabilities. No wallet reset is needed.
    Verify shutdown and the manual upload both wait for cleanup, including a final
    status write held after the delay finishes. Release cleanup;
    verify pending wallet work remains required and resumes on observation restart.
+   Change wallet/settings state after requesting restart while cleanup is held;
+   verify no new upload starts before the drain and the latest state uploads
+   afterward without another edit. Repeat with a canceled settings upload; its
+   cleanup must not clear a newer required marker.
 2. Request a new USDT recovery backup during cleanup and again after observation
    is stopped. Verify both requests can finish without restarting Lightning, and
    transient backup failures retain bounded automatic retry.
 3. Repeatedly start and immediately stop observation. Change a wallet record only
    after stop returns; verify the stopped observer does not schedule an upload or
    mutate its saved backup status. Restart observation and verify a single set of
-   listeners resumes pending work.
+   listeners resumes pending work. Also receive a settings-change notification
+   immediately before stop: its pending marker must survive the stopped listener.
 
 The iOS lifecycle unit tests exercise these component boundaries with injected
 capture/upload and delay controls. They do not prove a full device fault journey.

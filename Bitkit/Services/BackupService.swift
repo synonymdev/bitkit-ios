@@ -206,13 +206,14 @@ class BackupService {
     @MainActor
     func startObservingBackups() {
         let previous = observationTask
+        let listeners = makeDataStoreListeners()
         observationTask = Task {
             await previous?.value
             guard !shouldSkipBackup(), !isObserving else { return }
             isObserving = true
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
+            cancellables.formUnion(listeners)
             startBackupStatusObservers()
-            startDataStoreListeners()
             startPeriodicBackupFailureCheck()
         }
     }
@@ -329,7 +330,7 @@ class BackupService {
             updateBackupStatus(category: category) { status in
                 BackupItemStatus(
                     synced: status.synced,
-                    required: category == .wallet || category == .usdt ? status.required : status.synced,
+                    required: status.required,
                     running: false
                 )
             }
@@ -678,87 +679,81 @@ class BackupService {
     }
 
     @MainActor
-    private func startDataStoreListeners() {
+    private func makeDataStoreListeners() -> Set<AnyCancellable> {
+        var listeners = Set<AnyCancellable>()
         // SETTINGS
         SettingsViewModel.shared.settingsPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .settings)
+                markObservedBackupRequired(category: .settings)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // WIDGETS
         SettingsViewModel.shared.widgetsPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .widgets)
+                markObservedBackupRequired(category: .widgets)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // Record requirements synchronously; the scheduled upload already has a debounce.
         WalletBackupChangeTracker.localChanges
             .merge(with: PaykitSdkService.walletBackupDataChangedPublisher)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .wallet)
+                markObservedBackupRequired(category: .wallet)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         UsdtWalletManager.walletBackupDataChangedPublisher
             .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
             .sink { [weak self] _ in
                 guard let self, !self.isWipingOrRestoringUsdt() else { return }
-                markBackupRequired(category: .usdt)
+                markObservedBackupRequired(category: .usdt)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .activity)
+                markObservedBackupRequired(category: .activity)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
         HwKnownDeviceStorage.namesChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
+                markObservedBackupRequired(category: .metadata)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .blocktank)
+                markObservedBackupRequired(category: .blocktank)
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
         // LIGHTNING SYNC STATUS
         LightningService.shared.syncStatusChangedPublisher
@@ -773,9 +768,19 @@ class BackupService {
                     )
                 }
             }
-            .store(in: &cancellables)
+            .store(in: &listeners)
 
-        Logger.debug("Started data store listeners", context: "BackupService")
+        return listeners
+    }
+
+    private func markObservedBackupRequired(category: BackupCategory) {
+        // Persist notifications during restart without admitting uploads before cleanup finishes.
+        markBackupRequired(category: category, schedule: false)
+        Task { @MainActor in
+            await waitForObservationTransition()
+            guard isObserving else { return }
+            await scheduleBackup(category: category, generation: currentSchedulingGeneration)
+        }
     }
 
     @MainActor
