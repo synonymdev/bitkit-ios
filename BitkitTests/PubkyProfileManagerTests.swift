@@ -323,6 +323,43 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testProfileDeletionRequiresAcknowledgedCompletionBeforeSignOut() async throws {
+        try await withEmptyIdentityStorage {
+            let errors: [NSError?] = [
+                nil,
+                NSError(domain: "ProfileDeleteFixture", code: 404,
+                        userInfo: [NSLocalizedDescriptionKey: "Delete failed: HTTP 404 Not Found at session endpoint"]),
+                NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileReadNoSuchFile.rawValue),
+            ]
+            for failure in errors {
+                let manager = PubkyProfileManager(profileDeleter: { _ in
+                    if let failure {
+                        throw failure
+                    }
+                })
+                manager.publicKey = "pubky" + String(repeating: "y", count: 52)
+                manager.authState = .authenticated
+                let session = try XCTUnwrap(manager.currentSession)
+                UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                UserDefaults.standard.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+
+                do {
+                    try await manager.deleteProfile(cleanPrivatePaykitEndpoints: false)
+                    XCTAssertNil(failure, "An unavailable profile does not confirm its deletion")
+                } catch {
+                    XCTAssertEqual((error as NSError).domain, failure?.domain)
+                    XCTAssertEqual((error as NSError).code, failure?.code)
+                }
+
+                XCTAssertEqual(manager.currentSession, failure == nil ? nil : session)
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey), failure != nil)
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey), failure != nil)
+                XCTAssertFalse(manager.isDeletingProfile)
+            }
+        }
+    }
+
+    @MainActor
     func testDeletionSessionRejectsAReplacementAndANewSessionForTheSameKey() async throws {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)
@@ -3482,24 +3519,6 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
 
         XCTAssertNil(resolved)
-    }
-
-    func testIsMissingBitkitProfileStorageErrorRecognizes404DeleteFailure() {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.WriteFailed(reason: "delete failed: Request failed: Server responded with an error: 404 Not Found - Not Found")"#
-        )
-
-        XCTAssertTrue(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
-    }
-
-    func testIsMissingBitkitProfileStorageErrorRejectsNonMissingErrors() {
-        let error = AppError(
-            message: "App Error",
-            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error")"#
-        )
-
-        XCTAssertFalse(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
     }
 
     // MARK: - Session backup state

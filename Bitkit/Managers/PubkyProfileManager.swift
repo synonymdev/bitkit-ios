@@ -1069,17 +1069,9 @@ class PubkyProfileManager: ObservableObject {
         }
         try requireCurrentSession(session)
         let delete = profileDeleter
-        do {
-            try await Task.detached {
-                try await delete(session.publicKey)
-            }.value
-        } catch {
-            guard Self.isMissingBitkitProfileStorageError(error) else {
-                throw error
-            }
-
-            Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
-        }
+        try await Task.detached {
+            try await delete(session.publicKey)
+        }.value
 
         try requireCurrentSession(session)
         invalidateProfileLoads()
@@ -1947,31 +1939,6 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.authFailed("Invalid Pubky public key")
         }
         return normalized
-    }
-
-    nonisolated static func isMissingBitkitProfileStorageError(_ error: Error) -> Bool {
-        if case .profileNotFound = error as? PubkyServiceError {
-            return true
-        }
-
-        let errorText = [
-            (error as? AppError)?.debugMessage,
-            error.localizedDescription,
-            String(describing: error),
-        ]
-        .compactMap { $0?.lowercased() }
-
-        if errorText.contains(where: { $0.contains("404 not found") || $0.contains("directory not found") }) {
-            return true
-        }
-
-        let nsError = error as NSError
-        if nsError.domain == NSCocoaErrorDomain {
-            let cocoaCode = CocoaError.Code(rawValue: nsError.code)
-            return cocoaCode == .fileNoSuchFile || cocoaCode == .fileReadNoSuchFile
-        }
-
-        return false
     }
 
     nonisolated static func resolveSessionInitialization(
