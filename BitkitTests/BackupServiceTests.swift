@@ -169,6 +169,149 @@ final class BackupServiceTests: XCTestCase {
         }
     }
 
+    func testStopDrainsCancelledWorkBeforeManualBackupAndRestart() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let started = expectation(description: "Scheduled delay started")
+        let cancelled = expectation(description: "Scheduled delay cancelled")
+        let uploadedEarly = expectation(description: "Manual upload must wait for cleanup")
+        uploadedEarly.isInverted = true
+        let gate = BackupDelayGate()
+        let recorder = BackupRecorder()
+        let service = BackupService(defaults: defaults, backupData: { _ in Data("complete".utf8) }, uploadBackup: { key, data in
+            await recorder.recordUpload(key: key, data: data)
+            if await gate.isHeld {
+                uploadedEarly.fulfill()
+            }
+        }, waitForBackupDelay: {
+            try await withTaskCancellationHandler {
+                await gate.wait(started: started)
+                try Task.checkCancellation()
+            } onCancel: { cancelled.fulfill() }
+        })
+        service.markBackupRequired(category: .wallet)
+        await fulfillment(of: [started], timeout: 2)
+        let stop = Task {
+            await service.stopObservingBackups()
+            await gate.recordStop()
+        }
+        await fulfillment(of: [cancelled], timeout: 2)
+        let deferred = expectation(description: "New USDT request survives the drain")
+        let deferredSubscription = service.backupStatusesPublisher
+            .filter { $0[.usdt].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in deferred.fulfill() }
+        service.markBackupRequired(category: .usdt)
+        let manual = Task { await service.triggerBackup(category: .metadata) }
+        await fulfillment(of: [uploadedEarly], timeout: 0.1)
+        let stoppedBeforeDrain = await gate.didStop
+        XCTAssertFalse(stoppedBeforeDrain)
+        await gate.release()
+        await stop.value
+        let outcome = await manual.value
+        await fulfillment(of: [deferred], timeout: 2)
+        deferredSubscription.cancel()
+        XCTAssertEqual(outcome, .completed)
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).running)
+        let uploads = await recorder.uploads
+        XCTAssertEqual(Set(uploads.map(\.key)), [BackupCategory.metadata.rawValue, BackupCategory.usdt.rawValue])
+        XCTAssertEqual(uploads.count, 2)
+        await service.stopObservingBackups()
+
+        let restarted = BackupService(defaults: defaults, backupData: { _ in Data("latest".utf8) },
+                                      uploadBackup: { _, _ in }, waitForBackupDelay: {})
+        let completed = expectation(description: "Restart uploads retained work")
+        let subscription = restarted.backupStatusesPublisher
+            .filter { $0[.wallet].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        restarted.startObservingBackups()
+        await fulfillment(of: [completed], timeout: 2)
+        subscription.cancel()
+        await restarted.stopObservingBackups()
+        XCTAssertFalse(restarted.getBackupStatus(category: .wallet).isRequired)
+    }
+
+    func testStopWaitsForFinalScheduledStatusWrite() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let delayStarted = expectation(description: "Scheduled backup entered delay")
+        let cleanupStarted = expectation(description: "Final status write entered")
+        let stoppedEarly = expectation(description: "Stop must wait for final status write")
+        stoppedEarly.isInverted = true
+        let delayGate = BackupDelayGate()
+        let cleanupGate = DispatchSemaphore(value: 0)
+        let stopGate = BackupDelayGate()
+        let service = BackupService(defaults: defaults, backupData: { _ in Data() },
+                                    uploadBackup: { _, _ in XCTFail("Wiping must prevent upload") },
+                                    waitForBackupDelay: { await delayGate.wait(started: delayStarted) })
+        service.markBackupRequired(category: .wallet)
+        await fulfillment(of: [delayStarted], timeout: 2)
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.wallet]?.running == false }
+            .first().sink { _ in
+                cleanupStarted.fulfill()
+                cleanupGate.wait()
+            }
+        service.setWiping(true)
+        await delayGate.release()
+        await fulfillment(of: [cleanupStarted], timeout: 2)
+        let stop = Task {
+            await service.stopObservingBackups()
+            if await stopGate.isHeld {
+                stoppedEarly.fulfill()
+            }
+        }
+        await fulfillment(of: [stoppedEarly], timeout: 0.1)
+        await stopGate.release()
+        cleanupGate.signal()
+        await stop.value
+        subscription.cancel()
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).running)
+    }
+
+    func testImmediateStartStopDoesNotObserveLaterWalletChanges() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = BackupService(defaults: defaults, backupData: { _ in Data("complete".utf8) },
+                                    uploadBackup: { _, _ in }, waitForBackupDelay: {})
+        for _ in 0 ..< 25 {
+            service.startObservingBackups()
+            await service.stopObservingBackups()
+            let stoppedStatus = service.getBackupStatus(category: .wallet)
+            try Bitkit.WatchOnlyAccountStore.save([], defaults: defaults)
+            XCTAssertEqual(service.getBackupStatus(category: .wallet), stoppedStatus)
+        }
+    }
+
+    func testExplicitUsdtBackupRetriesWhileObserversRemainStopped() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let completed = expectation(description: "USDT retry acknowledged without node observation")
+        var captures = 0
+        let service = BackupService(defaults: defaults, backupData: { _ in
+            captures += 1
+            if captures == 1 {
+                throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "temporarily unavailable")
+            }
+            return Data("signed-recovery".utf8)
+        }, uploadBackup: { _, _ in }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { _ in })
+        await service.stopObservingBackups()
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.usdt].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        service.markBackupRequired(category: .usdt)
+        await fulfillment(of: [completed], timeout: 2)
+        subscription.cancel()
+        await service.stopObservingBackups()
+        XCTAssertEqual(captures, 2)
+        XCTAssertFalse(service.getBackupStatus(category: .usdt).isRequired)
+    }
+
     func testTemporaryFailureRemainsPendingAcrossServiceRestart() async throws {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -451,5 +594,29 @@ private final class WalletBackupSdk: PaykitSdk, @unchecked Sendable {
     override func exportBackupString() async throws -> String {
         await onExport()
         return "wallet-backup"
+    }
+}
+
+private actor BackupDelayGate {
+    private(set) var isHeld = true
+    private(set) var didStop = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait(started: XCTestExpectation) async {
+        guard isHeld else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            started.fulfill()
+        }
+    }
+
+    func recordStop() {
+        didStop = true
+    }
+
+    func release() {
+        isHeld = false
+        continuation?.resume()
+        continuation = nil
     }
 }
