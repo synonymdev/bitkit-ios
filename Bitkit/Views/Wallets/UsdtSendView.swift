@@ -779,18 +779,21 @@ struct UsdtSendView: View {
         let message: String
         let transferStatus: UsdtTransferStatus?
         let canRetryRecovery: Bool
+        let isDeadlineExpiry: Bool
 
         func isCurrent(for status: UsdtTransferStatus?) -> Bool {
-            status != nil && status != .confirmed && status == transferStatus
+            guard let status, status != .confirmed else { return false }
+            return status == transferStatus || (isDeadlineExpiry && transferStatus == .pending && status == .failed)
         }
     }
 
     static func submissionFailure(for error: Error, transferStatus: UsdtTransferStatus? = nil, isRecoveryAttempt: Bool = false) -> SubmissionFailure {
-        let title = if case UsdtError.SubmissionDeadlineExpired = error {
-            t("wallet__payment_request_expired")
+        let isDeadlineExpiry = if case UsdtError.SubmissionDeadlineExpired = error {
+            true
         } else {
-            t("common__error")
+            false
         }
+        let title = isDeadlineExpiry ? t("wallet__payment_request_expired") : t("common__error")
         let message = if error is UsdtError {
             UsdtWalletManager.message(for: error)
         } else {
@@ -801,7 +804,13 @@ struct UsdtSendView: View {
         } else {
             isRecoveryAttempt
         }
-        return SubmissionFailure(title: title, message: message, transferStatus: transferStatus, canRetryRecovery: canRetryRecovery)
+        return SubmissionFailure(
+            title: title,
+            message: message,
+            transferStatus: transferStatus,
+            canRetryRecovery: canRetryRecovery,
+            isDeadlineExpiry: isDeadlineExpiry
+        )
     }
 
     private func retryRecovery() async {
