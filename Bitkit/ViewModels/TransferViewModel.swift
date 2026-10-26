@@ -240,9 +240,10 @@ class TransferViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
+        // Only an explicit "allowed" answer lets a transfer through: a failed or unexpected geocheck blocks it.
         self.isTransferUnavailable = isTransferUnavailable ?? {
-            await GeoService.shared.checkGeoStatus()
-            return GeoService.shared.isGeoBlocked
+            let isGeoBlocked = try? await coreService.checkGeoStatus()
+            return isGeoBlocked != false
         }
         if let hwFunding, let hwConnecting {
             self.hwConnecting = hwConnecting
