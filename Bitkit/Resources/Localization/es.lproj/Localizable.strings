@@ -1136,6 +1136,7 @@
 "profile__edit_saved" = "Perfil actualizado";
 "profile__pubky_copied" = "pubky copiado al portapapeles";
 "profile__edit_delete_section" = "ELIMINAR";
+"profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Tenga en cuenta que la información del perfil se guarda en archivos públicos.";
 "profile__delete_title" = "¿Eliminar el perfil?";
 "profile__delete_description" = "Al eliminar su perfil, se elimina de Pubky. Es posible que sus contactos conserven la información de perfil y de pago que compartió con ellos anteriormente.";
@@ -1143,6 +1144,12 @@
 "profile__delete_error_title" = "No se pudo eliminar el perfil";
 "profile__delete_error_description" = "No pudimos eliminar los datos de su perfil. Vuelva a intentarlo o desconecte este pubky de Bitkit.";
 "profile__delete_label" = "Eliminar perfil";
+"profile__unlink_title" = "¿Desvincular el pubky?";
+"profile__unlink_description" = "Esto eliminará sus datos de Paykit y desvinculará este pubky de Bitkit. Seguirá disponible en Pubky Ring.";
+"profile__unlink_confirm" = "Sí, desvincular";
+"profile__unlink_error_title" = "No se pudo desvincular el pubky";
+"profile__unlink_error_description" = "No pudimos eliminar sus datos de Paykit. Vuelva a intentarlo o desconecte este pubky de Bitkit.";
+"profile__unlink_label" = "Desvincular pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar a contactos";
 "profile__pay_contacts_title" = "Deje que sus contactos\n<accent>le paguen</accent>";
@@ -1686,7 +1693,6 @@
 "usdt__failed" = "Fallido";
 "usdt__fee_note" = "Todas las comisiones se pagan en USDT. La comisión final puede ser menor.";
 "usdt__hide_details" = "Ocultar detalles";
-"usdt__history_sync" = "La actividad anterior aún se está sincronizando. Su saldo estará actualizado cuando haya conexión.";
 "usdt__network_warning" = "Seleccione la red que usa el destinatario. Si envía a una dirección en la red equivocada, puede perder los fondos.";
 "usdt__pending" = "Pendiente";
 "usdt__received" = "Recibido";

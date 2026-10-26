@@ -31,15 +31,8 @@ struct PaymentCelebration: View {
                     .ignoresSafeArea(edges: .bottom)
             }
 
-            if isReceived, isUsdt {
-                // The artwork includes overflow beyond Figma's centered 256pt frame.
-                Image("usdt-coins-received")
-                    .resizable()
-                    .frame(width: 348.5, height: 520)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .offset(x: 13.25, y: windowSafeAreaInsets.bottom - 36)
-            } else if isReceived {
-                Image("coins-received")
+            if isReceived {
+                Image(isUsdt ? "usdt-coins-received" : "coins-received")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, alignment: .center)
