@@ -1109,7 +1109,8 @@ struct AppScene: View {
                 appViewModel: app,
                 settingsViewModel: settings,
                 walletViewModel: wallet,
-                currencyViewModel: currency
+                currencyViewModel: currency,
+                paykitPaymentRequestManager: paykitPaymentRequestManager
             )
         } catch {
             app.toast(error)

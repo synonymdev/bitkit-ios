@@ -698,11 +698,7 @@
 "settings__notifications__settings__enabled" = "الإشعارات مفعّلة. يمكن لـ Bitkit تذكيرك بالاشتراكات وطلبات الدفع.";
 "settings__notifications__settings__disabled" = "فعّل الإشعارات لتصلك تذكيرات باشتراكاتك وطلبات الدفع.";
 "settings__notifications__settings__denied" = "الإشعارات متوقفة لأنك رفضتها.";
-"settings__notifications__settings__preview__title" = "تم استلام دفعة";
-"settings__notifications__settings__preview__text" = "افتح Bitkit لرؤية التفاصيل";
 "settings__notifications__settings__preview__time" = "منذ 3 دقائق";
-"settings__notifications__settings__privacy__label" = "الخصوصية";
-"settings__notifications__settings__privacy__text" = "تضمين المبلغ في الإشعارات";
 "settings__notifications__settings__notifications__label" = "الإشعارات";
 "settings__notifications__settings__notifications__text" = "لتلقي التذكيرات، يرجى تمكين الإشعارات في إعدادات Bitkit على iOS.";
 "settings__notifications__settings__button__enabled" = "تخصيص في إعدادات Bitkit على {platform}";

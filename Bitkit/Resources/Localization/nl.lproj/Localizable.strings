@@ -845,11 +845,7 @@
 "settings__notifications__settings__enabled" = "Meldingen staan aan. Bitkit kan je herinneren aan abonnementen en betaalverzoeken.";
 "settings__notifications__settings__disabled" = "Zet meldingen aan om herinneringen te krijgen voor je abonnementen en betaalverzoeken.";
 "settings__notifications__settings__denied" = "Meldingen staan uit, omdat je ze hebt geweigerd.";
-"settings__notifications__settings__preview__title" = "Betaling Ontvangen";
-"settings__notifications__settings__preview__text" = "Open Bitkit om details te bekijken";
 "settings__notifications__settings__preview__time" = "3m geleden";
-"settings__notifications__settings__privacy__label" = "Privacy";
-"settings__notifications__settings__privacy__text" = "Bedrag opnemen in notificaties";
 "settings__notifications__settings__notifications__label" = "Notificaties";
 "settings__notifications__settings__notifications__text" = "Om herinneringen te ontvangen, schakel meldingen in via iOS Bitkit Instellingen.";
 "settings__notifications__settings__button__enabled" = "Aanpassen in {platform} Bitkit Instellingen";

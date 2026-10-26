@@ -734,11 +734,7 @@
 "settings__notifications__settings__enabled" = "Οι ειδοποιήσεις είναι ενεργές. Το Bitkit μπορεί να σας υπενθυμίζει συνδρομές και αιτήματα πληρωμής.";
 "settings__notifications__settings__disabled" = "Ενεργοποιήστε τις ειδοποιήσεις για να λαμβάνετε υπενθυμίσεις για τις συνδρομές και τα αιτήματα πληρωμής σας.";
 "settings__notifications__settings__denied" = "Οι ειδοποιήσεις είναι απενεργοποιημένες, επειδή τις απορρίψατε.";
-"settings__notifications__settings__preview__title" = "Λήψη Πληρωμής";
-"settings__notifications__settings__preview__text" = "Ανοίξτε το Bitkit για λεπτομέρειες";
 "settings__notifications__settings__preview__time" = "πριν 3λ";
-"settings__notifications__settings__privacy__label" = "Απόρρητο";
-"settings__notifications__settings__privacy__text" = "Συμπερίληψη ποσού στις ειδοποιήσεις";
 "settings__notifications__settings__notifications__label" = "Ειδοποιήσεις";
 "settings__notifications__settings__notifications__text" = "Για να λαμβάνετε υπενθυμίσεις, ενεργοποιήστε τις ειδοποιήσεις στις Ρυθμίσεις iOS του Bitkit.";
 "settings__notifications__settings__button__enabled" = "Προσαρμογή στις Ρυθμίσεις Bitkit {platform}";

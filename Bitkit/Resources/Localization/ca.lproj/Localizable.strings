@@ -787,11 +787,7 @@
 "settings__notifications__settings__enabled" = "Les notificacions estan activades. Bitkit et pot recordar les subscripcions i sol·licituds de pagament.";
 "settings__notifications__settings__disabled" = "Activa les notificacions per rebre recordatoris de les teves subscripcions i sol·licituds de pagament.";
 "settings__notifications__settings__denied" = "Les notificacions estan desactivades perquè les has rebutjat.";
-"settings__notifications__settings__preview__title" = "Pagament rebut";
-"settings__notifications__settings__preview__text" = "Obre Bitkit per veure els detalls";
 "settings__notifications__settings__preview__time" = "Fa 3m";
-"settings__notifications__settings__privacy__label" = "Privadesa";
-"settings__notifications__settings__privacy__text" = "Inclou l\'import a les notificacions";
 "settings__notifications__settings__notifications__label" = "Notificacions";
 "settings__notifications__settings__notifications__text" = "Per rebre recordatoris, si us plau, activa les notificacions a la configuració de Bitkit d\'iOS.";
 "settings__notifications__settings__button__enabled" = "Personalitza a la configuració de Bitkit de {platform}";

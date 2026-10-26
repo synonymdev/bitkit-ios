@@ -842,11 +842,7 @@
 "settings__notifications__settings__enabled" = "Уведомления включены. Bitkit может напоминать о подписках и запросах на оплату.";
 "settings__notifications__settings__disabled" = "Включите уведомления, чтобы получать напоминания о подписках и запросах на оплату.";
 "settings__notifications__settings__denied" = "Уведомления отключены, потому что вы их запретили.";
-"settings__notifications__settings__preview__title" = "Платёж Получен";
-"settings__notifications__settings__preview__text" = "Откройте Bitkit для просмотра деталей";
 "settings__notifications__settings__preview__time" = "3 мин. назад";
-"settings__notifications__settings__privacy__label" = "Конфиденциальность";
-"settings__notifications__settings__privacy__text" = "Включать сумму в уведомления";
 "settings__notifications__settings__notifications__label" = "Уведомления";
 "settings__notifications__settings__notifications__text" = "Чтобы получать напоминания, включите уведомления в настройках iOS Bitkit.";
 "settings__notifications__settings__button__enabled" = "Настроить в настройках Bitkit для {platform}";

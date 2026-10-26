@@ -847,11 +847,7 @@
 "settings__notifications__settings__enabled" = "Oznámení jsou zapnutá. Bitkit vám může připomínat předplatná a žádosti o platbu.";
 "settings__notifications__settings__disabled" = "Zapněte oznámení a dostávejte připomínky předplatných a žádostí o platbu.";
 "settings__notifications__settings__denied" = "Oznámení jsou vypnutá, protože jste je zamítli.";
-"settings__notifications__settings__preview__title" = "Platba přijata";
-"settings__notifications__settings__preview__text" = "Otevřete Bitkit pro zobrazení podrobností";
 "settings__notifications__settings__preview__time" = "před 3m";
-"settings__notifications__settings__privacy__label" = "Soukromí";
-"settings__notifications__settings__privacy__text" = "Zahrnout částku v oznámeních";
 "settings__notifications__settings__notifications__label" = "Oznámení";
 "settings__notifications__settings__notifications__text" = "Pro připomínky povolte prosím oznámení v iOS nastavení Bitkitu.";
 "settings__notifications__settings__button__enabled" = "Přizpůsobit v {platform} nastavení Bitkitu";

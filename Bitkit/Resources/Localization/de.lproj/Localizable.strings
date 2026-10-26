@@ -845,11 +845,7 @@
 "settings__notifications__settings__enabled" = "Benachrichtigungen sind aktiviert. Bitkit kann dich an Abonnements und Zahlungsanfragen erinnern.";
 "settings__notifications__settings__disabled" = "Aktiviere Benachrichtigungen, um an deine Abonnements und Zahlungsanfragen erinnert zu werden.";
 "settings__notifications__settings__denied" = "Benachrichtigungen sind deaktiviert, weil du sie abgelehnt hast.";
-"settings__notifications__settings__preview__title" = "Zahlung erhalten";
-"settings__notifications__settings__preview__text" = "Öffne Bitkit für Details";
 "settings__notifications__settings__preview__time" = "vor 3 Min.";
-"settings__notifications__settings__privacy__label" = "Privatsphäre";
-"settings__notifications__settings__privacy__text" = "Betrag in Benachrichtigungen anzeigen";
 "settings__notifications__settings__notifications__label" = "Benachrichtigungen";
 "settings__notifications__settings__notifications__text" = "Um Erinnerungen zu erhalten, aktiviere bitte Benachrichtigungen in den iOS Bitkit-Einstellungen.";
 "settings__notifications__settings__button__enabled" = "In {platform} Bitkit-Einstellungen anpassen";
