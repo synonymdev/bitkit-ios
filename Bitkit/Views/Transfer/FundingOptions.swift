@@ -28,7 +28,7 @@ struct FundingOptions: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("lightning__transfer__nav_title"))
+            NavigationBar(title: t("lightning__funding__nav_title"))
                 .padding(.bottom, 16)
 
             DisplayText(
