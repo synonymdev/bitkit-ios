@@ -299,6 +299,8 @@ Print the path to the local draft. Store it for the summary. Slack posting is de
 
 ### 7. Build & Upload to TestFlight (optional)
 
+Before archiving, `Secrets.xcconfig` must exist at the repo root with `BREEZ_API_KEY` set (copy `Secrets.xcconfig.template`). Release builds fail without it. Check with `grep -q '^BREEZ_API_KEY = .\+' Secrets.xcconfig`; if it fails, stop and ask the releaser for the key. Never print the key.
+
 Use `AskUserQuestion`:
 
 **Question:** `"Archive and upload to TestFlight?"`

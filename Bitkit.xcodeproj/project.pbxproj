@@ -384,6 +384,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 96FE1F862C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "Bitkit" */;
 			buildPhases = (
+				B17C0F1A2EAE000000000002 /* Check Breez API Key */,
 				96FE1F5D2C2DE6AA006D0C8B /* Sources */,
 				96FE1F5E2C2DE6AA006D0C8B /* Frameworks */,
 				96FE1F5F2C2DE6AA006D0C8B /* Resources */,
@@ -573,6 +574,26 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		B17C0F1A2EAE000000000002 /* Check Breez API Key */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Check Breez API Key";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ] && [ -z \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ]; then\n  echo \"error: BREEZ_API_KEY is empty. Copy Secrets.xcconfig.template to Secrets.xcconfig and set the key before a Release build or archive (Docs/RELEASE.md).\"\n  exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
 		751000000000000000000001 /* Generate Plural Localizations */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
