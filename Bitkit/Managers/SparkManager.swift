@@ -48,6 +48,10 @@ final class SparkManager: ChannelFreeLightningRail {
         Self.sparkNetwork != nil
     }
 
+    var isConnected: Bool {
+        sdk != nil
+    }
+
     /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
     /// Spark transfer, which lets two dev builds pay each other's invoices.
     nonisolated static var prefersSpark: Bool {
@@ -197,7 +201,7 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// The exit data backup, or nil while Spark is not connected and there is nothing to back up.
     func exitBackup() async throws -> SparkExitBackupV1? {
-        guard sdk != nil, let network = Self.sparkNetwork else { return nil }
+        guard isConnected, let network = Self.sparkNetwork else { return nil }
         return try await SparkExitBackupV1(
             version: 1,
             createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
@@ -216,7 +220,7 @@ final class SparkManager: ChannelFreeLightningRail {
         let file = Env.sparkExitRestore(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(backup.exitState.utf8).write(to: file, options: .atomic)
-        if sdk != nil {
+        if isConnected {
             await importRestoredExitState(walletIndex: walletIndex)
         }
     }

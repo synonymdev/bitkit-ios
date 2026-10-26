@@ -205,6 +205,10 @@ class BackupService {
             startBackupStatusObservers()
             startDataStoreListeners()
             startPeriodicBackupFailureCheck()
+            // Spark's connect signal is missed when it connected before observing started.
+            if await SparkManager.shared.isConnected {
+                markBackupRequired(category: .sparkExit)
+            }
         }
     }
 
