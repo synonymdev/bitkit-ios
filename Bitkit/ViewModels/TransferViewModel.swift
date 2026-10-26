@@ -15,6 +15,8 @@ struct TransferUiState {
     var isAdvanced = false
     /// Funds the Spark wallet instead of buying a Blocktank channel.
     var isSpark = false
+    /// Estimated fee Spark keeps from the deposit to claim it into Spending.
+    var sparkClaimFeeSat: UInt64 = 0
     var isConfirming = false
     var order: IBtOrder?
 
@@ -381,6 +383,15 @@ class TransferViewModel: ObservableObject {
         uiState.feeSat = feeSat
         uiState.isAdvanced = isAdvanced
         uiState.isSpark = isSpark
+        uiState.sparkClaimFeeSat = 0
+        guard isSpark else { return }
+        Task { @MainActor in
+            do {
+                uiState.sparkClaimFeeSat = try await SparkManager.shared.estimateDepositClaimFeeSats()
+            } catch {
+                Logger.warn("Failed to estimate Spark claim fee: \(error)", context: "TransferViewModel")
+            }
+        }
     }
 
     /// Blocktank no longer sells channels, so Spending is funded by a deposit into the Spark wallet.

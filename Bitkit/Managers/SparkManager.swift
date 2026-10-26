@@ -161,6 +161,15 @@ final class SparkManager: ChannelFreeLightningRail {
         return try await requireSdk().receivePayment(request: request).paymentRequest
     }
 
+    /// Size of Spark's deposit claim transaction; the SDK prices a standard claim as the fastest recommended fee rate
+    /// times this size before the provider quotes it (breez/spark-sdk `CLAIM_TX_SIZE_VBYTES`).
+    private static let claimTxSizeVbytes: UInt64 = 99
+
+    /// Estimates what Spark keeps from a deposit to claim it, the way the SDK does before the provider quotes it.
+    func estimateDepositClaimFeeSats() async throws -> UInt64 {
+        try await requireSdk().recommendedFees().fastestFee * Self.claimTxSizeVbytes
+    }
+
     /// Moves the whole Spark balance to the on-chain `address`, fees included, for Spending to Savings.
     func withdrawAll(to address: String) async throws {
         let prepared = try await prepareSend(paymentRequest: address, amountSats: balanceSats, feePolicy: .feesIncluded)

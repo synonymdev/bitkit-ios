@@ -23,7 +23,13 @@ struct SpendingConfirm: View {
     @State private var maxSendableAmount: UInt64?
     @State private var shouldUseSendAll = false
     var lspFee: UInt64 {
-        transfer.uiState.lspFeeSat
+        transfer.uiState.isSpark ? transfer.uiState.sparkClaimFeeSat : transfer.uiState.lspFeeSat
+    }
+
+    /// What reaches Spending: Spark keeps its claim fee from the deposit.
+    var toSpending: UInt64 {
+        let amount = transfer.uiState.clientBalanceSat
+        return transfer.uiState.isSpark ? amount.saturatingSub(transfer.uiState.sparkClaimFeeSat) : amount
     }
 
     var total: UInt64 {
@@ -52,7 +58,7 @@ struct SpendingConfirm: View {
                     .frame(maxWidth: .infinity)
 
                     FeeDisplayRow(
-                        label: t("lightning__spending_confirm__lsp_fee"),
+                        label: t(transfer.uiState.isSpark ? "lightning__spark_claim_fee" : "lightning__spending_confirm__lsp_fee"),
                         amount: lspFee
                     )
                     .frame(maxWidth: .infinity)
@@ -61,7 +67,7 @@ struct SpendingConfirm: View {
                 HStack {
                     FeeDisplayRow(
                         label: t("lightning__spending_confirm__amount"),
-                        amount: transfer.uiState.clientBalanceSat
+                        amount: toSpending
                     )
                     .frame(maxWidth: .infinity)
 
