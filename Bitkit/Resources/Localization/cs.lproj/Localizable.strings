@@ -1961,3 +1961,5 @@
 "subscriptions__allowance_limit_title" = "Limit dosažen";
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";
+
+"wallet__balance_updating" = "Aktualizace zůstatku…";

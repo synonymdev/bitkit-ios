@@ -4,6 +4,49 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testCachedDisplayBalanceSurvivesRestartWithoutBecomingSpendableAndClearsOnWipe() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let mnemonic = "test test test test test test test test test test test junk"
+        let address = try usdtAddress(mnemonic: mnemonic, passphrase: nil)
+        let cache = UsdtDisplayBalanceCache(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, defaults: defaults)
+        cache.save(1_234_567, address: address)
+        let manager = try UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil,
+                                            defaults: XCTUnwrap(UserDefaults(suiteName: suite)), loadCredentials: { (mnemonic, nil) })
+        await manager.loadCachedBalance()
+        XCTAssertEqual(manager.cachedBalance, 1_234_567)
+        XCTAssertNil(manager.balance)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        await manager.refresh()
+        XCTAssertEqual(manager.cachedBalance, 1_234_567)
+        try await manager.wipe()
+        XCTAssertNil(manager.cachedBalance)
+        XCTAssertNil(cache.balance(for: address))
+    }
+
+    func testDisplayCacheRejectsAnotherWalletNetworkOrInvalidRecordAndPersistsZero() throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let cache = UsdtDisplayBalanceCache(storageDirectory: directory, rpcUrl: "rpc", bundlerUrl: "bundler", defaults: defaults)
+        cache.save(.max, address: "wallet-a")
+        XCTAssertEqual(cache.balance(for: "wallet-a"), .max)
+        XCTAssertNil(cache.balance(for: "wallet-b"))
+        for (path, rpc, bundler) in [(directory.appendingPathComponent("other"), "rpc", "bundler"),
+                                     (directory, "other-rpc", "bundler"), (directory, "rpc", "other-bundler")]
+        {
+            XCTAssertNil(UsdtDisplayBalanceCache(storageDirectory: path, rpcUrl: rpc, bundlerUrl: bundler,
+                                                 defaults: defaults).balance(for: "wallet-a"))
+        }
+        cache.save(0, address: "wallet-a")
+        XCTAssertEqual(cache.balance(for: "wallet-a"), 0)
+        defaults.set(Data("invalid".utf8), forKey: "usdt_display_balance")
+        XCTAssertNil(cache.balance(for: "wallet-a"))
+    }
+
     func testBridgeRejectionsDescribeLimitsAndLiquidity() {
         let cases: [(UsdtError, String)] = [
             (.BridgeAmountBelowMinimum(minUsdCents: "200"), t("usdt__deposit_minimum", variables: ["amount": "200".usdCents])),

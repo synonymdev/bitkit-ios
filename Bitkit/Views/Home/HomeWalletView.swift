@@ -23,7 +23,7 @@ struct HomeWalletView: View {
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
     private var headlineSats: Int? {
         Self.aggregateBalance(bitcoinSats: wallet.totalBalanceSats, hardwareSats: hwWalletManager.totalSats,
-                              includesUsdt: showsUsdt, usdtBalance: usdt.balance, rate: currency.paykitRate)
+                              includesUsdt: showsUsdt, usdtBalance: usdt.balance ?? usdt.cachedBalance, rate: currency.paykitRate)
     }
 
     static func aggregateBalance(bitcoinSats: Int, hardwareSats: UInt64, includesUsdt: Bool, usdtBalance: UInt64?,
@@ -33,8 +33,23 @@ struct HomeWalletView: View {
         guard includesUsdt else { return bitcoin }
         guard let usdtBalance else { return nil }
         guard usdtBalance > 0 else { return bitcoin }
-        guard let usdtSats = usdtDisplaySats(amount: usdtFormatAmount(amount: usdtBalance), rate: rate, now: now) else { return nil }
+        // Home can show the last known value while refreshing; payment conversions still require a fresh rate.
+        guard let rate, rate.timestamp <= now,
+              let usdtSats = usdtDisplaySats(amount: usdtFormatAmount(amount: usdtBalance), rate: rate, now: rate.timestamp) else { return nil }
         return bitcoin.saturatingAdd(usdtSats)
+    }
+
+    private var balanceUpdating: Bool {
+        showsUsdt && Self.isBalanceUpdating(balance: usdt.balance, refreshing: usdt.refreshing,
+                                            hasError: usdt.errorMessage != nil, rate: currency.paykitRate,
+                                            rateRefreshing: currency.isRefreshing)
+    }
+
+    static func isBalanceUpdating(balance: UInt64?, refreshing: Bool, hasError: Bool,
+                                  rate: PaykitExchangeRate?, rateRefreshing: Bool, now: Date = Date()) -> Bool
+    {
+        balance == nil || refreshing || hasError ||
+            (balance != 0 && (rateRefreshing || (try? rate?.value(at: now)) == nil))
     }
 
     var body: some View {
@@ -48,7 +63,13 @@ struct HomeWalletView: View {
                 enableSwipeGesture: settings.swipeBalanceToHide,
                 enableHide: true
             )
-            .padding(.bottom, 32)
+            if balanceUpdating {
+                CaptionMText(t("wallet__balance_updating"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("TotalBalanceUpdating")
+            }
+            Spacer().frame(height: 32)
 
             HStack(spacing: 16) {
                 NavigationLink(value: Route.savingsWallet) {
@@ -82,9 +103,13 @@ struct HomeWalletView: View {
                         } icon: {
                             Image("tether-circle").resizable().frame(width: 24, height: 24)
                         } amount: {
-                            BodyMSBText(settings.hideBalance ? " • • • • •" : usdt.balance.map { "$ " + usdtOverviewAmount($0) } ?? "—",
-                                        kerning: 0, lineHeight: 22)
-                                .lineLimit(1).minimumScaleFactor(0.7)
+                            BodyMSBText(
+                                settings.hideBalance ? " • • • • •" : (usdt.balance ?? usdt.cachedBalance)
+                                    .map { "$ " + usdtOverviewAmount($0) } ?? "—",
+                                kerning: 0,
+                                lineHeight: 22
+                            )
+                            .lineLimit(1).minimumScaleFactor(0.7)
                         }
                     }
                     .buttonStyle(.plain)
@@ -112,5 +137,10 @@ struct HomeWalletView: View {
         .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
         .padding(.horizontal)
         .animation(.spring(response: 0.3), value: hasActivity)
+        .task(id: showsUsdt) {
+            if showsUsdt {
+                await usdt.loadCachedBalance()
+            }
+        }
     }
 }
