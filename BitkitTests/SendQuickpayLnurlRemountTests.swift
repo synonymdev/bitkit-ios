@@ -207,6 +207,11 @@ final class SendQuickpayLnurlRemountTests: XCTestCase {
                           sheets: SheetViewModel? = nil) -> (AppViewModel, SheetViewModel, MountState, UIWindow)
     {
         snapshotAppDefaultsDomain()
+        let camera = CameraManager.shared
+        let hadCameraPermission = camera.hasPermission
+        addTeardownBlock { @MainActor in camera.hasPermission = hadCameraPermission }
+        // Keep hosted navigation tests from requesting system camera permission.
+        camera.hasPermission = true
         let app = app ?? AppViewModel()
         let sheets = sheets ?? SheetViewModel()
         let wallet = WalletViewModel()
@@ -218,7 +223,7 @@ final class SendQuickpayLnurlRemountTests: XCTestCase {
             .environment(PaykitPaymentRequestManager())
             .environment(HwWalletManager())
             .environment(TrezorManager())
-            .environment(CameraManager.shared)
+            .environment(camera)
             .environmentObject(app)
             .environmentObject(wallet)
             .environmentObject(NetworkMonitor())
