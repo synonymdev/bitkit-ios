@@ -48,4 +48,18 @@ final class UsdtSendFailureTests: XCTestCase {
         let alreadyConfirmed = UsdtSendView.submissionFailure(for: UsdtError.BackupUnavailable, transferStatus: .confirmed)
         XCTAssertFalse(alreadyConfirmed.isCurrent(for: .confirmed))
     }
+
+    func testPendingDeadlineExpiryRemainsExplainedWhenRecoveryMarksItFailed() {
+        let failure = UsdtSendView.submissionFailure(for: UsdtError.SubmissionDeadlineExpired, transferStatus: .pending)
+
+        XCTAssertTrue(failure.isCurrent(for: .pending))
+        XCTAssertTrue(failure.isCurrent(for: .failed))
+        XCTAssertEqual(failure.title, t("wallet__payment_request_expired"))
+        XCTAssertEqual(failure.message, t("wallet__payment_request_expired"))
+        XCTAssertFalse(failure.isCurrent(for: nil))
+        let resolvedStatuses: [UsdtTransferStatus] = [.confirmed, .replaced, .bridging, .bridgeNeedsAttention, .bridgeFailed, .bridgeRefunded]
+        for status in resolvedStatuses {
+            XCTAssertFalse(failure.isCurrent(for: status))
+        }
+    }
 }

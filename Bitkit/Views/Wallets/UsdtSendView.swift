@@ -765,24 +765,27 @@ struct UsdtSendView: View {
         let title: String
         let message: String
         let transferStatus: UsdtTransferStatus?
+        let isDeadlineExpiry: Bool
 
         func isCurrent(for status: UsdtTransferStatus?) -> Bool {
-            status != nil && status != .confirmed && status == transferStatus
+            guard let status, status != .confirmed else { return false }
+            return status == transferStatus || (isDeadlineExpiry && transferStatus == .pending && status == .failed)
         }
     }
 
     static func submissionFailure(for error: Error, transferStatus: UsdtTransferStatus? = nil) -> SubmissionFailure {
-        let title = if case UsdtError.SubmissionDeadlineExpired = error {
-            t("wallet__payment_request_expired")
+        let isDeadlineExpiry = if case UsdtError.SubmissionDeadlineExpired = error {
+            true
         } else {
-            t("common__error")
+            false
         }
+        let title = isDeadlineExpiry ? t("wallet__payment_request_expired") : t("common__error")
         let message = if error is UsdtError {
             UsdtWalletManager.message(for: error)
         } else {
             (error as? LocalizedError)?.errorDescription ?? UsdtWalletManager.message(for: error)
         }
-        return SubmissionFailure(title: title, message: message, transferStatus: transferStatus)
+        return SubmissionFailure(title: title, message: message, transferStatus: transferStatus, isDeadlineExpiry: isDeadlineExpiry)
     }
 
     private func send() async {
