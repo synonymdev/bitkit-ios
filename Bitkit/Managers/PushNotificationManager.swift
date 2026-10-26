@@ -23,6 +23,19 @@ final class PushNotificationManager: ObservableObject {
         }
     }
 
+    /// Asks for notification permission once, where a feature needs it; an earlier answer is kept.
+    func requestPermissionIfUndecided() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .notDetermined else { return }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, error in
+                if let error {
+                    Logger.error("Notification permission request failed: \(error)")
+                }
+                self.updateNotificationPermission()
+            }
+        }
+    }
+
     func updateNotificationPermission() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
