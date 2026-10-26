@@ -8,9 +8,8 @@
     (testTag "TransferUnavailableContinue"), which opens the existing Manual Setup screen. Receive's Lightning
     path shows the same layout with copy for receiving.
 
-    Precondition: Debug build launched with the environment variable `GEO=true` (Debug builds skip the
-    geocheck without it), onboarded wallet with a positive on-chain Savings balance and no channels. Start on
-    the wallet home screen.
+    Precondition: Debug build (it runs the geocheck; E2E builds turn it off), onboarded wallet with a positive
+    on-chain Savings balance and no channels. Start on the wallet home screen.
   </description>
   <actions>
     <action>Tap the Savings balance card (testTag "ActivitySavings") and verify "Transfer To Spending" (testTag "TransferToSpending") is shown</action>
