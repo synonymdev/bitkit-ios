@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
       "state" : {
-        "revision" : "3476fa45be919244310c4f65945e8d2bc1b8ee15",
-        "version" : "0.5.23"
+        "revision" : "eba41ef62b7314aa75827a5a3e71d2b23930b981",
+        "version" : "0.5.26-rc1"
       }
     }
   ],
