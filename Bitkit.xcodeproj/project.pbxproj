@@ -75,6 +75,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bitkit.xcconfig; sourceTree = "<group>"; };
 		3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
@@ -306,6 +307,7 @@
 		96FE1F582C2DE6AA006D0C8B = {
 			isa = PBXGroup;
 			children = (
+				B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */,
 				4A319B6E2E8F25F6002B9AC9 /* BitkitWidgetExtension.entitlements */,
 				96A44E912CEF5EA700FBACFF /* Bitkit */,
 				96A44F4A2CEF5F4B00FBACFF /* BitkitTests */,
@@ -950,6 +952,7 @@
 		};
 		96FE1F872C2DE6AC006D0C8B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1003,6 +1006,7 @@
 		};
 		96FE1F882C2DE6AC006D0C8B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
