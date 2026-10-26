@@ -1321,6 +1321,11 @@ class WalletViewModel: ObservableObject {
         return channels?.contains(where: \.isUsable) ?? false
     }
 
+    /// Whether Lightning can be received, through a usable channel or Spark; Paykit publishes a Lightning endpoint only then.
+    var canReceiveLightning: Bool {
+        hasUsableChannels || SparkManager.shared.isReady
+    }
+
     var canCreateReceiveLightningInvoice: Bool {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         return canCreateReceiveLightningInvoice(amountSats: amountSats)
@@ -1383,7 +1388,7 @@ class WalletViewModel: ObservableObject {
             if attempt > 0 {
                 guard try await canCommitInvoice() else { continue }
             }
-            if includeLightning, hasUsableChannels {
+            if includeLightning, canReceiveLightning {
                 let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
                 guard try await canCommitInvoice() else { continue }
                 let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
@@ -1449,7 +1454,7 @@ class WalletViewModel: ObservableObject {
 
         if sharesPublicPaykitEndpoints {
             do {
-                try await publishPublicPaykitEndpoints(refreshIfNeeded: hasUsableChannels, isSessionCurrent: isSessionCurrent)
+                try await publishPublicPaykitEndpoints(refreshIfNeeded: canReceiveLightning, isSessionCurrent: isSessionCurrent)
             } catch {
                 Logger.warn("Failed to refresh public Paykit endpoints after channel availability changed: \(error)", context: "WalletViewModel")
             }

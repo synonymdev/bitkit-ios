@@ -78,7 +78,7 @@ extension PrivatePaykitService {
 
     @MainActor
     func walletHasUsableChannels(_ wallet: WalletViewModel) -> Bool {
-        wallet.hasUsableChannels
+        wallet.canReceiveLightning
     }
 
     @MainActor

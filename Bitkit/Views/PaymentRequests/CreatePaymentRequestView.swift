@@ -522,7 +522,7 @@ struct PaymentRequestDetailsView: View {
     }
 
     private var enabledEndpoints: [String] {
-        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.hasUsableChannels)
+        PaykitPaymentRequestService.acceptedPaymentEndpointIdentifiers(canReceiveLightning: wallet.canReceiveLightning)
     }
 
     private var selectedEnabledEndpoints: [String] {
