@@ -35,11 +35,10 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
+                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundTransfer"
                 ) {
-                    if GeoService.shared.isGeoBlocked {
-                        sheets.showSheet(.transferUnavailable)
-                    } else if wallet.totalOnchainSats == 0 {
+                    if wallet.totalOnchainSats == 0 {
                         showNoFundsAlert = true
                     } else if app.hasSeenTransferToSpendingIntro {
                         navigation.navigate(.spendingAmount)
