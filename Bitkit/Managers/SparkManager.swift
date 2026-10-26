@@ -30,6 +30,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Called after the Spark balance or readiness was read again, so balances and the receive invoice can follow.
     var onStateChanged: (() -> Void)?
 
+    /// Deposits this app broadcast that Spark hasn't listed yet, by txid, so they show as pending at once.
+    @ObservationIgnored private var broadcastDeposits: [String: UInt64] = [:]
     @ObservationIgnored private var sdk: BreezSdk?
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
@@ -209,6 +211,32 @@ final class SparkManager: ChannelFreeLightningRail {
     }
 
     /// Reads the Spark balance and deposits again, for pull to refresh.
+    /// Lists a deposit the app just broadcast as pending right away, then syncs so Spark sees it sooner than its
+    /// minute-long background sync; Spark's own deposit state replaces it once listed.
+    func onDepositBroadcast(txid: String, amountSats: UInt64) {
+        broadcastDeposits[txid] = amountSats
+        applyBroadcastDeposits()
+        onStateChanged?()
+        Task {
+            do {
+                _ = try await requireSdk().syncWallet(request: SyncWalletRequest())
+            } catch {
+                Logger.warn("Failed to sync Spark after deposit \(txid): \(error)", context: "SparkManager")
+            }
+            await refreshState()
+        }
+    }
+
+    private func applyBroadcastDeposits() {
+        let known = Set(deposits.map(\.txid))
+        let local = broadcastDeposits
+            .filter { !known.contains($0.key) }
+            .map { SparkDeposit(txid: $0.key, amountSats: $0.value, isClaimed: false, confirmations: 0) }
+        guard !local.isEmpty else { return }
+        deposits = local + deposits
+        pendingDepositSats = deposits.filter { !$0.isClaimed }.reduce(0) { $0 + $1.amountSats }
+    }
+
     func refreshState() async {
         guard sdk != nil else { return }
         do {
@@ -231,6 +259,10 @@ final class SparkManager: ChannelFreeLightningRail {
         pendingDepositSats = pending
         recoverableFundsSats = info.recoverableFundsSats
         deposits = await Self.deposits(unclaimed: unclaimed, claimed: claimed)
+        for deposit in deposits {
+            broadcastDeposits[deposit.txid] = nil
+        }
+        applyBroadcastDeposits()
         if changed {
             onStateChanged?()
         }

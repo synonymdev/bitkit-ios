@@ -424,6 +424,7 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: t("wallet__onchain_funding_unknown"), debugMessage: "Spark funding outcome: \(result)")
         }
         _ = try? await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+        SparkManager.shared.onDepositBroadcast(txid: txid, amountSats: uiState.clientBalanceSat)
         Logger.info("Funded Spark wallet with \(uiState.clientBalanceSat) sats in \(txid)", context: "TransferViewModel")
         lightningSetupStep = 2
         await onBalanceRefresh?()
