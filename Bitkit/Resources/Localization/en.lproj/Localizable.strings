@@ -406,7 +406,6 @@
 "lightning__peer_disconnected" = "Peer disconnected.";
 "lightning__transfer_unavailable__nav_title" = "Transfer Unavailable";
 "lightning__transfer_unavailable__text" = "Automatic transfers to your spending balance are no longer available. Use your own node, or set up a connection with another provider.";
-"lightning__transfer_unavailable__text_receive" = "Receiving to your spending balance through Bitkit is no longer available. Use your own node, or set up a connection with another provider.";
 "lightning__transfer_unavailable__title" = "<accent>Manual setup</accent>\nrequired";
 "onboarding__tos_header" = "Bitkit\n<accent>terms of use</accent>";
 "onboarding__tos_checkbox" = "Terms of use";

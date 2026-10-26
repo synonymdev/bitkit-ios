@@ -16,6 +16,16 @@ struct FundingOptions: View {
         }
     }
 
+    private var manualButton: some View {
+        RectangleButton(
+            icon: "pencil",
+            title: t("lightning__funding__button3"),
+            testID: "FundManual"
+        ) {
+            navigation.navigate(.fundManual(nodeUri: nil))
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
@@ -32,6 +42,10 @@ struct FundingOptions: View {
                 .padding(.bottom, 32)
 
             VStack(spacing: 8) {
+                if GeoService.shared.isGeoBlocked {
+                    manualButton
+                }
+
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
@@ -57,12 +71,8 @@ struct FundingOptions: View {
                     sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
                 }
 
-                RectangleButton(
-                    icon: "pencil",
-                    title: t("lightning__funding__button3"),
-                    testID: "FundManual"
-                ) {
-                    navigation.navigate(.fundManual(nodeUri: nil))
+                if !GeoService.shared.isGeoBlocked {
+                    manualButton
                 }
             }
 

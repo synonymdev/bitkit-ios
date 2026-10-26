@@ -413,7 +413,6 @@
 "lightning__peer_disconnected" = "Peer odpojen.";
 "lightning__transfer_unavailable__nav_title" = "Převod není dostupný";
 "lightning__transfer_unavailable__text" = "Automatické převody na zůstatek útrat již nejsou k dispozici. Použijte vlastní uzel nebo si nastavte připojení u jiného poskytovatele.";
-"lightning__transfer_unavailable__text_receive" = "Příjem na zůstatek útrat přes Bitkit již není k dispozici. Použijte vlastní uzel nebo si nastavte připojení u jiného poskytovatele.";
 "lightning__transfer_unavailable__title" = "<accent>Vyžadováno ruční</accent>\nnastavení";
 "lightning__wait_text_top" = "Prosím vyčkejte, až se Bitkit připojí k platební síti (±10 sekund).";
 "lightning__wait_text_bottom" = "Připojování & synchronizace...";

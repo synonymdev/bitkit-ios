@@ -6,8 +6,8 @@ struct ReceiveCjitGeoBlocked: View {
 
     var body: some View {
         TransferUnavailableContent(
-            navTitle: t("wallet__receive_bitcoin"),
-            description: t("lightning__transfer_unavailable__text_receive"),
+            navTitle: t("lightning__transfer_unavailable__nav_title"),
+            description: t("lightning__transfer_unavailable__text"),
             showBackButton: true
         ) {
             sheets.hideSheet()
