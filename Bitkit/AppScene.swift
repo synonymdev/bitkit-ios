@@ -676,6 +676,7 @@ struct AppScene: View {
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
                     paykitAllowanceManager.deactivate()
+                    hasPendingExpiryToast = false
                 }
             }
             .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in

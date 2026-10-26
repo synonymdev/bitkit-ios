@@ -19,6 +19,8 @@ struct EditProfileView: View {
     @State private var avatarImage: UIImage?
 
     var body: some View {
+        let copy = pubkyProfile.isRingAdoptedIdentity ? RemovalCopy.unlink : RemovalCopy.delete
+
         ZStack {
             ProfileEditFormView(
                 navigationTitle: t("profile__edit_nav_title"),
@@ -31,8 +33,9 @@ struct EditProfileView: View {
                 bioPlaceholder: t("profile__create_bio_placeholder"),
                 isSaving: isSaving,
                 footerNote: t("profile__edit_public_note"),
-                deleteLabel: t("profile__delete_label"),
-                deleteActionStyle: .buttonWithIcon,
+                deleteLabel: copy.label,
+                deleteSectionCaption: copy.sectionCaption,
+                deleteActionStyle: .buttonWithIcon(icon: copy.icon, isSystemIcon: copy.isSystemIcon),
                 onSave: { await saveProfile() },
                 onCancel: { navigation.navigateBack() },
                 onDelete: { showDeleteConfirmation = true }
@@ -57,15 +60,15 @@ struct EditProfileView: View {
         .task {
             loadProfileData()
         }
-        .alert(t("profile__delete_title"), isPresented: $showDeleteConfirmation) {
-            Button(t("profile__delete_confirm"), role: .destructive) {
+        .alert(copy.title, isPresented: $showDeleteConfirmation) {
+            Button(copy.confirm, role: .destructive) {
                 Task { await deleteProfile() }
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("profile__delete_description"))
+            Text(copy.description)
         }
-        .alert(t("profile__delete_error_title"), isPresented: $showDeleteFailureOptions) {
+        .alert(copy.errorTitle, isPresented: $showDeleteFailureOptions) {
             Button(t("common__retry")) {
                 Task { await deleteProfile() }
             }
@@ -74,7 +77,7 @@ struct EditProfileView: View {
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("profile__delete_error_description"))
+            Text(copy.errorDescription)
         }
     }
 
@@ -233,6 +236,46 @@ struct EditProfileView: View {
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")
             app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
         }
+    }
+}
+
+private struct RemovalCopy {
+    let label: String
+    let sectionCaption: String
+    let icon: String
+    let isSystemIcon: Bool
+    let title: String
+    let confirm: String
+    let description: String
+    let errorTitle: String
+    let errorDescription: String
+
+    static var delete: RemovalCopy {
+        RemovalCopy(
+            label: t("profile__delete_label"),
+            sectionCaption: t("profile__edit_delete_section"),
+            icon: "trash",
+            isSystemIcon: false,
+            title: t("profile__delete_title"),
+            confirm: t("profile__delete_confirm"),
+            description: t("profile__delete_description"),
+            errorTitle: t("profile__delete_error_title"),
+            errorDescription: t("profile__delete_error_description")
+        )
+    }
+
+    static var unlink: RemovalCopy {
+        RemovalCopy(
+            label: t("profile__unlink_label"),
+            sectionCaption: t("profile__edit_unlink_section"),
+            icon: "link",
+            isSystemIcon: true,
+            title: t("profile__unlink_title"),
+            confirm: t("profile__unlink_confirm"),
+            description: t("profile__unlink_description"),
+            errorTitle: t("profile__unlink_error_title"),
+            errorDescription: t("profile__unlink_error_description")
+        )
     }
 }
 
