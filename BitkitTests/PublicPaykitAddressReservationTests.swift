@@ -541,6 +541,116 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testLegacyAndroidMetadataRestorePreservesExclusionsInNextWalletBackup() async throws {
+        snapshotAppDefaultsDomain()
+        let defaults = UserDefaults.standard
+        let legacyAddress = AddressWallet.address(0)
+        let retainedAddress = AddressWallet.address(9)
+        defaults.removeObject(forKey: "privatePaykitAddressReservations")
+        defaults.set([retainedAddress], forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+        let walletBackup = try JSONDecoder().decode(
+            WalletBackupV1.self, from: Data(#"{"version":1,"createdAt":1,"transfers":[]}"#.utf8)
+        )
+        XCTAssertNil(walletBackup.privatePaykitHighestReservedReceiveIndexByAddressType)
+        XCTAssertNil(walletBackup.publicPaykitLegacyAddresses)
+        let store = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
+        await store.restoreBackup(
+            walletBackup.privatePaykitHighestReservedReceiveIndexByAddressType,
+            legacyPublicAddresses: walletBackup.publicPaykitLegacyAddresses
+        )
+        let metadata = try decodeAndroidMetadata(cache: ["onchainAddress": legacyAddress])
+        try SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
+        defaults.set("", forKey: "onchainAddress")
+
+        let restarted = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
+        let retainedExclusions = await restarted.legacyPublicAddressesSnapshot()
+        XCTAssertEqual(Set(retainedExclusions ?? []), Set([legacyAddress, retainedAddress]))
+        let nextBackup = await WalletBackupV1(
+            version: 1, createdAt: 2, transfers: [],
+            privatePaykitHighestReservedReceiveIndexByAddressType: restarted.backupSnapshot(),
+            paykitSdkBackupState: nil, watchOnlyAccounts: nil, watchOnlyAccountAllocationState: nil,
+            publicPaykitLegacyAddresses: restarted.legacyPublicAddressesSnapshot()
+        )
+        let decoded = try JSONDecoder().decode(WalletBackupV1.self, from: JSONEncoder().encode(nextBackup))
+        XCTAssertEqual(Set(decoded.publicPaykitLegacyAddresses ?? []), Set([legacyAddress, retainedAddress]))
+
+        let restoredDefaults = try makeIsolatedDefaults()
+        let restored = PrivatePaykitAddressReservationStore(defaults: restoredDefaults, operations: AddressWallet().operations)
+        await restored.restoreBackup(
+            decoded.privatePaykitHighestReservedReceiveIndexByAddressType,
+            legacyPublicAddresses: decoded.publicPaykitLegacyAddresses
+        )
+        await restored.restoreBackup(nil)
+        let restoredExclusions = await restored.legacyPublicAddressesSnapshot()
+        XCTAssertEqual(Set(restoredExclusions ?? []), Set([legacyAddress, retainedAddress]))
+    }
+
+    @MainActor
+    func testLegacyAndroidMetadataRestoreExcludesAddressFromEveryAllocation() async throws {
+        snapshotAppDefaultsDomain()
+        let defaults = UserDefaults.standard
+        let legacyAddress = AddressWallet.address(0)
+        let metadata = try decodeAndroidMetadata(cache: ["onchainAddress": legacyAddress])
+        let walletBackup = try JSONDecoder().decode(
+            WalletBackupV1.self, from: Data(#"{"version":1,"createdAt":1,"transfers":[]}"#.utf8)
+        )
+
+        for kind in ["receive", "private", "public"] {
+            defaults.removeObject(forKey: "privatePaykitAddressReservations")
+            defaults.removeObject(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+            let store = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
+            await store.restoreBackup(
+                walletBackup.privatePaykitHighestReservedReceiveIndexByAddressType,
+                legacyPublicAddresses: walletBackup.publicPaykitLegacyAddresses
+            )
+            try SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
+            defaults.set("", forKey: "onchainAddress")
+
+            let restarted = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
+            let unavailable = await restarted.isUnavailableForReusableReceive(address: legacyAddress)
+            XCTAssertTrue(unavailable, kind)
+            let address: String = switch kind {
+            case "private": try await restarted.currentOrRotatedAddress(for: bob)
+            case "public": try await restarted.currentOrRotatedPublicAddress(for: alice)
+            default: try await restarted.nextNonReservedReceiveAddress(addressType: .nativeSegwit)
+            }
+            XCTAssertNotEqual(address, legacyAddress, kind)
+        }
+    }
+
+    @MainActor
+    func testMetadataWithoutLegacyAddressKeepsExclusionsAndDoesNotBackUpLiveReceiveAddress() throws {
+        snapshotAppDefaultsDomain()
+        let defaults = UserDefaults.standard
+        let retainedAddress = AddressWallet.address(9)
+        let ordinaryAddress = AddressWallet.address(20)
+        let caches: [[String: Any]] = [[:], ["onchainAddress": NSNull()], ["onchainAddress": ""]]
+
+        for cache in caches {
+            defaults.set([retainedAddress], forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+            defaults.set(ordinaryAddress, forKey: "onchainAddress")
+            let metadata = try decodeAndroidMetadata(cache: cache)
+            try SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
+            XCTAssertEqual(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey), [retainedAddress])
+            XCTAssertEqual(defaults.string(forKey: "onchainAddress"), ordinaryAddress)
+
+            let nextCache = try SettingsViewModel.shared.getAppCacheData()
+            let encodedCache = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(nextCache)) as? [String: Any])
+            XCTAssertNil(encodedCache["onchainAddress"])
+        }
+    }
+
+    private func decodeAndroidMetadata(cache: [String: Any]) throws -> MetadataBackupV1 {
+        let envelope: [String: Any] = [
+            "version": 1,
+            "createdAt": 1,
+            "tagMetadata": [],
+            "cache": cache,
+        ]
+        return try JSONDecoder().decode(MetadataBackupV1.self, from: JSONSerialization.data(withJSONObject: envelope))
+    }
+
     func testConcurrentAllocationsUseSeparatePublicPrivateAndReceiveAddresses() async throws {
         let defaults = try makeIsolatedDefaults()
         let wallet = AddressWallet()

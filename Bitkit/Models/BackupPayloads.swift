@@ -88,6 +88,8 @@ struct AppCacheData: Codable {
     let quickPayLedger: QuickPayLedger?
     let blocktankRefundAddress: BlocktankRefundAddress?
     let detachedActivityContacts: Set<String>
+    /// Imported cache addresses may have been public; local snapshots do not export the live receive address.
+    let onchainAddress: String?
 
     init(
         hasSeenContactsIntro: Bool,
@@ -129,6 +131,7 @@ struct AppCacheData: Codable {
         self.quickPayLedger = quickPayLedger
         self.blocktankRefundAddress = blocktankRefundAddress
         self.detachedActivityContacts = detachedActivityContacts
+        onchainAddress = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -152,6 +155,7 @@ struct AppCacheData: Codable {
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
         blocktankRefundAddress = try c.decodeIfPresent(BlocktankRefundAddress.self, forKey: .blocktankRefundAddress)
         detachedActivityContacts = try c.decodeIfPresent(Set<String>.self, forKey: .detachedActivityContacts) ?? []
+        onchainAddress = try c.decodeIfPresent(String.self, forKey: .onchainAddress)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -163,6 +167,7 @@ struct AppCacheData: Codable {
         case quickPayLedger
         case blocktankRefundAddress
         case detachedActivityContacts
+        case onchainAddress
     }
 }
 

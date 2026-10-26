@@ -988,6 +988,12 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Restores app cache data from backup
     func restoreAppCacheData(_ cache: AppCacheData) throws {
+        if let address = cache.onchainAddress, !address.isEmpty {
+            var addresses = Set(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey) ?? [])
+            addresses.insert(address)
+            defaults.set(addresses.sorted(), forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+        }
+
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
