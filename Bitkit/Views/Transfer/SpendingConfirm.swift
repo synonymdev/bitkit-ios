@@ -245,7 +245,7 @@ struct SpendingConfirm: View {
             // Reset the underlying swipe while the exact operation remains in Pending.
             throw error
         } catch {
-            if !(error is SpendingFeesIncreasedError) {
+            if !(error is SpendingFeesIncreasedError || error is TransferUnavailableError) {
                 app.toast(error)
             }
             throw error

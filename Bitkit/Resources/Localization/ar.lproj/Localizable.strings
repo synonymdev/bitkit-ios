@@ -178,8 +178,6 @@
 "lightning__transfer_intro__button" = "ابدأ";
 "lightning__funding__title" = "موّل <accent>رصيد إنفاقك</accent>";
 "lightning__funding__text" = "أسهل خيار هو استخدام مدخرات Bitkit الخاصة بك أو إرسال بيتكوين من محفظة مختلفة.";
-"lightning__funding__text_blocked" = "لا يوفر Bitkit حاليًا خدمات Lightning في بلدك، ولكن لا يزال بإمكانك الاتصال بعقد أخرى مباشرة.";
-"lightning__funding__text_blocked_cjit" = "لا يوفر Bitkit حاليًا خدمات Lightning في بلدك، ولكن لا يزال بإمكانك الاتصال بعقد أخرى مباشرة.";
 "lightning__funding__button1" = "تحويل من المدخرات";
 "lightning__funding__button2" = "استخدام محفظة أخرى";
 "lightning__funding__button3" = "إعداد يدوي";

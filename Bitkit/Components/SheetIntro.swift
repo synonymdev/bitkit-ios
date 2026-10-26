@@ -12,6 +12,7 @@ struct SheetIntro: View {
     let testID: String?
     let cancelTestID: String?
     let continueTestID: String?
+    let showBackButton: Bool
     let onCancel: (() -> Void)?
     let onContinue: () -> Void
     private var baseTestID: String {
@@ -30,6 +31,7 @@ struct SheetIntro: View {
         testID: String? = nil,
         cancelTestID: String? = nil,
         continueTestID: String? = nil,
+        showBackButton: Bool = false,
         onCancel: (() -> Void)? = nil,
         onContinue: @escaping () -> Void
     ) {
@@ -44,13 +46,14 @@ struct SheetIntro: View {
         self.testID = testID
         self.cancelTestID = cancelTestID
         self.continueTestID = continueTestID
+        self.showBackButton = showBackButton
         self.onCancel = onCancel
         self.onContinue = onContinue
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: navTitle)
+            SheetHeader(title: navTitle, showBackButton: showBackButton)
 
             VStack(spacing: 0) {
                 Spacer()

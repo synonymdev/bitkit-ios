@@ -202,8 +202,6 @@
 "lightning__funding__nav_title" = "Saldo de gastos";
 "lightning__funding__title" = "Rellene su <accent>saldo de gastos</accent>";
 "lightning__funding__text" = "La forma más fácil es usar tus ahorros de Bitkit o enviar bitcoin desde un monedero diferente.";
-"lightning__funding__text_blocked" = "Bitkit actualmente no proporciona servicios Lightning en su país, pero aún puede conectarse a otros nodos directamente.";
-"lightning__funding__text_blocked_cjit" = "Bitkit actualmente no proporciona servicios Lightning en su país, pero aún puede conectarse a otros nodos directamente.";
 "lightning__funding__button1" = "Transferir desde Ahorros";
 "lightning__funding__button2" = "Usar Otro Monedero";
 "lightning__funding__button3" = "Configuración Manual";

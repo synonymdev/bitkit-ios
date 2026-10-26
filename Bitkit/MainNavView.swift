@@ -132,6 +132,14 @@ struct MainNavView: View {
             config in ConnectionClosedSheet(config: config)
         }
         .sheet(
+            item: $sheets.transferUnavailableSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.transferUnavailable, reason: "Transfer unavailable sheet dismissed")
+            }
+        ) {
+            config in TransferUnavailableSheet(config: config)
+        }
+        .sheet(
             item: $sheets.highBalanceSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.highBalance, reason: "High balance sheet dismissed")

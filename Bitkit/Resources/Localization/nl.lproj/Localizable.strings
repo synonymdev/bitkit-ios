@@ -204,8 +204,6 @@
 "lightning__funding__nav_title" = "Bestedingssaldo";
 "lightning__funding__title" = "Vul uw <accent>bestedingssaldo</accent>";
 "lightning__funding__text" = "De makkelijkste optie is om je Bitkit-spaargeld te gebruiken of bitcoin te versturen vanuit een andere wallet.";
-"lightning__funding__text_blocked" = "Bitkit biedt momenteel geen Lightning diensten aan in uw land, maar u kunt nog steeds rechtstreeks verbinding maken met andere nodes.";
-"lightning__funding__text_blocked_cjit" = "Bitkit biedt momenteel geen Lightning diensten aan in uw land, maar u kunt nog steeds rechtstreeks verbinding maken met andere nodes.";
 "lightning__funding__button1" = "Overboeking van Spaargeld";
 "lightning__funding__button2" = "Gebruik Andere Wallet";
 "lightning__funding__button3" = "Handmatige configuratie";

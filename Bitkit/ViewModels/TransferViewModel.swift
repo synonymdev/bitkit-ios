@@ -5,6 +5,8 @@ import SwiftUI
 
 /// Funding was dispatched but unresolved; confirmation must yield to its retained Pending sheet.
 struct OnchainFundingPendingError: Error {}
+/// Blocktank no longer sells channels, so a transfer to spending stops at the Transfer Unavailable sheet.
+struct TransferUnavailableError: Error {}
 
 struct TransferUiState {
     var clientBalanceSat: UInt64 = 0
@@ -177,6 +179,7 @@ class TransferViewModel: ObservableObject {
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let onBalanceRefresh: (() async -> Void)?
+    private let isTransferUnavailable: () async -> Bool
     /// The device-signing orchestration for a hardware-wallet transfer; nil when the HW capabilities
     /// aren't injected (previews/plain init).
     private let hwSigner: HwFundingSigner?
@@ -225,7 +228,8 @@ class TransferViewModel: ObservableObject {
         onBalanceRefresh: (() async -> Void)? = nil,
         onchainAttemptService: OnchainSendAttemptService = .shared,
         onchainSender: (any OnchainSending)? = nil,
-        onchainBalanceProvider: (() -> UInt64)? = nil
+        onchainBalanceProvider: (() -> UInt64)? = nil,
+        isTransferUnavailable: (() async -> Bool)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
@@ -236,6 +240,10 @@ class TransferViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
+        self.isTransferUnavailable = isTransferUnavailable ?? {
+            await GeoService.shared.checkGeoStatus()
+            return GeoService.shared.isGeoBlocked
+        }
         if let hwFunding, let hwConnecting {
             self.hwConnecting = hwConnecting
             hwSigner = HwFundingSigner(
@@ -266,7 +274,8 @@ class TransferViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
-        transferDefaults: UserDefaults? = nil
+        transferDefaults: UserDefaults? = nil,
+        isTransferUnavailable: (() async -> Bool)? = nil
     ) {
         let transferService = TransferService(
             storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
@@ -278,7 +287,8 @@ class TransferViewModel: ObservableObject {
             lightningService: lightningService,
             currencyService: currencyService,
             transferService: transferService,
-            sheetViewModel: sheetViewModel
+            sheetViewModel: sheetViewModel,
+            isTransferUnavailable: isTransferUnavailable
         )
     }
 
@@ -383,7 +393,17 @@ class TransferViewModel: ObservableObject {
         createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
     ) async throws -> IBtOrder {
         guard let order = try await currentOrder(createOrder: createOrder, isCurrent: { true }) else { throw CancellationError() }
+        try await ensureTransferAvailable(order: order)
         return order
+    }
+
+    /// An order created before Blocktank stopped selling channels must not be paid. A signed hardware
+    /// transaction awaiting a broadcast retry is the exception: the user already approved it.
+    private func ensureTransferAvailable(order: IBtOrder) async throws {
+        guard pendingHwFundingBroadcast?.orderId != order.id, await isTransferUnavailable() else { return }
+        Logger.warn("Skipped paying order '\(order.id)': transfers are unavailable", context: "TransferViewModel")
+        sheetViewModel.showSheet(.transferUnavailable)
+        throw TransferUnavailableError()
     }
 
     private func currentOrder(
@@ -839,8 +859,11 @@ class TransferViewModel: ObservableObject {
                 createOrder: createOrder,
                 isCurrent: { self.hwOrderCreationToken == token }
             ), hwOrderCreationToken == token else { return }
+            try await ensureTransferAvailable(order: order)
             onTransferToSpendingHwConfirm(order: order, walletId: walletId)
         } catch is OnchainFundingPendingError {
+            return
+        } catch is TransferUnavailableError {
             return
         } catch {
             hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)

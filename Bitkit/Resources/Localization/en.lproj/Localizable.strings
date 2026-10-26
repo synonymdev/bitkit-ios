@@ -161,6 +161,7 @@
 "common__show_all" = "Show All";
 "common__show_details" = "Show Details";
 "common__hide_details" = "Hide Details";
+"common__read_more" = "Read More";
 "common__success" = "Success";
 "fee__instant__title" = "Instant";
 "fee__instant__description" = "±2 seconds";
@@ -197,8 +198,6 @@
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
 "lightning__funding__text" = "The easiest option is to use your Bitkit savings or send bitcoin from a different wallet.";
-"lightning__funding__text_blocked" = "Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes directly.";
-"lightning__funding__text_blocked_cjit" = "Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes directly.";
 "lightning__funding__button1" = "Transfer from Savings";
 "lightning__funding__button2" = "Use Other Wallet";
 "lightning__funding__button3" = "Manual Setup";
@@ -405,6 +404,10 @@
 "lightning__order_state__open" = "Connection open";
 "lightning__order_state__inactive" = "Connection inactive";
 "lightning__peer_disconnected" = "Peer disconnected.";
+"lightning__transfer_unavailable__nav_title" = "Transfer Unavailable";
+"lightning__transfer_unavailable__text" = "Automatic transfers to your spending balance are no longer available. Use your own node, or set up a connection with another provider.";
+"lightning__transfer_unavailable__text_receive" = "Receiving to your spending balance through Bitkit is no longer available. Use your own node, or set up a connection with another provider.";
+"lightning__transfer_unavailable__title" = "<accent>Manual setup</accent>\nrequired";
 "onboarding__tos_header" = "Bitkit\n<accent>terms of use</accent>";
 "onboarding__tos_checkbox" = "Terms of use";
 "onboarding__tos_checkbox_value" = "I declare that I have read and accept the <accent>terms of use.</accent>";

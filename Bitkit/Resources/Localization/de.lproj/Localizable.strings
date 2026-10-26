@@ -204,8 +204,6 @@
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
 "lightning__funding__text" = "Am einfachsten ist es, deine Bitkit-Ersparnisse zu verwenden oder Bitcoin von einer anderen Wallet zu senden.";
-"lightning__funding__text_blocked" = "Bitkit bietet derzeit keine Lightning-Dienste in deinem Land an,  aber du kannst dich trotzdem direkt mit anderen Knotenpunkten verbinden.";
-"lightning__funding__text_blocked_cjit" = "Bitkit bietet derzeit keine Lightning-Dienste in deinem Land an,  aber du kannst dich trotzdem direkt mit anderen Knotenpunkten verbinden.";
 "lightning__funding__button1" = "Von Sparkonto übertragen";
 "lightning__funding__button2" = "Anderes Wallet verwenden";
 "lightning__funding__button3" = "Manuelle Einrichtung";

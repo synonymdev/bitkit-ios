@@ -200,8 +200,6 @@
 "lightning__funding__nav_title" = "Υπόλοιπο Δαπανών";
 "lightning__funding__title" = "Χρηματοδοτήστε το <accent>υπόλοιπο δαπανών</accent> σας";
 "lightning__funding__text" = "Ο ευκολότερος τρόπος είναι να χρησιμοποιήσεις τις αποταμιεύσεις Bitkit ή να στείλεις bitcoin από διαφορετικό πορτοφόλι.";
-"lightning__funding__text_blocked" = "Το Bitkit δεν παρέχει αυτή τη στιγμή υπηρεσίες Lightning στη χώρα σας, αλλά μπορείτε να συνδεθείτε απευθείας σε άλλους κόμβους.";
-"lightning__funding__text_blocked_cjit" = "Το Bitkit δεν παρέχει αυτή τη στιγμή υπηρεσίες Lightning στη χώρα σας, αλλά μπορείτε να συνδεθείτε απευθείας σε άλλους κόμβους.";
 "lightning__funding__button1" = "Μεταφορά από Αποταμιεύσεις";
 "lightning__funding__button2" = "Χρήση Άλλου Πορτοφολιού";
 "lightning__funding__button3" = "Χειροκίνητη Ρύθμιση";

@@ -4,6 +4,7 @@ struct SpendingWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     private var shouldShowOnboarding: Bool {
@@ -33,7 +34,7 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 && !GeoService.shared.isGeoBlocked {
+                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)
@@ -114,7 +115,9 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if app.hasSeenTransferToSpendingIntro {
+            if GeoService.shared.isGeoBlocked {
+                sheets.showSheet(.transferUnavailable)
+            } else if app.hasSeenTransferToSpendingIntro {
                 navigation.navigate(.spendingAmount)
             } else {
                 navigation.navigate(.spendingIntro)

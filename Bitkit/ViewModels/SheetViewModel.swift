@@ -25,6 +25,7 @@ enum SheetID: String, CaseIterable {
     case security
     case send
     case tagFilter
+    case transferUnavailable
     case dateRangeSelector
     case widgets
     case hardwareConnect
@@ -249,6 +250,18 @@ class SheetViewModel: ObservableObject {
             let boostConfig = config.data as? BoostConfig
             guard let onchainActivity = boostConfig?.onchainActivity else { return nil }
             return BoostSheetItem(onchainActivity: onchainActivity)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var transferUnavailableSheetItem: TransferUnavailableSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .transferUnavailable else { return nil }
+            return TransferUnavailableSheetItem()
         }
         set {
             if newValue == nil {

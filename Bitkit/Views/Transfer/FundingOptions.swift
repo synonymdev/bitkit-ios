@@ -10,7 +10,7 @@ struct FundingOptions: View {
 
     var text: String {
         if GeoService.shared.isGeoBlocked {
-            return t("lightning__funding__text_blocked")
+            return t("lightning__transfer_unavailable__text")
         } else {
             return t("lightning__funding__text")
         }
@@ -35,10 +35,11 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundTransfer"
                 ) {
-                    if wallet.totalOnchainSats == 0 {
+                    if GeoService.shared.isGeoBlocked {
+                        sheets.showSheet(.transferUnavailable)
+                    } else if wallet.totalOnchainSats == 0 {
                         showNoFundsAlert = true
                     } else if app.hasSeenTransferToSpendingIntro {
                         navigation.navigate(.spendingAmount)
