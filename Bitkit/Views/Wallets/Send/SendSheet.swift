@@ -72,6 +72,7 @@ enum SendRoute: Hashable {
     case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
     case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
+    case recoveredSuccess(paymentId: String, walletId: String)
     case failure(SendFailureContext)
     case lnurlPayAmount
     case lnurlPayConfirm
@@ -1007,8 +1008,13 @@ struct SendSheet: View {
                     }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
-            }, onReviewChange: { flow.isReviewingUsdtPayment = $0 },
-            onBack: { flow.navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+            }, onReviewChange: { flow.isReviewingUsdtPayment = $0 }, onBack: {
+                if flow.navigationPath.isEmpty {
+                    sheets.hideSheet()
+                } else {
+                    flow.navigationPath.removeLast()
+                }
+            }, onClose: { sheets.hideSheet() })
         case let .usdtAddress(recipient, amount):
             UsdtSendView(onDetails: { id in
                 flow.usdtDetails = id
@@ -1118,6 +1124,13 @@ struct SendSheet: View {
                 paymentId: paymentId,
                 walletId: walletId,
                 isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true
+            )
+        case let .recoveredSuccess(paymentId, walletId):
+            SendSuccess(
+                paymentId: paymentId,
+                walletId: walletId,
+                isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+                isRecoveredPayment: true
             )
         case let .failure(context):
             SendFailure(
@@ -1497,7 +1510,13 @@ struct SendSheet: View {
                 return
             }
         }
-        flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            flow.pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
+        } else {
+            flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        }
         flow.hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }
         validatePaymentAfterSync()

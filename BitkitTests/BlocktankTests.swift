@@ -58,6 +58,7 @@ final class BlocktankTests: XCTestCase {
     }
 
     func testCreateCjitOrder() async throws {
+        try XCTSkipIf(true, "Blocktank staging no longer creates orders or CJIT entries (synonymdev/blocktank-lsp-http#168)")
         // Test creating a CJIT order
         let channelSizeSat: UInt64 = 100_000 // 100k sats
         let invoiceSat: UInt64 = 10000 // 10k sats for the invoice
@@ -93,6 +94,7 @@ final class BlocktankTests: XCTestCase {
     }
 
     func testOrders() async throws {
+        try XCTSkipIf(true, "Blocktank staging no longer creates orders or CJIT entries (synonymdev/blocktank-lsp-http#168)")
         // Test creating an order
         let lspBalanceSat: UInt64 = 100_000
         let channelExpiryWeeks: UInt32 = 2

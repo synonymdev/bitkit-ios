@@ -1201,6 +1201,7 @@
 "profile__edit_saved" = "Profilo aggiornato";
 "profile__pubky_copied" = "pubky copiato negli appunti";
 "profile__edit_delete_section" = "ELIMINA";
+"profile__edit_unlink_section" = "SCOLLEGA";
 "profile__edit_public_note" = "Tieni presente che le informazioni del profilo sono salvate in file pubblici.";
 "profile__delete_title" = "Eliminare il Profilo?";
 "profile__delete_description" = "Eliminando il profilo lo rimuovi da Pubky. I contatti potrebbero conservare le informazioni di profilo e di pagamento condivise in precedenza con loro.";
@@ -1208,6 +1209,12 @@
 "profile__delete_error_title" = "Impossibile Eliminare il Profilo";
 "profile__delete_error_description" = "Non è stato possibile eliminare i dati del tuo profilo. Riprova, oppure disconnetti questo pubky da Bitkit.";
 "profile__delete_label" = "Elimina Profilo";
+"profile__unlink_title" = "Scollegare il pubky?";
+"profile__unlink_description" = "I tuoi dati Paykit verranno eliminati e questo pubky verrà scollegato da Bitkit. Resterà disponibile in Pubky Ring.";
+"profile__unlink_confirm" = "Sì, Scollega";
+"profile__unlink_error_title" = "Impossibile Scollegare il Pubky";
+"profile__unlink_error_description" = "Non è stato possibile eliminare i tuoi dati Paykit. Riprova, oppure disconnetti questo pubky da Bitkit.";
+"profile__unlink_label" = "Scollega pubky";
 "profile__edit" = "Modifica";
 "profile__pay_contacts_nav_title" = "Paga Contatti";
 "profile__pay_contacts_title" = "Lascia che i tuoi contatti\n<accent>ti paghino</accent>";
@@ -1776,7 +1783,6 @@
 "usdt__failed" = "Fallito";
 "usdt__fee_note" = "Tutte le commissioni sono pagate in USDT. La commissione finale potrebbe essere inferiore.";
 "usdt__hide_details" = "Nascondi dettagli";
-"usdt__history_sync" = "Le attività meno recenti sono ancora in sincronizzazione. Il tuo saldo è aggiornato quando la connessione è disponibile.";
 "usdt__network_warning" = "Seleziona la rete usata dal destinatario. Inviare a un indirizzo sulla rete sbagliata può causare la perdita dei fondi.";
 "usdt__pending" = "In attesa";
 "usdt__received" = "Ricevuto";
