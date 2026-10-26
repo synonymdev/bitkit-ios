@@ -998,6 +998,7 @@
 "profile__edit_saved" = "Perfil atualizado";
 "profile__pubky_copied" = "pubky copiado para a área de transferência";
 "profile__edit_delete_section" = "ELIMINAR";
+"profile__edit_unlink_section" = "DESASSOCIAR";
 "profile__edit_public_note" = "Tenha em atenção que as informações do perfil são guardadas em ficheiros públicos.";
 "profile__delete_title" = "Eliminar perfil?";
 "profile__delete_description" = "Eliminar o seu perfil remove-o do Pubky. Os contactos podem manter as informações de perfil e pagamento partilhadas anteriormente com eles.";
@@ -1005,6 +1006,12 @@
 "profile__delete_error_title" = "Não foi possível eliminar o perfil";
 "profile__delete_error_description" = "Não foi possível eliminar os dados do seu perfil. Tente novamente ou desligue este pubky da Bitkit.";
 "profile__delete_label" = "Eliminar perfil";
+"profile__unlink_title" = "Desassociar pubky?";
+"profile__unlink_description" = "Isto vai eliminar os seus dados Paykit e desassociar este pubky da Bitkit. Continuará disponível no Pubky Ring.";
+"profile__unlink_confirm" = "Sim, desassociar";
+"profile__unlink_error_title" = "Não foi possível desassociar o pubky";
+"profile__unlink_error_description" = "Não foi possível eliminar os seus dados Paykit. Tente novamente ou desligue este pubky da Bitkit.";
+"profile__unlink_label" = "Desassociar pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar a contactos";
 "profile__pay_contacts_title" = "Deixe os seus contactos\n<accent>pagar-lhe</accent>";
@@ -1463,7 +1470,6 @@
 "usdt__failed" = "Falhou";
 "usdt__fee_note" = "Todas as taxas são pagas em USDT. A taxa final pode ser inferior.";
 "usdt__hide_details" = "Ocultar detalhes";
-"usdt__history_sync" = "A atividade mais antiga ainda está a sincronizar. O seu saldo está atualizado sempre que houver ligação.";
 "usdt__network_warning" = "Selecione a rede usada pelo destinatário. Enviar para um endereço na rede errada pode resultar na perda de fundos.";
 "usdt__pending" = "Pendente";
 "usdt__received" = "Recebido";

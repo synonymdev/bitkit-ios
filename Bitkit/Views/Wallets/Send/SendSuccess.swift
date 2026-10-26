@@ -11,15 +11,18 @@ struct SendSuccess: View {
     let paymentId: String // The payment hash or txid from the successful payment
     let walletId: String
     let isInitialSubscriptionPayment: Bool
+    let isRecoveredPayment: Bool
 
     init(
         paymentId: String,
         walletId: String = WalletScope.default,
-        isInitialSubscriptionPayment: Bool = false
+        isInitialSubscriptionPayment: Bool = false,
+        isRecoveredPayment: Bool = false
     ) {
         self.paymentId = paymentId
         self.walletId = walletId
         self.isInitialSubscriptionPayment = isInitialSubscriptionPayment
+        self.isRecoveredPayment = isRecoveredPayment
     }
 
     @State private var foundActivity: Activity?
@@ -29,6 +32,18 @@ struct SendSuccess: View {
     }
 
     private var successDisplaySats: Int? {
+        Self.displayAmountSats(isRecoveredPayment: isRecoveredPayment, activity: foundActivity, draftAmount: draftAmountSats)
+    }
+
+    static func displayAmountSats(isRecoveredPayment: Bool, activity: Activity?, draftAmount: @autoclosure () -> Int?) -> Int? {
+        if isRecoveredPayment {
+            guard case let .onchain(activity) = activity else { return nil }
+            return Int(exactly: activity.value)
+        }
+        return draftAmount()
+    }
+
+    private var draftAmountSats: Int? {
         if let sendAmountSats = wallet.sendAmountSats {
             return Int(sendAmountSats)
         }
@@ -112,21 +127,32 @@ struct SendSuccess: View {
         do {
             let activity = try await tryNTimes(
                 toTry: {
-                    try await activityListViewModel.findActivity(byPaymentId: paymentId, walletId: walletId)
+                    try await findActivity()
                 },
                 times: 12,
                 interval: 5
             )
 
             await applyPendingContactContextIfNeeded()
-            let updatedActivity = try? await activityListViewModel.findActivity(
-                byPaymentId: paymentId,
-                walletId: walletId
-            )
+            let updatedActivity = try? await findActivity()
             foundActivity = updatedActivity ?? activity
         } catch {
             Logger.warn("Could not find activity for payment ID: \(paymentId) after 12 attempts")
         }
+    }
+
+    private func findActivity() async throws -> Activity {
+        if isRecoveredPayment {
+            return try await Self.findRecoveredActivity(paymentId: paymentId, walletId: walletId)
+        }
+        return try await activityListViewModel.findActivity(byPaymentId: paymentId, walletId: walletId)
+    }
+
+    static func findRecoveredActivity(paymentId: String, walletId: String) async throws -> Activity {
+        guard let activity = try await CoreService.shared.activity.getOnchainActivityByTxId(txid: paymentId, walletId: walletId) else {
+            throw AppError(message: "Activity not found", debugMessage: "Could not find recovered activity for payment ID: \(paymentId)")
+        }
+        return .onchain(activity)
     }
 
     private func applyPendingContactContextIfNeeded() async {

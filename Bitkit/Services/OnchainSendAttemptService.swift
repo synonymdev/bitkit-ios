@@ -207,8 +207,9 @@ struct OnchainSendRecoveryContext: Codable, Equatable {
     }
 }
 
-enum OnchainSendAttemptError: LocalizedError {
+enum OnchainSendAttemptError: LocalizedError, CustomStringConvertible {
     case unresolved
+    case blocked(OnchainSendAttempt?)
     case duplicate
     case outcomeNotSaved
     case localFollowupNotSaved
@@ -217,9 +218,13 @@ enum OnchainSendAttemptError: LocalizedError {
     case preDispatch(Error)
     case preDispatchCleanupFailed
 
+    var description: String {
+        errorDescription ?? t("wallet__onchain_send_unresolved")
+    }
+
     var errorDescription: String? {
         switch self {
-        case .unresolved:
+        case .unresolved, .blocked:
             t("wallet__onchain_send_unresolved")
         case .duplicate:
             t("wallet__onchain_send_duplicate")
@@ -590,10 +595,10 @@ actor OnchainSendAttemptService {
         beforeBroadcastAttempt: () async throws -> Void = {},
         onPreDispatchFailure: (Error) async throws -> Void = { _ in throw OnchainSendAttemptError.preDispatchCleanupFailed }
     ) async throws -> OnchainSendResult {
-        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.blocked(try? currentAttempt()) }
         let walletIndex = lightningService.currentWalletIndex
         let dispatchNode = lightningService.onchainDispatchNode
-        if let prior = try currentAttempt(), prior.status == .accepted, let txid = prior.txid,
+        if let prior = try currentAdmissionAttempt(), prior.status == .accepted, let txid = prior.txid,
            prior.walletId == Self.walletId(index: walletIndex),
            prior.recoveryContext?.paymentIdentity == nil || prior.recoveryContext?.paymentIdentity == paymentIdentity,
            (requestId != nil && prior.requestId == requestId) || (orderId != nil && prior.orderId == orderId)
@@ -869,10 +874,10 @@ actor OnchainSendAttemptService {
         followupContext: OnchainSendFollowupContext? = nil,
         transferContext: OnchainSendTransferContext? = nil
     ) throws -> UUID {
-        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.unresolved }
-        if let previous = try currentAttempt() {
+        guard nativeDispatchInProgress == nil else { throw OnchainSendAttemptError.blocked(try? currentAttempt()) }
+        if let previous = try currentAdmissionAttempt() {
             guard !previous.blocksNewSend else {
-                throw OnchainSendAttemptError.unresolved
+                throw OnchainSendAttemptError.blocked(previous)
             }
             guard !(requestId != nil && previous.requestId == requestId),
                   !(orderId != nil && previous.orderId == orderId)
@@ -928,6 +933,11 @@ actor OnchainSendAttemptService {
         knownAttempt = attempt
         guard try store.load().first?.id == attemptId else { throw OnchainSendAttemptError.outcomeNotSaved }
         try store.save([attempt])
+    }
+
+    private func currentAdmissionAttempt() throws -> OnchainSendAttempt? {
+        do { return try currentAttempt() }
+        catch { throw OnchainSendAttemptError.unresolved }
     }
 
     private func currentAttempt() throws -> OnchainSendAttempt? {
