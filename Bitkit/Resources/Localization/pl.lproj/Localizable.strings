@@ -410,6 +410,9 @@
 "lightning__order_state__open" = "Połączenie otwarte";
 "lightning__order_state__inactive" = "Połączenie nieaktywne";
 "lightning__peer_disconnected" = "Peer rozłączony.";
+"lightning__transfer_unavailable__nav_title" = "Przesłanie niedostępne";
+"lightning__transfer_unavailable__text" = "Automatyczne przesyłanie środków na saldo wydatków nie jest już dostępne. Użyj własnego węzła lub skonfiguruj połączenie z innym dostawcą.";
+"lightning__transfer_unavailable__title" = "<accent>Wymagana ręczna</accent>\nkonfiguracja";
 "lightning__wait_text_top" = "Proszę poczekać, aż Bitkit połączy się z siecią płatności (±10 sekund).";
 "lightning__wait_text_bottom" = "Podłączanie i synchronizacja...";
 "onboarding__tos_header" = "Bitkit\n<accent>warunki użytkowania</accent>";

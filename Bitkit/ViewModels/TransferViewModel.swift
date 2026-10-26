@@ -393,15 +393,13 @@ class TransferViewModel: ObservableObject {
         createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder
     ) async throws -> IBtOrder {
         guard let order = try await currentOrder(createOrder: createOrder, isCurrent: { true }) else { throw CancellationError() }
-        try await ensureTransferAvailable(order: order)
         return order
     }
 
-    /// An order created before Blocktank stopped selling channels must not be paid. A signed hardware
-    /// transaction awaiting a broadcast retry is the exception: the user already approved it.
-    private func ensureTransferAvailable(order: IBtOrder) async throws {
-        guard pendingHwFundingBroadcast?.orderId != order.id, await isTransferUnavailable() else { return }
-        Logger.warn("Skipped paying order '\(order.id)': transfers are unavailable", context: "TransferViewModel")
+    /// Blocktank no longer sells channels, so neither a new order nor one held from before may be paid.
+    private func ensureTransferAvailable() async throws {
+        guard await isTransferUnavailable() else { return }
+        Logger.warn("Stopped a transfer to spending: transfers are unavailable", context: "TransferViewModel")
         sheetViewModel.showSheet(.transferUnavailable)
         throw TransferUnavailableError()
     }
@@ -418,13 +416,13 @@ class TransferViewModel: ObservableObject {
             await showFundingPending(context)
             throw OnchainFundingPendingError()
         }
-        if let order = uiState.order {
-            if pendingHwFundingBroadcast?.orderId == order.id {
-                return order
-            }
-            if isReusableSpendingOrder(order) {
-                return order
-            }
+        // A signed hardware transaction awaiting a broadcast retry was already approved by the user.
+        if let order = uiState.order, pendingHwFundingBroadcast?.orderId == order.id {
+            return order
+        }
+        try await ensureTransferAvailable()
+        if let order = uiState.order, isReusableSpendingOrder(order) {
+            return order
         }
         uiState.order = nil
         let order = try await createOrder(uiState.clientBalanceSat, uiState.lspBalanceSat)
@@ -859,7 +857,6 @@ class TransferViewModel: ObservableObject {
                 createOrder: createOrder,
                 isCurrent: { self.hwOrderCreationToken == token }
             ), hwOrderCreationToken == token else { return }
-            try await ensureTransferAvailable(order: order)
             onTransferToSpendingHwConfirm(order: order, walletId: walletId)
         } catch is OnchainFundingPendingError {
             return

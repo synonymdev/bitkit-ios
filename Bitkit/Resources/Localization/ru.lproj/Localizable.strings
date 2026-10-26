@@ -405,6 +405,9 @@
 "lightning__order_state__open" = "Соединение Открыто";
 "lightning__order_state__inactive" = "Соединение неактивно";
 "lightning__peer_disconnected" = "Узел отключён.";
+"lightning__transfer_unavailable__nav_title" = "Перевод недоступен";
+"lightning__transfer_unavailable__text" = "Автоматические переводы на баланс расходов больше недоступны. Используйте собственный узел или настройте подключение к другому провайдеру.";
+"lightning__transfer_unavailable__title" = "<accent>Требуется ручная</accent>\nнастройка";
 "lightning__wait_text_top" = "Пожалуйста, подождите, пока Bitkit подключается к платёжной сети (±10 секунд).";
 "lightning__wait_text_bottom" = "Подключение и Синхронизация...";
 "onboarding__tos_header" = "Bitkit\n<accent>Условия использования</accent>";

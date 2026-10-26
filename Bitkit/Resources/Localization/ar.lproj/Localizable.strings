@@ -349,6 +349,9 @@
 "lightning__order_state__open" = "الاتصال مفتوح";
 "lightning__order_state__inactive" = "الاتصال غير نشط";
 "lightning__peer_disconnected" = "النظير غير متصل.";
+"lightning__transfer_unavailable__nav_title" = "التحويل غير متاح";
+"lightning__transfer_unavailable__text" = "لم تعد التحويلات التلقائية إلى رصيد الإنفاق متاحة. استخدم عقدتك الخاصة، أو أنشئ اتصالًا مع مزوّد آخر.";
+"lightning__transfer_unavailable__title" = "<accent>الإعداد اليدوي</accent>\nمطلوب";
 "onboarding__tos_header" = "Bitkit\n<accent>شروط الاستخدام</accent>";
 "onboarding__tos_subtitle" = "بالمتابعة، أنت تقر بأنك قد قرأت وتقبل شروط الاستخدام.";
 "onboarding__tos_title" = "شروط الاستخدام";

@@ -134,6 +134,22 @@ final class TransferViewModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSwipeCreatesNoOrderWhenTransfersAreUnavailable() async throws {
+        let vm = TransferViewModel(transferDefaults: transferDefaults, isTransferUnavailable: { true })
+        vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)
+        var calls = 0
+
+        do {
+            _ = try await vm.orderForSwipe { _, _ in
+                calls += 1
+                return self.makeOrder(id: "new", clientBalanceSat: 100_000, lspBalanceSat: 50000, feeSat: 101_000)
+            }
+            XCTFail("Expected the transfer to be stopped")
+        } catch is TransferUnavailableError {}
+        XCTAssertEqual(calls, 0)
+    }
+
+    @MainActor
     func testUnfundableRebuildReportsTheServiceIncreaseAndMovesToTheOrderFee() {
         let vm = makeViewModel()
         vm.onEstimateReady(clientBalance: 100_000, lspBalance: 50000, feeSat: 101_000)

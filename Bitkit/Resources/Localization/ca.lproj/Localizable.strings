@@ -390,6 +390,9 @@
 "lightning__order_state__open" = "Connexió oberta";
 "lightning__order_state__inactive" = "Connexió inactiva";
 "lightning__peer_disconnected" = "Node parell desconnectat.";
+"lightning__transfer_unavailable__nav_title" = "Transferència no disponible";
+"lightning__transfer_unavailable__text" = "Les transferències automàtiques al teu saldo de despesa ja no estan disponibles. Fes servir el teu propi node o configura una connexió amb un altre proveïdor.";
+"lightning__transfer_unavailable__title" = "<accent>Configuració manual</accent>\nnecessària";
 "lightning__wait_text_top" = "Si us plau, espereu que Bitkit es connecti a la xarxa de pagament (±10 segons).";
 "lightning__wait_text_bottom" = "Connectant-se i sincronitzant...";
 "onboarding__tos_header" = "Termes d\'ús\n<accent>de Bitkit</accent>";

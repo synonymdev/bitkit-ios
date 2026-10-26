@@ -373,6 +373,9 @@
 "lightning__order_state__open" = "Η σύνδεση είναι ανοιχτή";
 "lightning__order_state__inactive" = "Η σύνδεση είναι ανενεργή";
 "lightning__peer_disconnected" = "Ο ομότιμος αποσυνδέθηκε.";
+"lightning__transfer_unavailable__nav_title" = "Μεταφορά μη διαθέσιμη";
+"lightning__transfer_unavailable__text" = "Οι αυτόματες μεταφορές στο υπόλοιπο δαπανών δεν είναι πλέον διαθέσιμες. Χρησιμοποιήστε τον δικό σας κόμβο ή ρυθμίστε σύνδεση με άλλον πάροχο.";
+"lightning__transfer_unavailable__title" = "<accent>Απαιτείται χειροκίνητη</accent>\nρύθμιση";
 "onboarding__tos_header" = "Όροι χρήσης\n<accent>Bitkit</accent>";
 "onboarding__tos_subtitle" = "Συνεχίζοντας δηλώνετε ότι έχετε διαβάσει και αποδέχεστε τους όρους χρήσης.";
 "onboarding__tos_title" = "Όροι Χρήσης";
