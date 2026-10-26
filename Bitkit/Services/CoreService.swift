@@ -194,7 +194,9 @@ class ActivityService {
 
     private func fetchTransactionDetails(txid: String) async -> BitkitCore.TransactionDetails? {
         do {
-            return try await getTransactionDetails(txid: txid)
+            return try await ServiceQueue.background(.core) {
+                try BitkitCore.getTransactionDetails(walletId: WalletScope.default, txId: txid)
+            }
         } catch {
             Logger.warn("Failed to fetch stored transaction details for \(txid): \(error)", context: "ActivityService")
             return nil

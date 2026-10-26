@@ -86,6 +86,27 @@ final class TransactionDetailsRecoveryTests: XCTestCase {
         }
     }
 
+    func testRepeatedIncomingSyncDoesNotUseNodeDetailsFallback() async throws {
+        let activity = Bitkit.ActivityService(coreService: .shared, channelLookup: { _, _, _ in nil }, nodeTransactionLookup: { _ in
+            XCTFail("Background sync must not repeat the details-screen node lookup")
+            return nil
+        })
+        let payment = LDKNode.PaymentDetails(
+            id: String(repeating: "cd", count: 32), kind: .onchain(txid: txid, status: .unconfirmed),
+            amountMsat: 5_000_000, feePaidMsat: 0, direction: .inbound, status: .succeeded,
+            latestUpdateTimestamp: UInt64(Date().timeIntervalSince1970)
+        )
+
+        for _ in 0 ..< 2 {
+            try await activity.syncLdkNodePayments([payment])
+        }
+
+        let rows = try await activity.get(filter: .onchain, walletId: WalletScope.default)
+        XCTAssertEqual(rows.count, 1)
+        guard case let .onchain(row) = try XCTUnwrap(rows.first) else { return XCTFail("Expected onchain activity") }
+        XCTAssertEqual(row.txId, txid)
+    }
+
     func testMissingNodeTransactionRemainsUnavailable() async throws {
         let activity = Bitkit.ActivityService(coreService: .shared, nodeTransactionLookup: { _ in nil })
 
