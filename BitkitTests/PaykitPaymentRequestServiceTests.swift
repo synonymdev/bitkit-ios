@@ -6741,6 +6741,8 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.failNextAcceptAfterRemoval()
+        await sdk.setReceiveError(.process)
+        let beforeFailure = await sdk.snapshot()
 
         do {
             try await manager.prepareForPayment(request)
@@ -6751,6 +6753,57 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
+        let afterFailure = await sdk.snapshot()
+        XCTAssertEqual(afterFailure.processCallCount, beforeFailure.processCallCount)
+        XCTAssertEqual(afterFailure.receiveCallCount, beforeFailure.receiveCallCount)
+        XCTAssertEqual(afterFailure.paymentRequestListCallCount, beforeFailure.paymentRequestListCallCount + 1)
+
+        let firstFullRefresh = await manager.refresh()
+        XCTAssertFalse(firstFullRefresh, "The inbox transport failure belongs to the next full refresh")
+        let afterFullRefresh = await sdk.snapshot()
+        XCTAssertEqual(afterFullRefresh.processCallCount, beforeFailure.processCallCount + 1)
+        await sdk.setReceiveError(nil)
+        let next = try paymentRequestRecord(id: "next")
+        await sdk.setIncomingRecords([next])
+        let recovered = await manager.refresh()
+        XCTAssertTrue(recovered)
+        XCTAssertEqual(manager.pendingRequests.map(\.paymentRequestId), [next.paymentRequestId])
+    }
+
+    func testPreparationFailureRefreshKeepsProcessingGuardAndRejectsReplacementIdentity() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        await sdk.pauseNextPaymentRequestList()
+        let preparation = Task {
+            try await manager.prepareForPayment(request) {
+                throw PaymentRequestSdkMockError.preparation
+            }
+        }
+        try await waitUntil { await sdk.paymentRequestListIsPaused() }
+        XCTAssertFalse(manager.requestPresentation(request))
+        do {
+            try await manager.prepareForPayment(request)
+            XCTFail("A pending failure refresh must keep the request in flight")
+        } catch {
+            XCTAssertEqual(error as? PaykitPaymentRequestError, .operationInProgress)
+        }
+        let replacementIdentity = "pubky\(String(repeating: "y", count: 52))"
+        manager.clear()
+        manager.activate(identity: replacementIdentity)
+        await sdk.setActiveIdentity(replacementIdentity)
+        await sdk.resumePaymentRequestList()
+        do {
+            try await preparation.value
+            XCTFail("Expected the original preparation failure")
+        } catch {
+            XCTAssertEqual(error as? PaymentRequestSdkMockError, .preparation)
+        }
+        XCTAssertTrue(manager.pendingRequests.isEmpty)
+        XCTAssertTrue(manager.historyRequests.isEmpty)
+        XCTAssertFalse(manager.isApprovedForPayment(request))
     }
 
     func testFailedRejectionDropsRequestRemovedFromAuthoritativeQueue() async throws {
@@ -6759,6 +6812,7 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         await manager.refresh()
         let request = try XCTUnwrap(manager.pendingRequests.first)
         await sdk.failNextRejectAfterRemoval()
+        let beforeFailure = await sdk.snapshot()
 
         do {
             try await manager.reject(request)
@@ -6769,6 +6823,9 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
 
         XCTAssertTrue(manager.pendingRequests.isEmpty)
         XCTAssertTrue(manager.requestsForPresentation().isEmpty)
+        let afterFailure = await sdk.snapshot()
+        XCTAssertEqual(afterFailure.processCallCount, beforeFailure.processCallCount + 1)
+        XCTAssertEqual(afterFailure.receiveCallCount, beforeFailure.receiveCallCount + 1)
     }
 
     func testInterruptedPreparationRemainsImmediatelyPresentableAfterForegroundOrUnlock() async throws {
@@ -7995,16 +8052,25 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             let manager = paymentRequestManager(sdk: sdk, acceptanceStore: store)
             await manager.refresh()
             let request = try XCTUnwrap(manager.pendingRequests.first)
-            await sdk.setAcceptanceResponseError(error)
+            var accepted = record
+            accepted.state = .accepted
+            accepted.acceptedEventId = "accepted"
+            accepted.executionClaimAppId = "bitkit"
+            await sdk.setAcceptanceResponseError(error, committedRecord: accepted)
+            let beforeFailure = await sdk.snapshot()
 
             do {
                 try await manager.prepareForPayment(request)
                 XCTFail("The interrupted call must not authorize execution")
             } catch {}
             XCTAssertFalse(manager.isApprovedForPayment(request))
-            var accepted = record
-            accepted.state = .accepted
-            await sdk.setRecords([accepted])
+            XCTAssertEqual(try store.load(identity: "pubky\(String(repeating: "z", count: 52))"), [request.id])
+            XCTAssertEqual(manager.pendingRequests.map(\.id), [request.id])
+            XCTAssertEqual(manager.historyRequests.first?.lifecycleState, .accepted)
+            let afterFailure = await sdk.snapshot()
+            XCTAssertEqual(afterFailure.processCallCount, beforeFailure.processCallCount)
+            XCTAssertEqual(afterFailure.receiveCallCount, beforeFailure.receiveCallCount)
+            XCTAssertEqual(afterFailure.paymentRequestListCallCount, beforeFailure.paymentRequestListCallCount + 1)
             let restarted = paymentRequestManager(sdk: sdk, acceptanceStore: store)
             await restarted.refresh()
             let retry = try XCTUnwrap(restarted.pendingRequests.first)
@@ -10357,6 +10423,7 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
     private var rejectedRequests: [PaymentRequestInvocation] = []
     private var acceptFailuresAfterRemoval = 0
     private var acceptanceResponseError: Error?
+    private var acceptanceCommittedRecord: PaymentRequestRecord?
 
     private var rejectFailuresAfterRemoval = 0
     private var proposedRequests: [ProposedPaymentRequestInvocation] = []
@@ -10679,6 +10746,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
             )
         }
         if let acceptanceResponseError {
+            if let acceptanceCommittedRecord {
+                records.append(acceptanceCommittedRecord)
+            }
             throw acceptanceResponseError
         }
         if acceptFailuresAfterRemoval > 0 {
@@ -10735,8 +10805,9 @@ private actor PaymentRequestSdkMock: PaykitPaymentRequestSdkHandling, PaykitPaym
         processFailuresRemaining += 1
     }
 
-    func setAcceptanceResponseError(_ error: Error) {
+    func setAcceptanceResponseError(_ error: Error, committedRecord: PaymentRequestRecord? = nil) {
         acceptanceResponseError = error
+        acceptanceCommittedRecord = committedRecord
     }
 
     func pauseNextProcess(for counterparty: String? = nil) {
