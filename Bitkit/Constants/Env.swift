@@ -280,6 +280,17 @@ enum Env {
             .appendingPathComponent("wallet\(walletIndex)/ldk")
     }
 
+    static func sparkStorage(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/spark")
+    }
+
+    /// Breez SDK API key, set with the `BREEZ_API_KEY` build setting. Spark on mainnet needs it; its regtest does not.
+    static var breezApiKey: String? {
+        infoPlistValue("BREEZ_API_KEY")
+    }
+
     static func bitkitCoreStorage(walletIndex: Int) -> URL {
         appStorageUrl
             .appendingPathComponent(networkName)

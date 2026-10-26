@@ -152,6 +152,12 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        SparkManager.shared.onStateChanged = { [weak self] in
+            Task { @MainActor in
+                await self?.updateBalanceState()
+                try? await self?.refreshBip21(reportsError: false)
+            }
+        }
     }
 
     /// Convenience initializer for previews and testing
@@ -199,6 +205,8 @@ class WalletViewModel: ObservableObject {
         }
 
         syncState()
+        // Spark needs no node, so it starts alongside it and keeps running while the node stops.
+        Task { await SparkManager.shared.start(walletIndex: walletIndex) }
         do {
             let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
@@ -1244,14 +1252,16 @@ class WalletViewModel: ObservableObject {
             await MigrationsService.shared.cleanupInvalidMigrationTransfers()
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
+            let spark = SparkManager.shared
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
-            balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
+            balanceInTransferToSpending = Int(state.balanceInTransferToSpending + spark.pendingDepositSats)
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
-            totalLightningSats = Int(state.totalLightningSats)
-            totalBalanceSats = Int(state.totalBalanceSats)
-            maxSendLightningSats = Int(state.maxSendLightningSats)
+            totalLightningSats = Int(state.totalLightningSats + spark.balanceSats)
+            totalBalanceSats = Int(state.totalBalanceSats + spark.balanceSats + spark.pendingDepositSats)
+            // A payment goes over one rail, so the larger of the two balances caps it.
+            maxSendLightningSats = Int(max(state.maxSendLightningSats, spark.balanceSats))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -1317,7 +1327,7 @@ class WalletViewModel: ObservableObject {
     }
 
     func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
-        ReceiveLiquidityDecision.canCreateLightningInvoice(
+        SparkManager.shared.isReady || ReceiveLiquidityDecision.canCreateLightningInvoice(
             hasReadyChannels: hasReadyChannels,
             inboundCapacitySats: totalReadyInboundLightningSats,
             invoiceAmountSats: amountSats
@@ -1840,6 +1850,7 @@ class WalletViewModel: ObservableObject {
         }
 
         try await lightningService.wipeStorage(walletIndex: 0)
+        await SparkManager.shared.wipe(walletIndex: 0)
 
         probeOutcomes.removeAll()
 

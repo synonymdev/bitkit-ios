@@ -5,6 +5,16 @@ import LDKNode
 
 // TODO: catch all errors and pass a readable error message to the UI
 
+/// A Lightning rail that needs no channels (Breez SDK on Spark). The main app sets it; the notification
+/// extension leaves it unset, so only LDK runs there.
+protocol ChannelFreeLightningRail: AnyObject {
+    @MainActor var isReady: Bool { get }
+    @MainActor var balanceSats: UInt64 { get }
+    func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
+    func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash
+    func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
+}
+
 class LightningService {
     private static let watchOnlyAccountHighestPreRevealedAddressIndex: UInt32 = 999
 
@@ -27,6 +37,7 @@ class LightningService {
     @MainActor private var cachedChannels: [ChannelDetails]?
 
     private var storedEventCallback: ((Event) -> Void)?
+    weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
 
@@ -707,6 +718,10 @@ class LightningService {
     }
 
     func receiveMsats(amountMsats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
+        if let rail = channelFreeRail, await shouldReceiveWithRail(rail, amountSats: amountMsats.map { $0 / 1000 }) {
+            let amountSats = amountMsats.map { $0 / 1000 }.flatMap { $0 > 0 ? $0 : nil }
+            return try await rail.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -733,12 +748,40 @@ class LightningService {
         return bolt11.description
     }
 
+    /// Receives on the channel-free rail when no ready channel has the inbound capacity for the amount.
+    @MainActor
+    private func shouldReceiveWithRail(_ rail: ChannelFreeLightningRail, amountSats: UInt64?) -> Bool {
+        guard rail.isReady else { return false }
+        let readyChannels = (channels ?? []).filter(\.isChannelReady)
+        guard !readyChannels.isEmpty else { return true }
+        let inboundSats = readyChannels.map(\.inboundCapacityMsat).reduce(0, +) / 1000
+        guard let amountSats, amountSats > 0 else { return inboundSats == 0 }
+        return amountSats > inboundSats
+    }
+
+    /// Pays on the channel-free rail when no channel has the outbound capacity and the rail's balance covers the amount.
+    @MainActor
+    private func shouldPayWithRail(_ rail: ChannelFreeLightningRail, bolt11: String, sats: UInt64?) -> Bool {
+        guard rail.isReady else { return false }
+        let invoiceSats = (try? Bolt11Invoice.fromStr(invoiceStr: bolt11).amountMilliSatoshis()).flatMap { $0 }.map { $0 / 1000 }
+        guard let amountSats = sats ?? invoiceSats else { return false }
+        return !canSendWithChannels(amountSats: amountSats) && rail.balanceSats >= amountSats
+    }
+
     /// Checks if we have the correct outbound capacity to send the amount
     /// - Parameter amountSats: Amount to send in satoshis
     /// - Returns: True if we can send the amount
     /// Note: Uses cached channels for fast, non-blocking checks
     @MainActor
     func canSend(amountSats: UInt64) -> Bool {
+        if let rail = channelFreeRail, rail.isReady, rail.balanceSats >= amountSats, !canSendWithChannels(amountSats: amountSats) {
+            return true
+        }
+        return canSendWithChannels(amountSats: amountSats)
+    }
+
+    @MainActor
+    private func canSendWithChannels(amountSats: UInt64) -> Bool {
         guard let channels else {
             return false
         }
@@ -818,6 +861,10 @@ class LightningService {
         params: RouteParametersConfig? = nil,
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
+        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+            try beforeSubmission()
+            return try await rail.send(bolt11: bolt11, sats: sats)
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -1338,6 +1385,11 @@ extension LightningService {
 // MARK: Events
 
 extension LightningService {
+    /// Delivers a channel-free rail's payment as an LDK event, so flows that wait on node events cover both rails.
+    func emitChannelFreeRailEvent(_ event: Event) {
+        storedEventCallback?(event)
+    }
+
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
         Task {
             while true {
@@ -1707,6 +1759,9 @@ extension LightningService {
     }
 
     func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
+        if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: amountSats) {
+            return try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+        }
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
