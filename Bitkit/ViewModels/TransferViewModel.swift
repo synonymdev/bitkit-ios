@@ -418,13 +418,14 @@ class TransferViewModel: ObservableObject {
             await showFundingPending(context)
             throw OnchainFundingPendingError()
         }
-        // A signed hardware transaction awaiting a broadcast retry was already approved by the user.
-        if let order = uiState.order, pendingHwFundingBroadcast?.orderId == order.id {
-            return order
-        }
         try await ensureTransferAvailable()
-        if let order = uiState.order, isReusableSpendingOrder(order) {
-            return order
+        if let order = uiState.order {
+            if pendingHwFundingBroadcast?.orderId == order.id {
+                return order
+            }
+            if isReusableSpendingOrder(order) {
+                return order
+            }
         }
         uiState.order = nil
         let order = try await createOrder(uiState.clientBalanceSat, uiState.lspBalanceSat)
