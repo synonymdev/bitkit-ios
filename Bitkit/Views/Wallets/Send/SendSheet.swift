@@ -450,8 +450,6 @@ struct SendSheet: View {
         guard isEmbedded || !isCurrentPresentation || config.preparation?.isSuspendedForAppLock == true,
               !flow.didFinish else { return }
         updatePaymentReview(false)
-        flow.setupTask?.cancel()
-        flow.setupTask = nil
         let retainsReview = config.preparation?.retainReviewOnAppLock(
             root: currentRoot,
             path: flow.navigationPath,
@@ -461,6 +459,11 @@ struct SendSheet: View {
             app: app,
             sheets: sheets
         ) == true
+        if !isEmbedded, isCurrentPresentation, !retainsReview {
+            return
+        }
+        flow.setupTask?.cancel()
+        flow.setupTask = nil
         if retainsReview {
             flow.didStartSetup = false
             flow.isSetupPending = true
