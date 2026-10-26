@@ -1238,6 +1238,7 @@
 "profile__edit_saved" = "Profile updated";
 "profile__pubky_copied" = "pubky copied to clipboard";
 "profile__edit_delete_section" = "DELETE";
+"profile__edit_unlink_section" = "UNLINK";
 "profile__edit_public_note" = "Please note profile information is stored in public files.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
@@ -1245,6 +1246,12 @@
 "profile__delete_error_title" = "Unable to Delete Profile";
 "profile__delete_error_description" = "We couldn't delete your profile data. Retry, or disconnect this pubky from Bitkit.";
 "profile__delete_label" = "Delete Profile";
+"profile__unlink_title" = "Unlink pubky?";
+"profile__unlink_description" = "This will delete your Paykit data and unlink this pubky from Bitkit. It will still be available in Pubky Ring.";
+"profile__unlink_confirm" = "Yes, Unlink";
+"profile__unlink_error_title" = "Unable to Unlink Pubky";
+"profile__unlink_error_description" = "We couldn't delete your Paykit data. Retry, or disconnect this pubky from Bitkit.";
+"profile__unlink_label" = "Unlink pubky";
 "profile__edit" = "Edit";
 "profile__pay_contacts_nav_title" = "Pay Contacts";
 "profile__pay_contacts_title" = "Let your contacts\n<accent>pay you</accent>";
@@ -1898,7 +1905,6 @@
 "usdt__failed" = "Failed";
 "usdt__fee_note" = "All fees are paid in USDT. Final fee may be lower.";
 "usdt__hide_details" = "Hide details";
-"usdt__history_sync" = "Older activity is still syncing. Your balance is up to date when the connection is available.";
 "usdt__maximum_fee" = "Maximum fee";
 "usdt__network_warning" = "Select the network used by the recipient. Sending to an address on the wrong network can lose funds.";
 "usdt__pending" = "Pending";

@@ -1020,6 +1020,7 @@
 "profile__edit_saved" = "Το προφίλ ενημερώθηκε";
 "profile__pubky_copied" = "Το pubky αντιγράφηκε στο πρόχειρο";
 "profile__edit_delete_section" = "ΔΙΑΓΡΑΦΗ";
+"profile__edit_unlink_section" = "ΑΠΟΣΥΝΔΕΣΗ";
 "profile__edit_public_note" = "Τα στοιχεία του προφίλ αποθηκεύονται σε δημόσια αρχεία.";
 "profile__delete_title" = "Διαγραφή Προφίλ;";
 "profile__delete_description" = "Η διαγραφή του προφίλ σας το αφαιρεί από το Pubky. Οι επαφές μπορεί να διατηρούν ακόμα πληροφορίες προφίλ και πληρωμών που τους κοινοποιήθηκαν παλαιότερα.";
@@ -1027,6 +1028,12 @@
 "profile__delete_error_title" = "Αδυναμία διαγραφής προφίλ";
 "profile__delete_error_description" = "Δεν μπορέσαμε να διαγράψουμε τα δεδομένα του προφίλ σου. Δοκίμασε ξανά ή αποσύνδεσε αυτό το pubky από το Bitkit.";
 "profile__delete_label" = "Διαγραφή Προφίλ";
+"profile__unlink_title" = "Αποσύνδεση pubky;";
+"profile__unlink_description" = "Αυτό θα διαγράψει τα δεδομένα Paykit σου και θα αποσυνδέσει αυτό το pubky από το Bitkit. Θα παραμείνει διαθέσιμο στο Pubky Ring.";
+"profile__unlink_confirm" = "Ναι, Αποσύνδεση";
+"profile__unlink_error_title" = "Αδυναμία αποσύνδεσης pubky";
+"profile__unlink_error_description" = "Δεν μπορέσαμε να διαγράψουμε τα δεδομένα Paykit σου. Δοκίμασε ξανά ή αποσύνδεσε αυτό το pubky από το Bitkit.";
+"profile__unlink_label" = "Αποσύνδεση pubky";
 "profile__edit" = "Επεξεργασία";
 "profile__pay_contacts_nav_title" = "Πληρωμή Επαφών";
 "profile__pay_contacts_title" = "Αφήστε τις επαφές σας\n<accent>να σας πληρώνουν</accent>";
@@ -1537,7 +1544,6 @@
 "usdt__failed" = "Απέτυχε";
 "usdt__fee_note" = "Όλα τα τέλη πληρώνονται σε USDT. Το τελικό τέλος μπορεί να είναι χαμηλότερο.";
 "usdt__hide_details" = "Απόκρυψη λεπτομερειών";
-"usdt__history_sync" = "Η παλαιότερη δραστηριότητα συγχρονίζεται ακόμα. Το υπόλοιπό σου είναι ενημερωμένο όταν υπάρχει σύνδεση.";
 "usdt__network_warning" = "Επίλεξε το δίκτυο που χρησιμοποιεί ο παραλήπτης. Η αποστολή σε διεύθυνση σε λάθος δίκτυο μπορεί να οδηγήσει σε απώλεια κεφαλαίων.";
 "usdt__pending" = "Εκκρεμεί";
 "usdt__received" = "Ελήφθη";

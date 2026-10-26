@@ -39,6 +39,7 @@ final class BlocktankRefundAddressLiveIntegrationTests: XCTestCase {
     }
 
     func testRefundAddressLifecycleAcrossOrdersRestartAndVssRestore() async throws {
+        try XCTSkipIf(true, "Blocktank staging no longer creates orders or CJIT entries (synonymdev/blocktank-lsp-http#168)")
         guard Bitkit.Env.network == .regtest else {
             throw XCTSkip("Blocktank refund address integration requires regtest")
         }

@@ -1220,6 +1220,7 @@
 "profile__edit_saved" = "Профиль обновлён";
 "profile__pubky_copied" = "pubky скопирован в буфер обмена";
 "profile__edit_delete_section" = "УДАЛЕНИЕ";
+"profile__edit_unlink_section" = "ОТВЯЗКА";
 "profile__edit_public_note" = "Обратите внимание: данные профиля хранятся в публичных файлах.";
 "profile__delete_title" = "Удалить Профиль?";
 "profile__delete_description" = "Удаление профиля удалит его из Pubky. У контактов могут остаться данные профиля и платёжные данные, которыми вы делились ранее.";
@@ -1227,6 +1228,12 @@
 "profile__delete_error_title" = "Не Удалось Удалить Профиль";
 "profile__delete_error_description" = "Не удалось удалить данные вашего профиля. Повторите попытку или отключите этот pubky от Bitkit.";
 "profile__delete_label" = "Удалить Профиль";
+"profile__unlink_title" = "Отвязать pubky?";
+"profile__unlink_description" = "Ваши данные Paykit будут удалены, а этот pubky будет отвязан от Bitkit. Он останется доступен в Pubky Ring.";
+"profile__unlink_confirm" = "Да, Отвязать";
+"profile__unlink_error_title" = "Не Удалось Отвязать pubky";
+"profile__unlink_error_description" = "Не удалось удалить ваши данные Paykit. Повторите попытку или отключите этот pubky от Bitkit.";
+"profile__unlink_label" = "Отвязать pubky";
 "profile__edit" = "Редактировать";
 "profile__pay_contacts_nav_title" = "Платежи Контактам";
 "profile__pay_contacts_title" = "Пусть ваши контакты\n<accent>платят вам</accent>";
@@ -1797,7 +1804,6 @@
 "usdt__failed" = "Не удалось";
 "usdt__fee_note" = "Все комиссии оплачиваются в USDT. Итоговая комиссия может быть ниже.";
 "usdt__hide_details" = "Скрыть детали";
-"usdt__history_sync" = "Более ранняя активность ещё синхронизируется. Ваш баланс актуален, когда есть подключение.";
 "usdt__network_warning" = "Выберите сеть, которую использует получатель. Отправка на адрес в неверной сети может привести к потере средств.";
 "usdt__pending" = "В ожидании";
 "usdt__received" = "Получено";

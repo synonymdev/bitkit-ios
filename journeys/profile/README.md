@@ -32,6 +32,8 @@ On iOS, these channel-refresh checks cover public endpoints. Private endpoint pr
 
 Hold initial session restoration before sign-in completes, make a Lightning channel usable or ready, then release restoration while public publication remains blocked. Restore readiness or connectivity without another channel event. Normal public maintenance must retain the forced invoice refresh for the restored identity, including after a deferred or failed restoration and a skipped or failed publication. Work retained for the stored identity or an existing signed-in session must not transfer to a replacement identity or a new session for the same key. These checks require restoration, channel and publication gates beyond the journey runner capabilities.
 
+`unlink-ring-pubky.xml` verifies that a pubky adopted from Pubky Ring shows "Unlink pubky" instead of "Delete Profile" in Edit Profile, returns to profile onboarding after unlinking, and stays available in Pubky Ring. It needs Pubky Ring on the same simulator, signed by the same Apple team, which is not a listed capability. Use a disposable Ring identity; a profile created in Bitkit keeps "Delete Profile", covered by `delete-profile.xml`.
+
 `signup-create-profile.xml` verifies that signup through staging.pubky.app can finish profile creation without a false Profile Error toast. Use a fresh, unfunded test wallet and keep the app process alive. The profile must use the same public key as the authorized signup.
 
 Delayed or failed session restoration requires network fault injection, which is not a journey-runner capability; see the PR manual checks.
