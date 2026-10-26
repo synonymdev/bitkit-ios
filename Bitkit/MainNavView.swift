@@ -718,6 +718,7 @@ struct MainNavView: View {
                 case .addressTypePreference: AddressTypePreferenceView()
                 case .connections: LightningConnectionsView()
                 case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
+                case .sparkConnectionDetail: SparkConnectionDetailView()
                 case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
                 case .node: NodeStateView()
                 case .electrumSettings: ElectrumSettingsScreen()

@@ -352,6 +352,15 @@
 "lightning__transaction" = "Transazione";
 "lightning__order_fee" = "Fee Ordine";
 "lightning__balance" = "Saldo";
+"lightning__spark" = "Spark";
+"lightning__spark_claim_fee" = "Commissione di riscatto";
+"lightning__spark_confirmations" = "{count}/3 conferme";
+"lightning__spark_deposit" = "Deposito";
+"lightning__spark_deposits_claimed" = "Depositi riscattati";
+"lightning__spark_deposits_pending" = "Depositi in corso";
+"lightning__spark_provider" = "Fornitore";
+"lightning__spark_provider_value" = "Spark tramite Breez";
+"lightning__spark_trust" = "Questo saldo è custodito su Spark, gestito da Lightspark, Breez e Flashnet. È al sicuro finché almeno uno di loro agisce onestamente. Possono sospendere l’accesso e uscire senza di loro richiede un’uscita on-chain.";
 "lightning__reserve_balance" = "Saldo di riserva (non spendibile)";
 "lightning__total_size" = "Dimensione totale del canale";
 "lightning__fees" = "Commissioni";

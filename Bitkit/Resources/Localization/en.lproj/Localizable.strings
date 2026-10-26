@@ -351,6 +351,15 @@
 "lightning__transaction" = "Transaction";
 "lightning__order_fee" = "Order fee";
 "lightning__balance" = "Balance";
+"lightning__spark" = "Spark";
+"lightning__spark_claim_fee" = "Claim fee";
+"lightning__spark_confirmations" = "{count}/3 confirmations";
+"lightning__spark_deposit" = "Deposit";
+"lightning__spark_deposits_claimed" = "Claimed deposits";
+"lightning__spark_deposits_pending" = "Deposits in progress";
+"lightning__spark_provider" = "Provider";
+"lightning__spark_provider_value" = "Spark via Breez";
+"lightning__spark_trust" = "This balance is held on Spark, run by Lightspark, Breez and Flashnet. It is safe while at least one of them acts honestly. They can pause access, and leaving without them takes an on-chain exit.";
 "lightning__reserve_balance" = "Reserve balance (not spendable)";
 "lightning__total_size" = "Total channel size";
 "lightning__fees" = "Fees";

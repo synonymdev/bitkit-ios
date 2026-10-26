@@ -359,6 +359,15 @@
 "lightning__transaction" = "Transaction";
 "lightning__order_fee" = "Frais";
 "lightning__balance" = "Solde";
+"lightning__spark" = "Spark";
+"lightning__spark_claim_fee" = "Frais de réclamation";
+"lightning__spark_confirmations" = "{count}/3 confirmations";
+"lightning__spark_deposit" = "Dépôt";
+"lightning__spark_deposits_claimed" = "Dépôts réclamés";
+"lightning__spark_deposits_pending" = "Dépôts en cours";
+"lightning__spark_provider" = "Fournisseur";
+"lightning__spark_provider_value" = "Spark via Breez";
+"lightning__spark_trust" = "Ce solde est détenu sur Spark, géré par Lightspark, Breez et Flashnet. Il est en sécurité tant qu’au moins l’un d’eux agit honnêtement. Ils peuvent suspendre l’accès, et en sortir sans eux nécessite une sortie on-chain.";
 "lightning__reserve_balance" = "Solde de réserve (non dépensable)";
 "lightning__total_size" = "Taille totale du canal";
 "lightning__fees" = "Frais";

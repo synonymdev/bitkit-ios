@@ -358,6 +358,15 @@
 "lightning__transaction" = "Transakce";
 "lightning__order_fee" = "Poplatek za objednávku";
 "lightning__balance" = "Zůstatek";
+"lightning__spark" = "Spark";
+"lightning__spark_claim_fee" = "Poplatek za připsání";
+"lightning__spark_confirmations" = "{count}/3 potvrzení";
+"lightning__spark_deposit" = "Vklad";
+"lightning__spark_deposits_claimed" = "Připsané vklady";
+"lightning__spark_deposits_pending" = "Probíhající vklady";
+"lightning__spark_provider" = "Poskytovatel";
+"lightning__spark_provider_value" = "Spark přes Breez";
+"lightning__spark_trust" = "Tento zůstatek je uložen na Spark, který provozují Lightspark, Breez a Flashnet. Je v bezpečí, dokud alespoň jeden z nich jedná poctivě. Mohou pozastavit přístup a odchod bez nich vyžaduje on-chain výstup.";
 "lightning__reserve_balance" = "Rezervní zůstatek";
 "lightning__total_size" = "Celková velikost kanálu";
 "lightning__fees" = "Poplatky";

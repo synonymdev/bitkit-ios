@@ -359,6 +359,15 @@
 "lightning__transaction" = "Transacción";
 "lightning__order_fee" = "Tarifa de pedido";
 "lightning__balance" = "Saldo";
+"lightning__spark" = "Spark";
+"lightning__spark_claim_fee" = "Comisión de reclamo";
+"lightning__spark_confirmations" = "{count}/3 confirmaciones";
+"lightning__spark_deposit" = "Depósito";
+"lightning__spark_deposits_claimed" = "Depósitos reclamados";
+"lightning__spark_deposits_pending" = "Depósitos en curso";
+"lightning__spark_provider" = "Proveedor";
+"lightning__spark_provider_value" = "Spark mediante Breez";
+"lightning__spark_trust" = "Este saldo se guarda en Spark, operado por Lightspark, Breez y Flashnet. Está seguro mientras al menos uno de ellos actúe con honestidad. Pueden pausar el acceso, y salir sin ellos requiere una salida on-chain.";
 "lightning__reserve_balance" = "Saldo de reserva (no gastable)";
 "lightning__total_size" = "Tamaño total del canal";
 "lightning__fees" = "Tarifa";

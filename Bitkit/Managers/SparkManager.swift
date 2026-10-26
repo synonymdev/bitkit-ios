@@ -23,6 +23,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Deposits seen on-chain that Spark claims into `balanceSats` after 3 confirmations.
     private(set) var pendingDepositSats: UInt64 = 0
     private(set) var recoverableFundsSats: UInt64 = 0
+    /// On-chain deposits into Spark, pending ones first, for the Lightning Connections screens.
+    private(set) var deposits: [SparkDeposit] = []
     /// Called when Spark claims on-chain deposits, which completes a Savings to Spending transfer.
     var onDepositsClaimed: (() -> Void)?
     /// Called after the Spark balance or readiness was read again, so balances and the receive invoice can follow.
@@ -36,6 +38,12 @@ final class SparkManager: ChannelFreeLightningRail {
 
     var isSupported: Bool {
         Self.sparkNetwork != nil
+    }
+
+    /// Spark's regtest has no Lightning network, so there a Lightning invoice from another Spark wallet is paid as a
+    /// Spark transfer, which lets two dev builds pay each other's invoices.
+    nonisolated static var prefersSpark: Bool {
+        Env.network == .regtest
     }
 
     private static var sparkNetwork: BreezSdkSpark.Network? {
@@ -106,6 +114,7 @@ final class SparkManager: ChannelFreeLightningRail {
         balanceSats = 0
         pendingDepositSats = 0
         recoverableFundsSats = 0
+        deposits = []
         try? FileManager.default.removeItem(at: Env.sparkStorage(walletIndex: walletIndex))
     }
 
@@ -129,7 +138,7 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
             prepareResponse: prepared,
-            options: .bolt11Invoice(preferSpark: false, completionTimeoutSecs: Self.sendCompletionTimeoutSecs)
+            options: .bolt11Invoice(preferSpark: Self.prefersSpark, completionTimeoutSecs: Self.sendCompletionTimeoutSecs)
         ))
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash
@@ -137,7 +146,10 @@ final class SparkManager: ChannelFreeLightningRail {
 
     nonisolated func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
         let prepared = try await prepareSend(paymentRequest: bolt11, amountSats: amountSats)
-        guard case let .bolt11Invoice(_, _, lightningFeeSats) = prepared.paymentMethod else { return 0 }
+        guard case let .bolt11Invoice(_, sparkTransferFeeSats, lightningFeeSats) = prepared.paymentMethod else { return 0 }
+        if Self.prefersSpark, let sparkTransferFeeSats {
+            return sparkTransferFeeSats
+        }
         return lightningFeeSats
     }
 
@@ -187,19 +199,67 @@ final class SparkManager: ChannelFreeLightningRail {
         return sdk
     }
 
+    /// Reads the Spark balance and deposits again, for pull to refresh.
+    func refreshState() async {
+        guard sdk != nil else { return }
+        do {
+            try await refresh()
+        } catch {
+            Logger.warn("Failed to refresh Spark state: \(error)", context: "SparkManager")
+        }
+    }
+
     private func refresh() async throws {
         let sdk = try await requireSdk()
         let info = try await sdk.getInfo(request: GetInfoRequest(ensureSynced: false))
-        let deposits = try await sdk.listUnclaimedDeposits(request: ListUnclaimedDepositsRequest())
-        let pending = deposits.deposits.reduce(0) { $0 + $1.amountSats }
+        let unclaimed = try await sdk.listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
+        let claimed = try await sdk.listPayments(request: ListPaymentsRequest()).payments
+            .filter { $0.method == .deposit && $0.status == .completed }
+        let pending = unclaimed.reduce(0) { $0 + $1.amountSats }
         let changed = !isReady || balanceSats != info.balanceSats || pendingDepositSats != pending
         isReady = true
         balanceSats = info.balanceSats
         pendingDepositSats = pending
         recoverableFundsSats = info.recoverableFundsSats
+        deposits = await Self.deposits(unclaimed: unclaimed, claimed: claimed)
         if changed {
             onStateChanged?()
         }
+    }
+
+    private static func deposits(unclaimed: [DepositInfo], claimed: [Payment]) async -> [SparkDeposit] {
+        let confirmations = await onchainConfirmations()
+        let pending = unclaimed.map {
+            SparkDeposit(txid: $0.txid, amountSats: $0.amountSats, isClaimed: false, confirmations: confirmations[$0.txid] ?? nil)
+        }
+        let done: [SparkDeposit] = claimed.compactMap { payment in
+            guard case let .deposit(txId, _) = payment.details else { return nil }
+            return SparkDeposit(
+                txid: txId,
+                amountSats: sats(payment.amount),
+                isClaimed: true,
+                feeSats: sats(payment.fees),
+                claimedAt: payment.timestamp
+            )
+        }
+        return pending + done
+    }
+
+    /// Confirmations of the on-chain transactions this wallet sent or received, 0 while unconfirmed.
+    private static func onchainConfirmations() async -> [String: UInt32?] {
+        let tip = LightningService.shared.status?.currentBestBlock.height
+        let payments = await LightningService.shared.listPayments() ?? []
+        var result: [String: UInt32?] = [:]
+        for payment in payments {
+            guard case let .onchain(txid, status) = payment.kind else { continue }
+            switch status {
+            case .unconfirmed:
+                result[txid] = 0
+            case let .confirmed(_, height, _):
+                result[txid] = tip.map { $0 >= height ? $0 - height + 1 : 0 }
+            }
+        }
+        return result
     }
 
     private func syncActivities() async throws {
@@ -290,6 +350,21 @@ final class SparkManager: ChannelFreeLightningRail {
 
     private static func sats(_ value: U128) -> UInt64 {
         UInt64(value.description) ?? 0
+    }
+}
+
+/// An on-chain deposit into Spark: pending until Spark claims it after 3 confirmations.
+struct SparkDeposit: Identifiable, Equatable {
+    let txid: String
+    let amountSats: UInt64
+    let isClaimed: Bool
+    var feeSats: UInt64 = 0
+    var claimedAt: UInt64?
+    /// On-chain confirmations, known for deposits this wallet sent.
+    var confirmations: UInt32?
+
+    var id: String {
+        "\(txid)-\(isClaimed)"
     }
 }
 
