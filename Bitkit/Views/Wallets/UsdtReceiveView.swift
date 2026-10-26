@@ -46,6 +46,7 @@ struct UsdtReceiveView: View {
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(Color.gray7)
+                .geometryGroup()
                 .id(page)
                 .transition(isGoingBack ? popTransition : pushTransition)
         }
