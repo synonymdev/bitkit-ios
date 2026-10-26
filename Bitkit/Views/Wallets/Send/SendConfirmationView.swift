@@ -38,8 +38,15 @@ struct SendConfirmationView: View {
     @State private var hasStartedAutomaticPayment = false
     @State private var requiresPaymentConfirmation = false
     @State private var walletSwitchContext: ConfirmationContext?
+    @State private var walletSwitchRun: WalletSwitchRun?
     @State private var manualCoinsRequestedContext: ConfirmationContext?
     @State private var presentationID: UUID?
+
+    private struct WalletSwitchRun {
+        let id: UUID
+        let context: ConfirmationContext
+        let task: Task<Void, Never>
+    }
 
     private struct ConfirmationContext: Equatable {
         let presentationID: UUID
@@ -452,18 +459,8 @@ struct SendConfirmationView: View {
                     walletSwitchContext = nil
                 }
             }
-            .task(id: confirmationContext == walletSwitchContext ? walletSwitchContext : nil) {
-                guard let context = walletSwitchContext, !Task.isCancelled, confirmationContext == context else { return }
-                if context.walletType == .lightning {
-                    await calculateTransactionFee()
-                    guard !Task.isCancelled, confirmationContext == context else { return }
-                    await calculateRoutingFee()
-                } else {
-                    await onSwitchToOnchainWallet(context: context)
-                }
-                if !Task.isCancelled, walletSwitchContext == context {
-                    walletSwitchContext = nil
-                }
+            .onChange(of: confirmationContext == walletSwitchContext ? walletSwitchContext : nil, initial: true) { _, context in
+                startWalletSwitch(context: context)
             }
             .onChange(of: walletSwitchContext) { previous, context in
                 // Clearing the context cancels the switch task, so the start runs outside it with the current setup state.
@@ -471,6 +468,7 @@ struct SendConfirmationView: View {
                 Task { @MainActor in await startAutomaticPaymentIfNeeded() }
             }
             .onDisappear {
+                startWalletSwitch(context: nil)
                 if !isEditingSendDetails || sendContext != walletSwitchContext {
                     walletSwitchContext = nil
                 }
@@ -1797,6 +1795,37 @@ struct SendConfirmationView: View {
         else { return false }
         walletSwitchContext = context
         return true
+    }
+
+    /// SwiftUI can deliver the same switch twice when the confirmation reappears, so a live run for the context is kept.
+    @MainActor
+    private func startWalletSwitch(context: ConfirmationContext?) {
+        if let run = walletSwitchRun, run.context == context, !run.task.isCancelled {
+            return
+        }
+        walletSwitchRun?.task.cancel()
+        walletSwitchRun = nil
+        guard let context else { return }
+        let runID = UUID()
+        let task = Task { @MainActor in
+            defer {
+                if walletSwitchRun?.id == runID {
+                    walletSwitchRun = nil
+                }
+            }
+            guard !Task.isCancelled, walletSwitchContext == context, confirmationContext == context else { return }
+            if context.walletType == .lightning {
+                await calculateTransactionFee()
+                guard !Task.isCancelled, confirmationContext == context else { return }
+                await calculateRoutingFee()
+            } else {
+                await onSwitchToOnchainWallet(context: context)
+            }
+            if !Task.isCancelled, walletSwitchContext == context {
+                walletSwitchContext = nil
+            }
+        }
+        walletSwitchRun = WalletSwitchRun(id: runID, context: context, task: task)
     }
 
     @MainActor
