@@ -558,7 +558,7 @@ extension String {
 
     func formattedUsdCents(locale: Locale = .current) -> String {
         guard let value = UInt64(self) else { return "—" }
-        return "$" + (Decimal(value) / 100).formatted(.number.locale(locale).precision(.fractionLength(2)))
+        return "$" + usdDisplayAmount(value, locale: locale)
     }
 }
 

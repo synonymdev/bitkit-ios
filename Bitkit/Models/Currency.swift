@@ -88,15 +88,18 @@ func isSuffixSymbolCurrency(_ currencyCode: String) -> Bool {
     suffixSymbolCurrencies.contains(currencyCode)
 }
 
-/// Formats a fiat amount the way the in-app currency display does: 2 fraction digits,
+/// Formats a fiat amount the way the in-app currency display does: at least 2 fraction digits,
 /// "." decimal / "," grouping. Single source of truth shared by the app and the widget
 /// extension so both produce identical strings.
-func formatFiatAmount(_ value: Decimal) -> String {
+func formatFiatAmount(_ value: Decimal, maximumFractionDigits: Int = 2,
+                      roundingMode: NumberFormatter.RoundingMode = .halfEven, locale: Locale = .current) -> String
+{
     let formatter = NumberFormatter()
     formatter.numberStyle = .decimal
     formatter.minimumFractionDigits = 2
-    formatter.maximumFractionDigits = 2
-    formatter.locale = Locale.current
+    formatter.maximumFractionDigits = maximumFractionDigits
+    formatter.roundingMode = roundingMode
+    formatter.locale = locale
     formatter.decimalSeparator = "."
     formatter.groupingSeparator = ","
     return formatter.string(from: value as NSDecimalNumber) ?? "0.00"

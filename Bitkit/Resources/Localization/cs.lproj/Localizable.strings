@@ -1224,6 +1224,7 @@
 "profile__edit_saved" = "Profil aktualizován";
 "profile__pubky_copied" = "pubky zkopírován do schránky";
 "profile__edit_delete_section" = "SMAZAT";
+"profile__edit_unlink_section" = "ZRUŠIT PROPOJENÍ";
 "profile__edit_public_note" = "Upozorňujeme, že informace o profilu jsou uloženy ve veřejných souborech.";
 "profile__delete_title" = "Smazat profil?";
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
@@ -1231,6 +1232,12 @@
 "profile__delete_error_title" = "Profil nelze smazat";
 "profile__delete_error_description" = "Data vašeho profilu se nepodařilo smazat. Zkuste to znovu, nebo tento pubky od Bitkitu odpojte.";
 "profile__delete_label" = "Smazat profil";
+"profile__unlink_title" = "Zrušit propojení pubky?";
+"profile__unlink_description" = "Tímto smažete svá data Paykit a zrušíte propojení tohoto pubky s Bitkitem. V Pubky Ring zůstane k dispozici.";
+"profile__unlink_confirm" = "Ano, zrušit propojení";
+"profile__unlink_error_title" = "Propojení pubky nelze zrušit";
+"profile__unlink_error_description" = "Vaše data Paykit se nepodařilo smazat. Zkuste to znovu, nebo tento pubky od Bitkitu odpojte.";
+"profile__unlink_label" = "Zrušit propojení pubky";
 "profile__edit" = "Upravit";
 "profile__pay_contacts_nav_title" = "Platby kontaktům";
 "profile__pay_contacts_title" = "Nechte své kontakty\n<accent>platit vám</accent>";
@@ -1806,7 +1813,6 @@
 "usdt__failed" = "Selhání";
 "usdt__fee_note" = "Všechny poplatky se platí v USDT. Konečný poplatek může být nižší.";
 "usdt__hide_details" = "Skrýt podrobnosti";
-"usdt__history_sync" = "Starší aktivita se stále synchronizuje. Když je připojení k dispozici, je váš zůstatek aktuální.";
 "usdt__network_warning" = "Vyberte síť, kterou používá příjemce. Odesláním na adresu v nesprávné síti můžete přijít o prostředky.";
 "usdt__pending" = "Čekající";
 "usdt__received" = "Přijato";

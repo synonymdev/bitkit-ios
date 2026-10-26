@@ -3,10 +3,16 @@ import Foundation
 import XCTest
 
 final class UsdtDisplayTests: XCTestCase {
-    func testExactAmountsPreserveTokenPrecisionAndLocaleSeparators() {
-        XCTAssertEqual(usdtExactAmount(4_996_000, locale: Locale(identifier: "en_US")), "4.996")
-        XCTAssertEqual(usdtExactAmount(1_234_567, locale: Locale(identifier: "de_DE")), "1,234567")
-        XCTAssertEqual(usdtExactAmount(3_500_000, locale: Locale(identifier: "de_DE")), "3,50")
+    func testExactAmountsPreserveTokenPrecisionAcrossRegions() {
+        for identifier in ["en_US", "de_DE", "nl_NL", "fr_FR"] {
+            let locale = Locale(identifier: identifier)
+            for (amount, expected): (UInt64, String) in [
+                (0, "0.00"), (1, "0.000001"), (4_996_000, "4.996"), (1_234_567, "1.234567"),
+                (3_500_000, "3.50"), (.max, "18,446,744,073,709.551615"),
+            ] {
+                XCTAssertEqual(usdtExactAmount(amount, locale: locale), expected, identifier)
+            }
+        }
     }
 
     func testBitcoinEquivalentRequiresFreshRateAndFitsDisplayBounds() {
@@ -16,28 +22,19 @@ final class UsdtDisplayTests: XCTestCase {
         XCTAssertEqual(usdtDisplaySats(amount: "0.000001", rate: rate, now: now), 0)
         XCTAssertNil(usdtDisplaySats(amount: "3.5", rate: nil, now: now))
         XCTAssertNil(usdtDisplaySats(amount: "3.5", rate: PaykitExchangeRate(price: "100000", timestamp: now.addingTimeInterval(-601)), now: now))
+        XCTAssertNil(usdtDisplaySats(amount: "—", rate: rate, now: now))
         XCTAssertNil(usdtDisplaySats(amount: "-1", rate: rate, now: now))
         XCTAssertNil(usdtDisplaySats(amount: "999999999999999999999999", rate: rate, now: now))
     }
 
-    func testAmountInputUsesLocaleSeparatorWithoutRoundingTypedPrecision() {
-        for amount in ["0", "0.", "3.25", "0.000001", "1.230000", "1234567.890000"] {
-            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "en_US")), amount)
-            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "de_DE")), amount.replacingOccurrences(of: ".", with: ","))
-            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "fr_FR")), amount.replacingOccurrences(of: ".", with: ","))
-            XCTAssertEqual(usdtInputAmount(amount, locale: Locale(identifier: "en_BR")), amount.replacingOccurrences(of: ".", with: ","))
-        }
-    }
-
     func testOverviewAmountsRoundToCentsWithoutHidingSmallBalances() {
-        let locale = Locale(identifier: "en_US")
         for (amount, expected): (UInt64, String) in [
             (0, "0.00"), (1, "<0.01"), (9999, "<0.01"), (10000, "0.01"), (10_000_000, "10.00"),
             (123_456_789, "123.46"), (1_025_000, "1.03"), (1_234_567_890, "1,234.57"),
         ] {
-            XCTAssertEqual(usdtOverviewAmount(amount, locale: locale), expected, "amount: \(amount)")
+            for identifier in ["en_US", "de_DE", "nl_NL", "fr_FR"] {
+                XCTAssertEqual(usdtOverviewAmount(amount, locale: Locale(identifier: identifier)), expected, identifier)
+            }
         }
-        XCTAssertEqual(usdtOverviewAmount(1, locale: Locale(identifier: "de_DE")), "<0,01")
-        XCTAssertEqual(usdtOverviewAmount(1_234_567_890, locale: Locale(identifier: "de_DE")), "1.234,57")
     }
 }

@@ -1732,6 +1732,14 @@ class PubkyProfileManager: ObservableObject {
         Self.hasLocalSecretKey(for: publicKey)
     }
 
+    /// The signed-in pubky is Pubky Ring's, adopted through the shared keychain, so removing it here only unlinks it.
+    var isRingAdoptedIdentity: Bool {
+        guard let adopted = AdoptedPubkyReference.current, adopted.sourceApp == SharedPubkyKeychain.ringSourceApp else {
+            return false
+        }
+        return PubkyPublicKeyFormat.matches(adopted.pubky, publicKey)
+    }
+
     nonisolated static func hasStoredIdentity(
         adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current
     ) throws -> Bool {

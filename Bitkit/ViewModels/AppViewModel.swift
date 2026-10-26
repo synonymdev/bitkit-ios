@@ -37,6 +37,23 @@ struct ContactPaymentContext: Equatable {
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
+    func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
+        guard isInitialSubscriptionPayment, let request = incomingPaymentRequest, request.billingPeriod != nil,
+              Set(request.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue],
+              !endpoints.isEmpty, endpoints.allSatisfy({ $0.methodId == .usdtArbitrum }),
+              !request.isExpired(at: date)
+        else { return nil }
+        switch (request.amount.asset, request.pricing.conversion) {
+        case (.usdt, nil): break
+        case let (.usd, .fixed(rates)):
+            let rate = rates.first { $0.asset == "usdt-arbitrum" } ?? rates.first { $0.asset == "usdt" }
+            guard let rate, Decimal(string: rate.value, locale: Locale(identifier: "en_US_POSIX")) == 1 else { return nil }
+        default: return nil
+        }
+        guard let payment = try? request.payment(using: .usdtArbitrum, at: date), payment.isValid(at: date) else { return nil }
+        return payment
+    }
+
     func prefersUsdt(
         onchainBalanceSats: UInt64,
         canSendLightning: Bool = false,

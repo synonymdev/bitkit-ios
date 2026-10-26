@@ -48,6 +48,7 @@ final class PaymentFlowTests: XCTestCase {
     }
 
     func testchannelPurchaseFlow() async throws {
+        try XCTSkipIf(true, "Blocktank staging no longer creates orders or CJIT entries (synonymdev/blocktank-lsp-http#168)")
         Logger.test("Starting payment flow test", context: "PaymentFlowTests")
 
         // Create a new wallet using StartupHandler
