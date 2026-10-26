@@ -69,6 +69,7 @@ struct SheetIntro: View {
                 DisplayText(title, accentColor: accentColor)
                     .padding(.bottom, 14)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("\(baseTestID)Title")
 
                 BodyMText(description, accentFont: accentFont)
                     .frame(maxWidth: .infinity, alignment: .leading)

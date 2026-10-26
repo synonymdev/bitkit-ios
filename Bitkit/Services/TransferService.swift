@@ -59,9 +59,10 @@ class TransferService {
             return existing.id
         }
         // When geoblocked, block transfers to spending that involve LSP (Blocktank)
-        // toSpending with lspOrderId means it's a Blocktank LSP channel order
+        // toSpending with lspOrderId means it's a Blocktank LSP channel order.
+        // A funded order is already paid, so its record is still saved for recovery.
         let isGeoblocked = isGeoBlocked()
-        if isGeoblocked && type.isToSpending() && lspOrderId != nil {
+        if isGeoblocked && type.isToSpending() && lspOrderId != nil && fundingTxId == nil {
             Logger.error("Cannot create LSP transfer when geoblocked", context: "TransferService")
             throw AppError(
                 message: "Transfer unavailable",

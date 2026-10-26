@@ -158,6 +158,7 @@
 "common__show_all" = "Показать Все";
 "common__show_details" = "Показать Детали";
 "common__hide_details" = "Скрыть детали";
+"common__read_more" = "Читать далее";
 "common__success" = "Успешно";
 "fee__instant__title" = "Мгновенно";
 "fee__instant__description" = "±2-10 секунд";
@@ -407,6 +408,7 @@
 "lightning__peer_disconnected" = "Узел отключён.";
 "lightning__transfer_unavailable__nav_title" = "Перевод недоступен";
 "lightning__transfer_unavailable__text" = "Автоматические переводы на баланс расходов больше недоступны. Используйте собственный узел или настройте подключение к другому провайдеру.";
+"lightning__transfer_unavailable__text_receive" = "Получение на баланс расходов через Bitkit больше недоступно. Используйте собственный узел или настройте подключение к другому провайдеру.";
 "lightning__transfer_unavailable__title" = "<accent>Требуется ручная</accent>\nнастройка";
 "lightning__wait_text_top" = "Пожалуйста, подождите, пока Bitkit подключается к платёжной сети (±10 секунд).";
 "lightning__wait_text_bottom" = "Подключение и Синхронизация...";

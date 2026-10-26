@@ -275,7 +275,7 @@ class TransferViewModel: ObservableObject {
         currencyService: CurrencyService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
         transferDefaults: UserDefaults? = nil,
-        isTransferUnavailable: (() async -> Bool)? = nil
+        isTransferUnavailable: @escaping () async -> Bool = { false }
     ) {
         let transferService = TransferService(
             storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
@@ -306,7 +306,8 @@ class TransferViewModel: ObservableObject {
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
-        transferDefaults: UserDefaults? = nil
+        transferDefaults: UserDefaults? = nil,
+        isTransferUnavailable: @escaping () async -> Bool = { false }
     ) {
         let transferService = TransferService(
             storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
@@ -322,7 +323,8 @@ class TransferViewModel: ObservableObject {
             hwConnecting: hwConnecting,
             hwFeeRateProvider: hwFeeRateProvider,
             hwAddressProvider: hwAddressProvider,
-            hwTimeouts: hwTimeouts
+            hwTimeouts: hwTimeouts,
+            isTransferUnavailable: isTransferUnavailable
         )
     }
 

@@ -159,6 +159,7 @@
 "common__show_all" = "Mostrar todo";
 "common__show_details" = "Mostrar detalles";
 "common__hide_details" = "Ocultar detalles";
+"common__read_more" = "Leer más";
 "common__success" = "Éxito";
 "fee__instant__title" = "Instantáneo";
 "fee__instant__description" = "±2-10 seg.";
@@ -413,6 +414,7 @@
 "lightning__peer_disconnected" = "Par desconectado.";
 "lightning__transfer_unavailable__nav_title" = "Transferencia no disponible";
 "lightning__transfer_unavailable__text" = "Las transferencias automáticas a tu saldo de gasto ya no están disponibles. Usa tu propio nodo o configura una conexión con otro proveedor.";
+"lightning__transfer_unavailable__text_receive" = "Recibir en tu saldo de gasto a través de Bitkit ya no está disponible. Usa tu propio nodo o configura una conexión con otro proveedor.";
 "lightning__transfer_unavailable__title" = "<accent>Configuración manual</accent>\nnecesaria";
 "lightning__wait_text_top" = "Por favor, espere a que Bitkit se conecte a la red de pagos (±10 seg.).";
 "lightning__wait_text_bottom" = "Conectado y sincronizando...";

@@ -158,6 +158,7 @@
 "common__show_all" = "Alles Tonen";
 "common__show_details" = "Details Tonen";
 "common__hide_details" = "Details verbergen";
+"common__read_more" = "Lees meer";
 "common__success" = "Succes";
 "fee__instant__title" = "Direct";
 "fee__instant__description" = "±2-10 seconden";
@@ -410,6 +411,7 @@
 "lightning__peer_disconnected" = "Peer verbinding verbroken.";
 "lightning__transfer_unavailable__nav_title" = "Overboeking niet beschikbaar";
 "lightning__transfer_unavailable__text" = "Automatische overboekingen naar je bestedingssaldo zijn niet meer beschikbaar. Gebruik je eigen node of stel een verbinding in met een andere aanbieder.";
+"lightning__transfer_unavailable__text_receive" = "Ontvangen op je bestedingssaldo via Bitkit is niet meer beschikbaar. Gebruik je eigen node of stel een verbinding in met een andere aanbieder.";
 "lightning__transfer_unavailable__title" = "<accent>Handmatige instelling</accent>\nvereist";
 "lightning__wait_text_top" = "Bitte warte bis sich Bitkit mit dem Zahlungsnetzwerk verbunden hat (±10 Sekunden).";
 "lightning__wait_text_bottom" = "Verbinden & Synchronisieren…";

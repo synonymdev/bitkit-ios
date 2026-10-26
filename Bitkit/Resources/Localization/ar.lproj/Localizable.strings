@@ -143,6 +143,7 @@
 "common__show_all" = "عرض الكل";
 "common__show_details" = "عرض التفاصيل";
 "common__hide_details" = "إخفاء التفاصيل";
+"common__read_more" = "اقرأ المزيد";
 "common__success" = "نجاح";
 "fee__instant__title" = "فوري";
 "fee__instant__description" = "±2 ثانية";
@@ -351,6 +352,7 @@
 "lightning__peer_disconnected" = "النظير غير متصل.";
 "lightning__transfer_unavailable__nav_title" = "التحويل غير متاح";
 "lightning__transfer_unavailable__text" = "لم تعد التحويلات التلقائية إلى رصيد الإنفاق متاحة. استخدم عقدتك الخاصة، أو أنشئ اتصالًا مع مزوّد آخر.";
+"lightning__transfer_unavailable__text_receive" = "لم يعد الاستلام إلى رصيد الإنفاق عبر Bitkit متاحًا. استخدم عقدتك الخاصة، أو أنشئ اتصالًا مع مزوّد آخر.";
 "lightning__transfer_unavailable__title" = "<accent>الإعداد اليدوي</accent>\nمطلوب";
 "onboarding__tos_header" = "Bitkit\n<accent>شروط الاستخدام</accent>";
 "onboarding__tos_subtitle" = "بالمتابعة، أنت تقر بأنك قد قرأت وتقبل شروط الاستخدام.";

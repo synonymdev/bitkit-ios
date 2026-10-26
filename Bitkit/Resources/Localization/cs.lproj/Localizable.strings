@@ -158,6 +158,7 @@
 "common__show_all" = "Zobrazit vše";
 "common__show_details" = "Zobrazit podrobnosti";
 "common__hide_details" = "Skrýt podrobnosti";
+"common__read_more" = "Číst dále";
 "common__success" = "Úspěch";
 "fee__instant__title" = "Okamžitě";
 "fee__instant__description" = "+/- 2-10 sekund";
@@ -412,6 +413,7 @@
 "lightning__peer_disconnected" = "Peer odpojen.";
 "lightning__transfer_unavailable__nav_title" = "Převod není dostupný";
 "lightning__transfer_unavailable__text" = "Automatické převody na zůstatek útrat již nejsou k dispozici. Použijte vlastní uzel nebo si nastavte připojení u jiného poskytovatele.";
+"lightning__transfer_unavailable__text_receive" = "Příjem na zůstatek útrat přes Bitkit již není k dispozici. Použijte vlastní uzel nebo si nastavte připojení u jiného poskytovatele.";
 "lightning__transfer_unavailable__title" = "<accent>Vyžadováno ruční</accent>\nnastavení";
 "lightning__wait_text_top" = "Prosím vyčkejte, až se Bitkit připojí k platební síti (±10 sekund).";
 "lightning__wait_text_bottom" = "Připojování & synchronizace...";

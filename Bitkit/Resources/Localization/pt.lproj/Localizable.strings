@@ -196,6 +196,7 @@
 "common__show_all" = "Mostrar Tudo";
 "common__show_details" = "Mostrar Detalhes";
 "common__hide_details" = "Ocultar detalhes";
+"common__read_more" = "Ler Mais";
 "common__success" = "Sucesso";
 "fee__instant__title" = "Instantâneo";
 "fee__instant__description" = "±2 segundos";
@@ -404,6 +405,7 @@
 "lightning__peer_disconnected" = "Par desconectado.";
 "lightning__transfer_unavailable__nav_title" = "Transferência indisponível";
 "lightning__transfer_unavailable__text" = "As transferências automáticas para o seu saldo de gastos já não estão disponíveis. Use o seu próprio nó ou configure uma ligação com outro fornecedor.";
+"lightning__transfer_unavailable__text_receive" = "A receção no seu saldo de gastos através da Bitkit já não está disponível. Use o seu próprio nó ou configure uma ligação com outro fornecedor.";
 "lightning__transfer_unavailable__title" = "<accent>Configuração manual</accent>\nnecessária";
 "onboarding__tos_header" = "Bitkit\n<accent>termos de uso</accent>";
 "onboarding__tos_subtitle" = "Ao continuar, você declara que leu e aceita os termos de uso.";
