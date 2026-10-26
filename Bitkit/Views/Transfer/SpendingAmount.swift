@@ -29,13 +29,15 @@ struct SpendingAmount: View {
         let maxChannelSizeSat: UInt64?
         let maxClientBalanceSat: UInt64?
         let spendableOnchainBalanceSats: Int
+        let isSparkFunding: Bool
     }
 
     private var maxCalcInputs: MaxCalcInputs {
         MaxCalcInputs(
             maxChannelSizeSat: blocktank.info?.options.maxChannelSizeSat,
             maxClientBalanceSat: blocktank.info?.options.maxClientBalanceSat,
-            spendableOnchainBalanceSats: wallet.spendableOnchainBalanceSats
+            spendableOnchainBalanceSats: wallet.spendableOnchainBalanceSats,
+            isSparkFunding: transfer.isSparkFunding
         )
     }
 
@@ -188,6 +190,21 @@ struct SpendingAmount: View {
             }
         }
 
+        if transfer.isSparkFunding {
+            guard let budget = await fundingBudget(), amountSats <= budget else {
+                app.toast(
+                    type: .warning,
+                    title: t("lightning__spending_amount__error_balance__title"),
+                    description: t("lightning__spending_amount__error_balance__description"),
+                    visibilityTime: Toast.visibilityTimeShort
+                )
+                return
+            }
+            transfer.onEstimateReady(clientBalance: amountSats, lspBalance: 0, feeSat: amountSats, isSpark: true)
+            navigation.navigate(.spendingConfirm)
+            return
+        }
+
         do {
             let canFund = await transfer.canFundOrder(
                 clientBalance: amountSats,
@@ -241,6 +258,14 @@ struct SpendingAmount: View {
     }
 
     private func calculateMaxTransferAmount() async {
+        if transfer.isSparkFunding {
+            let budget = await fundingBudget() ?? UInt64(max(wallet.spendableOnchainBalanceSats, 0))
+            await MainActor.run {
+                availableAmount = budget
+                maxTransferAmount = budget
+            }
+            return
+        }
         guard let info = blocktank.info else {
             await MainActor.run {
                 availableAmount = 0

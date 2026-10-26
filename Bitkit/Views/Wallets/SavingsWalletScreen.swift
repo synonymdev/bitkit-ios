@@ -122,7 +122,7 @@ struct SavingsWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if GeoService.shared.isGeoBlocked {
+            if GeoService.shared.isGeoBlocked, !SparkManager.shared.isReady {
                 sheets.showSheet(.transferUnavailable)
             } else if app.hasSeenTransferToSpendingIntro {
                 navigation.navigate(.spendingAmount)

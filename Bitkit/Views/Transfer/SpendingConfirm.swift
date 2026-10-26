@@ -108,7 +108,9 @@ struct SpendingConfirm: View {
                 }
                 .accessibilityIdentifier("SpendingConfirmMore")
 
-                if transfer.uiState.isAdvanced {
+                if transfer.uiState.isSpark {
+                    EmptyView()
+                } else if transfer.uiState.isAdvanced {
                     CustomButton(title: t("lightning__spending_confirm__default"), size: .small) {
                         do {
                             let values = transfer.calculateTransferValues(
@@ -161,7 +163,9 @@ struct SpendingConfirm: View {
 
     private func sizeFunding() async {
         do {
-            let address: String = if let orderAddress = transfer.uiState.order?.payment?.onchain?.address {
+            let address: String = if transfer.uiState.isSpark {
+                try await SparkManager.shared.depositAddress()
+            } else if let orderAddress = transfer.uiState.order?.payment?.onchain?.address {
                 orderAddress
             } else {
                 try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
@@ -186,6 +190,28 @@ struct SpendingConfirm: View {
             maxSendableAmount: maxSendableAmount,
             shouldUseSendAll: shouldUseSendAll
         )
+
+        if transfer.uiState.isSpark {
+            do {
+                let address = try await SparkManager.shared.depositAddress()
+                try await transfer.fundSpark(
+                    address: address,
+                    txFee: transactionFee,
+                    satsPerVbyte: confirmedFeeRate,
+                    utxosToSpend: selectedUtxos,
+                    isMaxAmount: shouldUseSendAll
+                )
+                await wallet.updateBalanceState()
+                navigation.navigate(.settingUp)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    hideSwipeButton = true
+                }
+            } catch {
+                app.toast(error)
+                throw error
+            }
+            return
+        }
 
         do {
             let order = try await transfer.orderForSwipe { clientBalance, lspBalance in

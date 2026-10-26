@@ -13,6 +13,8 @@ struct TransferUiState {
     var lspBalanceSat: UInt64 = 0
     var feeSat: UInt64 = 0
     var isAdvanced = false
+    /// Funds the Spark wallet instead of buying a Blocktank channel.
+    var isSpark = false
     var isConfirming = false
     var order: IBtOrder?
 
@@ -257,6 +259,10 @@ class TransferViewModel: ObservableObject {
             self.hwConnecting = nil
             hwSigner = nil
         }
+        SparkManager.shared.onDepositsClaimed = { [weak self] in
+            guard let self, lightningSetupStep > 0, lightningSetupStep < 3 else { return }
+            lightningSetupStep = 3
+        }
         fundingResolutionObservation = OnchainSendAttemptService.localResolutionPublisher.sink { [weak self] resolution in
             Task { @MainActor [weak self] in
                 guard let self, let context = pendingOnchainFunding,
@@ -365,7 +371,7 @@ class TransferViewModel: ObservableObject {
         !isSpendingBusy || hwSpending.isConnectingDevice
     }
 
-    func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false) {
+    func onEstimateReady(clientBalance: UInt64, lspBalance: UInt64, feeSat: UInt64, isAdvanced: Bool = false, isSpark: Bool = false) {
         guard !isSpendingBusy else { return }
         clearPendingHwFundingBroadcast()
         uiState.order = nil
@@ -374,6 +380,42 @@ class TransferViewModel: ObservableObject {
         uiState.lspBalanceSat = lspBalance
         uiState.feeSat = feeSat
         uiState.isAdvanced = isAdvanced
+        uiState.isSpark = isSpark
+    }
+
+    /// Blocktank no longer sells channels, so Spending is funded by a deposit into the Spark wallet.
+    var isSparkFunding: Bool {
+        SparkManager.shared.isReady
+    }
+
+    /// Sends `uiState.clientBalanceSat` on-chain to the Spark deposit address; Spark claims it after 3 confirmations.
+    func fundSpark(
+        address: String,
+        txFee: UInt64,
+        satsPerVbyte: UInt32,
+        utxosToSpend: [SpendableUtxo]? = nil,
+        isMaxAmount: Bool = false
+    ) async throws {
+        let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+        let result = try await onchainAttemptService.send(
+            using: onchainSender,
+            address: address,
+            amountSats: uiState.clientBalanceSat,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: utxosToSpend,
+            isMaxAmount: isMaxAmount,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee, feeRate: satsPerVbyte, tags: [], contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            )
+        )
+        guard case let .accepted(txid) = result else {
+            throw AppError(message: t("wallet__onchain_funding_unknown"), debugMessage: "Spark funding outcome: \(result)")
+        }
+        _ = try? await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+        Logger.info("Funded Spark wallet with \(uiState.clientBalanceSat) sats in \(txid)", context: "TransferViewModel")
+        lightningSetupStep = 2
+        await onBalanceRefresh?()
     }
 
     func onOrderCreated(order: IBtOrder) {
@@ -1602,7 +1644,15 @@ class TransferViewModel: ObservableObject {
     }
 
     func closeSelectedChannels() async throws -> [ChannelDetails] {
+        try await withdrawSparkToSavings()
         return try await closeChannels(channels: channelsToClose)
+    }
+
+    private func withdrawSparkToSavings() async throws {
+        let spark = SparkManager.shared
+        guard spark.balanceSats > 0 else { return }
+        let address = try await lightningService.newAddress()
+        try await spark.withdrawAll(to: address)
     }
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {

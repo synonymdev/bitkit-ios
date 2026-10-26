@@ -8,8 +8,13 @@ struct FundingOptions: View {
 
     @State private var showNoFundsAlert = false
 
+    /// Blocktank no longer sells channels; a ready Spark wallet takes transfers instead.
+    private var isTransferBlocked: Bool {
+        GeoService.shared.isGeoBlocked && !SparkManager.shared.isReady
+    }
+
     var text: String {
-        if GeoService.shared.isGeoBlocked {
+        if isTransferBlocked {
             return t("lightning__transfer_unavailable__text")
         } else {
             return t("lightning__funding__text")
@@ -42,14 +47,14 @@ struct FundingOptions: View {
                 .padding(.bottom, 32)
 
             VStack(spacing: 8) {
-                if GeoService.shared.isGeoBlocked {
+                if isTransferBlocked {
                     manualButton
                 }
 
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: GeoService.shared.isGeoBlocked,
+                    isDisabled: isTransferBlocked,
                     testID: "FundTransfer"
                 ) {
                     if wallet.totalOnchainSats == 0 {
