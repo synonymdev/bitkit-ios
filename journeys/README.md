@@ -137,6 +137,12 @@ fee-collection message when the entire balance is entered manually. Either error
 either platform; the failing validation determines the message.
 Both must keep payment review closed and allow the user to reduce the amount.
 
+### USDT Receive swipe hit area
+
+`receive/usdt-receive-swipe-tabs.xml` keeps the shared seven QR swipe/copy steps and adds two iOS
+checks for the flexible blank band above Network on a tall phone. Android already attaches the
+USDT swipe gesture to a full-height column; the extra iOS steps guard its spacer hit area.
+
 ## Identifiers
 
 iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabulary is shared, so a
