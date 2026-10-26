@@ -158,7 +158,6 @@
 "common__show_all" = "Pokaż wszystko";
 "common__show_details" = "Pokaż szczegóły";
 "common__hide_details" = "Ukryj szczegóły";
-"common__read_more" = "Czytaj więcej";
 "common__success" = "Sukces";
 "fee__instant__title" = "Natychmiast";
 "fee__instant__description" = "±2-10 sekund";
@@ -393,6 +392,7 @@
 "lightning__force_channels_skipped" = "Niektórych połączeń nie udało się zamknąć.";
 "lightning__channel_opened_title" = "Saldo wydatków gotowe";
 "lightning__channel_opened_msg" = "Teraz możesz zapłacić każdemu, gdziekolwiek, natychmiast.";
+"lightning__funding__button_hw" = "Prześlij z portfela HW";
 "lightning__order_given_up_title" = "Konfiguracja płatności natychmiastowych nie powiodła się";
 "lightning__order_given_up_msg" = "Proces konfiguracji wygasł. Proszę spróbować ponownie.";
 "lightning__order_expired_title" = "Konfiguracja płatności natychmiastowych nie powiodła się";

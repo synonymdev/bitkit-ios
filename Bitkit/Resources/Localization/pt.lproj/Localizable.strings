@@ -196,7 +196,6 @@
 "common__show_all" = "Mostrar Tudo";
 "common__show_details" = "Mostrar Detalhes";
 "common__hide_details" = "Ocultar detalhes";
-"common__read_more" = "Ler Mais";
 "common__success" = "Sucesso";
 "fee__instant__title" = "Instantâneo";
 "fee__instant__description" = "±2 segundos";
@@ -393,6 +392,7 @@
 "lightning__force_channels_skipped" = "Algumas conexões não puderam ser fechadas.";
 "lightning__channel_opened_title" = "Saldo de Gastos Pronto";
 "lightning__channel_opened_msg" = "Agora é possível pagar qualquer pessoa, em qualquer lugar, instantaneamente.";
+"lightning__funding__button_hw" = "Transferir da carteira HW";
 "lightning__order_state__awaiting_payment" = "Processando pagamentos";
 "lightning__order_state__payment_canceled" = "Pagamento cancelado";
 "lightning__order_state__paid" = "Pagamento bem-sucedido";

@@ -158,7 +158,6 @@
 "common__show_all" = "Mostra tot";
 "common__show_details" = "Mostra detalls";
 "common__hide_details" = "Amagar detalls";
-"common__read_more" = "Llegeix més";
 "common__success" = "Èxit";
 "fee__instant__title" = "Instantani";
 "fee__instant__description" = "±2-10 segons";
@@ -377,6 +376,7 @@
 "lightning__force_channels_skipped" = "Algunes connexions no s\'han pogut tancar.";
 "lightning__channel_opened_title" = "Saldo de despesa llest";
 "lightning__channel_opened_msg" = "Ara pots pagar a qualsevol persona, en qualsevol lloc, instantàniament.";
+"lightning__funding__button_hw" = "Transferir des del moneder HW";
 "lightning__order_given_up_title" = "Configuració de pagaments instantanis fallida";
 "lightning__order_expired_title" = "Configuració de pagaments instantanis fallida";
 "lightning__order_state__awaiting_payment" = "Processant pagament";

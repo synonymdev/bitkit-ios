@@ -37,10 +37,10 @@ struct TransferUnavailableContent: View {
             description: description,
             image: "lightning",
             continueText: t("common__continue"),
-            cancelText: t("common__read_more"),
+            cancelText: t("common__learn_more"),
             accentColor: .purpleAccent,
             testID: "TransferUnavailable",
-            cancelTestID: "TransferUnavailableReadMore",
+            cancelTestID: "TransferUnavailableLearnMore",
             continueTestID: "TransferUnavailableContinue",
             showBackButton: showBackButton,
             onCancel: {

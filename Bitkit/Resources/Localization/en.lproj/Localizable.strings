@@ -161,7 +161,6 @@
 "common__show_all" = "Show All";
 "common__show_details" = "Show Details";
 "common__hide_details" = "Hide Details";
-"common__read_more" = "Read More";
 "common__success" = "Success";
 "fee__instant__title" = "Instant";
 "fee__instant__description" = "±2 seconds";
@@ -386,6 +385,7 @@
 "lightning__force_channels_skipped" = "Some connections could not be closed.";
 "lightning__channel_opened_title" = "Spending Balance Ready";
 "lightning__channel_opened_msg" = "You can now pay anyone, anywhere, instantly.";
+"lightning__funding__button_hw" = "Transfer from HW wallet";
 "lightning__order_given_up_title" = "Instant Payments Setup Failed";
 "lightning__order_given_up_msg" = "The setup process expired. Please try again.";
 "lightning__order_expired_title" = "Instant Payments Setup Failed";

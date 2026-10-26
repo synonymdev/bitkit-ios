@@ -158,7 +158,6 @@
 "common__show_all" = "Показать Все";
 "common__show_details" = "Показать Детали";
 "common__hide_details" = "Скрыть детали";
-"common__read_more" = "Читать далее";
 "common__success" = "Успешно";
 "fee__instant__title" = "Мгновенно";
 "fee__instant__description" = "±2-10 секунд";
@@ -388,6 +387,7 @@
 "lightning__force_channels_skipped" = "Некоторые соединения не удалось закрыть.";
 "lightning__channel_opened_title" = "Баланс Расходов Готов";
 "lightning__channel_opened_msg" = "Теперь вы можете платить кому угодно, где угодно, мгновенно.";
+"lightning__funding__button_hw" = "Перевести с аппаратного кошелька";
 "lightning__order_given_up_title" = "Ошибка Настройки Мгновенных Платежей";
 "lightning__order_given_up_msg" = "Процесс настройки истёк. Пожалуйста, попробуйте снова.";
 "lightning__order_expired_title" = "Ошибка Настройки Мгновенных Платежей";

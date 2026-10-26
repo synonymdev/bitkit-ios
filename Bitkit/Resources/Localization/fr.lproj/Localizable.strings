@@ -159,7 +159,6 @@
 "common__show_all" = "Tout afficher";
 "common__show_details" = "Afficher les détails";
 "common__hide_details" = "Masquer les détails";
-"common__read_more" = "Lire la suite";
 "common__success" = "Succès";
 "fee__instant__title" = "Instantané";
 "fee__instant__description" = "±2-10 secondes";
@@ -394,6 +393,7 @@
 "lightning__force_channels_skipped" = "Certaines connexions n'ont pas pu être fermées.";
 "lightning__channel_opened_title" = "Solde Dépenses";
 "lightning__channel_opened_msg" = "Vous pouvez désormais payer n\'importe qui, n\'importe où, instantanément.";
+"lightning__funding__button_hw" = "Transfert depuis le portefeuille HW";
 "lightning__order_given_up_title" = "Échec de la configuration des paiements instantanés";
 "lightning__order_given_up_msg" = "Le processus d\'installation a expiré. Veuillez réessayer.";
 "lightning__order_expired_title" = "Échec de la configuration des paiements instantanés";

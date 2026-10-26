@@ -157,7 +157,6 @@
 "common__show_all" = "Mostra Tutto";
 "common__show_details" = "Mostra Dettagli";
 "common__hide_details" = "Nascondi Dettagli";
-"common__read_more" = "Leggi di più";
 "common__success" = "Successo";
 "fee__instant__title" = "Istantanea";
 "fee__instant__description" = "±2-10 secondi";
@@ -387,6 +386,7 @@
 "lightning__force_channels_skipped" = "Alcune connessioni non sono state chiuse.";
 "lightning__channel_opened_title" = "Conto di spesa Pronto";
 "lightning__channel_opened_msg" = "Ora puoi pagare chiunque, ovunque, istantaneamente.";
+"lightning__funding__button_hw" = "Trasferimento da wallet HW";
 "lightning__order_given_up_title" = "Configurazione dei Pagamenti Istantanei Fallita";
 "lightning__order_given_up_msg" = "Il processo di installazione è scaduto. Per favore riprova.";
 "lightning__order_expired_title" = "Configurazione dei Pagamenti Istantanei Fallita";

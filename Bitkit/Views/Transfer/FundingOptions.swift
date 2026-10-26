@@ -61,6 +61,15 @@ struct FundingOptions: View {
                     }
                 }
 
+                if GeoService.shared.isGeoBlocked {
+                    RectangleButton(
+                        icon: "device-tablet-speaker",
+                        title: t("lightning__funding__button_hw"),
+                        isDisabled: true,
+                        testID: "FundHardware"
+                    ) {}
+                }
+
                 RectangleButton(
                     icon: "qr",
                     title: t("lightning__funding__button2"),
@@ -77,6 +86,16 @@ struct FundingOptions: View {
             }
 
             Spacer()
+
+            if GeoService.shared.isGeoBlocked {
+                CustomButton(title: t("common__learn_more"), variant: .secondary) {
+                    if let url = URL(string: Env.blocktankSunsetUrl) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .accessibilityIdentifier("FundLearnMore")
+                .padding(.bottom, 16)
+            }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

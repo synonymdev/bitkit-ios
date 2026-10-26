@@ -156,7 +156,6 @@
 "common__show_all" = "Mostrar todo";
 "common__show_details" = "Mostrar detalles";
 "common__hide_details" = "Ocultar detalles";
-"common__read_more" = "Leer más";
 "common__success" = "Éxito";
 "fee__instant__title" = "Instantáneo";
 "fee__instant__description" = "±2-10 segundos";
@@ -378,6 +377,7 @@
 "lightning__force_channels_skipped" = "Algunas conexiones no se pudieron cerrar.";
 "lightning__channel_opened_title" = "Saldo de Gasto Listo";
 "lightning__channel_opened_msg" = "Ahora puede pagar a cualquier persona, en cualquier lugar y al instante.";
+"lightning__funding__button_hw" = "Transferir desde billetera HW";
 "lightning__order_given_up_title" = "Error en la Configuración de Pago Instántaneo";
 "lightning__order_expired_title" = "Error en la Configuración de Pago Instántaneo";
 "lightning__order_state__awaiting_payment" = "Procesando pago";

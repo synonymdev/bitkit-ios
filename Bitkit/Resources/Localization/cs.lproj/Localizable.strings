@@ -158,7 +158,6 @@
 "common__show_all" = "Zobrazit vše";
 "common__show_details" = "Zobrazit podrobnosti";
 "common__hide_details" = "Skrýt podrobnosti";
-"common__read_more" = "Číst dále";
 "common__success" = "Úspěch";
 "fee__instant__title" = "Okamžitě";
 "fee__instant__description" = "+/- 2-10 sekund";
@@ -393,6 +392,7 @@
 "lightning__force_channels_skipped" = "Některá připojení se nepodařilo zavřít.";
 "lightning__channel_opened_title" = "Disponibilní zůstatek připraven";
 "lightning__channel_opened_msg" = "Nyní můžete platit komukoli, kdekoli a okamžitě.";
+"lightning__funding__button_hw" = "Převod z HW peněženky";
 "lightning__order_given_up_title" = "Nastavení okamžitých plateb se nezdařilo";
 "lightning__order_given_up_msg" = "Proces nastavení vypršel. Zkuste to prosím znovu.";
 "lightning__order_expired_title" = "Nastavení okamžitých plateb se nezdařilo";

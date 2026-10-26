@@ -143,7 +143,6 @@
 "common__show_all" = "عرض الكل";
 "common__show_details" = "عرض التفاصيل";
 "common__hide_details" = "إخفاء التفاصيل";
-"common__read_more" = "اقرأ المزيد";
 "common__success" = "نجاح";
 "fee__instant__title" = "فوري";
 "fee__instant__description" = "±2 ثانية";
@@ -340,6 +339,7 @@
 "lightning__force_channels_skipped" = "تعذر إغلاق بعض الاتصالات.";
 "lightning__channel_opened_title" = "رصيد الإنفاق جاهز";
 "lightning__channel_opened_msg" = "يمكنك الآن الدفع لأي شخص، في أي مكان، فورًا.";
+"lightning__funding__button_hw" = "تحويل من محفظة الأجهزة";
 "lightning__order_state__awaiting_payment" = "جارٍ معالجة الدفع";
 "lightning__order_state__payment_canceled" = "تم إلغاء الدفع";
 "lightning__order_state__paid" = "نجح الدفع";
