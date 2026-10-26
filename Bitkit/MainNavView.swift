@@ -397,23 +397,6 @@ struct MainNavView: View {
                     notificationManager.unregister()
                 }
             }
-            .onChange(of: notificationManager.deviceToken) { _, token in
-                // Register with backend if device token changed and notifications are enabled
-                if let token, settings.enableNotifications {
-                    Task {
-                        do {
-                            try await notificationManager.registerWithBackend(deviceToken: token)
-                        } catch {
-                            Logger.error("Failed to sync push notifications with backend: \(error)")
-                            app.toast(
-                                type: .error,
-                                title: t("other__notification_registration_failed_title"),
-                                description: t("other__notification_registration_failed_description")
-                            )
-                        }
-                    }
-                }
-            }
             .onChange(of: settings.enableNotifications) { _, newValue in
                 Task {
                     await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
@@ -422,21 +405,6 @@ struct MainNavView: View {
                 if newValue {
                     // Request permission in case user was not prompted yet
                     notificationManager.requestPermission()
-
-                    if let token = notificationManager.deviceToken {
-                        Task {
-                            do {
-                                try await notificationManager.registerWithBackend(deviceToken: token)
-                            } catch {
-                                Logger.error("Failed to sync push notifications: \(error)")
-                                app.toast(
-                                    type: .error,
-                                    title: t("other__notification_registration_failed_title"),
-                                    description: t("other__notification_registration_failed_description")
-                                )
-                            }
-                        }
-                    }
                 } else {
                     // Disable notifications (unregister)
                     notificationManager.unregister()

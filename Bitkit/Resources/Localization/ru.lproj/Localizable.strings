@@ -553,8 +553,6 @@
 "other__lnurl_withdr_error_minmax" = "Неправильные параметры LNURL вывода, min/max установлены неправильно.";
 "other__lnurl_withdr_success_title" = "Запрос на Вывод";
 "other__lnurl_withdr_success_msg" = "Ваш запрос на вывод успешно отправлен. Ожидание платежа.";
-"other__notification_registration_failed_description" = "Bitkit не удалось зарегистрироваться для push-уведомлений.";
-"other__notification_registration_failed_title" = "Ошибка Регистрации Уведомлений";
 "other__phone_settings" = "Открыть Настройки Телефона";
 "other__bt_error_retrieve" = "Перевод Не Удался";
 "other__bt_error_connect" = "На данный момент невозможно добавить узел LSP в качестве пира.";

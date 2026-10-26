@@ -552,8 +552,6 @@
 "other__lnurl_withdr_error_minmax" = "Parametri di prelievo LNURL errati, minimo/massimo non impostati correttamente.";
 "other__lnurl_withdr_success_title" = "Prelievo Richiesto";
 "other__lnurl_withdr_success_msg" = "Il tuo prelievo è stato richiesto con successo. In attesa del pagamento.";
-"other__notification_registration_failed_description" = "Bitkit non è riuscito a registrarsi per le notifiche push.";
-"other__notification_registration_failed_title" = "Registrazione Notifiche Fallita";
 "other__phone_settings" = "Apri le Impostazioni del telefono";
 "other__bt_error_retrieve" = "Trasferimento non riuscito";
 "other__bt_error_connect" = "Impossibile aggiungere il nodo LSP come peer in questo momento.";

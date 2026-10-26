@@ -559,8 +559,6 @@
 "other__lnurl_withdr_error_minmax" = "Paramètres de retrait LNURL incorrects, min/max mal définis.";
 "other__lnurl_withdr_success_title" = "Retrait demandé";
 "other__lnurl_withdr_success_msg" = "Votre retrait a été demandé avec succès. En attente de paiement.";
-"other__notification_registration_failed_description" = "Bitkit n\'a pas pu s\'inscrire aux notifications push.";
-"other__notification_registration_failed_title" = "Échec de l\'inscription aux notifications";
 "other__phone_settings" = "Ouvrez les paramètres du téléphone";
 "other__bt_error_retrieve" = "Échec du transfer ";
 "other__bt_error_connect" = "Impossible d\'ajouter un nœud LSP comme pair pour le moment.";

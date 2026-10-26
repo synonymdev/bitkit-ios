@@ -521,8 +521,6 @@
 "other__lnurl_withdr_error_minmax" = "Parámetros de retiro LNURL incorrectos, min/max no están configurados correctamente.";
 "other__lnurl_withdr_success_title" = "Retirada solicitada";
 "other__lnurl_withdr_success_msg" = "Su retiro fue solicitado exitosamente. Esperando el pago.";
-"other__notification_registration_failed_description" = "Bitkit no pudo registrarse para notificaciones push.";
-"other__notification_registration_failed_title" = "Error en el Registro de Notificaciones";
 "other__phone_settings" = "Abrir Ajustes del Teléfono";
 "other__bt_error_retrieve" = "Transferencia Fallida";
 "other__bt_channel_purchase_cost_error" = "Necesita {delta} más para completar esta transacción.";

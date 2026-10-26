@@ -556,8 +556,6 @@
 "other__lnurl_withdr_error_minmax" = "Falsche LNURL-Abhebungsparameter, Min/Max nicht korrekt eingestellt.";
 "other__lnurl_withdr_success_title" = "Abhebung angefordert";
 "other__lnurl_withdr_success_msg" = "Ihre Abhebung wurde erfolgreich beantragt. Ich warte auf die Zahlung.";
-"other__notification_registration_failed_description" = "Bitkit konnte sich nicht für Push-Benachrichtigungen registrieren.";
-"other__notification_registration_failed_title" = "Benachrichtigungsregistrierung fehlgeschlagen";
 "other__phone_settings" = "Telefoneinstellungen öffnen";
 "other__bt_error_retrieve" = "Übertragung fehlgeschlagen";
 "other__bt_error_connect" = "LSP-Node kann derzeit nicht als Peer hinzugefügt werden.";

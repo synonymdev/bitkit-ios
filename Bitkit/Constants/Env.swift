@@ -331,13 +331,6 @@ enum Env {
         }
     }
 
-    static var blocktankPushNotificationServer: String {
-        switch network {
-        case .bitcoin: "\(blocktankBaseUrl)/api/notifications"
-        default: "\(blocktankBaseUrl)/notifications/api"
-        }
-    }
-
     static var blocktankClientServer: String {
         switch network {
         case .bitcoin: "\(blocktankBaseUrl)/api"
@@ -358,14 +351,6 @@ enum Env {
     static let fxRateStaleThreshold: TimeInterval = 10 * 60 // After this we notify the user that the rates are stale due to a failed refresh
 
     static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
-
-    static var pushNotificationFeatures: [BlocktankNotificationType] = [
-        .incomingHtlc,
-        .mutualClose,
-        .orderPaymentConfirmed,
-        .cjitPaymentArrived,
-        .wakeToTimeout,
-    ]
 
     static var vssStoreIdPrefix: String {
         "bitkit_v1_\(networkName)"

@@ -558,8 +558,6 @@
 "other__lnurl_withdr_error_minmax" = "Parâmetros de saque LNURL incorretos, mínimo/máximo não configurados corretamente.";
 "other__lnurl_withdr_success_title" = "Saque solicitado";
 "other__lnurl_withdr_success_msg" = "Seu saque foi solicitado com sucesso. Aguardando pagamento.";
-"other__notification_registration_failed_description" = "O Bitkit não conseguiu se registrar para notificações push.";
-"other__notification_registration_failed_title" = "Falha no registro de notificações";
 "other__phone_settings" = "Abrir as configurações do telefone";
 "other__bt_error_retrieve" = "A Transferência Falhou";
 "other__bt_error_connect" = "Não é possível adicionar o nó LSP no momento.";

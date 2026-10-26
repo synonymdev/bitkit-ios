@@ -558,8 +558,6 @@
 "other__lnurl_withdr_error_minmax" = "Nieprawidłowe parametry wypłaty LNURL, wartości min/max nie zostały poprawnie ustawione.";
 "other__lnurl_withdr_success_title" = "Złożono żądanie wypłaty";
 "other__lnurl_withdr_success_msg" = "Wypłata została pomyślnie zlecona. Oczekiwanie na płatność.";
-"other__notification_registration_failed_description" = "Bitkit nie mógł zarejestrować się do powiadomień push.";
-"other__notification_registration_failed_title" = "Rejestracja powiadomień nie powiodła się";
 "other__phone_settings" = "Otwórz ustawienia telefonu";
 "other__bt_error_retrieve" = "Transfer nie powiódł się";
 "other__bt_error_connect" = "Nie udało się dodać węzła LSP jako peera w tym momencie.";

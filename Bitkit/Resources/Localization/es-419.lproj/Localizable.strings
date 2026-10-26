@@ -559,8 +559,6 @@
 "other__lnurl_withdr_error_minmax" = "Parámetros de retiro LNURL incorrectos, mín/máx no ajustados correctamente.";
 "other__lnurl_withdr_success_title" = "Retiro solicitado";
 "other__lnurl_withdr_success_msg" = "Su retiro ha sido solicitado con éxito. Esperando el pago.";
-"other__notification_registration_failed_description" = "Bitkit no pudo registrarse para notificaciones push.";
-"other__notification_registration_failed_title" = "Error en el registro de notificaciones";
 "other__phone_settings" = "Abrir Ajustes del teléfono";
 "other__bt_error_retrieve" = "Transferencia fallida";
 "other__bt_error_connect" = "No se puede añadir el nodo LSP como par en este momento.";

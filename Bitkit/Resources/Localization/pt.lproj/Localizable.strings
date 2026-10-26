@@ -507,8 +507,6 @@
 "other__lnurl_withdr_error_minmax" = "Parâmetros de saque LNURL incorretos, mínimo/máximo não configurados corretamente.";
 "other__lnurl_withdr_success_title" = "Saque solicitado";
 "other__lnurl_withdr_success_msg" = "Seu saque foi solicitado com sucesso. Aguardando pagamento.";
-"other__notification_registration_failed_description" = "A Bitkit não conseguiu registar-se para receber notificações push.";
-"other__notification_registration_failed_title" = "Falha no registo de notificações";
 "other__earlier" = "ANTERIORES";
 "other__update_nav_title" = "Atualização disponível";
 "other__update_title" = "Atualizar\n<accent>Bitkit</accent>";

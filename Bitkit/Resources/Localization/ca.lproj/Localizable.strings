@@ -522,8 +522,6 @@
 "other__lnurl_withdr_error_minmax" = "Paràmetres de retirada LNURL incorrectes, min/max no configurats correctament.";
 "other__lnurl_withdr_success_title" = "Retirada sol·licitada";
 "other__lnurl_withdr_success_msg" = "La teva retirada s\'ha sol·licitat correctament. Esperant el pagament.";
-"other__notification_registration_failed_description" = "Bitkit no ha pogut registrar-se per a notificacions push.";
-"other__notification_registration_failed_title" = "Registre de notificacions fallit";
 "other__phone_settings" = "Obre la configuració del telèfon";
 "other__bt_error_retrieve" = "Transferència fallida";
 "other__bt_channel_purchase_cost_error" = "Necessites {delta} més per completar aquesta transacció.";

@@ -480,8 +480,6 @@
 "other__lnurl_withdr_error_minmax" = "Λανθασμένες παράμετροι ανάληψης LNURL, το min/max δεν έχει οριστεί σωστά.";
 "other__lnurl_withdr_success_title" = "Ζητήθηκε Ανάληψη";
 "other__lnurl_withdr_success_msg" = "Η ανάληψή σας ζητήθηκε επιτυχώς. Αναμονή πληρωμής.";
-"other__notification_registration_failed_description" = "Το Bitkit δεν μπόρεσε να εγγραφεί για ειδοποιήσεις push.";
-"other__notification_registration_failed_title" = "Η Εγγραφή Ειδοποιήσεων Απέτυχε";
 "other__bt_error_retrieve" = "Η Μεταφορά Απέτυχε";
 "other__earlier" = "ΝΩΡΙΤΕΡΑ";
 "other__update_nav_title" = "Διαθέσιμη Ενημέρωση";

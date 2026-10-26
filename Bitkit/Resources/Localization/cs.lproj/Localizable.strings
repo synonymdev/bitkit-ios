@@ -558,8 +558,6 @@
 "other__lnurl_withdr_error_minmax" = "Nesprávné parametry pro LNURL výběr, min/max nejsou správně nastaveny.";
 "other__lnurl_withdr_success_title" = "Výběr vyžádán";
 "other__lnurl_withdr_success_msg" = "Váš výběr byl úspěšně vyžádán. Čekání na platbu.";
-"other__notification_registration_failed_description" = "Bitkitu se nepodařilo zaregistrovat pro push notifikace.";
-"other__notification_registration_failed_title" = "Registrace notifikací selhala";
 "other__phone_settings" = "Otevřít nastavení telefonu";
 "other__bt_error_retrieve" = "Přenos se nezdařil";
 "other__bt_error_connect" = "V tuto chvíli nelze přidat uzel LSP jako protistranu.";

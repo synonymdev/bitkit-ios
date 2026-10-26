@@ -556,8 +556,6 @@
 "other__lnurl_withdr_error_minmax" = "Onjuiste LNURL opname parameters, min/max niet correct ingesteld.";
 "other__lnurl_withdr_success_title" = "Opname Verzocht";
 "other__lnurl_withdr_success_msg" = "Uw opname is succesvol aangevraagd. Wachten op betaling.";
-"other__notification_registration_failed_description" = "Bitkit kon zich niet registreren voor push notificaties.";
-"other__notification_registration_failed_title" = "Notificatie Registratie Mislukt";
 "other__phone_settings" = "Telefoneinstellungen öffnen";
 "other__bt_error_retrieve" = "Overboeking Mislukt";
 "other__bt_error_connect" = "LSP-Node kann derzeit nicht als Peer hinzugefügt werden.";

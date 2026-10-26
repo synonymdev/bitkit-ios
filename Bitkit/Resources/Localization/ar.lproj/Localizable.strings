@@ -454,8 +454,6 @@
 "other__lnurl_withdr_error_minmax" = "معلمات سحب LNURL غير صحيحة، الحد الأدنى/الأقصى غير محدد بشكل صحيح.";
 "other__lnurl_withdr_success_title" = "تم طلب السحب";
 "other__lnurl_withdr_success_msg" = "تم طلب سحبك بنجاح. في انتظار الدفع.";
-"other__notification_registration_failed_description" = "تعذر على Bitkit التسجيل لإشعارات الدفع.";
-"other__notification_registration_failed_title" = "فشل تسجيل الإشعارات";
 "other__earlier" = "سابقًا";
 "other__update_nav_title" = "تحديث متاح";
 "other__update_title" = "حدّث\n<accent>Bitkit</accent>";
