@@ -6674,6 +6674,116 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         }
     }
 
+    func testAppLockKeepsOtherRequestScreensUntilDismissal() async throws {
+        for (entryRoute, usesUsdt): (SendRoute, Bool) in [(.amount, false), (.confirm, true)] {
+            let record: PaymentRequestRecord = if entryRoute == .amount {
+                try paymentRequestRecord(
+                    amount: "1", asset: "usd",
+                    conversion: .fixed(rates: [.init(asset: "btc", value: "0.00001"), .init(asset: "usdt", value: "1")]),
+                    endpoints: [PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue, PublicPaykitService.MethodId.usdtArbitrum.rawValue]
+                )
+            } else {
+                try paymentRequestRecord()
+            }
+            let sdk = PaymentRequestSdkMock(records: [record])
+            let manager = paymentRequestManager(sdk: sdk)
+            await manager.refresh()
+            let request = try XCTUnwrap(manager.pendingRequests.first)
+            let profile = PubkyProfileManager()
+            profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
+            let session = try XCTUnwrap(profile.currentSession)
+            let preparation = IncomingPaykitPaymentRequestPreparation(request: request, session: session)
+            let sheets = SheetViewModel()
+            let app = AppViewModel(sheetViewModel: sheets, navigationViewModel: NavigationViewModel())
+            let wallet = PaymentRequestSendWallet()
+            let context = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            let terms = try request.payment(using: .bitcoinLightningBolt11)
+            XCTAssertTrue(app.claimContactPaymentContext(context))
+            app.selectedWalletToPayFrom = .lightning
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            app.paykitUsesUsdt = usesUsdt
+            app.scannedLightningInvoice = LightningInvoice(
+                bolt11: "test-invoice", paymentHash: String(repeating: "00", count: 32).hexaData,
+                amountSatoshis: terms.amount.atomic, timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+                description: nil, networkType: .regtest, payeeNodeId: nil
+            )
+            preparation.paymentContext = context
+            sheets.showSheet(.send, data: SendConfig(view: .confirm, preparation: preparation, onDismiss: {
+                preparation.dismiss(app: app, wallet: wallet, speed: .normal)
+            }))
+            await manager.presentRequests { _ in
+                XCTAssertTrue(preparation.complete(route: entryRoute, manager: manager, session: session, app: app, sheets: sheets))
+            }
+            let presentationID = sheets.activeSheetConfiguration?.presentationID
+            let item = try XCTUnwrap(sheets.sendSheetItem)
+            var disappeared = false
+            let view = SendSheet(config: item)
+                .environment(\.scenePhase, .active)
+                .environment(manager)
+                .environment(HwWalletManager())
+                .environment(TrezorManager())
+                .environment(UsdtWalletManager(loadCredentials: { throw CancellationError() }))
+                .environmentObject(app)
+                .environmentObject(wallet as WalletViewModel)
+                .environmentObject(sheets)
+                .environmentObject(NetworkMonitor())
+                .environmentObject(SettingsViewModel.shared)
+                .environmentObject(TagManager())
+                .environmentObject(profile)
+                .environmentObject(ActivityListViewModel())
+                .environmentObject(ContactsManager())
+                .environmentObject(CurrencyViewModel(currencyService: OfflineCurrencyService()))
+                .environmentObject(FeeEstimatesManager())
+                .onDisappear { disappeared = true }
+            let host = UIHostingController(rootView: AnyView(view))
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            defer {
+                window.isHidden = true
+                window.rootViewController = nil
+                ToastWindowManager.shared.hideToast()
+            }
+            try await waitUntil {
+                wallet.feeRateLoadCount == 1 && wallet.sendAmountSats == terms.amount.atomic && !item.state.isSetupPending
+            }
+            let amount = wallet.sendAmountSats
+            XCTAssertEqual(amount, terms.amount.atomic)
+
+            preparation.suspendForAppLock(sheets: sheets)
+            host.rootView = AnyView(Color.clear)
+            host.view.layoutIfNeeded()
+            try await waitUntil { disappeared }
+            XCTAssertTrue(preparation.isSuspendedForAppLock)
+            XCTAssertEqual(sheets.activeSheetConfiguration?.presentationID, presentationID)
+            XCTAssertEqual(app.contactPaymentContext, context)
+            XCTAssertEqual(wallet.sendAmountSats, amount)
+            XCTAssertEqual(app.paykitPaymentTerms, terms)
+            XCTAssertFalse(item.state.didFinish)
+
+            host.rootView = AnyView(view)
+            host.view.layoutIfNeeded()
+            try await waitUntil { !preparation.isSuspendedForAppLock }
+            XCTAssertTrue(preparation.ownsResolvedContext(session: session, app: app, sheets: sheets))
+            XCTAssertEqual(app.contactPaymentContext, context)
+            XCTAssertEqual(wallet.sendAmountSats, amount)
+            XCTAssertEqual(app.paykitPaymentTerms, terms)
+            XCTAssertFalse(item.state.didFinish)
+            XCTAssertFalse(manager.isApprovedForPayment(request))
+            let snapshot = await sdk.snapshot()
+            XCTAssertTrue(snapshot.acceptedRequests.isEmpty)
+
+            sheets.hideSheet()
+            XCTAssertNil(app.contactPaymentContext)
+            XCTAssertNil(wallet.sendAmountSats)
+            XCTAssertNil(preparation.request)
+            XCTAssertNil(sheets.activeSheetConfiguration)
+            XCTAssertEqual(manager.pendingRequests, [request])
+        }
+    }
+
     func testAppLockReviewRetentionRequiresCurrentUnsubmittedBitcoinContext() async throws {
         let record = try paymentRequestRecord(amount: "1", asset: "usd", conversion: .fixed(rates: [.init(asset: "btc", value: "0.00001")]))
         let manager = paymentRequestManager(sdk: PaymentRequestSdkMock(records: [record]))
