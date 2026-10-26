@@ -10,6 +10,8 @@ struct UsdtSendView: View {
     /// Shown inside the send sheet's navigation stack: back from the amount step returns to the address step.
     var hosted = false
     var paymentContext: ContactPaymentContext?
+    var quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)?
+    var authenticatePayment: (() async -> Bool)?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
@@ -35,6 +37,8 @@ struct UsdtSendView: View {
     @State private var error: String?
     @State private var pin = false
     @State private var submitted = false
+    @State private var hasStartedInitialPayment = false
+    @State private var automaticPayment = false
     @State private var paymentComplete = false
     @State private var showDetails = false
     @State private var showFullRecipient = false
@@ -52,6 +56,8 @@ struct UsdtSendView: View {
         embedded: Bool = false,
         hosted: Bool = false,
         paymentContext: ContactPaymentContext? = nil,
+        quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)? = nil,
+        authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
@@ -62,6 +68,8 @@ struct UsdtSendView: View {
         self.embedded = embedded
         self.hosted = hosted
         self.paymentContext = paymentContext
+        self.quotePayment = quotePayment
+        self.authenticatePayment = authenticatePayment
         self.sendPayment = sendPayment
         self.onBack = onBack
         self.onClose = onClose
@@ -135,10 +143,43 @@ struct UsdtSendView: View {
                         dismiss()
                     }
                 }, onEnable: { settings.usdtPreference = .enabled })
+            } else if paymentContext?.isInitialSubscriptionPayment == true, submitted, !busy, submittedStatus == .confirmed {
+                SubscriptionSuccessView(paymentProofKind: .usdt) {
+                    if let onClose {
+                        onClose()
+                    } else {
+                        dismiss()
+                    }
+                }
+                .navigationBarHidden(true)
+                .allowSwipeBack(false)
             } else if embedded || hosted {
                 content
             } else {
                 NavigationStack { content }
+            }
+        }
+        .task(id: "\(scenePhase == .active)-\(submitted)") {
+            guard scenePhase == .active, submitted else { return }
+            if busy, let quote {
+                if quote.destination == .arbitrum {
+                    await usdt.waitForTransfer(quote.id)
+                }
+                if submittedStatus == .confirmed {
+                    paymentComplete = true
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+                busy = false
+            }
+            while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
+                await usdt.refresh()
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+            }
+            await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
+        }
+        .overlay {
+            if automaticPayment, busy {
+                InitialSubscriptionPaymentProgress()
             }
         }
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
@@ -153,10 +194,16 @@ struct UsdtSendView: View {
                   editingAmount, !showingNetworks,
                   !initialRecipient.isEmpty, recipient == initialRecipient, amount == initialAmount, destination == .arbitrum,
                   (try? parsePaykitAmountInput(asset: .usdt, value: amount)) != nil else { return }
+            automaticPayment = !hasStartedInitialPayment && paymentContext?.initialUsdtSubscriptionPayment()?.amount.value == amount
+            hasStartedInitialPayment = true
             busy = true
-            defer { busy = false }
             do { quote = try await prepareQuote() }
             catch { self.error = UsdtWalletManager.message(for: error) }
+            busy = false
+            if automaticPayment, !Task.isCancelled, quote != nil {
+                // PIN navigation can cancel the view task while authorization is awaiting its result.
+                Task { @MainActor in try? await confirmPayment() }
+            }
         }
     }
 
@@ -196,24 +243,6 @@ struct UsdtSendView: View {
             if !isShown {
                 resolvePin(verified: false)
             }
-        }
-        .task(id: "\(scenePhase == .active)-\(submitted)") {
-            guard scenePhase == .active, submitted else { return }
-            if busy, let quote {
-                if quote.destination == .arbitrum {
-                    await usdt.waitForTransfer(quote.id)
-                }
-                if submittedStatus == .confirmed {
-                    paymentComplete = true
-                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                }
-                busy = false
-            }
-            while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
-                await usdt.refresh()
-                do { try await Task.sleep(for: .seconds(10)) } catch { return }
-            }
-            await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
         }
         .interactiveDismissDisabled(busy || pin)
         .alert(t("common__are_you_sure"), isPresented: .constant(warning != nil), presenting: warning) { _ in
@@ -364,6 +393,7 @@ struct UsdtSendView: View {
                          isLoading: busy && !preparingMaximum, titleKerning: 0, titleLineHeight: 20)
             {
                 guard !busy, quote == nil else { return }
+                automaticPayment = false
                 busy = true
                 error = nil
                 defer { busy = false }
@@ -433,11 +463,8 @@ struct UsdtSendView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
-                            .contentShape(Rectangle()).onTapGesture {
-                                if !busy {
-                                    goBack()
-                                }
-                            }
+                            .contentShape(Rectangle()).onTapGesture(perform: goBack)
+                            .allowsHitTesting(!busy && !embedded)
                         Spacer().frame(height: 24)
                         if showDetails {
                             quoteDetails(quote)
@@ -473,6 +500,7 @@ struct UsdtSendView: View {
                 title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: busy,
                 isLoading: busy, isSubmitted: submitted, isComplete: paymentComplete, swipeProgress: $swipeProgress
             ) {
+                automaticPayment = false
                 try await confirmPayment()
                 if !submitted {
                     throw CancellationError()
@@ -660,7 +688,11 @@ struct UsdtSendView: View {
         }
         preparedQuote = nil
         let sender = usdt.address
-        let result = try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+        let result: UsdtQuote = if let quotePayment {
+            try await quotePayment(recipient, amount, destination)
+        } else {
+            try await usdt.quote(recipient: recipient, amount: amount, destination: destination)
+        }
         preparedQuote = UsdtPreparedQuote(quote: result, amount: amount, sender: sender)
         return result
     }
@@ -732,6 +764,15 @@ struct UsdtSendView: View {
 
     private func authenticateAndSend() async throws {
         guard !busy else { return }
+        if let authenticatePayment {
+            busy = true
+            let authorized = await authenticatePayment()
+            busy = false
+            if authorized, !Task.isCancelled {
+                await send()
+            }
+            return
+        }
         if settings.requirePinForPayments && settings.pinEnabled {
             guard settings.useBiometrics && BiometricAuth.isAvailable else {
                 let verified = await withCheckedContinuation { continuation in
