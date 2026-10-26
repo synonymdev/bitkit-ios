@@ -29,5 +29,9 @@
     <action>Background the app, reopen it, and complete app-unlock PIN entry; verify the same Bitcoin confirmation returns with 1,000 sats, a prepared fee, and the swipe control ready without reopening or selecting the asset again</action>
     <action>Swipe to pay, complete any sending-warning confirmation, and stop on payment PIN entry without authorizing; background the app, reopen it, and complete only app-unlock PIN entry</action>
     <action>Verify the unpaid Bitcoin confirmation returns with the same amount and requires a new swipe and payment authorization; close it without paying and verify Activity contains no outgoing payment for this request</action>
+    <action>Reopen the unpaid fixed-conversion request from the pending-request list, stop on Amount (id "SendAmount"), select Savings, and verify the Bitcoin amount is 1,000 sats</action>
+    <action>Background the app while Amount is visible, reopen it, and complete only app-unlock PIN entry; verify Amount still shows 1,000 sats with Savings selected</action>
+    <action>Tap Continue (id "ContinueAmount") and verify the same request reaches Bitcoin confirmation (id "PaymentRequestConfirm") with 1,000 sats and a prepared fee</action>
+    <action>Close the request without paying, verify it remains pending and can be opened again, and verify Activity contains no outgoing payment for it</action>
   </actions>
 </journey>
