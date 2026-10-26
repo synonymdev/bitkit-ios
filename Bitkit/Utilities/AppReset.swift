@@ -14,13 +14,25 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType = .success
     ) async throws {
-        try await PaykitSdkService.shared.withWalletWipe {
-            try await app.withMigrationSyncPausedForWipe {
-                await SettingsViewModel.shared.beginServerSettingsWipe()
-                defer { SettingsViewModel.shared.endServerSettingsWipe() }
-                try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
+        try await withConnectionRecoveryPaused(recovery: .shared) {
+            try await PaykitSdkService.shared.withWalletWipe {
+                try await app.withMigrationSyncPausedForWipe {
+                    try await wipeLocal(app: app, wallet: wallet, session: session, toastType: toastType)
+                }
             }
         }
+    }
+
+    @MainActor
+    static func withConnectionRecoveryPaused(
+        recovery: ConnectionRecoveryService,
+        operation: () async throws -> Void
+    ) async throws {
+        let connectionWipe = try await recovery.beginWipe()
+        defer { recovery.endWipe(connectionWipe) }
+        await SettingsViewModel.shared.beginServerSettingsWipe()
+        defer { SettingsViewModel.shared.endServerSettingsWipe() }
+        try await operation()
     }
 
     @MainActor

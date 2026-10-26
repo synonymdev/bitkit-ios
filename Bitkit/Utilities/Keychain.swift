@@ -19,6 +19,7 @@ enum KeychainEntryType {
     case usdtPendingBackupRestore
     case paykitAllowanceState
     case pubkySecretKey
+    case connectionRecovery
 
     var storageKey: String {
         switch self {
@@ -39,6 +40,7 @@ enum KeychainEntryType {
         case .usdtPendingBackupRestore: "usdt_pending_backup_restore"
         case .paykitAllowanceState: "paykit_allowance_state"
         case .pubkySecretKey: "pubky_secret_key"
+        case .connectionRecovery: "connection_recovery"
         }
     }
 }

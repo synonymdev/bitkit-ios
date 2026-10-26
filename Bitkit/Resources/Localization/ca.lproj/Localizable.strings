@@ -1822,3 +1822,6 @@
 "subscriptions__allowance_limit_title" = "Límit assolit";
 "subscriptions__allowance_limit_description" = "Una sol·licitud de {amount} de {name} supera la teva assignació. Revisa-la per pagar.";
 "subscriptions__allowance_auto_paid" = "Pagat automàticament";
+
+"onboarding__connection_settings" = "Configuració de connexió";
+"onboarding__connection_saved" = "Desat. Torna-ho a provar per continuar restaurant.";

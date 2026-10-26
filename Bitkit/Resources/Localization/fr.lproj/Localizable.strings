@@ -1972,3 +1972,6 @@
 "subscriptions__allowance_limit_title" = "Limite atteinte";
 "subscriptions__allowance_limit_description" = "Une demande de {amount} de {name} dépasse votre allocation. Examinez-la pour payer.";
 "subscriptions__allowance_auto_paid" = "Payé automatiquement";
+
+"onboarding__connection_settings" = "Paramètres de connexion";
+"onboarding__connection_saved" = "Enregistré. Réessayez pour poursuivre la restauration.";

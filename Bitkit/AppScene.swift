@@ -371,6 +371,8 @@ struct AppScene: View {
     @State private var walletIsInitializing: Bool? = nil
     @State private var isWalletBackupRestoreRunning = false
     @State private var didWalletBackupRestoreFail = false
+    @ObservedObject private var connectionRecovery = ConnectionRecoveryService.shared
+    @State private var showConnectionRecovery = false
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
     /// Lets only a return from the background retry a failed node start, not a brief inactive phase.
@@ -888,7 +890,9 @@ struct AppScene: View {
 
     @ViewBuilder
     private var existingWalletContent: some View {
-        if walletIsInitializing == true {
+        if showConnectionRecovery {
+            WalletConnectionRecoveryView(onBack: { showConnectionRecovery = false }, onRetry: retryWalletStart)
+        } else if walletIsInitializing == true {
             // New wallet is being created or restored
             initializingContent
         } else if wallet.isRestoringWallet {
@@ -911,20 +915,24 @@ struct AppScene: View {
     @ViewBuilder
     private var initializingContent: some View {
         if didWalletBackupRestoreFail {
-            WalletRestoreError {
-                didWalletBackupRestoreFail = false
-                await restoreWalletBackupAndStart()
-            }
+            WalletRestoreError(onRetry: retryWalletStart, onConnectionSettings: { showConnectionRecovery = true })
         } else if case .errorStarting = wallet.nodeLifecycleState {
-            WalletRestoreError(onRetry: retryWalletStart)
+            WalletRestoreError(onRetry: retryWalletStart, onConnectionSettings: { showConnectionRecovery = true })
         } else {
+            let initializationLifecycle = connectionRecovery.lifecycleID
             InitializingWalletView(nodeLifecycleState: $wallet.nodeLifecycleState) {
                 Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
 
-                if wallet.nodeLifecycleState == .running {
+                if connectionRecovery.canFinishInitialization(
+                    lifecycle: initializationLifecycle,
+                    isRunning: wallet.nodeLifecycleState == .running,
+                    hasPendingRestore: BackupService.shared.hasPendingWalletRestore(),
+                    didFail: didWalletBackupRestoreFail
+                ) {
                     walletIsInitializing = false
                 }
             }
+            .id(connectionRecovery.isBusy)
         }
     }
 
@@ -978,7 +986,7 @@ struct AppScene: View {
         }
 
         let shouldRestoreWalletBackup = wallet.isRestoringWallet || BackupService.shared.hasPendingWalletRestore()
-        if shouldRestoreWalletBackup {
+        if connectionRecovery.requiresRestrictedStartup(hasPendingRestore: shouldRestoreWalletBackup) {
             walletIsInitializing = true
         }
 
@@ -998,7 +1006,26 @@ struct AppScene: View {
     }
 
     private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
+        let lifecycle = connectionRecovery.lifecycleID
+        do {
+            try await connectionRecovery.perform(cancelsWithCaller: false) {
+                await startAdmittedWallet(completingBackupRestore: completingBackupRestore, playsErrorHaptic: playsErrorHaptic)
+            }
+        } catch ConnectionRecoveryService.AdmissionError.busy {
+            return
+        } catch {
+            guard !Task.isCancelled, connectionRecovery.isCurrentLifecycle(lifecycle) else { return }
+            Logger.error(error, context: "Wallet connection recovery")
+            didWalletBackupRestoreFail = true
+            walletIsInitializing = true
+        }
+    }
+
+    private func startAdmittedWallet(completingBackupRestore: Bool, playsErrorHaptic: Bool) async {
         let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
+        if connectionRecovery.requiresRestrictedStartup(hasPendingRestore: hasPendingRestore) {
+            walletIsInitializing = true
+        }
         guard !WalletBackupRestoreGate.blocksWalletStart(
             isRestoreRunning: isWalletBackupRestoreRunning,
             hasPendingRestore: hasPendingRestore,
@@ -1011,6 +1038,9 @@ struct AppScene: View {
         // Check network before attempting to start - LDK hangs when VSS is unreachable
         guard network.isConnected else {
             Logger.warn("Network offline, skipping wallet start", context: "AppScene")
+            if walletIsInitializing == true {
+                didWalletBackupRestoreFail = true
+            }
             if MigrationsService.shared.isShowingMigrationLoading {
                 await MainActor.run {
                     MigrationsService.shared.isShowingMigrationLoading = false
@@ -1021,7 +1051,18 @@ struct AppScene: View {
         }
 
         do {
+            let revision = try connectionRecovery.replay()
+            if revision != nil, wallet.nodeLifecycleState != .stopped, wallet.nodeLifecycleState != .initializing {
+                try await wallet.stopLightningNode()
+                try connectionRecovery.checkCurrentOperation()
+            }
             try await wallet.start()
+            try connectionRecovery.checkCurrentOperation()
+            try connectionRecovery.complete(revision: revision, hasPendingRestore: BackupService.shared.hasPendingWalletRestore(),
+                                            isRunning: wallet.nodeLifecycleState == .running)
+            {
+                didWalletBackupRestoreFail = false
+            }
             try await activity.syncLdkNodePayments()
             // Start watching pending orders after wallet is ready
             await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
@@ -1033,7 +1074,11 @@ struct AppScene: View {
             // Schedule full backup after wallet create/restore to prevent epoch dates in backup status
             await BackupService.shared.scheduleFullBackup()
         } catch {
+            guard connectionRecovery.canReportOperationFailure() else { return }
             Logger.error(error, context: "Failed to start wallet")
+            if walletIsInitializing == true {
+                didWalletBackupRestoreFail = true
+            }
             if playsErrorHaptic {
                 Haptics.notify(.error)
             }
@@ -1151,6 +1196,22 @@ struct AppScene: View {
     }
 
     private func restoreWalletBackupAndStart() async {
+        let lifecycle = connectionRecovery.lifecycleID
+        do {
+            try await connectionRecovery.perform(cancelsWithCaller: false) {
+                await restoreAdmittedWalletBackupAndStart()
+            }
+        } catch ConnectionRecoveryService.AdmissionError.busy {
+            return
+        } catch {
+            guard !Task.isCancelled, connectionRecovery.isCurrentLifecycle(lifecycle) else { return }
+            Logger.error(error, context: "Restore connection recovery")
+            didWalletBackupRestoreFail = true
+            walletIsInitializing = true
+        }
+    }
+
+    private func restoreAdmittedWalletBackupAndStart() async {
         guard !isWalletBackupRestoreRunning else { return }
         isWalletBackupRestoreRunning = true
         walletIsInitializing = true
@@ -1161,6 +1222,14 @@ struct AppScene: View {
             await restoreVssBackup()
         } else {
             await restoreFromMostRecentBackup()
+        }
+        do {
+            try connectionRecovery.checkCurrentOperation()
+        } catch {
+            guard connectionRecovery.canReportOperationFailure() else { return }
+            didWalletBackupRestoreFail = true
+            app.toast(error)
+            return
         }
         guard didRestore else {
             didWalletBackupRestoreFail = true
@@ -1174,12 +1243,42 @@ struct AppScene: View {
     }
 
     private func retryWalletStart() async {
+        let lifecycle = connectionRecovery.lifecycleID
         do {
-            wallet.nodeLifecycleState = .initializing
-            try await wallet.start()
-            try wallet.setWalletExistsState()
+            try await connectionRecovery.perform(cancelsWithCaller: false) {
+                do {
+                    walletIsInitializing = true
+                    didWalletBackupRestoreFail = false
+                    let needsRestore = wallet.isRestoringWallet || BackupService.shared.hasPendingWalletRestore()
+                    if !needsRestore {
+                        _ = try connectionRecovery.replay()
+                    }
+                    try await wallet.stopLightningNode()
+                    try connectionRecovery.checkCurrentOperation()
+                    if needsRestore || BackupService.shared.hasPendingWalletRestore() {
+                        await restoreAdmittedWalletBackupAndStart()
+                    } else {
+                        await startAdmittedWallet(completingBackupRestore: false, playsErrorHaptic: true)
+                    }
+                    try connectionRecovery.checkCurrentOperation()
+                    if wallet.nodeLifecycleState == .running, !BackupService.shared.hasPendingWalletRestore(), !didWalletBackupRestoreFail {
+                        showConnectionRecovery = false
+                    }
+                } catch {
+                    guard connectionRecovery.canReportOperationFailure() else { return }
+                    walletIsInitializing = true
+                    didWalletBackupRestoreFail = true
+                    app.toast(error)
+                }
+            }
+        } catch ConnectionRecoveryService.AdmissionError.busy {
+            return
         } catch {
+            guard !Task.isCancelled, connectionRecovery.isCurrentLifecycle(lifecycle) else { return }
+            walletIsInitializing = true
+            didWalletBackupRestoreFail = true
             Logger.error("Failed to start wallet on retry", context: "AppScene")
+            app.toast(error)
             Haptics.notify(.error)
         }
     }
@@ -1247,6 +1346,7 @@ struct AppScene: View {
             try await BackupService.shared.performFullRestoreFromLatestBackup()
             return true
         } catch {
+            guard connectionRecovery.canReportOperationFailure() else { return false }
             app.toast(error)
             return false
         }

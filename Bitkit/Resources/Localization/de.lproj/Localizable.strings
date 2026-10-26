@@ -1958,3 +1958,6 @@
 "subscriptions__allowance_limit_title" = "Limit erreicht";
 "subscriptions__allowance_limit_description" = "Eine Anforderung über {amount} von {name} übersteigt dein Kontingent. Prüfe sie, um zu bezahlen.";
 "subscriptions__allowance_auto_paid" = "Automatisch bezahlt";
+
+"onboarding__connection_settings" = "Verbindungseinstellungen";
+"onboarding__connection_saved" = "Gespeichert. Versuche es erneut, um die Wiederherstellung fortzusetzen.";
