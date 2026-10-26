@@ -72,6 +72,7 @@ enum SendRoute: Hashable {
     case onchainOperationPending(OnchainSendPendingContext, requestId: PaykitPaymentRequest.ID?)
     case hardwarePending(requestId: PaykitPaymentRequest.ID, walletId: String, transactionId: String, paymentIdentity: String?)
     case success(paymentId: String, walletId: String = WalletScope.default)
+    case recoveredSuccess(paymentId: String, walletId: String)
     case failure(SendFailureContext)
     case lnurlPayAmount
     case lnurlPayConfirm
@@ -1096,6 +1097,13 @@ struct SendSheet: View {
                 paymentId: paymentId,
                 walletId: walletId,
                 isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true
+            )
+        case let .recoveredSuccess(paymentId, walletId):
+            SendSuccess(
+                paymentId: paymentId,
+                walletId: walletId,
+                isInitialSubscriptionPayment: app.contactPaymentContext?.isInitialSubscriptionPayment == true,
+                isRecoveredPayment: true
             )
         case let .failure(context):
             SendFailure(

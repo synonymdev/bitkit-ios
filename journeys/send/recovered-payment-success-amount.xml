@@ -1,0 +1,16 @@
+<journey name="recovered payment success amount">
+  <description>
+    iOS recovery display regression. Requires a disposable regtest wallet with an unresolved
+    on-chain payment request A for 10000 sats and a different unpaid request B for 20000 sats.
+    Retain B's draft while opening A's original Pending recovery. Creating the unresolved receipt
+    is a manual fixture prerequisite outside the Capabilities table; label seeded state as state
+    injection, not a reproduced native failure. Use the original-payment retry flow and fresh fee
+    and PIN approval as required. Record A's wallet and transaction ID. Never use real BTC or USDT.
+  </description>
+  <actions>
+    <action>Verify the retained Pending payment shows A's original 10000 sats and transaction ID while B remains unpaid</action>
+    <action>Complete A through the original-payment recovery flow with fresh fee and PIN approval when required</action>
+    <action>Verify Bitcoin Sent shows A's 10000 sats, never B's 20000-sat draft; while activity is loading no amount is shown</action>
+    <action>Tap Details and verify the amount and transaction ID match A in its original wallet</action>
+  </actions>
+</journey>
