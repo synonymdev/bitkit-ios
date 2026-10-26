@@ -277,7 +277,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
         FeeEstimatesManager().devOverrideFeeEstimates = true
         for operation in [ControlledSendWallet.Operation.manualUtxos, .selection] {
-            let wallet = ControlledSendWallet(operation: operation, suspendsSecondPreparation: true)
+            let wallet = ControlledSendWallet(operation: operation, suspendsResumedPreparation: true)
             let app = AppViewModel()
             let sheets = SheetViewModel()
             sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
@@ -304,9 +304,11 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(wallet.preparationCount, 1)
             XCTAssertEqual(navigation.path, [.confirm, .tag])
 
+            // The resumed preparation waits until the pop back from tags has settled, so its push never overlaps that transition.
             navigation.path.removeLast()
-            await fulfillment(of: [wallet.secondPreparationStarted], timeout: 3)
             try await navigation.waitForAppearance(.confirm)
+            await fulfillment(of: [wallet.resumedStarted], timeout: 3)
+            XCTAssertEqual(wallet.preparationCount, 2)
             wallet.resume()
             await fulfillment(of: [wallet.coinPrepared], timeout: 3)
             try await navigation.waitForAppearance(operation == .manualUtxos ? .utxoSelection : .confirm)
@@ -592,20 +594,20 @@ private final class ControlledSendWallet: WalletViewModel {
 
     let started = XCTestExpectation(description: "Send preparation suspended")
     let finished = XCTestExpectation(description: "Send preparation resumed")
-    let secondPreparationStarted = XCTestExpectation(description: "Second send preparation suspended")
+    let resumedStarted = XCTestExpectation(description: "Resumed send preparation suspended")
     let coinPrepared = XCTestExpectation(description: "Current send coin preparation applied")
     private let operation: Operation
     private let fails: Bool
-    private let suspendsSecondPreparation: Bool
+    private let suspendsResumedPreparation: Bool
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var wasCancelled = false
     private(set) var preparationCount = 0
     private(set) var successfulCoinPreparations = 0
 
-    init(operation: Operation, fails: Bool = false, suspendsSecondPreparation: Bool = false) {
+    init(operation: Operation, fails: Bool = false, suspendsResumedPreparation: Bool = false) {
         self.operation = operation
         self.fails = fails
-        self.suspendsSecondPreparation = suspendsSecondPreparation
+        self.suspendsResumedPreparation = suspendsResumedPreparation
         super.init(
             transferService: TransferService(lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank),
             sheetViewModel: SheetViewModel(),
@@ -657,10 +659,10 @@ private final class ControlledSendWallet: WalletViewModel {
 
     private func suspend() async throws {
         preparationCount += 1
-        if preparationCount == 2, suspendsSecondPreparation {
+        if preparationCount == 2, suspendsResumedPreparation {
             await withCheckedContinuation { continuation in
                 self.continuation = continuation
-                secondPreparationStarted.fulfill()
+                resumedStarted.fulfill()
             }
             return
         }
