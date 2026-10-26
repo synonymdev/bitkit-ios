@@ -906,6 +906,7 @@
 "settings__backup__category_transaction_log" = "Journal des transactions";
 "settings__backup__category_wallet" = "Boosts et transferts";
 "settings__backup__category_settings" = "Réglages";
+"settings__backup__category_spark_exit" = "Données de sortie Spark";
 "settings__backup__category_widgets" = "Widgets";
 "settings__backup__category_tags" = "Tags";
 "settings__backup__category_profile" = "Profil";

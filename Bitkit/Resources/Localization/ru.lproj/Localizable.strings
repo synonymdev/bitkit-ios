@@ -900,6 +900,7 @@
 "settings__backup__category_transaction_log" = "Журнал Транзакций";
 "settings__backup__category_wallet" = "Ускорения и Переводы";
 "settings__backup__category_settings" = "Настройки";
+"settings__backup__category_spark_exit" = "Данные выхода из Spark";
 "settings__backup__category_widgets" = "Виджеты";
 "settings__backup__category_tags" = "Теги";
 "settings__backup__category_profile" = "Профиль";

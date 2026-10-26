@@ -905,6 +905,7 @@
 "settings__backup__category_transaction_log" = "Transakční protokol";
 "settings__backup__category_wallet" = "Posílení a převody";
 "settings__backup__category_settings" = "Nastavení";
+"settings__backup__category_spark_exit" = "Data pro výstup ze Spark";
 "settings__backup__category_widgets" = "Widgety";
 "settings__backup__category_tags" = "Tagy";
 "settings__backup__category_profile" = "Profil";

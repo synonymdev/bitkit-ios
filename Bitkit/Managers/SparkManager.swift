@@ -1,6 +1,7 @@
 import BigNumber
 import BitkitCore
 import BreezSdkSpark
+import Combine
 import Foundation
 import LDKNode
 import Observation
@@ -13,6 +14,11 @@ import Observation
 @Observable @MainActor
 final class SparkManager: ChannelFreeLightningRail {
     static let shared = SparkManager()
+    private nonisolated(unsafe) static let exitStateChanged = PassthroughSubject<Void, Never>()
+    /// Fires once Spark connects and whenever its unilateral exit data changes, so the exit data backup is redone.
+    nonisolated static var exitStateChangedPublisher: AnyPublisher<Void, Never> {
+        exitStateChanged.eraseToAnyPublisher()
+    }
 
     private static let sendCompletionTimeoutSecs: UInt32 = 30
     private static let depositClaimFeeLeewaySatPerVbyte: UInt64 = 2
@@ -98,6 +104,8 @@ final class SparkManager: ChannelFreeLightningRail {
         })
         sdk = connected
         Logger.info("Connected Spark wallet on '\(network)'", context: "SparkManager")
+        await importRestoredExitState(walletIndex: walletIndex)
+        Self.exitStateChanged.send()
     }
 
     func wipe(walletIndex: Int) async {
@@ -185,6 +193,50 @@ final class SparkManager: ChannelFreeLightningRail {
     /// What a unilateral exit needs if the Spark operators stop cooperating; it can reach several MB.
     func exportExitState() async throws -> String {
         try await requireSdk().exportUnilateralExitState().exitState
+    }
+
+    /// The exit data backup, or nil while Spark is not connected and there is nothing to back up.
+    func exitBackup() async throws -> SparkExitBackupV1? {
+        guard sdk != nil, let network = Self.sparkNetwork else { return nil }
+        return try await SparkExitBackupV1(
+            version: 1,
+            createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
+            network: "\(network)",
+            exitState: exportExitState()
+        )
+    }
+
+    /// Puts a restored exit data backup back: at once while Spark is connected, otherwise right after it connects,
+    /// before it is used, so a restored wallet can exit on-chain even while the Spark operators are unreachable.
+    func restoreExitBackup(_ backup: SparkExitBackupV1, walletIndex: Int) async throws {
+        guard let network = Self.sparkNetwork, backup.network == "\(network)" else {
+            Logger.warn("Skipped Spark exit data from network '\(backup.network)'", context: "SparkManager")
+            return
+        }
+        let file = Env.sparkExitRestore(walletIndex: walletIndex)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(backup.exitState.utf8).write(to: file, options: .atomic)
+        if sdk != nil {
+            await importRestoredExitState(walletIndex: walletIndex)
+        }
+    }
+
+    private func importRestoredExitState(walletIndex: Int) async {
+        let file = Env.sparkExitRestore(walletIndex: walletIndex)
+        guard let sdk, let data = FileManager.default.contents(atPath: file.path) else { return }
+        do {
+            let imported = try await sdk.importUnilateralExitState(
+                request: ImportUnilateralExitStateRequest(exitState: String(decoding: data, as: UTF8.self))
+            )
+            try FileManager.default.removeItem(at: file)
+            Logger.info(
+                "Imported Spark exit data: '\(imported.importedLeaves)' leaves, '\(imported.skippedForeignLeaves)' foreign, "
+                    + "'\(imported.skippedConflictingLeaves)' conflicting",
+                context: "SparkManager"
+            )
+        } catch {
+            Logger.error("Failed to import Spark exit data: \(error)", context: "SparkManager")
+        }
     }
 
     // MARK: Private
@@ -328,6 +380,8 @@ final class SparkManager: ChannelFreeLightningRail {
                 }
             case let .paymentPending(payment):
                 await recordActivity(payment)
+            case .unilateralExitStateChanged:
+                Self.exitStateChanged.send()
             default:
                 break
             }

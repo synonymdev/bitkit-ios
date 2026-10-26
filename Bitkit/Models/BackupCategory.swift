@@ -8,6 +8,7 @@ enum BackupCategory: String, CaseIterable {
     case settings = "SETTINGS"
     case widgets = "WIDGETS"
     case metadata = "METADATA"
+    case sparkExit = "SPARK_EXIT"
 }
 
 // MARK: - UI Extensions
@@ -29,6 +30,8 @@ extension BackupCategory {
             return "stack"
         case .metadata:
             return "tag"
+        case .sparkExit:
+            return "bolt-hollow"
         }
     }
 
@@ -48,6 +51,8 @@ extension BackupCategory {
             return t("settings__backup__category_widgets")
         case .metadata:
             return t("settings__backup__category_tags")
+        case .sparkExit:
+            return t("settings__backup__category_spark_exit")
         }
     }
 }

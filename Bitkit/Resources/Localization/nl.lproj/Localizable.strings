@@ -903,6 +903,7 @@
 "settings__backup__category_transaction_log" = "Transactie Log";
 "settings__backup__category_wallet" = "Boosts & Overboekingen";
 "settings__backup__category_settings" = "Instellingen";
+"settings__backup__category_spark_exit" = "Spark-exitgegevens";
 "settings__backup__category_widgets" = "Widgets";
 "settings__backup__category_tags" = "Labels";
 "settings__backup__category_profile" = "Profiel";

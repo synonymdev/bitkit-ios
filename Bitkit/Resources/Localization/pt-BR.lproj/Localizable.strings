@@ -905,6 +905,7 @@
 "settings__backup__category_transaction_log" = "Histórico de transações";
 "settings__backup__category_wallet" = "Boosts e transferências";
 "settings__backup__category_settings" = "Ajustes";
+"settings__backup__category_spark_exit" = "Dados de saída do Spark";
 "settings__backup__category_widgets" = "Widgets";
 "settings__backup__category_tags" = "Tags";
 "settings__backup__category_profile" = "Perfil";

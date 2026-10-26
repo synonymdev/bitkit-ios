@@ -852,6 +852,7 @@
 "settings__backup__category_transaction_log" = "Registro de Transacciones";
 "settings__backup__category_wallet" = "Impulsos y Transferencias";
 "settings__backup__category_settings" = "Ajustes";
+"settings__backup__category_spark_exit" = "Datos de salida de Spark";
 "settings__backup__category_widgets" = "Widgets";
 "settings__backup__category_tags" = "Etiquetas";
 "settings__backup__category_profile" = "Perfil";

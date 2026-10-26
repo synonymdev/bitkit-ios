@@ -746,6 +746,7 @@
 "settings__backup__category_transaction_log" = "سجل المعاملات";
 "settings__backup__category_wallet" = "التعزيزات والتحويلات";
 "settings__backup__category_settings" = "الإعدادات";
+"settings__backup__category_spark_exit" = "بيانات الخروج من Spark";
 "settings__backup__category_widgets" = "الأدوات";
 "settings__backup__category_tags" = "العلامات";
 "wallet__payment_recipient_rejected" = "رفض المستلم دفعة Lightning هذه. تحقق من الفاتورة وحاول مرة أخرى.";

@@ -886,6 +886,7 @@
 "settings__backup__category_transaction_log" = "Log delle transazioni";
 "settings__backup__category_wallet" = "Potenziamenti e Trasferimenti";
 "settings__backup__category_settings" = "Impostazioni";
+"settings__backup__category_spark_exit" = "Dati di uscita Spark";
 "settings__backup__category_widgets" = "Widget";
 "settings__backup__category_tags" = "Tag";
 "settings__backup__category_profile" = "Profilo";

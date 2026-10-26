@@ -232,3 +232,12 @@ struct WidgetsBackupV1 {
         return try JSONSerialization.data(withJSONObject: dict)
     }
 }
+
+/// The Spark wallet's unilateral exit data, as `exportUnilateralExitState` returns it, kept so a wallet restored on
+/// another device can still exit on-chain while the Spark operators are unreachable.
+struct SparkExitBackupV1: Codable {
+    let version: Int
+    let createdAt: UInt64
+    let network: String
+    let exitState: String
+}
