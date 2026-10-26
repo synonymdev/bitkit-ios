@@ -881,6 +881,81 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
         await PrivatePaykitService.shared.endProfileDeletion()
     }
 
+    func testPaidPublicInvoiceIsReplacedWithoutWaitingForMaintenanceRound() async {
+        let (_, wallet) = publicationWallet(route: .channelUsable)
+        wallet.replaceEmptyPublicInvoice = true
+        wallet.publicPaykitBolt11 = "ln-paid"
+        wallet.publicPaykitBolt11PaymentHash = "paid-hash"
+        PublicPaykitService.setCleanupPending(false)
+        var publishedInvoices: [String] = []
+        wallet.applyPublicEndpoints = { endpoints in
+            publishedInvoices += endpoints.filter { $0.methodId == .bitcoinLightningBolt11 }.map(\.value)
+        }
+        wallet.invoiceAmountSats = 2000
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "paid-hash", rotatedPublicInvoice: rotated, isSessionCurrent: wallet.publicationAdmission
+        )
+        XCTAssertTrue(rotated)
+        XCTAssertFalse(publishedInvoices.contains("ln-paid"))
+        XCTAssertEqual(publishedInvoices.last, "ln-current")
+    }
+
+    func testUnrelatedPaymentDoesNotSynchronizePublicEndpoints() async {
+        let (_, wallet) = publicationWallet(route: .channelUsable)
+        wallet.publicPaykitBolt11 = "ln-unpaid"
+        wallet.publicPaykitBolt11PaymentHash = "unpaid-hash"
+        wallet.invoiceAmountSats = 2000
+        var writes = 0
+        wallet.applyPublicEndpoints = { _ in writes += 1 }
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "other-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "other-hash", rotatedPublicInvoice: rotated, isSessionCurrent: wallet.publicationAdmission
+        )
+        XCTAssertFalse(rotated)
+        XCTAssertEqual(writes, 0)
+        XCTAssertEqual(wallet.publicPaykitBolt11, "ln-unpaid")
+    }
+
+    func testPaidInvoiceRefreshRetainsOriginalIdentityAdmission() async {
+        let (profile, wallet) = publicationWallet(route: .channelUsable)
+        wallet.publicPaykitBolt11 = "ln-paid"
+        wallet.publicPaykitBolt11PaymentHash = "paid-hash"
+        wallet.invoiceAmountSats = 2000
+        wallet.beforeReceiveAddress = { profile.publicKey = "pubky" + String(repeating: "z", count: 52) }
+        var writes = 0
+        wallet.applyPublicEndpoints = { _ in writes += 1 }
+        let admission = wallet.publicationAdmission
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "paid-hash", rotatedPublicInvoice: rotated, isSessionCurrent: admission
+        )
+        XCTAssertFalse(admission())
+        XCTAssertEqual(writes, 0)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+    }
+
+    func testPaidInvoicePublicationFailureRemainsPendingForMaintenance() async {
+        let (_, wallet) = publicationWallet(route: .channelUsable)
+        wallet.replaceEmptyPublicInvoice = true
+        wallet.publicPaykitBolt11 = "ln-paid"
+        wallet.publicPaykitBolt11PaymentHash = "paid-hash"
+        wallet.invoiceAmountSats = 2000
+        var writes = 0
+        wallet.applyPublicEndpoints = { _ in
+            writes += 1
+            throw NSError(domain: "controlled-publication", code: 1)
+        }
+        let rotated = wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: "paid-hash")
+        await wallet.refreshAfterPaymentReceived(
+            paymentHash: "paid-hash", rotatedPublicInvoice: rotated, isSessionCurrent: wallet.publicationAdmission
+        )
+        XCTAssertEqual(writes, 1)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
+        XCTAssertFalse(wallet.isReceiveInvoiceUpdating)
+        XCTAssertNil(wallet.receiveInvoiceError)
+    }
+
     func testAdmittedPublicWriteCannotAcknowledgeNewerPaidInvoiceInvalidation() async throws {
         UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
