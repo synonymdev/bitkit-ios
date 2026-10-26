@@ -2606,19 +2606,22 @@ final class PaykitPaymentRequestManager {
                 .flatMap { _, requests in
                     requests.filter {
                         $0.lifecycleState != .proofSubmitted &&
+                            !$0.isExpired(at: refreshDate) &&
                             !locallyCompletedRequestIds.contains($0.id) &&
                             (!locallyInFlightRequestIds.contains($0.id) || retainedHardwareRetries[$0.id] != nil) &&
                             !dismissedSubscriptionPaymentIds.contains($0.id)
                     }
                 }
                 .sorted { ($0.billingPeriod?.startsAt ?? .distantFuture) < ($1.billingPeriod?.startsAt ?? .distantFuture) }
-            let recurringHistory = recurringRequestsBySubscription.flatMap { _, requests in
+            let recurringHistory = recurringRequestsBySubscription.flatMap { subscription, requests in
                 requests.compactMap { request in
                     if request.lifecycleState == .proofSubmitted {
                         return request
                     }
-                    guard let proofKind = locallyCompletedProofKinds[request.id] else { return nil }
-                    return request.updatingLifecycleState(.proofSubmitted, paymentProofKind: proofKind)
+                    if let proofKind = locallyCompletedProofKinds[request.id] {
+                        return request.updatingLifecycleState(.proofSubmitted, paymentProofKind: proofKind)
+                    }
+                    return subscription.lifecycleState == .activeRecurring && request.isExpired(at: refreshDate) ? request : nil
                 }
             }
             let protectedRequests = pendingRequests.filter {
@@ -2707,13 +2710,19 @@ final class PaykitPaymentRequestManager {
         let recurringRequests = subscriptionAcceptedAt[subscription.id].map {
             subscription.requests(through: date, acceptedAt: $0)
         } ?? []
+        let paymentDate = now()
         pendingRequests.removeAll { $0.belongs(to: subscription) }
         if subscription.lifecycleState == .activeRecurring {
-            pendingRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState != .proofSubmitted })
+            pendingRequests.append(contentsOf: recurringRequests.filter {
+                $0.lifecycleState != .proofSubmitted && !$0.isExpired(at: paymentDate)
+            })
             pendingRequests.sort { ($0.createdAt ?? .distantFuture) < ($1.createdAt ?? .distantFuture) }
         }
         historyRequests.removeAll { $0.belongs(to: subscription) }
-        historyRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState == .proofSubmitted })
+        historyRequests.append(contentsOf: recurringRequests.filter {
+            $0.lifecycleState == .proofSubmitted ||
+                (subscription.lifecycleState == .activeRecurring && $0.isExpired(at: paymentDate))
+        })
         historyRequests.sort { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
         await subscriptionNotificationScheduler.synchronize(
             subscriptions,
@@ -2822,6 +2831,11 @@ final class PaykitPaymentRequestManager {
         let subscriptionDate = subscriptionNow()
         recordRequestedPresentationExpiration(at: date, excluding: handledRequestedExpirationId)
         recordSilentExpirations(at: date, excluding: [handledRequestedExpirationId, openedRequestId].compactMap { $0 })
+        let historyIds = Set(historyRequests.map(\.id))
+        historyRequests.append(contentsOf: pendingRequests.filter {
+            $0.billingPeriod != nil && $0.isExpired(at: date) && !historyIds.contains($0.id)
+        })
+        historyRequests.sort { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
         pendingRequests.removeAll { $0.isExpired(at: date) }
         subscriptions = subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
         presentedSubscriptionProposalIds.formIntersection(
@@ -2905,6 +2919,10 @@ final class PaykitPaymentRequestManager {
         let requestDelays = pendingRequests.filter { $0.lifecycleState == .proposed }.compactMap(\.expiresAt).map {
             $0.timeIntervalSince(date)
         }
+        // Payment deadlines are inclusive; reconcile just after the boundary.
+        let paymentDeadlineDelays = pendingRequests.compactMap(\.paymentDeadline).map {
+            $0.date.addingTimeInterval(0.001).timeIntervalSince(date)
+        }
         let subscriptionDelays = subscriptions.filter {
             $0.isProposal || $0.lifecycleState == .activeRecurring
         }.flatMap {
@@ -2912,7 +2930,7 @@ final class PaykitPaymentRequestManager {
         }.filter { $0 > subscriptionDate }.map {
             $0.timeIntervalSince(subscriptionDate)
         }
-        guard let nextDelay = (requestDelays + subscriptionDelays).min() else { return }
+        guard let nextDelay = (requestDelays + paymentDeadlineDelays + subscriptionDelays).min() else { return }
         let delay = max(0, nextDelay)
         expirationTask = Task { [weak self] in
             do {

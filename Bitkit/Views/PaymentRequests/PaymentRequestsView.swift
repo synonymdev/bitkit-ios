@@ -20,7 +20,7 @@ enum PaymentRequestDisplay {
         isActionable: Bool,
         now: Date = Date()
     ) -> String {
-        if request.isExpired(at: now), request.lifecycleState == .proposed {
+        if request.isExpired(at: now), request.lifecycleState == .proposed || request.lifecycleState == .activeRecurring {
             return "wallet__payment_request_status_expired"
         }
 
@@ -46,7 +46,11 @@ enum PaymentRequestDisplay {
             return "wallet__payment_request_status_proof_submitted"
         case .recoveryRequired:
             return "wallet__payment_request_status_action_required"
-        case .invalidConflict, .activeRecurring, .unknown:
+        case .activeRecurring:
+            return request.billingPeriod != nil && request.direction == .incoming && isActionable
+                ? "wallet__payment_request_waiting"
+                : "wallet__payment_request_status_unavailable"
+        case .invalidConflict, .unknown:
             return "wallet__payment_request_status_unavailable"
         }
     }
