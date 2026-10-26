@@ -321,6 +321,10 @@ struct PaymentRequestAmountView: View {
         asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? parsePaykitAmountInput(asset: .usd, value: dollarAmount)
     }
 
+    private var nextAsset: PaykitAsset? {
+        allowedAssets.first { $0 != asset }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(
@@ -342,24 +346,25 @@ struct PaymentRequestAmountView: View {
 
             HStack {
                 Spacer()
-                ForEach(allowedAssets, id: \.self) { choice in
-                    NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
-                                          variant: asset == choice ? .primary : .secondary)
-                    {
-                        guard choice != asset else { return }
-                        do {
-                            let converted = try entryConversion.converted(amount, to: choice, rate: currency.paykitRate, at: Date())
-                            if choice == .usd {
-                                dollarAmount = converted.atomic == 0 ? "" : converted.inputValue
-                            } else {
-                                amountViewModel.updateFromSats(converted.atomic, currency: currency)
-                            }
-                            asset = choice
-                            conversionError = false
-                        } catch { conversionError = true }
-                    }
-                    .accessibilityIdentifier("\(testIdentifierPrefix)Asset-\(choice.rawValue)")
+                NumberPadActionButton(
+                    text: asset.rawValue.uppercased(),
+                    imageName: nextAsset == nil ? nil : "arrow-up-down",
+                    titleKerning: 1, titleLineHeight: 18, color: .brandAccent,
+                    disabled: nextAsset == nil
+                ) {
+                    guard let nextAsset else { return }
+                    do {
+                        let converted = try entryConversion.converted(amount, to: nextAsset, rate: currency.paykitRate, at: Date())
+                        if nextAsset == .usd {
+                            dollarAmount = converted.atomic == 0 ? "" : converted.inputValue
+                        } else {
+                            amountViewModel.updateFromSats(converted.atomic, currency: currency)
+                        }
+                        asset = nextAsset
+                        conversionError = false
+                    } catch { conversionError = true }
                 }
+                .accessibilityIdentifier("\(testIdentifierPrefix)DenominationToggle")
                 if asset == .btc {
                     NumberPadActionButton(
                         text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
