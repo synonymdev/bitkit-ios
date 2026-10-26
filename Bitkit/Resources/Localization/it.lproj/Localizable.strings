@@ -1572,7 +1572,7 @@
 "subscriptions__name_placeholder" = "Nome abbonamento";
 "subscriptions__ongoing" = "In corso";
 "subscriptions__overview" = "Panoramica";
-"subscriptions__payment_due_description" = "Apri Bitkit per controllare un pagamento di abbonamento.";
+"subscriptions__payment_due_description" = "Apri Bitkit per controllare il pagamento";
 "subscriptions__payment_due_title" = "Pagamento Abbonamento Dovuto";
 "subscriptions__payments" = "Pagamenti";
 "subscriptions__per_day" = "al giorno";

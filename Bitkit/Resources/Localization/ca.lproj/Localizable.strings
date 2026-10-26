@@ -1476,7 +1476,7 @@
 "subscriptions__name_placeholder" = "Nom de la subscripció";
 "subscriptions__ongoing" = "En curs";
 "subscriptions__overview" = "Resum";
-"subscriptions__payment_due_description" = "Obre Bitkit per revisar un pagament de subscripció.";
+"subscriptions__payment_due_description" = "Obre Bitkit per revisar el pagament";
 "subscriptions__payment_due_title" = "Pagament de subscripció pendent";
 "subscriptions__payments" = "Pagaments";
 "subscriptions__per_day" = "per dia";

@@ -1348,7 +1348,7 @@
 "subscriptions__name_placeholder" = "Όνομα συνδρομής";
 "subscriptions__ongoing" = "Σε εξέλιξη";
 "subscriptions__overview" = "Επισκόπηση";
-"subscriptions__payment_due_description" = "Άνοιξε το Bitkit για να ελέγξεις μια πληρωμή συνδρομής.";
+"subscriptions__payment_due_description" = "Άνοιξε το Bitkit για να ελέγξεις την πληρωμή";
 "subscriptions__payment_due_title" = "Οφειλόμενη πληρωμή συνδρομής";
 "subscriptions__payments" = "Πληρωμές";
 "subscriptions__per_day" = "ανά ημέρα";

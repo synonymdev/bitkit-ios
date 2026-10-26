@@ -1605,7 +1605,7 @@
 "subscriptions__name_placeholder" = "Naam abonnement";
 "subscriptions__ongoing" = "Doorlopend";
 "subscriptions__overview" = "Overzicht";
-"subscriptions__payment_due_description" = "Open Bitkit om een abonnementsbetaling te bekijken.";
+"subscriptions__payment_due_description" = "Open Bitkit om de betaling te bekijken";
 "subscriptions__payment_due_title" = "Abonnementsbetaling verschuldigd";
 "subscriptions__payments" = "Betalingen";
 "subscriptions__per_day" = "per dag";

@@ -1430,7 +1430,7 @@
 "subscriptions__name_placeholder" = "اسم الاشتراك";
 "subscriptions__ongoing" = "مستمر";
 "subscriptions__overview" = "نظرة عامة";
-"subscriptions__payment_due_description" = "افتح Bitkit لمراجعة دفعة اشتراك.";
+"subscriptions__payment_due_description" = "افتح Bitkit لمراجعة الدفعة";
 "subscriptions__payment_due_title" = "دفعة اشتراك مستحقة";
 "subscriptions__payments" = "المدفوعات";
 "subscriptions__per_day" = "يوميًا";

@@ -1602,7 +1602,7 @@
 "subscriptions__name_placeholder" = "Nombre de la suscripción";
 "subscriptions__ongoing" = "En curso";
 "subscriptions__overview" = "Resumen";
-"subscriptions__payment_due_description" = "Abra Bitkit para revisar un pago de suscripción.";
+"subscriptions__payment_due_description" = "Abra Bitkit para revisar el pago";
 "subscriptions__payment_due_title" = "Pago de suscripción pendiente";
 "subscriptions__payments" = "Pagos";
 "subscriptions__per_day" = "por día";

@@ -1599,7 +1599,7 @@
 "subscriptions__name_placeholder" = "Název předplatného";
 "subscriptions__ongoing" = "Průběžné";
 "subscriptions__overview" = "Přehled";
-"subscriptions__payment_due_description" = "Otevřete Bitkit a zkontrolujte platbu předplatného.";
+"subscriptions__payment_due_description" = "Otevřete Bitkit a zkontrolujte platbu";
 "subscriptions__payment_due_title" = "Splatná platba předplatného";
 "subscriptions__payments" = "Platby";
 "subscriptions__per_day" = "za den";

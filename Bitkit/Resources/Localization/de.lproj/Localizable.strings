@@ -1597,7 +1597,7 @@
 "subscriptions__name_placeholder" = "Name des Abonnements";
 "subscriptions__ongoing" = "Laufend";
 "subscriptions__overview" = "Übersicht";
-"subscriptions__payment_due_description" = "Öffne Bitkit, um eine Abonnementzahlung zu prüfen.";
+"subscriptions__payment_due_description" = "Öffne Bitkit, um die Zahlung zu prüfen";
 "subscriptions__payment_due_title" = "Abonnementzahlung fällig";
 "subscriptions__payments" = "Zahlungen";
 "subscriptions__per_day" = "pro Tag";

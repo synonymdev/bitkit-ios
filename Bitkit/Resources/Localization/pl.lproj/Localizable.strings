@@ -1609,7 +1609,7 @@
 "subscriptions__name_placeholder" = "Nazwa subskrypcji";
 "subscriptions__ongoing" = "W toku";
 "subscriptions__overview" = "Przegląd";
-"subscriptions__payment_due_description" = "Otwórz Bitkit, aby przejrzeć płatność za subskrypcję.";
+"subscriptions__payment_due_description" = "Otwórz Bitkit, aby przejrzeć płatność";
 "subscriptions__payment_due_title" = "Termin płatności za subskrypcję";
 "subscriptions__payments" = "Płatności";
 "subscriptions__per_day" = "dziennie";

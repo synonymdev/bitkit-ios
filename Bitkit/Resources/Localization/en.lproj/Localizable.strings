@@ -1613,7 +1613,7 @@
 "subscriptions__name_placeholder" = "Subscription name";
 "subscriptions__ongoing" = "Ongoing";
 "subscriptions__overview" = "Overview";
-"subscriptions__payment_due_description" = "Open Bitkit to review a subscription payment.";
+"subscriptions__payment_due_description" = "Open Bitkit to review payment";
 "subscriptions__payment_due_title" = "Subscription Payment Due";
 "subscriptions__payments" = "Payments";
 "subscriptions__per_day" = "per day";

@@ -1593,7 +1593,7 @@
 "subscriptions__name_placeholder" = "Название подписки";
 "subscriptions__ongoing" = "Бессрочно";
 "subscriptions__overview" = "Обзор";
-"subscriptions__payment_due_description" = "Откройте Bitkit, чтобы проверить платёж по подписке.";
+"subscriptions__payment_due_description" = "Откройте Bitkit, чтобы проверить платёж";
 "subscriptions__payment_due_title" = "Пора Оплатить Подписку";
 "subscriptions__payments" = "Платежи";
 "subscriptions__per_day" = "в день";
