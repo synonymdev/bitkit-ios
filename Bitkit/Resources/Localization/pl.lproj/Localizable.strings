@@ -389,7 +389,6 @@
 "lightning__force_init_msg" = "Środki będą dostępne w ciągu ±14 dni.";
 "lightning__force_failed_title" = "Wymuszenie transferu nie powiodło się";
 "lightning__force_failed_msg" = "Nie można przelać środków z powrotem na saldo oszczędności. Proszę spróbować ponownie.";
-"lightning__force_channels_skipped" = "Niektórych połączeń nie udało się zamknąć.";
 "lightning__channel_opened_title" = "Saldo wydatków gotowe";
 "lightning__channel_opened_msg" = "Teraz możesz zapłacić każdemu, gdziekolwiek, natychmiast.";
 "lightning__funding__button_hw" = "Prześlij z portfela HW";

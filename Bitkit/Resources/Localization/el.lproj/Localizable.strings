@@ -360,7 +360,6 @@
 "lightning__force_init_msg" = "Τα κεφάλαιά σας θα είναι προσβάσιμα σε ±14 ημέρες.";
 "lightning__force_failed_title" = "Η Αναγκαστική Μεταφορά Απέτυχε";
 "lightning__force_failed_msg" = "Αδυναμία μεταφοράς των κεφαλαίων σας πίσω στις αποταμιεύσεις. Παρακαλώ δοκιμάστε ξανά.";
-"lightning__force_channels_skipped" = "Ορισμένες συνδέσεις δεν μπόρεσαν να κλείσουν.";
 "lightning__channel_opened_title" = "Το Υπόλοιπο Δαπανών είναι Έτοιμο";
 "lightning__channel_opened_msg" = "Τώρα μπορείτε να πληρώσετε οποιονδήποτε, οπουδήποτε, άμεσα.";
 "lightning__funding__button_hw" = "Μεταφορά από πορτοφόλι HW";

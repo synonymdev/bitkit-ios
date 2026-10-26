@@ -384,7 +384,6 @@
 "lightning__force_init_msg" = "Ваши средства будут доступны через ±14 дней.";
 "lightning__force_failed_title" = "Неудачный Принудительный Перевод";
 "lightning__force_failed_msg" = "Не удалось перевести ваши средства обратно в сбережения. Пожалуйста, попробуйте снова.";
-"lightning__force_channels_skipped" = "Некоторые соединения не удалось закрыть.";
 "lightning__channel_opened_title" = "Баланс Расходов Готов";
 "lightning__channel_opened_msg" = "Теперь вы можете платить кому угодно, где угодно, мгновенно.";
 "lightning__funding__button_hw" = "Перевести с аппаратного кошелька";

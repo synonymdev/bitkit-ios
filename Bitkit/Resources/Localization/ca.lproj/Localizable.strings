@@ -373,7 +373,6 @@
 "lightning__force_init_msg" = "Els vostres fons seran accessibles en ±14 dies.";
 "lightning__force_failed_title" = "Transferència forçada fallida";
 "lightning__force_failed_msg" = "No es possible transferir els teus fons de tornada a estalvi. Si us plau, intenta-ho de nou.";
-"lightning__force_channels_skipped" = "Algunes connexions no s\'han pogut tancar.";
 "lightning__channel_opened_title" = "Saldo de despesa llest";
 "lightning__channel_opened_msg" = "Ara pots pagar a qualsevol persona, en qualsevol lloc, instantàniament.";
 "lightning__funding__button_hw" = "Transferir des del moneder HW";

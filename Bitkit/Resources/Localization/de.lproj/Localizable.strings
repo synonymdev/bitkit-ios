@@ -387,7 +387,6 @@
 "lightning__force_init_msg" = "Dein Guthaben wird in ±14 Tagen zur Verfügung stehen.";
 "lightning__force_failed_title" = "Forcierte Übertragung fehlgeschlagen";
 "lightning__force_failed_msg" = "Unable to transfer your funds back to savings. Please try again.";
-"lightning__force_channels_skipped" = "Einige Verbindungen konnten nicht geschlossen werden.";
 "lightning__channel_opened_title" = "Spending Balance Ready";
 "lightning__channel_opened_msg" = "Du kannst jetzt jedermann, überall, instant bezahlen.";
 "lightning__funding__button_hw" = "Von HW-Wallet übertragen";

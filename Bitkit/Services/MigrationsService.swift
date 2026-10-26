@@ -2328,8 +2328,7 @@ extension MigrationsService {
                 return []
             }
 
-            let trustedIds = Set(Env.trustedLnPeers.map(\.nodeId))
-            let uris = peers.filter { !trustedIds.contains($0.pubKey) }.map { "\($0.pubKey)@\($0.address):\($0.port)" }
+            let uris = peers.map { "\($0.pubKey)@\($0.address):\($0.port)" }
             Logger.info("Migration peer recovery: fetched \(uris.count) peer(s) from remote backup", context: "Migration")
             return uris
         } catch {

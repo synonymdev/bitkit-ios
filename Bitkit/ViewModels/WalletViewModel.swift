@@ -96,14 +96,6 @@ class WalletViewModel: ObservableObject {
     private let feeEstimatesManager: FeeEstimatesManager
     private let pubkyProfile: PubkyProfileManager?
 
-    enum BlocktankPeerSimulation: String, CaseIterable {
-        case none = "None"
-        case apiFailure = "API Failure"
-        case unreachablePeers = "Unreachable Peers"
-    }
-
-    static var peerSimulation: BlocktankPeerSimulation = .none
-
     @Published var isRestoringWallet = false
     @Published var balanceInTransferToSavings: Int = 0
     @Published var balanceInTransferToSpending: Int = 0
@@ -270,7 +262,6 @@ class WalletViewModel: ObservableObject {
                         Task {
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21(reportsError: false)
-                            await self.reconnectTrustedPeers()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
                             try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
                             guard !Task.isCancelled else { return }
@@ -362,7 +353,11 @@ class WalletViewModel: ObservableObject {
 
         syncState()
 
-        await reconnectTrustedPeers()
+        do {
+            try await lightningService.disconnectIdlePeers()
+        } catch {
+            Logger.error("Failed to disconnect idle peers: \(error)")
+        }
 
         // Migration only: fetch peers from remote backup (once) and persist in ldk-node
         let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
@@ -419,54 +414,6 @@ class WalletViewModel: ObservableObject {
         } catch {
             Logger.error("Pre-startup channel monitor fetch failed: \(error)", context: "WalletViewModel")
             return (nil, false)
-        }
-    }
-
-    private func fetchTrustedPeersFromBlocktank() async -> [LnPeer]? {
-        switch Self.peerSimulation {
-        case .apiFailure:
-            Logger.warn("⚠️ [DEBUG] Simulating Blocktank API failure — returning nil")
-            return nil
-        case .unreachablePeers:
-            Logger.warn("⚠️ [DEBUG] Simulating unreachable API peers")
-            return [
-                LnPeer(
-                    nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
-                    host: "192.0.2.1",
-                    port: 9735
-                ),
-            ]
-        case .none:
-            break
-        }
-
-        var info: IBtInfo?
-        do {
-            info = try await coreService.blocktank.info(refresh: true)
-        } catch {
-            Logger.warn("Blocktank API refresh failed, trying cache: \(error)")
-        }
-        if info == nil {
-            info = try? await coreService.blocktank.info(refresh: false)
-        }
-        guard let nodes = info?.nodes, !nodes.isEmpty else { return nil }
-        let peers = nodes.compactMap { node -> LnPeer? in
-            guard let connString = node.connectionStrings.first else { return nil }
-            let address = connString.contains("@") ? String(connString.split(separator: "@").last ?? "") : connString
-            let parts = address.split(separator: ":")
-            guard parts.count == 2, let port = UInt16(parts[1]) else { return nil }
-            return LnPeer(nodeId: node.pubkey, host: String(parts[0]), port: port)
-        }
-        Logger.info("Fetched \(peers.count) trusted peers from Blocktank API")
-        return peers.isEmpty ? nil : peers
-    }
-
-    func reconnectTrustedPeers() async {
-        do {
-            let remotePeers = await fetchTrustedPeersFromBlocktank()
-            try await lightningService.connectToTrustedPeers(remotePeers: remotePeers)
-        } catch {
-            Logger.error("Failed to connect to trusted peers")
         }
     }
 

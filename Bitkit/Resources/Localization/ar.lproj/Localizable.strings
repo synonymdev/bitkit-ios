@@ -336,7 +336,6 @@
 "lightning__force_init_msg" = "ستكون أموالك متاحة خلال ±14 يومًا.";
 "lightning__force_failed_title" = "فشل التحويل الإجباري";
 "lightning__force_failed_msg" = "تعذر تحويل أموالك إلى المدخرات. يرجى المحاولة مرة أخرى.";
-"lightning__force_channels_skipped" = "تعذر إغلاق بعض الاتصالات.";
 "lightning__channel_opened_title" = "رصيد الإنفاق جاهز";
 "lightning__channel_opened_msg" = "يمكنك الآن الدفع لأي شخص، في أي مكان، فورًا.";
 "lightning__funding__button_hw" = "تحويل من محفظة الأجهزة";

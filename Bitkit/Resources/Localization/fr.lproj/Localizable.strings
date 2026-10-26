@@ -390,7 +390,6 @@
 "lightning__force_init_msg" = "Vos fonds seront accessibles dans un délai de ±14 jours.";
 "lightning__force_failed_title" = "Échec du transfert forcé";
 "lightning__force_failed_msg" = "Impossible de renvoyer vos fonds sur l\'Épargne. Veuillez réessayer.";
-"lightning__force_channels_skipped" = "Certaines connexions n'ont pas pu être fermées.";
 "lightning__channel_opened_title" = "Solde Dépenses";
 "lightning__channel_opened_msg" = "Vous pouvez désormais payer n\'importe qui, n\'importe où, instantanément.";
 "lightning__funding__button_hw" = "Transfert depuis le portefeuille HW";

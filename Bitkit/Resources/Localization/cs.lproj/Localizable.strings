@@ -389,7 +389,6 @@
 "lightning__force_init_msg" = "Vaše prostředky budou dostupné do ±14 dnů.";
 "lightning__force_failed_title" = "Vynucení převodu selhalo.";
 "lightning__force_failed_msg" = "Nelze převést vaše prostředky zpět do úspor. Zkuste to prosím znovu.";
-"lightning__force_channels_skipped" = "Některá připojení se nepodařilo zavřít.";
 "lightning__channel_opened_title" = "Disponibilní zůstatek připraven";
 "lightning__channel_opened_msg" = "Nyní můžete platit komukoli, kdekoli a okamžitě.";
 "lightning__funding__button_hw" = "Převod z HW peněženky";

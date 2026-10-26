@@ -383,7 +383,6 @@
 "lightning__force_init_msg" = "I tuoi fondi saranno accessibili in ±14 giorni.";
 "lightning__force_failed_title" = "Trasferimento Forzato Fallito";
 "lightning__force_failed_msg" = "Impossibile trasferire nuovamente i fondi nei risparmi. Per favore riprova.";
-"lightning__force_channels_skipped" = "Alcune connessioni non sono state chiuse.";
 "lightning__channel_opened_title" = "Conto di spesa Pronto";
 "lightning__channel_opened_msg" = "Ora puoi pagare chiunque, ovunque, istantaneamente.";
 "lightning__funding__button_hw" = "Trasferimento da wallet HW";

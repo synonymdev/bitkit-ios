@@ -99,22 +99,8 @@ class LightningService {
 
         currentWalletIndex = walletIndex
 
-        var config = defaultConfig()
-        let ldkStoragePath = Env.ldkStorage(walletIndex: walletIndex).path
-        config.storageDirPath = ldkStoragePath
-        config.network = Env.network
-        config.probingLiquidityLimitMultiplier = 1
-
-        Logger.debug("Using LDK storage path: \(ldkStoragePath)")
-
-        let trustedPeersIds = Env.trustedLnPeers.map(\.nodeId)
-
-        config.trustedPeers0conf = trustedPeersIds
-        config.anchorChannelsConfig = .init(
-            trustedPeersNoReserve: trustedPeersIds,
-            perChannelReserveSats: 1
-        )
-        config.includeUntrustedPendingInSpendable = true
+        var config = Self.nodeConfig(walletIndex: walletIndex)
+        Logger.debug("Using LDK storage path: \(config.storageDirPath)")
 
         let (selectedAddressType, monitoredTypes) = Self.addressTypeStateFromUserDefaults()
         config.addressType = selectedAddressType
@@ -366,62 +352,54 @@ class LightningService {
         return modificationDate
     }
 
-    func connectToTrustedPeers(remotePeers: [LnPeer]? = nil) async throws {
+    /// Disconnects stored peers we have nothing pending with, which also drops them from the peer store.
+    /// Skips the run while any closed channel still awaits its sweep, as a sweep does not name its peer.
+    func disconnectIdlePeers() async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        let peers: [LnPeer]
-        let usingRemotePeers: Bool
-        if let remotePeers, !remotePeers.isEmpty {
-            Logger.info("Using \(remotePeers.count) trusted peers from Blocktank API")
-            peers = remotePeers
-            usingRemotePeers = true
-        } else {
-            Logger.warn("No remote peers available, falling back to preconfigured env peers")
-            peers = Env.trustedLnPeers
-            usingRemotePeers = false
-        }
-
         try await ServiceQueue.background(.ldk) {
-            for peer in peers {
+            let balances = node.listBalances()
+            let idlePeerIds = Self.idlePeerIds(
+                peers: node.listPeers(),
+                channels: node.listChannels(),
+                lightningBalances: balances.lightningBalances,
+                pendingSweeps: balances.pendingBalancesFromChannelClosures
+            )
+            for nodeId in idlePeerIds {
                 do {
-                    try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
-                    Logger.info("Connected to trusted peer: \(peer.nodeId)")
+                    try node.disconnect(nodeId: nodeId)
+                    Logger.info("Disconnected idle peer: \(nodeId)")
                 } catch {
-                    Logger.error(error, context: "Peer: \(peer.nodeId)")
+                    Logger.warn("Failed to disconnect idle peer: \(nodeId)")
                 }
-            }
-
-            if usingRemotePeers {
-                self.verifyTrustedPeersOrFallback(node: node, trustedPeers: peers)
             }
         }
     }
 
-    private func verifyTrustedPeersOrFallback(node: Node, trustedPeers: [LnPeer]) {
-        let connectedPeerIds = Set(node.listPeers().filter(\.isConnected).map(\.nodeId))
-        let trustedConnected = trustedPeers.filter { connectedPeerIds.contains($0.nodeId) }.count
-        let trustedPeerIds = Set(trustedPeers.map(\.nodeId))
-
-        if trustedConnected == 0, !trustedPeers.isEmpty {
-            let fallbackPeers = Env.trustedLnPeers.filter { !trustedPeerIds.contains($0.nodeId) }
-            if fallbackPeers.isEmpty {
-                Logger.warn("No trusted peers connected. All preconfigured env peers overlap with API peers (not retrying with stale addresses).")
-            } else {
-                Logger.warn("No trusted peers connected, trying \(fallbackPeers.count) preconfigured env peer(s) not in API list")
-                for peer in fallbackPeers {
-                    do {
-                        try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
-                        Logger.info("Connected to fallback peer: \(peer.nodeId)")
-                    } catch {
-                        Logger.error(error, context: "Fallback peer: \(peer.nodeId)")
-                    }
-                }
-            }
-        } else {
-            Logger.info("Connected to \(trustedConnected)/\(trustedPeers.count) trusted peers")
+    private static func counterpartyNodeId(of balance: LightningBalance) -> PublicKey {
+        switch balance {
+        case let .claimableOnChannelClose(_, counterpartyNodeId, _, _, _, _, _, _),
+             let .claimableAwaitingConfirmations(_, counterpartyNodeId, _, _, _),
+             let .contentiousClaimable(_, counterpartyNodeId, _, _, _, _),
+             let .maybeTimeoutClaimableHtlc(_, counterpartyNodeId, _, _, _, _),
+             let .maybePreimageClaimableHtlc(_, counterpartyNodeId, _, _, _),
+             let .counterpartyRevokedOutputClaimable(_, counterpartyNodeId, _):
+            return counterpartyNodeId
         }
+    }
+
+    /// Returns the stored peers with no channel and no claimable balance, or none while any sweep is pending.
+    static func idlePeerIds(
+        peers: [PeerDetails],
+        channels: [ChannelDetails],
+        lightningBalances: [LightningBalance],
+        pendingSweeps: [PendingSweepBalance]
+    ) -> [PublicKey] {
+        guard pendingSweeps.isEmpty else { return [] }
+        let busyPeerIds = Set(channels.map(\.counterpartyNodeId) + lightningBalances.map(counterpartyNodeId(of:)))
+        return peers.filter { $0.isPersisted && !busyPeerIds.contains($0.nodeId) }.map(\.nodeId)
     }
 
     func connectPeer(peer: LnPeer, persist: Bool = true) async throws {
@@ -904,17 +882,6 @@ class LightningService {
 
         Logger.debug("closeChannel called to channel=\(channel), force=\(force)", context: "LightningService")
 
-        // Prevent force closing channels with trusted peers (LSP nodes)
-        if force {
-            let trustedPeerIds = Set(getLspPeerNodeIds())
-            if trustedPeerIds.contains(channel.counterpartyNodeId.description) {
-                throw AppError(
-                    message: "Cannot force close channel with trusted peer",
-                    debugMessage: "Force close is disabled for Blocktank LSP channels. Please use cooperative close instead."
-                )
-            }
-        }
-
         return try await closeChannel(
             userChannelId: channel.userChannelId,
             counterpartyNodeId: channel.counterpartyNodeId,
@@ -1093,25 +1060,6 @@ class LightningService {
 
         sb += "  Total nodes: \(allNodes.count)\n"
         sb += "  Total channels: \(allChannels.count)\n"
-
-        // Check for trusted peers in graph
-        sb += "\n  Checking for trusted peers in network graph:\n"
-        let trustedPeers = Env.trustedLnPeers
-        var foundTrustedNodes = 0
-        let allNodeStrings = allNodes.map(\.description)
-
-        for peer in trustedPeers {
-            let nodeId = peer.nodeId
-            if allNodeStrings.contains(nodeId) {
-                foundTrustedNodes += 1
-                let nodeIdPreview = String(nodeId.prefix(nodeIdPreviewLength))
-                sb += "    OK: \(nodeIdPreview)... found in graph\n"
-            } else {
-                let nodeIdPreview = String(nodeId.prefix(nodeIdPreviewLength))
-                sb += "    MISSING: \(nodeIdPreview)... NOT in graph\n"
-            }
-        }
-        sb += "  Summary: \(foundTrustedNodes)/\(trustedPeers.count) trusted peers found in graph\n"
 
         // Show first 10 nodes
         let nodesToShow = min(10, allNodes.count)
@@ -1341,6 +1289,22 @@ extension LightningService {
         return totalFundable
     }
 
+    /// Builds the node config. LSP peers are not trusted for zero-conf channels or to broadcast our force
+    /// closes: Blocktank no longer serves channels, so our node must broadcast and fee-bump its own closes.
+    static func nodeConfig(walletIndex: Int) -> Config {
+        var config = defaultConfig()
+        config.storageDirPath = Env.ldkStorage(walletIndex: walletIndex).path
+        config.network = Env.network
+        config.probingLiquidityLimitMultiplier = 1
+        config.trustedPeers0conf = []
+        config.anchorChannelsConfig = .init(
+            trustedPeersNoReserve: [],
+            perChannelReserveSats: 1
+        )
+        config.includeUntrustedPendingInSpendable = true
+        return config
+    }
+
     /// Reads selected and monitored address types from UserDefaults and keeps native SegWit enabled
     /// so delayed Blocktank refund payments remain detectable.
     static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
@@ -1354,23 +1318,6 @@ extension LightningService {
             defaults.set(monitoredTypes.map(\.stringValue).joined(separator: ","), forKey: "addressTypesToMonitor")
         }
         return (selectedType, monitoredTypes)
-    }
-
-    /// Returns LSP (Blocktank) peer node IDs
-    func getLspPeerNodeIds() -> [String] {
-        return Env.trustedLnPeers.map(\.nodeId)
-    }
-
-    /// Separates channels into trusted (LSP) and non-trusted peers
-    func separateTrustedChannels(_ channels: [ChannelDetails]) -> (trusted: [ChannelDetails], nonTrusted: [ChannelDetails]) {
-        let trustedPeerIds = Set(getLspPeerNodeIds())
-        let trusted = channels.filter { channel in
-            trustedPeerIds.contains(channel.counterpartyNodeId.description)
-        }
-        let nonTrusted = channels.filter { channel in
-            !trustedPeerIds.contains(channel.counterpartyNodeId.description)
-        }
-        return (trusted: trusted, nonTrusted: nonTrusted)
     }
 
     /// Get a channel by ID from the channel cache

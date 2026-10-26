@@ -382,7 +382,6 @@
 "lightning__force_init_msg" = "Your funds will be accessible in ±14 days.";
 "lightning__force_failed_title" = "Force Transfer Failed";
 "lightning__force_failed_msg" = "Unable to transfer your funds back to savings. Please try again.";
-"lightning__force_channels_skipped" = "Some connections could not be closed.";
 "lightning__channel_opened_title" = "Spending Balance Ready";
 "lightning__channel_opened_msg" = "You can now pay anyone, anywhere, instantly.";
 "lightning__funding__button_hw" = "Transfer from HW wallet";

@@ -387,7 +387,6 @@
 "lightning__force_init_msg" = "Uw geld zal in ±14 dagen beschikbaar zijn.";
 "lightning__force_failed_title" = "Geforceerde Overboeking Mislukt";
 "lightning__force_failed_msg" = "Het geld kon niet worden teruggeboekt naar uw spaarsaldo. Probeer het opnieuw.";
-"lightning__force_channels_skipped" = "Sommige verbindingen konden niet worden gesloten.";
 "lightning__channel_opened_title" = "Bestedingssaldo Gereed";
 "lightning__channel_opened_msg" = "U kunt nu directe betalingen maken aan wie u wilt, wanneer u wilt.";
 "lightning__funding__button_hw" = "Overboeken van HW-wallet";

@@ -389,7 +389,6 @@
 "lightning__force_init_msg" = "Seus fundos estarão disponíveis em ±14 dias.";
 "lightning__force_failed_title" = "Falha na transferência forçada";
 "lightning__force_failed_msg" = "Não foi possível transferir seus fundos de volta para sua poupança. Por favor, tente novamente.";
-"lightning__force_channels_skipped" = "Algumas conexões não puderam ser fechadas.";
 "lightning__channel_opened_title" = "Saldo de Gastos Pronto";
 "lightning__channel_opened_msg" = "Agora é possível pagar qualquer pessoa, em qualquer lugar, instantaneamente.";
 "lightning__funding__button_hw" = "Transferir da carteira HW";

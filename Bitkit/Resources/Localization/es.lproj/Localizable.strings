@@ -374,7 +374,6 @@
 "lightning__force_init_msg" = "Sus fondos estarán accesibles en ±14 días.";
 "lightning__force_failed_title" = "Transferencia forzada falló";
 "lightning__force_failed_msg" = "No se pudieron transferir los fondos de vuelta a ahorros. Por favor, inténtelo de nuevo.";
-"lightning__force_channels_skipped" = "Algunas conexiones no se pudieron cerrar.";
 "lightning__channel_opened_title" = "Saldo de Gasto Listo";
 "lightning__channel_opened_msg" = "Ahora puede pagar a cualquier persona, en cualquier lugar y al instante.";
 "lightning__funding__button_hw" = "Transferir desde billetera HW";
