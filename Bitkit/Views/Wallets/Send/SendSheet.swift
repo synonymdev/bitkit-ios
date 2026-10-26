@@ -710,7 +710,8 @@ struct SendSheet: View {
                 return .failed
             }
             guard LightningService.shared.canSend(amountSats: requestedAmount) else {
-                let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
+                    + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
                 flow.hasValidatedAfterSync = true
                 return .failed
@@ -777,7 +778,8 @@ struct SendSheet: View {
                     return .ready
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
-                    let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                    let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
+                        + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                     flow.hasValidatedAfterSync = true
                     return .failed
