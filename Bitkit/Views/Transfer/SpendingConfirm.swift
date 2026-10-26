@@ -93,53 +93,54 @@ struct SpendingConfirm: View {
                 .padding(.vertical, 16)
             }
 
-            HStack(alignment: .center, spacing: 0) {
-                BodyMText(t("lightning__spending_confirm__background_setup"), textColor: .textPrimary)
+            // Blocktank's order-paid push and channel liquidity don't apply to funding Spark.
+            if !transfer.uiState.isSpark {
+                HStack(alignment: .center, spacing: 0) {
+                    BodyMText(t("lightning__spending_confirm__background_setup"), textColor: .textPrimary)
 
-                Spacer()
+                    Spacer()
 
-                Toggle("", isOn: $settings.enableNotifications)
-                    .toggleStyle(SwitchToggleStyle(tint: .purpleAccent))
-                    .labelsHidden()
-                    .accessibilityIdentifier("SpendingConfirmNotificationSwitch")
-            }
-            .frame(height: 50)
-
-            Divider()
-                .padding(.bottom, 16)
-
-            HStack(spacing: 16) {
-                CustomButton(title: t("common__learn_more"), size: .small) {
-                    navigation.navigate(.transferLearnMore)
+                    Toggle("", isOn: $settings.enableNotifications)
+                        .toggleStyle(SwitchToggleStyle(tint: .purpleAccent))
+                        .labelsHidden()
+                        .accessibilityIdentifier("SpendingConfirmNotificationSwitch")
                 }
-                .accessibilityIdentifier("SpendingConfirmMore")
+                .frame(height: 50)
 
-                if transfer.uiState.isSpark {
-                    EmptyView()
-                } else if transfer.uiState.isAdvanced {
-                    CustomButton(title: t("lightning__spending_confirm__default"), size: .small) {
-                        do {
-                            let values = transfer.calculateTransferValues(
-                                clientBalanceSat: transfer.uiState.clientBalanceSat,
-                                blocktankInfo: blocktank.info
-                            )
-                            try await transfer.onDefaultClick(lspBalance: max(values.defaultLspBalance, values.minLspBalance)) {
-                                try await blocktank.estimateFundingAmount(clientBalance: $0, lspBalance: $1)
+                Divider()
+                    .padding(.bottom, 16)
+
+                HStack(spacing: 16) {
+                    CustomButton(title: t("common__learn_more"), size: .small) {
+                        navigation.navigate(.transferLearnMore)
+                    }
+                    .accessibilityIdentifier("SpendingConfirmMore")
+
+                    if transfer.uiState.isAdvanced {
+                        CustomButton(title: t("lightning__spending_confirm__default"), size: .small) {
+                            do {
+                                let values = transfer.calculateTransferValues(
+                                    clientBalanceSat: transfer.uiState.clientBalanceSat,
+                                    blocktankInfo: blocktank.info
+                                )
+                                try await transfer.onDefaultClick(lspBalance: max(values.defaultLspBalance, values.minLspBalance)) {
+                                    try await blocktank.estimateFundingAmount(clientBalance: $0, lspBalance: $1)
+                                }
+                            } catch {
+                                app.toast(error)
                             }
-                        } catch {
-                            app.toast(error)
                         }
+                        .accessibilityIdentifier("SpendingConfirmDefault")
+                    } else {
+                        CustomButton(title: t("common__advanced"), size: .small) {
+                            navigation.navigate(.spendingAdvanced())
+                        }
+                        .accessibilityIdentifier("SpendingConfirmAdvanced")
                     }
-                    .accessibilityIdentifier("SpendingConfirmDefault")
-                } else {
-                    CustomButton(title: t("common__advanced"), size: .small) {
-                        navigation.navigate(.spendingAdvanced())
-                    }
-                    .accessibilityIdentifier("SpendingConfirmAdvanced")
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .disabled(isPaying)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .disabled(isPaying)
 
             Spacer()
 

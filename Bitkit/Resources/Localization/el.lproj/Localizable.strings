@@ -337,6 +337,7 @@
 "lightning__spark_deposits_pending" = "Καταθέσεις σε εξέλιξη";
 "lightning__spark_provider" = "Πάροχος";
 "lightning__spark_provider_value" = "Spark μέσω Breez";
+"lightning__spark_receiving_unlimited" = "Χωρίς όριο";
 "lightning__spark_trust" = "Αυτό το υπόλοιπο φυλάσσεται στο Spark, που λειτουργούν οι Lightspark, Breez και Flashnet. Είναι ασφαλές όσο τουλάχιστον ένας από αυτούς ενεργεί έντιμα. Μπορούν να αναστείλουν την πρόσβαση, και η έξοδος χωρίς αυτούς απαιτεί έξοδο on-chain.";
 "lightning__reserve_balance" = "Υπόλοιπο αποθεματικού (μη δαπανήσιμο)";
 "lightning__total_size" = "Συνολικό μέγεθος καναλιού";

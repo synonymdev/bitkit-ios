@@ -31,7 +31,8 @@ struct SparkConnectionRow: View {
                     capacity: spark.balanceSats,
                     localBalance: spark.balanceSats,
                     remoteBalance: 0,
-                    status: .open
+                    status: .open,
+                    showReceiving: false
                 )
                 .padding(.bottom, 16)
 
@@ -105,7 +106,8 @@ struct SparkConnectionDetailView: View {
                             capacity: spark.balanceSats,
                             localBalance: spark.balanceSats,
                             remoteBalance: 0,
-                            status: .open
+                            status: .open,
+                            showReceiving: false
                         )
                         .padding(.bottom, 28)
 

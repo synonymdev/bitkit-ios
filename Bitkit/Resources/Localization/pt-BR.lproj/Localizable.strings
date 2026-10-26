@@ -366,6 +366,7 @@
 "lightning__spark_deposits_pending" = "Depósitos em andamento";
 "lightning__spark_provider" = "Provedor";
 "lightning__spark_provider_value" = "Spark via Breez";
+"lightning__spark_receiving_unlimited" = "Sem limite";
 "lightning__spark_trust" = "Este saldo fica na Spark, operada pela Lightspark, Breez e Flashnet. Ele está seguro enquanto pelo menos um deles agir com honestidade. Eles podem pausar o acesso, e sair sem eles exige uma saída on-chain.";
 "lightning__reserve_balance" = "Saldo de reserva (não utilizável)";
 "lightning__total_size" = "Tamanho total do canal";

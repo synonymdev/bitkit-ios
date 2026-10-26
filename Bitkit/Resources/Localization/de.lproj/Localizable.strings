@@ -364,6 +364,7 @@
 "lightning__spark_deposits_pending" = "Laufende Einzahlungen";
 "lightning__spark_provider" = "Anbieter";
 "lightning__spark_provider_value" = "Spark über Breez";
+"lightning__spark_receiving_unlimited" = "Kein Limit";
 "lightning__spark_trust" = "Dieses Guthaben liegt auf Spark, betrieben von Lightspark, Breez und Flashnet. Es ist sicher, solange mindestens einer von ihnen ehrlich handelt. Sie können den Zugang sperren, und ein Ausstieg ohne sie erfordert einen On-Chain-Exit.";
 "lightning__reserve_balance" = "Reserveguthaben";
 "lightning__total_size" = "Gesamtgröße des Channels";

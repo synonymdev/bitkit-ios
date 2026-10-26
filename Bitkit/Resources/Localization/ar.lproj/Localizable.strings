@@ -313,6 +313,7 @@
 "lightning__spark_deposits_pending" = "إيداعات قيد التنفيذ";
 "lightning__spark_provider" = "المزوّد";
 "lightning__spark_provider_value" = "Spark عبر Breez";
+"lightning__spark_receiving_unlimited" = "بلا حد";
 "lightning__spark_trust" = "يُحفظ هذا الرصيد على Spark الذي تديره Lightspark وBreez وFlashnet. يبقى آمنًا ما دام أحدهم على الأقل يتصرف بأمانة. يمكنهم إيقاف الوصول مؤقتًا، والخروج من دونهم يتطلب خروجًا على السلسلة.";
 "lightning__reserve_balance" = "رصيد الاحتياطي (غير قابل للإنفاق)";
 "lightning__total_size" = "الحجم الإجمالي للقناة";

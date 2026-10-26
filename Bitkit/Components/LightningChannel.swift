@@ -12,19 +12,23 @@ struct LightningChannel: View {
     let remoteBalance: UInt64
     let status: ChannelStatus
     let showLabels: Bool
+    /// False for a balance whose receiving isn't capped by a channel, such as Spark: only the spending side is drawn.
+    let showReceiving: Bool
 
     init(
         capacity: UInt64,
         localBalance: UInt64,
         remoteBalance: UInt64,
         status: ChannelStatus = .open,
-        showLabels: Bool = false
+        showLabels: Bool = false,
+        showReceiving: Bool = true
     ) {
         self.capacity = capacity
         self.localBalance = localBalance
         self.remoteBalance = remoteBalance
         self.status = status
         self.showLabels = showLabels
+        self.showReceiving = showReceiving
     }
 
     private var spendingColor: Color {
@@ -90,7 +94,9 @@ struct LightningChannel: View {
 
                     Spacer()
 
-                    CaptionMText(t("lightning__receiving_label"))
+                    if showReceiving {
+                        CaptionMText(t("lightning__receiving_label"))
+                    }
                 }
             }
 
@@ -106,48 +112,74 @@ struct LightningChannel: View {
 
                 Spacer()
 
-                HStack(spacing: 4) {
-                    Image("arrow-down")
-                        .resizable()
-                        .frame(width: 14, height: 14)
-                        .foregroundColor(receivingAvailableColor)
+                if showReceiving {
+                    HStack(spacing: 4) {
+                        Image("arrow-down")
+                            .resizable()
+                            .frame(width: 14, height: 14)
+                            .foregroundColor(receivingAvailableColor)
 
-                    BodySSBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
+                        BodySSBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
+                    }
                 }
             }
 
-            HStack(spacing: 4) {
-                // Spending bar (left)
-                ZStack(alignment: .trailing) {
-                    // Background
-                    Rectangle()
-                        .fill(spendingColor)
-                        .cornerRadius(8, corners: [.topLeft, .bottomLeft])
-
-                    // Available
-                    Rectangle()
-                        .fill(spendingAvailableColor)
-                        .frame(width: spendingPercentage * 100.0)
-                        .cornerRadius(8, corners: [.topLeft, .bottomLeft])
-                }
-
-                // Receiving bar (right)
-                ZStack(alignment: .leading) {
-                    // Background
-                    Rectangle()
-                        .fill(receivingColor)
-                        .cornerRadius(8, corners: [.topRight, .bottomRight])
-
-                    // Available
-                    Rectangle()
-                        .fill(receivingAvailableColor)
-                        .frame(width: receivingPercentage * 100.0)
-                        .cornerRadius(8, corners: [.topRight, .bottomRight])
-                }
+            if showReceiving {
+                channelBars
+            } else {
+                spendingBar
             }
-            .frame(height: 16)
         }
         .opacity(status == .pending ? 0.5 : 1.0)
+    }
+
+    private var spendingBar: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(spendingColor)
+                    .cornerRadius(8)
+
+                Rectangle()
+                    .fill(spendingAvailableColor)
+                    .frame(width: spendingPercentage * geometry.size.width)
+                    .cornerRadius(8)
+            }
+        }
+        .frame(height: 16)
+    }
+
+    private var channelBars: some View {
+        HStack(spacing: 4) {
+            // Spending bar (left)
+            ZStack(alignment: .trailing) {
+                // Background
+                Rectangle()
+                    .fill(spendingColor)
+                    .cornerRadius(8, corners: [.topLeft, .bottomLeft])
+
+                // Available
+                Rectangle()
+                    .fill(spendingAvailableColor)
+                    .frame(width: spendingPercentage * 100.0)
+                    .cornerRadius(8, corners: [.topLeft, .bottomLeft])
+            }
+
+            // Receiving bar (right)
+            ZStack(alignment: .leading) {
+                // Background
+                Rectangle()
+                    .fill(receivingColor)
+                    .cornerRadius(8, corners: [.topRight, .bottomRight])
+
+                // Available
+                Rectangle()
+                    .fill(receivingAvailableColor)
+                    .frame(width: receivingPercentage * 100.0)
+                    .cornerRadius(8, corners: [.topRight, .bottomRight])
+            }
+        }
+        .frame(height: 16)
     }
 }
 

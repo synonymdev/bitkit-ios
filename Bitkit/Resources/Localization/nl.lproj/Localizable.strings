@@ -364,6 +364,7 @@
 "lightning__spark_deposits_pending" = "Lopende stortingen";
 "lightning__spark_provider" = "Aanbieder";
 "lightning__spark_provider_value" = "Spark via Breez";
+"lightning__spark_receiving_unlimited" = "Geen limiet";
 "lightning__spark_trust" = "Dit saldo staat op Spark, beheerd door Lightspark, Breez en Flashnet. Het is veilig zolang ten minste één van hen eerlijk handelt. Zij kunnen de toegang pauzeren, en vertrekken zonder hen vereist een on-chain exit.";
 "lightning__reserve_balance" = "Reservesaldo (niet besteedbaar)";
 "lightning__total_size" = "Grootte van kanaal";

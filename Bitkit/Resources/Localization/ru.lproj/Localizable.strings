@@ -361,6 +361,7 @@
 "lightning__spark_deposits_pending" = "Депозиты в обработке";
 "lightning__spark_provider" = "Провайдер";
 "lightning__spark_provider_value" = "Spark через Breez";
+"lightning__spark_receiving_unlimited" = "Без ограничений";
 "lightning__spark_trust" = "Этот баланс хранится в Spark, которым управляют Lightspark, Breez и Flashnet. Он в безопасности, пока хотя бы один из них действует честно. Они могут приостановить доступ, а выход без них требует ончейн-вывода.";
 "lightning__reserve_balance" = "Резервный Баланс (не доступен для трат)";
 "lightning__total_size" = "Общий Размер Канала";

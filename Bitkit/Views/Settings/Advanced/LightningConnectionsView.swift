@@ -54,7 +54,11 @@ struct LightningConnectionsView: View {
                                         .resizable()
                                         .frame(width: 22, height: 22)
                                         .foregroundColor(.white)
-                                    TitleText(formatNumber(receivingCapacity), textColor: .white)
+                                    // Spark receives without inbound liquidity, so no channel caps receiving.
+                                    TitleText(
+                                        SparkConnectionRow.isVisible ? t("lightning__spark_receiving_unlimited") : formatNumber(receivingCapacity),
+                                        textColor: .white
+                                    )
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
