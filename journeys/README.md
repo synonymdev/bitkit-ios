@@ -76,6 +76,12 @@ what the journeys assert on, and it avoids the image-size limits the Android run
 
 ## Backend preconditions
 
+The `UsdtWalletUITests` XCTest suite uses unavailable loopback endpoints by default. To run its
+optional funded fork case, explicitly pass `BITKIT_TEST_USDT_RPC_URL` and
+`BITKIT_TEST_USDT_BUNDLER_URL` in the test runner environment for an isolated, disposable
+`bitkit-core/tests/usdt-fork` fixture. Set `BITKIT_TEST_USDT_OFFLINE_RPC_URL` to an unavailable
+endpoint for its offline check. Confirm fixture ownership before running; the test funds its wallet.
+
 In a build with USDT configured, resolve the introductory USDT sheet by enabling or declining it before starting an unrelated journey. The choice persists; a fresh undecided wallet can show the sheet after Home appears. USDT journeys state whether they require opt-in.
 
 Most journeys need regtest and a reachable LSP. Start the stack from a sibling `bitkit-docker`
@@ -121,11 +127,13 @@ subscription payment-method switches: preserve the originally entered denominati
 
 ### Paykit payment-method review
 
-In `paykit-quoted-usdt.xml`, Android returns to Amount whenever a quoted request changes payment
-method. iOS keeps confirmation open when the exact amount, quote and validity window are unchanged
-and still valid; changed or expired terms return to Amount. Verify the selected method and exact
+In `paykit-quoted-usdt.xml`, both platforms can keep confirmation open when switching between valid
+quoted Bitcoin methods, rebinding the exact payable amount for the selected method. For a Savings
+quote below 547 sats, Android disables confirmation while iOS returns to Amount with Continue
+disabled. Unavailable or expired terms require review again. Verify the selected method and exact
 payable amount on both platforms, and close without signing. The optional Savings/Spending
-confirmation check requires existing Bitcoin regtest funds and a usable Lightning channel.
+confirmation check requires existing Bitcoin regtest funds, a usable Lightning channel and
+controlled fixed rates for the 546/547-sat boundary.
 
 ### USDT full-balance errors
 

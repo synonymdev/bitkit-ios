@@ -1,13 +1,25 @@
 import XCTest
 
 final class UsdtWalletUITests: XCTestCase {
+    private var rpcURL: String {
+        ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_RPC_URL"] ?? "http://127.0.0.1:1"
+    }
+
+    private var bundlerURL: String {
+        ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_BUNDLER_URL"] ?? "http://127.0.0.1:1"
+    }
+
+    private var offlineRPCURL: String {
+        ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_OFFLINE_RPC_URL"] ?? "http://127.0.0.1:1"
+    }
+
     @MainActor
     func testOrdinaryManualEntryRoutesBareAddressToUsdt() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
-        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.launchEnvironment["USDT_RPC_URL"] = rpcURL
+        app.launchEnvironment["USDT_BUNDLER_URL"] = bundlerURL
         app.launchEnvironment["USDT_BRIDGE_NETWORKS"] = "polygon"
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
@@ -60,13 +72,13 @@ final class UsdtWalletUITests: XCTestCase {
         do {
             client = try await forkCall("web3_clientVersion", []) as? String ?? ""
         } catch {
-            throw XCTSkip("Requires the local Arbitrum fork fixture in bitkit-core/tests/usdt-fork")
+            throw XCTSkip("Requires isolated Arbitrum fork endpoints via BITKIT_TEST_USDT_RPC_URL and BITKIT_TEST_USDT_BUNDLER_URL")
         }
         guard client.lowercased().contains("anvil") else { throw XCTSkip("Requires Anvil") }
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
-        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.launchEnvironment["USDT_RPC_URL"] = rpcURL
+        app.launchEnvironment["USDT_BUNDLER_URL"] = bundlerURL
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
             app.buttons["Continue"].tap()
@@ -142,7 +154,7 @@ final class UsdtWalletUITests: XCTestCase {
         let nativeBalance = try await forkCall("eth_getBalance", [address, "latest"]) as? String
         XCTAssertEqual(nativeBalance, "0x0")
         app.terminate()
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18549"
+        app.launchEnvironment["USDT_RPC_URL"] = offlineRPCURL
         app.launch()
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 30))
         app.buttons["UsdtWallet"].tap()
@@ -159,7 +171,7 @@ final class UsdtWalletUITests: XCTestCase {
     }
 
     private func forkCall(_ method: String, _ params: [Any]) async throws -> Any {
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:18546")!)
+        var request = try URLRequest(url: XCTUnwrap(URL(string: bundlerURL)))
         request.timeoutInterval = 5
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -173,8 +185,8 @@ final class UsdtWalletUITests: XCTestCase {
     func testReceiveAndInvalidPaymentStaySeparateFromBitcoin() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
-        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.launchEnvironment["USDT_RPC_URL"] = rpcURL
+        app.launchEnvironment["USDT_BUNDLER_URL"] = bundlerURL
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
             app.buttons["Continue"].tap()

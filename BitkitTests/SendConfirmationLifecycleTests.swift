@@ -32,7 +32,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
     func testQuotedWalletSwitchRebindsAmountOnConfirmation() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        let request = try quotedOnchainRequest(acceptsLightning: true)
+        let request = try quotedOnchainRequest(acceptsLightning: true, rates: [
+            ConversionRate(asset: "btc", value: "0.000002188"),
+            ConversionRate(asset: "btc-lightning", value: "0.00002"),
+        ])
         let wallet = ControlledSendWallet(operation: .selection)
         let app = AppViewModel()
         let sheets = SheetViewModel()
@@ -59,7 +62,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         app.selectedWalletToPayFrom = .onchain
         await fulfillment(of: [wallet.started], timeout: 3)
         XCTAssertTrue(path.isEmpty)
-        XCTAssertEqual(wallet.sendAmountSats, 2500)
+        XCTAssertEqual(wallet.sendAmountSats, 547)
         XCTAssertEqual(app.paykitPaymentTerms, try request.payment(using: app.paykitPaymentMethod))
         XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
         wallet.resume()
@@ -79,7 +82,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
     func testQuotedWalletSwitchRequiresReviewForUnavailableExpiredOrBelowMinimumTerms() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        for failure in ["unavailable", "expired", "minimum"] {
+        for failure in ["unavailable", "expired", "lightningMinimum", "onchainMinimum"] {
             let request = try quotedOnchainRequest(acceptsLightning: true)
             let wallet = ControlledSendWallet(operation: .fee)
             let app = AppViewModel()
@@ -91,7 +94,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                 minSendable: 1_000_000, maxSendable: 100_000_000,
                 metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
             )
-            app.selectedWalletToPayFrom = .onchain
+            app.selectedWalletToPayFrom = failure == "onchainMinimum" ? .lightning : .onchain
             app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
             app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
             app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
@@ -102,22 +105,26 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
             XCTAssertTrue(path.isEmpty)
 
-            var rates = [ConversionRate(asset: "btc-regtest", value: "0.00001")]
+            var rates = [ConversionRate(asset: "btc-regtest", value: failure == "onchainMinimum" ? "0.000002184" : "0.00001")]
             if failure != "unavailable" {
-                rates.append(ConversionRate(asset: "btc-lightning", value: failure == "minimum" ? "0.000001" : "0.00002"))
+                rates.append(ConversionRate(asset: "btc-lightning", value: failure == "lightningMinimum" ? "0.000001" : "0.00002"))
             }
             let changed = try quotedOnchainRequest(
                 acceptsLightning: true, rates: rates,
                 deadline: failure == "expired" ? .at(timestamp: "2000-01-01T00:00:00Z") : nil
             )
             app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: changed)
-            app.selectedWalletToPayFrom = .lightning
+            app.selectedWalletToPayFrom = failure == "onchainMinimum" ? .onchain : .lightning
             try await Task.sleep(for: .milliseconds(100))
 
             XCTAssertEqual(path, [.amount], failure)
             XCTAssertNil(app.paykitPaymentTerms, failure)
             XCTAssertNil(app.paykitReviewedAmount, failure)
-            XCTAssertTrue(wallet.routingAmounts.isEmpty, failure)
+            if failure == "onchainMinimum" {
+                XCTAssertEqual(wallet.preparationCount, 0, failure)
+            } else {
+                XCTAssertTrue(wallet.routingAmounts.isEmpty, failure)
+            }
         }
     }
 

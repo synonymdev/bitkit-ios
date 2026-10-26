@@ -1754,8 +1754,8 @@ struct SendConfirmationView: View {
     private func returnToAmountReviewIfNeeded(rebindMethod: Bool = false) -> Bool {
         guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.pricing.conversion != nil else { return false }
         let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
-        let meetsMinimum = app.selectedWalletToPayFrom != .lightning ||
-            terms.map { $0.amount.atomic >= (app.lnurlPayData?.minSendableSat ?? 0) } == true
+        let minimumAmount = app.selectedWalletToPayFrom == .lightning ? (app.lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
+        let meetsMinimum = terms.map { $0.amount.atomic >= minimumAmount } == true
         if rebindMethod, !app.paykitUsesUsdt, !isSubmittingPayment,
            let previous = app.paykitPaymentTerms, previous.amount.asset == .btc, app.paykitReviewedAmount == previous.amount,
            let terms, terms.amount.asset == .btc, terms.isValid(at: Date()), meetsMinimum
