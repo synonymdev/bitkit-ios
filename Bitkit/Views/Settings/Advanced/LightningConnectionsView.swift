@@ -49,17 +49,16 @@ struct LightningConnectionsView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 CaptionMText(t("lightning__receiving_label"))
-                                // Spark receives without inbound liquidity, so no channel caps receiving.
-                                if SparkConnectionRow.isVisible {
-                                    BodyMText(t("lightning__spark_receiving_unlimited"), textColor: .textSecondary)
-                                } else {
-                                    HStack(spacing: 4) {
-                                        Image("arrow-down")
-                                            .resizable()
-                                            .frame(width: 22, height: 22)
-                                            .foregroundColor(.white)
-                                        TitleText(formatNumber(receivingCapacity), textColor: .white)
-                                    }
+                                HStack(spacing: 4) {
+                                    Image("arrow-down")
+                                        .resizable()
+                                        .frame(width: 22, height: 22)
+                                        .foregroundColor(.white)
+                                    // Spark receives without inbound liquidity, so no channel caps receiving.
+                                    TitleText(
+                                        SparkManager.shared.isReady ? t("lightning__spark_receiving_unlimited") : formatNumber(receivingCapacity),
+                                        textColor: .white
+                                    )
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)

@@ -307,7 +307,11 @@ struct ReceiveEdit: View {
     }
 
     private func additionalLiquidityAction(maxCjitAmountSats: UInt64?) -> ReceiveAdditionalLiquidityAction {
-        ReceiveLiquidityDecision.additionalLiquidityAction(
+        // Spark receives any amount without inbound liquidity, so no channel or CJIT is needed.
+        if SparkManager.shared.isReady {
+            return .none
+        }
+        return ReceiveLiquidityDecision.additionalLiquidityAction(
             source: liquiditySource,
             invoiceAmountSats: amountViewModel.amountSats,
             inboundCapacitySats: wallet.totalReadyInboundLightningSats,
@@ -318,7 +322,10 @@ struct ReceiveEdit: View {
     }
 
     private func needsCjitLimitsForAdditionalLiquidity() -> Bool {
-        ReceiveLiquidityDecision.needsCjitLimitsForAdditionalLiquidity(
+        if SparkManager.shared.isReady {
+            return false
+        }
+        return ReceiveLiquidityDecision.needsCjitLimitsForAdditionalLiquidity(
             source: liquiditySource,
             invoiceAmountSats: amountViewModel.amountSats,
             inboundCapacitySats: wallet.totalReadyInboundLightningSats,
