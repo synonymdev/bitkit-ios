@@ -217,6 +217,26 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(qr.waitForExistence(timeout: 5))
         let amountlessUri = qr.label
         XCTAssertFalse(amountlessUri.contains("uint256="))
+        for swipingRight in [true, false] {
+            let copyButton = app.buttons["ReceiveCopyQR"]
+            let networkButton = app.buttons["UsdtReceiveNetwork"]
+            XCTAssertTrue(copyButton.waitForExistence(timeout: 5))
+            XCTAssertTrue(networkButton.waitForExistence(timeout: 5))
+            let bandTop = copyButton.frame.maxY
+            let bandBottom = networkButton.frame.minY
+            XCTAssertGreaterThan(bandBottom, bandTop, "Receive must leave space between the QR controls and Network")
+            let y = (bandTop + bandBottom) / 2
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let left = origin.withOffset(CGVector(dx: app.frame.width * 0.2, dy: y))
+            let right = origin.withOffset(CGVector(dx: app.frame.width * 0.8, dy: y))
+            capture(app, "USDT Receive before blank-band swipe")
+            (swipingRight ? left : right).press(forDuration: 0.05, thenDragTo: swipingRight ? right : left)
+            XCTAssertTrue(app.buttons["UsdtReceiveDetails"].waitForNonExistence(timeout: 5), "Swiping the blank band must leave the USDT tab")
+            XCTAssertTrue(app.staticTexts["Receive Bitcoin"].waitForExistence(timeout: 5))
+            app.buttons["Tab-usdt"].tap()
+            XCTAssertTrue(qr.waitForExistence(timeout: 5))
+            XCTAssertEqual(qr.label, amountlessUri)
+        }
         app.buttons["SpecifyInvoiceButton"].tap()
         app.buttons["N5"].tap()
         try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()

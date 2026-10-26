@@ -61,15 +61,18 @@ struct UsdtReceiveView: View {
             case .address:
                 SegmentedControl(selectedTab: Binding(get: { .usdt }, set: onSelectTab), tabItems: tabs)
                     .padding(.bottom, 16)
-                UsdtReceiveAddressContent(
-                    address: deposit?.address ?? usdt.address,
-                    uri: deposit?.uri ?? receiveUri,
-                    network: networkName,
-                    amount: amount,
-                    error: error ?? usdt.errorMessage,
-                    onEdit: { draftAmount = amount; page = .amount },
-                    onNetwork: { page = .networks }
-                )
+                VStack(spacing: 0) {
+                    UsdtReceiveAddressContent(
+                        address: deposit?.address ?? usdt.address,
+                        uri: deposit?.uri ?? receiveUri,
+                        network: networkName,
+                        amount: amount,
+                        error: error ?? usdt.errorMessage,
+                        onEdit: { draftAmount = amount; page = .amount },
+                        onNetwork: { page = .networks }
+                    )
+                }
+                .contentShape(Rectangle())
                 .swipeSegmentedTabs(selection: Binding(get: { .usdt }, set: onSelectTab), tabs: tabs.map(\.tab), wrapAround: true, simultaneous: true)
             case .networks:
                 networkList
