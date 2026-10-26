@@ -1470,7 +1470,6 @@
 "usdt__failed" = "Falhou";
 "usdt__fee_note" = "Todas as taxas são pagas em USDT. A taxa final pode ser inferior.";
 "usdt__hide_details" = "Ocultar detalhes";
-"usdt__history_sync" = "A atividade mais antiga ainda está a sincronizar. O seu saldo está atualizado sempre que houver ligação.";
 "usdt__network_warning" = "Selecione a rede usada pelo destinatário. Enviar para um endereço na rede errada pode resultar na perda de fundos.";
 "usdt__pending" = "Pendente";
 "usdt__received" = "Recebido";

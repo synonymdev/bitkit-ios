@@ -1824,7 +1824,6 @@
 "usdt__failed" = "Échec";
 "usdt__fee_note" = "Tous les frais sont payés en USDT. Les frais finaux peuvent être inférieurs.";
 "usdt__hide_details" = "Masquer les détails";
-"usdt__history_sync" = "L'activité plus ancienne est encore en cours de synchronisation. Votre solde est à jour lorsque la connexion est disponible.";
 "usdt__network_warning" = "Sélectionnez le réseau utilisé par le destinataire. Un envoi vers une adresse sur le mauvais réseau peut entraîner une perte de fonds.";
 "usdt__pending" = "En attente";
 "usdt__received" = "Reçu";

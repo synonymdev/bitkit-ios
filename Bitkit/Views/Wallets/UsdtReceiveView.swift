@@ -61,15 +61,18 @@ struct UsdtReceiveView: View {
             case .address:
                 SegmentedControl(selectedTab: Binding(get: { .usdt }, set: onSelectTab), tabItems: tabs)
                     .padding(.bottom, 16)
-                UsdtReceiveAddressContent(
-                    address: deposit?.address ?? usdt.address,
-                    uri: deposit?.uri ?? receiveUri,
-                    network: networkName,
-                    amount: amount,
-                    error: error ?? usdt.errorMessage,
-                    onEdit: { draftAmount = amount; page = .amount },
-                    onNetwork: { page = .networks }
-                )
+                VStack(spacing: 0) {
+                    UsdtReceiveAddressContent(
+                        address: deposit?.address ?? usdt.address,
+                        uri: deposit?.uri ?? receiveUri,
+                        network: networkName,
+                        amount: amount,
+                        error: error ?? usdt.errorMessage,
+                        onEdit: { draftAmount = amount; page = .amount },
+                        onNetwork: { page = .networks }
+                    )
+                }
+                .contentShape(Rectangle())
                 .swipeSegmentedTabs(selection: Binding(get: { .usdt }, set: onSelectTab), tabs: tabs.map(\.tab), wrapAround: true, simultaneous: true)
             case .networks:
                 networkList
@@ -195,9 +198,12 @@ struct UsdtReceiveAddressContent: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            if !uri.isEmpty {
-                if showDetails {
+        if !uri.isEmpty, !showDetails {
+            QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
+                   copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
+        } else {
+            ScrollView(showsIndicators: false) {
+                if !uri.isEmpty {
                     CopyAddressCard(
                         addresses: [CopyAddressPair(title: network + " " + t("wallet__activity_address"), address: address, type: .onchain,
                                                     shareText: shareText)],
@@ -209,16 +215,14 @@ struct UsdtReceiveAddressContent: View {
                     )
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtReceiveAddress")
+                } else if let error {
+                    BodySText(error, textColor: .brandAccent)
                 } else {
-                    QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
+                    ProgressView()
                 }
-            } else if let error {
-                BodySText(error, textColor: .brandAccent)
-            } else {
-                ProgressView()
             }
         }
+        Spacer(minLength: 0)
         CustomButton(
             title: networkTitle,
             variant: .secondary,

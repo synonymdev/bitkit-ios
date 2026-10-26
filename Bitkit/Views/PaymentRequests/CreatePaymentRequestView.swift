@@ -321,84 +321,81 @@ struct PaymentRequestAmountView: View {
         asset == .btc ? PaykitAmount(asset: .btc, atomic: amountViewModel.amountSats) : try? parsePaykitAmountInput(asset: .usd, value: dollarAmount)
     }
 
+    private var nextAsset: PaykitAsset? {
+        allowedAssets.first { $0 != asset }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            SheetHeader(
-                title: t("wallet__payment_request_amount"),
-                showBackButton: true,
-                action: target == nil ? nil : AnyView(targetAvatar),
-                onBack: onBack
-            )
-
-            if asset == .usd {
-                NumberPadAmountText(value: usdtInputAmount(dollarAmount.isEmpty ? "0" : dollarAmount), symbol: "$")
-                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
-            } else {
-                NumberPadTextField(viewModel: amountViewModel, showEditButton: false, isFocused: true,
-                                   testIdentifier: "\(testIdentifierPrefix)AmountField")
-            }
-
-            Spacer()
-
-            HStack {
-                Spacer()
-                ForEach(allowedAssets, id: \.self) { choice in
-                    NumberPadActionButton(text: choice.rawValue.uppercased(), color: choice == .usd ? .usdtAccent : .brandAccent,
-                                          variant: asset == choice ? .primary : .secondary)
-                    {
-                        guard choice != asset else { return }
-                        do {
-                            let converted = try entryConversion.converted(amount, to: choice, rate: currency.paykitRate, at: Date())
-                            if choice == .usd {
-                                dollarAmount = converted.atomic == 0 ? "" : converted.inputValue
-                            } else {
-                                amountViewModel.updateFromSats(converted.atomic, currency: currency)
-                            }
-                            asset = choice
-                            conversionError = false
-                        } catch { conversionError = true }
-                    }
-                    .accessibilityIdentifier("\(testIdentifierPrefix)Asset-\(choice.rawValue)")
-                }
-                if asset == .btc {
-                    NumberPadActionButton(
-                        text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                        imageName: "arrow-up-down", color: .brandAccent
-                    ) {
-                        withAnimation { amountViewModel.togglePrimaryDisplay(currency: currency) }
-                    }
-                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
-                }
-            }
-            .padding(.bottom, 12)
-
-            if conversionError {
-                BodySText(t("wallet__payment_request_rate_unavailable"), textColor: .white64)
-            }
-            NumberPad(
-                type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
-                decimalSeparator: asset == .usd ? Locale.current.decimalSeparator ?? "." : ".",
-                errorKey: amountViewModel.errorKey
-            ) { key in
-                entryConversion.reset()
-                if asset == .usd {
-                    dollarAmount = NumberPadInputHandler.handleInput(key: key, current: dollarAmount, maxLength: 16, maxDecimals: 2)
-                } else {
-                    amountViewModel.handleNumberPadInput(key, currency: currency)
-                }
-            }
-
-            CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
-                guard allowedAssets.contains(asset), let amount else { return }
-                onContinue(
-                    PaykitPaymentRequestDraft(
-                        amount: amount, acceptedPaymentEndpointIdentifiers: initialDraft.acceptedPaymentEndpointIdentifiers,
-                        note: initialDraft.note,
-                        expiresAt: initialDraft.expiresAt
+        GeometryReader { geometry in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    SheetHeader(
+                        title: t("wallet__payment_request_amount"),
+                        showBackButton: true,
+                        action: target == nil ? nil : AnyView(targetAvatar),
+                        onBack: onBack
                     )
-                )
+
+                    ZStack(alignment: .bottomLeading) {
+                        NumberPadTextField(viewModel: amountViewModel, showEditButton: false, isFocused: true,
+                                           testIdentifier: "\(testIdentifierPrefix)AmountField")
+                            .opacity(asset == .btc ? 1 : 0)
+                            .accessibilityHidden(asset != .btc)
+                        if asset == .usd {
+                            NumberPadAmountText(value: dollarAmount.isEmpty ? "0" : dollarAmount, symbol: "$")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityIdentifier("\(testIdentifierPrefix)AmountField")
+                        }
+                    }
+
+                    Spacer().frame(height: 16)
+
+                    amountControls(showUnit: allowedAssets.contains(.btc))
+                        .hidden()
+                        .overlay(alignment: .topTrailing) {
+                            amountControls(showUnit: asset == .btc)
+                        }
+                        .padding(.bottom, 16)
+
+                    if conversionError {
+                        BodySText(t("wallet__payment_request_rate_unavailable"), textColor: .white64)
+                    }
+                    CustomDivider()
+                        .accessibilityIdentifier("\(testIdentifierPrefix)AmountDivider")
+                    Spacer(minLength: 16)
+                    NumberPad(
+                        type: asset == .usd ? .decimal : amountViewModel.getNumberPadType(currency: currency),
+                        errorKey: amountViewModel.errorKey
+                    ) { key in
+                        entryConversion.reset()
+                        if asset == .usd {
+                            dollarAmount = NumberPadInputHandler.handleInput(
+                                key: key,
+                                current: dollarAmount,
+                                maxLength: 16,
+                                maxDecimals: 2
+                            )
+                        } else {
+                            amountViewModel.handleNumberPadInput(key, currency: currency)
+                        }
+                    }
+
+                    Spacer(minLength: 24)
+
+                    CustomButton(title: t("common__continue"), isDisabled: !allowedAssets.contains(asset) || (amount?.atomic ?? 0) == 0) {
+                        guard allowedAssets.contains(asset), let amount else { return }
+                        onContinue(
+                            PaykitPaymentRequestDraft(
+                                amount: amount, acceptedPaymentEndpointIdentifiers: initialDraft.acceptedPaymentEndpointIdentifiers,
+                                note: initialDraft.note,
+                                expiresAt: initialDraft.expiresAt
+                            )
+                        )
+                    }
+                    .accessibilityIdentifier("\(testIdentifierPrefix)AmountContinue")
+                }
+                .frame(minHeight: geometry.size.height, alignment: .top)
             }
-            .accessibilityIdentifier("\(testIdentifierPrefix)AmountContinue")
         }
         .padding(.horizontal, 16)
         .sheetBackground()
@@ -414,8 +411,51 @@ struct PaymentRequestAmountView: View {
             if asset == .btc {
                 amountViewModel.updateFromSats(initialDraft.amount.atomic, currency: currency)
             } else {
-                dollarAmount = initialDraft.amount.inputValue
+                dollarAmount = initialDraft.amount.atomic == 0 ? "" : initialDraft.amount.inputValue
             }
+        }
+    }
+
+    private func amountControls(showUnit: Bool) -> some View {
+        HStack {
+            Spacer(minLength: 0)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { amountActions(showUnit: showUnit) }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .trailing, spacing: 8) { amountActions(showUnit: showUnit) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func amountActions(showUnit: Bool) -> some View {
+        NumberPadActionButton(
+            text: asset.rawValue.uppercased(),
+            imageName: nextAsset == nil ? nil : "arrow-up-down",
+            titleKerning: 1, titleLineHeight: 18, color: .brandAccent,
+            disabled: nextAsset == nil
+        ) {
+            guard let nextAsset else { return }
+            do {
+                let converted = try entryConversion.converted(amount, to: nextAsset, rate: currency.paykitRate, at: Date())
+                if nextAsset == .usd {
+                    dollarAmount = converted.atomic == 0 ? "" : converted.inputValue
+                } else {
+                    amountViewModel.updateFromSats(converted.atomic, currency: currency)
+                }
+                asset = nextAsset
+                conversionError = false
+            } catch { conversionError = true }
+        }
+        .accessibilityIdentifier("\(testIdentifierPrefix)DenominationToggle")
+        if showUnit {
+            NumberPadActionButton(
+                text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
+                imageName: "arrow-up-down", color: .brandAccent
+            ) {
+                withAnimation { amountViewModel.togglePrimaryDisplay(currency: currency) }
+            }
+            .accessibilityIdentifier("\(testIdentifierPrefix)AmountUnit")
         }
     }
 

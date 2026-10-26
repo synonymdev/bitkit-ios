@@ -12,12 +12,15 @@
 
     The copy shows as a tooltip over the QR for about two seconds, so a check for "no copy" reads a
     screenshot taken right after the swipe. Swipe with AXe (`axe swipe --start-x 80 --start-y 420
-    --end-x 320 --end-y 420 --duration 0.3 --udid <udid>` on a 390 pt wide simulator) across the
+    --end-x 320 --end-y 420 --duration 0.3 --udid &lt;udid&gt;` on a 390 pt wide simulator) across the
     middle of the QR, about 60% of its width. On a wallet without a Lightning channel, Spending shows
     its setup view instead of a QR.
 
     iOS: the return from Spending to USDT goes through the paged `TabView`, which moves on a 300 ms
     swipe as well; the 600 ms in that step is kept so the two platforms run the same action.
+    The final two iOS steps cover the flexible blank band between Edit/Copy/Share and Network.
+    Use a tall phone at the default text size so that band is visible. Android attaches its swipe
+    gesture to a full-height column; these extra steps guard the iOS spacer hit area.
   </description>
   <actions>
     <action>Tap Receive (id "Receive")</action>
@@ -27,5 +30,7 @@
     <action>Swipe left across the middle of the Spending content, whether it shows a Lightning QR or the Spending setup, in 600 ms (`axe swipe --start-x 320 --start-y 420 --end-x 80 --end-y 420 --duration 0.6`); verify the USDT tab is selected and wait until its QR is visible</action>
     <action>Tap the USDT QR once and verify the "copied" tooltip appears</action>
     <action>Wait until the tooltip is gone, swipe left across the USDT QR and take a screenshot right away; verify the Savings tab (id "Tab-savings") is selected and the screenshot shows no "copied" tooltip</action>
+    <action>Tap the USDT tab and wait for its QR. Locate the blank band between the Edit/Copy/Share row and Network, then swipe right through the middle of that band in 300 ms; verify Spending is selected and no "copied" tooltip appears</action>
+    <action>Tap the USDT tab again and wait for its QR. Swipe left through the same blank band in 300 ms; verify Savings is selected and no "copied" tooltip appears</action>
   </actions>
 </journey>

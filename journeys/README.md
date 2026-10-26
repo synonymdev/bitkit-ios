@@ -130,7 +130,8 @@ subscription payment-method switches: preserve the originally entered denominati
 In `paykit-quoted-usdt.xml`, both platforms can keep confirmation open when switching between valid
 quoted Bitcoin methods, rebinding the exact payable amount for the selected method. For a Savings
 quote below 547 sats, Android disables confirmation while iOS returns to Amount with Continue
-disabled. Unavailable or expired terms require review again. Verify the selected method and exact
+disabled. Unavailable or expired terms require review again. On Android, opening Amount manually
+after a valid switch and then tapping Back closes the sheet. Verify the selected method and exact
 payable amount on both platforms, and close without signing. The optional Savings/Spending
 confirmation check requires existing Bitcoin regtest funds, a usable Lightning channel and
 controlled fixed rates for the 546/547-sat boundary.
@@ -141,6 +142,12 @@ controlled fixed rates for the 546/547-sat boundary.
 fee-collection message when the entire balance is entered manually. Either error can occur on
 either platform; the failing validation determines the message.
 Both must keep payment review closed and allow the user to reduce the amount.
+
+### USDT Receive swipe hit area
+
+`receive/usdt-receive-swipe-tabs.xml` keeps the shared seven QR swipe/copy steps and adds two iOS
+checks for the flexible blank band above Network on a tall phone. Android already attaches the
+USDT swipe gesture to a full-height column; the extra iOS steps guard its spacer hit area.
 
 ## Identifiers
 
@@ -202,7 +209,7 @@ journey PR, which is what made this file conflict on every merge.
 
 | Capability | Provided by |
 | --- | --- |
-| USDT wallet navigation without funding | an onboarded build with USDT configured; provider errors may remain visible while offline — [USDT QA](../Docs/USDT-QA.md) |
+| USDT wallet navigation without funding | an onboarded build with USDT configured; wallet syncing remains silent while offline; payment-action errors remain available — [USDT QA](../Docs/USDT-QA.md) |
 | Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
 | Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |

@@ -1673,7 +1673,6 @@
 "usdt__failed" = "Ha fallat";
 "usdt__fee_note" = "Totes les tarifes es paguen en USDT. La tarifa final pot ser inferior.";
 "usdt__hide_details" = "Amagar detalls";
-"usdt__history_sync" = "L'activitat anterior encara s'està sincronitzant. El teu saldo està al dia quan hi ha connexió.";
 "usdt__network_warning" = "Selecciona la xarxa que utilitza el destinatari. Si envies a una adreça d'una xarxa incorrecta, pots perdre els fons.";
 "usdt__pending" = "Pendent";
 "usdt__received" = "Rebut";
