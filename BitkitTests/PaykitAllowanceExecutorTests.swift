@@ -505,8 +505,6 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(outcomes, [Paykit.PaymentOutcomeReport(attemptId: "attempt-1", outcome: .succeeded)])
         let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
         XCTAssertEqual(journal.map(\.stage), [.succeeded])
-        let paid = await harness.executor.succeededAutomaticPayments(identity: Fixtures.identityKey)
-        XCTAssertEqual(paid.map(\.attemptId), ["attempt-1"])
         let paidEvents = events.events.filter {
             $0 == .paidAutomatically(counterparty: Fixtures.counterpartyKey, amountSats: 1000, paymentId: AllowanceHarness.paymentHash)
         }
@@ -1060,6 +1058,32 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         XCTAssertTrue(try manager.coversRequest(Fixtures.paymentRequest()), "One Encrypted Link per identity: no folder is part of coverage")
         XCTAssertFalse(try manager.coversRequest(Fixtures.paymentRequest(counterparty: Fixtures.otherCounterpartyKey)))
+    }
+
+    @MainActor
+    func testManagerKeepsEveryAutomaticPaymentPastTheJournalLimit() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms(), lastEventAt: "2026-09-24T09:00:00Z")])
+        let paid = try (0 ..< 250).map { index in
+            try Fixtures.occurrence(requestId: "req-\(index)", attempts: [Fixtures.attemptRecord(id: "paid-\(index)", status: .succeeded)])
+        }
+        let notPaid = try [
+            Fixtures.occurrence(requestId: "req-failed", attempts: [Fixtures.attemptRecord(id: "failed", status: .failed)]),
+            Fixtures.occurrence(
+                requestId: "req-manual",
+                attempts: [Fixtures.attemptRecord(id: "manual", mode: .manual, allowanceId: nil, status: .succeeded)],
+                allowanceId: nil
+            ),
+        ]
+        await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: paid + notPaid))
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+
+        await manager.activate(identity: Fixtures.identityKey)
+
+        XCTAssertEqual(manager.autoPaidRequestIds.count, 250, "The journal keeps only the newest 200 attempts; the SDK ledger keeps all")
+        XCTAssertTrue(manager.autoPaidRequestIds.contains(PaykitPaymentRequest.ID(paymentRequestId: "req-0", counterparty: Fixtures.counterpartyKey)))
+        let entry = try XCTUnwrap(manager.entries.first)
+        XCTAssertEqual(manager.autoPaidSats(for: entry), 250 * 1000)
     }
 
     @MainActor

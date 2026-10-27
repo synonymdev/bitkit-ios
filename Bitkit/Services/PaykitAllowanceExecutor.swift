@@ -549,8 +549,27 @@ actor PaykitAllowanceExecutor {
         return PaykitAllowanceCapacity.attempts(from: state.history)
     }
 
-    func succeededAutomaticPayments(identity: String) -> [PaykitAllowanceLocalState.JournalEntry] {
-        localState(identity: identity).journal.filter { $0.isAutomatic && $0.stage == .succeeded }
+    struct AutomaticPayment: Equatable {
+        let requestId: PaykitPaymentRequest.ID
+        let allowanceId: String
+        let amountSats: UInt64
+    }
+
+    /// Read from the SDK ledger, which keeps every attempt, rather than the journal, which keeps only the newest ones.
+    func succeededAutomaticPayments() async -> [AutomaticPayment] {
+        guard let state = try? await sdk.allowanceAccountingState() else { return [] }
+        return state.history.occurrences.flatMap { occurrence in
+            occurrence.attempts.compactMap { attempt in
+                guard attempt.mode == .automatic, attempt.status == .succeeded, let allowanceId = attempt.allowanceId,
+                      let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
+                else { return nil }
+                let requestId = PaykitPaymentRequest.ID(
+                    paymentRequestId: occurrence.key.request.paymentRequestId,
+                    counterparty: occurrence.key.request.counterparty
+                )
+                return AutomaticPayment(requestId: requestId, allowanceId: allowanceId, amountSats: amountSats)
+            }
+        }
     }
 
     // MARK: Automatic payment
