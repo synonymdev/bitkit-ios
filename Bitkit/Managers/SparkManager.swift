@@ -20,8 +20,8 @@ final class SparkManager: ChannelFreeLightningRail {
         exitStateChanged.eraseToAnyPublisher()
     }
 
-    private static let depositClaimFeeLeewaySatPerVbyte: UInt64 = 2
-    private static let depositClaimFeePpm: UInt32 = 2000
+    private nonisolated static let depositClaimFeeLeewaySatPerVbyte: UInt64 = 2
+    private nonisolated static let depositClaimFeePpm: UInt32 = 2000
 
     private(set) var isReady = false
     private(set) var balanceSats: UInt64 = 0
@@ -198,11 +198,18 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Size of Spark's deposit claim transaction; the SDK prices a standard claim as the fastest recommended fee rate
     /// times this size before the provider quotes it (breez/spark-sdk `CLAIM_TX_SIZE_VBYTES`).
-    private static let claimTxSizeVbytes: UInt64 = 99
+    private nonisolated static let claimTxSizeVbytes: UInt64 = 99
 
-    /// Estimates what Spark keeps from a deposit to claim it, the way the SDK does before the provider quotes it.
-    func estimateDepositClaimFeeSats() async throws -> UInt64 {
-        try await requireSdk().recommendedFees().fastestFee * Self.claimTxSizeVbytes
+    /// The most Spark may keep to claim a deposit of `amountSats` under this wallet's fee cap. The provider quotes the
+    /// real fee only once the deposit exists.
+    func estimateDepositClaimFeeSats(amountSats: UInt64) async throws -> UInt64 {
+        try await Self.maxDepositClaimFeeSats(fastestFeeRate: requireSdk().recommendedFees().fastestFee, amountSats: amountSats)
+    }
+
+    nonisolated static func maxDepositClaimFeeSats(fastestFeeRate: UInt64, amountSats: UInt64) -> UInt64 {
+        let onchain = (fastestFeeRate + depositClaimFeeLeewaySatPerVbyte) * claimTxSizeVbytes
+        let proportional = amountSats.multipliedReportingOverflow(by: UInt64(depositClaimFeePpm)).partialValue / 1_000_000
+        return onchain + proportional
     }
 
     /// Moves the whole Spark balance to the on-chain `address`, fees included, for Spending to Savings.
