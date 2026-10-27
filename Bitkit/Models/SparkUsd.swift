@@ -26,7 +26,7 @@ struct SparkUsdRecipient: Equatable {
 }
 
 /// A priced conversion or bridge, ready to run. `pay` and `receive` are in sats for the bitcoin side and in dollar units
-/// otherwise; `fee` is in the unit of what is paid, except for the bridge, where it is in dollar units.
+/// otherwise; `fee` is always in dollar units.
 struct SparkUsdQuote {
     enum Kind {
         case toUsd

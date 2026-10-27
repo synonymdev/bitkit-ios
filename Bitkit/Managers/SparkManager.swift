@@ -356,10 +356,11 @@ final class SparkManager: ChannelFreeLightningRail {
         ))
         guard let estimate = prepared.conversionEstimate else { throw SparkUsdError.noQuote }
         let usd = { (value: U128) in SparkUsd.toUsdUnits(value, decimals: decimals) }
+        // Flashnet reports the swap fee in USDB units both ways (its simulate endpoint, 27 Oct), not in sats.
         if toUsd {
             return SparkUsdQuote(
                 kind: .toUsd, pay: Self.sats(estimate.amountIn), receive: usd(estimate.amountOut),
-                fee: Self.sats(estimate.fee), prepared: prepared
+                fee: usd(estimate.fee), prepared: prepared
             )
         }
         return SparkUsdQuote(

@@ -535,7 +535,7 @@ struct SparkUsdConvertView: View {
         VStack(alignment: .leading, spacing: 0) {
             quoteRow(t("usdt__convert_pay_spark"), Self.display(quote.pay, isSats: quote.kind == .toUsd))
             quoteRow(t("usdt__convert_receive_spark"), Self.display(quote.receive, isSats: quote.kind == .toBtc))
-            quoteRow(t("usdt__convert_fee_spark"), Self.display(quote.fee, isSats: quote.kind == .toUsd))
+            quoteRow(t("usdt__convert_fee_spark"), Self.display(quote.fee, isSats: false))
             Spacer()
             if let error {
                 BodySText(error, textColor: .brandAccent).accessibilityIdentifier("SparkUsdError").padding(.bottom, 16)
@@ -567,6 +567,16 @@ struct SparkUsdConvertView: View {
         }
     }
 
+    private static func conversionError(_ error: Error) -> String {
+        if let sdkError = error as? SdkError, case .InsufficientFunds = sdkError {
+            return t("other__pay_insufficient_spending")
+        }
+        if "\(error)".localizedCaseInsensitiveContains("insufficient") {
+            return t("other__pay_insufficient_spending")
+        }
+        return t("usdt__convert_failed_spark")
+    }
+
     private static func display(_ value: UInt64, isSats: Bool) -> String {
         isSats ? "₿ " + value.formatted() : "$ " + usdtOverviewAmount(value)
     }
@@ -580,17 +590,26 @@ struct SparkUsdConvertView: View {
             error = t("usdt__error_balance_spark")
             return
         }
+        if bridgeAddress == nil, toUsd, spark.balanceSats == 0 {
+            error = t("other__pay_insufficient_spending")
+            return
+        }
         busy = true
         defer { busy = false }
         do {
-            quote = if let bridgeAddress {
+            let quoted = if let bridgeAddress {
                 try await spark.quoteArbitrumBridge(arbitrumAddress: bridgeAddress, amount: units)
             } else {
                 try await spark.quoteConversion(toUsd: toUsd, amount: units)
             }
+            guard quoted.kind != .toUsd || quoted.pay <= spark.balanceSats else {
+                error = t("other__pay_insufficient_spending")
+                return
+            }
+            quote = quoted
             error = nil
         } catch {
-            self.error = t("usdt__convert_failed_spark")
+            self.error = Self.conversionError(error)
             Logger.warn("Failed to quote Spark dollar conversion: \(error)", context: "SparkUsdConvertView")
         }
     }
@@ -602,7 +621,7 @@ struct SparkUsdConvertView: View {
             try await spark.execute(quote)
             completed = true
         } catch {
-            self.error = t("usdt__convert_failed_spark")
+            self.error = Self.conversionError(error)
             Logger.error("Failed to run Spark dollar conversion: \(error)", context: "SparkUsdConvertView")
             throw error
         }
