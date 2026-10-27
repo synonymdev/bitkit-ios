@@ -1628,3 +1628,5 @@
 "profile__recovery_unavailable" = "O Bitkit não consegue ler o estado guardado da limpeza. As alterações ao perfil estão em pausa. Tenta lê-lo novamente.";
 
 "profile__recovery_working" = "A concluir a limpeza do perfil…";
+
+"wallet__balance_updating" = "A atualizar o saldo…";

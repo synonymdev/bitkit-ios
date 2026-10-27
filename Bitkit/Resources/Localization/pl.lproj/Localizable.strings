@@ -1981,3 +1981,5 @@
 "profile__recovery_unavailable" = "Bitkit nie może odczytać zapisanego stanu czyszczenia. Zmiany profilu są wstrzymane. Spróbuj odczytać go ponownie.";
 
 "profile__recovery_working" = "Kończenie czyszczenia profilu…";
+
+"wallet__balance_updating" = "Aktualizowanie salda…";

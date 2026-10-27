@@ -420,6 +420,82 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(uploads.map(\.data), [Data("initial".utf8), Data("updated".utf8)])
     }
 
+    func testStopRetainsEditsUntilAcknowledgedUploadDrains() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settingsDefaults = UserDefaults.standard
+        let original = settingsDefaults.object(forKey: "swipeBalanceToHide")
+        defer {
+            if let original {
+                settingsDefaults.set(original, forKey: "swipeBalanceToHide")
+            } else {
+                settingsDefaults.removeObject(forKey: "swipeBalanceToHide")
+            }
+        }
+        let entered = expectation(description: "Captured settings upload entered")
+        let cancelled = expectation(description: "Stop cancelled the held upload")
+        let unexpectedUpload = expectation(description: "Stopped observers cannot upload new data")
+        unexpectedUpload.isInverted = true
+        let gate = BackupDelayGate()
+        let recorder = BackupRecorder()
+        var data = Data("initial".utf8)
+        var holdUpload = false
+        var mayUploadLatest = false
+        let service = BackupService(defaults: defaults, backupData: { _ in data }, uploadBackup: { key, bytes in
+            await recorder.recordUpload(key: key, data: bytes)
+            if bytes == Data("latest".utf8), !mayUploadLatest {
+                unexpectedUpload.fulfill()
+            }
+            if holdUpload, key == BackupCategory.settings.rawValue {
+                holdUpload = false
+                await withTaskCancellationHandler {
+                    await gate.wait(started: entered)
+                } onCancel: { cancelled.fulfill() }
+            }
+        }, waitForBackupDelay: {})
+        await service.triggerBackup(category: .settings)
+        await service.triggerBackup(category: .wallet)
+        service.startObservingBackups()
+        holdUpload = true
+        data = Data("captured".utf8)
+        settingsDefaults.set(!settingsDefaults.bool(forKey: "swipeBalanceToHide"), forKey: "swipeBalanceToHide")
+        await fulfillment(of: [entered], timeout: 2)
+        let stop = Task { await service.stopObservingBackups() }
+        await fulfillment(of: [cancelled], timeout: 2)
+
+        data = Data("latest".utf8)
+        settingsDefaults.set(!settingsDefaults.bool(forKey: "swipeBalanceToHide"), forKey: "swipeBalanceToHide")
+        try Bitkit.WatchOnlyAccountStore.save([], defaults: defaults)
+        XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        await gate.release()
+        await stop.value
+        for category in [BackupCategory.settings, .wallet] {
+            XCTAssertTrue(service.getBackupStatus(category: category).isRequired)
+            XCTAssertFalse(service.getBackupStatus(category: category).running)
+        }
+        await fulfillment(of: [unexpectedUpload], timeout: 0.1)
+        let stoppedUploads = await recorder.uploads
+        XCTAssertEqual(stoppedUploads.map(\.data), [Data("initial".utf8), Data("initial".utf8), Data("captured".utf8)])
+
+        mayUploadLatest = true
+        let completed = expectation(description: "Restart uploads both latest sources")
+        let subscription = service.backupStatusesPublisher
+            .filter { statuses in
+                [BackupCategory.settings, .wallet].allSatisfy { category in
+                    statuses[category].map { !$0.isRequired && !$0.running } == true
+                }
+            }.first().sink { _ in completed.fulfill() }
+        service.startObservingBackups()
+        await fulfillment(of: [completed], timeout: 2)
+        subscription.cancel()
+        await service.stopObservingBackups()
+        let latest = await recorder.uploads.filter { $0.data == Data("latest".utf8) }
+        XCTAssertEqual(Set(latest.map(\.key)), [BackupCategory.settings.rawValue, BackupCategory.wallet.rawValue])
+        XCTAssertEqual(latest.count, 2)
+    }
+
     func testCancelledUploadRetainsNewerSettingsAfterRestart() async throws {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -455,15 +531,22 @@ final class BackupServiceTests: XCTestCase {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let original = SettingsViewModel.shared.swipeBalanceToHide
-        defer { SettingsViewModel.shared.swipeBalanceToHide = original }
+        let settingsDefaults = UserDefaults.standard
+        let original = settingsDefaults.object(forKey: "swipeBalanceToHide")
+        defer {
+            if let original {
+                settingsDefaults.set(original, forKey: "swipeBalanceToHide")
+            } else {
+                settingsDefaults.removeObject(forKey: "swipeBalanceToHide")
+            }
+        }
         let service = BackupService(defaults: defaults, backupData: { _ in Data() }, uploadBackup: { _, _ in
             XCTFail("Immediate stop must prevent upload")
         })
         service.startObservingBackups()
         let received = expectation(description: "Settings notification received")
         let subscription = SettingsViewModel.shared.settingsPublisher.first().sink { _ in received.fulfill() }
-        SettingsViewModel.shared.swipeBalanceToHide = !original
+        settingsDefaults.set(!settingsDefaults.bool(forKey: "swipeBalanceToHide"), forKey: "swipeBalanceToHide")
         await fulfillment(of: [received], timeout: 2)
         subscription.cancel()
         await service.stopObservingBackups()

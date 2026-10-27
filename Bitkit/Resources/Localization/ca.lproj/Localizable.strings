@@ -1832,3 +1832,5 @@
 "profile__recovery_unavailable" = "Bitkit no pot llegir l’estat desat de la neteja. Els canvis del perfil estan en pausa. Torna a intentar llegir-lo.";
 
 "profile__recovery_working" = "S’està completant la neteja del perfil…";
+
+"wallet__balance_updating" = "S’està actualitzant el saldo…";

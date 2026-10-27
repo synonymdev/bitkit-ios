@@ -1648,3 +1648,5 @@
 "profile__recovery_unavailable" = "يتعذر على Bitkit قراءة حالة التنظيف المحفوظة. تم إيقاف تغييرات الملف الشخصي مؤقتًا. حاول قراءتها مجددًا.";
 
 "profile__recovery_working" = "جارٍ إكمال تنظيف الملف الشخصي…";
+
+"wallet__balance_updating" = "جارٍ تحديث الرصيد…";

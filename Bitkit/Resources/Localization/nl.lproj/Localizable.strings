@@ -1976,3 +1976,5 @@
 "profile__recovery_unavailable" = "Bitkit kan de opgeslagen opschoningsstatus niet lezen. Profielwijzigingen zijn gepauzeerd. Probeer de status opnieuw te lezen.";
 
 "profile__recovery_working" = "Profielopschoning afronden…";
+
+"wallet__balance_updating" = "Saldo bijwerken…";

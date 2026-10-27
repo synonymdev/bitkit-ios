@@ -1971,3 +1971,5 @@
 "profile__recovery_unavailable" = "Bitkit nemůže přečíst uložený stav vyčištění. Změny profilu jsou pozastaveny. Zkuste jej přečíst znovu.";
 
 "profile__recovery_working" = "Dokončování vyčištění profilu…";
+
+"wallet__balance_updating" = "Aktualizace zůstatku…";

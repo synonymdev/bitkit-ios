@@ -1289,6 +1289,7 @@ struct AppScene: View {
             isContactRefreshForeground = newPhase == .active
         }
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
+        BackupService.shared.setAppActive(newPhase == .active)
 
         let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
 

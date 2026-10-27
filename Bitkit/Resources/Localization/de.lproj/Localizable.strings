@@ -1968,3 +1968,5 @@
 "profile__recovery_unavailable" = "Bitkit kann den gespeicherten Bereinigungsstatus nicht lesen. Profiländerungen sind pausiert. Versuche erneut, ihn zu lesen.";
 
 "profile__recovery_working" = "Profilbereinigung wird abgeschlossen…";
+
+"wallet__balance_updating" = "Kontostand wird aktualisiert…";

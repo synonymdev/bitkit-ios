@@ -1974,3 +1974,5 @@
 "profile__recovery_unavailable" = "Bitkit no puede leer el estado guardado de la limpieza. Los cambios del perfil están en pausa. Intenta leerlo de nuevo.";
 
 "profile__recovery_working" = "Finalizando limpieza del perfil…";
+
+"wallet__balance_updating" = "Actualizando saldo…";

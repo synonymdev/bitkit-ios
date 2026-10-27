@@ -2057,3 +2057,5 @@
 "profile__recovery_unavailable" = "Bitkit cannot read the saved cleanup state. Profile changes are paused. Try reading it again.";
 
 "profile__recovery_working" = "Finishing profile cleanup…";
+
+"wallet__balance_updating" = "Updating balance…";
