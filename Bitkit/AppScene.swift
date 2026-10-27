@@ -2016,7 +2016,13 @@ struct AppScene: View {
         Task {
             await paykitAllowanceManager.activate(identity: pk)
             await handlePendingPaykitSubscriptionNotification()
-            guard pubkyProfile.automaticPaykitSession == session else { return }
+            guard pubkyProfile.automaticPaykitSession == session else {
+                // A deletion or session change cut this start short; let the session's next appearance run it again.
+                if activatedAutomaticPaykitIdentity == pk {
+                    activatedAutomaticPaykitIdentity = nil
+                }
+                return
+            }
             try? await contactsManager.loadContacts(for: pk)
             if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
                 await retryPendingPaykitEndpointRemoval()
