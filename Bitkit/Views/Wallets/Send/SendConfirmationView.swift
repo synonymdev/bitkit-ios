@@ -427,6 +427,10 @@ struct SendConfirmationView: View {
                 ensureSendAmountFromScannedInvoicesIfNeeded()
                 walletSwitchContext = sendContext
             }
+            .onChange(of: navigationPath) { previous, path in
+                guard preparingRequest == nil, previous.last == .amount, path.isEmpty, hasShownAmountReview, !amountIsRoot else { return }
+                _ = returnToAmountReviewIfNeeded()
+            }
     }
 
     private var confirmationContent: some View {
