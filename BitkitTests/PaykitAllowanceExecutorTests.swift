@@ -715,6 +715,70 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(released.filter { $0 == 7 }.count, 1, "The second attempt's list is released once, by the settlement")
     }
 
+    func testSettlementNeverReleasesAListRecoveryReleasedWhileItRecorded() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: "a", status: .failed)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(
+                attemptId: "a", request: request, stage: .sent, paymentHash: AllowanceHarness.paymentHash, paymentListVersion: 5
+            )]),
+            identity: Fixtures.identityKey
+        )
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let gate = await harness.sdk.holdNextOutcome()
+
+        let settlement = Task { await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: false) }
+        await Self.waitUntil { harness.log.entries.contains("recordPaymentOutcome") }
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        gate.open()
+        await settlement.value
+
+        let released = await harness.payer.releasedLists.map(\.version)
+        XCTAssertEqual(released, [5], "The list is released once, by recovery")
+    }
+
+    func testRecoveryNeverReleasesAListASettlementReleasedWhileItLookedUpThePayment() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: "a", status: .submitted)]),
+        ]))
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(
+                attemptId: "a", request: request, stage: .sent, paymentHash: AllowanceHarness.paymentHash, paymentListVersion: 5
+            )]),
+            identity: Fixtures.identityKey
+        )
+        await harness.lookup.setStatuses([AllowanceHarness.paymentHash: .failed])
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let gate = await harness.lookup.holdNextLookup()
+
+        let recovery = Task { await harness.executor.recover(identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("lightningStatus") }
+        await harness.executor.lightningPaymentSettled(paymentHash: AllowanceHarness.paymentHash, succeeded: false)
+        gate.open()
+        await recovery.value
+
+        let released = await harness.payer.releasedLists.map(\.version)
+        XCTAssertEqual(released, [5], "The list is released once, by the settlement")
+    }
+
+    func testPaymentListIsNotReleasedBeforeBroadcastWhenItsClaimCannotBeCleared() async throws {
+        let harness = AllowanceHarness()
+        await harness.payer.setLightningError(AllowanceMockError.unsupported)
+        await harness.payer.failSavesOnNodeRejection(harness.store)
+
+        _ = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        let listOutcomes = await harness.payer.paymentListOutcomes
+        XCTAssertEqual(listOutcomes, [.uncertain], "A claim still saved in the journal must not be released twice")
+        let released = await harness.payer.releasedLists.map(\.version)
+        XCTAssertEqual(released.count, 1, "Recording the failure releases the list once, from the journal")
+    }
+
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()
@@ -1561,8 +1625,20 @@ private actor AllowanceLightningLookupMock: PaykitLightningPaymentProofLookingUp
         self.statuses = statuses
     }
 
+    private var lookupGate: AllowanceGate?
+
+    func holdNextLookup() -> AllowanceGate {
+        let gate = AllowanceGate()
+        lookupGate = gate
+        return gate
+    }
+
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
         log.append("lightningStatus")
+        if let gate = lookupGate {
+            lookupGate = nil
+            await gate.wait()
+        }
         return statuses[paymentHash.lowercased()] ?? .unknown
     }
 }
@@ -1730,8 +1806,15 @@ private actor AllowancePayerMock: PaykitAllowancePaying {
         }
     }
 
+    private var storeFailingOnNodeRejection: AllowanceMemoryStore?
+
+    func failSavesOnNodeRejection(_ store: AllowanceMemoryStore) {
+        storeFailingOnNodeRejection = store
+    }
+
     func failLightningPayment(paymentHash: String, submissionError: Error) async -> Bool {
         called("failLightningPayment")
+        storeFailingOnNodeRejection?.failSaves()
         return lightningErrorIsDefinite
     }
 
@@ -1978,9 +2061,21 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         return try .ready(attempt: PaykitAllowanceFixtures.attemptRecord(id: attemptId, admittedAt: checks.trustedTime, status: .submitted))
     }
 
+    private var outcomeGate: AllowanceGate?
+
+    func holdNextOutcome() -> AllowanceGate {
+        let gate = AllowanceGate()
+        outcomeGate = gate
+        return gate
+    }
+
     func recordPaymentOutcome(_ report: Paykit.PaymentOutcomeReport) async throws -> Paykit.PaymentAttemptRecord {
         log.append("recordPaymentOutcome")
         recordedOutcomes.append(report)
+        if let gate = outcomeGate {
+            outcomeGate = nil
+            await gate.wait()
+        }
         let status: Paykit.PaymentExecutionStatus = switch report.outcome {
         case .succeeded: .succeeded
         case .failed: .failed

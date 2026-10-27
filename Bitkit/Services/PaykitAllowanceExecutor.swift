@@ -493,7 +493,8 @@ actor PaykitAllowanceExecutor {
 
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {
         try await sdk.recordPaymentOutcome(Paykit.PaymentOutcomeReport(attemptId: attemptId, outcome: outcome))
-        let entry = applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity)
+        // A settlement and recovery can both record one failure; only the call that ends the attempt releases its list.
+        let entry = applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity, onlyIfOpen: outcome == .failed)
         if outcome == .failed {
             await releaseConsumedPaymentList(of: entry)
         }
@@ -764,13 +765,20 @@ actor PaykitAllowanceExecutor {
         identity: String,
         outcome: PrivatePaymentListSendOutcome
     ) async {
+        var outcome = outcome
         if outcome == .definitePreBroadcastFailure {
             // Released here, so recording the attempt failed must not release it again: by then another payment may
-            // have consumed the same list version.
-            updateLocalState(identity: identity) { state in
-                guard let index = state.journal.firstIndex(where: { $0.attemptId == journalAttemptId }) else { return }
-                state.journal[index].paymentListVersion = nil
-                state.journal[index].previousPaymentListVersion = nil
+            // have consumed the same list version. A claim that cannot be cleared stays for that recording to release.
+            do {
+                var state = try store.load(identity: identity)
+                if let index = state.journal.firstIndex(where: { $0.attemptId == journalAttemptId }) {
+                    state.journal[index].paymentListVersion = nil
+                    state.journal[index].previousPaymentListVersion = nil
+                    try store.save(state, identity: identity)
+                }
+            } catch {
+                Logger.warn("Failed to clear a payment list claim; the failure record releases it: \(error)", context: "PaykitAllowance")
+                outcome = .uncertain
             }
         }
         await payer.resolvePaymentList(publicKey: request.counterparty, context: payment.context, attemptId: attemptId, outcome: outcome)
