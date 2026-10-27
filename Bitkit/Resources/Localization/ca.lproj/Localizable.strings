@@ -613,6 +613,7 @@
 "security__pin_forgot_text" = "Has oblidat el PIN? Restableix i recupera la teva cartera Bitkit amb la teva frase de recuperació. Configura un nou PIN després de completar la recuperació.";
 "security__pin_forgot_reset" = "Restablir (Es necessita la frase de recuperació)";
 "security__pin_send" = "Si us plau, introdueix el teu codi PIN per confirmar i enviar aquest pagament.";
+"security__pin_allowance" = "Si us plau, introdueix el teu codi PIN per confirmar aquest canvi de l'assignació.";
 "security__pin_send_title" = "Introdueix el codi PIN";
 "security__pin_use_biometrics" = "Utilitzar {biometricsName}";
 "security__bio" = "Biometria";

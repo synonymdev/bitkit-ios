@@ -655,6 +655,7 @@
 "security__pin_forgot_text" = "Zapomněli jste svůj PIN? Resetujte a obnovte svou peněženku Bitkit pomocí vaší obnovovací fráze. Po dokončení obnovení nastavte nový PIN.";
 "security__pin_forgot_reset" = "Resetovat (vyžaduje obnovovací frázi)";
 "security__pin_send" = "Pro potvrzení a odeslání této platby prosím zadejte svůj PIN kód.";
+"security__pin_allowance" = "Pro potvrzení této změny povolení plateb prosím zadejte svůj PIN kód.";
 "security__pin_send_title" = "Zadejte kód PIN";
 "security__pin_use_biometrics" = "Použít {biometricsName}";
 "security__bio" = "Biometrické údaje";

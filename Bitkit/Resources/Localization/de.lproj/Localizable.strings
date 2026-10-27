@@ -653,6 +653,7 @@
 "security__pin_forgot_text" = "PIN vergessen? Setze hier dein Bitkit-Wallet zurück und stelle es mit deiner Wiederherstellungsphrase wieder her. Vergebe eine neue PIN nach deiner Wiederherstellung.";
 "security__pin_forgot_reset" = "Zurücksetzen (erfordert Wiederherstellungsphrase)";
 "security__pin_send" = "Bitte gib deinen PIN-Code ein, um diese Zahlung zu bestätigen und zu senden.";
+"security__pin_allowance" = "Bitte gib deinen PIN-Code ein, um diese Änderung des Kontingents zu bestätigen.";
 "security__pin_send_title" = "PIN-Code eingeben";
 "security__pin_use_biometrics" = "Verwende {biometricsName}";
 "security__bio" = "Biometrie";

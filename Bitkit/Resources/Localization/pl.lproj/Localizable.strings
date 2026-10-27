@@ -655,6 +655,7 @@
 "security__pin_forgot_text" = "Zapomniałeś kodu PIN? Zresetuj i odzyskaj swój portfel Bitkit używając mnemonika. Ustaw nowy kod PIN po zakończeniu odzyskiwania portfela.";
 "security__pin_forgot_reset" = "Reset (wymaga mnemonika)";
 "security__pin_send" = "Proszę podaj swój kod PIN aby potwierdzić i wysłać płatność.";
+"security__pin_allowance" = "Proszę podaj swój kod PIN aby potwierdzić tę zmianę przydziału.";
 "security__pin_send_title" = "Wprowadź kod PIN";
 "security__pin_use_biometrics" = "Użyj {biometricsName}";
 "security__bio" = "Biometria";

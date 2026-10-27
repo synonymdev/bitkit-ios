@@ -539,6 +539,7 @@
 "security__pin_forgot_text" = "هل نسيت رمز PIN؟ أعد التعيين واستعد محفظة Bitkit باستخدام عبارة الاسترداد. قم بتعيين رمز PIN جديد بعد إكمال الاستعادة.";
 "security__pin_forgot_reset" = "إعادة التعيين (يتطلب عبارة الاسترداد)";
 "security__pin_send" = "يرجى إدخال رمز PIN الخاص بك لتأكيد وإرسال هذه الدفعة.";
+"security__pin_allowance" = "يرجى إدخال رمز PIN الخاص بك لتأكيد هذا التغيير في المخصص.";
 "security__pin_send_title" = "أدخل رمز PIN";
 "security__pin_use_biometrics" = "استخدام {biometricsName}";
 "security__bio" = "المقاييس الحيوية";

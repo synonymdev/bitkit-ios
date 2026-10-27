@@ -614,6 +614,7 @@
 "security__pin_forgot_text" = "¿Ha olvidado su PIN? Reinicie y recupere su monedero Bitkit con su frase de recuperación. Establezca un nuevo PIN después de completar la recuperación.";
 "security__pin_forgot_reset" = "Restablecer (requiere frase de recuperación)";
 "security__pin_send" = "Por favor, introduzca su código PIN para confirmar y enviar este pago.";
+"security__pin_allowance" = "Por favor, introduzca su código PIN para confirmar este cambio en la asignación.";
 "security__pin_send_title" = "Introduzca el Código PIN";
 "security__pin_use_biometrics" = "Utilizar {biometricsName}";
 "security__bio" = "Biometría";

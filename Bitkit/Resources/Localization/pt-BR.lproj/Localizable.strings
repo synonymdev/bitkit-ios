@@ -655,6 +655,7 @@
 "security__pin_forgot_text" = "Esqueceu seu PIN? Redefina e recupere sua carteira Bitkit com a sua frase de recuperação. Defina um novo PIN após concluir a recuperação.";
 "security__pin_forgot_reset" = "Restaurar (Requer a Frase de Recuperação)";
 "security__pin_send" = "Digite seu código PIN para confirmar e enviar esse pagamento.";
+"security__pin_allowance" = "Digite seu código PIN para confirmar esta alteração da pré-aprovação.";
 "security__pin_send_title" = "Digitar o código PIN";
 "security__pin_use_biometrics" = "Usar {biometricsName}";
 "security__bio" = "Biometria";

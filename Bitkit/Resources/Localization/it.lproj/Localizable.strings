@@ -647,6 +647,7 @@
 "security__pin_forgot_text" = "Ha dimenticato il PIN? Resetta e recupera il tuo wallet Bitkit con la recovery phrase. Imposta un nuovo PIN dopo aver completato il recupero.";
 "security__pin_forgot_reset" = "Reset (Richiede la Recovery Phrase)";
 "security__pin_send" = "Inserisci il codice PIN per confermare e inviare questo pagamento.";
+"security__pin_allowance" = "Inserisci il codice PIN per confermare questa modifica del Plafond.";
 "security__pin_send_title" = "Inserisci Codice PIN";
 "security__pin_use_biometrics" = "Utilizza {biometricsName}";
 "security__bio" = "Biometria";

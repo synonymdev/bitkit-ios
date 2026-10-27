@@ -650,6 +650,7 @@
 "security__pin_forgot_text" = "Забыли свой PIN-код? Сбросьте и восстановите свой кошелёк Bitkit с помощью фразы восстановления. Установите новый PIN-код после завершения восстановления.";
 "security__pin_forgot_reset" = "Сбросить (требуется Фраза Восстановления)";
 "security__pin_send" = "Введите PIN-код, чтобы подтвердить и отправить этот платеж.";
+"security__pin_allowance" = "Введите PIN-код, чтобы подтвердить это изменение лимита автооплаты.";
 "security__pin_send_title" = "Введите PIN-код";
 "security__pin_use_biometrics" = "Использовать {biometricsName}";
 "security__bio" = "Биометрия";
