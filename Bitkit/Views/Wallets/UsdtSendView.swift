@@ -13,6 +13,7 @@ struct UsdtSendView: View {
     var quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)?
     var authenticatePayment: (() async -> Bool)?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
+    var onReviewChange: ((Bool) -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
     @Environment(UsdtWalletManager.self) private var usdt
@@ -59,6 +60,7 @@ struct UsdtSendView: View {
         quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)? = nil,
         authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
+        onReviewChange: ((Bool) -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
     ) {
@@ -71,6 +73,7 @@ struct UsdtSendView: View {
         self.quotePayment = quotePayment
         self.authenticatePayment = authenticatePayment
         self.sendPayment = sendPayment
+        self.onReviewChange = onReviewChange
         self.onBack = onBack
         self.onClose = onClose
         _recipient = State(initialValue: initialRecipient)
@@ -133,6 +136,10 @@ struct UsdtSendView: View {
         return t(editingAmount ? "usdt__amount" : "usdt__send_title")
     }
 
+    private var isReviewingPayment: Bool {
+        paymentContext != nil && settings.isUsdtEnabled && quote != nil && !submitted
+    }
+
     var body: some View {
         Group {
             if !settings.isUsdtEnabled, !submitted {
@@ -166,6 +173,7 @@ struct UsdtSendView: View {
                     await usdt.waitForTransfer(quote.id)
                 }
                 if submittedStatus == .confirmed {
+                    Task { await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt) }
                     paymentComplete = true
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 }
@@ -173,6 +181,7 @@ struct UsdtSendView: View {
             }
             while !Task.isCancelled, [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) {
                 await usdt.refresh()
+                guard [.pending, .bridging, .bridgeNeedsAttention].contains(submittedStatus) else { break }
                 do { try await Task.sleep(for: .seconds(10)) } catch { return }
             }
             await PaykitUsdtPaymentService.shared.reconcile(wallet: usdt)
@@ -184,7 +193,14 @@ struct UsdtSendView: View {
         }
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .onAppear { usdt.isSendPresented = true }
-        .onDisappear { usdt.isSendPresented = false; preparedQuote = nil; resolveWarning(proceed: false) }
+        .onDisappear {
+            usdt.isSendPresented = false
+            preparedQuote = nil
+            resolveWarning(proceed: false)
+        }
+        .onChange(of: isReviewingPayment, initial: true) { _, reviewing in
+            onReviewChange?(reviewing)
+        }
         .task(id: settings.isUsdtEnabled) {
             if !embedded {
                 do { destinations = try await usdt.sendDestinations() }

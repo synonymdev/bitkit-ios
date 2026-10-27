@@ -1,8 +1,55 @@
 @testable import Bitkit
+import SwiftUI
 import XCTest
 
 @MainActor
 final class PaykitPaymentActivityTests: XCTestCase {
+    func testPendingRecoveryReviewKeepsInactivePromptsAndReleasesInBackground() {
+        let prompts: [(fee: Bool, approval: String?, abandon: Bool, biometric: Bool)] = [
+            (false, nil, false, false),
+            (true, nil, false, false),
+            (false, "Prepared payment fee", false, false),
+            (false, nil, true, false),
+            (false, nil, false, true),
+        ]
+        for (index, prompt) in prompts.enumerated() {
+            for phase in [ScenePhase.active, .inactive, .background] {
+                XCTAssertEqual(SendPendingScreen.isReviewingRecovery(
+                    scenePhase: phase,
+                    showingRetryConfirmation: prompt.fee,
+                    retryApprovalMessage: prompt.approval,
+                    showingAbandonConfirmation: prompt.abandon,
+                    isAuthenticatingRecovery: prompt.biometric
+                ), index != 0 && phase != .background)
+            }
+        }
+    }
+
+    func testReviewDefersContactRetryWithoutHoldingPaymentDelivery() async throws {
+        let activity = PaykitPaymentActivity()
+        let first = activity.beginReview()
+        let second = activity.beginReview()
+        var didRefresh = false
+        let refresh = Task {
+            try await activity.waitUntilIdle(includingReviews: true)
+            didRefresh = true
+        }
+        defer { refresh.cancel() }
+        try await activity.waitUntilIdle()
+        await Task.yield()
+        XCTAssertFalse(didRefresh)
+
+        activity.endReview(first)
+        let payment = activity.begin()
+        activity.endReview(second)
+        await Task.yield()
+        XCTAssertFalse(didRefresh)
+
+        activity.end(payment)
+        try await refresh.value
+        XCTAssertTrue(didRefresh)
+    }
+
     func testProofInvalidationsCoalesceUntilForegroundAndPaymentIdle() async throws {
         let profile = PubkyProfileManager()
         profile.publicKey = "pubky\(String(repeating: "z", count: 52))"
