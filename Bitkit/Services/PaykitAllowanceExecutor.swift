@@ -566,9 +566,19 @@ actor PaykitAllowanceExecutor {
     }
 
     /// Read from the SDK ledger, which keeps every attempt, rather than the journal, which keeps only the newest ones.
-    func succeededAutomaticPayments() async -> [AutomaticPayment] {
-        guard let state = try? await sdk.allowanceAccountingState() else { return [] }
-        return state.history.occurrences.flatMap { occurrence in
+    /// Nil when the ledger can't be read, so the caller keeps what it showed.
+    func succeededAutomaticPayments(identity: String) async -> [AutomaticPayment]? {
+        let state: Paykit.AllowanceAccountingState?
+        do {
+            state = try await sdk.allowanceAccountingState()
+        } catch {
+            Logger.warn("Failed to read allowance accounting for automatic payments: \(error)", context: "PaykitAllowance")
+            return nil
+        }
+        guard let state else { return [] }
+        return state.history.occurrences.filter {
+            PubkyPublicKeyFormat.matches($0.key.request.localPublicKey, identity)
+        }.flatMap { occurrence in
             occurrence.attempts.compactMap { attempt in
                 guard attempt.mode == .automatic, attempt.status == .succeeded, let allowanceId = attempt.allowanceId,
                       let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())

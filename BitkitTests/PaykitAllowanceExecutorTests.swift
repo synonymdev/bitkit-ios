@@ -1079,6 +1079,20 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         }
         let notPaid = try [
             Fixtures.occurrence(requestId: "req-failed", attempts: [Fixtures.attemptRecord(id: "failed", status: .failed)]),
+            Paykit.PaymentOccurrenceRecord(
+                key: Paykit.PaymentOccurrenceKey(
+                    request: Paykit.PaymentAccountingScope(
+                        localPublicKey: Fixtures.otherCounterpartyKey,
+                        counterparty: Fixtures.counterpartyKey,
+                        paymentRequestId: "req-other-identity"
+                    ),
+                    billingPeriod: nil
+                ),
+                disposition: .automatic,
+                allowanceId: Fixtures.walletAllowanceId,
+                associationRevision: 1,
+                attempts: [Fixtures.attemptRecord(id: "other-identity", status: .succeeded)]
+            ),
             Fixtures.occurrence(
                 requestId: "req-manual",
                 attempts: [Fixtures.attemptRecord(id: "manual", mode: .manual, allowanceId: nil, status: .succeeded)],

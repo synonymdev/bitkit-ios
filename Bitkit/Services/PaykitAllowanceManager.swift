@@ -160,7 +160,7 @@ final class PaykitAllowanceManager {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
         localState = await executor.localState(identity: identity)
-        let paid = await executor.succeededAutomaticPayments()
+        guard let paid = await executor.succeededAutomaticPayments(identity: identity) else { return }
         autoPaidRequestIds = Set(paid.map(\.requestId))
         autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, payment in
             totals[PaykitAllowance.scopedId(counterparty: payment.requestId.counterparty, allowanceId: payment.allowanceId), default: 0] +=
