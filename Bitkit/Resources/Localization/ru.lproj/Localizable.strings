@@ -1922,6 +1922,10 @@
 "usdt__convert_spark" = "Обменять";
 "usdt__convert_to_btc_spark" = "Получить биткоин";
 "usdt__convert_to_usd_spark" = "Получить доллары";
+"usdt__activity_bridge_spark" = "Переведено в USDT";
+"usdt__activity_to_btc_spark" = "Обменено на биткоин";
+"usdt__activity_to_usd_spark" = "Обменено на доллары";
+"usdt__received_title_spark" = "Доллары получены";
 "subscriptions__allowances" = "Лимиты автооплаты";
 "subscriptions__allowances_empty_headline" = "Настройте\n<accent>лимиты автооплаты</accent>";
 "subscriptions__allowances_empty_description" = "Вы можете задать лимиты расходов, чтобы автоматически оплачивать запросы на оплату от доверенных контактов.";

@@ -54,6 +54,9 @@ enum ClipboardPromptValidator {
         isUsdtEnabled: Bool = Env.isUsdtEnabled && UsdtPreference.isEnabled(),
         decodeURI: (String) async -> Bool = { await (try? decode(invoice: $0)) != nil }
     ) async -> Bool {
+        if Env.sparkUsdTokenId != nil, SparkUsd.isSparkInput(uri) {
+            return true
+        }
         if !isUsdtEnabled, (try? usdtParsePaymentRequest(value: uri.trimmingCharacters(in: .whitespacesAndNewlines))) != nil {
             return false
         }

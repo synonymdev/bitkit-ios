@@ -1936,6 +1936,10 @@
 "usdt__convert_spark" = "Omzetten";
 "usdt__convert_to_btc_spark" = "Bitcoin krijgen";
 "usdt__convert_to_usd_spark" = "Dollars krijgen";
+"usdt__activity_bridge_spark" = "Verplaatst naar USDT";
+"usdt__activity_to_btc_spark" = "Omgezet naar bitcoin";
+"usdt__activity_to_usd_spark" = "Omgezet naar dollars";
+"usdt__received_title_spark" = "Dollars ontvangen";
 "subscriptions__allowances" = "Toelagen";
 "subscriptions__allowances_empty_headline" = "Stel\n<accent>toelagen</accent> in";
 "subscriptions__allowances_empty_description" = "U kunt bestedingslimieten instellen om betaalverzoeken van vertrouwde contacten automatisch te voldoen.";

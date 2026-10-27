@@ -15,7 +15,7 @@ struct ActivityList: View {
 
     var body: some View {
         let activities = getActivities()
-        let rows = WalletActivity.grouped(WalletActivity.merged(activities, filteredUsdt))
+        let rows = WalletActivity.grouped(WalletActivity.merged(activities, filteredUsdt, filteredSparkUsd))
         if !rows.isEmpty {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(Array(rows.enumerated()), id: \.element) { index, item in
@@ -47,6 +47,26 @@ struct ActivityList: View {
             let search = activity.searchText
             return matchesTab && (start.map { date >= $0 } ?? true) && (end.map { date < $0 } ?? true) &&
                 transfer.matchesActivitySearch(search)
+        }
+    }
+
+    private var filteredSparkUsd: [SparkUsdTransfer] {
+        guard viewType == .all, activity.selectedTags.isEmpty else { return [] }
+        return (SparkManager.shared.usd?.transfers ?? []).filter { transfer in
+            let matchesTab: Bool = switch activity.selectedTab {
+            case .all: true
+            case .sent: transfer.kind == .sent
+            case .received: transfer.kind == .received
+            case .other: transfer.kind != .sent && transfer.kind != .received
+            }
+            let date = Date(timeIntervalSince1970: TimeInterval(transfer.timestamp))
+            let start = activity.startDate.map { Calendar.current.startOfDay(for: $0) }
+            let end = activity.endDate.flatMap { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: $0)) }
+            let search = activity.searchText
+            let matchesSearch = search.isEmpty || search.caseInsensitiveCompare("USDB") == .orderedSame ||
+                transfer.counterparty?.localizedCaseInsensitiveContains(search) == true ||
+                transfer.txHash?.localizedCaseInsensitiveContains(search) == true
+            return matchesTab && (start.map { date >= $0 } ?? true) && (end.map { date < $0 } ?? true) && matchesSearch
         }
     }
 

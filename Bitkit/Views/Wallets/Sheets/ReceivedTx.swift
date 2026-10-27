@@ -11,6 +11,8 @@ struct ReceivedTxSheetDetails: Codable {
     var sats: UInt64 = 0
     var usdtAmount: UInt64? = nil
     var usdtTransferId: String? = nil
+    /// A Spark dollar activity, shown with `usdtAmount` as its dollar amount.
+    var sparkUsdTransferId: String? = nil
 }
 
 struct ReceivedTxSheetItem: SheetItem {
@@ -30,7 +32,8 @@ struct ReceivedTx: View {
 
     var body: some View {
         let isOnchain = config.details.type == .onchain
-        let title = config.details.usdtAmount != nil ? t("usdt__payment_received")
+        let title = config.details.sparkUsdTransferId != nil ? t("usdt__received_title_spark")
+            : config.details.usdtAmount != nil ? t("usdt__payment_received")
             : isOnchain ? t("wallet__payment_received") : t("wallet__instant_payment_received")
 
         Sheet(id: .receivedTx, data: config, backgroundColor: config.details.usdtAmount != nil ? .gray7 : .black,
@@ -58,7 +61,7 @@ struct ReceivedTx: View {
                     }
                     Spacer()
                     HStack(spacing: 16) {
-                        if config.details.usdtTransferId != nil {
+                        if config.details.usdtTransferId != nil || config.details.sparkUsdTransferId != nil {
                             CustomButton(
                                 title: t("wallet__send_details"),
                                 variant: .secondary,
@@ -79,6 +82,11 @@ struct ReceivedTx: View {
     }
 
     private func showUsdtDetails() {
+        if let sparkUsdTransferId = config.details.sparkUsdTransferId {
+            sheets.hideSheet()
+            navigation.navigate(.sparkUsdActivity(transferId: sparkUsdTransferId))
+            return
+        }
         guard let transferId = config.details.usdtTransferId else { return }
         sheets.hideSheet()
         navigation.navigate(.usdtActivity(transferId: transferId))

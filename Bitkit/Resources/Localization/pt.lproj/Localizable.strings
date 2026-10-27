@@ -1588,6 +1588,10 @@
 "usdt__convert_spark" = "Converter";
 "usdt__convert_to_btc_spark" = "Obter bitcoin";
 "usdt__convert_to_usd_spark" = "Obter dólares";
+"usdt__activity_bridge_spark" = "Movido para USDT";
+"usdt__activity_to_btc_spark" = "Convertido em bitcoin";
+"usdt__activity_to_usd_spark" = "Convertido em dólares";
+"usdt__received_title_spark" = "Dólares recebidos";
 "subscriptions__allowances" = "Pré-aprovações";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>pré-aprovações</accent>";
 "subscriptions__allowances_empty_description" = "Pode definir limites de gastos para pagar automaticamente pedidos de pagamento de contactos de confiança.";

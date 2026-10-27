@@ -1931,6 +1931,10 @@
 "usdt__convert_spark" = "Převést";
 "usdt__convert_to_btc_spark" = "Získat bitcoin";
 "usdt__convert_to_usd_spark" = "Získat dolary";
+"usdt__activity_bridge_spark" = "Přesunuto do USDT";
+"usdt__activity_to_btc_spark" = "Převedeno na bitcoin";
+"usdt__activity_to_usd_spark" = "Převedeno na dolary";
+"usdt__received_title_spark" = "Dolary přijaty";
 "subscriptions__allowances" = "Povolení plateb";
 "subscriptions__allowances_empty_headline" = "Nastavte\n<accent>povolení plateb</accent>";
 "subscriptions__allowances_empty_description" = "Můžete nastavit limity útraty a automaticky tak vyřizovat žádosti o platbu od důvěryhodných kontaktů.";

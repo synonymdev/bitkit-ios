@@ -1942,6 +1942,10 @@
 "usdt__convert_spark" = "Convertir";
 "usdt__convert_to_btc_spark" = "Obtenir du bitcoin";
 "usdt__convert_to_usd_spark" = "Obtenir des dollars";
+"usdt__activity_bridge_spark" = "Transféré vers USDT";
+"usdt__activity_to_btc_spark" = "Converti en bitcoin";
+"usdt__activity_to_usd_spark" = "Converti en dollars";
+"usdt__received_title_spark" = "Dollars reçus";
 "subscriptions__allowances" = "Allocations";
 "subscriptions__allowances_empty_headline" = "Configurez\n<accent>des allocations</accent>";
 "subscriptions__allowances_empty_description" = "Vous pouvez définir des limites de dépenses pour régler automatiquement les demandes de paiement de contacts de confiance.";

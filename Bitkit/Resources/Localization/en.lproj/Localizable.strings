@@ -2070,3 +2070,7 @@
 "usdt__convert_spark" = "Convert";
 "usdt__convert_to_btc_spark" = "Get bitcoin";
 "usdt__convert_to_usd_spark" = "Get dollars";
+"usdt__activity_bridge_spark" = "Moved to USDT";
+"usdt__activity_to_btc_spark" = "Converted to bitcoin";
+"usdt__activity_to_usd_spark" = "Converted to dollars";
+"usdt__received_title_spark" = "Received Dollars";

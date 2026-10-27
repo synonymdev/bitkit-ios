@@ -1791,6 +1791,10 @@
 "usdt__convert_spark" = "Convertir";
 "usdt__convert_to_btc_spark" = "Obtenir bitcoin";
 "usdt__convert_to_usd_spark" = "Obtenir dòlars";
+"usdt__activity_bridge_spark" = "Mogut a USDT";
+"usdt__activity_to_btc_spark" = "Convertit a bitcoin";
+"usdt__activity_to_usd_spark" = "Convertit a dòlars";
+"usdt__received_title_spark" = "Dòlars rebuts";
 "wallet__send_error_support" = "Contacta amb el suport";
 "subscriptions__allowances" = "Assignacions";
 "subscriptions__allowances_empty_headline" = "Configura\n<accent>assignacions</accent>";

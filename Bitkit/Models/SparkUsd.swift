@@ -1,6 +1,8 @@
 import BigNumber
+import BitkitCore
 import BreezSdkSpark
 import Foundation
+import UserNotifications
 
 /// The dollar token held on Spark, in 6-decimal dollar units like Arbitrum USDT so both format alike.
 struct SparkUsdState: Equatable {
@@ -9,14 +11,31 @@ struct SparkUsdState: Equatable {
     var transfers: [SparkUsdTransfer] = []
 }
 
-struct SparkUsdTransfer: Identifiable, Equatable {
+/// Dollar activity on Spark. `amount` and `fee` are in dollar units; `sats` is the bitcoin side of a conversion, and
+/// `counterparty` the Spark invoice a transfer paid or was paid through, when known.
+struct SparkUsdTransfer: Identifiable, Hashable {
+    enum Kind: Hashable {
+        case sent
+        case received
+        case toUsd
+        case toBtc
+        case toArbitrum
+    }
+
     let id: String
-    let isIncoming: Bool
+    let kind: Kind
     let status: BreezSdkSpark.PaymentStatus
     let amount: UInt64
     let fee: UInt64
     let timestamp: UInt64
-    let txHash: String
+    var txHash: String?
+    var counterparty: String?
+    var sats: UInt64?
+
+    /// Whether dollars came in: a receive or a conversion to dollars.
+    var isIncoming: Bool {
+        kind == .received || kind == .toUsd
+    }
 }
 
 /// Where a dollar payment goes: a Spark address or invoice, with the amount an invoice fixes.
@@ -49,6 +68,20 @@ enum SparkUsdError: Error {
 }
 
 enum SparkUsd {
+    /// Shows a local notification for dollars received while the app is in the background.
+    static func notifyReceived(amount: UInt64) {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+            let content = UNMutableNotificationContent()
+            content.title = t("usdt__received_title_spark")
+            content.body = "$ " + usdtFormatAmount(amount: amount)
+            content.sound = .default
+            try? await center.add(UNNotificationRequest(identifier: "spark-usd-\(UUID().uuidString)", content: content, trigger: nil))
+        }
+    }
+
     /// Decimals of Bitkit's dollar amounts, shared with Arbitrum USDT so both format alike.
     static let decimals = 6
 

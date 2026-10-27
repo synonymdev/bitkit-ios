@@ -1901,6 +1901,10 @@
 "usdt__convert_spark" = "Converti";
 "usdt__convert_to_btc_spark" = "Ottieni bitcoin";
 "usdt__convert_to_usd_spark" = "Ottieni dollari";
+"usdt__activity_bridge_spark" = "Spostato in USDT";
+"usdt__activity_to_btc_spark" = "Convertito in bitcoin";
+"usdt__activity_to_usd_spark" = "Convertito in dollari";
+"usdt__received_title_spark" = "Dollari ricevuti";
 "subscriptions__allowances" = "Plafond";
 "subscriptions__allowances_empty_headline" = "Imposta\n<accent>i plafond</accent>";
 "subscriptions__allowances_empty_description" = "Puoi impostare limiti di spesa per pagare automaticamente le richieste di pagamento dei contatti fidati.";

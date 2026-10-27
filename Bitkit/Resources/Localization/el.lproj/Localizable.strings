@@ -1662,6 +1662,10 @@
 "usdt__convert_spark" = "Μετατροπή";
 "usdt__convert_to_btc_spark" = "Λήψη bitcoin";
 "usdt__convert_to_usd_spark" = "Λήψη δολαρίων";
+"usdt__activity_bridge_spark" = "Μεταφέρθηκε σε USDT";
+"usdt__activity_to_btc_spark" = "Μετατράπηκε σε bitcoin";
+"usdt__activity_to_usd_spark" = "Μετατράπηκε σε δολάρια";
+"usdt__received_title_spark" = "Τα δολάρια ελήφθησαν";
 "wallet__send_error_support" = "Επικοινωνία με Υποστήριξη";
 "subscriptions__allowances" = "Προεγκρίσεις";
 "subscriptions__allowances_empty_headline" = "Ρύθμισε\n<accent>προεγκρίσεις</accent>";

@@ -91,8 +91,11 @@ struct SparkUsdWalletScreen: View {
                 if index == 0 || transfers[index - 1].groupTitle != header {
                     CaptionMText(header).padding(.top, index == 0 ? 0 : 16)
                 }
-                SparkUsdActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
-                    .accessibilityIdentifier("SparkUsdActivity-\(index)")
+                NavigationLink(value: Route.sparkUsdActivity(transferId: transfer.id)) {
+                    SparkUsdActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("SparkUsdActivity-\(index)")
             }
         }
     }
@@ -151,24 +154,36 @@ struct SparkUsdActivityRow: View {
     }
 }
 
-private extension SparkUsdTransfer {
+extension SparkUsdTransfer {
     var groupTitle: String {
         DateFormatterHelpers.getActivityGroupHeader(for: Date(timeIntervalSince1970: TimeInterval(timestamp)))
     }
 
     var title: String {
+        switch (status, kind) {
+        case (.failed, _): t("usdt__failed")
+        case (.pending, _): t("usdt__pending")
+        case (_, .toUsd): t("usdt__activity_to_usd_spark")
+        case (_, .toBtc): t("usdt__activity_to_btc_spark")
+        case (_, .toArbitrum): t("usdt__activity_bridge_spark")
+        default: t(isIncoming ? "usdt__received" : "usdt__sent")
+        }
+    }
+
+    var statusLabel: String {
         switch status {
         case .failed: t("usdt__failed")
         case .pending: t("usdt__pending")
-        case .completed: t(isIncoming ? "usdt__received" : "usdt__sent")
+        case .completed: t("usdt__confirmed")
         }
     }
 
     var statusIcon: String {
-        switch status {
-        case .failed: "x-circle"
-        case .pending: "hourglass-simple"
-        case .completed: isIncoming ? "arrow-down" : "arrow-up"
+        switch (status, kind) {
+        case (.failed, _): "x-circle"
+        case (.pending, _): "hourglass-simple"
+        case (_, .toUsd), (_, .toBtc), (_, .toArbitrum): "transfer"
+        default: isIncoming ? "arrow-down" : "arrow-up"
         }
     }
 
@@ -189,7 +204,8 @@ struct SparkUsdReceiveView: View {
         VStack(alignment: .leading, spacing: 16) {
             SheetHeader(title: t("usdt__receive_title"), showBackButton: false, topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
             if let request {
-                QrArea(uri: request, imageAsset: "tether-circle", accentColor: .usdtAccent, copyValue: request,
+                // Bech32 is case-insensitive, and uppercase fits QR's denser alphanumeric mode, so the code scans easier.
+                QrArea(uri: request.uppercased(), imageAsset: "tether-circle", accentColor: .usdtAccent, copyValue: request,
                        shareText: request, copyMessage: t("usdt__receive_copied_spark"))
                     .accessibilityIdentifier("SparkUsdReceiveQr")
             } else if let error {
@@ -211,6 +227,13 @@ struct SparkUsdReceiveView: View {
                 Logger.warn("Failed to create Spark dollar request: \(error)", context: "SparkUsdReceiveView")
             }
         }
+        .task {
+            // Syncs while the QR is open, so an incoming payment shows within seconds.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                await SparkManager.shared.syncNow()
+            }
+        }
     }
 }
 
@@ -223,6 +246,8 @@ struct SparkUsdSendView: View {
     @State private var reviewing = false
     @State private var busy = false
     @State private var submitted = false
+    @State private var sentTransferId: String?
+    @EnvironmentObject private var navigation: NavigationViewModel
     @State private var error: String?
     @State private var pin = false
     @State private var pinContinuation: CheckedContinuation<Bool, Never>?
@@ -360,11 +385,23 @@ struct SparkUsdSendView: View {
     private var submittedContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             UsdtAmountHeader(amount: usdtFormatAmount(amount: amountUnits ?? 0), displayAmount: usdtOverviewAmount(amountUnits ?? 0))
-            BodySText(t("usdt__submitted_description"), textColor: .textSecondary)
             Spacer()
-            CustomButton(title: t("common__close")) { dismiss() }
-                .accessibilityIdentifier("SparkUsdDone")
+            HStack(spacing: 16) {
+                if let sentTransferId {
+                    CustomButton(title: t("wallet__send_details"), variant: .secondary) {
+                        dismiss()
+                        navigation.navigate(.sparkUsdActivity(transferId: sentTransferId))
+                    }
+                    .accessibilityIdentifier("SparkUsdSendDetails")
+                }
+                CustomButton(title: t("common__close")) { dismiss() }
+                    .accessibilityIdentifier("SparkUsdDone")
+            }
         }
+        .background {
+            PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent, isUsdt: true)
+        }
+        .accessibilityIdentifier("SparkUsdSendSuccess")
     }
 
     @ViewBuilder
@@ -449,7 +486,7 @@ struct SparkUsdSendView: View {
         busy = true
         defer { busy = false }
         do {
-            try await spark.sendUsd(request: recipient.request, amount: units, isAmountFixed: recipient.amount != nil)
+            sentTransferId = try await spark.sendUsd(request: recipient.request, amount: units, isAmountFixed: recipient.amount != nil)
             submitted = true
         } catch {
             self.error = t("usdt__send_failed_description")

@@ -386,6 +386,17 @@ struct MainNavView: View {
             .onChange(of: scenePhase, initial: true) { _, newPhase in
                 guard newPhase == .active else { return }
                 handleClipboardIfEnabled()
+                Task { await SparkManager.shared.syncNow() }
+            }
+            .task {
+                SparkManager.shared.onUsdReceived = { transfer in
+                    let details = ReceivedTxSheetDetails(type: .lightning, usdtAmount: transfer.amount, sparkUsdTransferId: transfer.id)
+                    if scenePhase == .active, sheets.canPresentReceivedTx {
+                        sheets.showSheet(.receivedTx, data: details)
+                    } else {
+                        SparkUsd.notifyReceived(amount: transfer.amount)
+                    }
+                }
             }
             .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
                 // Handle notification permission changes
@@ -528,6 +539,7 @@ struct MainNavView: View {
                 case let .usdtActivity(transferId): UsdtActivityDetail(transferId: transferId)
                 case .usdtDepositHistory: UsdtDepositHistoryView()
                 case let .sparkUsdWallet(recipient): SparkUsdWalletScreen(initialRecipient: recipient)
+                case let .sparkUsdActivity(transferId): SparkUsdActivityDetail(transferId: transferId)
                 case .scanner: ScannerScreen()
 
                 // Transfer
@@ -809,6 +821,13 @@ struct MainNavView: View {
         guard let uri = clipboardUri else { return }
 
         Task { @MainActor in
+            if Env.sparkUsdTokenId != nil, SparkUsd.isSparkInput(uri), app.contactPaymentContext == nil {
+                sheets.hideSheetBeforePerforming(reason: "Clipboard routed Spark dollar payment") {
+                    navigation.navigate(.sparkUsdWallet(recipient: uri))
+                }
+                clipboardUri = nil
+                return
+            }
             do {
                 if let route = try resolveUsdtPaymentRoute(input: uri) {
                     guard !usdt.isSendPresented, app.contactPaymentContext == nil else { return }

@@ -113,6 +113,7 @@ struct ActivityRowContent<Icon: View, Amount: View>: View {
 enum WalletActivity: Hashable {
     case bitcoin(Activity)
     case usdt(UsdtTransfer)
+    case sparkUsd(SparkUsdTransfer)
 
     enum GroupItem: Hashable {
         case header(String)
@@ -124,11 +125,12 @@ enum WalletActivity: Hashable {
         case let .bitcoin(.lightning(item)): item.timestamp
         case let .bitcoin(.onchain(item)): item.timestamp
         case let .usdt(item): item.timestamp
+        case let .sparkUsd(item): item.timestamp
         }
     }
 
-    static func merged(_ bitcoin: [Activity], _ usdt: [UsdtTransfer]) -> [WalletActivity] {
-        (bitcoin.map(Self.bitcoin) + usdt.map(Self.usdt)).sorted { $0.timestamp > $1.timestamp }
+    static func merged(_ bitcoin: [Activity], _ usdt: [UsdtTransfer], _ sparkUsd: [SparkUsdTransfer] = []) -> [WalletActivity] {
+        (bitcoin.map(Self.bitcoin) + usdt.map(Self.usdt) + sparkUsd.map(Self.sparkUsd)).sorted { $0.timestamp > $1.timestamp }
     }
 
     static func grouped(_ activities: [WalletActivity]) -> [GroupItem] {
@@ -174,6 +176,10 @@ struct WalletActivityRow: View {
         case let .usdt(transfer):
             NavigationLink(value: Route.usdtActivity(transferId: transfer.id)) {
                 UsdtActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
+            }
+        case let .sparkUsd(transfer):
+            NavigationLink(value: Route.sparkUsdActivity(transferId: transfer.id)) {
+                SparkUsdActivityRow(transfer: transfer, hideBalance: settings.hideBalance)
             }
         }
     }

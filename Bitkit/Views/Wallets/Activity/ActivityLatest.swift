@@ -52,7 +52,7 @@ struct ActivityLatest: View {
     }
 
     private var displayedActivities: [WalletActivity]? {
-        let items = WalletActivity.merged(activity.latestActivities ?? [], usdt.transfers)
+        let items = WalletActivity.merged(activity.latestActivities ?? [], usdt.transfers, SparkManager.shared.usd?.transfers ?? [])
         guard !items.isEmpty else { return nil }
         return Array(items.prefix(maxActivityItemsOnHome))
     }

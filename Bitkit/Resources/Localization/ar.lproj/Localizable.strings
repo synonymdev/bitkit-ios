@@ -1361,6 +1361,10 @@
 "usdt__convert_spark" = "تحويل";
 "usdt__convert_to_btc_spark" = "احصل على بيتكوين";
 "usdt__convert_to_usd_spark" = "احصل على دولارات";
+"usdt__activity_bridge_spark" = "تم النقل إلى USDT";
+"usdt__activity_to_btc_spark" = "تم التحويل إلى بيتكوين";
+"usdt__activity_to_usd_spark" = "تم التحويل إلى دولارات";
+"usdt__received_title_spark" = "تم استلام الدولارات";
 "wallet__payment_request" = "طلب دفع";
 "wallet__payment_request_unavailable" = "لم يعد طلب الدفع متاحًا.";
 "wallet__payment_request_expired" = "انتهت صلاحية طلب الدفع.";

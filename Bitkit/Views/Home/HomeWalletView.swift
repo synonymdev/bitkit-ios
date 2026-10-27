@@ -20,7 +20,7 @@ struct HomeWalletView: View {
     }
 
     var hasActivity: Bool {
-        return activity.latestActivities?.isEmpty == false || !usdt.transfers.isEmpty
+        return activity.latestActivities?.isEmpty == false || !usdt.transfers.isEmpty || sparkUsd?.transfers.isEmpty == false
     }
 
     /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
