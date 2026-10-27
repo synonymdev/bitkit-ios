@@ -1695,3 +1695,5 @@
 "subscriptions__allowance_limit_title" = "Το όριο εξαντλήθηκε";
 "subscriptions__allowance_limit_description" = "Ένα αίτημα {amount} από {name} υπερβαίνει την προέγκρισή σου. Έλεγξέ το για να πληρώσεις.";
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";
+
+"wallet__balance_updating" = "Ενημέρωση υπολοίπου…";

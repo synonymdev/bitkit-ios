@@ -1968,3 +1968,5 @@
 "subscriptions__allowance_limit_title" = "Limiet bereikt";
 "subscriptions__allowance_limit_description" = "Een verzoek van {amount} van {name} overschrijdt uw toelage. Bekijk het om te betalen.";
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";
+
+"wallet__balance_updating" = "Saldo bijwerken…";

@@ -17,7 +17,18 @@ final class UsdtWalletManager {
     }
 
     let receivedTxPublisher = PassthroughSubject<UsdtTransfer, Never>()
-    private(set) var balance: UInt64?
+    private(set) var balance: UInt64? {
+        didSet {
+            balanceIsStale = balance == nil
+            if let balance {
+                displayBalanceCache.save(balance, address: address)
+            }
+        }
+    }
+
+    private(set) var balanceIsStale = true
+    private(set) var cachedBalance: UInt64?
+    private let displayBalanceCache: UsdtDisplayBalanceCache
     private(set) var address = ""
     private(set) var receiveUri = ""
     private(set) var transfers: [UsdtTransfer] = [] {
@@ -117,6 +128,7 @@ final class UsdtWalletManager {
         rpcUrl: String? = Env.usdtRpcUrl,
         bundlerUrl: String? = Env.usdtBundlerUrl,
         now: @escaping () -> Date = Date.init,
+        defaults: UserDefaults = .standard,
         loadCredentials: @escaping @MainActor () async throws -> (String, String?) = {
             try await ServiceQueue.background(.core, wrapErrors: false) {
                 guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else { throw UsdtError.InvalidCredentials }
@@ -125,10 +137,25 @@ final class UsdtWalletManager {
         }
     ) {
         self.now = now
+        displayBalanceCache = UsdtDisplayBalanceCache(storageDirectory: storageDirectory, rpcUrl: rpcUrl,
+                                                      bundlerUrl: bundlerUrl, defaults: defaults)
         self.storageDirectory = storageDirectory
         self.rpcUrl = rpcUrl
         self.bundlerUrl = bundlerUrl
         self.loadCredentials = loadCredentials
+    }
+
+    func loadCachedBalance() async {
+        guard !wiping else { return }
+        do {
+            let endpoint = try await paymentEndpoint()
+            try Task.checkCancellation()
+            guard !wiping else { return }
+            cachedBalance = displayBalanceCache.balance(for: endpoint.value)
+        } catch is CancellationError {
+        } catch {
+            cachedBalance = nil
+        }
     }
 
     func refresh(includeHistory: Bool = false) async {
@@ -140,6 +167,7 @@ final class UsdtWalletManager {
         var refreshDelay: TimeInterval = 10
         activeOperations += 1
         refreshing = true
+        balanceIsStale = true
         defer { refreshing = false; nextRefresh = max(rateLimitedUntil, Date().addingTimeInterval(refreshDelay)); finishOperation() }
         do {
             let wallet = try await wallet()
@@ -226,6 +254,9 @@ final class UsdtWalletManager {
         defer { finishOperation() }
         let wallet = try await wallet(requiresNetwork: false)
         try await wallet.restoreBackup(snapshot: snapshot)
+        displayBalanceCache.clear()
+        cachedBalance = nil
+        balance = nil
         pendingDepositIds.removeAll()
         transfers = try wallet.history()
         historyComplete = false
@@ -410,6 +441,8 @@ final class UsdtWalletManager {
         }
         core = nil
         paymentEndpointCache = nil
+        displayBalanceCache.clear()
+        cachedBalance = nil
         balance = nil
         address = ""
         receiveUri = ""
@@ -489,6 +522,7 @@ final class UsdtWalletManager {
             )
         }
         self.address = wallet.receiveAddress()
+        cachedBalance = displayBalanceCache.balance(for: self.address)
         receiveUri = wallet.receiveUri()
         core = wallet
         return wallet
@@ -567,6 +601,7 @@ private final class UsdtVssBackup: UsdtBackup, @unchecked Sendable {
         do {
             try await BackupService.shared.persistWalletBackup(usdt: snapshot)
         } catch {
+            Logger.error(PaykitResolutionFailureDiagnostics.reason(for: error), context: "USDT recovery backup failed")
             throw UsdtError.BackupUnavailable
         }
     }

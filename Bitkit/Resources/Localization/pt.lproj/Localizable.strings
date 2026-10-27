@@ -1620,3 +1620,5 @@
 "subscriptions__allowance_limit_title" = "Limite atingido";
 "subscriptions__allowance_limit_description" = "Um pedido de {amount} de {name} excede a sua pré-aprovação. Reveja-o para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
+
+"wallet__balance_updating" = "A atualizar o saldo…";

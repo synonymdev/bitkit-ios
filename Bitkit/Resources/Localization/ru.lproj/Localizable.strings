@@ -1954,3 +1954,5 @@
 "subscriptions__allowance_limit_title" = "Лимит Достигнут";
 "subscriptions__allowance_limit_description" = "Запрос на {amount} от {name} превышает ваш лимит автооплаты. Проверьте его, чтобы оплатить.";
 "subscriptions__allowance_auto_paid" = "Оплачено автоматически";
+
+"wallet__balance_updating" = "Обновление баланса…";
