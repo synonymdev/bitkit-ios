@@ -299,6 +299,15 @@ enum Env {
         infoPlistValue("BREEZ_API_KEY")
     }
 
+    /// The Spark token held as the dollar balance on Spark, matched by identifier since anyone can issue a token with
+    /// any ticker. Regtest uses a 6-decimal test token issued on Lightspark's regtest; mainnet has none yet.
+    static var sparkUsdTokenId: String? {
+        switch network {
+        case .regtest: "btknrt1e2h2l3jwna0dzwfjsf3dcgck8zjuug3qprnuvl7hs23a68xvz38q7966fl"
+        default: nil
+        }
+    }
+
     static func bitkitCoreStorage(walletIndex: Int) -> URL {
         appStorageUrl
             .appendingPathComponent(networkName)

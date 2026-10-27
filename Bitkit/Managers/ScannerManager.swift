@@ -96,6 +96,14 @@ class ScannerManager: ObservableObject {
     private func handleMainScan(_ uri: String, isCurrent: () -> Bool) async {
         guard let app else { return }
 
+        if app.contactPaymentContext == nil, Env.sparkUsdTokenId != nil, SparkUsd.isSparkInput(uri) {
+            let recipient = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+            sheets?.hideSheetBeforePerforming(reason: "Scanner routed Spark dollar payment") { [weak self] in
+                self?.navigation?.navigate(.sparkUsdWallet(recipient: recipient))
+            }
+            return
+        }
+
         do {
             if let route = try resolveUsdtPaymentRoute(input: uri) {
                 guard app.contactPaymentContext == nil, wallet?.usdtWallet.isSendPresented == false else { return }

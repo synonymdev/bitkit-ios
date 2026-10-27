@@ -14,6 +14,7 @@ enum Route: Hashable {
     case usdtPayment(recipient: String, amount: String)
     case usdtActivity(transferId: String)
     case usdtDepositHistory
+    case sparkUsdWallet(recipient: String = "")
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)

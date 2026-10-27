@@ -11,6 +11,10 @@ struct HomeWalletView: View {
     @Environment(UsdtWalletManager.self) private var usdt
     @Environment(HwWalletManager.self) private var hwWalletManager
 
+    private var sparkUsd: SparkUsdState? {
+        SparkManager.shared.usd
+    }
+
     private var showsUsdt: Bool {
         usdt.isConfigured && (settings.isUsdtEnabled || usdt.hasProtectedFunds)
     }
@@ -22,8 +26,11 @@ struct HomeWalletView: View {
     /// Headline total including watch-only hardware-wallet balances (keeps `totalBalanceSats`
     /// semantics unchanged for send/transfer logic; only the headline folds hardware in).
     private var headlineSats: Int? {
-        Self.aggregateBalance(bitcoinSats: wallet.totalBalanceSats, hardwareSats: hwWalletManager.totalSats,
-                              includesUsdt: showsUsdt, usdtBalance: usdt.balance, rate: currency.paykitRate)
+        guard let total = Self.aggregateBalance(bitcoinSats: wallet.totalBalanceSats, hardwareSats: hwWalletManager.totalSats,
+                                                includesUsdt: showsUsdt, usdtBalance: usdt.balance, rate: currency.paykitRate)
+        else { return nil }
+        return Self.aggregateBalance(bitcoinSats: total, hardwareSats: 0, includesUsdt: sparkUsd != nil,
+                                     usdtBalance: sparkUsd?.balance, rate: currency.paykitRate)
     }
 
     static func aggregateBalance(bitcoinSats: Int, hardwareSats: UInt64, includesUsdt: Bool, usdtBalance: UInt64?,
@@ -70,25 +77,24 @@ struct HomeWalletView: View {
                 }
             }
             .frame(height: 50)
-            .padding(.bottom, showsUsdt && hwWalletManager.wallets.isEmpty ? 24 : 32)
+            .padding(.bottom, (showsUsdt || sparkUsd != nil) && hwWalletManager.wallets.isEmpty ? 24 : 32)
 
-            if !hwWalletManager.wallets.isEmpty || showsUsdt {
-                HardwareWalletsGrid(wallets: hwWalletManager.wallets, showAdditionalWallet: showsUsdt) { hwWallet in
+            if !hwWalletManager.wallets.isEmpty || showsUsdt || sparkUsd != nil {
+                HardwareWalletsGrid(
+                    wallets: hwWalletManager.wallets,
+                    additionalWalletCount: (showsUsdt ? 1 : 0) + (sparkUsd != nil ? 1 : 0)
+                ) { hwWallet in
                     navigation.navigate(.hardwareWallet(walletId: hwWallet.id))
-                } additionalWallet: {
-                    Button { navigation.navigate(.usdtWallet) } label: {
-                        WalletBalanceContent {
-                            CaptionMText("USDT", kerning: 1)
-                        } icon: {
-                            Image("tether-circle").resizable().frame(width: 24, height: 24)
-                        } amount: {
-                            BodyMSBText(settings.hideBalance ? " • • • • •" : usdt.balance.map { "$ " + usdtOverviewAmount($0) } ?? "—",
-                                        kerning: 0, lineHeight: 22)
-                                .lineLimit(1).minimumScaleFactor(0.7)
+                } additionalWallet: { index in
+                    if index == 0, showsUsdt {
+                        usdtTile
+                    } else if let sparkUsd {
+                        Button { navigation.navigate(.sparkUsdWallet()) } label: {
+                            SparkUsdWalletBalance(usd: sparkUsd)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("SparkUsdWallet")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("UsdtWallet")
                 }
                 .padding(.bottom, 32)
             }
@@ -112,5 +118,21 @@ struct HomeWalletView: View {
         .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
         .padding(.horizontal)
         .animation(.spring(response: 0.3), value: hasActivity)
+    }
+
+    private var usdtTile: some View {
+        Button { navigation.navigate(.usdtWallet) } label: {
+            WalletBalanceContent {
+                CaptionMText("USDT", kerning: 1)
+            } icon: {
+                Image("tether-circle").resizable().frame(width: 24, height: 24)
+            } amount: {
+                BodyMSBText(settings.hideBalance ? " • • • • •" : usdt.balance.map { "$ " + usdtOverviewAmount($0) } ?? "—",
+                            kerning: 0, lineHeight: 22)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("UsdtWallet")
     }
 }

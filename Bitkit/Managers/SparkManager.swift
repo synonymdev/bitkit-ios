@@ -31,6 +31,8 @@ final class SparkManager: ChannelFreeLightningRail {
     /// On-chain deposits into Spark, pending ones first, for the Lightning Connections screens.
     private(set) var deposits: [SparkDeposit] = []
     private(set) var withdrawals: [SparkWithdrawal] = []
+    /// The dollar token balance, or nil where this network has no dollar token or Spark hasn't loaded it.
+    private(set) var usd: SparkUsdState?
     /// Called when Spark claims on-chain deposits, which completes a Savings to Spending transfer.
     var onDepositsClaimed: (() -> Void)?
     /// Called after the Spark balance or readiness was read again, so balances and the receive invoice can follow.
@@ -43,6 +45,7 @@ final class SparkManager: ChannelFreeLightningRail {
     @ObservationIgnored private var sdk: BreezSdk?
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
+    @ObservationIgnored private var usdTokenMetadata: TokenMetadata?
 
     private init() {}
 
@@ -137,6 +140,8 @@ final class SparkManager: ChannelFreeLightningRail {
         pendingDepositSats = 0
         recoverableFundsSats = 0
         deposits = []
+        usd = nil
+        usdTokenMetadata = nil
         try? FileManager.default.removeItem(at: Env.sparkStorage(walletIndex: walletIndex))
     }
 
@@ -271,6 +276,95 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    // MARK: Dollar token
+
+    /// A Spark invoice for the dollar token, with `amount` in 6-decimal dollar units when set.
+    func createUsdRequest(amount: UInt64? = nil) async throws -> String {
+        guard let tokenId = Env.sparkUsdTokenId else { throw SparkUsdError.noToken }
+        let decimals = try await usdDecimals(tokenId)
+        let method = ReceivePaymentMethod.sparkInvoice(
+            amount: amount.map { SparkUsd.fromUsdUnits($0, decimals: decimals) },
+            tokenIdentifier: tokenId,
+            expiryTime: nil,
+            description: nil,
+            senderPublicKey: nil
+        )
+        return try await requireSdk().receivePayment(request: ReceivePaymentRequest(paymentMethod: method)).paymentRequest
+    }
+
+    /// Reads a scanned or pasted Spark address or invoice as a dollar payment. An invoice for another token or for
+    /// sats fails, so it never reaches the dollar send flow.
+    func parseUsdRecipient(_ input: String) async throws -> SparkUsdRecipient {
+        guard let tokenId = Env.sparkUsdTokenId else { throw SparkUsdError.noToken }
+        switch try await requireSdk().parse(input: input.trimmingCharacters(in: .whitespacesAndNewlines)) {
+        case let .sparkAddress(details):
+            return SparkUsdRecipient(request: details.address, amount: nil)
+        case let .sparkInvoice(details) where details.tokenIdentifier == tokenId:
+            let decimals = try await usdDecimals(tokenId)
+            return SparkUsdRecipient(
+                request: details.invoice,
+                amount: details.amount.map { SparkUsd.toUsdUnits($0, decimals: decimals) }
+            )
+        default:
+            throw SparkUsdError.unsupportedRecipient
+        }
+    }
+
+    /// Pays `amount` dollar units of the dollar token to `request`, a Spark address or invoice.
+    func sendUsd(request: String, amount: UInt64) async throws {
+        guard let tokenId = Env.sparkUsdTokenId else { throw SparkUsdError.noToken }
+        let sdk = try await requireSdk()
+        let units = try await SparkUsd.fromUsdUnits(amount, decimals: usdDecimals(tokenId))
+        let prepared = try await sdk.prepareSendPayment(request: PrepareSendPaymentRequest(
+            paymentRequest: .input(input: request),
+            amount: units,
+            tokenIdentifier: tokenId,
+            conversionOptions: nil,
+            feePolicy: nil
+        ))
+        let payment = try await sdk.sendPayment(request: SendPaymentRequest(prepareResponse: prepared, options: nil)).payment
+        Logger.info("Sent Spark dollar payment '\(payment.id)' with status '\(payment.status)'", context: "SparkManager")
+        try await refresh()
+    }
+
+    private func usdDecimals(_ tokenId: String) async throws -> Int {
+        try await Int(usdMetadata(tokenId).decimals)
+    }
+
+    private func usdMetadata(_ tokenId: String) async throws -> TokenMetadata {
+        if let usdTokenMetadata {
+            return usdTokenMetadata
+        }
+        let response = try await requireSdk().getTokensMetadata(request: GetTokensMetadataRequest(tokenIdentifiers: [tokenId]))
+        guard let metadata = response.tokensMetadata.first else { throw SparkUsdError.noToken }
+        usdTokenMetadata = metadata
+        return metadata
+    }
+
+    private func refreshUsd(tokenId: String, balance: U128?) async throws -> SparkUsdState {
+        let metadata = try await usdMetadata(tokenId)
+        let decimals = Int(metadata.decimals)
+        let payments = try await requireSdk().listPayments(request: ListPaymentsRequest(assetFilter: .token(tokenIdentifier: tokenId)))
+            .payments
+        let transfers: [SparkUsdTransfer] = payments.compactMap { payment in
+            guard case let .token(_, txHash, txType, _, _) = payment.details, txType == .transfer else { return nil }
+            return SparkUsdTransfer(
+                id: payment.id,
+                isIncoming: payment.paymentType == .receive,
+                status: payment.status,
+                amount: SparkUsd.toUsdUnits(payment.amount, decimals: decimals),
+                fee: SparkUsd.toUsdUnits(payment.fees, decimals: decimals),
+                timestamp: payment.timestamp,
+                txHash: txHash
+            )
+        }
+        return SparkUsdState(
+            ticker: metadata.ticker.trimmingCharacters(in: .whitespaces),
+            balance: SparkUsd.toUsdUnits(balance ?? BInt(0), decimals: decimals),
+            transfers: transfers.sorted { $0.timestamp > $1.timestamp }
+        )
+    }
+
     // MARK: Private
 
     private nonisolated func prepareSend(
@@ -337,7 +431,16 @@ final class SparkManager: ChannelFreeLightningRail {
         let payments = try await sdk.listPayments(request: ListPaymentsRequest()).payments
         let claimed = payments.filter { $0.method == .deposit && $0.status == .completed }
         let pending = unclaimed.reduce(0) { $0 + $1.amountSats }
-        let changed = !isReady || balanceSats != info.balanceSats || pendingDepositSats != pending
+        var newUsd = usd
+        if let tokenId = Env.sparkUsdTokenId {
+            do {
+                newUsd = try await refreshUsd(tokenId: tokenId, balance: info.tokenBalances[tokenId]?.balance)
+            } catch {
+                Logger.warn("Failed to refresh Spark dollar balance: \(error)", context: "SparkManager")
+            }
+        }
+        let changed = !isReady || balanceSats != info.balanceSats || pendingDepositSats != pending || usd != newUsd
+        usd = newUsd
         isReady = true
         balanceSats = info.balanceSats
         pendingDepositSats = pending
@@ -435,6 +538,8 @@ final class SparkManager: ChannelFreeLightningRail {
                 if let event = Self.nodeEvent(for: payment) {
                     LightningService.shared.emitChannelFreeRailEvent(event)
                 }
+            case let .paymentPending(payment) where payment.method == .token:
+                try await refresh()
             case let .paymentPending(payment):
                 await recordActivity(payment)
             case .unilateralExitStateChanged:

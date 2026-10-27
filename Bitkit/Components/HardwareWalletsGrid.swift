@@ -2,22 +2,22 @@ import SwiftUI
 
 struct HardwareWalletsGrid<AdditionalWallet: View>: View {
     let wallets: [HwWallet]
-    let showAdditionalWallet: Bool
+    let additionalWalletCount: Int
     let onTap: (HwWallet) -> Void
-    let additionalWallet: AdditionalWallet
+    let additionalWallet: (Int) -> AdditionalWallet
 
-    init(wallets: [HwWallet], showAdditionalWallet: Bool = false, onTap: @escaping (HwWallet) -> Void,
-         @ViewBuilder additionalWallet: () -> AdditionalWallet = { EmptyView() })
+    init(wallets: [HwWallet], additionalWalletCount: Int = 0, onTap: @escaping (HwWallet) -> Void,
+         @ViewBuilder additionalWallet: @escaping (Int) -> AdditionalWallet = { _ in EmptyView() })
     {
         self.wallets = wallets
-        self.showAdditionalWallet = showAdditionalWallet
+        self.additionalWalletCount = additionalWalletCount
         self.onTap = onTap
-        self.additionalWallet = additionalWallet()
+        self.additionalWallet = additionalWallet
     }
 
     var body: some View {
         VStack(spacing: 16) {
-            ForEach(Array(stride(from: 0, to: wallets.count + (showAdditionalWallet ? 1 : 0), by: 2)), id: \.self) { rowStart in
+            ForEach(Array(stride(from: 0, to: wallets.count + additionalWalletCount, by: 2)), id: \.self) { rowStart in
                 HStack(spacing: 16) {
                     cell(at: rowStart)
                     CustomDivider(color: .gray4, type: .vertical)
@@ -32,8 +32,8 @@ struct HardwareWalletsGrid<AdditionalWallet: View>: View {
     private func cell(at index: Int) -> some View {
         if index < wallets.count {
             HardwareWalletCell(wallet: wallets[index], onTap: onTap)
-        } else if showAdditionalWallet, index == wallets.count {
-            additionalWallet
+        } else if index - wallets.count < additionalWalletCount {
+            additionalWallet(index - wallets.count)
         } else {
             Color.clear.frame(maxWidth: .infinity)
         }
