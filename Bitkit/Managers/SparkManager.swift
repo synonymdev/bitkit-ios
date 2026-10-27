@@ -20,7 +20,6 @@ final class SparkManager: ChannelFreeLightningRail {
         exitStateChanged.eraseToAnyPublisher()
     }
 
-    private static let sendCompletionTimeoutSecs: UInt32 = 30
     private static let depositClaimFeeLeewaySatPerVbyte: UInt64 = 2
     private static let depositClaimFeePpm: UInt32 = 2000
 
@@ -56,6 +55,12 @@ final class SparkManager: ChannelFreeLightningRail {
     /// Spark transfer, which lets two dev builds pay each other's invoices.
     nonisolated static var prefersSpark: Bool {
         Env.network == .regtest
+    }
+
+    /// Returns as soon as the payment starts, like LDK, so its completion reaches callers as an event they are already
+    /// watching for; waiting for completion here fired that event before they watched.
+    nonisolated static var bolt11SendOptions: SendPaymentOptions {
+        .bolt11Invoice(preferSpark: prefersSpark, completionTimeoutSecs: nil)
     }
 
     private static var sparkNetwork: BreezSdkSpark.Network? {
@@ -152,7 +157,7 @@ final class SparkManager: ChannelFreeLightningRail {
         }
         let response = try await requireSdk().sendPayment(request: SendPaymentRequest(
             prepareResponse: prepared,
-            options: .bolt11Invoice(preferSpark: Self.prefersSpark, completionTimeoutSecs: Self.sendCompletionTimeoutSecs)
+            options: Self.bolt11SendOptions
         ))
         Logger.info("Sent Spark payment '\(response.payment.id)' with status '\(response.payment.status)'", context: "SparkManager")
         return invoiceDetails.paymentHash

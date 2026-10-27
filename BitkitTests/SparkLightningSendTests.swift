@@ -1,5 +1,6 @@
 @testable import Bitkit
 import BitkitCore
+import BreezSdkSpark
 import XCTest
 
 @MainActor
@@ -17,6 +18,13 @@ final class SparkLightningSendTests: XCTestCase {
         XCTAssertNotNil(app.scannedLightningInvoice)
         XCTAssertEqual(app.selectedWalletToPayFrom, .lightning)
         XCTAssertFalse(app.didRejectScannedPayment)
+    }
+
+    func testSparkSendReturnsBeforeCompletionSoCallersSeeTheCompletionEvent() {
+        guard case let .bolt11Invoice(_, completionTimeoutSecs) = SparkManager.bolt11SendOptions else {
+            return XCTFail("Expected bolt11 send options")
+        }
+        XCTAssertNil(completionTimeoutSecs)
     }
 
     func testLightningInvoiceWithoutChannelsOrSparkIsRejected() async throws {
