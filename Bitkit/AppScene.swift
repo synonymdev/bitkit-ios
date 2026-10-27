@@ -365,6 +365,7 @@ struct AppScene: View {
         activityChanges: CoreService.shared.activity.activitiesChangedPublisher
     )
     @State private var paykitAllowanceManager = PaykitAllowanceManager()
+    @State private var activatedAutomaticPaykitIdentity: String?
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -611,31 +612,21 @@ struct AppScene: View {
                 receivedPaymentBackfillCache.invalidate()
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
-                    Task {
-                        guard let session = pubkyProfile.automaticPaykitSession,
-                              PubkyPublicKeyFormat.matches(pk, session.publicKey)
-                        else { return }
-                        await paykitAllowanceManager.activate(identity: pk)
-                        await handlePendingPaykitSubscriptionNotification()
-                        guard pubkyProfile.automaticPaykitSession == session else { return }
-                        try? await contactsManager.loadContacts(for: pk)
-                        if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
-                            await retryPendingPaykitEndpointRemoval()
-                        }
-                        guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
-                              PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
-                        else { return }
-                        await refreshPrivateOnlyPaykitApp()
-                        await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
-                        if PaykitSubscriptionNotificationTargetStore.load() == nil {
-                            await presentNextIncomingPaykitItem()
-                        }
-                    }
+                    startAutomaticPaykitSession()
                 } else if authState == .idle {
+                    activatedAutomaticPaykitIdentity = nil
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
                     paykitAllowanceManager.deactivate()
                     hasPendingExpiryToast = false
+                }
+            }
+            // A sign-in, or a session that was still changing or being deleted, has no automatic session yet when
+            // authState turns authenticated; activate allowances and load contacts once it appears.
+            .onReceive(PubkyProfileManager.sessionSettledPublisher) { startAutomaticPaykitSession() }
+            .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
+                if !isDeleting {
+                    startAutomaticPaykitSession()
                 }
             }
             .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
@@ -2013,6 +2004,31 @@ struct AppScene: View {
             })
         case .ledgerChanged:
             Task { await paykitAllowanceManager.refresh() }
+        }
+    }
+
+    private func startAutomaticPaykitSession() {
+        guard let session = pubkyProfile.automaticPaykitSession,
+              !PubkyPublicKeyFormat.matches(session.publicKey, activatedAutomaticPaykitIdentity)
+        else { return }
+        let pk = session.publicKey
+        activatedAutomaticPaykitIdentity = pk
+        Task {
+            await paykitAllowanceManager.activate(identity: pk)
+            await handlePendingPaykitSubscriptionNotification()
+            guard pubkyProfile.automaticPaykitSession == session else { return }
+            try? await contactsManager.loadContacts(for: pk)
+            if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
+                await retryPendingPaykitEndpointRemoval()
+            }
+            guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                  PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
+            else { return }
+            await refreshPrivateOnlyPaykitApp()
+            await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
+            if PaykitSubscriptionNotificationTargetStore.load() == nil {
+                await presentNextIncomingPaykitItem()
+            }
         }
     }
 
