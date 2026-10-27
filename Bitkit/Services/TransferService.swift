@@ -4,6 +4,8 @@ import LDKNode
 
 /// Service for managing transfer operations
 class TransferService {
+    /// `TransferStorage.insert` rewrites the whole list, so concurrent creations must not interleave.
+    private static let creationLock = NSLock()
     private let storage: TransferStorage
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -51,7 +53,7 @@ class TransferService {
             preTransferOnchainSats: preTransferOnchainSats
         )
 
-        try storage.insert(transfer)
+        try Self.creationLock.withLock { try storage.insert(transfer) }
         Logger.info("Created transfer: id=\(id) type=\(type) channelId=\(channelId ?? "nil")", context: "TransferService")
 
         return id

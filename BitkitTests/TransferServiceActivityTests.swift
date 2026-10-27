@@ -102,6 +102,26 @@ final class TransferServiceActivityTests: XCTestCase {
         )
     }
 
+    func testConcurrentTransferCreationKeepsEveryRecord() async throws {
+        let service = makeService()
+        let ids = try await withThrowingTaskGroup(of: String.self) { group in
+            for index in 0 ..< 20 {
+                group.addTask {
+                    try await service.createTransfer(
+                        type: .coopClose,
+                        amountSats: 1000,
+                        channelId: "channel-\(index)"
+                    )
+                }
+            }
+            return try await group.reduce(into: Set<String>()) { $0.insert($1) }
+        }
+
+        let stored = try Bitkit.TransferStorage(defaults: transferDefaults).getAll()
+        XCTAssertEqual(Set(stored.map(\.id)), ids)
+        XCTAssertEqual(stored.count, 20)
+    }
+
     func testOrdinaryResolutionBeforePendingInitializationRestoresExactDurableResult() async throws {
         for rejected in [false, true] {
             let store = MemoryAttemptStore()
