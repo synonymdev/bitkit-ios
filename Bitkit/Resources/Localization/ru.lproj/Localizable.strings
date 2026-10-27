@@ -1268,6 +1268,7 @@
 "wallet__send_from" = "Откуда";
 "wallet__send_sync_title" = "<accent>Подключение</accent>\nк сети";
 "wallet__send_sync_description" = "Пожалуйста, подождите, пока Bitkit подключается к платёжной сети (±10 секунд).";
+"wallet__send_sync_description_onchain" = "Пожалуйста, подождите, пока Bitkit подключается к сети биткоин (±10 секунд).";
 "wallet__send_sync_long_title" = "<accent>Проблемы</accent>\nс подключением";
 "wallet__send_sync_long_description" = "Похоже, вы отключены. Проверьте подключение. Bitkit будет пытаться переподключиться каждые несколько секунд.";
 "wallet__send_to" = "Кому";
