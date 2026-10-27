@@ -22,6 +22,11 @@
     does not unlock Contacts; wait for the list before evaluating contact rows. With a saved identity,
     Android may show the contacts intro first or navigate to Profile recovery; reopen Contacts after
     recovery there. See README.md.
+
+    On iOS, if payment review interrupts the first contact observation, cancel the review and keep
+    Contacts open: the saved rows must load without reopening the screen. A deterministic check
+    of this timing requires a test fixture that pauses the first observed-contact read; record
+    whether that interruption was exercised rather than treating an ordinary load as coverage.
   </description>
   <actions>
     <action>Run `xcrun simctl terminate &lt;UDID&gt; to.bitkit`</action>

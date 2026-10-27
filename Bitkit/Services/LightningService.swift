@@ -15,6 +15,16 @@ class LightningService {
 
     var currentWalletIndex: Int = 0
 
+    func getTransactionDetails(txid: String, walletIndex: Int) async -> LDKNode.TransactionDetails? {
+        guard currentWalletIndex == walletIndex, let node else { return nil }
+        let details = try? await ServiceQueue.background(.ldk) { () -> LDKNode.TransactionDetails? in
+            guard self.currentWalletIndex == walletIndex, self.node === node else { return nil }
+            return node.getTransactionDetails(txid: txid)
+        }
+        guard currentWalletIndex == walletIndex, self.node === node else { return nil }
+        return details
+    }
+
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
 
     private var channelCache: [String: ChannelDetails] = [:]
