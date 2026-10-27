@@ -188,7 +188,9 @@ struct SavingsProgressView: View {
     /// Legacy path: cooperatively close the selected channel(s), retrying on failure.
     private func runChannelClose() async {
         do {
-            try await Task.sleep(nanoseconds: 2_000_000_000)
+            if transfer.hasChannelsToClose {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            }
 
             let channelsFailedToCoopClose = try await transfer.closeSelectedChannels()
 

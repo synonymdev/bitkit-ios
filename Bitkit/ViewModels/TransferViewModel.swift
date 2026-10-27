@@ -387,7 +387,7 @@ class TransferViewModel: ObservableObject {
         guard isSpark else { return }
         Task { @MainActor in
             do {
-                uiState.sparkClaimFeeSat = try await SparkManager.shared.estimateDepositClaimFeeSats()
+                uiState.sparkClaimFeeSat = try await SparkManager.shared.estimateDepositClaimFeeSats(amountSats: clientBalance)
             } catch {
                 Logger.warn("Failed to estimate Spark claim fee: \(error)", context: "TransferViewModel")
             }
@@ -1654,6 +1654,11 @@ class TransferViewModel: ObservableObject {
 
     private var resolvedSavingsTransferMode: SavingsTransferMode {
         savingsSwapState.quote != nil ? .swap : .close
+    }
+
+    /// Whether Transfer to Savings closes channels, rather than only withdrawing Spark's balance.
+    var hasChannelsToClose: Bool {
+        !channelsToClose.isEmpty
     }
 
     func closeSelectedChannels() async throws -> [ChannelDetails] {
