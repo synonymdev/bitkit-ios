@@ -317,6 +317,16 @@ struct SendPendingScreen: View {
         defer { retryingOnchain = false }
         let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
         do {
+            // Blocktank no longer sells channels, so an unpaid order is never paid again: only an explicit "allowed" geocheck lets the
+            // retry through, as for a new transfer.
+            if original.orderId != nil {
+                let isGeoBlocked = try? await CoreService.shared.checkGeoStatus()
+                guard isGeoBlocked == false else {
+                    Logger.warn("Stopped a retry of a transfer to spending: transfers are unavailable", context: "SendPendingScreen")
+                    sheets.showSheet(.transferUnavailable)
+                    return
+                }
+            }
             let feeLimits = await wallet.getFeeLimits()
             guard feeRate > 0, feeRate <= feeLimits.maxFee else {
                 app.toast(type: .warning, title: t("wallet__onchain_retry_invalid_fee"))
