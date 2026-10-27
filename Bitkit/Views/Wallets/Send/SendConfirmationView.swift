@@ -27,6 +27,7 @@ struct SendConfirmationView: View {
     var isSetupPending = false
 
     @State private var showDetails = false
+    @State private var hasShownAmountReview = false
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
@@ -1763,11 +1764,17 @@ struct SendConfirmationView: View {
             wallet.sendAmountSats = terms.amount.atomic
         }
         guard let terms, terms == app.paykitPaymentTerms, terms.isValid(at: Date()), meetsMinimum else {
+            if hasShownAmountReview, !amountIsRoot, navigationPath.isEmpty, let presentationID {
+                sheets.hideSheetIfActive(presentationID: presentationID, reason: "Back from the request amount review")
+                return true
+            }
+            hasShownAmountReview = true
             app.paykitPaymentTerms = nil
             app.paykitReviewedAmount = nil
             navigationPath = amountIsRoot ? [] : [.amount]
             return true
         }
+        hasShownAmountReview = false
         return false
     }
 

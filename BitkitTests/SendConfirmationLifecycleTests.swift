@@ -82,7 +82,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
     func testQuotedWalletSwitchRequiresReviewForUnavailableExpiredOrBelowMinimumTerms() async throws {
         snapshotAppDefaultsDomain()
         snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
-        for failure in ["unavailable", "expired", "lightningMinimum", "onchainMinimum"] {
+        for failure in ["unreviewed", "unavailable", "expired", "lightningMinimum", "onchainMinimum"] {
             let request = try quotedOnchainRequest(acceptsLightning: true)
             let wallet = ControlledSendWallet(operation: .fee)
             let app = AppViewModel()
@@ -99,25 +99,35 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
             app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
             wallet.sendAmountSats = app.paykitReviewedAmount?.atomic
-            var path: [SendRoute] = []
-            let window = host(app: app, wallet: wallet, sheets: sheets, path: Binding(get: { path }, set: { path = $0 }))
+            if failure == "unreviewed" {
+                app.paykitPaymentTerms = nil
+                app.paykitReviewedAmount = nil
+            }
+            let navigation = SendConfirmationTestNavigation()
+            navigation.path = []
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation, confirmationIsRoot: true
+            )
             defer { close(window) }
             try await Task.sleep(for: .milliseconds(100))
-            XCTAssertTrue(path.isEmpty)
+            if failure != "unreviewed" {
+                XCTAssertTrue(navigation.path.isEmpty)
 
-            var rates = [ConversionRate(asset: "btc-regtest", value: failure == "onchainMinimum" ? "0.000002184" : "0.00001")]
-            if failure != "unavailable" {
-                rates.append(ConversionRate(asset: "btc-lightning", value: failure == "lightningMinimum" ? "0.000001" : "0.00002"))
+                var rates = [ConversionRate(asset: "btc-regtest", value: failure == "onchainMinimum" ? "0.000002184" : "0.00001")]
+                if failure != "unavailable" {
+                    rates.append(ConversionRate(asset: "btc-lightning", value: failure == "lightningMinimum" ? "0.000001" : "0.00002"))
+                }
+                let changed = try quotedOnchainRequest(
+                    acceptsLightning: true, rates: rates,
+                    deadline: failure == "expired" ? .at(timestamp: "2000-01-01T00:00:00Z") : nil
+                )
+                app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: changed)
+                app.selectedWalletToPayFrom = failure == "onchainMinimum" ? .onchain : .lightning
+                try await Task.sleep(for: .milliseconds(100))
             }
-            let changed = try quotedOnchainRequest(
-                acceptsLightning: true, rates: rates,
-                deadline: failure == "expired" ? .at(timestamp: "2000-01-01T00:00:00Z") : nil
-            )
-            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: changed)
-            app.selectedWalletToPayFrom = failure == "onchainMinimum" ? .onchain : .lightning
-            try await Task.sleep(for: .milliseconds(100))
 
-            XCTAssertEqual(path, [.amount], failure)
+            XCTAssertEqual(navigation.path, [.amount], failure)
             XCTAssertNil(app.paykitPaymentTerms, failure)
             XCTAssertNil(app.paykitReviewedAmount, failure)
             if failure == "onchainMinimum" {
@@ -125,6 +135,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             } else {
                 XCTAssertTrue(wallet.routingAmounts.isEmpty, failure)
             }
+            navigation.path.removeLast()
+            try await Task.sleep(for: .milliseconds(500))
+            XCTAssertTrue(navigation.path.isEmpty, "Back must not reopen Amount: " + failure)
+            XCTAssertNil(sheets.activeSheetConfiguration, "Back must close the fallback review: " + failure)
         }
     }
 
@@ -204,9 +218,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         wallet.selectedFeeRateSatsPerVByte = 2
         SettingsViewModel.shared.coinSelectionMethod = .manual
         let navigation = SendConfirmationTestNavigation()
+        navigation.path = []
         let window = host(
             app: app, wallet: wallet, sheets: sheets,
-            path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation
+            path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation, confirmationIsRoot: true
         )
         defer {
             close(window)
@@ -223,7 +238,7 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         try await navigation.waitForAppearance(.confirm)
         try await Task.sleep(for: .milliseconds(500))
 
-        XCTAssertEqual(navigation.path, [.confirm])
+        XCTAssertEqual(navigation.path, [])
         XCTAssertEqual(wallet.preparationCount, loadsBeforeBack)
         XCTAssertNil(wallet.selectedUtxos)
         do {
@@ -239,6 +254,22 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTFail("Missing coins must not continue to payment authorization")
         } catch is CancellationError {}
         try await navigation.waitForAppearance(.utxoSelection)
+        let coins = [SpendableUtxo(outpoint: OutPoint(txid: String(repeating: "1", count: 64), vout: 0), valueSats: 10000)]
+        wallet.selectedUtxos = coins
+        navigation.path.append(.confirm)
+        try await navigation.waitForAppearance(.confirm)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(wallet.feeUtxos, coins)
+        wallet.feeUtxos = nil
+
+        navigation.path.removeLast()
+        try await navigation.waitForAppearance(.utxoSelection)
+        navigation.path.removeLast()
+        try await navigation.waitForAppearance(.confirm)
+        try await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertEqual(navigation.path, [])
+        XCTAssertEqual(wallet.feeUtxos, coins, "Returning to the original confirmation must calculate its fee for the selected coins")
     }
 
     func testSuspendedPreparationCannotChangeClosedOrReplacementSend() async throws {
@@ -679,7 +710,8 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         sheets: SheetViewModel,
         path: Binding<[SendRoute]>,
         navigation: SendConfirmationTestNavigation? = nil,
-        setup: SendConfirmationTestSetup? = nil
+        setup: SendConfirmationTestSetup? = nil,
+        confirmationIsRoot: Bool = false
     ) -> UIWindow {
         let hwSend = HwSendCoordinator()
         let makeConfirmation = { (isSetupPending: Bool) in
@@ -707,26 +739,34 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             if let navigation {
                 @Bindable var navigation = navigation
                 NavigationStack(path: $navigation.path) {
-                    Color.clear
-                        .navigationDestination(for: SendRoute.self) { route in
-                            Group {
-                                switch route {
-                                case .confirm: confirmation
-                                case .feeRate: SendFeeRate(navigationPath: $navigation.path, hwSend: hwSend)
-                                case .feeCustom: SendFeeCustom(navigationPath: $navigation.path, hwSend: hwSend)
-                                case .tag: SendTagScreen(navigationPath: $navigation.path)
-                                case .utxoSelection: SendUtxoSelectionView(navigationPath: $navigation.path)
-                                default: Color.clear
-                                }
-                            }
-                            .onAppear { navigation.visibleRoutes.insert(route) }
-                            .onDisappear {
-                                navigation.visibleRoutes.remove(route)
-                                if route == .confirm {
-                                    navigation.confirmationDisappearances += 1
-                                }
+                    Group {
+                        if confirmationIsRoot {
+                            confirmation
+                                .onAppear { navigation.visibleRoutes.insert(.confirm) }
+                                .onDisappear { navigation.visibleRoutes.remove(.confirm) }
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .navigationDestination(for: SendRoute.self) { route in
+                        Group {
+                            switch route {
+                            case .confirm: confirmation
+                            case .feeRate: SendFeeRate(navigationPath: $navigation.path, hwSend: hwSend)
+                            case .feeCustom: SendFeeCustom(navigationPath: $navigation.path, hwSend: hwSend)
+                            case .tag: SendTagScreen(navigationPath: $navigation.path)
+                            case .utxoSelection: SendUtxoSelectionView(navigationPath: $navigation.path)
+                            default: Color.clear
                             }
                         }
+                        .onAppear { navigation.visibleRoutes.insert(route) }
+                        .onDisappear {
+                            navigation.visibleRoutes.remove(route)
+                            if route == .confirm {
+                                navigation.confirmationDisappearances += 1
+                            }
+                        }
+                    }
                 }
                 .transaction { transaction in
                     // Avoid an automatic push racing an animated pop in this test host.
@@ -869,7 +909,7 @@ private final class ControlledSendWallet: WalletViewModel {
     private(set) var preparationCount = 0
     private(set) var successfulCoinPreparations = 0
     private(set) var selectedAlgorithm: CoinSelectionAlgorithm?
-    private(set) var feeUtxos: [SpendableUtxo]?
+    var feeUtxos: [SpendableUtxo]?
     private(set) var routingAmounts: [UInt64?] = []
 
     init(operation: Operation, fails: Bool = false, suspendsResumedPreparation: Bool = false) {
