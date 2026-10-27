@@ -8,6 +8,7 @@ struct PayContactsView: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var isSaving = false
+    @State private var screenOwner: PubkyProfileManager.RemovalPresentationOwner?
 
     /// Continue's enable runs in its own task, so it can finish after the user left Pay Contacts, or after a Pubky sign-out
     /// or a newer contact payments change stopped it. Like an import that finishes after the user left it, it opens
@@ -61,23 +62,35 @@ struct PayContactsView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .onAppear {
+            if screenOwner == nil {
+                screenOwner = pubkyProfile.removalPresentationOwner
+            }
+        }
     }
 
     private func continueFlow() async {
+        let admission = ProfileOperationAdmission.shared
+        guard let screenOwner, pubkyProfile.ownsRemovalPresentation(screenOwner), let scope = try? admission.capture() else { return }
+        defer { admission.release(scope) }
         isSaving = true
         defer { isSaving = false }
 
-        do {
+        do { try await admission.withScope(scope) {
             let isApplied = try await ContactPaymentsService.setEnabled(
                 true,
                 pubkyProfile: pubkyProfile,
                 contactsManager: contactsManager,
                 operations: .live(wallet: wallet)
             )
+            try admission.checkCurrent()
+            guard pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
             if let destination = Self.destinationAfterEnable(isApplied: isApplied, currentRoute: navigation.currentRoute) {
                 navigation.path = [destination]
             }
-        } catch {
+        } } catch {
+            guard !Task.isCancelled, (try? admission.validate(scope)) != nil,
+                  pubkyProfile.ownsRemovalPresentation(screenOwner) else { return }
             Logger.error("Failed to enable contact payments: \(error)", context: "PayContactsView")
             app.toast(
                 type: .error,

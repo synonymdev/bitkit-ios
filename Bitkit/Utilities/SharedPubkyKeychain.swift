@@ -135,12 +135,40 @@ enum SharedPubkyKeychain {
             SecItemDelete(query as CFDictionary)
         }
     }
+
+    /// Required local teardown must acknowledge enumeration and every owned-record deletion.
+    static func removeAllOwnOrThrow(
+        copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching,
+        delete: (CFDictionary) -> OSStatus = SecItemDelete
+    ) throws {
+        var query = baseQuery
+        query[kSecReturnAttributes as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitAll
+        var result: CFTypeRef?
+        let status = copyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return
+        }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            throw KeychainError.failedToLoad
+        }
+        let accounts = try items.map { item in
+            guard let account = item[kSecAttrAccount as String] as? String else { throw KeychainError.failedToLoad }
+            return account
+        }
+        for account in accounts where account.hasPrefix("\(ownSourceApp):") {
+            var item = baseQuery
+            item[kSecAttrAccount as String] = account
+            let result = delete(item as CFDictionary)
+            guard result == errSecSuccess || result == errSecItemNotFound else { throw KeychainError.failedToDelete }
+        }
+    }
 }
 
 /// The pubky Bitkit adopted from another app. Only the reference is stored; the secret stays in its owner's store.
 enum AdoptedPubkyReference {
-    private static let sourceAppKey = "adoptedPubkySourceApp"
-    private static let pubkyKey = "adoptedPubkyPubky"
+    static let sourceAppKey = "adoptedPubkySourceApp"
+    static let pubkyKey = "adoptedPubkyPubky"
 
     static var current: (sourceApp: String, pubky: String)? {
         get {

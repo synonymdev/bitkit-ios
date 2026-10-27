@@ -245,52 +245,52 @@ class Keychain {
         return nil
     }
 
-    class func getAllKeyChainStorageKeys() -> [String] {
+    class func getAllKeyChainStorageKeys(
+        copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching
+    ) throws -> [String] {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecReturnData as String: kCFBooleanTrue!,
             kSecReturnAttributes as String: kCFBooleanTrue!,
-            kSecReturnRef as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitAll,
             kSecAttrAccessGroup as String: Env.keychainGroup,
         ]
-
-        var result: AnyObject?
-        let lastResultCode = withUnsafeMutablePointer(to: &result) {
-            SecItemCopyMatching(query as CFDictionary, UnsafeMutablePointer($0))
+        var result: CFTypeRef?
+        let status = copyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return []
         }
-
-        var storageKeys = [String]()
-        if lastResultCode == noErr {
-            let array = result as? [[String: Any]]
-            for item in array! {
-                if let key = item[kSecAttrAccount as String] as? String {
-                    storageKeys.append(key)
-                }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            Logger.error("Failed to enumerate keychain accounts: \(status)", context: "Keychain")
+            throw KeychainError.failedToLoad
+        }
+        return try items.map { item in
+            guard let account = item[kSecAttrAccount as String] as? String else {
+                throw KeychainError.failedToLoad
             }
+            return account
         }
-
-        return storageKeys
     }
 
-    class func wipeEntireKeychain() throws {
-        let keys = getAllKeyChainStorageKeys()
+    class func wipeEntireKeychain(
+        copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching,
+        delete: (CFDictionary) -> OSStatus = SecItemDelete
+    ) throws {
+        let keys = try getAllKeyChainStorageKeys(copyMatching: copyMatching)
         for key in keys {
-            // A test run must only ever clear its own namespaced entries. Deleting an un-prefixed
-            // account here is what destroys the wallet on the simulator the suite runs against.
+            // Tests may erase only their own namespace, never a simulator's wallet or Ring credentials.
             if Env.isUnitTest, !key.hasPrefix(unitTestAccountPrefix) {
                 continue
             }
-
-            let query = [
-                kSecClass as String: kSecClassGenericPassword as String,
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
                 kSecAttrAccount as String: key,
                 kSecAttrAccessGroup as String: Env.keychainGroup,
-            ] as [String: Any]
-
-            SecItemDelete(query as CFDictionary)
-
-            Logger.info("Deleted \(key) from keychain")
+            ]
+            let status = delete(query as CFDictionary)
+            guard status == errSecSuccess || status == errSecItemNotFound else {
+                Logger.error("Failed to delete a keychain account: \(status)", context: "Keychain")
+                throw KeychainError.failedToDelete
+            }
         }
     }
 }

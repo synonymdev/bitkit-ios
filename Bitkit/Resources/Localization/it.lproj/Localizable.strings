@@ -1207,13 +1207,13 @@
 "profile__delete_description" = "Eliminando il profilo lo rimuovi da Pubky. I contatti potrebbero conservare le informazioni di profilo e di pagamento condivise in precedenza con loro.";
 "profile__delete_confirm" = "Sì, Elimina";
 "profile__delete_error_title" = "Impossibile Eliminare il Profilo";
-"profile__delete_error_description" = "Non è stato possibile eliminare i dati del tuo profilo. Riprova, oppure disconnetti questo pubky da Bitkit.";
+"profile__delete_error_description" = "La pulizia del profilo è stata interrotta. Le modifiche remote potrebbero essere già state applicate. Disconnetti il profilo per completare la pulizia su questo dispositivo senza ripetere l’eliminazione remota.";
 "profile__delete_label" = "Elimina Profilo";
 "profile__unlink_title" = "Scollegare il pubky?";
 "profile__unlink_description" = "I tuoi dati Paykit verranno eliminati e questo pubky verrà scollegato da Bitkit. Resterà disponibile in Pubky Ring.";
 "profile__unlink_confirm" = "Sì, Scollega";
 "profile__unlink_error_title" = "Impossibile Scollegare il Pubky";
-"profile__unlink_error_description" = "Non è stato possibile eliminare i tuoi dati Paykit. Riprova, oppure disconnetti questo pubky da Bitkit.";
+"profile__unlink_error_description" = "La pulizia del profilo è stata interrotta. Le modifiche remote potrebbero essere già state applicate. Disconnetti il profilo per completare la pulizia su questo dispositivo senza ripetere l’eliminazione remota.";
 "profile__unlink_label" = "Scollega pubky";
 "profile__edit" = "Modifica";
 "profile__pay_contacts_nav_title" = "Paga Contatti";
@@ -1931,3 +1931,13 @@
 "subscriptions__allowance_limit_title" = "Limite Raggiunto";
 "subscriptions__allowance_limit_description" = "Una richiesta di {amount} da {name} supera il tuo plafond. Controllala per pagare.";
 "subscriptions__allowance_auto_paid" = "Pagato automaticamente";
+
+"profile__recovery_title" = "Completa la pulizia locale";
+
+"profile__recovery_pending" = "La pulizia del profilo è stata interrotta. Le modifiche remote potrebbero essere già state applicate. Disconnetti il profilo per completare la pulizia su questo dispositivo senza ripetere l’eliminazione remota.";
+
+"profile__recovery_wipe" = "Il ripristino del portafoglio è stato interrotto. Completalo prima di usare questo portafoglio.";
+
+"profile__recovery_unavailable" = "Bitkit non riesce a leggere lo stato salvato della pulizia. Le modifiche al profilo sono sospese. Prova a leggerlo di nuovo.";
+
+"profile__recovery_working" = "Completamento della pulizia del profilo…";

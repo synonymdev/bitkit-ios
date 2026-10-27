@@ -509,7 +509,7 @@ struct AppScene: View {
             ) {
                 config in AppUpdateSheet(config: config)
             }
-            .task(priority: .userInitiated, setupTask)
+            .task(id: pubkyProfile.removalRecovery.blocksWalletStartup, priority: .userInitiated, setupTask)
             .task(id: [scenePhase == .active, wallet.walletExists == true, isWalletBackupRestoreRunning, network.isConnected]) {
                 guard scenePhase == .active, wallet.walletExists == true,
                       !isWalletBackupRestoreRunning, !BackupService.shared.hasPendingWalletRestore()
@@ -799,13 +799,15 @@ struct AppScene: View {
     }
 
     private var isLockedForDeepLinks: Bool {
-        settings.pinEnabled && !isPinVerified
+        pubkyProfile.removalRecovery.blocksWalletStartup || (settings.pinEnabled && !isPinVerified)
     }
 
     private var mainContent: some View {
         ZStack {
             if Env.isTrezorEmulatorTesting {
                 trezorEmulatorTestContent
+            } else if pubkyProfile.removalRecovery.blocksWalletStartup && !hasCriticalUpdate {
+                NavigationStack { ProfileRemovalRecoveryView() }
             } else if migrations.isShowingMigrationLoading {
                 migrationLoadingContent
             } else if showRecoveryScreen {
@@ -817,7 +819,7 @@ struct AppScene: View {
                 walletContent
             }
 
-            if !Env.isTrezorEmulatorTesting, !removeSplash, !session.skipSplashOnce {
+            if !Env.isTrezorEmulatorTesting, !pubkyProfile.removalRecovery.blocksWalletStartup, !removeSplash, !session.skipSplashOnce {
                 SplashView()
                     .opacity(hideSplash ? 0 : 1)
             }
@@ -968,7 +970,7 @@ struct AppScene: View {
             }
         }
 
-        guard wallet.walletExists == true else { return }
+        guard wallet.walletExists == true, !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
 
         // Don't start wallet if we're in recovery mode
         guard !showRecoveryScreen else { return }
@@ -998,6 +1000,7 @@ struct AppScene: View {
     }
 
     private func startWallet(completingBackupRestore: Bool = false, playsErrorHaptic: Bool = true) async {
+        guard !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
         let hasPendingRestore = BackupService.shared.hasPendingWalletRestore()
         guard !WalletBackupRestoreGate.blocksWalletStart(
             isRestoreRunning: isWalletBackupRestoreRunning,
@@ -1085,6 +1088,8 @@ struct AppScene: View {
     private func setupTask() async {
         configurePrivatePaykitContactResolvers()
         AppReset.hardwareWallets = hwWalletManager
+        pubkyProfile.refreshRemovalRecovery()
+        guard !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()

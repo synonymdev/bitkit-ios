@@ -5,6 +5,74 @@ import XCTest
 
 @MainActor
 final class BackupServiceTests: XCTestCase {
+    func testMetadataLocalFailureRetainsWalletGateAndRemoteAuthFailureCanComplete() async throws {
+        for localFailure in [true, false] {
+            let suite = "BackupServiceTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let service = BackupService(defaults: defaults)
+            service.markBackupRequired(category: .metadata, schedule: false)
+            let before = service.getBackupStatus(category: .metadata)
+            var pending: Data?
+            let gate = WalletBackupRestoreGate(load: { pending }, store: { pending = $0 }, clear: { pending = nil })
+            let retainedWallet = Data("complete-wallet-sentinel".utf8)
+            var credentialKeys = Set([KeychainEntryType.paykitSession.storageKey, KeychainEntryType.pubkySecretKey.storageKey])
+            var overrides = 0
+            var continued = false
+            do {
+                _ = try await gate.performRestore { _ in
+                    try gate.retain(retainedWallet)
+                    try await service.performRestore(category: .metadata, retainedData: Data("metadata".utf8)) { _ in
+                        try await BackupService.restoreProfileMetadata {
+                            try await PubkyProfileManager.restoreSessionBackupState(nil,
+                                                                                    loadKeychainString: { _ in nil },
+                                                                                    persistKeychainString: { _, _ in
+                                                                                        XCTFail("No new key for absent profile")
+                                                                                    },
+                                                                                    deleteKeychainValue: { key in
+                                                                                        if localFailure,
+                                                                                           key.storageKey == KeychainEntryType.pubkySecretKey
+                                                                                               .storageKey
+                                                                                        {
+                                                                                            throw KeychainError.failedToDelete
+                                                                                        }
+                                                                                        credentialKeys.remove(key.storageKey)
+                                                                                    }, removeOwnSharedRecords: {}, forgetSessionAccess: {},
+                                                                                    signInWithSecretKey: { _ in
+                                                                                        XCTFail("No authentication for absent profile"); return "unused"
+                                                                                    })
+                            throw PubkyServiceError.authFailed("Remote authorization unavailable after local cleanup")
+                        } installOverrides: { overrides += 1 }
+                    }
+                    continued = true
+                    return true
+                }
+                XCTAssertFalse(localFailure)
+            } catch is ProfileSessionRestoreLocalError { XCTAssertTrue(localFailure) }
+            if localFailure {
+                XCTAssertEqual(credentialKeys, [KeychainEntryType.pubkySecretKey.storageKey])
+                XCTAssertEqual(overrides, 0)
+                XCTAssertFalse(continued)
+                XCTAssertEqual(service.getBackupStatus(category: .metadata), before)
+                XCTAssertEqual(pending, retainedWallet)
+                XCTAssertThrowsError(try gate.requireReplacementBackupAllowed())
+                for completionStart in [false, true] {
+                    XCTAssertTrue(try WalletBackupRestoreGate.blocksWalletStart(isRestoreRunning: false,
+                                                                                hasPendingRestore: gate.hasPendingRestore(),
+                                                                                isRestoreCompletionStart: completionStart))
+                }
+            } else {
+                XCTAssertTrue(credentialKeys.isEmpty)
+                XCTAssertEqual(overrides, 1)
+                XCTAssertTrue(continued)
+                XCTAssertFalse(service.getBackupStatus(category: .metadata).isRequired)
+                XCTAssertNil(pending)
+            }
+            service.setWiping(true)
+            await service.stopObservingBackups()
+        }
+    }
+
     func testChangesDuringCaptureAndUploadRemainRequired() async throws {
         for changeDuringCapture in [true, false] {
             let suite = "BackupServiceTests.\(UUID().uuidString)"
@@ -412,6 +480,47 @@ final class BackupServiceTests: XCTestCase {
         await service.stopObservingBackups()
         XCTAssertEqual(captures, 2)
         XCTAssertFalse(service.getBackupStatus(category: .usdt).isRequired)
+    }
+
+    func testTransientProfileAdmissionRetriesOnlyCompleteBackupCapture() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let gate = ProfileOperationAdmission(store: store)
+        XCTAssertNoThrow(try store.requireNoPending())
+        XCTAssertFalse(gate.hasUnpersistedLocalFailure)
+        XCTAssertTrue(gate.isTransientBackupCaptureFailure(ProfileRemovalStore.StoreError.changed), "Raw transient admission")
+        XCTAssertTrue(
+            gate.isTransientBackupCaptureFailure(Bitkit.AppError(error: ProfileRemovalStore.StoreError.changed)),
+            "Wrapped transient admission"
+        )
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var captures = 0
+        var delays: [UInt64] = []
+        let completed = expectation(description: "Complete wallet capture resumed after transition")
+        let service = BackupService(defaults: defaults, profileAdmission: gate, backupData: { _ in
+            captures += 1
+            if captures == 1 {
+                throw Bitkit.AppError(error: ProfileRemovalStore.StoreError.changed)
+            }
+            return Data("complete-wallet".utf8)
+        }, uploadBackup: { _, data in XCTAssertEqual(data, Data("complete-wallet".utf8)) },
+        waitForBackupDelay: {}, waitForTemporaryFailureDelay: { delays.append($0) })
+        let listener = service.backupStatusesPublisher
+            .filter { $0[.wallet].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        service.markBackupRequired(category: .wallet)
+        await fulfillment(of: [completed], timeout: 3)
+        listener.cancel()
+        await service.stopObservingBackups()
+        XCTAssertEqual(captures, 2)
+        XCTAssertEqual(delays, [10_000_000_000])
+        XCTAssertFalse(gate.isTransientBackupCaptureFailure(ProfileRemovalStore.StoreError.pending))
+        XCTAssertFalse(gate.isTransientBackupCaptureFailure(ProfileRemovalStore.StoreError.unavailable))
+        try store.begin(id: UUID())
+        XCTAssertFalse(gate.isTransientBackupCaptureFailure(Bitkit.AppError(error: ProfileRemovalStore.StoreError.changed)))
     }
 
     func testTemporaryFailureRemainsPendingAcrossServiceRestart() async throws {

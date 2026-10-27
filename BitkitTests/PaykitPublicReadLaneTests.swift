@@ -48,7 +48,7 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         }
     }
 
-    func testPublicReadWaitingToBuildAnSdkWhenAWipeStartsFailsWithoutBuildingOne() async throws {
+    func testColdPublicReadCompletesWhileApprovalWaitsAndIsRebuiltAfterWipe() async throws {
         let sdk = WipeRaceSdk(noPointer: .init())
         await sdk.gate.open()
         let builds = BuildCount()
@@ -65,25 +65,32 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         }
         try await bootstrap.started.waitForEntries(count: 1)
         let read = Task { try await service.fetchPubkyFollows(publicKey: "follower") }
-        try await Task.sleep(for: .milliseconds(50))
+        let beforeWipe = try await read.value
+        XCTAssertEqual(beforeWipe, ["follow"])
+        XCTAssertEqual(builds.value, 1, "Cold public construction does not queue behind authentication")
         let wipe = Task { try await service.withWalletWipe { builds.value } }
         try await Task.sleep(for: .milliseconds(50))
 
         await bootstrap.gate.open()
-        try await approval.value
-        await assertWipeError(read.result, "A read queued to build an SDK must not build or read once a wipe starts")
+        do { try await approval.value; XCTFail("The old authorization must not complete across wipe admission") }
+        catch is CancellationError {} catch ProfileRemovalStore.StoreError.changed {}
         let buildsByWipe = try await wipe.value
-        XCTAssertEqual(buildsByWipe, 0)
-        XCTAssertEqual(builds.value, 0, "Only work under the lock may build an SDK, and none was admitted")
+        XCTAssertEqual(buildsByWipe, 1)
+        let afterWipe = try await service.fetchPubkyFollows(publicKey: "after")
+        XCTAssertEqual(afterWipe, ["follow"])
+        XCTAssertEqual(builds.value, 2, "Wipe clears the independently constructed public handle")
         let reads = await sdk.log.entries
-        XCTAssertEqual(reads, [])
+        XCTAssertEqual(reads, ["follows:follower", "follows:after"])
     }
 
     func testPublicReadsDuringAWipeAreRejectedExceptForTheWipeItself() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
         let sdk = WipeRaceSdk(noPointer: .init())
         await sdk.gate.open()
         let builds = BuildCount()
-        let service = PaykitSdkService(sdkFactory: {
+        let service = PaykitSdkService(profileAdmission: admission, sdkFactory: {
             builds.increment()
             return sdk
         })
@@ -91,7 +98,10 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         let (cleanupStarted, startCleanup) = AsyncStream<Void>.makeStream()
         let (wipeGate, releaseWipe) = AsyncStream<Void>.makeStream()
         let wipe = Task {
+            defer { startCleanup.finish() }
             try await service.withWalletWipe {
+                let scope = try XCTUnwrap(ProfileOperationAdmission.current)
+                try admission.persist(scope)
                 _ = try await service.contactRecords()
                 let follows = try await service.fetchPubkyFollows(publicKey: "follower")
                 XCTAssertEqual(follows, ["follow"], "The wipe's own public reads must still run")
@@ -99,6 +109,7 @@ final class PaykitPublicReadLaneTests: XCTestCase {
                 for await _ in wipeGate {
                     break
                 }
+                try admission.complete(scope)
             }
         }
         for await _ in cleanupStarted {
@@ -119,13 +130,13 @@ final class PaykitPublicReadLaneTests: XCTestCase {
         }
         let reads = await sdk.log.entries
         XCTAssertEqual(reads, ["follows:follower"], "Only the wipe's own read may reach the wiped wallet's SDK")
-        XCTAssertEqual(builds.value, 2)
+        XCTAssertEqual(builds.value, 3, "Authenticated and credential-free public handles are built separately")
 
         releaseWipe.yield()
         try await wipe.value
         let follows = try await service.fetchPubkyFollows(publicKey: "follower")
         XCTAssertEqual(follows, ["follow"])
-        XCTAssertEqual(builds.value, 3, "A read after the wipe builds a fresh SDK from the cleared state")
+        XCTAssertEqual(builds.value, 4, "A read after the wipe builds a fresh SDK from the cleared state")
     }
 
     func testPublicReadThatAWipeOvertakesFailsWithoutDelayingTheWipe() async throws {

@@ -13,8 +13,8 @@
     <action>Verify a failed private withdrawal is followed by no contact or profile deletion</action>
     <action>Verify unknown contact removal keeps local contact data and prevents profile deletion</action>
     <action>Verify partial contact removal preserves contacts and overrides not acknowledged as removed</action>
-    <action>Verify an uncertain profile-deletion error preserves the session and sharing settings without success feedback</action>
-    <action>Cancel the failure dialog and verify the app starts no second deletion</action>
+    <action>Verify an uncertain profile-deletion error preserves required safety state and shows local recovery without success feedback or automatic publication</action>
+    <action>Cancel the local Disconnect confirmation and verify the app starts no second deletion</action>
     <action>Restart the app and verify no profile deletion is automatically replayed</action>
   </actions>
 </journey>

@@ -282,7 +282,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 _ = try await delivery.value
                 XCTFail("Deferred outbound delivery must not survive \(change)")
             } catch is CancellationError {
-                XCTAssertEqual(change, "cancel")
+                XCTAssertTrue(change == "cancel" || change == "wipe")
             } catch PubkyServiceError.identityChanged {
                 XCTAssertNotEqual(change, "cancel")
             }
@@ -365,7 +365,7 @@ final class PaykitSdkOperationLockTests: XCTestCase {
                 _ = try await export.value
                 XCTFail("Deferred backup must not survive \(change)")
             } catch is CancellationError {
-                XCTAssertEqual(change, "cancel")
+                XCTAssertTrue(change == "cancel" || change == "wipe")
             } catch PubkyServiceError.identityChanged {
                 XCTAssertNotEqual(change, "cancel")
             }
@@ -428,6 +428,24 @@ final class PaykitSdkOperationLockTests: XCTestCase {
             await Task.yield()
         }
         XCTAssertEqual(lock.waiterCountForTesting, count)
+    }
+
+    func testColdPublicCapabilityReadDoesNotActivatePendingProfileCredentials() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let admission = ProfileOperationAdmission(store: store)
+        let pendingID = UUID()
+        let scope = try admission.reserve(kind: .removal, id: pendingID, expected: admission.snapshot())
+        try admission.persist(scope)
+        admission.release(scope)
+        let sdk = PublicReadSdk(noPointer: .init())
+        sdk.lockedRead = { XCTFail("Public preview must not read authenticated contacts") }
+        let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk })
+        let result = try await service.canReceivePaymentRequests(publicKey: "peer")
+        XCTAssertFalse(result)
+        XCTAssertEqual(try store.pending()?.id, pendingID)
+        XCTAssertThrowsError(try admission.capture())
     }
 
     func testPublicCapabilityReadDoesNotWaitForSerializedSdkWork() async throws {

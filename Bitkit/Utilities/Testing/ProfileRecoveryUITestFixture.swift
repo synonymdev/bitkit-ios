@@ -2,11 +2,18 @@
     import SwiftUI
 
     struct ProfileRecoveryUITestFixture: View {
-        @StateObject private var profile = ProfileRecoveryTestManager()
+        @StateObject private var profile: ProfileRecoveryTestManager
+        @StateObject private var local: ProfileRecoveryLocalState
         @StateObject private var app = AppViewModel()
         @StateObject private var navigation = NavigationViewModel()
         @StateObject private var contacts = ContactsManager()
         @State private var clipboard = ""
+
+        init() {
+            let local = ProfileRecoveryLocalState()
+            _local = StateObject(wrappedValue: local)
+            _profile = StateObject(wrappedValue: ProfileRecoveryTestManager(local: local))
+        }
 
         var body: some View {
             VStack(spacing: 8) {
@@ -14,9 +21,9 @@
                     Button("Restore") { profile.restoreSession() }
                         .accessibilityIdentifier("ProfileFixtureRestore")
                         .accessibilityValue(profile.currentSession == nil ? "Unavailable" : "Restored")
-                    Button("Fail") { profile.finish(success: false) }
+                    Button("Fail") { finish(success: false) }
                         .accessibilityIdentifier("ProfileFixtureFail")
-                    Button("Load") { profile.finish(success: true) }
+                    Button("Load") { finish(success: true) }
                         .accessibilityIdentifier("ProfileFixtureLoad")
                     Button("Clipboard") { clipboard = UIPasteboard.general.string ?? "" }
                         .accessibilityIdentifier("ProfileFixtureClipboard")
@@ -28,16 +35,29 @@
                 }
                 CaptionText(clipboard)
                     .accessibilityIdentifier("ProfileFixtureClipboardValue")
-                CaptionText(profile.isLoadingProfile ? "Loading" : profile.isDisconnectPending ? "Disconnecting" : "Idle")
+                CaptionText(profile.isLoadingProfile ? "Loading" : local.isPending ? "Disconnecting" : "Idle")
                     .accessibilityIdentifier("ProfileFixtureStatus")
+                CaptionText(
+                    "Credentials: \(local.credentialsPresent ? "present" : "cleared"), watermark: \(local.watermark), remote: \(local.remoteCalls)"
+                )
+                .accessibilityIdentifier("ProfileFixtureLocalState")
+                CaptionText(profile.pendingProfileRemovalID?.uuidString ?? "None")
+                    .accessibilityIdentifier("ProfileFixturePendingID")
                 NavigationStack(path: $navigation.path) {
-                    ProfileDestinationView(hasSeenIntro: true)
-                        .navigationDestination(for: Route.self) { route in
-                            if route == .editProfile {
-                                CaptionText("Edit profile")
-                                    .accessibilityIdentifier("ProfileFixtureEditing")
-                            }
+                    Group {
+                        if !local.credentialsPresent, profile.removalRecovery == .ready {
+                            CaptionText("Local cleanup complete")
+                                .accessibilityIdentifier("ProfileFixtureCompleted")
+                        } else {
+                            ProfileDestinationView(hasSeenIntro: true)
                         }
+                    }
+                    .navigationDestination(for: Route.self) { route in
+                        if route == .editProfile {
+                            CaptionText("Edit profile")
+                                .accessibilityIdentifier("ProfileFixtureEditing")
+                        }
+                    }
                 }
             }
             .environmentObject(profile as PubkyProfileManager)
@@ -45,6 +65,43 @@
             .environmentObject(navigation)
             .environmentObject(contacts)
             .preferredColorScheme(.dark)
+        }
+
+        private func finish(success: Bool) {
+            if local.isPending {
+                local.finish(success: success)
+            } else {
+                profile.finish(success: success)
+            }
+        }
+    }
+
+    @MainActor
+    private final class ProfileRecoveryLocalState: ObservableObject {
+        @Published private(set) var isPending = false
+        @Published private(set) var credentialsPresent = true
+        @Published private(set) var watermark = 42
+        @Published private(set) var remoteCalls = 0
+        private var pendingResult: CheckedContinuation<Bool, Never>?
+
+        func complete() async throws {
+            isPending = true
+            defer { isPending = false }
+            let success = await withCheckedContinuation { pendingResult = $0 }
+            guard success else { throw KeychainError.failedToDelete }
+            credentialsPresent = false
+            watermark = 0
+        }
+
+        func finish(success: Bool) {
+            let result = pendingResult
+            pendingResult = nil
+            result?.resume(returning: success)
+        }
+
+        func rejectRemote() throws {
+            remoteCalls += 1
+            throw PubkyServiceError.sessionNotActive
         }
     }
 
@@ -55,20 +112,35 @@
             imageUrl: nil, links: [], tags: ["public-tag"], status: nil
         )
 
-        @Published private(set) var isDisconnectPending = false
+        private let local: ProfileRecoveryLocalState
         private var hasLoaded = false
         private var pendingResult: CheckedContinuation<Bool, Never>?
 
+        init(local: ProfileRecoveryLocalState) {
+            self.local = local
+            let store = ProfileRemovalStore(url: FileManager.default.temporaryDirectory
+                .appendingPathComponent("profile-ui-\(UUID().uuidString)/pending.json"))
+            let services = RemovalServices(
+                readProfile: { _ in try await local.rejectRemote(); return nil },
+                deleteProfile: { _, _ in try await local.rejectRemote() },
+                withdrawPrivate: { try local.rejectRemote() },
+                withdrawPublic: { try local.rejectRemote() },
+                completeLocal: { try await local.complete() },
+                pause: { _ in }, resume: { _ in }
+            )
+            super.init(removalServices: services, removalStore: store, removalAdmission: ProfileOperationAdmission(store: store))
+        }
+
         override var hasExistingIdentity: Bool {
-            true
+            local.credentialsPresent
         }
 
         override var profileForDisplay: PubkyProfile? {
-            profile ?? Self.savedProfile
+            local.credentialsPresent ? profile ?? Self.savedProfile : nil
         }
 
         override var publicKeyForDisplay: String? {
-            Self.savedProfile.publicKey
+            local.credentialsPresent ? Self.savedProfile.publicKey : nil
         }
 
         override func restoreSessionIfNeeded(
@@ -89,14 +161,8 @@
             isLoadingProfile = false
         }
 
-        override func signOut() async throws {
-            isDisconnectPending = true
-            _ = await withCheckedContinuation { pendingResult = $0 }
-            isDisconnectPending = false
-            throw PubkyServiceError.sessionNotActive
-        }
-
         func restoreSession() {
+            guard removalRecovery == .ready else { return }
             publicKey = Self.savedProfile.publicKey
             authState = .authenticated
         }

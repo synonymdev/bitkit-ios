@@ -3,6 +3,48 @@ import Paykit
 import XCTest
 
 final class PaykitSdkClientConfigTests: XCTestCase {
+    func testSignupDoesNotEnterNativeMutationAfterHeldIdentityReadIsRevoked() async throws {
+        for cancel in [true, false] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+            let admission = ProfileOperationAdmission(store: store)
+            let sdk = CacheActivationSdk(noPointer: .init())
+            let bootstrap = CacheActivationBootstrap(noPointer: .init())
+            let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk }) { _, _ in bootstrap }
+            let originalCredentials = try [KeychainEntryType.paykitSession, .pubkySecretKey].map { try Keychain.load(key: $0) }
+            let started = expectation(description: "Native identity read is held")
+            let (stream, release) = AsyncStream<Void>.makeStream()
+            defer { release.finish() }
+            let held = Task.detached { for await _ in stream {} }
+            sdk.readIdentity = { started.fulfill(); await held.value }
+            let signingUp = Task {
+                try await service.signUp(secretKeyHex: String(repeating: "01", count: 32), homeserverPublicKey: "test", signupCode: nil)
+            }
+            await fulfillment(of: [started], timeout: 2)
+            let wipe: ProfileOperationAdmission.Scope?
+            if cancel {
+                signingUp.cancel(); wipe = nil
+            } else {
+                wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+            }
+            release.finish()
+            do { _ = try await signingUp.value; XCTFail("Revoked signup must fail") }
+            catch { XCTAssertTrue(error is CancellationError || error is ProfileRemovalStore.StoreError) }
+            XCTAssertEqual(bootstrap.signUpCalls, 0)
+            XCTAssertEqual(try [KeychainEntryType.paykitSession, .pubkySecretKey].map { try Keychain.load(key: $0) }, originalCredentials)
+            XCTAssertTrue(sdk.activationEvents.isEmpty)
+            if let wipe {
+                try await admission.withScope(wipe, access: .control) {
+                    try await admission.drain(before: wipe)
+                    try await service.withWalletWipe {}
+                }
+                admission.release(wipe)
+            }
+            XCTAssertNoThrow(try admission.snapshot())
+        }
+    }
+
     private let externalAuthURL =
         "pubkyauth://signin_grant?caps=/pub/example/:rw&relay=https://httprelay.pubky.app/inbox/" +
         "&secret=e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3t7e3s" +
@@ -65,6 +107,39 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             secretKeyHex: String(repeating: "02", count: 32), homeserverPublicKey: "test", signupCode: nil
         )
         XCTAssertNotEqual(identity.walletGeneration, freshIdentity.walletGeneration)
+    }
+
+    func testRegisteredIdentityCannotCrossRemovalBetweenPreflightAndNativeAdmission() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let admission = ProfileOperationAdmission(store: store)
+        let bootstrap = CacheActivationBootstrap(noPointer: .init())
+        let service = PaykitSdkService(profileAdmission: admission, sdkFactory: {
+            XCTFail("Stale registered identity reached native activation")
+            throw PubkyServiceError.sessionNotActive
+        }) { _, _ in bootstrap }
+        let identity = try await service.registerIdentity(
+            secretKeyHex: String(repeating: "01", count: 32), homeserverPublicKey: "test", signupCode: nil
+        )
+        let preflight = expectation(description: "Original registration preflight completed")
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        await service.setBeforeRegistrationActivationForTesting {
+            preflight.fulfill()
+            for await _ in stream {}
+        }
+        let activation = Task { try await service.activateRegisteredIdentity(identity) }
+        await fulfillment(of: [preflight], timeout: 2)
+        let removal = try admission.reserve(kind: .removal, id: UUID(), expected: admission.snapshot())
+        try admission.persist(removal)
+        try admission.complete(removal)
+        admission.release(removal)
+        release.finish()
+        do {
+            try await activation.value
+            XCTFail("Stale registration activated")
+        } catch ProfileRemovalStore.StoreError.changed {}
     }
 
     func testPaykitKeyForAuthorizationPreservesPerIdentityGenerationHighWater() async throws {
@@ -453,7 +528,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             session.localSecretKey = try PaykitSdkService.localSecretKey(fromHex: secret)
             let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: publicKey, capability: .privateLinkCapable)
 
-            try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0))
+            try await service.activateRegisteredIdentity(.init(
+                result: result,
+                walletGeneration: 0,
+                profileGeneration: service.profileAdmission.snapshot()
+            ))
             await manager.initialize { .restored(publicKey: "pubky\(originalKey)") }
 
             XCTAssertEqual(manager.publicKey, "pubky\(originalKey)")
@@ -546,7 +625,8 @@ final class PaykitSdkClientConfigTests: XCTestCase {
 
                 do {
                     try await service.activateRegisteredIdentity(.init(
-                        result: .init(sessionAccess: session, publicKey: newKey, capability: .privateLinkCapable), walletGeneration: 0
+                        result: .init(sessionAccess: session, publicKey: newKey, capability: .privateLinkCapable), walletGeneration: 0,
+                        profileGeneration: service.profileAdmission.snapshot()
                     ))
                     XCTFail("Expected activation to fail after staging the new session")
                 } catch {
@@ -605,7 +685,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let result = PubkySessionBootstrapResult(sessionAccess: session, publicKey: publicKey, capability: .privateLinkCapable)
 
         let activation = Task {
-            try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0))
+            try await service.activateRegisteredIdentity(.init(
+                result: result,
+                walletGeneration: 0,
+                profileGeneration: service.profileAdmission.snapshot()
+            ))
             activationReturned.fulfill()
         }
         // Shorter than the republish timeout, so an activation that awaited the publication would miss it.
@@ -688,7 +772,11 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         let forgotEarly = expectation(description: "forget cannot interleave with recovery")
         forgotEarly.isInverted = true
         sdk.onForget = { forgotEarly.fulfill() }
-        let service = PaykitSdkService(sdkFactory: { sdk }, bootstrapFactory: { _, _ in bootstrap })
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let gate = ProfileOperationAdmission(store: store)
+        let service = PaykitSdkService(profileAdmission: gate, sdkFactory: { sdk }, bootstrapFactory: { _, _ in bootstrap })
         let recovery = Task { try await service.restorePersistedSession() }
         await fulfillment(of: [started], timeout: 2)
         let forget = Task { try await service.forgetSessionAccess() }
@@ -696,13 +784,268 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         sdk.onForget = {}
         continuation.finish()
         let result = try await recovery.value
-        try await forget.value
+        do {
+            try await forget.value
+            XCTFail("An unbound forget must not cross an active restoration")
+        } catch ProfileRemovalStore.StoreError.changed {}
+        let scope = try gate.reserve(kind: .localRecovery, id: UUID(), expected: gate.snapshot())
+        do { try await gate.withScope(scope, access: .control) {
+            try await gate.drain(before: scope)
+            try gate.persist(scope)
+            try await service.forgetSessionAccess()
+            try gate.complete(scope)
+        } } catch { gate.release(scope); throw error }
+        gate.release(scope)
         XCTAssertEqual(result, .restored(publicKey: bootstrap.result.publicKey))
         XCTAssertEqual(sdk.initializationCalls, 1)
         XCTAssertNil(try Keychain.load(key: .paykitSession))
         XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
         let afterForget = try await service.restorePersistedSession()
         XCTAssertEqual(afterForget, .noSession)
+    }
+
+    @MainActor
+    func testUncommittedCredentialActivationDoesNotReplaceCachedIdentity() async throws {
+        snapshotAppDefaultsDomain()
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        defer { for (key, value) in zip(keys, saved) {
+            if let value {
+                try? Keychain.upsert(key: key, data: value)
+            } else {
+                try? Keychain.delete(key: key)
+            }
+        } }
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))
+        let sdk = CacheActivationSdk(noPointer: .init())
+        let service = PaykitSdkService(profileAdmission: gate, sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+        let defaults = UserDefaults.standard
+        defaults.set("previous-owner", forKey: "pubky_profile_identity")
+        defaults.set("Previous name", forKey: "pubky_profile_name")
+        defaults.set("previous-avatar", forKey: "pubky_profile_image_uri")
+        try await gate.withSessionTransition {
+            let attempt = try await service.beginCredentialAttempt()
+            let result = PubkySessionBootstrapResult(sessionAccess: CacheActivationSession(noPointer: .init()),
+                                                     publicKey: "pubky_test", capability: .privateLinkCapable)
+            try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0,
+                                                               profileGeneration: gate.operationGeneration()))
+            XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "new-session")
+            XCTAssertEqual(defaults.string(forKey: "pubky_profile_identity"), "previous-owner")
+            XCTAssertEqual(defaults.string(forKey: "pubky_profile_name"), "Previous name")
+            try await service.rollbackCredentialAttempt(attempt)
+        }
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
+        XCTAssertEqual(defaults.string(forKey: "pubky_profile_identity"), "previous-owner")
+        XCTAssertEqual(defaults.string(forKey: "pubky_profile_name"), "Previous name")
+        XCTAssertEqual(defaults.string(forKey: "pubky_profile_image_uri"), "previous-avatar")
+    }
+
+    @MainActor
+    func testAcknowledgedAdoptionFinishesLocalStateBeforeCanceledWipeDrains() async throws {
+        snapshotAppDefaultsDomain()
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        defer { for (key, value) in zip(keys, saved) {
+            if let value {
+                try? Keychain.upsert(key: key, data: value)
+            } else {
+                try? Keychain.delete(key: key)
+            }
+        } }
+        try Keychain.upsert(key: .paykitSession, data: Data("previous-session".utf8))
+        try Keychain.delete(key: .pubkySecretKey)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let admission = ProfileOperationAdmission(store: store)
+        let owner = "pubky" + String(repeating: "y", count: 52)
+        AdoptedPubkyReference.current = ("ring", "previous-reference")
+        let manager = PubkyProfileManager(removalStore: store, removalAdmission: admission)
+        manager.publicKey = owner
+        manager.authState = .authenticated
+        UserDefaults.standard.set(owner, forKey: "pubky_profile_identity")
+        let native = CacheActivationSdk(noPointer: .init())
+        let sdk = PaykitSdkService(profileAdmission: admission, sdkFactory: { native }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+        let committed = expectation(description: "Credentials committed before manager installation")
+        let (wait, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        manager.beforeCommittedIdentityInstallForTesting = { committed.fulfill(); for await _ in wait {} }
+        let next = try PubkyProfileManager.publicKeyFromSecretKey(String(repeating: "02", count: 32))
+        let adoption = Task {
+            try await manager.adoptRingIdentity(pubky: next, loadSecret: { _, _ in String(repeating: "02", count: 32) },
+                                                signIn: { _ in
+                                                    let result = PubkySessionBootstrapResult(
+                                                        sessionAccess: CacheActivationSession(noPointer: .init()),
+                                                        publicKey: next,
+                                                        capability: .privateLinkCapable
+                                                    )
+                                                    try await sdk.activateRegisteredIdentity(.init(result: result, walletGeneration: 0,
+                                                                                                   profileGeneration: admission
+                                                                                                       .operationGeneration()))
+                                                }, fetchProfile: { key in
+                                                    PubkyProfile(publicKey: key, name: "Next owner", bio: "", imageUrl: nil, links: [], status: nil)
+                                                }, sdkService: sdk)
+        }
+        await fulfillment(of: [committed], timeout: 2)
+        XCTAssertEqual(manager.publicKey, owner)
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "new-session")
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "pubky_profile_identity"), owner)
+        let wiping = Task {
+            try await AppReset.withWipeAdmission(admission: admission, sdkService: sdk, pause: { _ in }, resume: { _ in }) { _ in
+                XCTFail("Canceled wipe cannot reach cleanup")
+            }
+        }
+        for _ in 0 ..< 100 where !admission.isWalletWiping {
+            await Task.yield()
+        }
+        XCTAssertTrue(admission.isWalletWiping)
+        wiping.cancel()
+        do { try await wiping.value; XCTFail("Canceled wipe completed") } catch is CancellationError {}
+        release.finish()
+        do { _ = try await adoption.value; XCTFail("Superseded adoption cannot navigate") }
+        catch ProfileRemovalStore.StoreError.changed {} catch is CancellationError {}
+        XCTAssertEqual(manager.publicKey, next)
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "new-session")
+        XCTAssertNil(try Keychain.load(key: .pubkySecretKey), "Ring owns the secret")
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "pubky_profile_identity"), next)
+        XCTAssertEqual(manager.profile?.name, "Next owner")
+        XCTAssertEqual(AdoptedPubkyReference.current?.pubky, next)
+        XCTAssertNil(try store.pending())
+        XCTAssertNoThrow(try admission.snapshot())
+    }
+
+    @MainActor
+    func testCancelledNewSessionCleanupDrainsBeforeWalletWipe() async throws {
+        try await checkCancelledNewSessionCleanup(cancelWipe: false)
+    }
+
+    @MainActor
+    func testCanceledWipeCannotStrandOriginalCredentialCleanup() async throws {
+        try await checkCancelledNewSessionCleanup(cancelWipe: true)
+    }
+
+    @MainActor
+    private func checkCancelledNewSessionCleanup(cancelWipe: Bool) async throws {
+        let keys: [KeychainEntryType] = [.paykitSession, .pubkySecretKey]
+        let saved = try keys.map { try Keychain.load(key: $0) }
+        defer { for (key, value) in zip(keys, saved) {
+            if let value {
+                try? Keychain.upsert(key: key, data: value)
+            } else {
+                try? Keychain.delete(key: key)
+            }
+        } }
+        for key in keys {
+            try Keychain.delete(key: key)
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let gate = ProfileOperationAdmission(store: store)
+        let sdk = CacheActivationSdk(noPointer: .init())
+        let service = PaykitSdkService(profileAdmission: gate, sdkFactory: { sdk }) { _, _ in CacheActivationBootstrap(noPointer: .init()) }
+        let installed = expectation(description: "New session installed before profile publication")
+        let cleaning = expectation(description: "Original local cleanup entered")
+        let (profileWait, releaseProfile) = AsyncStream<Void>.makeStream()
+        let (cleanupWait, releaseCleanup) = AsyncStream<Void>.makeStream()
+        defer { releaseProfile.finish(); releaseCleanup.finish() }
+        await service.setBeforeCredentialRollbackForTesting {
+            cleaning.fulfill()
+            for await _ in cleanupWait {}
+        }
+        let operation = Task {
+            try await gate.withSessionTransition {
+                let attempt = try await service.beginCredentialAttempt()
+                do {
+                    let result = PubkySessionBootstrapResult(sessionAccess: CacheActivationSession(noPointer: .init()),
+                                                             publicKey: "pubky_test", capability: .privateLinkCapable)
+                    try await service.activateRegisteredIdentity(.init(result: result, walletGeneration: 0,
+                                                                       profileGeneration: gate.operationGeneration()))
+                    installed.fulfill()
+                    for await _ in profileWait {}
+                    try Task.checkCancellation()
+                    try await service.commitCredentialAttempt(attempt)
+                } catch {
+                    try await Task.detached { try await service.rollbackCredentialAttempt(attempt) }.value
+                    throw error
+                }
+            }
+        }
+        await fulfillment(of: [installed], timeout: 2)
+        operation.cancel()
+        await fulfillment(of: [cleaning], timeout: 2)
+        XCTAssertEqual(try Keychain.loadString(key: .paykitSession), "new-session")
+        var wiped = false
+        let wipe = Task {
+            try await AppReset.withWipeAdmission(admission: gate, sdkService: service, pause: { _ in }, resume: { _ in }) { _ in
+                wiped = true
+                XCTAssertNil(try Keychain.load(key: .paykitSession))
+            }
+        }
+        for _ in 0 ..< 100 where !gate.isWalletWiping {
+            await Task.yield()
+        }
+        XCTAssertTrue(gate.isWalletWiping)
+        XCTAssertFalse(wiped)
+        if cancelWipe {
+            wipe.cancel()
+            do { try await wipe.value; XCTFail("Canceled wipe completed") } catch is CancellationError {}
+            catch { XCTFail("Wipe cancellation returned \(String(reflecting: type(of: error))): \(error)") }
+            XCTAssertFalse(gate.isWalletWiping)
+            XCTAssertThrowsError(try gate.snapshot(), "Canceled successor must not reopen ordinary admission ahead of old cleanup")
+            let unexpected = try? gate.capture()
+            if let unexpected {
+                gate.release(unexpected)
+            }
+            XCTAssertNil(unexpected)
+        }
+        releaseCleanup.finish()
+        do { try await operation.value; XCTFail("Canceled caller reported success") }
+        catch is CancellationError {}
+        catch { XCTFail("Original local cleanup failed: \(error)") }
+        if !cancelWipe {
+            try await wipe.value
+        }
+        XCTAssertEqual(wiped, !cancelWipe)
+        XCTAssertNil(try Keychain.load(key: .paykitSession))
+        XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
+        XCTAssertNil(try store.pending())
+        XCTAssertNoThrow(try gate.snapshot())
+    }
+
+    @MainActor
+    func testCredentialCleanupDoesNotEraseUnrecognizedBytesAndRetainsObligation() async throws {
+        let key = KeychainEntryType.paykitSession
+        let saved = try Keychain.load(key: key)
+        defer {
+            if let saved {
+                try? Keychain.upsert(key: key, data: saved)
+            } else {
+                try? Keychain.delete(key: key)
+            }
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+        let gate = ProfileOperationAdmission(store: store)
+        let service = PaykitSdkService(profileAdmission: gate, sdkFactory: {
+            XCTFail("Local credential cleanup must not construct SDK")
+            throw ProfileRemovalStore.StoreError.unavailable
+        })
+        do { try await gate.withSessionTransition {
+            let attempt = try await service.beginCredentialAttempt()
+            try Keychain.upsert(key: key, data: Data("unrecognized-session".utf8))
+            do { try await service.rollbackCredentialAttempt(attempt); XCTFail("Unexpected credential change was accepted") }
+            catch ProfileRemovalStore.StoreError.changed {}
+            XCTAssertEqual(try Keychain.loadString(key: key), "unrecognized-session")
+            XCTAssertNotNil(try store.pending())
+        }; XCTFail("Pending cleanup must keep identity admission closed") } catch ProfileRemovalStore.StoreError.changed {}
+        XCTAssertThrowsError(try gate.snapshot())
     }
 
     func testClientIDUsesBitkitOwnedDomain() {
@@ -803,6 +1146,7 @@ private final class UnavailableProfileManager: PubkyProfileManager {
 }
 
 private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
+    var readIdentity: (() async -> Void)?
     var handshakeState: LinkedPeerState = .linking
     var handshakeAdvanceSteps: [UInt32] = []
     var previousKey: String?
@@ -840,7 +1184,8 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func identityStatus() async throws -> IdentityStatus? {
-        IdentityStatus(publicKey: previousKey, capability: capability)
+        await readIdentity?()
+        return IdentityStatus(publicKey: previousKey, capability: capability)
     }
 
     override func paykitAppRegistry(publicKey: String) async throws -> PaykitAppRegistry? {
@@ -907,6 +1252,7 @@ private final class CacheActivationSdk: PaykitSdk, @unchecked Sendable {
 }
 
 private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked Sendable {
+    var signUpCalls = 0
     var republishedKeys: [String] = []
     var republishOperation: () async -> Bool = { true }
 
@@ -916,7 +1262,8 @@ private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked 
         signupCode _: String?,
         requiredCapabilities _: String
     ) async throws -> PubkySessionBootstrapResult {
-        PubkySessionBootstrapResult(
+        signUpCalls += 1
+        return PubkySessionBootstrapResult(
             sessionAccess: CacheActivationSession(noPointer: .init()),
             publicKey: "pubky_test",
             capability: .privateLinkCapable

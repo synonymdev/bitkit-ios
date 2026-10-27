@@ -13,6 +13,7 @@ struct AddContactView: View {
 
     let publicKey: String
 
+    @State private var screenSession: PubkyProfileManager.SignedInSession?
     @State private var fetchedProfile: PubkyProfile?
     @State private var isLoading = true
     @State private var isSaving = false
@@ -53,6 +54,9 @@ struct AddContactView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
+            if screenSession == nil {
+                screenSession = pubkyProfile.currentSession
+            }
             await loadProfile()
         }
     }
@@ -215,8 +219,13 @@ struct AddContactView: View {
             errorMessage = t("contacts__add_error_existing")
             canRetryError = false
             isLoading = false
-            if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) {
-                await contactsManager.refreshContactLink(publicKey: normalizedKey, wallet: wallet)
+            if let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey), let session = screenSession,
+               pubkyProfile.currentSession == session
+            {
+                try? await ProfileOperationAdmission.shared.withOperation {
+                    try pubkyProfile.requireCurrentSession(session)
+                    await contactsManager.refreshContactLink(publicKey: normalizedKey, wallet: wallet)
+                }
             }
             return
         case let .valid(normalizedKey):
@@ -234,6 +243,9 @@ struct AddContactView: View {
     // MARK: - Save Contact
 
     private func saveContact() async {
+        let admission = ProfileOperationAdmission.shared
+        guard let session = screenSession, pubkyProfile.currentSession == session, let scope = try? admission.capture() else { return }
+        defer { admission.release(scope) }
         isSaving = true
         defer { isSaving = false }
 
@@ -243,15 +255,20 @@ struct AddContactView: View {
                 return
             }
 
-            let identity = pubkyProfile.publicKey
-            try await contactsManager.addContact(
-                publicKey: normalizedPublicKey,
-                existingProfile: fetchedProfile,
-                ownPublicKey: identity
-            )
-            await PrivatePaykitService.shared.startExplicitContactLink(publicKey: normalizedPublicKey, expectedIdentity: identity, wallet: wallet)
-            navigation.path = [.contacts, .contactSaved(publicKey: normalizedPublicKey)]
+            let identity = session.publicKey
+            try await admission.withScope(scope) {
+                try await contactsManager.addContact(
+                    publicKey: normalizedPublicKey,
+                    existingProfile: fetchedProfile,
+                    ownPublicKey: identity
+                )
+                await PrivatePaykitService.shared.startExplicitContactLink(publicKey: normalizedPublicKey, expectedIdentity: identity, wallet: wallet)
+                try admission.checkCurrent()
+                guard pubkyProfile.currentSession == session else { return }
+                navigation.path = [.contacts, .contactSaved(publicKey: normalizedPublicKey)]
+            }
         } catch {
+            guard pubkyProfile.currentSession == session, (try? admission.validate(scope)) != nil, !Task.isCancelled else { return }
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")
             app.toast(type: .error, title: t("contacts__add_error"), description: error.localizedDescription)
         }

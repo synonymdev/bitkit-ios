@@ -1004,13 +1004,13 @@
 "profile__delete_description" = "Eliminar o seu perfil remove-o do Pubky. Os contactos podem manter as informações de perfil e pagamento partilhadas anteriormente com eles.";
 "profile__delete_confirm" = "Sim, Excluir";
 "profile__delete_error_title" = "Não foi possível eliminar o perfil";
-"profile__delete_error_description" = "Não foi possível eliminar os dados do seu perfil. Tente novamente ou desligue este pubky da Bitkit.";
+"profile__delete_error_description" = "A limpeza do perfil foi interrompida. As alterações remotas podem já ter sido aplicadas. Desliga o perfil para concluir a limpeza neste dispositivo sem repetir a eliminação remota.";
 "profile__delete_label" = "Eliminar perfil";
 "profile__unlink_title" = "Desassociar pubky?";
 "profile__unlink_description" = "Isto vai eliminar os seus dados Paykit e desassociar este pubky da Bitkit. Continuará disponível no Pubky Ring.";
 "profile__unlink_confirm" = "Sim, desassociar";
 "profile__unlink_error_title" = "Não foi possível desassociar o pubky";
-"profile__unlink_error_description" = "Não foi possível eliminar os seus dados Paykit. Tente novamente ou desligue este pubky da Bitkit.";
+"profile__unlink_error_description" = "A limpeza do perfil foi interrompida. As alterações remotas podem já ter sido aplicadas. Desliga o perfil para concluir a limpeza neste dispositivo sem repetir a eliminação remota.";
 "profile__unlink_label" = "Desassociar pubky";
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar a contactos";
@@ -1618,3 +1618,13 @@
 "subscriptions__allowance_limit_title" = "Limite atingido";
 "subscriptions__allowance_limit_description" = "Um pedido de {amount} de {name} excede a sua pré-aprovação. Reveja-o para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
+
+"profile__recovery_title" = "Concluir limpeza local";
+
+"profile__recovery_pending" = "A limpeza do perfil foi interrompida. As alterações remotas podem já ter sido aplicadas. Desliga o perfil para concluir a limpeza neste dispositivo sem repetir a eliminação remota.";
+
+"profile__recovery_wipe" = "A reposição da carteira foi interrompida. Conclui-a antes de utilizares esta carteira.";
+
+"profile__recovery_unavailable" = "O Bitkit não consegue ler o estado guardado da limpeza. As alterações ao perfil estão em pausa. Tenta lê-lo novamente.";
+
+"profile__recovery_working" = "A concluir a limpeza do perfil…";

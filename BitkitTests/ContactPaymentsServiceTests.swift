@@ -241,6 +241,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
             }
             XCTAssertTrue(operations.privatePublications.isEmpty)
             XCTAssertFalse(ContactPaymentsService.isEnabled(defaults: defaults))
+            XCTAssertEqual(operations.publicPublicationValues, [true], "Cancellation must not replay remote publication or withdrawal")
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+            XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey))
         }
     }
 
@@ -597,15 +600,16 @@ final class ContactPaymentsServiceTests: XCTestCase {
     func testForegroundReconciliationRetainsRegistryRepairDuringDeletionOrCancellation() async {
         snapshotAppDefaultsDomain()
         for interruption in ["deletion", "deletionAfterPrivate", "cancelAfterPrivate"] {
+            let pause = UUID()
             PublicPaykitService.setCleanupPending(true)
             if interruption == "deletion" {
-                await PrivatePaykitService.shared.beginProfileDeletion()
+                await PrivatePaykitService.shared.beginProfileDeletion(id: pause)
             }
             var registryUpdates = 0
             let reconciliation = Task {
                 await ContactPaymentsService.reconcilePendingEndpoints(reconcilePrivate: {
                     if interruption == "deletionAfterPrivate" {
-                        await PrivatePaykitService.shared.beginProfileDeletion()
+                        await PrivatePaykitService.shared.beginProfileDeletion(id: pause)
                     }
                     if interruption == "cancelAfterPrivate" {
                         withUnsafeCurrentTask { $0?.cancel() }
@@ -616,7 +620,7 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 }
             }
             await reconciliation.value
-            await PrivatePaykitService.shared.endProfileDeletion()
+            await PrivatePaykitService.shared.endProfileDeletion(id: pause)
             XCTAssertEqual(registryUpdates, 0, interruption)
             XCTAssertTrue(PublicPaykitService.isCleanupPending, interruption)
 
@@ -860,131 +864,105 @@ final class ContactPaymentsServiceTests: XCTestCase {
         }
     }
 
-    /// A publication already holding its lock can finish; sign-out must remove it afterward and retain failed cleanup.
+    /// Removal drains already-admitted publication, retains uncertain withdrawal, and requires explicit local recovery.
     func testContactPaymentsEnableStopsWhenPubkySignsOutDuringPublication() async throws {
-        enum HeldPublication {
-            case publicBeforeLock, privateBeforeLock, publicHoldingLock
-        }
-        let cases: [(name: String, held: HeldPublication, calls: [String], writes: [String], keepsFlags: Bool)] = [
-            (
-                "public publication waiting for its lock", .publicBeforeLock,
-                ["public:true"], ["private:removed", "public:removal failed"], false
-            ),
-            (
-                "private publication waiting for its lock", .privateBeforeLock,
-                ["public:true", "private:publish"], ["public:published", "private:removed", "public:removal failed"], false
-            ),
-            (
-                "public publication holding its lock while sign-out fails", .publicHoldingLock,
-                ["public:true"], ["private:removal failed", "public:published"], true
-            ),
-        ]
-        let ownerKey = try useLocalPubkySecretKey()
-        let record = contactRecord(publicKey: "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg")
-        let endpoint = PublicPaykitService.Endpoint(
-            methodId: .regtestOnchainP2wpkh, value: "bcrt1qendpoint", min: nil, max: nil, rawPayload: #"{"value":"bcrt1qendpoint"}"#
-        )
-
-        for testCase in cases {
-            let defaults = UserDefaults.standard
-            for key in [
-                ContactPaymentsService.confirmedPreferenceKey, PublicPaykitService.publishingEnabledKey,
-                PrivatePaykitService.publishingEnabledKey, PublicPaykitService.cleanupPendingKey,
-                PrivatePaykitService.cleanupPendingKey, PrivatePaykitService.cacheStateKey,
-            ] {
-                defaults.removeObject(forKey: key)
-            }
-            let pubkyProfile = signedInProfile(ownerKey: ownerKey)
-            let contactsManager = ContactsManager(contactRecords: { [record] })
-            let privatePaykit = PrivatePaykitService()
-            let writes = WriteLog()
-            let publicationOperations = PrivatePaykitService.EndpointPublicationOperations(
-                currentPublicKey: { ownerKey },
-                ensureLink: { _ in .linked },
-                buildEndpoints: { _ in [endpoint] },
-                syncPaymentLists: { _ in
-                    writes.append("private:published")
-                    return PrivatePaymentListDeliveryReport(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        for heldStage in ["public-before-lock", "private-before-lock", "public-holding-lock"] {
+            for removalFailsPrivately in [false, true] {
+                snapshotAppDefaultsDomain()
+                let defaults = UserDefaults.standard
+                for key in [ContactPaymentsService.confirmedPreferenceKey, PublicPaykitService.publishingEnabledKey,
+                            PrivatePaykitService.publishingEnabledKey, PublicPaykitService.cleanupPendingKey,
+                            PrivatePaykitService.cleanupPendingKey]
+                {
+                    defaults.removeObject(forKey: key)
                 }
-            )
-            let reachedHeldPoint = expectation(description: "\(testCase.name): publication reached its held point")
-            let (gate, release) = AsyncStream<Void>.makeStream()
-            let held = testCase.held
-            let operations = OperationsSpy()
-            operations.preparePrivateEndpoints = { contactPublicKeys, requireImmediatePublication, isSessionCurrent in
-                if held == .privateBeforeLock {
-                    reachedHeldPoint.fulfill()
-                    for await _ in gate {}
-                }
-                _ = await privatePaykit.rememberSavedContacts(contactPublicKeys, replacing: true)
-                return await privatePaykit.syncLocalEndpointPublication(
-                    for: contactPublicKeys,
-                    reason: "test",
-                    requireImmediatePublication: requireImmediatePublication,
-                    isSessionCurrent: isSessionCurrent,
-                    operations: publicationOperations
-                )
-            }
-            operations.syncPublicEndpoints = { publish, isSessionCurrent in
-                guard publish else { return }
-                if held == .publicBeforeLock {
-                    reachedHeldPoint.fulfill()
-                    for await _ in gate {}
-                }
-                try await PublicPaykitService.withEndpointLock(unlessSessionEnded: isSessionCurrent) {
-                    if held == .publicHoldingLock {
-                        reachedHeldPoint.fulfill()
-                        for await _ in gate {}
-                    }
-                    writes.append("public:published")
-                }
-            }
-            let enable = Task {
-                try await ContactPaymentsService.setEnabled(
-                    true,
-                    pubkyProfile: pubkyProfile,
-                    contactsManager: contactsManager,
-                    operations: operations.makeOperations(),
-                    defaults: defaults
-                )
-            }
-            await fulfillment(of: [reachedHeldPoint], timeout: 2)
-
-            let privateRemovalFails = held == .publicHoldingLock
-            do {
-                try await pubkyProfile.signOut(performSessionCleanup: { @MainActor in
-                    try await privatePaykit.withPublicationLock {
-                        guard !privateRemovalFails else {
-                            writes.append("private:removal failed")
-                            throw TestError.operationFailed
+                let ownerKey = "pubky" + String(repeating: "y", count: 52)
+                let started = expectation(description: "Original publication is held")
+                let paused = expectation(description: "Removal closes admission before draining publication")
+                let (wait, release) = AsyncStream<Void>.makeStream()
+                let native = Task.detached { for await _ in wait {} }
+                defer { release.finish() }
+                let writes = WriteLog()
+                let privatePaykit = PrivatePaykitService()
+                var completeLocalCount = 0
+                var pauseCount = 0
+                let services = PubkyProfileManager.RemovalServices(
+                    readProfile: { _ in XCTFail("Disconnect does not read a deletion snapshot"); return nil },
+                    deleteProfile: { _, _ in XCTFail("Disconnect must not delete the remote profile") },
+                    withdrawPrivate: {
+                        try await privatePaykit.withPublicationLock {
+                            writes.append("private:remove")
+                            if removalFailsPrivately {
+                                throw TestError.operationFailed
+                            }
                         }
-                        writes.append("private:removed")
-                    }
-                    do {
+                    },
+                    withdrawPublic: {
                         try await PublicPaykitService.withEndpointLock {
-                            writes.append("public:removal failed")
-                            throw TestError.operationFailed
+                            writes.append("public:remove"); throw TestError.operationFailed
                         }
-                    } catch {
-                        PublicPaykitService.setCleanupPending(true)
+                    },
+                    completeLocal: { completeLocalCount += 1 },
+                    pause: {
+                        _ in pauseCount += 1; if pauseCount == 1 {
+                            paused.fulfill()
+                        }
+                    }, resume: { _ in }
+                )
+                let manager = PubkyProfileManager(removalServices: services)
+                manager.publicKey = ownerKey
+                manager.authState = .authenticated
+                let contacts = ContactsManager(contactRecords: { [] })
+                let operations = OperationsSpy()
+                operations.syncPublicEndpoints = { publish, isCurrent in
+                    guard publish else { return }
+                    if heldStage == "public-before-lock" {
+                        started.fulfill(); await native.value
                     }
-                })
-                XCTAssertFalse(privateRemovalFails, testCase.name)
-            } catch {
-                XCTAssertTrue(privateRemovalFails, testCase.name)
+                    try await PublicPaykitService.withEndpointLock(unlessSessionEnded: isCurrent) {
+                        if heldStage == "public-holding-lock" {
+                            started.fulfill(); await native.value
+                        }
+                        writes.append("public:publish")
+                    }
+                }
+                operations.preparePrivateEndpoints = { _, _, _ in
+                    if heldStage == "private-before-lock" {
+                        started.fulfill(); await native.value
+                    }
+                    do { try ProfileOperationAdmission.shared.checkCurrent(); writes.append("private:publish"); return nil }
+                    catch { return error }
+                }
+                let enabling = Task {
+                    try await ContactPaymentsService.setEnabled(true, pubkyProfile: manager, contactsManager: contacts,
+                                                                operations: operations.makeOperations(), defaults: defaults,
+                                                                privatePaymentAccess: { _ in true })
+                }
+                await fulfillment(of: [started], timeout: 2)
+                let confirmation = try await manager.prepareRemoval(action: .disconnect)
+                let removing = Task { try await manager.confirmRemoval(confirmation) }
+                await fulfillment(of: [paused], timeout: 2)
+                XCTAssertEqual(completeLocalCount, 0)
+                XCTAssertThrowsError(try ProfileOperationAdmission.shared.capture())
+                release.finish()
+                switch await enabling.result {
+                case let .success(enabled): XCTAssertFalse(enabled)
+                case let .failure(error): XCTAssertTrue(error is CancellationError || error is ProfileRemovalStore.StoreError)
+                }
+                do { _ = try await removing.value; XCTFail("Required withdrawal failure must remain uncertain") }
+                catch TestError.operationFailed {}
+                XCTAssertEqual(manager.pendingProfileRemovalID, confirmation.id)
+                XCTAssertEqual(manager.publicKey, ownerKey)
+                XCTAssertEqual(completeLocalCount, 0)
+                let expected = (heldStage != "public-before-lock" ? ["public:publish"] : []) + ["private:remove"] +
+                    (removalFailsPrivately ? [] : ["public:remove"])
+                XCTAssertEqual(writes.entries, expected)
+                _ = try await manager.finishPendingRemoval(id: confirmation.id)
+                XCTAssertEqual(completeLocalCount, 1)
+                XCTAssertNil(manager.publicKey)
+                XCTAssertNil(manager.pendingProfileRemovalID)
+                XCTAssertEqual(writes.entries, expected, "Restart recovery makes no remote mutation")
             }
-            release.finish()
-            let result = await enable.result
-
-            XCTAssertFalse(try result.get(), testCase.name)
-            XCTAssertEqual(operations.calls, testCase.calls, testCase.name)
-            XCTAssertEqual(writes.entries, testCase.writes, testCase.name)
-            XCTAssertEqual(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey), testCase.keepsFlags, testCase.name)
-            XCTAssertEqual(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey), testCase.keepsFlags, testCase.name)
-            XCTAssertEqual(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey), testCase.keepsFlags, testCase.name)
-            XCTAssertEqual(operations.publicCleanupValues, held == .privateBeforeLock ? [false] : [], testCase.name)
-            XCTAssertEqual(operations.privateCleanupValues, held == .privateBeforeLock ? [false] : [], testCase.name)
-            XCTAssertTrue(PublicPaykitService.isCleanupPending, testCase.name)
         }
     }
 

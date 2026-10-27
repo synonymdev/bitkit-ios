@@ -160,4 +160,62 @@ final class KeychainTests: XCTestCase {
             "wipeEntireKeychain deleted an account outside the unit-test namespace"
         )
     }
+
+    func testWipeRejectsEnumerationFailureBeforeAnyDeletion() {
+        var deletions = 0
+        XCTAssertThrowsError(try Keychain.wipeEntireKeychain(
+            copyMatching: { _, _ in errSecInteractionNotAllowed },
+            delete: { _ in deletions += 1; return errSecSuccess }
+        ))
+        XCTAssertEqual(deletions, 0)
+    }
+
+    func testWipeRejectsMalformedEnumeration() {
+        for result: CFTypeRef in ["invalid" as CFString, [["unexpected": "value"]] as CFArray] {
+            var deletions = 0
+            XCTAssertThrowsError(try Keychain.wipeEntireKeychain(
+                copyMatching: { _, output in output?.pointee = result; return errSecSuccess },
+                delete: { _ in deletions += 1; return errSecSuccess }
+            ))
+            XCTAssertEqual(deletions, 0)
+        }
+    }
+
+    func testWipeDoesNotAcknowledgeFailedDeletionAndCanResume() throws {
+        let accounts = [Keychain.account(for: .paykitSession), Keychain.account(for: .pubkySecretKey)]
+        var remaining = Set(accounts)
+        var refuseDeletion = true
+        let read: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = { query, output in
+            XCTAssertNil((query as NSDictionary)[kSecReturnData])
+            output?.pointee = remaining.sorted().map { [kSecAttrAccount as String: $0] } as CFArray
+            return errSecSuccess
+        }
+        let delete: (CFDictionary) -> OSStatus = { query in
+            let account = (query as NSDictionary)[kSecAttrAccount] as! String
+            if refuseDeletion, account == accounts[1] {
+                return errSecInteractionNotAllowed
+            }
+            remaining.remove(account)
+            return errSecSuccess
+        }
+        XCTAssertThrowsError(try Keychain.wipeEntireKeychain(copyMatching: read, delete: delete))
+        XCTAssertTrue(remaining.contains(accounts[1]))
+        refuseDeletion = false
+        try Keychain.wipeEntireKeychain(copyMatching: read, delete: delete)
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
+    func testWipeAcceptsAcknowledgedAbsence() throws {
+        try Keychain.wipeEntireKeychain(
+            copyMatching: { _, _ in errSecItemNotFound },
+            delete: { _ in XCTFail("Empty keychain must not invoke deletion"); return errSecSuccess }
+        )
+        try Keychain.wipeEntireKeychain(
+            copyMatching: { _, output in
+                output?.pointee = [[kSecAttrAccount as String: Keychain.account(for: .paykitSession)]] as CFArray
+                return errSecSuccess
+            },
+            delete: { _ in errSecItemNotFound }
+        )
+    }
 }

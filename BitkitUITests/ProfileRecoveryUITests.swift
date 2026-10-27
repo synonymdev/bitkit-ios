@@ -34,18 +34,6 @@ final class ProfileRecoveryUITests: XCTestCase {
             popup.tap()
         }
 
-        scrollToBottom()
-        app.buttons["ProfileSignOut"].tap()
-        app.alerts.buttons["Disconnect"].tap()
-        waitForStatus("Disconnecting")
-        XCTAssertTrue(app.staticTexts["ProfileViewName"].exists)
-        app.buttons["ProfileFixtureFail"].tap()
-        waitForStatus("Idle")
-        XCTAssertTrue(app.staticTexts["ProfileViewName"].exists)
-        let errorToast = app.staticTexts["Disconnect Profile"]
-        XCTAssertTrue(errorToast.waitForExistence(timeout: 5))
-        XCTAssertTrue(errorToast.waitForNonExistence(timeout: 10))
-
         app.buttons["ProfileFixtureRestore"].tap()
         XCTAssertEqual(app.buttons["ProfileFixtureRestore"].value as? String, "Restored")
         assertReadOnlyControls()
@@ -71,6 +59,41 @@ final class ProfileRecoveryUITests: XCTestCase {
         XCTAssertTrue(edit.isEnabled)
         edit.tap()
         XCTAssertTrue(app.staticTexts["ProfileFixtureEditing"].waitForExistence(timeout: 5))
+    }
+
+    func testFailedDisconnectRetainsSafetyStateUntilExplicitLocalCompletion() {
+        XCTAssertTrue(app.staticTexts["ProfileViewName"].waitForExistence(timeout: 10))
+        scrollToBottom()
+        app.buttons["ProfileSignOut"].tap()
+        app.alerts.buttons["Disconnect"].tap()
+        waitForStatus("Disconnecting")
+        let pending = app.staticTexts["ProfileFixturePendingID"].label
+        XCTAssertNotEqual(pending, "None")
+        XCTAssertEqual(app.staticTexts["ProfileFixtureLocalState"].label, "Credentials: present, watermark: 42, remote: 0")
+        app.buttons["ProfileFixtureFail"].tap()
+        waitForStatus("Idle")
+        let disconnect = app.buttons["ProfileRecoveryDisconnect"]
+        XCTAssertTrue(disconnect.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, pending)
+        XCTAssertEqual(app.staticTexts["ProfileFixtureLocalState"].label, "Credentials: present, watermark: 42, remote: 0")
+        XCTAssertFalse(app.staticTexts["ProfileViewName"].exists)
+        app.buttons["ProfileFixtureRestore"].tap()
+        XCTAssertEqual(app.buttons["ProfileFixtureRestore"].value as? String, "Unavailable")
+        XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, pending)
+
+        disconnect.tap()
+        app.alerts.buttons["Cancel"].tap()
+        XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, pending)
+        disconnect.tap()
+        app.alerts.buttons["Disconnect"].tap()
+        waitForStatus("Disconnecting")
+        XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, pending)
+        app.buttons["ProfileFixtureLoad"].tap()
+        waitForStatus("Idle")
+        XCTAssertEqual(app.staticTexts["ProfileFixtureLocalState"].label, "Credentials: cleared, watermark: 0, remote: 0")
+        XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, "None")
+        XCTAssertFalse(disconnect.exists)
+        XCTAssertTrue(app.staticTexts["ProfileFixtureCompleted"].exists)
     }
 
     private func assertReadOnlyControls() {

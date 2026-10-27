@@ -30,17 +30,25 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         await sdk.observationGate.close()
         let observation = Task { try await service.observeState(priority: .background, expectedIdentity: identityA) }
         try await sdk.observationStarted.waitForEntries(count: 1)
+        let admission = service.profileAdmission
+        let contactsScope = try admission.capture()
+        defer { admission.release(contactsScope) }
         observation.cancel()
-        let contacts = Task { try await service.contactRecords() }
+        XCTAssertThrowsError(try admission.capture(), "New work is rejected until the cancelled native tail drains")
+        let contacts = Task { try await admission.withScope(contactsScope) { try await service.contactRecords() } }
         try await Task.sleep(for: .milliseconds(50))
         let overlappingReads = await sdk.contactRecordsStarted.count
         await sdk.observationGate.open()
         let result = await observation.result
-        _ = try await contacts.value
+        let contactsResult = await contacts.result
+        XCTAssertNoThrow(try contactsResult.get())
         XCTAssertEqual(overlappingReads, 0)
         XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
         let completedReads = await sdk.contactRecordsStarted.count
         XCTAssertEqual(completedReads, 1)
+        _ = try await service.contactRecords()
+        let freshReads = await sdk.contactRecordsStarted.count
+        XCTAssertEqual(freshReads, 2)
     }
 
     func testContactSaveForAnIdentityThatIsNoLongerSignedInWritesNothing() async throws {

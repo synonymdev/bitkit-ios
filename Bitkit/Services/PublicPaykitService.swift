@@ -141,6 +141,13 @@ enum PublicPaykitService {
         }
     }
 
+    static func clearRemovedProfileReconciliation() {
+        reconciliationLock.withLock {
+            UserDefaults.standard.set(false, forKey: cleanupPendingKey)
+            UserDefaults.standard.removeObject(forKey: reconciliationRevisionKey)
+        }
+    }
+
     static func queueEndpointReconciliation() {
         reconciliationLock.withLock {
             UserDefaults.standard.set(UUID().uuidString, forKey: reconciliationRevisionKey)

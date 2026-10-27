@@ -1151,7 +1151,11 @@ final class PrivatePaykitServiceTests: XCTestCase {
             let error = await preparation.value
             await prune?.value
             try await service.awaitContactPreparation()
-            XCTAssertNil(error, change)
+            if change == "cancelled" {
+                XCTAssertTrue(error is CancellationError)
+            } else {
+                XCTAssertNil(error, change)
+            }
             XCTAssertNotNil(prune, change)
             XCTAssertEqual(linked, change == "current" ? [key] : [], change)
             await service.invalidateContactPreparation()
@@ -2684,14 +2688,14 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let service = PrivatePaykitService()
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         _ = await service.rememberSavedContacts([publicKey], replacing: true)
-        await service.beginProfileDeletion()
+        let pause = await service.beginProfileDeletion()
         await service.scheduleContactPreparation([publicKey]) { _, _ in
             XCTFail("Profile deletion must not enqueue preparation")
         }
         let deletionTask = await service.preparationTask
         XCTAssertNil(deletionTask)
 
-        await service.endProfileDeletion()
+        await service.endProfileDeletion(id: pause)
         let resumedTask = await service.preparationTask
         XCTAssertNil(resumedTask)
         let prepared = expectation(description: "New preparation starts")

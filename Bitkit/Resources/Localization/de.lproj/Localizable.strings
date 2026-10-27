@@ -1228,13 +1228,13 @@
 "profile__delete_description" = "Durch das Löschen deines Profils wird es von Pubky entfernt. Kontakte können zuvor mit ihnen geteilte Profil- und Zahlungsinformationen weiterhin behalten.";
 "profile__delete_confirm" = "Ja, löschen";
 "profile__delete_error_title" = "Profil kann nicht gelöscht werden";
-"profile__delete_error_description" = "Wir konnten deine Profildaten nicht löschen. Versuche es erneut oder trenne diesen pubky von Bitkit.";
+"profile__delete_error_description" = "Die Profilbereinigung wurde unterbrochen. Entfernte Änderungen wurden möglicherweise bereits angewendet. Trenne die Verbindung, um dieses Gerät zu bereinigen, ohne die entfernte Löschung erneut auszuführen.";
 "profile__delete_label" = "Profil löschen";
 "profile__unlink_title" = "pubky-Verknüpfung aufheben?";
 "profile__unlink_description" = "Dadurch werden deine Paykit-Daten gelöscht und die Verknüpfung dieses pubky mit Bitkit aufgehoben. In Pubky Ring bleibt er weiterhin verfügbar.";
 "profile__unlink_confirm" = "Ja, aufheben";
 "profile__unlink_error_title" = "pubky-Verknüpfung kann nicht aufgehoben werden";
-"profile__unlink_error_description" = "Wir konnten deine Paykit-Daten nicht löschen. Versuche es erneut oder trenne diesen pubky von Bitkit.";
+"profile__unlink_error_description" = "Die Profilbereinigung wurde unterbrochen. Entfernte Änderungen wurden möglicherweise bereits angewendet. Trenne die Verbindung, um dieses Gerät zu bereinigen, ohne die entfernte Löschung erneut auszuführen.";
 "profile__unlink_label" = "pubky-Verknüpfung aufheben";
 "profile__edit" = "Bearbeiten";
 "profile__pay_contacts_nav_title" = "Kontakte bezahlen";
@@ -1958,3 +1958,13 @@
 "subscriptions__allowance_limit_title" = "Limit erreicht";
 "subscriptions__allowance_limit_description" = "Eine Anforderung über {amount} von {name} übersteigt dein Kontingent. Prüfe sie, um zu bezahlen.";
 "subscriptions__allowance_auto_paid" = "Automatisch bezahlt";
+
+"profile__recovery_title" = "Lokale Bereinigung abschließen";
+
+"profile__recovery_pending" = "Die Profilbereinigung wurde unterbrochen. Entfernte Änderungen wurden möglicherweise bereits angewendet. Trenne die Verbindung, um dieses Gerät zu bereinigen, ohne die entfernte Löschung erneut auszuführen.";
+
+"profile__recovery_wipe" = "Das Zurücksetzen der Wallet wurde unterbrochen. Schließe es ab, bevor du diese Wallet verwendest.";
+
+"profile__recovery_unavailable" = "Bitkit kann den gespeicherten Bereinigungsstatus nicht lesen. Profiländerungen sind pausiert. Versuche erneut, ihn zu lesen.";
+
+"profile__recovery_working" = "Profilbereinigung wird abgeschlossen…";
