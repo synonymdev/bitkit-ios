@@ -137,6 +137,12 @@ final class PaykitAllowanceManager {
         await refresh()
     }
 
+    /// Settles open attempts again, for the ones the node could not answer for before it was running.
+    func recoverOpenAttempts() async {
+        guard let identity else { return }
+        await executor.recover(identity: identity)
+    }
+
     func deactivate() {
         identity = nil
         Task { await executor.activate(identity: nil) }

@@ -422,7 +422,8 @@ actor PaykitAllowanceExecutor {
         let history = current?.history ?? Paykit.AllowanceAccountingHistory(associations: [], occurrences: [], watermarks: [])
         var outcomes: [Paykit.PaymentOutcomeReport] = []
         for attempt in history.occurrences.flatMap(\.attempts) {
-            if let outcome = await verifiedOutcome(for: attempt, identity: identity) {
+            // Throws until the node has its payment history, so a restore reconciles only once the node can answer.
+            if let outcome = try await verifiedOutcome(for: attempt, identity: identity) {
                 outcomes.append(Paykit.PaymentOutcomeReport(attemptId: attempt.attemptId, outcome: outcome))
             }
         }
@@ -456,7 +457,14 @@ actor PaykitAllowanceExecutor {
                     guard attempt.epoch == state.epoch else { continue }
                     try await record(attemptId: attempt.attemptId, outcome: .failed, identity: identity)
                 case .submitted, .unknown:
-                    guard let outcome = await verifiedOutcome(for: attempt, identity: identity) else {
+                    let verified: Paykit.PaymentOutcome?
+                    do {
+                        verified = try await verifiedOutcome(for: attempt, identity: identity)
+                    } catch {
+                        // Left as it is until the node can answer; recovery runs again once it is running.
+                        continue
+                    }
+                    guard let outcome = verified else {
                         if attempt.status == .submitted {
                             try await record(attemptId: attempt.attemptId, outcome: .unknown, identity: identity)
                         }
@@ -505,7 +513,10 @@ actor PaykitAllowanceExecutor {
         return true
     }
 
-    private func verifiedOutcome(for attempt: Paykit.PaymentAttemptRecord, identity: String) async -> Paykit.PaymentOutcome? {
+    private struct NodeHistoryUnavailable: Error {}
+
+    /// Throws `NodeHistoryUnavailable` when the answer depends on a node that has no payment history yet.
+    private func verifiedOutcome(for attempt: Paykit.PaymentAttemptRecord, identity: String) async throws -> Paykit.PaymentOutcome? {
         switch attempt.status {
         case .prepared:
             return .failed
@@ -530,6 +541,8 @@ actor PaykitAllowanceExecutor {
                 return nil
             case .failed, .unknown:
                 return .failed
+            case .unavailable:
+                throw NodeHistoryUnavailable()
             }
         case .succeeded:
             return .succeeded
@@ -547,6 +560,8 @@ actor PaykitAllowanceExecutor {
                 return .failed
             case .pending, .unknown:
                 return nil
+            case .unavailable:
+                throw NodeHistoryUnavailable()
             }
         }
         return entry.transactionId == nil ? nil : .succeeded

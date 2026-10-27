@@ -181,6 +181,8 @@ enum PaykitLightningPaymentProofStatus: Equatable {
     case succeeded(preimage: String?)
     case failed
     case unknown
+    /// The node has no payment history yet, as before it starts, so it can't say whether it knows the payment.
+    case unavailable
 }
 
 protocol PaykitLightningPaymentProofLookingUp: Sendable {
@@ -189,7 +191,8 @@ protocol PaykitLightningPaymentProofLookingUp: Sendable {
 
 struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
-        guard let payment = await LightningService.shared.listPayments()?.first(where: {
+        guard let payments = await LightningService.shared.listPayments() else { return .unavailable }
+        guard let payment = payments.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
             return .unknown
@@ -1373,7 +1376,7 @@ actor PaykitPaymentProofService {
                     }
                     guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
                     switch await lightningPaymentLookup.status(paymentHash: paymentHash) {
-                    case .pending, .unknown:
+                    case .pending, .unknown, .unavailable:
                         continue
                     case .failed:
                         await failLightningPayment(paymentHash: paymentHash)

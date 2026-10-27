@@ -1252,7 +1252,9 @@ struct AppScene: View {
                 if !PaykitFeatureFlags.isUIEnabled {
                     await retryPendingPaykitEndpointRemoval()
                 }
-                guard PaykitFeatureFlags.isUIEnabled, isPaykitSceneActive else { return }
+                guard PaykitFeatureFlags.isUIEnabled else { return }
+                await paykitAllowanceManager.recoverOpenAttempts()
+                guard isPaykitSceneActive else { return }
                 await refreshPrivateOnlyPaykitApp()
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                 await prepareSavedPaykitContacts()

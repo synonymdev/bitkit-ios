@@ -668,6 +668,36 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(journal.map(\.stage), [.succeeded])
     }
 
+    func testRecoveryLeavesARestoredAttemptOpenUntilTheNodeCanAnswer() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-restored", attempts: [Fixtures.attemptRecord(id: "restored", status: .submitted)]),
+        ]))
+        let captured = PaykitAllowanceLocalState(journal: [
+            Self.journalEntry(attemptId: "restored", request: request, stage: .submitted, paymentHash: paidHash),
+        ])
+        try harness.store.seed(PaykitAllowanceStateBackup(captured).restored(), identity: Fixtures.identityKey)
+        // A restore activates allowances before the node starts, so its payment history is not there yet.
+        await harness.lookup.setStatuses([paidHash: .unavailable])
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomesBeforeStart = await harness.sdk.recordedOutcomes
+        XCTAssertTrue(outcomesBeforeStart.isEmpty)
+        let journalBeforeStart = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journalBeforeStart.map(\.stage), [.submitted])
+
+        await harness.lookup.setStatuses([paidHash: .succeeded(preimage: String(repeating: "0", count: 64))])
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes.map(\.outcome), [.succeeded])
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.succeeded])
+    }
+
     func testRecoveryReleasesThePaymentListOfAnAttemptKilledBeforeSending() async throws {
         let harness = AllowanceHarness()
         let request = try Fixtures.paymentRequest()
