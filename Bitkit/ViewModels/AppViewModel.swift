@@ -37,6 +37,23 @@ struct ContactPaymentContext: Equatable {
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
+    func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
+        guard isInitialSubscriptionPayment, let request = incomingPaymentRequest, request.billingPeriod != nil,
+              Set(request.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue],
+              !endpoints.isEmpty, endpoints.allSatisfy({ $0.methodId == .usdtArbitrum }),
+              !request.isExpired(at: date)
+        else { return nil }
+        switch (request.amount.asset, request.pricing.conversion) {
+        case (.usdt, nil): break
+        case let (.usd, .fixed(rates)):
+            let rate = rates.first { $0.asset == "usdt-arbitrum" } ?? rates.first { $0.asset == "usdt" }
+            guard let rate, Decimal(string: rate.value, locale: Locale(identifier: "en_US_POSIX")) == 1 else { return nil }
+        default: return nil
+        }
+        guard let payment = try? request.payment(using: .usdtArbitrum, at: date), payment.isValid(at: date) else { return nil }
+        return payment
+    }
+
     func prefersUsdt(
         onchainBalanceSats: UInt64,
         canSendLightning: Bool = false,
@@ -233,6 +250,7 @@ class AppViewModel: ObservableObject {
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
     @Published private(set) var paykitOnchainPaymentResolution: PaykitOnchainPaymentResolution?
+    private var handlingPaykitOnchainResolutions: Set<PaykitOnchainPaymentResolution> = []
 
     /// App status init - shows "ready" until node is actually running
     /// This prevents flashing error status during startup/background transitions
@@ -700,9 +718,16 @@ extension AppViewModel {
 
     func retainPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, identity: String?) {
         guard PubkyPublicKeyFormat.matches(resolution.identity, identity),
-              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId
+              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId,
+              paykitOnchainPaymentResolution != resolution
         else { return }
         paykitOnchainPaymentResolution = resolution
+    }
+
+    func withPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, operation: () async -> Void) async {
+        guard handlingPaykitOnchainResolutions.insert(resolution).inserted else { return }
+        defer { handlingPaykitOnchainResolutions.remove(resolution) }
+        await operation()
     }
 
     func consumePaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
@@ -1808,7 +1833,8 @@ extension AppViewModel {
             Task {
                 await PaykitPaymentProofService.shared.completeLightningPayment(
                     paymentHash: paymentHash,
-                    preimage: paymentPreimage
+                    preimage: paymentPreimage,
+                    priority: .interactive
                 )
                 await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: true)
             }
