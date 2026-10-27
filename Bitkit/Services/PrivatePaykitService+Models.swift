@@ -10,6 +10,9 @@ extension PrivatePaykitService {
     struct ContactState: Codable {
         var cachedResolvedEndpoints: [StoredPaymentEntry] = []
         var consumedPrivatePaymentListVersion: UInt64?
+        /// The automatic payment attempt that consumed the list, so only that attempt gives it back. Local to this device:
+        /// the wallet backup carries the version alone.
+        var consumedPrivatePaymentListOwner: String?
         var localInvoice: StoredInvoice?
         var receivedInvoicePaymentHashes: [String] = []
         var hasPublishedPrivatePaymentList = false
