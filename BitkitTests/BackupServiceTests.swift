@@ -356,8 +356,15 @@ final class BackupServiceTests: XCTestCase {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let original = SettingsViewModel.shared.swipeBalanceToHide
-        defer { SettingsViewModel.shared.swipeBalanceToHide = original }
+        let settingsDefaults = UserDefaults.standard
+        let original = settingsDefaults.object(forKey: "swipeBalanceToHide")
+        defer {
+            if let original {
+                settingsDefaults.set(original, forKey: "swipeBalanceToHide")
+            } else {
+                settingsDefaults.removeObject(forKey: "swipeBalanceToHide")
+            }
+        }
         let entered = expectation(description: "Captured settings upload entered")
         let cancelled = expectation(description: "Stop cancelled the held upload")
         let unexpectedUpload = expectation(description: "Stopped observers cannot upload new data")
@@ -384,13 +391,13 @@ final class BackupServiceTests: XCTestCase {
         service.startObservingBackups()
         holdUpload = true
         data = Data("captured".utf8)
-        SettingsViewModel.shared.swipeBalanceToHide = !original
+        settingsDefaults.set(!settingsDefaults.bool(forKey: "swipeBalanceToHide"), forKey: "swipeBalanceToHide")
         await fulfillment(of: [entered], timeout: 2)
         let stop = Task { await service.stopObservingBackups() }
         await fulfillment(of: [cancelled], timeout: 2)
 
         data = Data("latest".utf8)
-        SettingsViewModel.shared.swipeBalanceToHide = original
+        settingsDefaults.set(!settingsDefaults.bool(forKey: "swipeBalanceToHide"), forKey: "swipeBalanceToHide")
         try Bitkit.WatchOnlyAccountStore.save([], defaults: defaults)
         XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
         XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
@@ -456,15 +463,22 @@ final class BackupServiceTests: XCTestCase {
         let suite = "BackupServiceTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let original = SettingsViewModel.shared.swipeBalanceToHide
-        defer { SettingsViewModel.shared.swipeBalanceToHide = original }
+        let settingsDefaults = UserDefaults.standard
+        let original = settingsDefaults.object(forKey: "swipeBalanceToHide")
+        defer {
+            if let original {
+                settingsDefaults.set(original, forKey: "swipeBalanceToHide")
+            } else {
+                settingsDefaults.removeObject(forKey: "swipeBalanceToHide")
+            }
+        }
         let service = BackupService(defaults: defaults, backupData: { _ in Data() }, uploadBackup: { _, _ in
             XCTFail("Immediate stop must prevent upload")
         })
         service.startObservingBackups()
         let received = expectation(description: "Settings notification received")
         let subscription = SettingsViewModel.shared.settingsPublisher.first().sink { _ in received.fulfill() }
-        SettingsViewModel.shared.swipeBalanceToHide = !original
+        settingsDefaults.set(!settingsDefaults.bool(forKey: "swipeBalanceToHide"), forKey: "swipeBalanceToHide")
         await fulfillment(of: [received], timeout: 2)
         subscription.cancel()
         await service.stopObservingBackups()
