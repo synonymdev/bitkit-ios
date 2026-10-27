@@ -28,7 +28,10 @@ final class ForegroundNotificationTests: XCTestCase {
         XCTAssertTrue(PaykitAllowanceNotifier.shouldPost(skipsWhileActive: true, isAppActive: false))
     }
 
-    func testOtherAllowanceOutcomesArePostedWhileTheAppIsActive() {
-        XCTAssertTrue(PaykitAllowanceNotifier.shouldPost(skipsWhileActive: false, isAppActive: true))
+    func testOutcomesTheAppDoesNotShowArePostedWhileTheAppIsActive() {
+        XCTAssertTrue(
+            PaykitAllowanceNotifier.shouldPost(skipsWhileActive: false, isAppActive: true),
+            "Other allowance outcomes, and Limit Reached behind the PIN screen, are posted"
+        )
     }
 }
