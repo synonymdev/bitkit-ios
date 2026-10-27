@@ -10,8 +10,7 @@ extension PrivatePaykitService {
     struct ContactState: Codable {
         var cachedResolvedEndpoints: [StoredPaymentEntry] = []
         var consumedPrivatePaymentListVersion: UInt64?
-        /// The automatic payment attempt that consumed the list, so only that attempt gives it back. Local to this device:
-        /// the wallet backup carries the version alone.
+        /// The automatic payment attempt that consumed the list, so only that attempt gives it back, also after a restore.
         var consumedPrivatePaymentListOwner: String?
         var localInvoice: StoredInvoice?
         var receivedInvoicePaymentHashes: [String] = []
@@ -57,5 +56,7 @@ extension PrivatePaykitService {
     struct Backup: Codable {
         let sdkState: String
         let consumedPrivatePaymentListVersions: [String: UInt64]
+        /// Absent from backups made before list owners existed.
+        var consumedPrivatePaymentListOwners: [String: String]? = nil
     }
 }
