@@ -71,26 +71,6 @@ struct HwFundingSigner {
         return balanceSats > reserve ? balanceSats - reserve : 0
     }
 
-    /// Reconnects, composes and signs the funding transaction without broadcasting it.
-    /// `onConnectingDevice` brackets every reconnect, as in `prepareSignedPayment`.
-    func prepareSignedFunding(
-        order: IBtOrder,
-        walletId: String,
-        address: String,
-        onComposed: (HwFundingTransaction) -> Void = { _ in },
-        onConnectingDevice: (Bool) -> Void = { _ in }
-    ) async throws -> HwFundingSignedTx {
-        let satsPerVByte = await resolvedSatsPerVByte()
-        return try await prepareSignedPayment(
-            walletId: walletId,
-            address: address,
-            sats: order.feeSat,
-            satsPerVByte: satsPerVByte,
-            onComposed: onComposed,
-            onConnectingDevice: onConnectingDevice
-        )
-    }
-
     /// Reconnects, composes and signs a normal on-chain payment without broadcasting it.
     /// `onConnectingDevice` brackets every reconnect (true before it, false once it returns or throws),
     /// including the one before a sign retry: the phases a caller may abandon because nothing is on the
@@ -126,12 +106,6 @@ struct HwFundingSigner {
             feeRate: UInt64(signed.feeRate.rounded(.up)),
             totalSpent: signed.totalSpent
         )
-    }
-
-    /// Best-effort pre-connect of the device before signing (fire-and-forget). Delegates to the
-    /// device-session capability, which no-ops unless it's a known BLE device that isn't connected.
-    func warmUp(walletId: String) {
-        connecting.warmUpConnection(walletId: walletId)
     }
 
     /// Offline compose for the exact payment amount; does not require a connected device.

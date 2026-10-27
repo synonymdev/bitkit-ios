@@ -133,7 +133,7 @@ class WalletViewModel: ObservableObject {
         Task {
             do {
                 _ = try await onchainAttemptService.resumeAcceptedTransfer(
-                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), using: transferService
+                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
                 )
             } catch {
                 Logger.warn("Accepted order local follow-up remains guarded: \(error)", context: "WalletViewModel")
@@ -144,7 +144,7 @@ class WalletViewModel: ObservableObject {
             do {
                 guard try await onchainAttemptService.observeTransaction(txid: txid, walletId: walletId, isConfirmed: isConfirmed) else { return }
                 _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
-                _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId, using: transferService)
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId)
                 await PaykitPaymentProofService.shared.reconcile()
             } catch {
                 Logger.warn("Observed payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
@@ -157,8 +157,7 @@ class WalletViewModel: ObservableObject {
     /// Convenience initializer for previews and testing
     convenience init(pubkyProfile: PubkyProfileManager? = nil, usdtWallet: UsdtWalletManager? = nil) {
         let transferService = TransferService(
-            lightningService: .shared,
-            blocktankService: CoreService.shared.blocktank
+            lightningService: .shared
         )
         self.init(
             transferService: transferService, sheetViewModel: SheetViewModel(),
@@ -639,14 +638,10 @@ class WalletViewModel: ObservableObject {
         return result
     }
 
-    func resumeAcceptedOnchainTransfer(walletId: String, attempts: OnchainSendAttemptService) async throws -> Bool {
-        try await attempts.resumeAcceptedTransfer(walletId: walletId, using: transferService)
-    }
-
     func resolvedAcceptedOnchainTransfer(context: OnchainSendPendingContext, attempts: OnchainSendAttemptService) async throws
         -> OnchainSendLocalResolution?
     {
-        try await attempts.resolvedAcceptedTransfer(context: context, using: transferService)
+        try await attempts.resolvedAcceptedTransfer(context: context)
     }
 
     /// Sets the fee rate for the send flow
@@ -1241,7 +1236,6 @@ class WalletViewModel: ObservableObject {
         await lightningService.refreshCache()
 
         do {
-            await MigrationsService.shared.cleanupInvalidMigrationTransfers()
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
@@ -1300,10 +1294,6 @@ class WalletViewModel: ObservableObject {
     /// Returns true if there's at least one channel that is ready
     var hasReadyChannels: Bool {
         return channels?.contains(where: \.isChannelReady) ?? false
-    }
-
-    var hasExistingChannels: Bool {
-        channelCount > 0 || channels?.isEmpty == false
     }
 
     /// Returns true if there's at least one usable channel (ready AND peer connected)

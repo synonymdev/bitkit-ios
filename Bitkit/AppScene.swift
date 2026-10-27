@@ -402,8 +402,7 @@ struct AppScene: View {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
         let transferService = TransferService(
-            lightningService: LightningService.shared,
-            blocktankService: CoreService.shared.blocktank
+            lightningService: LightningService.shared
         )
 
         // Run app data migrations before any feature code loads migrated state
@@ -1019,9 +1018,6 @@ struct AppScene: View {
             if !PaykitFeatureFlags.isUIEnabled {
                 await retryPendingPaykitEndpointRemoval()
             }
-
-            // Start watching pending orders after wallet is ready
-            await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
 
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.

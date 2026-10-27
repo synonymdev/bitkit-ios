@@ -243,7 +243,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = "nativeSegwit"
         _addressTypesToMonitor = "nativeSegwit"
-        BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
         lastAddressTypeError = nil
@@ -958,17 +957,14 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Gets the current app cache data for backup
-    func getAppCacheData() throws -> AppCacheData {
+    func getAppCacheData() -> AppCacheData {
         let spend = QuickPaySpendStore.shared.backupSnapshot()
-        let refundAddress = try BlocktankRefundAddressStore().load()
         return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
             hasSeenQuickpayIntro: defaults.bool(forKey: "hasSeenQuickpayIntro"),
             hasSeenShopIntro: defaults.bool(forKey: "hasSeenShopIntro"),
-            hasSeenTransferIntro: defaults.bool(forKey: "hasSeenTransferIntro"),
-            hasSeenTransferToSpendingIntro: defaults.bool(forKey: "hasSeenTransferToSpendingIntro"),
             hasSeenTransferToSavingsIntro: defaults.bool(forKey: "hasSeenTransferToSavingsIntro"),
             hasSeenWidgetsIntro: defaults.bool(forKey: "hasSeenWidgetsIntro"),
             hasDismissedWidgetsOnboardingHint: defaults.bool(forKey: "hasDismissedWidgetsOnboardingHint"),
@@ -979,20 +975,17 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            blocktankRefundAddress: refundAddress,
             detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
         )
     }
 
     /// Restores app cache data from backup
-    func restoreAppCacheData(_ cache: AppCacheData) throws {
+    func restoreAppCacheData(_ cache: AppCacheData) {
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
         defaults.set(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
         defaults.set(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
-        defaults.set(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
-        defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
         defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
         defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
         defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
@@ -1003,12 +996,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
-        let refundAddressStore = BlocktankRefundAddressStore()
-        if let refundAddress = cache.blocktankRefundAddress {
-            try refundAddressStore.save(refundAddress)
-        } else {
-            refundAddressStore.clear()
-        }
         CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
     }
 }

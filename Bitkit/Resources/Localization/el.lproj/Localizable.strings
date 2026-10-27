@@ -202,7 +202,6 @@
 "lightning__transfer__swipe" = "Σύρετε για Μεταφορά";
 "lightning__transfer_hw__broadcast_uncertain_title" = "Η συναλλαγή μπορεί να έχει σταλεί";
 "lightning__transfer_hw__broadcast_uncertain_description" = "Η συναλλαγή χρηματοδότησης μπορεί να έχει μεταδοθεί. Ελέγξτε τη δραστηριότητά σας πριν δοκιμάσετε ξανά.";
-"lightning__transfer_hw__open_connect" = "Άνοιγμα Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "Σύνδεσε ξανά τη συσκευή υλικού σου, φαίνεται ότι αποσυνδέθηκε από το τηλέφωνό σου.";
 "lightning__transfer_hw__reconnect_error_title" = "Επανασύνδεση συσκευής υλικού";
 "lightning__transfer_to_savings_button" = "Μεταφορά στις Αποταμιεύσεις";
@@ -595,6 +594,7 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Δημιούργησε μια νέα ταυτότητα Pubky σε αυτόν τον homeserver. Συνέχισε μόνο αν τον εμπιστεύεσαι.";
 "pubky_auth__approval_failed" = "Η Εξουσιοδότηση Απέτυχε";
+"wallet__onchain_abandon_transfer_note" = "Οι μεταφορές στο υπόλοιπο δαπανών δεν είναι πλέον διαθέσιμες. Το Bitkit ελέγχει πρώτα το δίκτυο και μετά επιστρέφει τα νομίσματα αυτής της μεταφοράς στο πορτοφόλι σας, ώστε η αρχική μεταφορά να μην επιβεβαιωθεί ποτέ. Αυτό έχει χρέωση δικτύου.";
 "watch_only_accounts__active_section" = "Ενεργοί λογαριασμοί";
 "watch_only_accounts__copy_xpub" = "Αντιγραφή xpub";
 "watch_only_accounts__description" = "Κάθε εγκεκριμένος διακομιστής Paykit λαμβάνει ξεχωριστό λογαριασμό Bitcoin. Απενεργοποίησε την παρακολούθηση για να αποφορτώσεις έναν λογαριασμό χωρίς να διαγράψεις το ιστορικό του πορτοφολιού του.";

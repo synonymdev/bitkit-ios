@@ -207,7 +207,6 @@
 "lightning__transfer__swipe" = "Swipe zum Übertragen";
 "lightning__transfer_hw__broadcast_uncertain_title" = "Transaktion wurde evtl. gesendet";
 "lightning__transfer_hw__broadcast_uncertain_description" = "Deine Finanzierungstransaktion wurde möglicherweise bereits übertragen. Bitte überprüfe deine Aktivität, bevor du es erneut versuchst.";
-"lightning__transfer_hw__open_connect" = "Trezor Connect öffnen";
 "lightning__transfer_hw__reconnect_error_description" = "Bitte verbinde dein Hardware-Gerät erneut, es scheint von deinem Telefon getrennt zu sein.";
 "lightning__transfer_hw__reconnect_error_title" = "Hardware-Gerät neu verbinden";
 "lightning__transfer_to_savings_button" = "Zu Ersparnissen transferieren";
@@ -706,6 +705,7 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Erstelle eine neue Pubky-Identität auf diesem Homeserver. Fahre nur fort, wenn du ihm vertraust.";
 "pubky_auth__approval_failed" = "Autorisierung fehlgeschlagen";
+"wallet__onchain_abandon_transfer_note" = "Überweisungen auf dein Ausgabenguthaben sind nicht mehr verfügbar. Bitkit prüft zuerst das Netzwerk und schickt die Coins dieser Überweisung dann zurück in deine Wallet, damit die ursprüngliche Überweisung nie bestätigt wird. Dafür fällt eine Netzwerkgebühr an.";
 "watch_only_accounts__active_section" = "Aktive Konten";
 "watch_only_accounts__copy_xpub" = "xpub kopieren";
 "watch_only_accounts__description" = "Jeder genehmigte Paykit-Server erhält ein eigenes Bitcoin-Konto. Deaktiviere die Verfolgung, um ein Konto zu entladen, ohne seinen Wallet-Verlauf zu löschen.";

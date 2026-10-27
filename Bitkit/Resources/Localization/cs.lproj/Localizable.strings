@@ -207,7 +207,6 @@
 "lightning__transfer__swipe" = "Přejeďte prstem k provedení převodu";
 "lightning__transfer_hw__broadcast_uncertain_title" = "Transakce mohla být odeslána";
 "lightning__transfer_hw__broadcast_uncertain_description" = "Vaše financující transakce mohla být odeslána do sítě. Než to zkusíte znovu, zkontrolujte prosím svou aktivitu.";
-"lightning__transfer_hw__open_connect" = "Otevřít Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "Připojte prosím znovu své hardwarové zařízení, zdá se, že je od telefonu odpojené.";
 "lightning__transfer_hw__reconnect_error_title" = "Znovu připojte hardwarové zařízení";
 "lightning__transfer_to_savings_button" = "Převést do úspor";
@@ -708,6 +707,7 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Vytvořte si na tomto homeserveru novou identitu Pubky. Pokračujte, jen pokud mu důvěřujete.";
 "pubky_auth__approval_failed" = "Autorizace se nezdařila";
+"wallet__onchain_abandon_transfer_note" = "Převody na útratový zůstatek už nejsou dostupné. Bitkit nejprve zkontroluje síť a pak vrátí mince tohoto převodu do vaší peněženky, aby se původní převod nikdy nepotvrdil. Stojí to síťový poplatek.";
 "watch_only_accounts__active_section" = "Aktivní účty";
 "watch_only_accounts__copy_xpub" = "Kopírovat xpub";
 "watch_only_accounts__description" = "Každý schválený server Paykit získá samostatný bitcoinový účet. Vypnutím sledování účet uvolníte, aniž byste smazali historii jeho peněženky.";

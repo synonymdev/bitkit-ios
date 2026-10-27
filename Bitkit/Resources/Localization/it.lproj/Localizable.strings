@@ -205,7 +205,6 @@
 "lightning__transfer__swipe" = "Swipe Per Trasferire";
 "lightning__transfer_hw__broadcast_uncertain_title" = "La transazione potrebbe essere stata inviata";
 "lightning__transfer_hw__broadcast_uncertain_description" = "La tua transazione di finanziamento potrebbe essere stata trasmessa. Controlla la tua attività prima di riprovare.";
-"lightning__transfer_hw__open_connect" = "Apri Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "Ricollega il tuo dispositivo hardware, sembra essere disconnesso dal telefono.";
 "lightning__transfer_hw__reconnect_error_title" = "Ricollega il Dispositivo Hardware";
 "lightning__transfer_to_savings_button" = "Trasferisci Ai Risparmi";
@@ -689,6 +688,7 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nuova identità Pubky su questo homeserver. Continua solo se ti fidi.";
 "pubky_auth__approval_failed" = "Autorizzazione Non Riuscita";
+"wallet__onchain_abandon_transfer_note" = "I trasferimenti al saldo di spesa non sono più disponibili. Bitkit controlla prima la rete, poi rimanda le monete di questo trasferimento al tuo wallet, così il trasferimento originale non potrà mai essere confermato. Questo costa una commissione di rete.";
 "watch_only_accounts__active_section" = "Account attivi";
 "watch_only_accounts__copy_xpub" = "Copia xpub";
 "watch_only_accounts__description" = "Ogni server Paykit approvato riceve un account Bitcoin separato. Disattiva il monitoraggio per scaricare un account senza eliminare lo storico del suo wallet.";

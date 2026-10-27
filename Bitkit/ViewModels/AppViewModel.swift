@@ -204,8 +204,6 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
-    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
-    @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
@@ -557,7 +555,6 @@ class AppViewModel: ObservableObject {
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
         hasSeenShopIntro = false
-        hasSeenTransferToSpendingIntro = false
         hasSeenTransferToSavingsIntro = false
         hasSeenWidgetsIntro = false
         hasDismissedWidgetsOnboardingHint = false
@@ -1119,9 +1116,12 @@ extension AppViewModel {
             }
             await handlePubkyAuthApproval(sourceURI)
         case .gift:
-            // Blocktank no longer sells channels, so a gift code can't be claimed.
-            sheetViewModel.hideSheetIfActive(.scanner, reason: "Gift codes are unavailable")
-            sheetViewModel.showSheet(.transferUnavailable)
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")

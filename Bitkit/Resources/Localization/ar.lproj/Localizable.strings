@@ -180,7 +180,6 @@
 "lightning__transfer__swipe" = "اسحب للتحويل";
 "lightning__transfer_hw__broadcast_uncertain_title" = "ربما تم إرسال المعاملة";
 "lightning__transfer_hw__broadcast_uncertain_description" = "ربما تم بث معاملة التمويل. يرجى التحقق من نشاطك قبل المحاولة مرة أخرى.";
-"lightning__transfer_hw__open_connect" = "فتح Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "يرجى إعادة توصيل جهازك، يبدو أنه غير متصل بهاتفك.";
 "lightning__transfer_hw__reconnect_error_title" = "إعادة توصيل الجهاز";
 "lightning__transfer_to_savings_button" = "تحويل إلى المدخرات";
@@ -564,6 +563,7 @@
 "pubky_auth__homeserver" = "الخادم الرئيسي";
 "pubky_auth__signup_description" = "أنشئ هوية Pubky جديدة على هذا الخادم الرئيسي. تابع فقط إذا كنت تثق به.";
 "pubky_auth__approval_failed" = "فشل التفويض";
+"wallet__onchain_abandon_transfer_note" = "لم تعد التحويلات إلى رصيد الإنفاق متاحة. يتحقق Bitkit أولًا من الشبكة، ثم يعيد عملات هذا التحويل إلى محفظتك حتى لا يتأكد التحويل الأصلي أبدًا. يكلّف ذلك رسوم شبكة.";
 "watch_only_accounts__active_section" = "الحسابات النشطة";
 "watch_only_accounts__copy_xpub" = "نسخ xpub";
 "watch_only_accounts__description" = "يحصل كل خادم Paykit معتمد على حساب Bitcoin منفصل. أوقف التتبع لإلغاء تحميل حساب دون حذف سجل محفظته.";

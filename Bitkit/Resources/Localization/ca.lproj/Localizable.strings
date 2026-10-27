@@ -206,7 +206,6 @@
 "lightning__transfer__swipe" = "Llisca per transferir";
 "lightning__transfer_hw__broadcast_uncertain_title" = "És possible que la transacció s'hagi enviat";
 "lightning__transfer_hw__broadcast_uncertain_description" = "És possible que la teva transacció de finançament s'hagi difós. Comprova la teva activitat abans de tornar-ho a provar.";
-"lightning__transfer_hw__open_connect" = "Obrir Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "Torna a connectar el teu dispositiu de maquinari; sembla que s'ha desconnectat del telèfon.";
 "lightning__transfer_hw__reconnect_error_title" = "Torna a connectar el dispositiu";
 "lightning__transfer_to_savings_button" = "Transferir a estalvis";
@@ -648,6 +647,7 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Crea una nova identitat Pubky en aquest homeserver. Continua només si hi confies.";
 "pubky_auth__approval_failed" = "Ha fallat l'autorització";
+"wallet__onchain_abandon_transfer_note" = "Les transferències al saldo de despesa ja no estan disponibles. Bitkit primer comprova la xarxa i després retorna les monedes d'aquesta transferència a la teva cartera perquè la transferència original no es pugui confirmar mai. Això té una comissió de xarxa.";
 "watch_only_accounts__active_section" = "Comptes actius";
 "watch_only_accounts__copy_xpub" = "Copiar xpub";
 "watch_only_accounts__description" = "Cada servidor Paykit aprovat obté un compte de Bitcoin independent. Desactiva el seguiment per descarregar un compte sense eliminar l'historial de la seva cartera.";

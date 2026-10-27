@@ -110,8 +110,6 @@ struct RNSettings: Codable {
     var hideBalanceOnOpen: Bool?
     var quickpayIntroSeen: Bool?
     var shopIntroSeen: Bool?
-    var transferIntroSeen: Bool?
-    var spendingIntroSeen: Bool?
     var savingsIntroSeen: Bool?
 }
 
@@ -377,12 +375,10 @@ class MigrationsService: ObservableObject {
     private static let rnPendingRemoteBoostsKey = "rnPendingRemoteBoosts"
     private static let rnPendingMetadataKey = "rnPendingMetadata"
     private static let rnRetryScheduleKey = "rnMigrationRetrySchedule"
-    private static let rnPendingRemotePaidOrdersKey = "rnPendingRemotePaidOrders"
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
     private static let rnDidAttemptPeerRecoveryKey = "rnDidAttemptMigrationPeerRecovery"
     private static let rnChannelRecoveryCheckedKey = "rnChannelRecoveryChecked"
-    private static let didCleanupInvalidTransfersKey = "didCleanupInvalidMigrationTransfers"
 
     @Published var isShowingMigrationLoading = false {
         didSet {
@@ -471,12 +467,6 @@ class MigrationsService: ObservableObject {
     var pendingMetadata: RNMetadata? {
         get { getCodable(forKey: Self.rnPendingMetadataKey) }
         set { setCodable(newValue, forKey: Self.rnPendingMetadataKey) }
-    }
-
-    /// Stored paid orders from RN backup for creating transfers after wallet starts (persisted)
-    var pendingRemotePaidOrders: [String: String]? {
-        get { userDefaults.dictionary(forKey: Self.rnPendingRemotePaidOrdersKey) as? [String: String] }
-        set { userDefaults.set(newValue, forKey: Self.rnPendingRemotePaidOrdersKey) }
     }
 
     /// Stored Blocktank order IDs that couldn't be fetched during migration (offline) (persisted)
@@ -821,7 +811,7 @@ extension MigrationsService {
 
     var hasPendingMigrationRetries: Bool {
         pendingMetadata != nil || pendingRemoteActivityData != nil || pendingRemoteTransfers != nil ||
-            pendingRemoteBoosts != nil || pendingBlocktankOrderIds != nil || pendingRemotePaidOrders != nil
+            pendingRemoteBoosts != nil || pendingBlocktankOrderIds != nil
     }
 
     private var retrySchedule: RNMigrationRetrySchedule? {
@@ -842,7 +832,7 @@ extension MigrationsService {
     /// Returns true if all pending migration data has been processed and cleanup can proceed
     var canCleanupAfterMigration: Bool {
         // Don't cleanup if there's still pending Blocktank data that needs retry
-        if pendingBlocktankOrderIds != nil || pendingRemotePaidOrders != nil {
+        if pendingBlocktankOrderIds != nil {
             Logger.debug("Cannot cleanup: pending Blocktank data exists", context: "Migration")
             return false
         }
@@ -856,45 +846,6 @@ extension MigrationsService {
         return true
     }
 
-    /// One-time cleanup for transfers created from unpaid/expired Blocktank orders during migration.
-    /// The RN backup's paidOrders map could contain orders that were never actually paid.
-    func cleanupInvalidMigrationTransfers() async {
-        guard !userDefaults.bool(forKey: Self.didCleanupInvalidTransfersKey), rnMigrationCompleted,
-              let transfers = try? TransferStorage.shared.getActiveTransfers() else { return }
-        let orderTransfers = transfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
-
-        guard !orderTransfers.isEmpty else {
-            userDefaults.set(true, forKey: Self.didCleanupInvalidTransfersKey)
-            return
-        }
-
-        let orderIds = orderTransfers.compactMap(\.lspOrderId)
-
-        guard let orders = try? await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true) else {
-            // Don't mark as done if we can't reach Blocktank — retry next launch
-            Logger.warn("Cannot cleanup migration transfers: Blocktank unreachable", context: "Migration")
-            return
-        }
-
-        let now = UInt64(Date().timeIntervalSince1970)
-        for transfer in orderTransfers {
-            guard let orderId = transfer.lspOrderId,
-                  let order = orders.first(where: { $0.id == orderId })
-            else { continue }
-
-            if order.state2 != .paid {
-                try? TransferStorage.shared.markSettled(id: transfer.id, settledAt: now)
-                Logger.info(
-                    "Cleanup: settled invalid migration transfer \(transfer.id) for order \(orderId) (state: \(String(describing: order.state2)))",
-                    context: "Migration"
-                )
-            }
-        }
-
-        userDefaults.set(true, forKey: Self.didCleanupInvalidTransfersKey)
-        Logger.info("Migration transfer cleanup completed", context: "Migration")
-    }
-
     /// Clears all persisted pending migration data from UserDefaults
     private func clearPendingMigrationData() {
         retrySchedule = nil
@@ -903,7 +854,6 @@ extension MigrationsService {
         pendingRemoteTransfers = nil
         pendingRemoteBoosts = nil
         pendingMetadata = nil
-        pendingRemotePaidOrders = nil
         pendingBlocktankOrderIds = nil
     }
 }
@@ -1355,12 +1305,6 @@ extension MigrationsService {
         if let seen = settings.shopIntroSeen {
             defaults.set(seen, forKey: "hasSeenShopIntro")
         }
-        if let seen = settings.transferIntroSeen {
-            defaults.set(seen, forKey: "hasSeenTransferIntro")
-        }
-        if let seen = settings.spendingIntroSeen {
-            defaults.set(seen, forKey: "hasSeenTransferToSpendingIntro")
-        }
         if let seen = settings.savingsIntroSeen {
             defaults.set(seen, forKey: "hasSeenTransferToSavingsIntro")
         }
@@ -1558,17 +1502,10 @@ extension MigrationsService {
                 try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
                 Logger.info("Upserted \(fetchedOrders.count) Blocktank orders", context: "Migration")
             }
-
-            if !paidOrders.isEmpty {
-                await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
-            }
         } catch {
             Logger.warn("Failed to fetch and upsert Blocktank orders: \(error)", context: "Migration")
             // Store order IDs for retry after sync completes (when online)
             pendingBlocktankOrderIds = allOrderIds
-            if !paidOrders.isEmpty {
-                pendingRemotePaidOrders = paidOrders
-            }
             Logger.info("Stored \(allOrderIds.count) Blocktank order IDs for retry", context: "Migration")
         }
     }
@@ -1714,7 +1651,6 @@ extension MigrationsService {
         guard isRetryCurrent(generation) else { return }
 
         // Handle pending Blocktank orders that couldn't be fetched during migration (offline)
-        var blocktankFetchFailed = false
         if let orderIds = pendingBlocktankOrderIds, !orderIds.isEmpty {
             Logger.info("Retrying \(orderIds.count) pending Blocktank orders", context: "Migration")
             do {
@@ -1724,30 +1660,11 @@ extension MigrationsService {
                     try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
                     guard isRetryCurrent(generation) else { return }
                     Logger.info("Upserted \(fetchedOrders.count) Blocktank orders after retry", context: "Migration")
-
-                    // Also create transfers for paid orders using the fetched orders
-                    if let paidOrders = pendingRemotePaidOrders, !paidOrders.isEmpty {
-                        Logger.info("Creating transfers for \(paidOrders.count) paid orders", context: "Migration")
-                        await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
-                        guard isRetryCurrent(generation) else { return }
-                        pendingRemotePaidOrders = nil
-                    }
                 }
                 pendingBlocktankOrderIds = nil
             } catch {
                 Logger.warn("Still unable to fetch Blocktank orders: \(error)", context: "Migration")
-                blocktankFetchFailed = true
             }
-        }
-
-        // Handle remote backup paid orders (create transfers for pending channel orders)
-        // This also handles paid orders from RN remote backup restore
-        // Skip if Blocktank fetch failed - paid orders depend on Blocktank order data
-        if !blocktankFetchFailed, let paidOrders = pendingRemotePaidOrders {
-            Logger.info("Applying \(paidOrders.count) remote paid orders", context: "Migration")
-            await applyRemotePaidOrders(paidOrders)
-            guard isRetryCurrent(generation) else { return }
-            pendingRemotePaidOrders = nil
         }
     }
 
@@ -1784,22 +1701,6 @@ extension MigrationsService {
 
         Logger.info("Applied \(applied)/\(transfers.count) transfer markers", context: "Migration")
         return remaining
-    }
-
-    private func applyRemotePaidOrders(_ paidOrders: [String: String]) async {
-        let orderIds = Array(paidOrders.keys)
-        guard !orderIds.isEmpty else { return }
-
-        do {
-            let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true)
-            if !fetchedOrders.isEmpty {
-                try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
-                Logger.info("Upserted \(fetchedOrders.count) Blocktank orders from remote backup", context: "Migration")
-            }
-            await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
-        } catch {
-            Logger.warn("Failed to fetch Blocktank orders: \(error)", context: "Migration")
-        }
     }
 
     @MainActor
@@ -2537,59 +2438,17 @@ extension MigrationsService {
         }
 
         // paidOrders is a map of orderId -> txId
-        var paidOrdersMap: [String: String] = [:]
         if let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let dataDict = rawDict["data"] as? [String: Any],
            let paidOrders = dataDict["paidOrders"] as? [String: String]
         {
-            paidOrdersMap = paidOrders
             orderIds.append(contentsOf: paidOrders.keys)
             Logger.info("Found \(paidOrders.count) paid orders in blocktank backup", context: "Migration")
         }
 
-        // Store paid orders for processing after wallet starts (CoreService not ready yet during restore)
-        if !paidOrdersMap.isEmpty {
-            pendingRemotePaidOrders = paidOrdersMap
-        }
-    }
-
-    private func createTransfersForPaidOrders(paidOrdersMap: [String: String], orders: [IBtOrder]) async {
-        let now = UInt64(Date().timeIntervalSince1970)
-        var transfers: [Transfer] = []
-
-        for (orderId, txId) in paidOrdersMap {
-            guard let order = orders.first(where: { $0.id == orderId }) else {
-                Logger.warn("Paid order \(orderId) not found in fetched orders", context: "Migration")
-                continue
-            }
-
-            // Only create transfers for orders actually paid and awaiting channel
-            guard order.state2 == .paid else {
-                Logger.debug("Skipping order \(orderId) with state \(String(describing: order.state2)) for transfer creation", context: "Migration")
-                continue
-            }
-
-            let transfer = Transfer(
-                id: txId,
-                type: .toSpending,
-                amountSats: order.clientBalanceSat,
-                channelId: nil,
-                fundingTxId: nil,
-                lspOrderId: orderId,
-                isSettled: false,
-                createdAt: now,
-                settledAt: nil
-            )
-            transfers.append(transfer)
-        }
-
-        if !transfers.isEmpty {
-            do {
-                try TransferStorage.shared.upsertList(transfers)
-                Logger.info("Created \(transfers.count) transfers for paid Blocktank orders", context: "Migration")
-            } catch {
-                Logger.error("Failed to create transfers for paid orders: \(error)", context: "Migration")
-            }
+        // Fetch the orders after the wallet starts (CoreService is not ready yet during restore), so they stay readable.
+        if !orderIds.isEmpty {
+            pendingBlocktankOrderIds = Array(Set((pendingBlocktankOrderIds ?? []) + orderIds))
         }
     }
 }

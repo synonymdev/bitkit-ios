@@ -2270,25 +2270,6 @@ class BlocktankService {
         stateChangedSubject.send()
     }
 
-    @discardableResult
-    func open(orderId: String) async throws -> IBtOrder {
-        guard let nodeId = LightningService.shared.nodeId else {
-            throw AppError(serviceError: .nodeNotStarted)
-        }
-
-        let latestOrder = try await ServiceQueue.background(.core) {
-            try await getOrders(orderIds: [orderId], filter: nil, refresh: true).first
-        }
-
-        guard latestOrder?.state2 == .paid else {
-            throw AppError(message: "Order not paid", debugMessage: "Order state: \(String(describing: latestOrder?.state2))")
-        }
-
-        return try await ServiceQueue.background(.core) {
-            try await openChannel(orderId: orderId, connectionString: nodeId)
-        }
-    }
-
     // MARK: Regtest only methods
 
     private func executeWithRetry<T>(maxRetries: Int = 6, operation: @escaping () async throws -> T) async throws -> T {

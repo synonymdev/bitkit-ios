@@ -3,23 +3,8 @@ import Combine
 import LDKNode
 import SwiftUI
 
-struct TransferUiState {
-    var clientBalanceSat: UInt64 = 0
-    var lspBalanceSat: UInt64 = 0
-    var feeSat: UInt64 = 0
-    var isAdvanced = false
-    var isConfirming = false
-    var order: IBtOrder?
-
-    var lspFeeSat: UInt64 {
-        feeSat.saturatingSub(clientBalanceSat)
-    }
-}
-
 @MainActor
 class TransferViewModel: ObservableObject {
-    @Published var uiState = TransferUiState()
-    @Published var lightningSetupStep: Int = 0
     @Published var selectedChannelIds: [String] = []
     @Published var channelsToClose: [ChannelDetails] = []
 
@@ -29,15 +14,10 @@ class TransferViewModel: ObservableObject {
     @Published var savingsTransferMode: SavingsTransferMode = .close
     @Published var savingsSwapState = SavingsSwapState()
 
-    private let coreService: CoreService
     private let lightningService: LightningService
-    private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let onBalanceRefresh: (() async -> Void)?
-
-    private var refreshTimer: Timer?
-    private var refreshTask: Task<Void, Never>?
 
     private let retryInterval: TimeInterval = 60 // 1 min
     private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
@@ -60,16 +40,12 @@ class TransferViewModel: ObservableObject {
     private static let minLnRoutingFeeReserveSats: UInt64 = 10
 
     init(
-        coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        currencyService: CurrencyService = .shared,
         transferService: TransferService,
         sheetViewModel: SheetViewModel,
         onBalanceRefresh: (() async -> Void)? = nil
     ) {
-        self.coreService = coreService
         self.lightningService = lightningService
-        self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
@@ -79,154 +55,19 @@ class TransferViewModel: ObservableObject {
     /// `TransferStorage.shared`, whose change notifications drive backups; tests pass an isolated suite
     /// so mock transfers never reach the app's own store.
     convenience init(
-        coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        currencyService: CurrencyService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
         transferDefaults: UserDefaults? = nil
     ) {
         let transferService = TransferService(
             storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
-            lightningService: lightningService,
-            blocktankService: coreService.blocktank
+            lightningService: lightningService
         )
         self.init(
-            coreService: coreService,
             lightningService: lightningService,
-            currencyService: currencyService,
             transferService: transferService,
             sheetViewModel: sheetViewModel
         )
-    }
-
-    deinit {
-        Task { @MainActor [weak self] in
-            Logger.debug("Stopping poll for order")
-            self?.stopPolling()
-        }
-    }
-
-    private func stopPolling() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        refreshTask?.cancel()
-        refreshTask = nil
-    }
-
-    func startWatchingOrderFromRestart(_ order: IBtOrder) async {
-        Logger.info("Starting to watch order from restart: \(order.id)")
-
-        uiState.order = order
-        uiState.clientBalanceSat = order.clientBalanceSat
-        uiState.lspBalanceSat = order.lspBalanceSat
-        uiState.feeSat = order.feeSat
-        uiState.isAdvanced = false
-
-        watchOrder(orderId: order.id)
-    }
-
-    private func watchOrder(orderId: String, frequencyMs: Double = 15000) {
-        stopPolling()
-
-        let frequencySecs = frequencyMs / 1000.0
-        Logger.debug("Starting to watch order \(orderId)")
-
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: frequencySecs, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                refreshTask?.cancel()
-                refreshTask = Task { @MainActor [weak self] in
-                    guard let self else { return }
-
-                    do {
-                        Logger.debug("Refreshing order \(orderId)")
-                        let orders = try await coreService.blocktank.orders(orderIds: [orderId], refresh: true)
-                        guard let order = orders.first else {
-                            Logger.error("Order not found \(orderId)", context: "TransferViewModel")
-                            return
-                        }
-
-                        let step = try await updateOrder(order: order)
-                        lightningSetupStep = step
-                        Logger.debug("LN setup step: \(step)")
-
-                        if order.state2 == .expired {
-                            Logger.error("Order expired \(orderId)", context: "TransferViewModel")
-                            stopPolling()
-                            return
-                        }
-
-                        if step > 2 {
-                            Logger.debug("Order settled, stopping polling")
-
-                            // Sync transfer states when order completes
-                            try? await transferService.syncTransferStates()
-
-                            stopPolling()
-                            return
-                        }
-                    } catch {
-                        Logger.error(error, context: "Failed to watch order")
-                        stopPolling()
-                    }
-                }
-            }
-        }
-
-        refreshTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-
-            do {
-                let orders = try await coreService.blocktank.orders(orderIds: [orderId], refresh: true)
-                guard let order = orders.first else {
-                    Logger.error("Order not found \(orderId)", context: "TransferViewModel")
-                    return
-                }
-
-                let step = try await updateOrder(order: order)
-                lightningSetupStep = step
-            } catch {
-                Logger.error(error, context: "Failed in initial order check")
-                stopPolling()
-            }
-        }
-    }
-
-    private func updateOrder(order: IBtOrder) async throws -> Int {
-        var currentStep = 0
-
-        if order.channel != nil {
-            do {
-                try await transferService.syncTransferStates()
-            } catch {
-                Logger.error("Failed to sync transfer states after updateOrder", context: error.localizedDescription)
-                // Don't throw - we don't want to fail the entire sync if transfer sync fails
-            }
-
-            return 3
-        }
-
-        switch order.state2 {
-        case .created:
-            currentStep = 0
-
-        case .paid:
-            currentStep = 1
-
-            do {
-                _ = try await coreService.blocktank.open(orderId: order.id)
-            } catch {
-                Logger.error("Error opening channel: \(error.localizedDescription)", context: "TransferViewModel")
-            }
-
-        case .executed:
-            currentStep = 2
-
-        default:
-            break
-        }
-
-        return currentStep
     }
 
     // MARK: - Manual Channel Opening

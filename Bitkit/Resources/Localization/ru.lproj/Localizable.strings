@@ -206,7 +206,6 @@
 "lightning__transfer__swipe" = "Проведите для Перевода";
 "lightning__transfer_hw__broadcast_uncertain_title" = "Транзакция могла быть отправлена";
 "lightning__transfer_hw__broadcast_uncertain_description" = "Ваша транзакция пополнения могла быть отправлена. Проверьте активность, прежде чем пробовать снова.";
-"lightning__transfer_hw__open_connect" = "Открыть Trezor Connect";
 "lightning__transfer_hw__reconnect_error_description" = "Переподключите аппаратное устройство: похоже, оно отключилось от телефона.";
 "lightning__transfer_hw__reconnect_error_title" = "Переподключите Аппаратное Устройство";
 "lightning__transfer_to_savings_button" = "Перевести в Сбережения";
@@ -703,6 +702,7 @@
 "pubky_auth__homeserver" = "Домашний сервер";
 "pubky_auth__signup_description" = "Создайте новый идентификатор Pubky на этом домашнем сервере. Продолжайте, только если доверяете ему.";
 "pubky_auth__approval_failed" = "Ошибка Авторизации";
+"wallet__onchain_abandon_transfer_note" = "Переводы на баланс расходов больше недоступны. Bitkit сначала проверяет сеть, а затем возвращает монеты этого перевода в ваш кошелёк, чтобы исходный перевод никогда не подтвердился. За это взимается сетевая комиссия.";
 "watch_only_accounts__active_section" = "Активные аккаунты";
 "watch_only_accounts__copy_xpub" = "Копировать xpub";
 "watch_only_accounts__description" = "Каждый одобренный сервер Paykit получает отдельный аккаунт Bitcoin. Отключите отслеживание, чтобы выгрузить аккаунт, не удаляя историю его кошелька.";

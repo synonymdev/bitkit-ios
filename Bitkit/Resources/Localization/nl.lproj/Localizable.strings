@@ -207,7 +207,6 @@
 "lightning__transfer__swipe" = "Veeg om over te boeken";
 "lightning__transfer_hw__broadcast_uncertain_title" = "Transactie mogelijk verzonden";
 "lightning__transfer_hw__broadcast_uncertain_description" = "Uw financieringstransactie is mogelijk al verzonden. Controleer uw activiteit voordat u het opnieuw probeert.";
-"lightning__transfer_hw__open_connect" = "Trezor Connect openen";
 "lightning__transfer_hw__reconnect_error_description" = "Verbind uw hardwareapparaat opnieuw, de verbinding met uw telefoon lijkt verbroken.";
 "lightning__transfer_hw__reconnect_error_title" = "Hardwareapparaat opnieuw verbinden";
 "lightning__transfer_to_savings_button" = "Overboeken Naar Spaargeld";
@@ -706,6 +705,7 @@
 "pubky_auth__homeserver" = "Homeserver";
 "pubky_auth__signup_description" = "Maak een nieuwe Pubky-identiteit aan op deze homeserver. Ga alleen verder als u deze vertrouwt.";
 "pubky_auth__approval_failed" = "Autorisatie mislukt";
+"wallet__onchain_abandon_transfer_note" = "Overboekingen naar je bestedingssaldo zijn niet meer beschikbaar. Bitkit controleert eerst het netwerk en stuurt de munten van deze overboeking dan terug naar je wallet, zodat de oorspronkelijke overboeking nooit bevestigd wordt. Dit kost netwerkkosten.";
 "watch_only_accounts__active_section" = "Actieve accounts";
 "watch_only_accounts__copy_xpub" = "xpub kopiëren";
 "watch_only_accounts__description" = "Elke goedgekeurde Paykit-server krijgt een apart Bitcoin-account. Schakel volgen uit om een account te ontladen zonder de walletgeschiedenis te verwijderen.";
