@@ -414,6 +414,13 @@ struct MainNavView: View {
                 guard canHandleDeepLinks else { return }
                 await handlePendingDeepLink()
             }
+            .onChange(of: app.sparkUsdPaymentRecipient) { _, recipient in
+                guard let recipient else { return }
+                app.sparkUsdPaymentRecipient = nil
+                sheets.hideSheetBeforePerforming(reason: "Paykit routed Spark dollar payment") {
+                    navigation.navigate(.sparkUsdWallet(recipient: recipient))
+                }
+            }
             .onChange(of: app.pendingDeepLinkURL) { _, url in
                 guard canHandleDeepLinks, url != nil else { return }
                 Task { await handlePendingDeepLink() }

@@ -155,6 +155,7 @@ enum PublicPaykitService {
 
     enum MethodId: String, Hashable, CaseIterable {
         case usdtArbitrum = "usdt-arbitrum-address"
+        case usdbSpark = "usdb-spark-address"
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
         case bitcoinLightningLnurl = "btc-lightning-lnurl"
         case bitcoinOnchainP2tr = "btc-bitcoin-p2tr"
@@ -177,7 +178,7 @@ enum PublicPaykitService {
         static let payablePreferenceOrder: [MethodId] = [
             .bitcoinLightningBolt11,
             .bitcoinLightningLnurl,
-        ] + onchainPreferenceOrder + [.usdtArbitrum]
+        ] + onchainPreferenceOrder + [.usdtArbitrum, .usdbSpark]
 
         static let publishableMethodIds: [MethodId] = [
             .bitcoinLightningBolt11,
@@ -212,7 +213,7 @@ enum PublicPaykitService {
                 .signet
             case .regtestOnchainP2tr, .regtestOnchainP2wpkh, .regtestOnchainP2sh, .regtestOnchainP2pkh:
                 .regtest
-            case .bitcoinLightningBolt11, .bitcoinLightningLnurl, .usdtArbitrum:
+            case .bitcoinLightningBolt11, .bitcoinLightningLnurl, .usdtArbitrum, .usdbSpark:
                 nil
             }
         }
@@ -310,6 +311,16 @@ enum PublicPaykitService {
 
     static func parseEndpoint(candidate: PrivatePaymentEndpointCandidate) -> Endpoint? {
         parseEndpoint(identifier: candidate.identifier, payload: candidate.payload)
+    }
+
+    /// The Spark dollar endpoint: the wallet's Spark address, published with the Spending endpoints while Spark holds a
+    /// dollar token. Payers send the token to it by identifier.
+    static func sparkUsdEndpoint() async -> Endpoint? {
+        guard Env.sparkUsdTokenId != nil, await SparkManager.shared.usd != nil,
+              let address = try? await SparkManager.shared.sparkAddress(),
+              let payload = try? serializePayload(value: address)
+        else { return nil }
+        return Endpoint(methodId: .usdbSpark, value: address, min: nil, max: nil, rawPayload: payload)
     }
 
     static func serializePayload(value: String) throws -> String {
@@ -441,7 +452,9 @@ enum PublicPaykitService {
             (wallet.publicPaykitInvoiceRevision == invoiceRevision && wallet.publicPaykitBolt11 ==
                 (endpoints.first { $0.methodId == .bitcoinLightningBolt11 }?.value ?? ""))
         let publishedUsdt = !isUsdtPaymentOptionEnabled() || endpoints.contains { $0.methodId == .usdtArbitrum }
-        setCleanupPending(!publishedCurrentInvoice || !publishedUsdt)
+        let publishedSparkUsd = !isLightningPaymentOptionEnabled() || SparkManager.shared.usd == nil ||
+            endpoints.contains { $0.methodId == .usdbSpark }
+        setCleanupPending(!publishedCurrentInvoice || !publishedUsdt || !publishedSparkUsd)
     }
 
     static func removePublishedEndpoints() async throws {
@@ -639,6 +652,10 @@ enum PublicPaykitService {
             }
         }
 
+        if includeLightning, let sparkUsd = await sparkUsdEndpoint() {
+            endpoints.append(sparkUsd)
+        }
+
         guard !endpoints.isEmpty || !requireEndpoint else {
             throw PublicPaykitError.noSupportedEndpoint
         }
@@ -650,6 +667,8 @@ enum PublicPaykitService {
         switch endpoint.methodId {
         case .usdtArbitrum:
             return Env.isUsdtEnabled && PaykitUsdt.address(from: endpoint.rawPayload) != nil
+        case .usdbSpark:
+            return Env.sparkUsdTokenId != nil && SparkUsd.isSparkInput(endpoint.value)
         case .bitcoinLightningBolt11:
             guard case let .lightning(invoice) = try? await decode(invoice: endpoint.paymentRequest), !invoice.isExpired else {
                 return false

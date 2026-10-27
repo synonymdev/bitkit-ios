@@ -313,6 +313,11 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
+    /// The wallet's static Spark address, published on Paykit as its dollar endpoint.
+    func sparkAddress() async throws -> String {
+        try await requireSdk().receivePayment(request: ReceivePaymentRequest(paymentMethod: .sparkAddress)).paymentRequest
+    }
+
     /// Pays `amount` dollar units of the dollar token to `request`, a Spark address or invoice. An invoice that fixes its amount
     /// is paid as it stands, so no rescaled amount can mismatch it.
     func sendUsd(request: String, amount: UInt64, isAmountFixed: Bool = false) async throws {

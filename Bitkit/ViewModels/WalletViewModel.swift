@@ -153,6 +153,9 @@ class WalletViewModel: ObservableObject {
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
         SparkManager.shared.onStateChanged = { [weak self] in
+            if SparkManager.shared.usd != nil, PublicPaykitService.isLightningPaymentOptionEnabled() {
+                PublicPaykitService.setCleanupPending(true)
+            }
             Task { @MainActor in
                 await self?.updateBalanceState()
                 try? await self?.refreshBip21(reportsError: false)

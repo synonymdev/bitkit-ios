@@ -105,6 +105,10 @@ extension PrivatePaykitService {
             }
         }
 
+        if PublicPaykitService.isLightningPaymentOptionEnabled(), let sparkUsd = await PublicPaykitService.sparkUsdEndpoint() {
+            endpoints.append(sparkUsd)
+        }
+
         guard !endpoints.isEmpty else {
             throw PublicPaykitError.noSupportedEndpoint
         }

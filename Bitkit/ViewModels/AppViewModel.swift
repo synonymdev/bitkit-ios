@@ -33,7 +33,7 @@ struct ContactPaymentContext: Equatable {
     let endpoints: [PublicPaykitService.Endpoint]
 
     var requiresAssetSelection: Bool {
-        endpoints.contains { $0.methodId == .usdtArbitrum } ||
+        endpoints.contains { $0.methodId == .usdtArbitrum || $0.methodId == .usdbSpark } ||
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
@@ -186,6 +186,8 @@ class AppViewModel: ObservableObject {
     private(set) var sendStateOwnerID: UUID?
 
     @Published private(set) var pendingDeepLinkURL: URL?
+    /// A contact's Spark dollar address to pay from the Spark dollar wallet; the navigation view opens it.
+    @Published var sparkUsdPaymentRecipient: String?
     /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
     private var deepLinkAfterPubkyAuth: URL?
     private var deepLinksRetainedWhileLocked: Set<URL> = []
@@ -792,10 +794,19 @@ extension AppViewModel {
             }
         }
 
+        if let context = claimedContactPaymentContext, context.incomingPaymentRequest == nil, scope != .onchainPayments,
+           let sparkUsd = context.endpoints.first(where: { $0.methodId == .usdbSpark }),
+           SparkManager.shared.usd?.balance ?? 0 > 0
+        {
+            resetSendState()
+            sparkUsdPaymentRecipient = sparkUsd.value
+            return
+        }
+
         if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
             resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
             expectedGeneration = sendStateGeneration
-            for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
+            for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum && endpoint.methodId != .usdbSpark {
                 let data = try await scanPaymentOperations.decodeInvoice(endpoint.paymentRequest)
                 try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context, isCurrentScan: isCurrentScanGeneration)
                 switch data {
