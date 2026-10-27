@@ -62,6 +62,23 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertEqual(restored, state)
     }
 
+    func testAnUnreadableAllowanceStateLeavesTheRestOfTheBackupReadable() throws {
+        let json = Data(#"""
+        {
+          "subscriptions": {},
+          "pendingProofs": [],
+          "allowances": {
+            "pubky-good": {"groups": [], "journal": [], "presentedProposalIds": [], "unannouncedOfferIds": [], "notifiedRequestIds": []},
+            "pubky-bad": {"groups": [], "journal": [{"stage": "teleported"}]}
+          }
+        }
+        """#.utf8)
+
+        let backup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: json)
+
+        XCTAssertEqual(backup.allowances.map { Array($0.byIdentity.keys) }, ["pubky-good"])
+    }
+
     func testTermsCarryPerPaymentRangeAnchoredUtcMonthAndAllowlist() throws {
         let monthAnchor = PaykitAllowanceTime.monthStart(containing: Fixtures.now)
         let allowlist = [Fixtures.lightningIdentifier, Fixtures.onchainIdentifier]

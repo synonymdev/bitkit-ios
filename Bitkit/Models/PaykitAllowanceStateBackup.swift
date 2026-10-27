@@ -1,5 +1,36 @@
 import Foundation
 
+/// The allowance states of a wallet backup by identity. An entry this version can't read is dropped instead of failing the
+/// rest of the wallet backup it travels in.
+struct PaykitAllowanceStateBackups: Codable {
+    let byIdentity: [String: PaykitAllowanceStateBackup]
+
+    init(_ byIdentity: [String: PaykitAllowanceStateBackup]) {
+        self.byIdentity = byIdentity
+    }
+
+    init(from decoder: Decoder) throws {
+        let entries = (try? decoder.singleValueContainer().decode([String: Lenient].self)) ?? [:]
+        byIdentity = entries.compactMapValues(\.value)
+        if byIdentity.count != entries.count {
+            Logger.warn("Skipped \(entries.count - byIdentity.count) unreadable allowance states in a backup", context: "PaykitAllowance")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(byIdentity)
+    }
+
+    private struct Lenient: Decodable {
+        let value: PaykitAllowanceStateBackup?
+
+        init(from decoder: Decoder) throws {
+            value = try? PaykitAllowanceStateBackup(from: decoder)
+        }
+    }
+}
+
 /// One identity's local allowance state in the wallet backup, in the format both apps read: the USD labels of each
 /// grant and the attempt journal restart recovery verifies from. Timestamps are RFC 3339, USD amounts decimal strings.
 struct PaykitAllowanceStateBackup: Codable {

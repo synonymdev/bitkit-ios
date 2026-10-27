@@ -307,7 +307,7 @@ actor PaykitPaymentProofService {
         try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
         if let allowances = state.allowances {
-            try PaykitAllowanceKeychainStore().restoreBackup(allowances)
+            PaykitAllowanceKeychainStore().restoreBackup(allowances)
         }
     }
 
