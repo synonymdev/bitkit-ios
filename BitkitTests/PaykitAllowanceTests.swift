@@ -57,9 +57,37 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertEqual(entry["paymentListVersion"] as? Int, 7)
         XCTAssertEqual((entry["requestId"] as? [String: Any])?["paymentRequestId"] as? String, "req-1")
         XCTAssertEqual(json["lastTrustedTime"] as? String, "2026-09-24T12:00:00.000Z")
+        XCTAssertTrue(entry["onchainAddress"] is NSNull, "Android requires every key, so an absent value is written as null")
+        XCTAssertTrue(entry["transactionId"] is NSNull)
 
         let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: data).restored()
         XCTAssertEqual(restored, state)
+    }
+
+    func testAManualPaymentJournalEntryWritesItsMissingAllowanceAsNull() throws {
+        var state = PaykitAllowanceLocalState()
+        state.journal = [.init(
+            attemptId: "manual-1",
+            isAutomatic: false,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "req-1", counterparty: Fixtures.counterpartyKey),
+            allowanceId: nil,
+            amountSats: 1000,
+            paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+            paymentHash: nil,
+            onchainAddress: nil,
+            transactionId: nil,
+            stage: .submitted,
+            createdAt: Fixtures.now
+        )]
+
+        let data = try JSONEncoder().encode(PaykitAllowanceStateBackup(state))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let entry = try XCTUnwrap((json["journal"] as? [[String: Any]])?.first)
+
+        for key in ["allowanceId", "paymentHash", "onchainAddress", "transactionId", "paymentListVersion", "previousPaymentListVersion"] {
+            XCTAssertTrue(entry[key] is NSNull, "\(key) is written as null for Android")
+        }
+        XCTAssertTrue(json["lastTrustedTime"] is NSNull)
     }
 
     func testAnUnreadableAllowanceStateLeavesTheRestOfTheBackupReadable() throws {

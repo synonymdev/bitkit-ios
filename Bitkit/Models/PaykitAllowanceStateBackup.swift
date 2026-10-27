@@ -63,6 +63,24 @@ struct PaykitAllowanceStateBackup: Codable {
         let createdAt: String
         let paymentListVersion: UInt64?
         let previousPaymentListVersion: UInt64?
+
+        /// Android requires every key, so an absent optional is written as null rather than left out.
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(attemptId, forKey: .attemptId)
+            try container.encode(isAutomatic, forKey: .isAutomatic)
+            try container.encode(requestId, forKey: .requestId)
+            try container.encode(allowanceId, forKey: .allowanceId)
+            try container.encode(amountSats, forKey: .amountSats)
+            try container.encode(paymentEndpointIdentifier, forKey: .paymentEndpointIdentifier)
+            try container.encode(paymentHash, forKey: .paymentHash)
+            try container.encode(onchainAddress, forKey: .onchainAddress)
+            try container.encode(transactionId, forKey: .transactionId)
+            try container.encode(stage, forKey: .stage)
+            try container.encode(createdAt, forKey: .createdAt)
+            try container.encode(paymentListVersion, forKey: .paymentListVersion)
+            try container.encode(previousPaymentListVersion, forKey: .previousPaymentListVersion)
+        }
     }
 
     let groups: [Group]
@@ -71,6 +89,16 @@ struct PaykitAllowanceStateBackup: Codable {
     let unannouncedOfferIds: Set<String>
     let notifiedRequestIds: Set<String>
     let lastTrustedTime: String?
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(groups, forKey: .groups)
+        try container.encode(journal, forKey: .journal)
+        try container.encode(presentedProposalIds, forKey: .presentedProposalIds)
+        try container.encode(unannouncedOfferIds, forKey: .unannouncedOfferIds)
+        try container.encode(notifiedRequestIds, forKey: .notifiedRequestIds)
+        try container.encode(lastTrustedTime, forKey: .lastTrustedTime)
+    }
 
     init(_ state: PaykitAllowanceLocalState) {
         groups = state.groups.map { group in
