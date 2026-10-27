@@ -113,7 +113,7 @@ class BackupService {
     @MainActor weak var usdtWallet: UsdtWalletManager?
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
-    private var cancellables = Set<AnyCancellable>()
+    @MainActor private var cancellables = Set<AnyCancellable>()
     private var periodicCheckTask: Task<Void, Never>?
     private var isObserving = false
     private var isRestoring = false
@@ -213,8 +213,10 @@ class BackupService {
             guard shouldStart == true else { return }
 
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
-            startBackupStatusObservers()
-            startDataStoreListeners()
+            await MainActor.run {
+                startBackupStatusObservers()
+                startDataStoreListeners()
+            }
             startPeriodicBackupFailureCheck()
         }
     }
@@ -236,7 +238,7 @@ class BackupService {
         await walletBackupWriter.waitUntilIdle()
         await usdtBackupWriter.waitUntilIdle()
         guard shouldStop == true else { return }
-        cancellables.removeAll()
+        await MainActor.run { cancellables.removeAll() }
         Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
     }
 
@@ -618,7 +620,7 @@ class BackupService {
 
     // MARK: - Private Methods
 
-    private func startBackupStatusObservers() {
+    @MainActor private func startBackupStatusObservers() {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
                 .prepend(getAllBackupStatuses())
@@ -646,27 +648,24 @@ class BackupService {
         Logger.debug("Started \(BackupCategory.allCases.count) backup status observers", context: "BackupService")
     }
 
-    private func startDataStoreListeners() {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            // SETTINGS
-            SettingsViewModel.shared.settingsPublisher
-                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    guard let self, !self.shouldSkipBackup() else { return }
-                    markBackupRequired(category: .settings)
-                }
-                .store(in: &cancellables)
+    @MainActor private func startDataStoreListeners() {
+        // SETTINGS
+        SettingsViewModel.shared.settingsPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .settings)
+            }
+            .store(in: &cancellables)
 
-            // WIDGETS
-            SettingsViewModel.shared.widgetsPublisher
-                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    guard let self, !self.shouldSkipBackup() else { return }
-                    markBackupRequired(category: .widgets)
-                }
-                .store(in: &cancellables)
-        }
+        // WIDGETS
+        SettingsViewModel.shared.widgetsPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .widgets)
+            }
+            .store(in: &cancellables)
 
         // Record requirements synchronously; the scheduled upload already has a debounce.
         WalletBackupChangeTracker.localChanges
@@ -714,16 +713,13 @@ class BackupService {
             .store(in: &cancellables)
 
         // APP STATE (UserDefaults changes, etc.)
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            SettingsViewModel.shared.appStatePublisher
-                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    guard let self, !self.shouldSkipBackup() else { return }
-                    markBackupRequired(category: .metadata)
-                }
-                .store(in: &cancellables)
-        }
+        SettingsViewModel.shared.appStatePublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: &cancellables)
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
