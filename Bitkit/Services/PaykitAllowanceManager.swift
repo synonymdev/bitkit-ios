@@ -298,8 +298,10 @@ final class PaykitAllowanceManager {
     }
 
     private func takeUnannouncedOffers(identity: String) async -> [PaykitAllowanceEntry] {
-        let marked = await executor.localState(identity: identity).unannouncedOfferIds.subtracting(announcedOfferIds)
-        guard !marked.isEmpty else { return [] }
+        let stored = await executor.localState(identity: identity).unannouncedOfferIds
+        guard !stored.isEmpty else { return [] }
+        // Marks already returned stay stored until a clear saves; each call retries that clear.
+        let marked = stored.subtracting(announcedOfferIds)
         let accepted = entries.filter { entry in
             entry.allowances.contains { marked.contains($0.scopedId) && $0.role == .allowee && $0.lifecycleState == .accepted }
         }

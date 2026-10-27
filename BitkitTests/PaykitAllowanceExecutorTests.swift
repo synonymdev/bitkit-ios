@@ -1442,6 +1442,8 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         XCTAssertEqual(announced.map(\.counterparty), [Fixtures.counterpartyKey])
         XCTAssertTrue(announcedAgain.isEmpty, "An offer already announced is not announced again")
+        let marks = await harness.executor.localState(identity: Fixtures.identityKey).unannouncedOfferIds
+        XCTAssertTrue(marks.isEmpty, "The next refresh retries the clear that failed")
     }
 
     @MainActor
