@@ -1969,3 +1969,4 @@
 
 "onboarding__connection_settings" = "Verbindingsinstellingen";
 "onboarding__connection_saved" = "Opgeslagen. Probeer opnieuw om het herstel voort te zetten.";
+"wallet__balance_updating" = "Saldo bijwerken…";

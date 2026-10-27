@@ -1934,3 +1934,4 @@
 
 "onboarding__connection_settings" = "Impostazioni di connessione";
 "onboarding__connection_saved" = "Salvato. Riprova per continuare il ripristino.";
+"wallet__balance_updating" = "Aggiornamento del saldo…";

@@ -1641,3 +1641,4 @@
 
 "onboarding__connection_settings" = "إعدادات الاتصال";
 "onboarding__connection_saved" = "تم الحفظ. أعد المحاولة لمتابعة الاستعادة.";
+"wallet__balance_updating" = "جارٍ تحديث الرصيد…";

@@ -2053,3 +2053,4 @@
 
 "onboarding__connection_settings" = "Connection settings";
 "onboarding__connection_saved" = "Saved. Retry to continue restoring.";
+"wallet__balance_updating" = "Updating balance…";

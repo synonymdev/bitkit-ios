@@ -1955,3 +1955,4 @@
 
 "onboarding__connection_settings" = "Настройки подключения";
 "onboarding__connection_saved" = "Сохранено. Повторите попытку, чтобы продолжить восстановление.";
+"wallet__balance_updating" = "Обновление баланса…";

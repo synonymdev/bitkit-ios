@@ -1974,3 +1974,4 @@
 
 "onboarding__connection_settings" = "Ustawienia połączenia";
 "onboarding__connection_saved" = "Zapisano. Spróbuj ponownie, aby kontynuować przywracanie.";
+"wallet__balance_updating" = "Aktualizowanie salda…";

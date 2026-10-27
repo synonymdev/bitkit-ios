@@ -1621,3 +1621,4 @@
 
 "onboarding__connection_settings" = "Definições de ligação";
 "onboarding__connection_saved" = "Guardado. Tente novamente para continuar o restauro.";
+"wallet__balance_updating" = "A atualizar o saldo…";

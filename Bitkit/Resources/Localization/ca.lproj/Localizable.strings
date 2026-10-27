@@ -1825,3 +1825,4 @@
 
 "onboarding__connection_settings" = "Configuració de connexió";
 "onboarding__connection_saved" = "Desat. Torna-ho a provar per continuar restaurant.";
+"wallet__balance_updating" = "S’està actualitzant el saldo…";

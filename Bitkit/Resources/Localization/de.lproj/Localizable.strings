@@ -1961,3 +1961,4 @@
 
 "onboarding__connection_settings" = "Verbindungseinstellungen";
 "onboarding__connection_saved" = "Gespeichert. Versuche es erneut, um die Wiederherstellung fortzusetzen.";
+"wallet__balance_updating" = "Kontostand wird aktualisiert…";

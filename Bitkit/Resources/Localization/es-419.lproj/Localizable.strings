@@ -1967,3 +1967,4 @@
 
 "onboarding__connection_settings" = "Configuración de conexión";
 "onboarding__connection_saved" = "Guardado. Reintenta para continuar la restauración.";
+"wallet__balance_updating" = "Actualizando saldo…";
