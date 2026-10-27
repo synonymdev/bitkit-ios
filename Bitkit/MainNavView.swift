@@ -910,6 +910,14 @@ struct MainNavView: View {
             return
         }
 
+        let sparkInput = url.absoluteString.replacingOccurrences(of: "^lightning:", with: "", options: [.regularExpression, .caseInsensitive])
+        if Env.sparkUsdTokenId != nil, SparkUsd.isSparkInput(sparkInput), app.contactPaymentContext == nil {
+            sheets.hideSheetBeforePerforming(reason: "Deeplink routed Spark dollar payment") {
+                navigation.navigate(.sparkUsdWallet(recipient: sparkInput))
+            }
+            return
+        }
+
         do {
             if let route = try resolveUsdtPaymentRoute(input: url.absoluteString) {
                 guard !usdt.isSendPresented, app.contactPaymentContext == nil else { return }
