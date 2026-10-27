@@ -175,7 +175,9 @@ final class PaykitAllowanceManager {
     /// Whether an incoming request is covered by an active Allowance this wallet granted. A request created before the
     /// Allowance was accepted stays manual: it may already have been shown to the user for a decision.
     func coversRequest(_ request: PaykitPaymentRequest) -> Bool {
-        guard request.isAllowancePayable else { return false }
+        guard request.isAllowancePayable,
+              request.acceptedPaymentEndpointIdentifiers.contains(where: Self.automaticPaymentEndpointIdentifiers.contains)
+        else { return false }
         return allowances.contains { allowance in
             guard allowance.isAllower, allowance.status(at: now()) == .active,
                   PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty), let acceptedAt = allowance.lastEventAt,
@@ -395,6 +397,11 @@ final class PaykitAllowanceManager {
     }
 
     static let acceptanceClockTolerance: TimeInterval = 30
+
+    /// An on-chain miner fee falls outside an allowance's limits, so only a Lightning endpoint pays automatically.
+    static let automaticPaymentEndpointIdentifiers: Set<String> = Set(allowedPaymentEndpointIdentifiers.filter {
+        $0 == PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue || $0 == PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+    })
 
     static let allowedPaymentEndpointIdentifiers: [String] = PaykitIssuerInterop.supportedEndpointIdentifiers(
         PublicPaykitService.MethodId.publishableMethodIds.filter { $0 != .usdtArbitrum }.map(\.rawValue),

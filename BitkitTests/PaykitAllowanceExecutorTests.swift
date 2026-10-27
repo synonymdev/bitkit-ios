@@ -1087,6 +1087,28 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerLeavesABitcoinRequestWithoutALightningEndpointManual() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms(), lastEventAt: "2026-09-24T09:00:00Z")])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        let usdtOnly = try Fixtures.paymentRequest(
+            conversion: .fixed(rates: [.init(asset: "usdt", value: "100000")]),
+            acceptedEndpoints: [PublicPaykitService.MethodId.usdtArbitrum.rawValue]
+        )
+        let onchainOnly = try Fixtures.paymentRequest(acceptedEndpoints: [PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue])
+
+        for request in [usdtOnly, onchainOnly] {
+            XCTAssertFalse(manager.coversRequest(request), "An allowance pays over Lightning only")
+            let isHandling = await manager.isAutomaticallyHandling(request)
+            XCTAssertFalse(isHandling, "The request reaches the Payment Request sheet instead of waiting for a channel")
+        }
+        XCTAssertTrue(try manager.coversRequest(Fixtures.paymentRequest(acceptedEndpoints: [
+            PublicPaykitService.MethodId.usdtArbitrum.rawValue, Fixtures.lightningIdentifier,
+        ])))
+    }
+
+    @MainActor
     func testManagerLeavesRequestsNotPricedInBitcoinManual() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms(), lastEventAt: "2026-09-24T09:00:00Z")])
