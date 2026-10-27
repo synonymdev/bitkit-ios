@@ -711,6 +711,20 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("consumePaymentList"), "A restart must find every consumed list in the journal")
     }
 
+    func testPaymentListIsNotConsumedWhenTheAttemptWasNeverJournaled() async {
+        let harness = AllowanceHarness()
+        await harness.sdk.failJournalAfterReservation(harness.store)
+
+        _ = try? await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertFalse(journal.contains { $0.attemptId == AllowanceSdkMock.automaticAttemptId && $0.paymentListVersion != nil })
+        XCTAssertFalse(
+            harness.log.entries.contains("consumePaymentList"),
+            "Later saves succeed, but recovery would not find this attempt, so its list must not be consumed"
+        )
+    }
+
     func testAutomaticPaymentConsumesThePaymentListAsItsAttempt() async throws {
         let harness = AllowanceHarness()
 
@@ -1806,6 +1820,7 @@ private final class AllowanceMemoryStore: PaykitAllowanceStoring, @unchecked Sen
     private let lock = NSLock()
     private var states: [String: PaykitAllowanceLocalState] = [:]
     private var savesFail = false
+    private var failingSaves = 0
 
     func load(identity: String) throws -> PaykitAllowanceLocalState {
         lock.withLock { states[identity] ?? PaykitAllowanceLocalState() }
@@ -1814,6 +1829,10 @@ private final class AllowanceMemoryStore: PaykitAllowanceStoring, @unchecked Sen
     func save(_ state: PaykitAllowanceLocalState, identity: String) throws {
         try lock.withLock {
             if savesFail {
+                throw AllowanceMockError.unsupported
+            }
+            if failingSaves > 0 {
+                failingSaves -= 1
                 throw AllowanceMockError.unsupported
             }
             states[identity] = state
@@ -1826,6 +1845,10 @@ private final class AllowanceMemoryStore: PaykitAllowanceStoring, @unchecked Sen
 
     func restoreSaves() {
         lock.withLock { savesFail = false }
+    }
+
+    func failNextSave() {
+        lock.withLock { failingSaves = 1 }
     }
 
     func seed(_ state: PaykitAllowanceLocalState, identity: String) {
@@ -2332,12 +2355,21 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         )
     }
 
+    private var storeFailingJournal: AllowanceMemoryStore?
+
+    /// Fails the next journal save, the one that records the attempt this reservation returns.
+    func failJournalAfterReservation(_ store: AllowanceMemoryStore) {
+        storeFailingJournal = store
+    }
+
     func reserveAutomaticPayment(
         occurrence: Paykit.PaymentOccurrence,
         expectedAssociationRevision: UInt64,
         checks: Paykit.PaymentExecutionChecks
     ) async throws -> Paykit.PaymentAttemptDecision {
         log.append("reserveAutomaticPayment")
+        storeFailingJournal?.failNextSave()
+        storeFailingJournal = nil
         reservedAssociationRevisions.append(expectedAssociationRevision)
         if let automaticReservation {
             return automaticReservation

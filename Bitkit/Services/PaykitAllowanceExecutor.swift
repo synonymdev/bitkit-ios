@@ -412,9 +412,9 @@ actor PaykitAllowanceExecutor {
         }
     }
 
-    func checkedUpdateLocalState(identity: String, _ change: (inout PaykitAllowanceLocalState) -> Void) throws {
+    func checkedUpdateLocalState(identity: String, _ change: (inout PaykitAllowanceLocalState) throws -> Void) throws {
         var state = try store.load(identity: identity)
-        change(&state)
+        try change(&state)
         try store.save(state, identity: identity)
     }
 
@@ -882,7 +882,10 @@ actor PaykitAllowanceExecutor {
                 // Journaled before the list is consumed, so recovery gives it back after a restart at any point; the list
                 // records this attempt as its owner, so recovery never gives back one this attempt did not consume.
                 try checkedUpdateLocalState(identity: identity) { state in
-                    guard let index = state.journal.firstIndex(where: { $0.attemptId == submitted.attemptId }) else { return }
+                    // An attempt whose journal entry was never saved could not be recovered, so its list is not consumed.
+                    guard let index = state.journal.firstIndex(where: { $0.attemptId == submitted.attemptId }) else {
+                        throw JournalEntryMissing()
+                    }
                     state.journal[index].paymentListVersion = listVersion
                     state.journal[index].previousPaymentListVersion = previousVersion
                 }
@@ -1093,6 +1096,8 @@ actor PaykitAllowanceExecutor {
             recurrenceEligible: true
         )
     }
+
+    private struct JournalEntryMissing: Error {}
 
     private func journal(_ entry: PaykitAllowanceLocalState.JournalEntry, identity: String) {
         updateLocalState(identity: identity) { state in
