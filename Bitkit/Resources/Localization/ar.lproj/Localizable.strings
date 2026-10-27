@@ -1227,9 +1227,11 @@
 "usdt__confirmed" = "مؤكد";
 "usdt__destination" = "شبكة المستلم";
 "usdt__error_address" = "أدخل عنوانًا صالحًا للشبكة المحددة.";
+"usdt__error_address_spark" = "أدخل عنوان Spark أو فاتورة Spark لهذا الرمز.";
 "usdt__error_amount" = "أدخل مبلغًا صالحًا لا يتجاوز 6 منازل عشرية.";
 "usdt__error_backup" = "تعذر نسخ هذا الدفع احتياطيًا. ستُعاد المحاولة عند توفر النسخ الاحتياطي.";
 "usdt__error_balance" = "رصيد USDT غير كافٍ لتغطية المبلغ والرسوم.";
+"usdt__error_balance_spark" = "لا توجد دولارات كافية على Spark لهذا المبلغ.";
 "usdt__error_bridge_amount" = "المبلغ صغير جدًا لتغطية تكاليف الجسر. جرّب مبلغًا أكبر.";
 "usdt__error_clock" = "اضبط تاريخ جهازك ووقته تلقائيًا، ثم حاول مرة أخرى.";
 "usdt__error_configuration" = "USDT غير متاح حاليًا. يرجى المحاولة مرة أخرى لاحقًا.";
@@ -1261,7 +1263,9 @@
 "usdt__replaced" = "استُبدل بدفعة أخرى";
 "usdt__receive_title" = "استلام الدولارات";
 "usdt__receive_copied" = "تم نسخ العنوان إلى الحافظة.\nتأكد من إرسال USDT على الشبكة المحددة فقط.";
+"usdt__receive_copied_spark" = "تم نسخ الفاتورة إلى الحافظة.";
 "usdt__send_title" = "إرسال USDT";
+"usdt__send_title_spark" = "إرسال دولارات";
 "usdt__deposit_attention" = "يحتاج هذا الإيداع إلى مساعدة من المزود. تواصل مع دعم Bitkit وأرفق مرجع الإيداع.";
 "usdt__deposit_cost" = "الخصم المقدّر (USDT)";
 "usdt__deposit_empty" = "لا توجد إيداعات بعد.";
@@ -1321,6 +1325,7 @@
 "usdt__network" = "الشبكة";
 "usdt__sender_network" = "شبكة المرسل";
 "usdt__sent_title" = "تم إرسال USDT";
+"usdt__sent_title_spark" = "تم إرسال الدولارات";
 "usdt__pay_from" = "الدفع من";
 "usdt__to_network" = "إلى شبكة {network}";
 "usdt__from_address" = "من العنوان";
@@ -1347,6 +1352,15 @@
 "usdt__deposit_refund_confirmation" = "هل تريد طلب استرداد إيداع بقيمة {amount} USDT؟\n\nالشبكة:\n{network}\n\nعنوان الاسترداد:\n{address}\n\nتأكد من أن هذا العنوان يمكنه استلام USDT على {shortNetwork}. قد تُطبَّق رسوم على الاسترداد.";
 "usdt__deposit_tron_refund_note" = "قد تتطلب عمليات الاسترداد على TRON مساعدة من مشغّل Orchestra.";
 "usdt__deposit_refund_address_network" = "عنوان USDT على {network}";
+"usdt__bridge_note_spark" = "ينقل الدولارات من Spark إلى محفظة USDT الخاصة بك على Arbitrum. يحدد مزود الجسر الرسوم.";
+"usdt__bridge_spark" = "إلى USDT";
+"usdt__convert_failed_spark" = "لم يكتمل التحويل. حاول مرة أخرى بعد قليل.";
+"usdt__convert_fee_spark" = "الرسوم";
+"usdt__convert_pay_spark" = "تدفع";
+"usdt__convert_receive_spark" = "تستلم (تقديري)";
+"usdt__convert_spark" = "تحويل";
+"usdt__convert_to_btc_spark" = "احصل على بيتكوين";
+"usdt__convert_to_usd_spark" = "احصل على دولارات";
 "wallet__payment_request" = "طلب دفع";
 "wallet__payment_request_unavailable" = "لم يعد طلب الدفع متاحًا.";
 "wallet__payment_request_expired" = "انتهت صلاحية طلب الدفع.";

@@ -1808,9 +1808,11 @@
 "usdt__confirmed" = "Confirmé";
 "usdt__destination" = "Réseau du destinataire";
 "usdt__error_address" = "Saisissez une adresse valide pour le réseau sélectionné.";
+"usdt__error_address_spark" = "Saisis une adresse Spark ou une facture Spark pour ce jeton.";
 "usdt__error_amount" = "Saisissez un montant valide avec 6 décimales au maximum.";
 "usdt__error_backup" = "Impossible de sauvegarder ce paiement. Une nouvelle tentative aura lieu dès que la sauvegarde sera disponible.";
 "usdt__error_balance" = "USDT insuffisants pour couvrir le montant et les frais.";
+"usdt__error_balance_spark" = "Pas assez de dollars sur Spark pour ce montant.";
 "usdt__error_bridge_amount" = "Montant trop faible pour couvrir les coûts du pont. Essayez un montant plus élevé.";
 "usdt__error_clock" = "Réglez la date et l'heure de votre appareil en automatique, puis réessayez.";
 "usdt__error_configuration" = "USDT est actuellement indisponible. Veuillez réessayer plus tard.";
@@ -1842,7 +1844,9 @@
 "usdt__replaced" = "Remplacé par un autre paiement";
 "usdt__receive_title" = "Recevoir des dollars";
 "usdt__receive_copied" = "Adresse copiée dans le presse-papiers.\nAssurez-vous que les USDT sont envoyés uniquement sur le réseau sélectionné.";
+"usdt__receive_copied_spark" = "Facture copiée dans le presse-papiers.";
 "usdt__send_title" = "Envoyer des USDT";
+"usdt__send_title_spark" = "Envoyer des dollars";
 "usdt__deposit_attention" = "Ce dépôt nécessite l'intervention du prestataire. Contactez le support Bitkit avec la référence du dépôt.";
 "usdt__deposit_cost" = "Déduction estimée (USDT)";
 "usdt__deposit_empty" = "Aucun dépôt pour l'instant.";
@@ -1902,6 +1906,7 @@
 "usdt__network" = "Réseau";
 "usdt__sender_network" = "Réseau d'envoi";
 "usdt__sent_title" = "USDT envoyés";
+"usdt__sent_title_spark" = "Dollars envoyés";
 "usdt__pay_from" = "Payer depuis";
 "usdt__to_network" = "Vers le réseau {network}";
 "usdt__from_address" = "Adresse d'envoi";
@@ -1928,6 +1933,15 @@
 "usdt__deposit_refund_confirmation" = "Demander le remboursement du dépôt de {amount} USDT ?\n\nRéseau :\n{network}\n\nAdresse de remboursement :\n{address}\n\nVérifiez que cette adresse peut recevoir des USDT sur {shortNetwork}. Des frais de remboursement peuvent s'appliquer.";
 "usdt__deposit_tron_refund_note" = "Les remboursements TRON peuvent nécessiter l'intervention d'un opérateur Orchestra.";
 "usdt__deposit_refund_address_network" = "Adresse USDT sur {network}";
+"usdt__bridge_note_spark" = "Transfère des dollars de Spark vers ton portefeuille USDT sur Arbitrum. Le fournisseur du pont fixe les frais.";
+"usdt__bridge_spark" = "Vers USDT";
+"usdt__convert_failed_spark" = "La conversion n'a pas abouti. Réessaie dans un instant.";
+"usdt__convert_fee_spark" = "Frais";
+"usdt__convert_pay_spark" = "Tu paies";
+"usdt__convert_receive_spark" = "Tu reçois (est.)";
+"usdt__convert_spark" = "Convertir";
+"usdt__convert_to_btc_spark" = "Obtenir du bitcoin";
+"usdt__convert_to_usd_spark" = "Obtenir des dollars";
 "subscriptions__allowances" = "Allocations";
 "subscriptions__allowances_empty_headline" = "Configurez\n<accent>des allocations</accent>";
 "subscriptions__allowances_empty_description" = "Vous pouvez définir des limites de dépenses pour régler automatiquement les demandes de paiement de contacts de confiance.";

@@ -1797,9 +1797,11 @@
 "usdt__confirmed" = "Potvrzeno";
 "usdt__destination" = "Síť příjemce";
 "usdt__error_address" = "Zadejte platnou adresu pro vybranou síť.";
+"usdt__error_address_spark" = "Zadej adresu Spark nebo fakturu Spark pro tento token.";
 "usdt__error_amount" = "Zadejte platnou částku s nejvýše 6 desetinnými místy.";
 "usdt__error_backup" = "Tuto platbu nelze zálohovat. Záloha se zopakuje, jakmile bude zálohování dostupné.";
 "usdt__error_balance" = "Nemáte dostatek USDT na pokrytí částky a poplatků.";
+"usdt__error_balance_spark" = "Na Sparku nemáš na tuto částku dost dolarů.";
 "usdt__error_bridge_amount" = "Částka je příliš malá na pokrytí nákladů mostu. Zkuste vyšší částku.";
 "usdt__error_clock" = "Nastavte automatické datum a čas zařízení a zkuste to znovu.";
 "usdt__error_configuration" = "USDT momentálně není k dispozici. Zkuste to prosím později.";
@@ -1831,7 +1833,9 @@
 "usdt__replaced" = "Nahrazeno jinou platbou";
 "usdt__receive_title" = "Přijmout dolary";
 "usdt__receive_copied" = "Adresa byla zkopírována do schránky.\nUjistěte se, že USDT posíláte pouze prostřednictvím vybrané sítě.";
+"usdt__receive_copied_spark" = "Faktura zkopírována do schránky.";
 "usdt__send_title" = "Odeslat USDT";
+"usdt__send_title_spark" = "Poslat dolary";
 "usdt__deposit_attention" = "Tento vklad vyžaduje pomoc poskytovatele. Kontaktujte podporu Bitkit a uveďte referenci vkladu.";
 "usdt__deposit_cost" = "Odhadovaná srážka (USDT)";
 "usdt__deposit_empty" = "Zatím žádné vklady.";
@@ -1891,6 +1895,7 @@
 "usdt__network" = "Síť";
 "usdt__sender_network" = "Síť odesílatele";
 "usdt__sent_title" = "Odeslané USDT";
+"usdt__sent_title_spark" = "Dolary odeslány";
 "usdt__pay_from" = "Platit z";
 "usdt__to_network" = "Do sítě {network}";
 "usdt__from_address" = "Z adresy";
@@ -1917,6 +1922,15 @@
 "usdt__deposit_refund_confirmation" = "Požádat o vrácení vkladu {amount} USDT?\n\nSíť:\n{network}\n\nAdresa pro vrácení:\n{address}\n\nPotvrďte, že tato adresa může přijímat USDT v síti {shortNetwork}. Mohou být účtovány poplatky za vrácení.";
 "usdt__deposit_tron_refund_note" = "Vrácení prostředků v síti TRON může vyžadovat pomoc operátora Orchestra.";
 "usdt__deposit_refund_address_network" = "Adresa USDT v síti {network}";
+"usdt__bridge_note_spark" = "Přesune dolary ze Sparku do tvé peněženky USDT na Arbitru. Poplatek určuje poskytovatel mostu.";
+"usdt__bridge_spark" = "Do USDT";
+"usdt__convert_failed_spark" = "Převod se nedokončil. Zkus to za chvíli znovu.";
+"usdt__convert_fee_spark" = "Poplatek";
+"usdt__convert_pay_spark" = "Zaplatíš";
+"usdt__convert_receive_spark" = "Dostaneš (odhad)";
+"usdt__convert_spark" = "Převést";
+"usdt__convert_to_btc_spark" = "Získat bitcoin";
+"usdt__convert_to_usd_spark" = "Získat dolary";
 "subscriptions__allowances" = "Povolení plateb";
 "subscriptions__allowances_empty_headline" = "Nastavte\n<accent>povolení plateb</accent>";
 "subscriptions__allowances_empty_description" = "Můžete nastavit limity útraty a automaticky tak vyřizovat žádosti o platbu od důvěryhodných kontaktů.";

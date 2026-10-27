@@ -300,12 +300,17 @@ enum Env {
     }
 
     /// The Spark token held as the dollar balance on Spark, matched by identifier since anyone can issue a token with
-    /// any ticker. No Tether-issued USDT exists on Spark yet, so both networks use a 6-decimal test token issued for testing:
-    /// "Test Tether USD" on Lightspark's regtest and "Bitkit Test Dollar" (tUSD) on mainnet.
+    /// any ticker. Mainnet holds USDB, Brale's 6-decimal dollar token on Spark; regtest holds a 6-decimal "Test USDB" token
+    /// issued on Lightspark's regtest.
+    /// Orchestra, which bridges Spark dollars to Arbitrum USDT, serves mainnet only.
+    static var isSparkBridgeAvailable: Bool {
+        network == .bitcoin
+    }
+
     static var sparkUsdTokenId: String? {
         switch network {
-        case .regtest: "btknrt1e2h2l3jwna0dzwfjsf3dcgck8zjuug3qprnuvl7hs23a68xvz38q7966fl"
-        case .bitcoin: "btkn1nhdmkalm7wwh5pylhwacwwxeghv2q9mf0f3km44rruv0jf7vhm7stwkdzs"
+        case .regtest: "btknrt1wrr0qtshpyuzrx5p0mvd605dnwvfv3dcpfexqgfzpgl3rykdacsq6p8z6l"
+        case .bitcoin: "btkn1xgrvjwey5ngcagvap2dzzvsy4uk8ua9x69k82dwvt5e7ef9drm9qztux87"
         default: nil
         }
     }

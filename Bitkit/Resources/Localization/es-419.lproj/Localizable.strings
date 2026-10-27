@@ -1800,9 +1800,11 @@
 "usdt__confirmed" = "Confirmado";
 "usdt__destination" = "Red del destinatario";
 "usdt__error_address" = "Ingrese una dirección válida para la red seleccionada.";
+"usdt__error_address_spark" = "Ingresa una dirección de Spark o una factura de Spark para este token.";
 "usdt__error_amount" = "Ingrese un monto válido con hasta 6 decimales.";
 "usdt__error_backup" = "No se pudo hacer una copia de seguridad de este pago. Se reintentará cuando la copia de seguridad esté disponible.";
 "usdt__error_balance" = "No tiene suficientes USDT para cubrir el monto y las comisiones.";
+"usdt__error_balance_spark" = "No tienes suficientes dólares en Spark para este monto.";
 "usdt__error_bridge_amount" = "Monto demasiado bajo para cubrir los costos del puente. Pruebe con un monto mayor.";
 "usdt__error_clock" = "Configure la fecha y la hora de su dispositivo en automático y vuelva a intentarlo.";
 "usdt__error_configuration" = "USDT no está disponible en este momento. Vuelva a intentarlo más tarde.";
@@ -1834,7 +1836,9 @@
 "usdt__replaced" = "Reemplazado por otro pago";
 "usdt__receive_title" = "Recibir dólares";
 "usdt__receive_copied" = "Dirección copiada al portapapeles.\nAsegúrate de enviar USDT solo a través de la red seleccionada.";
+"usdt__receive_copied_spark" = "Factura copiada al portapapeles.";
 "usdt__send_title" = "Enviar USDT";
+"usdt__send_title_spark" = "Enviar dólares";
 "usdt__deposit_attention" = "Este depósito requiere la asistencia del proveedor. Comuníquese con el soporte de Bitkit e indique la referencia del depósito.";
 "usdt__deposit_cost" = "Deducción estimada (USDT)";
 "usdt__deposit_empty" = "Aún no hay depósitos.";
@@ -1894,6 +1898,7 @@
 "usdt__network" = "Red";
 "usdt__sender_network" = "Red del remitente";
 "usdt__sent_title" = "USDT enviados";
+"usdt__sent_title_spark" = "Dólares enviados";
 "usdt__pay_from" = "Pagar desde";
 "usdt__to_network" = "A la red {network}";
 "usdt__from_address" = "Origen";
@@ -1920,6 +1925,15 @@
 "usdt__deposit_refund_confirmation" = "¿Solicitar el reembolso del depósito de {amount} USDT?\n\nRed:\n{network}\n\nDirección de reembolso:\n{address}\n\nConfirme que esta dirección puede recibir USDT en {shortNetwork}. Es posible que se apliquen comisiones de reembolso.";
 "usdt__deposit_tron_refund_note" = "Los reembolsos en TRON pueden requerir la asistencia del operador de Orchestra.";
 "usdt__deposit_refund_address_network" = "Dirección USDT en {network}";
+"usdt__bridge_note_spark" = "Mueve dólares de Spark a tu billetera USDT en Arbitrum. El proveedor del puente fija la comisión.";
+"usdt__bridge_spark" = "A USDT";
+"usdt__convert_failed_spark" = "La conversión no se completó. Inténtalo de nuevo en un momento.";
+"usdt__convert_fee_spark" = "Comisión";
+"usdt__convert_pay_spark" = "Pagas";
+"usdt__convert_receive_spark" = "Recibes (est.)";
+"usdt__convert_spark" = "Convertir";
+"usdt__convert_to_btc_spark" = "Obtener bitcoin";
+"usdt__convert_to_usd_spark" = "Obtener dólares";
 "subscriptions__allowances" = "Asignaciones";
 "subscriptions__allowances_empty_headline" = "Configure\n<accent>asignaciones</accent>";
 "subscriptions__allowances_empty_description" = "Puede establecer límites de gasto para pagar automáticamente las solicitudes de pago de contactos de confianza.";

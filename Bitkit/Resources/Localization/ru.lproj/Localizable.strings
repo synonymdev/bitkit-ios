@@ -1788,9 +1788,11 @@
 "usdt__confirmed" = "Подтверждено";
 "usdt__destination" = "Сеть получателя";
 "usdt__error_address" = "Введите действительный адрес для выбранной сети.";
+"usdt__error_address_spark" = "Введите адрес Spark или счёт Spark для этого токена.";
 "usdt__error_amount" = "Введите корректную сумму, не более 6 знаков после запятой.";
 "usdt__error_backup" = "Не удалось создать резервную копию этого платежа. Попытка повторится, когда резервное копирование станет доступно.";
 "usdt__error_balance" = "Недостаточно USDT для оплаты суммы и комиссий.";
+"usdt__error_balance_spark" = "Недостаточно долларов в Spark для этой суммы.";
 "usdt__error_bridge_amount" = "Сумма слишком мала для покрытия расходов моста. Попробуйте сумму побольше.";
 "usdt__error_clock" = "Включите автоматическую установку даты и времени на устройстве и попробуйте ещё раз.";
 "usdt__error_configuration" = "USDT сейчас недоступен. Попробуйте позже.";
@@ -1822,7 +1824,9 @@
 "usdt__replaced" = "Заменён другим платежом";
 "usdt__receive_title" = "Получить Доллары";
 "usdt__receive_copied" = "Адрес скопирован в буфер обмена.\nОтправляйте USDT только через выбранную сеть.";
+"usdt__receive_copied_spark" = "Счёт скопирован в буфер обмена.";
 "usdt__send_title" = "Отправить USDT";
+"usdt__send_title_spark" = "Отправить доллары";
 "usdt__deposit_attention" = "Этому депозиту нужна помощь провайдера. Свяжитесь с поддержкой Bitkit и укажите ID депозита.";
 "usdt__deposit_cost" = "Примерное удержание (USDT)";
 "usdt__deposit_empty" = "Депозитов пока нет.";
@@ -1882,6 +1886,7 @@
 "usdt__network" = "Сеть";
 "usdt__sender_network" = "Сеть отправителя";
 "usdt__sent_title" = "Отправлено USDT";
+"usdt__sent_title_spark" = "Доллары отправлены";
 "usdt__pay_from" = "Оплатить с";
 "usdt__to_network" = "В сеть {network}";
 "usdt__from_address" = "С адреса";
@@ -1908,6 +1913,15 @@
 "usdt__deposit_refund_confirmation" = "Запросить возврат депозита {amount} USDT?\n\nСеть:\n{network}\n\nАдрес для возврата:\n{address}\n\nУбедитесь, что этот адрес может получать USDT в сети {shortNetwork}. Может взиматься комиссия за возврат.";
 "usdt__deposit_tron_refund_note" = "Для возвратов в сети TRON может потребоваться помощь оператора Orchestra.";
 "usdt__deposit_refund_address_network" = "Адрес USDT в сети {network}";
+"usdt__bridge_note_spark" = "Переводит доллары из Spark в ваш кошелёк USDT в Arbitrum. Комиссию устанавливает провайдер моста.";
+"usdt__bridge_spark" = "В USDT";
+"usdt__convert_failed_spark" = "Обмен не завершился. Попробуйте ещё раз чуть позже.";
+"usdt__convert_fee_spark" = "Комиссия";
+"usdt__convert_pay_spark" = "Вы платите";
+"usdt__convert_receive_spark" = "Вы получите (≈)";
+"usdt__convert_spark" = "Обменять";
+"usdt__convert_to_btc_spark" = "Получить биткоин";
+"usdt__convert_to_usd_spark" = "Получить доллары";
 "subscriptions__allowances" = "Лимиты автооплаты";
 "subscriptions__allowances_empty_headline" = "Настройте\n<accent>лимиты автооплаты</accent>";
 "subscriptions__allowances_empty_description" = "Вы можете задать лимиты расходов, чтобы автоматически оплачивать запросы на оплату от доверенных контактов.";

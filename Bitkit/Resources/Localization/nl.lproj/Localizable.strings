@@ -1802,9 +1802,11 @@
 "usdt__confirmed" = "Bevestigd";
 "usdt__destination" = "Netwerk ontvanger";
 "usdt__error_address" = "Voer een geldig adres in voor het geselecteerde netwerk.";
+"usdt__error_address_spark" = "Voer een Spark-adres of een Spark-factuur voor deze token in.";
 "usdt__error_amount" = "Voer een geldig bedrag in met maximaal 6 decimalen.";
 "usdt__error_backup" = "Kan deze betaling niet back-uppen. Dit wordt opnieuw geprobeerd zodra de back-up beschikbaar is.";
 "usdt__error_balance" = "Niet genoeg USDT voor het bedrag en de vergoedingen.";
+"usdt__error_balance_spark" = "Niet genoeg dollars op Spark voor dit bedrag.";
 "usdt__error_bridge_amount" = "Bedrag te klein om de bridgekosten te dekken. Probeer een hoger bedrag.";
 "usdt__error_clock" = "Stel de datum en tijd van uw apparaat in op automatisch en probeer het opnieuw.";
 "usdt__error_configuration" = "USDT is momenteel niet beschikbaar. Probeer het later opnieuw.";
@@ -1836,7 +1838,9 @@
 "usdt__replaced" = "Vervangen door andere betaling";
 "usdt__receive_title" = "Dollars ontvangen";
 "usdt__receive_copied" = "Adres gekopieerd naar klembord.\nZorg ervoor dat USDT alleen via het geselecteerde netwerk wordt verstuurd.";
+"usdt__receive_copied_spark" = "Factuur gekopieerd naar het klembord.";
 "usdt__send_title" = "USDT verzenden";
+"usdt__send_title_spark" = "Dollars verzenden";
 "usdt__deposit_attention" = "Deze storting vereist hulp van de provider. Neem contact op met Bitkit-support en vermeld de stortingsreferentie.";
 "usdt__deposit_cost" = "Geschatte aftrek (USDT)";
 "usdt__deposit_empty" = "Nog geen stortingen.";
@@ -1896,6 +1900,7 @@
 "usdt__network" = "Netwerk";
 "usdt__sender_network" = "Netwerk afzender";
 "usdt__sent_title" = "USDT verzonden";
+"usdt__sent_title_spark" = "Dollars verzonden";
 "usdt__pay_from" = "Betalen met";
 "usdt__to_network" = "Naar netwerk {network}";
 "usdt__from_address" = "Van adres";
@@ -1922,6 +1927,15 @@
 "usdt__deposit_refund_confirmation" = "Terugbetaling aanvragen voor storting van {amount} USDT?\n\nNetwerk:\n{network}\n\nTerugbetalingsadres:\n{address}\n\nControleer of dit adres USDT kan ontvangen op {shortNetwork}. Er kunnen terugbetalingskosten gelden.";
 "usdt__deposit_tron_refund_note" = "Voor TRON-terugbetalingen kan hulp van een Orchestra-operator nodig zijn.";
 "usdt__deposit_refund_address_network" = "USDT-adres op {network}";
+"usdt__bridge_note_spark" = "Verplaatst dollars van Spark naar je USDT-wallet op Arbitrum. De bridge-aanbieder bepaalt de kosten.";
+"usdt__bridge_spark" = "Naar USDT";
+"usdt__convert_failed_spark" = "De omzetting is niet voltooid. Probeer het zo opnieuw.";
+"usdt__convert_fee_spark" = "Kosten";
+"usdt__convert_pay_spark" = "Je betaalt";
+"usdt__convert_receive_spark" = "Je ontvangt (ca.)";
+"usdt__convert_spark" = "Omzetten";
+"usdt__convert_to_btc_spark" = "Bitcoin krijgen";
+"usdt__convert_to_usd_spark" = "Dollars krijgen";
 "subscriptions__allowances" = "Toelagen";
 "subscriptions__allowances_empty_headline" = "Stel\n<accent>toelagen</accent> in";
 "subscriptions__allowances_empty_description" = "U kunt bestedingslimieten instellen om betaalverzoeken van vertrouwde contacten automatisch te voldoen.";

@@ -1657,9 +1657,11 @@
 "usdt__confirmed" = "Confirmat";
 "usdt__destination" = "Xarxa del destinatari";
 "usdt__error_address" = "Introdueix una adreça vàlida per a la xarxa seleccionada.";
+"usdt__error_address_spark" = "Introdueix una adreça de Spark o una factura de Spark per a aquest token.";
 "usdt__error_amount" = "Introdueix un import vàlid amb un màxim de 6 decimals.";
 "usdt__error_backup" = "No es pot fer la còpia de seguretat d'aquest pagament. Es tornarà a intentar quan la còpia de seguretat estigui disponible.";
 "usdt__error_balance" = "No tens prou USDT per cobrir l'import i les tarifes.";
+"usdt__error_balance_spark" = "No tens prou dòlars a Spark per a aquest import.";
 "usdt__error_bridge_amount" = "L'import és massa petit per cobrir els costos del pont. Prova amb un import més gran.";
 "usdt__error_clock" = "Configura la data i l'hora del dispositiu en mode automàtic i torna-ho a provar.";
 "usdt__error_configuration" = "USDT no està disponible ara mateix. Torna-ho a provar més tard.";
@@ -1691,7 +1693,9 @@
 "usdt__replaced" = "Substituït per un altre pagament";
 "usdt__receive_title" = "Rebre dòlars";
 "usdt__receive_copied" = "Adreça copiada al porta-retalls.\nAssegura’t que l’USDT només s’enviï a través de la xarxa seleccionada.";
+"usdt__receive_copied_spark" = "Factura copiada al porta-retalls.";
 "usdt__send_title" = "Enviar USDT";
+"usdt__send_title_spark" = "Envia dòlars";
 "usdt__deposit_attention" = "Aquest dipòsit requereix l'assistència del proveïdor. Contacta amb el suport de Bitkit i indica la referència del dipòsit.";
 "usdt__deposit_cost" = "Deducció estimada (USDT)";
 "usdt__deposit_empty" = "Encara no hi ha dipòsits.";
@@ -1751,6 +1755,7 @@
 "usdt__network" = "Xarxa";
 "usdt__sender_network" = "Xarxa del remitent";
 "usdt__sent_title" = "USDT enviats";
+"usdt__sent_title_spark" = "Dòlars enviats";
 "usdt__pay_from" = "Pagar des de";
 "usdt__to_network" = "A la xarxa {network}";
 "usdt__from_address" = "Adreça d'origen";
@@ -1777,6 +1782,15 @@
 "usdt__deposit_refund_confirmation" = "Vols demanar la devolució del dipòsit de {amount} USDT?\n\nXarxa:\n{network}\n\nAdreça de devolució:\n{address}\n\nConfirma que aquesta adreça pot rebre USDT a {shortNetwork}. Es poden aplicar tarifes de devolució.";
 "usdt__deposit_tron_refund_note" = "Les devolucions de TRON poden requerir l'assistència d'un operador d'Orchestra.";
 "usdt__deposit_refund_address_network" = "Adreça USDT a {network}";
+"usdt__bridge_note_spark" = "Mou dòlars de Spark a la teva cartera USDT a Arbitrum. El proveïdor del pont fixa la comissió.";
+"usdt__bridge_spark" = "A USDT";
+"usdt__convert_failed_spark" = "La conversió no s'ha completat. Torna-ho a provar d'aquí a un moment.";
+"usdt__convert_fee_spark" = "Comissió";
+"usdt__convert_pay_spark" = "Pagues";
+"usdt__convert_receive_spark" = "Reps (est.)";
+"usdt__convert_spark" = "Convertir";
+"usdt__convert_to_btc_spark" = "Obtenir bitcoin";
+"usdt__convert_to_usd_spark" = "Obtenir dòlars";
 "wallet__send_error_support" = "Contacta amb el suport";
 "subscriptions__allowances" = "Assignacions";
 "subscriptions__allowances_empty_headline" = "Configura\n<accent>assignacions</accent>";

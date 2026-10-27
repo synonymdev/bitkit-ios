@@ -1528,9 +1528,11 @@
 "usdt__confirmed" = "Επιβεβαιώθηκε";
 "usdt__destination" = "Δίκτυο παραλήπτη";
 "usdt__error_address" = "Εισάγαγε έγκυρη διεύθυνση για το επιλεγμένο δίκτυο.";
+"usdt__error_address_spark" = "Εισάγε μια διεύθυνση Spark ή ένα τιμολόγιο Spark για αυτό το token.";
 "usdt__error_amount" = "Εισάγαγε έγκυρο ποσό με έως 6 δεκαδικά ψηφία.";
 "usdt__error_backup" = "Δεν ήταν δυνατή η δημιουργία αντιγράφου ασφαλείας αυτής της πληρωμής. Θα γίνει νέα προσπάθεια όταν είναι διαθέσιμο το αντίγραφο ασφαλείας.";
 "usdt__error_balance" = "Δεν υπάρχουν αρκετά USDT για την κάλυψη του ποσού και των τελών.";
+"usdt__error_balance_spark" = "Δεν υπάρχουν αρκετά δολάρια στο Spark για αυτό το ποσό.";
 "usdt__error_bridge_amount" = "Το ποσό είναι πολύ μικρό για να καλύψει τα κόστη της γέφυρας. Δοκίμασε μεγαλύτερο ποσό.";
 "usdt__error_clock" = "Ρύθμισε την ημερομηνία και την ώρα της συσκευής σου σε αυτόματη και δοκίμασε ξανά.";
 "usdt__error_configuration" = "Το USDT δεν είναι διαθέσιμο αυτή τη στιγμή. Δοκίμασε ξανά αργότερα.";
@@ -1562,7 +1564,9 @@
 "usdt__replaced" = "Αντικαταστάθηκε από άλλη πληρωμή";
 "usdt__receive_title" = "Λήψη δολαρίων";
 "usdt__receive_copied" = "Η διεύθυνση αντιγράφηκε στο πρόχειρο.\nΒεβαιώσου ότι το USDT αποστέλλεται μόνο μέσω του επιλεγμένου δικτύου.";
+"usdt__receive_copied_spark" = "Το τιμολόγιο αντιγράφηκε στο πρόχειρο.";
 "usdt__send_title" = "Αποστολή USDT";
+"usdt__send_title_spark" = "Αποστολή δολαρίων";
 "usdt__deposit_attention" = "Αυτή η κατάθεση χρειάζεται βοήθεια από τον πάροχο. Επικοινώνησε με την υποστήριξη του Bitkit δίνοντας την αναφορά της κατάθεσης.";
 "usdt__deposit_cost" = "Εκτιμώμενη κράτηση (USDT)";
 "usdt__deposit_empty" = "Καμία κατάθεση ακόμα.";
@@ -1622,6 +1626,7 @@
 "usdt__network" = "Δίκτυο";
 "usdt__sender_network" = "Δίκτυο αποστολέα";
 "usdt__sent_title" = "Στάλθηκαν USDT";
+"usdt__sent_title_spark" = "Τα δολάρια στάλθηκαν";
 "usdt__pay_from" = "Πληρωμή από";
 "usdt__to_network" = "Προς δίκτυο {network}";
 "usdt__from_address" = "Από διεύθυνση";
@@ -1648,6 +1653,15 @@
 "usdt__deposit_refund_confirmation" = "Να υποβληθεί αίτημα επιστροφής για την κατάθεση {amount} USDT;\n\nΔίκτυο:\n{network}\n\nΔιεύθυνση επιστροφής:\n{address}\n\nΒεβαιώσου ότι αυτή η διεύθυνση μπορεί να λάβει USDT στο {shortNetwork}. Ενδέχεται να ισχύουν τέλη επιστροφής.";
 "usdt__deposit_tron_refund_note" = "Οι επιστροφές στο TRON μπορεί να απαιτούν βοήθεια από χειριστή του Orchestra.";
 "usdt__deposit_refund_address_network" = "Διεύθυνση USDT στο {network}";
+"usdt__bridge_note_spark" = "Μεταφέρει δολάρια από το Spark στο πορτοφόλι USDT σου στο Arbitrum. Τη χρέωση ορίζει ο πάροχος της γέφυρας.";
+"usdt__bridge_spark" = "Σε USDT";
+"usdt__convert_failed_spark" = "Η μετατροπή δεν ολοκληρώθηκε. Δοκίμασε ξανά σε λίγο.";
+"usdt__convert_fee_spark" = "Χρέωση";
+"usdt__convert_pay_spark" = "Πληρώνεις";
+"usdt__convert_receive_spark" = "Λαμβάνεις (εκτ.)";
+"usdt__convert_spark" = "Μετατροπή";
+"usdt__convert_to_btc_spark" = "Λήψη bitcoin";
+"usdt__convert_to_usd_spark" = "Λήψη δολαρίων";
 "wallet__send_error_support" = "Επικοινωνία με Υποστήριξη";
 "subscriptions__allowances" = "Προεγκρίσεις";
 "subscriptions__allowances_empty_headline" = "Ρύθμισε\n<accent>προεγκρίσεις</accent>";

@@ -1889,9 +1889,11 @@
 "usdt__destination" = "Recipient network";
 "usdt__empty" = "No activity found yet.";
 "usdt__error_address" = "Enter a valid address for the selected network.";
+"usdt__error_address_spark" = "Enter a Spark address or a Spark invoice for this token.";
 "usdt__error_amount" = "Enter a valid amount with up to 6 decimal places.";
 "usdt__error_backup" = "Unable to back up this payment. It will be retried when backup is available.";
 "usdt__error_balance" = "Not enough USDT to cover the amount and fees.";
+"usdt__error_balance_spark" = "Not enough dollars on Spark for this amount.";
 "usdt__error_bridge_amount" = "Amount too small to cover bridge costs. Try a larger amount.";
 "usdt__error_clock" = "Set your device date and time automatically, then try again.";
 "usdt__error_configuration" = "USDT is currently unavailable. Please try again later.";
@@ -1929,6 +1931,7 @@
 "usdt__balance" = "Balance";
 "usdt__receive_title" = "Receive Dollars";
 "usdt__send_title" = "Send USDT";
+"usdt__send_title_spark" = "Send Dollars";
 
 "usdt__deposit_amount" = "Deposit amount";
 "usdt__deposit_attention" = "This deposit needs provider assistance. Contact Bitkit support with the deposit reference.";
@@ -2016,6 +2019,7 @@
 "usdt__network" = "Network";
 "usdt__sender_network" = "Sender network";
 "usdt__sent_title" = "Sent USDT";
+"usdt__sent_title_spark" = "Sent Dollars";
 "usdt__pay_from" = "Pay from";
 
 "usdt__to_network" = "To network {network}";
@@ -2056,3 +2060,13 @@
 "usdt__error_bridge_maximum" = "Amount is above this route’s maximum. Try a smaller amount.";
 "usdt__error_bridge_liquidity" = "This route cannot complete the transfer right now. Try another network or try again later.";
 "usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";
+"usdt__receive_copied_spark" = "Invoice copied to clipboard.";
+"usdt__bridge_note_spark" = "Moves dollars from Spark to your USDT wallet on Arbitrum. The bridge provider sets the fee.";
+"usdt__bridge_spark" = "To USDT";
+"usdt__convert_failed_spark" = "The conversion did not complete. Try again in a moment.";
+"usdt__convert_fee_spark" = "Fee";
+"usdt__convert_pay_spark" = "You pay";
+"usdt__convert_receive_spark" = "You receive (est.)";
+"usdt__convert_spark" = "Convert";
+"usdt__convert_to_btc_spark" = "Get bitcoin";
+"usdt__convert_to_usd_spark" = "Get dollars";

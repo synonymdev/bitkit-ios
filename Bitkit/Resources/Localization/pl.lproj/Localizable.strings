@@ -1807,9 +1807,11 @@
 "usdt__confirmed" = "Potwierdzono";
 "usdt__destination" = "Sieć odbiorcy";
 "usdt__error_address" = "Wprowadź prawidłowy adres dla wybranej sieci.";
+"usdt__error_address_spark" = "Wpisz adres Spark lub fakturę Spark dla tego tokena.";
 "usdt__error_amount" = "Wprowadź prawidłową kwotę z maksymalnie 6 miejscami po przecinku.";
 "usdt__error_backup" = "Nie można utworzyć kopii zapasowej tej płatności. Ponowna próba nastąpi, gdy kopia zapasowa będzie dostępna.";
 "usdt__error_balance" = "Za mało USDT na pokrycie kwoty i opłat.";
+"usdt__error_balance_spark" = "Za mało dolarów na Sparku na tę kwotę.";
 "usdt__error_bridge_amount" = "Kwota jest za mała, aby pokryć koszty mostu. Spróbuj większej kwoty.";
 "usdt__error_clock" = "Ustaw automatyczną datę i godzinę na urządzeniu, a następnie spróbuj ponownie.";
 "usdt__error_configuration" = "USDT jest obecnie niedostępne. Spróbuj ponownie później.";
@@ -1841,7 +1843,9 @@
 "usdt__replaced" = "Zastąpiona inną płatnością";
 "usdt__receive_title" = "Otrzymaj dolary";
 "usdt__receive_copied" = "Adres skopiowany do schowka.\nUpewnij się, że USDT jest wysyłany tylko przez wybraną sieć.";
+"usdt__receive_copied_spark" = "Faktura skopiowana do schowka.";
 "usdt__send_title" = "Wyślij USDT";
+"usdt__send_title_spark" = "Wyślij dolary";
 "usdt__deposit_attention" = "Ta wpłata wymaga pomocy dostawcy. Skontaktuj się z pomocą Bitkit i podaj identyfikator wpłaty.";
 "usdt__deposit_cost" = "Szacowane potrącenie (USDT)";
 "usdt__deposit_empty" = "Brak wpłat.";
@@ -1901,6 +1905,7 @@
 "usdt__network" = "Sieć";
 "usdt__sender_network" = "Sieć nadawcy";
 "usdt__sent_title" = "Wysłano USDT";
+"usdt__sent_title_spark" = "Dolary wysłane";
 "usdt__pay_from" = "Zapłać z";
 "usdt__to_network" = "Do sieci {network}";
 "usdt__from_address" = "Z adresu";
@@ -1927,6 +1932,15 @@
 "usdt__deposit_refund_confirmation" = "Poprosić o zwrot wpłaty {amount} USDT?\n\nSieć:\n{network}\n\nAdres zwrotu:\n{address}\n\nUpewnij się, że ten adres może odbierać USDT w sieci {shortNetwork}. Mogą obowiązywać opłaty za zwrot.";
 "usdt__deposit_tron_refund_note" = "Zwroty w sieci TRON mogą wymagać pomocy operatora Orchestra.";
 "usdt__deposit_refund_address_network" = "Adres USDT w sieci {network}";
+"usdt__bridge_note_spark" = "Przenosi dolary ze Sparka do Twojego portfela USDT na Arbitrum. Opłatę ustala dostawca mostu.";
+"usdt__bridge_spark" = "Do USDT";
+"usdt__convert_failed_spark" = "Wymiana nie została ukończona. Spróbuj ponownie za chwilę.";
+"usdt__convert_fee_spark" = "Opłata";
+"usdt__convert_pay_spark" = "Płacisz";
+"usdt__convert_receive_spark" = "Otrzymasz (szac.)";
+"usdt__convert_spark" = "Wymień";
+"usdt__convert_to_btc_spark" = "Otrzymaj bitcoin";
+"usdt__convert_to_usd_spark" = "Otrzymaj dolary";
 "subscriptions__allowances" = "Przydziały";
 "subscriptions__allowances_empty_headline" = "Ustaw\n<accent>przydziały</accent>";
 "subscriptions__allowances_empty_description" = "Możesz ustawić limity wydatków, aby automatycznie realizować żądania płatności od zaufanych kontaktów.";

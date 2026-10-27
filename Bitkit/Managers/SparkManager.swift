@@ -107,6 +107,9 @@ final class SparkManager: ChannelFreeLightningRail {
             onchain: .networkRecommended(leewaySatPerVbyte: Self.depositClaimFeeLeewaySatPerVbyte),
             proportionalPpm: Self.depositClaimFeePpm
         )
+        if network == .mainnet {
+            config.crossChainConfig = CrossChainConfig(defaultSlippageBps: nil, defaultTargetOverpayBps: nil)
+        }
         let storageDir = Env.sparkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
         let connected = try await BreezSdkSpark.connect(request: ConnectRequest(
@@ -325,6 +328,81 @@ final class SparkManager: ChannelFreeLightningRail {
         ))
         let payment = try await sdk.sendPayment(request: SendPaymentRequest(prepareResponse: prepared, options: nil)).payment
         Logger.info("Sent Spark dollar payment '\(payment.id)' with status '\(payment.status)'", context: "SparkManager")
+        try await refresh()
+    }
+
+    /// Quotes converting within the wallet through Flashnet: `amount` dollar units to get when `toUsd`, or to give when
+    /// converting to bitcoin. The SDK runs a payment to the wallet's own Spark address as a self-transfer.
+    func quoteConversion(toUsd: Bool, amount: UInt64) async throws -> SparkUsdQuote {
+        guard let tokenId = Env.sparkUsdTokenId else { throw SparkUsdError.noToken }
+        let sdk = try await requireSdk()
+        let decimals = try await usdDecimals(tokenId)
+        let ownAddress = try await sdk.receivePayment(request: ReceivePaymentRequest(paymentMethod: .sparkAddress)).paymentRequest
+        let prepared = try await sdk.prepareSendPayment(request: PrepareSendPaymentRequest(
+            paymentRequest: .input(input: ownAddress),
+            amount: SparkUsd.fromUsdUnits(amount, decimals: decimals),
+            tokenIdentifier: tokenId,
+            conversionOptions: ConversionOptions(
+                conversionType: toUsd ? .fromBitcoin : .toBitcoin(fromTokenIdentifier: tokenId),
+                maxSlippageBps: nil,
+                completionTimeoutSecs: nil
+            ),
+            feePolicy: toUsd ? nil : .feesIncluded
+        ))
+        guard let estimate = prepared.conversionEstimate else { throw SparkUsdError.noQuote }
+        let usd = { (value: U128) in SparkUsd.toUsdUnits(value, decimals: decimals) }
+        if toUsd {
+            return SparkUsdQuote(
+                kind: .toUsd, pay: Self.sats(estimate.amountIn), receive: usd(estimate.amountOut),
+                fee: Self.sats(estimate.fee), prepared: prepared
+            )
+        }
+        return SparkUsdQuote(
+            kind: .toBtc, pay: usd(estimate.amountIn), receive: Self.sats(estimate.amountOut), fee: usd(estimate.fee), prepared: prepared
+        )
+    }
+
+    /// Quotes moving `amount` dollar units to Bitkit's USDT wallet at `arbitrumAddress` through Orchestra.
+    func quoteArbitrumBridge(arbitrumAddress: String, amount: UInt64) async throws -> SparkUsdQuote {
+        guard let tokenId = Env.sparkUsdTokenId else { throw SparkUsdError.noToken }
+        let sdk = try await requireSdk()
+        guard case let .crossChainAddress(details) = try await sdk.parse(input: arbitrumAddress) else { throw SparkUsdError.noRoute }
+        let routes = try await sdk.getCrossChainRoutes(filter: .send(addressDetails: details, deliveryMethod: nil))
+        let candidates = routes.filter { route in
+            route.chainId?.replacingOccurrences(of: "eip155:", with: "") == SparkUsd.arbitrumChainId
+                && route.asset.uppercased().hasPrefix("USDT")
+                && route.acceptedAssets.contains {
+                    if case let .token(id) = $0.asset {
+                        id == tokenId
+                    } else {
+                        false
+                    }
+                }
+        }
+        guard let route = candidates.first(where: { $0.asset.uppercased() == "USDT0" }) ?? candidates.first else {
+            throw SparkUsdError.noRoute
+        }
+        let prepared = try await sdk.prepareSendPayment(request: PrepareSendPaymentRequest(
+            paymentRequest: .crossChain(address: arbitrumAddress, route: route, maxSlippageBps: nil, targetOverpayBps: nil),
+            amount: SparkUsd.fromUsdUnits(amount, decimals: usdDecimals(tokenId)),
+            tokenIdentifier: tokenId,
+            conversionOptions: nil,
+            feePolicy: nil
+        ))
+        guard case let .crossChainAddress(_, _, _, _, estimatedOut, feeAmount, _, _, _, _, _, _, _) = prepared.paymentMethod else {
+            throw SparkUsdError.noRoute
+        }
+        let decimals = Int(route.decimals)
+        return SparkUsdQuote(
+            kind: .toArbitrum, pay: amount, receive: SparkUsd.toUsdUnits(estimatedOut, decimals: decimals),
+            fee: SparkUsd.toUsdUnits(feeAmount, decimals: decimals), prepared: prepared
+        )
+    }
+
+    /// Runs a conversion or bridge `quote` and refreshes the balances.
+    func execute(_ quote: SparkUsdQuote) async throws {
+        let payment = try await requireSdk().sendPayment(request: SendPaymentRequest(prepareResponse: quote.prepared, options: nil)).payment
+        Logger.info("Ran Spark dollar '\(quote.kind)' with status '\(payment.status)'", context: "SparkManager")
         try await refresh()
     }
 

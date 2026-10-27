@@ -25,14 +25,35 @@ struct SparkUsdRecipient: Equatable {
     let amount: UInt64?
 }
 
+/// A priced conversion or bridge, ready to run. `pay` and `receive` are in sats for the bitcoin side and in dollar units
+/// otherwise; `fee` is in the unit of what is paid, except for the bridge, where it is in dollar units.
+struct SparkUsdQuote {
+    enum Kind {
+        case toUsd
+        case toBtc
+        case toArbitrum
+    }
+
+    let kind: Kind
+    let pay: UInt64
+    let receive: UInt64
+    let fee: UInt64
+    let prepared: PrepareSendPaymentResponse
+}
+
 enum SparkUsdError: Error {
     case unsupportedRecipient
     case noToken
+    case noQuote
+    case noRoute
 }
 
 enum SparkUsd {
     /// Decimals of Bitkit's dollar amounts, shared with Arbitrum USDT so both format alike.
     static let decimals = 6
+
+    /// Arbitrum One, where Bitkit's own USDT wallet lives.
+    static let arbitrumChainId = "42161"
 
     private static let inputPrefixes = ["spark1", "sparkrt1", "spark:"]
 

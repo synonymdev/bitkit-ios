@@ -6,6 +6,7 @@ import SwiftUI
 struct SparkUsdWalletScreen: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @Environment(UsdtWalletManager.self) private var usdt
     @State private var page: SparkUsdPage?
     @State private var initialRecipient: String
     private let spark = SparkManager.shared
@@ -31,6 +32,15 @@ struct SparkUsdWalletScreen: View {
                     .balanceVisibilityToggle()
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("SparkUsdBalance")
+                    HStack(spacing: 8) {
+                        CustomButton(title: t("usdt__convert_spark"), variant: .secondary, size: .small) { page = .convert }
+                            .accessibilityIdentifier("SparkUsdConvert")
+                        if bridgeAddress != nil {
+                            CustomButton(title: t("usdt__bridge_spark"), variant: .secondary, size: .small) { page = .bridge }
+                                .accessibilityIdentifier("SparkUsdBridge")
+                        }
+                    }
+                    .fixedSize()
                     activityList
                 }
             }
@@ -61,9 +71,16 @@ struct SparkUsdWalletScreen: View {
                 switch page {
                 case .receive: SparkUsdReceiveView()
                 case .send: SparkUsdSendView(initialRecipient: initialRecipient)
+                case .convert: SparkUsdConvertView(bridgeAddress: nil)
+                case .bridge: SparkUsdConvertView(bridgeAddress: bridgeAddress)
                 }
             }
         }
+    }
+
+    /// Bitkit's own Arbitrum USDT address, the bridge's destination; Orchestra only runs on mainnet.
+    private var bridgeAddress: String? {
+        Env.isSparkBridgeAvailable && !usdt.address.isEmpty ? usdt.address : nil
     }
 
     private var activityList: some View {
@@ -84,6 +101,8 @@ struct SparkUsdWalletScreen: View {
 enum SparkUsdPage: String, Identifiable {
     case receive
     case send
+    case convert
+    case bridge
 
     var id: String {
         rawValue
@@ -171,7 +190,7 @@ struct SparkUsdReceiveView: View {
             SheetHeader(title: t("usdt__receive_title"), showBackButton: false, topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8)
             if let request {
                 QrArea(uri: request, imageAsset: "tether-circle", accentColor: .usdtAccent, copyValue: request,
-                       shareText: request, copyMessage: t("usdt__receive_copied"))
+                       shareText: request, copyMessage: t("usdt__receive_copied_spark"))
                     .accessibilityIdentifier("SparkUsdReceiveQr")
             } else if let error {
                 BodySText(error, textColor: .brandAccent)
@@ -251,7 +270,7 @@ struct SparkUsdSendView: View {
 
     private var title: String {
         if submitted {
-            return t("usdt__sent_title")
+            return t("usdt__sent_title_spark")
         }
         if reviewing {
             return t("wallet__send_review")
@@ -259,7 +278,7 @@ struct SparkUsdSendView: View {
         if recipient != nil {
             return t("usdt__amount")
         }
-        return t("usdt__send_title")
+        return t("usdt__send_title_spark")
     }
 
     private var recipientContent: some View {
@@ -367,7 +386,7 @@ struct SparkUsdSendView: View {
                 reviewing = true
             }
         } catch SparkUsdError.unsupportedRecipient {
-            error = t("usdt__error_address")
+            error = t("usdt__error_address_spark")
         } catch {
             self.error = t("usdt__error_network")
             Logger.warn("Failed to read Spark dollar recipient: \(error)", context: "SparkUsdSendView")
@@ -380,7 +399,7 @@ struct SparkUsdSendView: View {
             return
         }
         guard units <= spark.usd?.balance ?? 0 else {
-            error = t("usdt__error_balance")
+            error = t("usdt__error_balance_spark")
             return
         }
         error = nil
@@ -435,6 +454,157 @@ struct SparkUsdSendView: View {
         } catch {
             self.error = t("usdt__send_failed_description")
             Logger.error("Failed to send Spark dollar payment: \(error)", context: "SparkUsdSendView")
+        }
+    }
+}
+
+/// Converts between bitcoin and the dollar token within the wallet, or bridges dollars to Bitkit's Arbitrum USDT wallet
+/// when `bridgeAddress` is set.
+struct SparkUsdConvertView: View {
+    let bridgeAddress: String?
+    @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var toUsd = true
+    @State private var amount = ""
+    @State private var quote: SparkUsdQuote?
+    @State private var busy = false
+    @State private var completed = false
+    @State private var error: String?
+    @State private var swipeProgress: CGFloat = 0
+    private let spark = SparkManager.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(
+                title: t(bridgeAddress == nil ? "usdt__convert_spark" : "usdt__bridge_spark"),
+                showBackButton: quote != nil && !completed,
+                topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8,
+                onBack: { quote = nil }
+            )
+            .disabled(busy)
+            if let quote {
+                quoteContent(quote)
+            } else {
+                amountContent
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.gray7)
+        .navigationBarHidden(true)
+        .interactiveDismissDisabled(busy)
+    }
+
+    private var amountContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if bridgeAddress == nil {
+                HStack(spacing: 8) {
+                    NumberPadActionButton(
+                        text: t("usdt__convert_to_usd_spark"), titleKerning: 1, titleLineHeight: 18,
+                        color: toUsd ? .usdtAccent : .textSecondary
+                    ) { toUsd = true; error = nil }
+                        .accessibilityIdentifier("SparkUsdConvertToUsd")
+                    NumberPadActionButton(
+                        text: t("usdt__convert_to_btc_spark"), titleKerning: 1, titleLineHeight: 18,
+                        color: toUsd ? .textSecondary : .usdtAccent
+                    ) { toUsd = false; error = nil }
+                        .accessibilityIdentifier("SparkUsdConvertToBtc")
+                }
+                .padding(.bottom, 16)
+            } else {
+                BodySText(t("usdt__bridge_note_spark"), textColor: .textSecondary).padding(.bottom, 16)
+            }
+            UsdtAmountHeader(amount: amount.isEmpty ? "0" : amount).accessibilityIdentifier("SparkUsdConvertAmount")
+            Spacer()
+            if let error {
+                BodySText(error, textColor: .brandAccent).accessibilityIdentifier("SparkUsdError").padding(.bottom, 16)
+            }
+            CustomDivider()
+            NumberPad(type: .decimal, onDeleteLongPress: { amount = "" }) { key in
+                amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
+                error = nil
+            }
+            CustomButton(title: t("common__continue"), isDisabled: amount.isEmpty, isLoading: busy, titleKerning: 0, titleLineHeight: 20) {
+                await requestQuote()
+            }
+            .accessibilityIdentifier("SparkUsdQuote")
+        }
+    }
+
+    private func quoteContent(_ quote: SparkUsdQuote) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            quoteRow(t("usdt__convert_pay_spark"), Self.display(quote.pay, isSats: quote.kind == .toUsd))
+            quoteRow(t("usdt__convert_receive_spark"), Self.display(quote.receive, isSats: quote.kind == .toBtc))
+            quoteRow(t("usdt__convert_fee_spark"), Self.display(quote.fee, isSats: quote.kind == .toUsd))
+            Spacer()
+            if let error {
+                BodySText(error, textColor: .brandAccent).accessibilityIdentifier("SparkUsdError").padding(.bottom, 16)
+            }
+            if completed {
+                CustomButton(title: t("common__close")) { dismiss() }
+                    .accessibilityIdentifier("SparkUsdDone")
+            } else {
+                SwipeButton(title: t("other__swipe"), accentColor: .usdtAccent, isDisabled: busy, isLoading: busy, isSubmitted: completed,
+                            swipeProgress: $swipeProgress)
+                {
+                    try await run(quote)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("SparkUsdConfirmQuote")
+            }
+        }
+    }
+
+    private func quoteRow(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                CaptionMText(label)
+                Spacer()
+                BodySSBText(value, kerning: 0)
+            }
+            .padding(.vertical, 12)
+            CustomDivider()
+        }
+    }
+
+    private static func display(_ value: UInt64, isSats: Bool) -> String {
+        isSats ? "₿ " + value.formatted() : "$ " + usdtOverviewAmount(value)
+    }
+
+    private func requestQuote() async {
+        guard let units = try? usdtParseAmount(value: amount), units > 0 else {
+            error = t("usdt__error_amount")
+            return
+        }
+        if bridgeAddress != nil || !toUsd, units > spark.usd?.balance ?? 0 {
+            error = t("usdt__error_balance_spark")
+            return
+        }
+        busy = true
+        defer { busy = false }
+        do {
+            quote = if let bridgeAddress {
+                try await spark.quoteArbitrumBridge(arbitrumAddress: bridgeAddress, amount: units)
+            } else {
+                try await spark.quoteConversion(toUsd: toUsd, amount: units)
+            }
+            error = nil
+        } catch {
+            self.error = t("usdt__convert_failed_spark")
+            Logger.warn("Failed to quote Spark dollar conversion: \(error)", context: "SparkUsdConvertView")
+        }
+    }
+
+    private func run(_ quote: SparkUsdQuote) async throws {
+        busy = true
+        defer { busy = false }
+        do {
+            try await spark.execute(quote)
+            completed = true
+        } catch {
+            self.error = t("usdt__convert_failed_spark")
+            Logger.error("Failed to run Spark dollar conversion: \(error)", context: "SparkUsdConvertView")
+            throw error
         }
     }
 }
