@@ -24,6 +24,22 @@ final class ConnectionRecoveryServiceTests: XCTestCase {
         defaults = nil
     }
 
+    func testStorageFaultSelectorRejectsOnlyItsExactAllowedBoundary() throws {
+        for selected in ConnectionRecoveryTestFault.allowed {
+            for point in ConnectionRecoveryTestFault.allowed {
+                if selected == point {
+                    XCTAssertThrowsError(try ConnectionRecoveryTestFault.check(point, selected: selected))
+                } else {
+                    XCTAssertNoThrow(try ConnectionRecoveryTestFault.check(point, selected: selected))
+                }
+            }
+            XCTAssertNoThrow(try ConnectionRecoveryTestFault.check("bip39_mnemonic_0:delete", selected: selected))
+            XCTAssertNoThrow(try ConnectionRecoveryTestFault.check("paykit_session:write", selected: selected))
+        }
+        XCTAssertNoThrow(try ConnectionRecoveryTestFault.check("connection_recovery:write", selected: nil))
+        XCTAssertNoThrow(try ConnectionRecoveryTestFault.check("connection_recovery:write", selected: "*"))
+    }
+
     private func makeService() -> ConnectionRecoveryService {
         ConnectionRecoveryService(owner: { self.currentOwner }, load: { self.data },
                                   store: { self.data = $0 }, clear: { self.data = nil }, defaults: defaults)
@@ -35,13 +51,14 @@ final class ConnectionRecoveryServiceTests: XCTestCase {
 
     func testRestrictedEditorRendersWithLocalCorrectionOnCompactDisplay() async throws {
         try await service.save(editor: service.editor(), electrum: server)
+        let editor = try service.editor()
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.overrideUserInterfaceStyle = .dark
         let appeared = expectation(description: "Editor appears in the test window")
-        let host = UIHostingController(rootView: WalletConnectionRecoveryView(onBack: {}, onRetry: {}, recovery: service)
+        let host = UIHostingController(rootView: WalletConnectionRecoveryView(editor: editor, onBack: {}, onRetry: {}, recovery: service)
             .onAppear { appeared.fulfill() })
         window.rootViewController = host
         window.makeKeyAndVisible()
@@ -69,6 +86,44 @@ final class ConnectionRecoveryServiceTests: XCTestCase {
         attachment.name = "Restricted connection editor with synthetic local settings"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    func testEditorPresentedDuringStartupRemainsUsableAfterFailure() async throws {
+        let editor = try service.editor()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let entered = expectation(description: "Startup is awaiting its native result")
+        var release: CheckedContinuation<Void, Never>?
+        let startup = Task {
+            try await service.perform {
+                await withCheckedContinuation { release = $0; entered.fulfill() }
+                throw URLError(.cannotConnectToHost)
+            }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        let appeared = expectation(description: "Editor is presented during startup")
+        let host = UIHostingController(rootView: WalletConnectionRecoveryView(editor: editor, onBack: {}, onRetry: {}, recovery: service)
+            .onAppear { appeared.fulfill() })
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKey()
+        }
+        await fulfillment(of: [appeared], timeout: 2)
+        release?.resume()
+        do { try await startup.value; XCTFail("Startup must retain its failure") } catch {}
+        try await Task.sleep(for: .milliseconds(100))
+        host.view.layoutIfNeeded()
+        func textFields(in view: UIView) -> [UITextField] {
+            (view as? UITextField).map { [$0] } ?? view.subviews.flatMap { textFields(in: $0) }
+        }
+        let fields = textFields(in: host.view)
+        XCTAssertEqual(fields.count, 2)
+        XCTAssertTrue(fields.allSatisfy(\.isEnabled), "The original editor must become usable when startup fails")
     }
 
     func testIndependentSaveSurvivesReconstructionAndOldSettings() async throws {

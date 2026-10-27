@@ -15,6 +15,16 @@ class LightningService {
 
     var currentWalletIndex: Int = 0
 
+    func getTransactionDetails(txid: String, walletIndex: Int) async -> LDKNode.TransactionDetails? {
+        guard currentWalletIndex == walletIndex, let node else { return nil }
+        let details = try? await ServiceQueue.background(.ldk) { () -> LDKNode.TransactionDetails? in
+            guard self.currentWalletIndex == walletIndex, self.node === node else { return nil }
+            return node.getTransactionDetails(txid: txid)
+        }
+        guard currentWalletIndex == walletIndex, self.node === node else { return nil }
+        return details
+    }
+
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
 
     private var channelCache: [String: ChannelDetails] = [:]
@@ -310,7 +320,12 @@ class LightningService {
 
         Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
-            try node.stop()
+            do {
+                try node.stop()
+            } catch NodeError.NotRunning {
+                // A failed start can leave an allocated node that never became running.
+                Logger.debug("Node already stopped")
+            }
         }
         self.node = nil
 

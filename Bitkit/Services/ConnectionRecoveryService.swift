@@ -310,12 +310,21 @@ final class ConnectionRecoveryService: ObservableObject {
         if let electrum = record.electrum {
             let data = try JSONEncoder().encode(electrum)
             defaults.set(data, forKey: "electrumServer")
+            #if DEBUG
+                try ConnectionRecoveryTestFault.check("preferences:readback")
+            #endif
             guard defaults.data(forKey: "electrumServer") == data else { throw failure("Electrum settings could not be saved") }
         }
         if let rgs = record.rgs {
             defaults.set(rgs, forKey: "rapidGossipSyncUrl")
+            #if DEBUG
+                try ConnectionRecoveryTestFault.check("preferences:readback")
+            #endif
             guard defaults.string(forKey: "rapidGossipSyncUrl") == rgs else { throw failure("RGS settings could not be saved") }
         }
+        #if DEBUG
+            try ConnectionRecoveryTestFault.check("preferences:flush")
+        #endif
         guard defaults.synchronize() else { throw failure("Connection settings could not be persisted") }
     }
 

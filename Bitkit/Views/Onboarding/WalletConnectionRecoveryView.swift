@@ -4,12 +4,27 @@ struct WalletConnectionRecoveryView: View {
     let onBack: () -> Void
     let onRetry: () async -> Void
     @ObservedObject var recovery = ConnectionRecoveryService.shared
-    @State private var editor: ConnectionRecoveryService.Editor?
+    @State private var editor: ConnectionRecoveryService.Editor
     @State private var electrum = ""
     @State private var rgs = ""
     @State private var saved = false
     @State private var error: String?
     @State private var work: Task<Void, Never>?
+
+    init(editor: ConnectionRecoveryService.Editor, onBack: @escaping () -> Void,
+         onRetry: @escaping () async -> Void, recovery: ConnectionRecoveryService)
+    {
+        self.onBack = onBack
+        self.onRetry = onRetry
+        self.recovery = recovery
+        _editor = State(initialValue: editor)
+        _electrum = State(initialValue: editor.electrum.fullUrl)
+        _rgs = State(initialValue: editor.rgs)
+    }
+
+    private var canEdit: Bool {
+        !recovery.isBusy && recovery.isCurrent(editor)
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -24,13 +39,13 @@ struct WalletConnectionRecoveryView: View {
                     TextField("ssl://host:50002", text: $electrum)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("RecoveryElectrumInput")
-                        .disabled(recovery.isBusy || editor == nil)
+                        .disabled(!canEdit)
                     CustomButton(title: t("settings__es__button_reset"), variant: .secondary,
-                                 isDisabled: recovery.isBusy || editor == nil)
+                                 isDisabled: !canEdit)
                     {
                         electrum = ElectrumConfigService().getDefaultServer().fullUrl
                     }.accessibilityIdentifier("RecoveryElectrumReset")
-                    CustomButton(title: t("common__save"), isDisabled: recovery.isBusy || editor == nil) {
+                    CustomButton(title: t("common__save"), isDisabled: !canEdit) {
                         saveElectrum()
                     }.accessibilityIdentifier("RecoveryElectrumSave")
 
@@ -38,13 +53,13 @@ struct WalletConnectionRecoveryView: View {
                     TextField("https://host", text: $rgs)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("RecoveryRgsInput")
-                        .disabled(recovery.isBusy || editor == nil)
+                        .disabled(!canEdit)
                     CustomButton(title: t("settings__es__button_reset"), variant: .secondary,
-                                 isDisabled: recovery.isBusy || editor == nil)
+                                 isDisabled: !canEdit)
                     {
                         rgs = RgsConfigService().getDefaultServerUrl()
                     }.accessibilityIdentifier("RecoveryRgsReset")
-                    CustomButton(title: t("common__save"), isDisabled: recovery.isBusy || editor == nil) {
+                    CustomButton(title: t("common__save"), isDisabled: !canEdit) {
                         saveRgs()
                     }.accessibilityIdentifier("RecoveryRgsSave")
 
@@ -54,8 +69,11 @@ struct WalletConnectionRecoveryView: View {
                     if let error {
                         BodyMText(error, textColor: .redAccent).accessibilityIdentifier("RecoveryError")
                     }
-                    CustomButton(title: t("common__try_again"), isDisabled: recovery.isBusy, isLoading: recovery.isBusy) {
-                        work = Task { await onRetry() }
+                    CustomButton(title: t("common__try_again"), isDisabled: !canEdit, isLoading: recovery.isBusy) {
+                        work = Task {
+                            guard canEdit else { return }
+                            await onRetry()
+                        }
                     }.accessibilityIdentifier("RecoveryRetry")
                 }
             }
@@ -64,21 +82,9 @@ struct WalletConnectionRecoveryView: View {
         .bottomSafeAreaPadding()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("WalletConnectionRecovery")
-        .onAppear(perform: load)
         .onDisappear { work?.cancel() }
         .onChange(of: electrum) { saved = false }
         .onChange(of: rgs) { saved = false }
-    }
-
-    private func load() {
-        do {
-            let value = try recovery.editor()
-            editor = value
-            electrum = value.electrum.fullUrl
-            rgs = value.rgs
-        } catch {
-            self.error = error.localizedDescription
-        }
     }
 
     private func saveElectrum() {
@@ -115,7 +121,8 @@ struct WalletConnectionRecoveryView: View {
     }
 
     private func save(_ action: @escaping (ConnectionRecoveryService.Editor) async throws -> Void) {
-        guard let editor else { return }
+        guard canEdit else { return }
+        let editor = editor
         error = nil
         saved = false
         work = Task {

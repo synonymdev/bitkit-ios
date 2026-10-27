@@ -372,7 +372,7 @@ struct AppScene: View {
     @State private var isWalletBackupRestoreRunning = false
     @State private var didWalletBackupRestoreFail = false
     @ObservedObject private var connectionRecovery = ConnectionRecoveryService.shared
-    @State private var showConnectionRecovery = false
+    @State private var connectionEditor: ConnectionRecoveryService.Editor?
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
     /// Lets only a return from the background retry a failed node start, not a brief inactive phase.
@@ -686,8 +686,10 @@ struct AppScene: View {
             }
             .onReceive(PaykitPaymentProofService.onchainPaymentResolutionPublisher) { resolution in
                 Task { @MainActor in
-                    app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
-                    await associateResolvedPaykitOnchainPayment(resolution)
+                    await app.withPaykitOnchainPaymentResolution(resolution) {
+                        app.retainPaykitOnchainPaymentResolution(resolution, identity: pubkyProfile.publicKey)
+                        await associateResolvedPaykitOnchainPayment(resolution)
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .paykitSubscriptionPaymentDue)) { _ in
@@ -890,8 +892,13 @@ struct AppScene: View {
 
     @ViewBuilder
     private var existingWalletContent: some View {
-        if showConnectionRecovery {
-            WalletConnectionRecoveryView(onBack: { showConnectionRecovery = false }, onRetry: retryWalletStart)
+        if let connectionEditor, connectionRecovery.isCurrent(connectionEditor) {
+            WalletConnectionRecoveryView(
+                editor: connectionEditor,
+                onBack: { self.connectionEditor = nil },
+                onRetry: retryWalletStart,
+                recovery: connectionRecovery
+            )
         } else if walletIsInitializing == true {
             // New wallet is being created or restored
             initializingContent
@@ -915,9 +922,9 @@ struct AppScene: View {
     @ViewBuilder
     private var initializingContent: some View {
         if didWalletBackupRestoreFail {
-            WalletRestoreError(onRetry: retryWalletStart, onConnectionSettings: { showConnectionRecovery = true })
+            WalletRestoreError(onRetry: retryWalletStart, onConnectionSettings: connectionRecovery.isBusy ? nil : openConnectionRecovery)
         } else if case .errorStarting = wallet.nodeLifecycleState {
-            WalletRestoreError(onRetry: retryWalletStart, onConnectionSettings: { showConnectionRecovery = true })
+            WalletRestoreError(onRetry: retryWalletStart, onConnectionSettings: connectionRecovery.isBusy ? nil : openConnectionRecovery)
         } else {
             let initializationLifecycle = connectionRecovery.lifecycleID
             InitializingWalletView(nodeLifecycleState: $wallet.nodeLifecycleState) {
@@ -962,6 +969,15 @@ struct AppScene: View {
         }
     }
 
+    private func openConnectionRecovery() {
+        guard !connectionRecovery.isBusy else { return }
+        do {
+            connectionEditor = try connectionRecovery.editor()
+        } catch {
+            app.toast(error)
+        }
+    }
+
     private func handleWalletExistsChange(_: Bool?) {
         Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
 
@@ -976,7 +992,10 @@ struct AppScene: View {
             }
         }
 
-        guard wallet.walletExists == true else { return }
+        guard wallet.walletExists == true else {
+            connectionEditor = nil
+            return
+        }
 
         // Don't start wallet if we're in recovery mode
         guard !showRecoveryScreen else { return }
@@ -1262,7 +1281,7 @@ struct AppScene: View {
                     }
                     try connectionRecovery.checkCurrentOperation()
                     if wallet.nodeLifecycleState == .running, !BackupService.shared.hasPendingWalletRestore(), !didWalletBackupRestoreFail {
-                        showConnectionRecovery = false
+                        connectionEditor = nil
                     }
                 } catch {
                     guard connectionRecovery.canReportOperationFailure() else { return }
@@ -1333,6 +1352,7 @@ struct AppScene: View {
                 try await BackupService.shared.restoreUsdtRecoveryAfterLegacyMigration()
                 return true
             } catch {
+                guard connectionRecovery.canReportOperationFailure() else { return false }
                 app.toast(error)
                 return false
             }
@@ -1509,7 +1529,7 @@ struct AppScene: View {
         presentItems: Bool = true,
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        messagePriority: PaykitSdkOperationLock.Priority = .background,
         onlyWhileActive: Bool = false,
         automatic: Bool = true
     ) async -> Bool {
@@ -1527,6 +1547,12 @@ struct AppScene: View {
                 (automatic ? pubkyProfile.automaticPaykitSession : pubkyProfile.currentSession) == session
         }
         guard canRefresh() else { return false }
+        if automatic, mode == .full {
+            do {
+                try await PaykitPaymentActivity.shared.waitUntilIdle()
+            } catch { return false }
+            guard canRefresh(), PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true else { return false }
+        }
         paykitPaymentRequestManager.updateSavedPublicKeys(contactsManager.contacts.map(\.publicKey))
         if mode == .full {
             await PaykitPaymentProofService.shared.reconcile()
