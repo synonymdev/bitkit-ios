@@ -8,6 +8,8 @@ struct PaykitPaymentStateBackup: Codable {
     var activeOnchainAttempt: ActiveOnchainAttempt? = nil
     var usdt: PaykitUsdtStateBackup? = nil
     var acceptedOneTimeRequests: [String: [RequestID]]? = nil
+    /// Local allowance state by identity, so a restored wallet keeps its USD labels and can still verify open attempts.
+    var allowances: [String: PaykitAllowanceStateBackup]? = nil
 
     struct RequestID: Codable {
         let paymentRequestId: String

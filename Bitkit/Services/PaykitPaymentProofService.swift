@@ -293,7 +293,8 @@ actor PaykitPaymentProofService {
             return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
                                                 pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
                                                 acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
-                                                    .backupSnapshot())
+                                                    .backupSnapshot(),
+                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot())
         }
     }
 
@@ -305,6 +306,9 @@ actor PaykitPaymentProofService {
         try await mutationLock.withLock { try await persist(restored?.1 ?? proofs) }
         try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
+        if let allowances = state.allowances {
+            try PaykitAllowanceKeychainStore().restoreBackup(allowances)
+        }
     }
 
     func restoreBackup(_ proofs: [PaykitPaymentStateBackup.Proof]) async throws {

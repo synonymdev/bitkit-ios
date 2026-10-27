@@ -106,13 +106,34 @@ protocol PaykitAllowanceStoring: Sendable {
 struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
     private typealias Stored = [String: PaykitAllowanceLocalState]
 
+    private static let backupChanged = PassthroughSubject<Void, Never>()
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupChanged.eraseToAnyPublisher()
+    }
+
     func load(identity: String) throws -> PaykitAllowanceLocalState {
         try loadAll()[identity] ?? PaykitAllowanceLocalState()
     }
 
     func save(_ state: PaykitAllowanceLocalState, identity: String) throws {
         var all = try loadAll()
+        let previous = all[identity]
         all[identity] = state
+        try Keychain.upsert(key: .paykitAllowanceState, data: JSONEncoder().encode(all))
+        // The trusted-time watermark moves on every eligibility check; only a change to the rest needs a new backup.
+        var unchanged = state
+        unchanged.lastTrustedTime = previous?.lastTrustedTime
+        if unchanged != previous {
+            Self.backupChanged.send()
+        }
+    }
+
+    func backupSnapshot() throws -> [String: PaykitAllowanceStateBackup] {
+        try loadAll().mapValues(PaykitAllowanceStateBackup.init)
+    }
+
+    func restoreBackup(_ snapshot: [String: PaykitAllowanceStateBackup]) throws {
+        let all = try snapshot.mapValues { try $0.restored() }
         try Keychain.upsert(key: .paykitAllowanceState, data: JSONEncoder().encode(all))
     }
 

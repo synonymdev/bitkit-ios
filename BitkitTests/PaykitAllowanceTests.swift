@@ -9,6 +9,59 @@ final class PaykitAllowanceTests: XCTestCase {
 
     // MARK: Terms and records
 
+    func testAllowanceStateBackupKeepsLabelsAndJournalInTheSharedFormat() throws {
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "req-1", counterparty: Fixtures.counterpartyKey)
+        let state = try PaykitAllowanceLocalState(
+            groups: [.init(
+                id: "group-1",
+                counterparty: Fixtures.counterpartyKey,
+                limits: PaykitAllowanceLimits(
+                    perPaymentUsd: XCTUnwrap(Decimal(string: "4.99")),
+                    monthlyUsd: 50,
+                    perPaymentSats: 4990,
+                    monthlySats: 50000
+                ),
+                allowanceIds: [Fixtures.walletAllowanceId],
+                createdAt: Fixtures.now
+            )],
+            journal: [.init(
+                attemptId: "attempt-1",
+                isAutomatic: true,
+                requestId: requestId,
+                allowanceId: Fixtures.walletAllowanceId,
+                amountSats: 1000,
+                paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+                paymentHash: String(repeating: "a", count: 64),
+                onchainAddress: nil,
+                transactionId: nil,
+                stage: .sent,
+                createdAt: Fixtures.now,
+                paymentListVersion: 7,
+                previousPaymentListVersion: 6
+            )],
+            presentedProposalIds: ["presented"],
+            unannouncedOfferIds: ["unannounced"],
+            notifiedRequestIds: ["notified"],
+            lastTrustedTime: Fixtures.now
+        )
+
+        let data = try JSONEncoder().encode(PaykitAllowanceStateBackup(state))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let group = try XCTUnwrap((json["groups"] as? [[String: Any]])?.first)
+        let limits = try XCTUnwrap(group["limits"] as? [String: Any])
+        XCTAssertEqual(limits["perPaymentUsd"] as? String, "4.99")
+        XCTAssertEqual(limits["monthlySats"] as? Int, 50000)
+        XCTAssertEqual(group["createdAt"] as? String, "2026-09-24T12:00:00.000Z")
+        let entry = try XCTUnwrap((json["journal"] as? [[String: Any]])?.first)
+        XCTAssertEqual(entry["stage"] as? String, "sent")
+        XCTAssertEqual(entry["paymentListVersion"] as? Int, 7)
+        XCTAssertEqual((entry["requestId"] as? [String: Any])?["paymentRequestId"] as? String, "req-1")
+        XCTAssertEqual(json["lastTrustedTime"] as? String, "2026-09-24T12:00:00.000Z")
+
+        let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: data).restored()
+        XCTAssertEqual(restored, state)
+    }
+
     func testTermsCarryPerPaymentRangeAnchoredUtcMonthAndAllowlist() throws {
         let monthAnchor = PaykitAllowanceTime.monthStart(containing: Fixtures.now)
         let allowlist = [Fixtures.lightningIdentifier, Fixtures.onchainIdentifier]
