@@ -1,6 +1,7 @@
 @testable import Bitkit
 import Combine
 import Paykit
+import VssRustClientFfi
 import XCTest
 
 @MainActor
@@ -71,6 +72,74 @@ final class BackupServiceTests: XCTestCase {
             service.setWiping(true)
             await service.stopObservingBackups()
         }
+    }
+
+    func testReleasedVssConnectionErrorIsTemporaryWithoutBroadUnknownRetry() {
+        XCTAssertTrue(BackupService.isTemporaryBackupFailure(
+            VssError.UnknownError(errorDetails: "error sending request for url (http://127.0.0.1:1/putObjects)")
+        ))
+        XCTAssertTrue(BackupService.isTemporaryBackupFailure(
+            VssError.UnknownError(errorDetails: "error sending request for url (https://backup.example/vss/putObjects)")
+        ))
+        for details in ["invalid ciphertext", "permission denied", "HTTP status client error (401 Unauthorized)",
+                        "error sending request for url (not a URL)", "prefix error sending request for url (https://example.com)",
+                        "error sending request for url (https://example.com/getObject)",
+                        "error sending request for url (file://example.com/putObjects)",
+                        "error sending request for url (https:///putObjects)",
+                        "error sending request for url (https://example.com/putObjects) suffix"]
+        {
+            XCTAssertFalse(BackupService.isTemporaryBackupFailure(VssError.UnknownError(errorDetails: details)))
+        }
+        XCTAssertFalse(BackupService.isTemporaryBackupFailure(URLError(.notConnectedToInternet)))
+        XCTAssertFalse(BackupService.isTemporaryBackupFailure(CancellationError()))
+    }
+
+    func testReleasedVssConnectionFailureRetriesStoppedUsdtWithBoundedBackoff() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let completed = expectation(description: "Recovery upload acknowledged after connection resumes")
+        var attempts = 0
+        var delays: [UInt64] = []
+        let payload = Data("same-signed-recovery".utf8)
+        let service = BackupService(defaults: defaults, backupData: { _ in payload }, uploadBackup: { key, data in
+            XCTAssertEqual(key, BackupCategory.usdt.rawValue)
+            XCTAssertEqual(data, payload)
+            attempts += 1
+            if attempts <= 8 {
+                throw VssError.UnknownError(errorDetails: "error sending request for url (http://127.0.0.1:1/putObjects)")
+            }
+        }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { delays.append($0) })
+        await service.stopObservingBackups()
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.usdt].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        service.markBackupRequired(category: .usdt)
+        await fulfillment(of: [completed], timeout: 3)
+        subscription.cancel()
+        service.setWiping(true)
+        await service.stopObservingBackups()
+        XCTAssertEqual(attempts, 9)
+        XCTAssertEqual(delays, [10, 20, 40, 80, 160, 300, 300, 300].map { UInt64($0) * 1_000_000_000 })
+        XCTAssertFalse(service.getBackupStatus(category: .usdt).isRequired)
+    }
+
+    func testRepeatedPendingNotificationsDoNotRewriteUnchangedDurableStatus() throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(CountingBackupDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let required = UInt64(Date().timeIntervalSince1970) + 3600
+        let pending = BackupItemStatus(synced: 0, required: required, running: false)
+        try defaults.set(JSONEncoder().encode([BackupCategory.wallet.rawValue: pending]), forKey: "backupStatuses")
+        let service = BackupService(defaults: defaults)
+        let writes = defaults.backupStatusWrites
+        for _ in 0 ..< 200 {
+            service.markBackupRequired(category: .wallet, schedule: false)
+        }
+        XCTAssertEqual(defaults.backupStatusWrites, writes)
+        XCTAssertEqual(service.getBackupStatus(category: .wallet), pending)
+        let restarted = BackupService(defaults: defaults)
+        XCTAssertEqual(restarted.getBackupStatus(category: .wallet), pending)
     }
 
     func testChangesDuringCaptureAndUploadRemainRequired() async throws {
@@ -805,6 +874,22 @@ private final class WalletBackupSdk: PaykitSdk, @unchecked Sendable {
     override func exportBackupString() async throws -> String {
         await onExport()
         return "wallet-backup"
+    }
+}
+
+private final class CountingBackupDefaults: UserDefaults {
+    private let writeLock = NSLock()
+    private var writes = 0
+
+    var backupStatusWrites: Int {
+        writeLock.withLock { writes }
+    }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        if defaultName == "backupStatuses" {
+            writeLock.withLock { writes += 1 }
+        }
+        super.set(value, forKey: defaultName)
     }
 }
 

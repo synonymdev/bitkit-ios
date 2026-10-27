@@ -141,6 +141,9 @@ enum SharedPubkyKeychain {
         copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching,
         delete: (CFDictionary) -> OSStatus = SecItemDelete
     ) throws {
+        #if DEBUG
+            try ProfileRemovalTestFault.check("shared-own:enumerate")
+        #endif
         var query = baseQuery
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
@@ -157,6 +160,9 @@ enum SharedPubkyKeychain {
             return account
         }
         for account in accounts where account.hasPrefix("\(ownSourceApp):") {
+            #if DEBUG
+                try ProfileRemovalTestFault.check("shared-own:delete")
+            #endif
             var item = baseQuery
             item[kSecAttrAccount as String] = account
             let result = delete(item as CFDictionary)

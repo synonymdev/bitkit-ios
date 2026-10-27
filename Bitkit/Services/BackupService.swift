@@ -375,9 +375,22 @@ class BackupService {
         case PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
              VssError.ConnectionError, VssError.NetworkError, VssError.StoreError, VssError.PutError:
             true
+        case let VssError.UnknownError(details):
+            isVssRequestSendFailure(details)
         default:
             false
         }
+    }
+
+    private static func isVssRequestSendFailure(_ details: String) -> Bool {
+        let prefix = "error sending request for url ("
+        guard details.hasPrefix(prefix), details.hasSuffix(")"),
+              let url = URLComponents(string: String(details.dropFirst(prefix.count).dropLast())),
+              url.scheme == "http" || url.scheme == "https",
+              let host = url.host, !host.isEmpty,
+              url.path.hasSuffix("/putObjects")
+        else { return false }
+        return true
     }
 
     func persistWalletBackup() async throws {
@@ -1006,7 +1019,9 @@ class BackupService {
         statusUpdateQueue.sync {
             var statuses = getAllBackupStatuses()
             let currentStatus = statuses[category] ?? BackupItemStatus()
-            statuses[category] = update(currentStatus)
+            let nextStatus = update(currentStatus)
+            guard statuses[category] != nextStatus else { return }
+            statuses[category] = nextStatus
             saveBackupStatuses(statuses)
         }
     }

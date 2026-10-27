@@ -81,6 +81,11 @@ final class ProfileRemovalStore: @unchecked Sendable {
             if current == next {
                 return
             }
+            #if DEBUG
+                if self === Self.shared {
+                    try ProfileRemovalTestFault.check("marker:persist")
+                }
+            #endif
             try write(JSONEncoder().encode(next), url)
             observed = next
             generation = UUID()
@@ -96,6 +101,11 @@ final class ProfileRemovalStore: @unchecked Sendable {
             guard let current = try readLocked(), current.id == id, current.scope == scope else {
                 throw StoreError.changed
             }
+            #if DEBUG
+                if self === Self.shared {
+                    try ProfileRemovalTestFault.check("marker:complete")
+                }
+            #endif
             try remove(url)
             observed = nil
             generation = UUID()

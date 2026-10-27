@@ -3,7 +3,8 @@
     Requires a disposable test identity with saved contacts and a controlled homeserver proxy.
     Never use a personal profile. Inject a private-endpoint withdrawal failure, then in a fresh
     fixture inject an unknown contact-removal response or a partial removal retaining an active peer.
-    Also inject a profile-deletion error whose message contains 404 Not Found, without confirming deletion.
+    Also make profile DELETE return HTTP 404 while a fresh read still confirms the profile exists.
+    The pinned SDK normalizes this to a thrown HTTP 404 error; it must not count as confirmed deletion.
     These controls are not available in standard staging. This journey covers stopping on incomplete
     cleanup, not cross-device conditional deletion or safe manual replay of an uncertain operation.
   </description>

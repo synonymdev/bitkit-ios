@@ -135,6 +135,8 @@ class PubkyProfileManager: ObservableObject {
         var deleteProfile: @Sendable (String, String) async throws -> Void
         var withdrawPrivate: @MainActor () async throws -> Void
         var withdrawPublic: @MainActor () async throws -> Void
+        var validateContacts: @MainActor (String, [String]) async throws -> Void
+        var revokeSession: @MainActor () async throws -> Void
         var completeLocal: @MainActor () async throws -> Void
         var pause: @MainActor (UUID) async -> Void
         var resume: @MainActor (UUID) async -> Void
@@ -145,6 +147,8 @@ class PubkyProfileManager: ObservableObject {
                 deleteProfile: { try await PaykitSdkService.shared.deleteConfirmedProfile(expectedIdentity: $0, expectedRevision: $1) },
                 withdrawPrivate: { try await removePrivatePaykitEndpoints(context: "Profile removal", deferAppSync: true) },
                 withdrawPublic: { try await removePublicPaykitEndpoints(context: "Profile removal") },
+                validateContacts: { try await PaykitSdkService.shared.requireContactsRemovable(publicKeys: $1, expectedIdentity: $0) },
+                revokeSession: { try await PubkyService.signOut() },
                 completeLocal: { try await clearLocalState() },
                 pause: { await PrivatePaykitService.shared.beginProfileDeletion(id: $0) },
                 resume: { await PrivatePaykitService.shared.endProfileDeletion(id: $0) }
@@ -1451,6 +1455,9 @@ class PubkyProfileManager: ObservableObject {
                 let profile = action == .deleteProfile && owner != nil
                     ? try await removalServices.readProfile(owner!) : nil
                 let snapshot = action != .disconnect ? try await contacts?.prepareRemovalSnapshot() : nil
+                if let snapshot, let owner {
+                    try await removalServices.validateContacts(owner, snapshot.publicKeys)
+                }
                 try admission.validate(generation)
                 guard removalPreparation == confirmation.id, Self.sessionRevision == revision,
                       publicKey == owner, profileWriteGeneration == profileGeneration else { throw RemovalError.confirmationChanged }
@@ -1489,6 +1496,22 @@ class PubkyProfileManager: ObservableObject {
             try plan.contacts?.requireCurrentRemovalSnapshot(snapshot)
         }
         let admission = removalAdmission
+        try admission.validate(plan.admissionGeneration)
+        if let snapshot = plan.contactSnapshot, let owner = plan.owner {
+            try await admission.withOperation {
+                try await plan.contacts?.validateRemovalSnapshot(snapshot)
+                try await removalServices.validateContacts(owner, snapshot.publicKeys)
+            }
+        }
+        // The dialog or its owner may have changed while eligibility was being checked.
+        // Reserve only after leaving the ordinary scope, without suspending after these checks.
+        guard removalPlan?.confirmation == confirmation, removalPreparation == confirmation.id else {
+            throw RemovalError.confirmationChanged
+        }
+        try validateRemovalOwner(plan)
+        if let snapshot = plan.contactSnapshot {
+            try plan.contacts?.requireCurrentRemovalSnapshot(snapshot)
+        }
         try admission.validate(plan.admissionGeneration)
         removalPlan = nil
         removalPreparation = nil
@@ -1541,6 +1564,9 @@ class PubkyProfileManager: ObservableObject {
                 if let plan, plan.withdrawEndpoints {
                     if let snapshot = plan.contactSnapshot {
                         try await plan.contacts?.validateRemovalSnapshot(snapshot)
+                        if let owner = plan.owner {
+                            try await removalServices.validateContacts(owner, snapshot.publicKeys)
+                        }
                     }
                     try validateRemovalOwner(plan)
                     try await removalServices.withdrawPrivate()
@@ -1556,6 +1582,8 @@ class PubkyProfileManager: ObservableObject {
                             .withDetached { [removalServices] in try await removalServices.deleteProfile(owner, record.revision) }
                         remoteDeleted = true
                     }
+                    try validateRemovalOwner(plan)
+                    try await removalServices.revokeSession()
                     try validateRemovalOwner(plan)
                 }
                 try validateLocalIntent?()
@@ -1954,6 +1982,9 @@ class PubkyProfileManager: ObservableObject {
         clearCachedIdentityMetadata()
         UserDefaults.standard.removeObject(forKey: profileSetupPendingKey)
         clearPublicPaykitSharingState()
+        #if DEBUG
+            try ProfileRemovalTestFault.check("preferences:flush")
+        #endif
         guard flushPreferences(), let domain = Bundle.main.bundleIdentifier,
               let stored = UserDefaults.standard.persistentDomain(forName: domain)
         else { throw ProfileRemovalStore.StoreError.unavailable }

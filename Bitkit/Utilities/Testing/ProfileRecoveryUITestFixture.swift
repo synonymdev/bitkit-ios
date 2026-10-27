@@ -125,6 +125,8 @@
                 deleteProfile: { _, _ in try await local.rejectRemote() },
                 withdrawPrivate: { try local.rejectRemote() },
                 withdrawPublic: { try local.rejectRemote() },
+                validateContacts: { _, _ in try local.rejectRemote() },
+                revokeSession: { try local.rejectRemote() },
                 completeLocal: { try await local.complete() },
                 pause: { _ in }, resume: { _ in }
             )

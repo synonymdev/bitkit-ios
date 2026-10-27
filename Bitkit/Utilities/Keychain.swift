@@ -153,6 +153,9 @@ class Keychain {
     }
 
     class func delete(key: KeychainEntryType) throws {
+        #if DEBUG
+            try ProfileRemovalTestFault.check("\(key.storageKey):delete")
+        #endif
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: account(for: key),
@@ -294,3 +297,45 @@ class Keychain {
         }
     }
 }
+
+#if DEBUG
+    /// Opt-in failures at real local teardown boundaries on a disposable regtest simulator.
+    enum ProfileRemovalTestFault {
+        static let allowed: Set<String> = [
+            "paykit_session:delete", "pubky_secret_key:delete",
+            "shared-own:enumerate", "shared-own:delete",
+            "preferences:flush", "marker:persist", "marker:complete",
+        ]
+
+        private static func selected() -> String? {
+            #if targetEnvironment(simulator)
+                guard Env.isE2E, Env.network == .regtest, !Env.isUnitTest,
+                      ProcessInfo.processInfo.arguments.contains("-E2E_PROFILE_REMOVAL_FAULTS") else { return nil }
+                let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("profile-removal-test-fault")
+                guard let file = try? FileHandle(forReadingFrom: url) else { return nil }
+                defer { try? file.close() }
+                guard let data = try? file.read(upToCount: 129), data.count <= 128,
+                      let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      allowed.contains(value) else { return nil }
+                return value
+            #else
+                return nil
+            #endif
+        }
+
+        static func check(_ point: String) throws {
+            try check(point, selected: selected())
+        }
+
+        static func check(_ point: String, selected: String?) throws {
+            guard allowed.contains(point), selected == point else { return }
+            Logger.warn("Injected local profile cleanup failure: \(point)", context: "ProfileRemovalTestFault")
+            throw NSError(
+                domain: "ProfileRemovalTestFault",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Local profile cleanup storage unavailable (\(point))"]
+            )
+        }
+    }
+#endif

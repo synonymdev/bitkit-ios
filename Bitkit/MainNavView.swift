@@ -924,10 +924,22 @@ struct MainNavView: View {
 
         guard !pubkyProfile.isDeletingProfile else { return false }
         isPreparingPendingContactDeepLink = true
-        defer { isPreparingPendingContactDeepLink = false }
+        defer {
+            isPreparingPendingContactDeepLink = false
+            if app.pendingDeepLinkURL != url {
+                Task { await handlePendingDeepLink() }
+            }
+        }
 
         do {
-            return try await preparePubkyContactLink(profile: pubkyProfile, contacts: contactsManager)
+            while app.pendingDeepLinkURL == url {
+                do {
+                    return try await preparePubkyContactLink(profile: pubkyProfile, contacts: contactsManager)
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    try await PaykitPaymentActivity.shared.waitUntilIdle(includingReviews: true)
+                }
+            }
+            return false
         } catch is CancellationError {
             return false
         } catch {

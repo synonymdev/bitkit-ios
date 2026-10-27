@@ -18,6 +18,9 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     private var pauseID: UUID?
     private var resumeID: UUID?
     private var sourceMissing = false
+    private var eligibilityChecks = 0
+    private var duringEligibility: (() async throws -> Void)?
+    private var duringRevocation: (() async throws -> Void)?
     private var duringPause: (() -> Void)?
     private var duringResume: (() async -> Void)?
 
@@ -40,6 +43,12 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             deleteProfile: delete ?? { [self] key, revision in try await acknowledgeDelete(key: key, revision: revision) },
             withdrawPrivate: { [self] in try step("private") },
             withdrawPublic: { [self] in try step("public") },
+            validateContacts: { [self] expectedOwner, _ in
+                XCTAssertEqual(expectedOwner, owner)
+                eligibilityChecks += 1
+                try await duringEligibility?()
+            },
+            revokeSession: { [self] in try step("revoke"); try await duringRevocation?() },
             completeLocal: { [self] in
                 try step("credentials")
                 watermark = 0
@@ -305,7 +314,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         XCTAssertEqual(deleted.count, 1)
         XCTAssertEqual(deleted.first?.0, owner)
         XCTAssertEqual(deleted.first?.1, "confirmed-revision")
-        XCTAssertEqual(steps, ["private", "public", "delete", "credentials"])
+        XCTAssertEqual(steps, ["private", "public", "delete", "revoke", "credentials"])
         XCTAssertEqual(pauseID, confirmation.id)
         XCTAssertEqual(resumeID, confirmation.id)
         XCTAssertNil(try store.pending())
@@ -454,7 +463,118 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         let confirmation = try await manager.prepareRemoval(action: .unlink, contacts: contacts())
         _ = try await manager.confirmRemoval(confirmation)
         XCTAssertTrue(deleted.isEmpty)
-        XCTAssertEqual(steps, ["private", "public", "credentials"])
+        XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+    }
+
+    func testKnownSubscriptionRefusesPreparationWithoutBeginningCleanup() async throws {
+        duringEligibility = { throw PubkyServiceError.activeSubscription(endsAt: nil) }
+        let manager = makeManager()
+        do { _ = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts()); XCTFail("Protected contacts cannot be removed") }
+        catch PubkyServiceError.activeSubscription {}
+        XCTAssertTrue(steps.isEmpty)
+        XCTAssertNil(pauseID)
+        XCTAssertNil(try store.pending())
+        XCTAssertNotNil(manager.currentSession)
+        XCTAssertNoThrow(try admission.snapshot())
+        XCTAssertEqual(watermark, 42)
+    }
+
+    func testSubscriptionAddedDuringDialogRefusesConfirmationBeforePending() async throws {
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
+        duringEligibility = { throw PubkyServiceError.activeSubscription(endsAt: nil) }
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Confirmation must recheck subscription eligibility") }
+        catch PubkyServiceError.activeSubscription {}
+        XCTAssertEqual(eligibilityChecks, 2)
+        XCTAssertTrue(steps.isEmpty)
+        XCTAssertNil(pauseID)
+        XCTAssertNil(try store.pending())
+        XCTAssertNotNil(manager.currentSession)
+        XCTAssertNoThrow(try admission.snapshot())
+    }
+
+    func testCancelledConfirmationDuringEligibilityCannotReserveRemoval() async throws {
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
+        duringEligibility = { manager.cancelRemovalConfirmation(confirmation) }
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Cancelled dialog must not reserve removal") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        XCTAssertTrue(steps.isEmpty)
+        XCTAssertNil(pauseID)
+        XCTAssertNil(try store.pending())
+        XCTAssertNoThrow(try admission.snapshot())
+    }
+
+    func testLateSubscriptionRetainsPendingWithoutWithdrawingEndpoints() async throws {
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
+        duringEligibility = { [self] in
+            if eligibilityChecks == 3 {
+                throw PubkyServiceError.activeSubscription(endsAt: nil)
+            }
+        }
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Later remote changes remain fail-closed") }
+        catch PubkyServiceError.activeSubscription {}
+        XCTAssertTrue(steps.isEmpty)
+        XCTAssertEqual(try store.pending()?.id, confirmation.id)
+        XCTAssertEqual(watermark, 42)
+    }
+
+    func testOrdinaryDisconnectRevokesGrantBeforeLocalCredentials() async throws {
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .disconnect)
+        _ = try await manager.confirmRemoval(confirmation)
+        XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+        XCTAssertTrue(deleted.isEmpty)
+        XCTAssertNil(try store.pending())
+        XCTAssertEqual(watermark, 0)
+    }
+
+    func testUncertainRevocationRetainsOriginalObligationAndLocalRecoveryNeverReplaysIt() async throws {
+        failStep = "revoke"
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Revocation was not acknowledged") }
+        catch TestError.failure("revoke") {}
+        XCTAssertEqual(steps, ["private", "public", "revoke"])
+        XCTAssertEqual(watermark, 42)
+        XCTAssertEqual(try store.pending()?.id, confirmation.id)
+        XCTAssertEqual(manager.publicKey, owner)
+        failStep = nil
+        _ = try await manager.finishPendingRemoval(id: confirmation.id)
+        XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+        XCTAssertNil(try store.pending())
+    }
+
+    func testRevocationOwnerChangeCannotClearReplacementCredentials() async throws {
+        let manager = makeManager()
+        duringRevocation = { manager.publicKey = "replacement" }
+        let confirmation = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Original owner ended") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        XCTAssertEqual(steps, ["private", "public", "revoke"])
+        XCTAssertEqual(cleanupCount, 0)
+        XCTAssertEqual(watermark, 42)
+        XCTAssertEqual(try store.pending()?.id, confirmation.id)
+        XCTAssertEqual(manager.publicKey, "replacement")
+    }
+
+    func testCancelledRevocationCannotEnterLocalFinalization() async throws {
+        let started = expectation(description: "Original grant revocation entered")
+        let barrier = NativeCompletion()
+        duringRevocation = { await barrier.wait { started.fulfill() } }
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .disconnect)
+        let operation = Task { try await manager.confirmRemoval(confirmation) }
+        await fulfillment(of: [started], timeout: 2)
+        operation.cancel()
+        XCTAssertEqual(cleanupCount, 0)
+        await barrier.finish()
+        do { _ = try await operation.value; XCTFail("Cancellation must retain recovery") }
+        catch is CancellationError {}
+        XCTAssertEqual(steps, ["private", "public", "revoke"])
+        XCTAssertEqual(watermark, 42)
+        XCTAssertEqual(try store.pending()?.id, confirmation.id)
     }
 
     func testReadOnlySignOutDoesNotRequireRemoteAccess() async throws {

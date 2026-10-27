@@ -902,6 +902,8 @@ final class ContactPaymentsServiceTests: XCTestCase {
                             writes.append("public:remove"); throw TestError.operationFailed
                         }
                     },
+                    validateContacts: { _, _ in XCTFail("Disconnect does not remove contacts") },
+                    revokeSession: { XCTFail("Failed endpoint withdrawal cannot revoke the session") },
                     completeLocal: { completeLocalCount += 1 },
                     pause: {
                         _ in pauseCount += 1; if pauseCount == 1 {
