@@ -2016,7 +2016,8 @@ struct AppScene: View {
                 "subscriptions__allowance_limit_description",
                 variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
             )
-            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+            // The Payment Request sheet opens for the same request while the app is in the foreground.
+            PaykitAllowanceNotifier.post(title: title, body: description, skipsWhileActive: true, fallback: {
                 app.toast(type: .warning, title: title, description: description, accessibilityIdentifier: "AllowanceLimitToast")
             })
         case .ledgerChanged:

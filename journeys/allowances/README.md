@@ -21,6 +21,9 @@ Allow notifications for Bitkit on both instances when it asks: the payer's "Paym
 "Limit Reached" events and the payee's "Allowance Added" event post a local notification when they can, and fall back to an in-app toast that the
 UI snapshot cannot see.
 
+"Limit Reached" posts nothing while Bitkit is in the foreground, because the Payment Request sheet
+for the same request opens at the same time.
+
 The journeys set $5 a payment and $50 a month, the second stop on each slider, and the cap journey
 sets $5 a payment and $10 a month, the first monthly stop. Requests are one-time Payment Requests
 created from the Payments tab of the payee, in the fiat unit. Dollar amounts on screen are converted
