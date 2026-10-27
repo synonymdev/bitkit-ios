@@ -281,13 +281,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testInitialUsdtSuccessCannotNavigateBackToPaidAmount() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let previousSwipeBack = SwipeBackState.allowSwipeBack
         SwipeBackState.allowSwipeBack = true
         defer { SwipeBackState.allowSwipeBack = previousSwipeBack }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let mnemonic = "test test test test test test test test test test test junk"
-        let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, loadCredentials: { (mnemonic, nil) })
+        let manager = UsdtWalletManager(
+            storageDirectory: directory,
+            rpcUrl: nil,
+            bundlerUrl: nil,
+            defaults: defaults,
+            loadCredentials: { (mnemonic, nil) }
+        )
         let address = try usdtAddress(mnemonic: mnemonic, passphrase: nil)
         let snapshot = """
         {"identity":"42161:\(address)","transfers":[{"transfer":{
