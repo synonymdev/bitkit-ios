@@ -113,7 +113,8 @@ class BackupService {
     @MainActor weak var usdtWallet: UsdtWalletManager?
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
-    @MainActor private var cancellables = Set<AnyCancellable>()
+    @MainActor private var dataStoreListeners = Set<AnyCancellable>()
+    @MainActor private var statusListeners = Set<AnyCancellable>()
     @MainActor private var periodicCheckTask: Task<Void, Never>?
     @MainActor private var observationTask: Task<Void, Never>?
     @MainActor private var isObserving = false
@@ -212,7 +213,7 @@ class BackupService {
             guard !shouldSkipBackup(), !isObserving else { return }
             isObserving = true
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
-            cancellables.formUnion(listeners)
+            dataStoreListeners.formUnion(listeners)
             startBackupStatusObservers()
             startPeriodicBackupFailureCheck()
         }
@@ -224,7 +225,7 @@ class BackupService {
         let stopping = Task {
             await previous?.value
             isObserving = false
-            cancellables.removeAll()
+            statusListeners.removeAll()
             periodicCheckTask?.cancel()
             periodicCheckTask = nil
 
@@ -248,6 +249,7 @@ class BackupService {
             }
             await walletBackupWriter.waitUntilIdle()
             await usdtBackupWriter.waitUntilIdle()
+            dataStoreListeners.removeAll()
             try? await ServiceQueue.background(.backup) {
                 self.isStoppingBackups = false
             }
@@ -685,7 +687,7 @@ class BackupService {
                         }
                     }
                 }
-                .store(in: &cancellables)
+                .store(in: &statusListeners)
         }
 
         Logger.debug("Started \(BackupCategory.allCases.count) backup status observers", context: "BackupService")
