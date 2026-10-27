@@ -245,7 +245,15 @@ struct PaymentNavigationHelper {
             else { return .amount }
             return .usdt(recipient: recipient, amount: terms.amount.inputValue)
         }
-        return app.selectedWalletToPayFrom == .lightning && app.lnurlPayData != nil ? .lnurlPayConfirm : .confirm
+        if app.selectedWalletToPayFrom == .lightning, let lnurl = app.lnurlPayData {
+            let amount = app.paykitPaymentTerms?.amount.atomic
+                ?? (try? context.incomingPaymentRequest?.payment(using: .bitcoinLightningLnurl).amount.atomic)
+            guard let amount, lnurl.accepts(amountSats: amount) else {
+                return .amount
+            }
+            return .lnurlPayConfirm
+        }
+        return .confirm
     }
 
     static func openPrivateContactPayment(

@@ -253,12 +253,42 @@ final class PaymentNavigationHelperTests: XCTestCase {
             }
             XCTAssertEqual(contactPaymentRoute(for: app), .lnurlPayConfirm)
             XCTAssertTrue(SendSheet.requiresLightningReadiness(app: app))
+            let limits: [(UInt64, UInt64, SendRoute)] = [
+                (2_500_001, 100_000_000, .amount),
+                (1000, 2_499_999, .amount),
+                (2_500_000, 2_500_000, .lnurlPayConfirm),
+            ]
+            for (minimum, maximum, route) in limits {
+                app.lnurlPayData = LnurlPayData(
+                    uri: "https://example.com/pay", callback: "https://example.com/callback",
+                    minSendable: minimum, maxSendable: maximum,
+                    metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+                )
+                XCTAssertEqual(contactPaymentRoute(for: app), route)
+            }
             if offersSavings {
                 app.selectedWalletToPayFrom = .onchain
                 XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
                 XCTAssertFalse(SendSheet.requiresLightningReadiness(app: app))
             }
         }
+    }
+
+    func testNativeBitcoinLnurlRequestConfirmsWithoutCachedTerms() throws {
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+        )
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 1_000_000, maxSendable: 1_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+
+        XCTAssertNil(app.paykitPaymentTerms)
+        XCTAssertEqual(contactPaymentRoute(for: app), .lnurlPayConfirm)
     }
 
     func testDollarRequestConfirmsWhetherUsdtIsEnabled() async throws {
