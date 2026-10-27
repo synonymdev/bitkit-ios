@@ -128,7 +128,7 @@ struct UsdtReceiveView: View {
 
     private func goBack() {
         if page == .amount {
-            draftAmount = amount; error = nil
+            error = nil
         }
         if page == .fees {
             show(.amount)
@@ -172,6 +172,7 @@ struct UsdtReceiveView: View {
                 deposit = nil; amount = ""; draftAmount = ""; error = nil
             }
             network = item
+            draftAmount = amount
             show(item == nil || deposit != nil ? .address : .amount)
         }
     }
