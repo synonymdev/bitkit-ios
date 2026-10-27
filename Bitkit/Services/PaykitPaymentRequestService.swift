@@ -1195,6 +1195,8 @@ struct PaykitPaymentRequestService {
             return reports
         } catch is CancellationError {
             throw CancellationError()
+        } catch PaykitPaymentRequestError.operationInProgress {
+            throw PaykitPaymentRequestError.operationInProgress
         } catch {
             logWarning("Failed to deliver pending Paykit private messages: \(error)")
             return []
@@ -1812,7 +1814,7 @@ final class PaykitPaymentRequestManager {
     func refresh(
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
-        messagePriority: PaykitSdkOperationLock.Priority = .ordered,
+        messagePriority: PaykitSdkOperationLock.Priority = .background,
         canRefresh: @escaping @MainActor () -> Bool = { true }
     ) async -> Bool {
         await refresh(
@@ -1944,7 +1946,7 @@ final class PaykitPaymentRequestManager {
 
     func prepareForPayment(
         _ request: PaykitPaymentRequest,
-        consumePrivatePaymentList: () async throws -> Void = {}
+        consumePrivatePaymentList: (() async throws -> Void)? = nil
     ) async throws {
         guard let identity = activeIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
         let actionGeneration = stateGeneration
@@ -1962,10 +1964,13 @@ final class PaykitPaymentRequestManager {
                 guard $0.billingPeriod != nil || $0.requiresAcceptance || acceptedRequestIds.contains($0.id) else {
                     throw PaykitPaymentRequestError.requestUnavailable
                 }
-                try await service.ensurePaymentAllowed($0)
-                try await service.claimForPayment($0)
+                // Acceptance checks the peer and claims ownership atomically; preflight earlier only before consumption or a retry.
+                if consumePrivatePaymentList != nil || !$0.requiresAcceptance {
+                    try await service.ensurePaymentAllowed($0)
+                    try await service.claimForPayment($0)
+                }
                 guard !$0.isExpired(at: now()) else { throw PaykitPaymentRequestError.requestExpired }
-                try await consumePrivatePaymentList()
+                try await consumePrivatePaymentList?()
                 if $0.requiresAcceptance {
                     guard actionGeneration == stateGeneration, PubkyPublicKeyFormat.matches(activeIdentity, identity) else {
                         throw PaykitPaymentRequestError.requestUnavailable
@@ -2150,7 +2155,7 @@ final class PaykitPaymentRequestManager {
         persistSubscriptionState(identity: activeIdentity)
         await applyCommittedSubscription(acceptedSubscription, at: subscriptionNow())
         invalidateRefresh()
-        await refresh(mode: .stored)
+        await refresh(mode: .stored, forceFresh: true)
         return pendingRequests
             .filter { $0.belongs(to: current) }
             .min { ($0.billingPeriod?.startsAt ?? .distantFuture) < ($1.billingPeriod?.startsAt ?? .distantFuture) }
@@ -2189,7 +2194,7 @@ final class PaykitPaymentRequestManager {
         else { return }
         await applyCommittedSubscription(canceledSubscription, at: subscriptionNow())
         invalidateRefresh()
-        await refresh()
+        await refresh(forceFresh: true)
     }
 
     @discardableResult
@@ -2527,7 +2532,7 @@ final class PaykitPaymentRequestManager {
         do {
             guard let activeIdentity else { return false }
             let snapshot = try await service.synchronize(
-                mode: mode, priority: .background, messagePriority: messagePriority, expectedIdentity: activeIdentity
+                mode: mode, priority: messagePriority, messagePriority: messagePriority, expectedIdentity: activeIdentity
             )
             guard generation == refreshGeneration, PubkyPublicKeyFormat.matches(self.activeIdentity, activeIdentity) else { return false }
             async let completedProofKinds = completedPaymentProofKinds(activeIdentity)
@@ -2601,19 +2606,22 @@ final class PaykitPaymentRequestManager {
                 .flatMap { _, requests in
                     requests.filter {
                         $0.lifecycleState != .proofSubmitted &&
+                            !$0.isExpired(at: refreshDate) &&
                             !locallyCompletedRequestIds.contains($0.id) &&
                             (!locallyInFlightRequestIds.contains($0.id) || retainedHardwareRetries[$0.id] != nil) &&
                             !dismissedSubscriptionPaymentIds.contains($0.id)
                     }
                 }
                 .sorted { ($0.billingPeriod?.startsAt ?? .distantFuture) < ($1.billingPeriod?.startsAt ?? .distantFuture) }
-            let recurringHistory = recurringRequestsBySubscription.flatMap { _, requests in
+            let recurringHistory = recurringRequestsBySubscription.flatMap { subscription, requests in
                 requests.compactMap { request in
                     if request.lifecycleState == .proofSubmitted {
                         return request
                     }
-                    guard let proofKind = locallyCompletedProofKinds[request.id] else { return nil }
-                    return request.updatingLifecycleState(.proofSubmitted, paymentProofKind: proofKind)
+                    if let proofKind = locallyCompletedProofKinds[request.id] {
+                        return request.updatingLifecycleState(.proofSubmitted, paymentProofKind: proofKind)
+                    }
+                    return subscription.lifecycleState == .activeRecurring && request.isExpired(at: refreshDate) ? request : nil
                 }
             }
             let protectedRequests = pendingRequests.filter {
@@ -2671,7 +2679,9 @@ final class PaykitPaymentRequestManager {
         } catch {
             guard generation == refreshGeneration else { return false }
             discardExpiredRequests()
-            logWarning("Failed to refresh incoming Paykit payment requests: \(error)")
+            if error as? PaykitPaymentRequestError != .operationInProgress {
+                logWarning("Failed to refresh incoming Paykit payment requests: \(error)")
+            }
             return false
         }
     }
@@ -2700,13 +2710,19 @@ final class PaykitPaymentRequestManager {
         let recurringRequests = subscriptionAcceptedAt[subscription.id].map {
             subscription.requests(through: date, acceptedAt: $0)
         } ?? []
+        let paymentDate = now()
         pendingRequests.removeAll { $0.belongs(to: subscription) }
         if subscription.lifecycleState == .activeRecurring {
-            pendingRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState != .proofSubmitted })
+            pendingRequests.append(contentsOf: recurringRequests.filter {
+                $0.lifecycleState != .proofSubmitted && !$0.isExpired(at: paymentDate)
+            })
             pendingRequests.sort { ($0.createdAt ?? .distantFuture) < ($1.createdAt ?? .distantFuture) }
         }
         historyRequests.removeAll { $0.belongs(to: subscription) }
-        historyRequests.append(contentsOf: recurringRequests.filter { $0.lifecycleState == .proofSubmitted })
+        historyRequests.append(contentsOf: recurringRequests.filter {
+            $0.lifecycleState == .proofSubmitted ||
+                (subscription.lifecycleState == .activeRecurring && $0.isExpired(at: paymentDate))
+        })
         historyRequests.sort { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
         await subscriptionNotificationScheduler.synchronize(
             subscriptions,
@@ -2775,7 +2791,7 @@ final class PaykitPaymentRequestManager {
         } catch {
             guard actionGeneration == stateGeneration else { throw error }
             invalidateRefresh()
-            await refresh(excludingProtectedRequestId: request.id)
+            await refresh(excludingProtectedRequestId: request.id, forceFresh: true)
             throw error
         }
     }
@@ -2815,6 +2831,11 @@ final class PaykitPaymentRequestManager {
         let subscriptionDate = subscriptionNow()
         recordRequestedPresentationExpiration(at: date, excluding: handledRequestedExpirationId)
         recordSilentExpirations(at: date, excluding: [handledRequestedExpirationId, openedRequestId].compactMap { $0 })
+        let historyIds = Set(historyRequests.map(\.id))
+        historyRequests.append(contentsOf: pendingRequests.filter {
+            $0.billingPeriod != nil && $0.isExpired(at: date) && !historyIds.contains($0.id)
+        })
+        historyRequests.sort { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
         pendingRequests.removeAll { $0.isExpired(at: date) }
         subscriptions = subscriptions.map { $0.withExpiredLifecycle(at: subscriptionDate) }
         presentedSubscriptionProposalIds.formIntersection(
@@ -2898,6 +2919,10 @@ final class PaykitPaymentRequestManager {
         let requestDelays = pendingRequests.filter { $0.lifecycleState == .proposed }.compactMap(\.expiresAt).map {
             $0.timeIntervalSince(date)
         }
+        // Payment deadlines are inclusive; reconcile just after the boundary.
+        let paymentDeadlineDelays = pendingRequests.compactMap(\.paymentDeadline).map {
+            $0.date.addingTimeInterval(0.001).timeIntervalSince(date)
+        }
         let subscriptionDelays = subscriptions.filter {
             $0.isProposal || $0.lifecycleState == .activeRecurring
         }.flatMap {
@@ -2905,7 +2930,7 @@ final class PaykitPaymentRequestManager {
         }.filter { $0 > subscriptionDate }.map {
             $0.timeIntervalSince(subscriptionDate)
         }
-        guard let nextDelay = (requestDelays + subscriptionDelays).min() else { return }
+        guard let nextDelay = (requestDelays + paymentDeadlineDelays + subscriptionDelays).min() else { return }
         let delay = max(0, nextDelay)
         expirationTask = Task { [weak self] in
             do {
