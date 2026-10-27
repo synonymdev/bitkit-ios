@@ -514,8 +514,17 @@ actor PaykitAllowanceExecutor {
         }
         switch entry.stage {
         case .prepared, .submitted:
-            // The journal is written before the node call, so no payment left this wallet.
-            return .failed
+            // The live journal is written before the node call, but a restored snapshot may predate the send,
+            // so a node that knows the payment decides.
+            guard let paymentHash = entry.paymentHash else { return .failed }
+            switch await lightningLookup.status(paymentHash: paymentHash) {
+            case .succeeded:
+                return .succeeded
+            case .pending:
+                return nil
+            case .failed, .unknown:
+                return .failed
+            }
         case .succeeded:
             return .succeeded
         case .failed:
