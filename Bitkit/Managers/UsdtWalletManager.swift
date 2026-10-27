@@ -601,6 +601,7 @@ private final class UsdtVssBackup: UsdtBackup, @unchecked Sendable {
         do {
             try await BackupService.shared.persistWalletBackup(usdt: snapshot)
         } catch {
+            Logger.error(PaykitResolutionFailureDiagnostics.reason(for: error), context: "USDT recovery backup failed")
             throw UsdtError.BackupUnavailable
         }
     }
