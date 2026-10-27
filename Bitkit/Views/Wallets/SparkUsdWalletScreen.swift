@@ -430,7 +430,7 @@ struct SparkUsdSendView: View {
         busy = true
         defer { busy = false }
         do {
-            try await spark.sendUsd(request: recipient.request, amount: units)
+            try await spark.sendUsd(request: recipient.request, amount: units, isAmountFixed: recipient.amount != nil)
             submitted = true
         } catch {
             self.error = t("usdt__send_failed_description")

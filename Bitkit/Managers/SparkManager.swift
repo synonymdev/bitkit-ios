@@ -310,11 +310,12 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    /// Pays `amount` dollar units of the dollar token to `request`, a Spark address or invoice.
-    func sendUsd(request: String, amount: UInt64) async throws {
+    /// Pays `amount` dollar units of the dollar token to `request`, a Spark address or invoice. An invoice that fixes its amount
+    /// is paid as it stands, so no rescaled amount can mismatch it.
+    func sendUsd(request: String, amount: UInt64, isAmountFixed: Bool = false) async throws {
         guard let tokenId = Env.sparkUsdTokenId else { throw SparkUsdError.noToken }
         let sdk = try await requireSdk()
-        let units = try await SparkUsd.fromUsdUnits(amount, decimals: usdDecimals(tokenId))
+        let units = isAmountFixed ? nil : try await SparkUsd.fromUsdUnits(amount, decimals: usdDecimals(tokenId))
         let prepared = try await sdk.prepareSendPayment(request: PrepareSendPaymentRequest(
             paymentRequest: .input(input: request),
             amount: units,
