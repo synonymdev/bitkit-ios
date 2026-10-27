@@ -42,6 +42,7 @@ struct SendPendingScreen: View {
     var requestPinCheck: () async -> Bool = { false }
     @Binding var navigationPath: [SendRoute]
 
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var activityList: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
@@ -68,6 +69,38 @@ struct SendPendingScreen: View {
     @State private var abandonableAttempt: OnchainSendAttempt?
     @State private var showingAbandonConfirmation = false
     @State private var abandoningOnchain = false
+    @State private var isAuthenticatingRecovery = false
+    @State private var paymentReview: UUID?
+
+    private var isReviewingRecovery: Bool {
+        Self.isReviewingRecovery(
+            scenePhase: scenePhase,
+            showingRetryConfirmation: showingRetryConfirmation,
+            retryApprovalMessage: retryApprovalMessage,
+            showingAbandonConfirmation: showingAbandonConfirmation,
+            isAuthenticatingRecovery: isAuthenticatingRecovery
+        )
+    }
+
+    static func isReviewingRecovery(
+        scenePhase: ScenePhase,
+        showingRetryConfirmation: Bool,
+        retryApprovalMessage: String?,
+        showingAbandonConfirmation: Bool,
+        isAuthenticatingRecovery: Bool
+    ) -> Bool {
+        scenePhase != .background &&
+            (showingRetryConfirmation || retryApprovalMessage != nil || showingAbandonConfirmation || isAuthenticatingRecovery)
+    }
+
+    private func updatePaymentReview(_ reviewing: Bool) {
+        if reviewing, paymentReview == nil {
+            paymentReview = PaykitPaymentActivity.shared.beginReview()
+        } else if !reviewing, let paymentReview {
+            PaykitPaymentActivity.shared.endReview(paymentReview)
+            self.paymentReview = nil
+        }
+    }
 
     private var pendingHardwareWalletId: String? {
         hardwareWalletId ?? pendingOnchainProof?.onchainWalletId.flatMap { $0 == WalletScope.default ? nil : $0 }
@@ -197,7 +230,13 @@ struct SendPendingScreen: View {
         } message: {
             Text(t("wallet__onchain_abandon_note"))
         }
-        .onDisappear { finishRetryApproval(false) }
+        .onChange(of: isReviewingRecovery, initial: true) { _, reviewing in
+            updatePaymentReview(reviewing)
+        }
+        .onDisappear {
+            finishRetryApproval(false)
+            updatePaymentReview(false)
+        }
         .navigationBarHidden(true)
         .allowSwipeBack(false)
         .padding(.horizontal, 16)
@@ -345,6 +384,8 @@ struct SendPendingScreen: View {
                 authorize: { attempt, _ in
                     if settings.requirePinForPayments && settings.pinEnabled {
                         if settings.useBiometrics && BiometricAuth.isAvailable {
+                            isAuthenticatingRecovery = true
+                            defer { isAuthenticatingRecovery = false }
                             guard case .success = await BiometricAuth.authenticate() else { throw CancellationError() }
                         } else {
                             guard await requestPinCheck() else { throw CancellationError() }
@@ -370,8 +411,13 @@ struct SendPendingScreen: View {
                     }
                 }
             )
-            _ = result
-            try await refreshOriginalOutcome(context: context)
+            let proofPriority: PaykitSdkOperationLock.Priority =
+                if case .accepted = result, original.walletId == OnchainSendAttemptService.walletId(index: 0) {
+                    .interactive
+                } else {
+                    .ordered
+                }
+            try await refreshOriginalOutcome(context: context, proofPriority: proofPriority)
         } catch is CancellationError {
             // A positive original observation may have won while authentication awaited.
             try? await refreshOriginalOutcome(context: context)
@@ -404,6 +450,8 @@ struct SendPendingScreen: View {
                     guard await requestRetryApproval(message) else { throw CancellationError() }
                     if settings.requirePinForPayments && settings.pinEnabled {
                         if settings.useBiometrics && BiometricAuth.isAvailable {
+                            isAuthenticatingRecovery = true
+                            defer { isAuthenticatingRecovery = false }
                             guard case .success = await BiometricAuth.authenticate() else { throw CancellationError() }
                         } else {
                             guard await requestPinCheck() else { throw CancellationError() }
@@ -444,13 +492,19 @@ struct SendPendingScreen: View {
     }
 
     @MainActor
-    private func refreshOriginalOutcome(context: OnchainSendPendingContext) async throws {
+    private func refreshOriginalOutcome(
+        context: OnchainSendPendingContext, proofPriority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws {
         onchainAttempt = try await attemptService.pendingAttempt(context: context)
         guard let original = onchainAttempt, original.status == .accepted, original.txid != nil else { return }
         if let requestId = original.requestId {
-            await proofService.reconcile()
+            if proofPriority == .ordered {
+                await proofService.reconcile()
+            }
             if let payer = original.recoveryContext?.paymentIdentity,
-               let resolution = await proofService.resolvedOnchainPayment(requestId: requestId, identity: payer, context: context)
+               let resolution = await proofService.resolvedOnchainPayment(
+                   requestId: requestId, identity: payer, context: context, priority: proofPriority
+               )
             {
                 applyOnchainPaymentResolution(resolution)
             }
