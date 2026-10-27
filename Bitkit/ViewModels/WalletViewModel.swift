@@ -1049,11 +1049,30 @@ class WalletViewModel: ObservableObject {
                 }
 
                 syncState()
+                Task { [weak self] in
+                    await self?.finishWatchSendIfRailAlreadySettled(hash: hash, eventId: eventId)
+                }
             }
         } onCancel: {
             Task { @MainActor [weak self] in
                 self?.finishWatchSend(id: eventId, result: .failure(CancellationError()))
             }
+        }
+    }
+
+    /// A Spark-to-Spark payment settles inside the send call, so its completion event can fire before `watchSend`
+    /// starts listening; the rail's own payment list still has the outcome.
+    private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
+        let payment = await lightningService.channelFreeRailPayments().first {
+            $0.direction == .outbound && $0.paymentHash.caseInsensitiveCompare(hash) == .orderedSame
+        }
+        switch payment?.status {
+        case .succeeded:
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: 0)))
+        case .failed:
+            finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
+        case .pending, nil:
+            break
         }
     }
 

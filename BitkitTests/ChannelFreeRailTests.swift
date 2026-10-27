@@ -59,6 +59,14 @@ final class ChannelFreeRailTests: XCTestCase {
         XCTAssertEqual(attempted.intersection(["out", "failed"]), ["out"])
     }
 
+    func testLightningWaitFinishesWhenTheRailSettledBeforeWatching() async throws {
+        rail.payments = [Bitkit.ChannelFreeRailPayment(paymentHash: "ff", direction: .outbound, status: .succeeded, preimage: nil)]
+
+        let settled = try await WalletViewModel().waitForLightningPayment(hash: "ff", timeoutSeconds: 5)
+
+        XCTAssertEqual(settled.paymentHash, "ff")
+    }
+
     func testQuickPayReconcilesRailPayments() {
         let row = QuickPayReconcileRow(railPayment: Bitkit.ChannelFreeRailPayment(
             paymentHash: "dd", direction: .outbound, status: .succeeded, preimage: nil
