@@ -17,11 +17,11 @@ final class SparkUsdTests: XCTestCase {
         XCTAssertEqual(SparkUsd.fromUsdUnits(1_500_000, decimals: 6), BInt(1_500_000))
     }
 
-    func testRegtestHasADollarTokenAndOtherNetworksWaitForOne() {
-        if Env.network == .regtest {
-            XCTAssertEqual(Env.sparkUsdTokenId?.hasPrefix("btknrt1"), true)
-        } else {
-            XCTAssertNil(Env.sparkUsdTokenId)
+    func testPinsADollarTokenForTheNetwork() {
+        switch Env.network {
+        case .regtest: XCTAssertEqual(Env.sparkUsdTokenId?.hasPrefix("btknrt1"), true)
+        case .bitcoin: XCTAssertEqual(Env.sparkUsdTokenId?.hasPrefix("btkn1"), true)
+        default: XCTAssertNil(Env.sparkUsdTokenId)
         }
     }
 }
