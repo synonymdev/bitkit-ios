@@ -6,6 +6,7 @@ limit falls back to the normal Payment Request sheet, and either side ends it. T
 pins the one rule that must never break: a payment interrupted mid-flight is never paid twice.
 The PIN journey checks that the payer's grant, accept and end ask for the payment PIN when the
 user requires one, while automatic payments never prompt.
+The restore journey checks that a payer restored from its recovery phrase keeps its allowance history.
 
 ## Setup
 
