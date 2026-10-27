@@ -87,6 +87,8 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
     var groups: [Group] = []
     var journal: [JournalEntry] = []
     var presentedProposalIds: Set<String> = []
+    /// Offers this wallet accepts by itself, marked before the accept, until "Allowance Added" is shown for them.
+    var unannouncedOfferIds: Set<String> = []
     var notifiedRequestIds: Set<String> = []
     var lastTrustedTime: Date?
 

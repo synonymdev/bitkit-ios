@@ -1958,6 +1958,7 @@
 "subscriptions__allowance_executed_description" = "Automatická platba odeslala {amount} uživateli {name}";
 "subscriptions__allowance_offer_accepted_title" = "Povolení plateb přidáno";
 "subscriptions__allowance_offer_accepted_description" = "Uživatel {name} vám nastavil povolení plateb";
+"subscriptions__allowance_offers_accepted_description" = "Uživatelé {names} vám nastavili povolení plateb";
 "subscriptions__allowance_limit_title" = "Limit dosažen";
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";

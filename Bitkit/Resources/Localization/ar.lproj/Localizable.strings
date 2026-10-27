@@ -1635,6 +1635,7 @@
 "subscriptions__allowance_executed_description" = "أرسل الدفع التلقائي {amount} إلى {name}";
 "subscriptions__allowance_offer_accepted_title" = "تمت إضافة مخصص";
 "subscriptions__allowance_offer_accepted_description" = "أعدّ {name} مخصصًا لك";
+"subscriptions__allowance_offers_accepted_description" = "أعدّ {names} مخصصات لك";
 "subscriptions__allowance_limit_title" = "تم بلوغ الحد";
 "subscriptions__allowance_limit_description" = "طلب بقيمة {amount} من {name} يتجاوز مخصصك. راجعه للدفع.";
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";

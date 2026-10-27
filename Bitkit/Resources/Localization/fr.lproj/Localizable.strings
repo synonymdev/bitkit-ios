@@ -1969,6 +1969,7 @@
 "subscriptions__allowance_executed_description" = "Le paiement automatique a envoyé {amount} à {name}";
 "subscriptions__allowance_offer_accepted_title" = "Allocation ajoutée";
 "subscriptions__allowance_offer_accepted_description" = "{name} a configuré une allocation pour vous";
+"subscriptions__allowance_offers_accepted_description" = "{names} ont configuré des allocations pour vous";
 "subscriptions__allowance_limit_title" = "Limite atteinte";
 "subscriptions__allowance_limit_description" = "Une demande de {amount} de {name} dépasse votre allocation. Examinez-la pour payer.";
 "subscriptions__allowance_auto_paid" = "Payé automatiquement";

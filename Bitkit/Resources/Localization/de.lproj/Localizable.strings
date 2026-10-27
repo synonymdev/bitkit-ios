@@ -1955,6 +1955,7 @@
 "subscriptions__allowance_executed_description" = "Auto-Pay hat {amount} an {name} gesendet";
 "subscriptions__allowance_offer_accepted_title" = "Kontingent hinzugefügt";
 "subscriptions__allowance_offer_accepted_description" = "{name} hat ein Kontingent für dich eingerichtet";
+"subscriptions__allowance_offers_accepted_description" = "{names} haben Kontingente für dich eingerichtet";
 "subscriptions__allowance_limit_title" = "Limit erreicht";
 "subscriptions__allowance_limit_description" = "Eine Anforderung über {amount} von {name} übersteigt dein Kontingent. Prüfe sie, um zu bezahlen.";
 "subscriptions__allowance_auto_paid" = "Automatisch bezahlt";

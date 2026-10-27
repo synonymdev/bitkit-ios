@@ -259,33 +259,47 @@ final class PaykitAllowanceManager {
 
     /// Accepts the offers that make this wallet the allowee, and returns the ones now active so the caller can tell the
     /// user. A failed accept stays unanswered and is tried again on the next refresh. `canContinue` gates each further
-    /// accept; an accept already made is still returned while this identity is active and `canAnnounce` holds, since
-    /// the offer is no longer answerable afterwards and nothing else would tell the user about it.
+    /// accept. Each offer is marked before its accept and unmarked only when returned, so an accept whose announcement a
+    /// stop or a cancelled refresh cut short is returned by a later call, while this identity is active and `canAnnounce`
+    /// holds: the offer is no longer answerable afterwards and nothing else would tell the user about it.
     func acceptOffersFromAllowers(
         canContinue: @MainActor () -> Bool = { true },
         canAnnounce: @MainActor () -> Bool = { true }
     ) async -> [PaykitAllowanceEntry] {
         guard let identity, !isAcceptingOffers else { return [] }
+        isAcceptingOffers = true
+        defer { isAcceptingOffers = false }
+
         let offers = entries.filter { entry in
             let answerable = entry.allowances.filter(\.isAnswerable)
             return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
         }
-        guard !offers.isEmpty else { return [] }
-
-        isAcceptingOffers = true
-        defer { isAcceptingOffers = false }
-        var accepted: [PaykitAllowanceEntry] = []
         for offer in offers {
             guard self.identity == identity, canContinue() else { break }
+            let ids = offer.allowances.map(\.scopedId)
+            await executor.updateLocalState(identity: identity) { $0.unannouncedOfferIds.formUnion(ids) }
             do {
                 // A background accept must not clear the progress flag of a proposal the user has in flight.
                 try await accept(offer, showsProgress: false)
-                accepted.append(offer)
             } catch {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
             }
         }
-        return self.identity == identity && canAnnounce() ? accepted : []
+        guard self.identity == identity, canAnnounce() else { return [] }
+        return await takeUnannouncedOffers(identity: identity)
+    }
+
+    private func takeUnannouncedOffers(identity: String) async -> [PaykitAllowanceEntry] {
+        let marked = await executor.localState(identity: identity).unannouncedOfferIds
+        guard !marked.isEmpty else { return [] }
+        let accepted = entries.filter { entry in
+            entry.allowances.contains { marked.contains($0.scopedId) && $0.role == .allowee && $0.lifecycleState == .accepted }
+        }
+        // An offer still unanswered keeps its mark; one ended or withdrawn before the accept will never be announced.
+        let settled = Set(allowances.filter { $0.lifecycleState != .proposed }.map(\.scopedId))
+        await executor.updateLocalState(identity: identity) { $0.unannouncedOfferIds.subtract(settled) }
+        localState.unannouncedOfferIds.subtract(settled)
+        return accepted
     }
 
     private func respond(

@@ -1332,6 +1332,34 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerAnnouncesAnOfferWhoseAcceptWasCutShortOnTheNextRefresh() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setAcceptAllowanceErrorAfterCommit(CancellationError())
+
+        let cutShort = await manager.acceptOffersFromAllowers()
+
+        XCTAssertTrue(cutShort.isEmpty)
+        let acceptedIds = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIds, [Fixtures.walletAllowanceId], "The SDK committed the accept before the call stopped")
+
+        await harness.sdk.setAcceptAllowanceErrorAfterCommit(nil)
+        let relaunched = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await relaunched.activate(identity: Fixtures.identityKey)
+        let announced = await relaunched.acceptOffersFromAllowers()
+        let announcedAgain = await relaunched.acceptOffersFromAllowers()
+
+        XCTAssertEqual(announced.map(\.counterparty), [Fixtures.counterpartyKey], "The accepted offer is announced on the next refresh")
+        XCTAssertTrue(announcedAgain.isEmpty, "and only once")
+        let acceptedIdsAfter = await harness.sdk.acceptedAllowanceIds
+        XCTAssertEqual(acceptedIdsAfter, [Fixtures.walletAllowanceId])
+    }
+
+    @MainActor
     func testAutomaticOfferAcceptanceKeepsAManualProposalWorking() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([
@@ -1980,6 +2008,12 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         return record
     }
 
+    private var acceptAllowanceErrorAfterCommit: Error?
+
+    func setAcceptAllowanceErrorAfterCommit(_ error: Error?) {
+        acceptAllowanceErrorAfterCommit = error
+    }
+
     func acceptAllowance(counterparty: String, allowanceId: String, expectedProposalStreamItemId: UInt64) async throws -> Paykit.AllowanceRecord {
         log.append("acceptAllowance")
         if let acceptAllowanceError {
@@ -1991,6 +2025,9 @@ private actor AllowanceSdkMock: PaykitAllowanceSdkHandling {
         }
         records[index].state = .accepted
         acceptedAllowanceIds.append(allowanceId)
+        if let acceptAllowanceErrorAfterCommit {
+            throw acceptAllowanceErrorAfterCommit
+        }
         return records[index]
     }
 

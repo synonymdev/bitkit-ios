@@ -1961,6 +1961,7 @@
 "subscriptions__allowance_executed_description" = "El pago automático envió {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Asignación agregada";
 "subscriptions__allowance_offer_accepted_description" = "{name} configuró una asignación para ti";
+"subscriptions__allowance_offers_accepted_description" = "{names} configuraron asignaciones para ti";
 "subscriptions__allowance_limit_title" = "Límite alcanzado";
 "subscriptions__allowance_limit_description" = "Una solicitud de {amount} de {name} supera su asignación. Revísela para pagar.";
 "subscriptions__allowance_auto_paid" = "Pagado automáticamente";

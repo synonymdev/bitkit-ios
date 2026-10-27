@@ -1928,6 +1928,7 @@
 "subscriptions__allowance_executed_description" = "Il pagamento automatico ha inviato {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Plafond Aggiunto";
 "subscriptions__allowance_offer_accepted_description" = "{name} ha impostato un Plafond per te";
+"subscriptions__allowance_offers_accepted_description" = "{names} hanno impostato dei Plafond per te";
 "subscriptions__allowance_limit_title" = "Limite Raggiunto";
 "subscriptions__allowance_limit_description" = "Una richiesta di {amount} da {name} supera il tuo plafond. Controllala per pagare.";
 "subscriptions__allowance_auto_paid" = "Pagato automaticamente";
