@@ -2040,14 +2040,15 @@ struct AppScene: View {
 
     /// One announcement for all offers accepted in a refresh, since each fallback toast would replace the one before it.
     private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
-        guard let first = offers.first else { return }
+        var names: [String] = []
+        for offer in offers where !names.contains(contactName(offer.counterparty)) {
+            names.append(contactName(offer.counterparty))
+        }
+        guard let first = names.first else { return }
         let title = t("subscriptions__allowance_offer_accepted_title")
-        let description = offers.count == 1
-            ? t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(first.counterparty)])
-            : t(
-                "subscriptions__allowance_offers_accepted_description",
-                variables: ["names": ListFormatter.localizedString(byJoining: offers.map { contactName($0.counterparty) })]
-            )
+        let description = names.count == 1
+            ? t("subscriptions__allowance_offer_accepted_description", variables: ["name": first])
+            : t("subscriptions__allowance_offers_accepted_description", variables: ["names": ListFormatter.localizedString(byJoining: names)])
         PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
             app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
         })
