@@ -121,11 +121,14 @@ subscription payment-method switches: preserve the originally entered denominati
 
 ### Paykit payment-method review
 
-In `paykit-quoted-usdt.xml`, Android returns to Amount whenever a quoted request changes payment
-method. iOS keeps confirmation open when the exact amount, quote and validity window are unchanged
-and still valid; changed or expired terms return to Amount. Verify the selected method and exact
-payable amount on both platforms, and close without signing. The optional Savings/Spending
-confirmation check requires existing Bitcoin regtest funds and a usable Lightning channel.
+In `paykit-quoted-usdt.xml`, Android keeps confirmation open when a Savings/Spending switch can
+bind valid quoted Bitcoin terms, showing the selected method's exact amount and refreshed fees.
+Unavailable or expired terms, or a Lightning amount below its minimum, return to Amount for
+review. Opening Amount manually after a valid switch and then tapping Back closes the sheet. iOS
+keeps confirmation open when the exact amount, quote and validity window are unchanged and still
+valid; changed or expired terms return to Amount. Verify the selected method and exact payable
+amount on both platforms, and close without signing. The optional Savings/Spending confirmation
+check requires existing Bitcoin regtest funds and a usable Lightning channel.
 
 ### USDT full-balance errors
 
@@ -133,6 +136,12 @@ confirmation check requires existing Bitcoin regtest funds and a usable Lightnin
 fee-collection message when the entire balance is entered manually. Either error can occur on
 either platform; the failing validation determines the message.
 Both must keep payment review closed and allow the user to reduce the amount.
+
+### USDT Receive swipe hit area
+
+`receive/usdt-receive-swipe-tabs.xml` keeps the shared seven QR swipe/copy steps and adds two iOS
+checks for the flexible blank band above Network on a tall phone. Android already attaches the
+USDT swipe gesture to a full-height column; the extra iOS steps guard its spacer hit area.
 
 ## Identifiers
 
@@ -284,4 +293,4 @@ a bug report. `AGENTS.md` has the commands.
 feedback, preparation cleanup, and manual retry use the same actions and
 `PaymentRequestAmountTooLowToast` identifier on both platforms.
 
-`usdt-independent-recovery.xml` is shared by iOS and Android with the same journey name and actions. It covers independent acknowledged recovery, Pubky lock contention, backup failure, same-operation retry, restart, migration and concurrent writers. It requires disposable local USDT and fault-injection endpoints; the standard staging environment does not supply those fixtures. A missing fixture is a verification gap, not a passed journey.
+`usdt-independent-recovery.xml` shares its journey name and seven recovery actions with Android; Android adds a deadline-transition action. It covers independent acknowledged recovery, Pubky lock contention, backup failure, same-operation retry, restart, migration and concurrent writers. It requires disposable local USDT and fault-injection endpoints; the standard staging environment does not supply those fixtures. A missing fixture is a verification gap, not a passed journey.
