@@ -19,12 +19,14 @@ final class UsdtWalletManager {
     let receivedTxPublisher = PassthroughSubject<UsdtTransfer, Never>()
     private(set) var balance: UInt64? {
         didSet {
+            balanceIsStale = balance == nil
             if let balance {
                 displayBalanceCache.save(balance, address: address)
             }
         }
     }
 
+    private(set) var balanceIsStale = true
     private(set) var cachedBalance: UInt64?
     private let displayBalanceCache: UsdtDisplayBalanceCache
     private(set) var address = ""
@@ -165,6 +167,7 @@ final class UsdtWalletManager {
         var refreshDelay: TimeInterval = 10
         activeOperations += 1
         refreshing = true
+        balanceIsStale = true
         defer { refreshing = false; nextRefresh = max(rateLimitedUntil, Date().addingTimeInterval(refreshDelay)); finishOperation() }
         do {
             let wallet = try await wallet()

@@ -1,9 +1,9 @@
 import XCTest
 
 final class UsdtWalletUITests: XCTestCase {
-    private let forkRpcURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_RPC_URL"] ?? "http://127.0.0.1:18545"
-    private let forkBundlerURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_BUNDLER_URL"] ?? "http://127.0.0.1:18546"
-    private let offlineRpcURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_OFFLINE_RPC_URL"] ?? "http://127.0.0.1:18549"
+    private let forkRpcURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_RPC_URL"] ?? "http://127.0.0.1:1"
+    private let forkBundlerURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_BUNDLER_URL"] ?? "http://127.0.0.1:1"
+    private let offlineRpcURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_OFFLINE_RPC_URL"] ?? "http://127.0.0.1:1"
 
     @MainActor
     func testUnknownBalanceAndManualEntryUseConsistentAmountsInCommaRegion() throws {

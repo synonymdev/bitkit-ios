@@ -34,12 +34,21 @@ final class HomeWalletBalanceTests: XCTestCase {
     func testUpdatingRemainsVisibleUntilBalanceAndRatesFinish() {
         let cachedRate = PaykitExchangeRate(price: "100000", timestamp: now.addingTimeInterval(-300))
         func updating(_ balanceRefreshing: Bool, _ rateRefreshing: Bool) -> Bool {
-            HomeWalletView.isBalanceUpdating(balance: 1_000_000, refreshing: balanceRefreshing, hasError: false,
+            HomeWalletView.isBalanceUpdating(balance: 1_000_000, refreshing: balanceRefreshing, balanceIsStale: false,
                                              rate: cachedRate, rateRefreshing: rateRefreshing, now: now)
         }
         XCTAssertTrue(updating(true, true))
         XCTAssertTrue(updating(false, true))
         XCTAssertFalse(updating(false, false))
+    }
+
+    func testFailedBalanceReadKeepsPreviousBalanceUpdating() {
+        XCTAssertTrue(HomeWalletView.isBalanceUpdating(balance: 1_000_000, refreshing: false, balanceIsStale: true,
+                                                       rate: rate, rateRefreshing: false, now: now))
+        XCTAssertFalse(HomeWalletView.isBalanceUpdating(balance: 1_000_000, refreshing: false, balanceIsStale: false,
+                                                        rate: rate, rateRefreshing: false, now: now))
+        XCTAssertTrue(HomeWalletView.isBalanceUpdating(balance: nil, refreshing: false, balanceIsStale: false,
+                                                       rate: rate, rateRefreshing: false, now: now))
     }
 
     private func total(balance: UInt64?, rate: PaykitExchangeRate?) -> Int? {

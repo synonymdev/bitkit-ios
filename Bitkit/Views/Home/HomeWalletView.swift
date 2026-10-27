@@ -41,14 +41,14 @@ struct HomeWalletView: View {
 
     private var balanceUpdating: Bool {
         showsUsdt && Self.isBalanceUpdating(balance: usdt.balance, refreshing: usdt.refreshing,
-                                            hasError: usdt.errorMessage != nil, rate: currency.paykitRate,
+                                            balanceIsStale: usdt.balanceIsStale, rate: currency.paykitRate,
                                             rateRefreshing: currency.isRefreshing)
     }
 
-    static func isBalanceUpdating(balance: UInt64?, refreshing: Bool, hasError: Bool,
+    static func isBalanceUpdating(balance: UInt64?, refreshing: Bool, balanceIsStale: Bool,
                                   rate: PaykitExchangeRate?, rateRefreshing: Bool, now: Date = Date()) -> Bool
     {
-        balance == nil || refreshing || hasError ||
+        balance == nil || refreshing || balanceIsStale ||
             (balance != 0 && (rateRefreshing || (try? rate?.value(at: now)) == nil))
     }
 
@@ -128,7 +128,7 @@ struct HomeWalletView: View {
                 }
             } else {
                 Spacer()
-                if usdt.balance ?? 0 == 0 {
+                if !showsUsdt || (usdt.balance ?? usdt.cachedBalance ?? 0) == 0 {
                     WalletOnboardingView(type: .home)
                 }
             }
