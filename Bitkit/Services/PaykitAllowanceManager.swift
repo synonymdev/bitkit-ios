@@ -132,6 +132,7 @@ final class PaykitAllowanceManager {
         await executor.activate(identity: identity)
         if identityChanged {
             manualRequestIds = [:]
+            announcedOfferIds = []
             await executor.recover(identity: identity)
         }
         await refresh()
@@ -151,6 +152,7 @@ final class PaykitAllowanceManager {
         autoPaidRequestIds = []
         autoPaidSatsByScopedId = [:]
         manualRequestIds = [:]
+        announcedOfferIds = []
     }
 
     func refresh() async {

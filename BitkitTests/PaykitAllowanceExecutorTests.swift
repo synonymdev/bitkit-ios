@@ -1477,6 +1477,35 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerForgetsWhatItAnnouncedWhenDeactivated() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setAcceptAllowanceErrorAfterCommit(CancellationError())
+        _ = await manager.acceptOffersFromAllowers()
+        await harness.sdk.setAcceptAllowanceErrorAfterCommit(nil)
+        let relaunched = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await relaunched.activate(identity: Fixtures.identityKey)
+        harness.store.failSaves()
+        let announced = await relaunched.acceptOffersFromAllowers()
+
+        relaunched.deactivate()
+        await relaunched.activate(identity: Fixtures.identityKey)
+        let announcedAfterReactivation = await relaunched.acceptOffersFromAllowers()
+        harness.store.restoreSaves()
+
+        XCTAssertEqual(announced.map(\.counterparty), [Fixtures.counterpartyKey])
+        XCTAssertEqual(
+            announcedAfterReactivation.map(\.counterparty),
+            [Fixtures.counterpartyKey],
+            "A new session announces an offer whose mark is still stored"
+        )
+    }
+
+    @MainActor
     func testAutomaticOfferAcceptanceKeepsAManualProposalWorking() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([
