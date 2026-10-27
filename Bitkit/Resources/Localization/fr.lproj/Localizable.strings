@@ -198,6 +198,8 @@
 "fee__custom__longRange" = "Dépend du montant des frais";
 "lightning__funding__nav_title" = "Solde Dépenses";
 "lightning__funding__title" = "Financez votre <accent>solde Dépenses</accent>";
+"lightning__funding__button1" = "Transfert depuis l\'épargne";
+"lightning__funding__button2" = "Utiliser un autre portefeuille";
 "lightning__funding__button3" = "Configuration manuelle";
 "lightning__funding_advanced__button_short" = "Configuration avancée";
 "lightning__transfer__nav_title" = "Transfert de fonds";
@@ -344,6 +346,7 @@
 "lightning__force_failed_msg" = "Impossible de renvoyer vos fonds sur l\'Épargne. Veuillez réessayer.";
 "lightning__channel_opened_title" = "Solde Dépenses";
 "lightning__channel_opened_msg" = "Vous pouvez désormais payer n\'importe qui, n\'importe où, instantanément.";
+"lightning__funding__button_hw" = "Transfert depuis le portefeuille HW";
 "lightning__order_given_up_title" = "Échec de la configuration des paiements instantanés";
 "lightning__order_given_up_msg" = "Le processus d\'installation a expiré. Veuillez réessayer.";
 "lightning__order_expired_title" = "Échec de la configuration des paiements instantanés";
@@ -523,14 +526,7 @@
 "other__transfer_notification__body" = "Ouvrez Bitkit pour terminer votre transfert";
 "other__scan__error__generic" = "Bitkit ne peut pas lire les données fournies.";
 "other__scan__error__expired" = "Cette facture Lightning a expiré.";
-"other__gift__claimed__text" = "Désolé, vous arrivez trop tard ! Tous les cadeaux pour ce code ont déjà été réclamés.";
-"other__gift__claiming__text" = "Réclamer votre code cadeau Bitkit...";
-"other__gift__claiming__title" = "Réclamer un cadeau";
-"other__gift__error__title" = "Erreur de code cadeau";
-"other__gift__error__text" = "Bitkit n\'a pas pu réclamer les fonds. Veuillez réessayer plus tard ou nous contacter.";
 "other__gift__error__button" = "OK";
-"other__gift__used__title" = "Code utilisé";
-"other__gift__used__text" = "Ce code cadeau Bitkit a déjà été utilisé et les fonds ont été versés.";
 "other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Boutique";
 "other__shop__intro__description" = "Passez à la norme Bitcoin. Dépensez vos bitcoins en cartes-cadeaux numériques, eSIM, recharges téléphoniques, et plus encore.";

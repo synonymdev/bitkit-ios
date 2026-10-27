@@ -190,6 +190,8 @@
 "fee__custom__range" = "Depends on the fee";
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
+"lightning__funding__button1" = "Transfer from Savings";
+"lightning__funding__button2" = "Use Other Wallet";
 "lightning__funding__button3" = "Manual Setup";
 "lightning__funding_advanced__button_short" = "Advanced Setup";
 "lightning__transfer__nav_title" = "Transfer Funds";
@@ -336,6 +338,7 @@
 "lightning__force_failed_msg" = "Unable to transfer your funds back to savings. Please try again.";
 "lightning__channel_opened_title" = "Spending Balance Ready";
 "lightning__channel_opened_msg" = "You can now pay anyone, anywhere, instantly.";
+"lightning__funding__button_hw" = "Transfer from HW wallet";
 "lightning__order_given_up_title" = "Instant Payments Setup Failed";
 "lightning__order_given_up_msg" = "The setup process expired. Please try again.";
 "lightning__order_expired_title" = "Instant Payments Setup Failed";
@@ -512,14 +515,7 @@
 "other__transfer_notification__body" = "Open Bitkit to complete your transfer";
 "other__scan__error__generic" = "Bitkit is unable to read the provided data.";
 "other__scan__error__expired" = "This Lightning invoice has expired.";
-"other__gift__claimed__text" = "Sorry, you're too late! All gifts for this code have already been claimed.";
-"other__gift__claiming__text" = "Claiming your Bitkit gift code...";
-"other__gift__claiming__title" = "Claiming Gift";
-"other__gift__error__title" = "Gift Code Error";
-"other__gift__error__text" = "Bitkit couldn\'t claim the funds. Please try again later or contact us.";
 "other__gift__error__button" = "OK";
-"other__gift__used__title" = "Used Code";
-"other__gift__used__text" = "This Bitkit gift code has already been used, and the funds have been paid out.";
 "other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Shop";
 "other__shop__intro__description" = "Get your life on the Bitcoin standard. Spend your Bitcoin on digital gift cards, eSIMs, phone refills, and more.";

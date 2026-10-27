@@ -197,6 +197,8 @@
 "fee__custom__longRange" = "Depèn de la tarifa";
 "lightning__funding__nav_title" = "Saldo de despesa";
 "lightning__funding__title" = "Finança el teu <accent>saldo de despesa</accent>";
+"lightning__funding__button1" = "Transferir des d\'estalvis";
+"lightning__funding__button2" = "Utilitza un altre moneder";
 "lightning__funding__button3" = "Configuració manual";
 "lightning__funding_advanced__button_short" = "Configuració avançada";
 "lightning__transfer__nav_title" = "Transferir fons";
@@ -327,6 +329,7 @@
 "lightning__force_failed_msg" = "No es possible transferir els teus fons de tornada a estalvi. Si us plau, intenta-ho de nou.";
 "lightning__channel_opened_title" = "Saldo de despesa llest";
 "lightning__channel_opened_msg" = "Ara pots pagar a qualsevol persona, en qualsevol lloc, instantàniament.";
+"lightning__funding__button_hw" = "Transferir des del moneder HW";
 "lightning__order_given_up_title" = "Configuració de pagaments instantanis fallida";
 "lightning__order_expired_title" = "Configuració de pagaments instantanis fallida";
 "lightning__order_state__awaiting_payment" = "Processant pagament";
@@ -482,14 +485,7 @@
 "other__try_again" = "Torna-ho a provar.";
 "other__scan__error__generic" = "Bitkit no pot llegir les dades proporcionades.";
 "other__scan__error__expired" = "Aquesta factura Lightning ha caducat.";
-"other__gift__claimed__text" = "Ho sentim, arribes tard! Tots els regals per a aquest codi ja s\'han reclamat.";
-"other__gift__claiming__text" = "Reclamant el teu codi de regal de Bitkit...";
-"other__gift__claiming__title" = "Reclamant regal";
-"other__gift__error__title" = "Error del codi de regal";
-"other__gift__error__text" = "Bitkit no ha pogut reclamar els fons. Si us plau, torna-ho a provar més tard o contacta amb nosaltres.";
 "other__gift__error__button" = "OK";
-"other__gift__used__title" = "Codi usat";
-"other__gift__used__text" = "Aquest codi de regal de Bitkit ja s\'ha utilitzat i els fons s\'han pagat.";
 "other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Botiga";
 "other__shop__intro__description" = "Viu la teva vida amb l\'estàndard Bitcoin. Gasta els teus Bitcoin en targetes regal digitals, eSIM, recàrregues de telèfon i molt més.";

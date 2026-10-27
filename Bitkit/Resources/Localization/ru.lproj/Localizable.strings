@@ -197,6 +197,8 @@
 "fee__custom__longRange" = "Зависит от комиссии";
 "lightning__funding__nav_title" = "Баланс Расходов";
 "lightning__funding__title" = "Пополните свой <accent>Баланс Расходов</accent>";
+"lightning__funding__button1" = "Перевести из Сбережений";
+"lightning__funding__button2" = "Использовать Другой Кошелёк";
 "lightning__funding__button3" = "Ручная настройка";
 "lightning__funding_advanced__button_short" = "Расширенная Настройка";
 "lightning__transfer__nav_title" = "Перевод Средств";
@@ -338,6 +340,7 @@
 "lightning__force_failed_msg" = "Не удалось перевести ваши средства обратно в сбережения. Пожалуйста, попробуйте снова.";
 "lightning__channel_opened_title" = "Баланс Расходов Готов";
 "lightning__channel_opened_msg" = "Теперь вы можете платить кому угодно, где угодно, мгновенно.";
+"lightning__funding__button_hw" = "Перевести с аппаратного кошелька";
 "lightning__order_given_up_title" = "Ошибка Настройки Мгновенных Платежей";
 "lightning__order_given_up_msg" = "Процесс настройки истёк. Пожалуйста, попробуйте снова.";
 "lightning__order_expired_title" = "Ошибка Настройки Мгновенных Платежей";
@@ -517,14 +520,7 @@
 "other__transfer_notification__body" = "Откройте Bitkit, чтобы завершить перевод";
 "other__scan__error__generic" = "Bitkit не может прочитать предоставленные данные.";
 "other__scan__error__expired" = "Срок действия этого Lightning инвойса истёк.";
-"other__gift__claimed__text" = "Извините, вы опоздали! Все подарки по этому коду уже получены.";
-"other__gift__claiming__text" = "Получение подарочного кода Bitkit...";
-"other__gift__claiming__title" = "Получение Подарка";
-"other__gift__error__title" = "Ошибка Подарочного Кода";
-"other__gift__error__text" = "Bitkit не удалось получить средства. Пожалуйста, попробуйте позже или свяжитесь с нами.";
 "other__gift__error__button" = "Ок";
-"other__gift__used__title" = "Использованный Код";
-"other__gift__used__text" = "Этот подарочный код Bitkit уже был использован, и средства были выплачены.";
 "other__gift__used__button" = "Ок";
 "other__shop__intro__title" = "Магазин";
 "other__shop__intro__description" = "Переходите на биткоин-стандарт. Тратьте свои Bitcoin на цифровые подарочные карты, eSIM, пополнение телефона и многое другое.";

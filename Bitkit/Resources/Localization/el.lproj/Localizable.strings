@@ -193,6 +193,8 @@
 "fee__custom__longRange" = "Εξαρτάται από την προμήθεια";
 "lightning__funding__nav_title" = "Υπόλοιπο Δαπανών";
 "lightning__funding__title" = "Χρηματοδοτήστε το <accent>υπόλοιπο δαπανών</accent> σας";
+"lightning__funding__button1" = "Μεταφορά από Αποταμιεύσεις";
+"lightning__funding__button2" = "Χρήση Άλλου Πορτοφολιού";
 "lightning__funding__button3" = "Χειροκίνητη Ρύθμιση";
 "lightning__funding_advanced__button_short" = "Ρύθμιση για Προχωρημένους";
 "lightning__transfer__nav_title" = "Μεταφορά Κεφαλαίων";
@@ -314,6 +316,7 @@
 "lightning__force_failed_msg" = "Αδυναμία μεταφοράς των κεφαλαίων σας πίσω στις αποταμιεύσεις. Παρακαλώ δοκιμάστε ξανά.";
 "lightning__channel_opened_title" = "Το Υπόλοιπο Δαπανών είναι Έτοιμο";
 "lightning__channel_opened_msg" = "Τώρα μπορείτε να πληρώσετε οποιονδήποτε, οπουδήποτε, άμεσα.";
+"lightning__funding__button_hw" = "Μεταφορά από πορτοφόλι HW";
 "lightning__order_state__awaiting_payment" = "Επεξεργασία πληρωμής";
 "lightning__order_state__payment_canceled" = "Η πληρωμή ακυρώθηκε";
 "lightning__order_state__paid" = "Επιτυχής πληρωμή";
@@ -438,14 +441,7 @@
 "other__try_again" = "Δοκιμάστε ξανά.";
 "other__scan__error__generic" = "Το Bitkit δεν μπορεί να διαβάσει τα παρεχόμενα δεδομένα.";
 "other__scan__error__expired" = "Αυτό το τιμολόγιο Lightning έχει λήξει.";
-"other__gift__claimed__text" = "Λυπούμαστε, αργήσατε! Όλα τα δώρα για αυτόν τον κωδικό έχουν ήδη διεκδικηθεί.";
-"other__gift__claiming__text" = "Διεκδίκηση του κωδικού δώρου Bitkit σας...";
-"other__gift__claiming__title" = "Διεκδίκηση Δώρου";
-"other__gift__error__title" = "Σφάλμα Κωδικού Δώρου";
-"other__gift__error__text" = "Το Bitkit δεν μπόρεσε να διεκδικήσει τα κεφάλαια. Παρακαλώ δοκιμάστε ξανά αργότερα ή επικοινωνήστε μαζί μας.";
 "other__gift__error__button" = "ΟΚ";
-"other__gift__used__title" = "Χρησιμοποιημένος Κωδικός";
-"other__gift__used__text" = "Αυτός ο κωδικός δώρου Bitkit έχει ήδη χρησιμοποιηθεί και τα κεφάλαια έχουν εκταμιευθεί.";
 "other__gift__used__button" = "ΟΚ";
 "other__shop__intro__title" = "Κατάστημα";
 "other__shop__intro__description" = "Ζήστε τη ζωή σας με το πρότυπο Bitcoin. Ξοδέψτε τα Bitcoin σας σε ψηφιακές δωροκάρτες, eSIMs, ανανεώσεις τηλεφώνου και άλλα.";

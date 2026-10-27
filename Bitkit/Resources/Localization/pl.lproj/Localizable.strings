@@ -197,6 +197,8 @@
 "fee__custom__longRange" = "Zależy od opłaty transakcyjnej";
 "lightning__funding__nav_title" = "Saldo wydatków";
 "lightning__funding__title" = "Zasil swoje <accent>saldo wydatków</accent>";
+"lightning__funding__button1" = "Prześlij z Oszczędności";
+"lightning__funding__button2" = "Użyj innego portfela";
 "lightning__funding__button3" = "Ręczna konfiguracja";
 "lightning__funding_advanced__button_short" = "Ustawienia zaawansowane";
 "lightning__transfer__nav_title" = "Prześlij środki";
@@ -343,6 +345,7 @@
 "lightning__force_failed_msg" = "Nie można przelać środków z powrotem na saldo oszczędności. Proszę spróbować ponownie.";
 "lightning__channel_opened_title" = "Saldo wydatków gotowe";
 "lightning__channel_opened_msg" = "Teraz możesz zapłacić każdemu, gdziekolwiek, natychmiast.";
+"lightning__funding__button_hw" = "Prześlij z portfela HW";
 "lightning__order_given_up_title" = "Konfiguracja płatności natychmiastowych nie powiodła się";
 "lightning__order_given_up_msg" = "Proces konfiguracji wygasł. Proszę spróbować ponownie.";
 "lightning__order_expired_title" = "Konfiguracja płatności natychmiastowych nie powiodła się";
@@ -522,14 +525,7 @@
 "other__transfer_notification__body" = "Otwórz Bitkit, aby dokończyć transfer";
 "other__scan__error__generic" = "Bitkit nie może odczytać dostarczonych danych.";
 "other__scan__error__expired" = "Ta faktura Lightning wygasła.";
-"other__gift__claimed__text" = "Przepraszamy, spóźniłeś się! Wszystkie prezenty dla tego kodu zostały już odebrane.";
-"other__gift__claiming__text" = "Odbiór kodu podarunkowego Bitkit...";
-"other__gift__claiming__title" = "Odbiór prezentu";
-"other__gift__error__title" = "Błąd kodu podarunkowego";
-"other__gift__error__text" = "Bitkit nie mógł odebrać środków. Proszę spróbować ponownie później lub skontaktować się z nami.";
 "other__gift__error__button" = "OK";
-"other__gift__used__title" = "Użyty kod";
-"other__gift__used__text" = "Ten kod podarunkowy Bitkit został już wykorzystany, a środki zostały wypłacone.";
 "other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Sklep";
 "other__shop__intro__description" = "Przestaw się na standard Bitcoina. Wydawaj swoje Bitcoiny na karty podarunkowe, eSIM-y, doładowania telefonu i inne usługi.";

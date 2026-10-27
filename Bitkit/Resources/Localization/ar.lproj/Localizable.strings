@@ -171,6 +171,8 @@
 "fee__custom__shortDescription" = "يعتمد على الرسوم";
 "fee__custom__range" = "يعتمد على الرسوم";
 "lightning__funding__title" = "موّل <accent>رصيد إنفاقك</accent>";
+"lightning__funding__button1" = "تحويل من المدخرات";
+"lightning__funding__button2" = "استخدام محفظة أخرى";
 "lightning__funding__button3" = "إعداد يدوي";
 "lightning__funding_advanced__button_short" = "إعداد متقدم";
 "lightning__transfer__nav_title" = "تحويل الأموال";
@@ -290,6 +292,7 @@
 "lightning__force_failed_msg" = "تعذر تحويل أموالك إلى المدخرات. يرجى المحاولة مرة أخرى.";
 "lightning__channel_opened_title" = "رصيد الإنفاق جاهز";
 "lightning__channel_opened_msg" = "يمكنك الآن الدفع لأي شخص، في أي مكان، فورًا.";
+"lightning__funding__button_hw" = "تحويل من محفظة الأجهزة";
 "lightning__order_state__awaiting_payment" = "جارٍ معالجة الدفع";
 "lightning__order_state__payment_canceled" = "تم إلغاء الدفع";
 "lightning__order_state__paid" = "نجح الدفع";
@@ -411,13 +414,6 @@
 "other__try_again" = "يرجى المحاولة مرة أخرى.";
 "other__scan__error__generic" = "لا يستطيع Bitkit قراءة البيانات المقدمة.";
 "other__scan__error__expired" = "انتهت صلاحية فاتورة Lightning هذه.";
-"other__gift__claimed__text" = "عذرًا، لقد تأخرت! تمت المطالبة بجميع الهدايا لهذا الرمز.";
-"other__gift__claiming__text" = "جارٍ المطالبة برمز هدية Bitkit...";
-"other__gift__claiming__title" = "جارٍ المطالبة بالهدية";
-"other__gift__error__title" = "خطأ في رمز الهدية";
-"other__gift__error__text" = "تعذر على Bitkit المطالبة بالأموال. يرجى المحاولة لاحقًا أو الاتصال بنا.";
-"other__gift__used__title" = "رمز مستخدم";
-"other__gift__used__text" = "تم استخدام رمز هدية Bitkit هذا بالفعل، وتم دفع الأموال.";
 "other__shop__intro__title" = "تسوق";
 "other__shop__intro__description" = "اجعل حياتك على معيار Bitcoin. أنفق Bitcoin على بطاقات الهدايا الرقمية وبطاقات eSIM وشحن الهاتف والمزيد.";
 "other__shop__intro__button" = "ابدأ";

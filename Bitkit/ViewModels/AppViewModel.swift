@@ -1118,8 +1118,10 @@ extension AppViewModel {
                 return
             }
             await handlePubkyAuthApproval(sourceURI)
-        case let .gift(code, amount):
-            sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
+        case .gift:
+            // Blocktank no longer sells channels, so a gift code can't be claimed.
+            sheetViewModel.hideSheetIfActive(.scanner, reason: "Gift codes are unavailable")
+            sheetViewModel.showSheet(.transferUnavailable)
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")

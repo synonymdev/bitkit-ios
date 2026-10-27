@@ -197,6 +197,8 @@
 "fee__custom__longRange" = "Abhängig von der Gebühr";
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
+"lightning__funding__button1" = "Von Sparkonto übertragen";
+"lightning__funding__button2" = "Anderes Wallet verwenden";
 "lightning__funding__button3" = "Manuelle Einrichtung";
 "lightning__funding_advanced__button_short" = "Fortgeschrittenes Setup";
 "lightning__transfer__nav_title" = "Übertrage Guthaben";
@@ -341,6 +343,7 @@
 "lightning__force_failed_msg" = "Unable to transfer your funds back to savings. Please try again.";
 "lightning__channel_opened_title" = "Spending Balance Ready";
 "lightning__channel_opened_msg" = "Du kannst jetzt jedermann, überall, instant bezahlen.";
+"lightning__funding__button_hw" = "Von HW-Wallet übertragen";
 "lightning__order_given_up_title" = "Einrichtung der Instant-Zahlungen fehlgeschlagen";
 "lightning__order_given_up_msg" = "The setup process expired. Please try again.";
 "lightning__order_expired_title" = "Einrichtung der Instant-Zahlungen fehlgeschlagen";
@@ -520,14 +523,7 @@
 "other__transfer_notification__body" = "Öffnen Sie Bitkit, um Ihre Übertragung abzuschließen";
 "other__scan__error__generic" = "Bitkit ist nicht in der Lage, die bereitgestellten Daten zu lesen.";
 "other__scan__error__expired" = "Diese Lightning-Rechnung ist abgelaufen.";
-"other__gift__claimed__text" = "Leider kommst du zu spät! Alle Geschenke für diesen Code wurden bereits eingelöst.";
-"other__gift__claiming__text" = "Dein Bitkit-Geschenkcode wird eingelöst...";
-"other__gift__claiming__title" = "Geschenk einlösen";
-"other__gift__error__title" = "Rabattcode-Fehler";
-"other__gift__error__text" = "Bitkit konnte die Gelder nicht einlösen. Bitte versuche es später erneut oder kontaktiere uns.";
 "other__gift__error__button" = "OK";
-"other__gift__used__title" = "Verwendeter Code";
-"other__gift__used__text" = "Dieser Bitkit-Rabattcode wurde bereits verwendet und der Betrag wurde ausbezahlt.";
 "other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Shop";
 "other__shop__intro__description" = "Lebe nach dem Bitcoin-Standard. Gib dein Bitcoin für digitale Geschenkkarten, eSIMs, Handy-Aufladungen und mehr aus.";

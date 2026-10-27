@@ -18,12 +18,23 @@ struct FundingOptions: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 32)
 
-            RectangleButton(
-                icon: "pencil",
-                title: t("lightning__funding__button3"),
-                testID: "FundManual"
-            ) {
-                navigation.navigate(.fundManual(nodeUri: nil))
+            VStack(spacing: 8) {
+                RectangleButton(
+                    icon: "pencil",
+                    title: t("lightning__funding__button3"),
+                    testID: "FundManual"
+                ) {
+                    navigation.navigate(.fundManual(nodeUri: nil))
+                }
+
+                RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: true, testID: "FundTransfer") {}
+                RectangleButton(
+                    icon: "device-tablet-speaker",
+                    title: t("lightning__funding__button_hw"),
+                    isDisabled: true,
+                    testID: "FundHardware"
+                ) {}
+                RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: true, testID: "FundReceive") {}
             }
 
             Spacer()

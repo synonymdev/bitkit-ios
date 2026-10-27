@@ -8,7 +8,6 @@ enum SheetID: String, CaseIterable {
     case connectionClosed
     case forceTransfer
     case forgotPin
-    case gift
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
@@ -286,20 +285,6 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .forgotPin else { return nil }
             return ForgotPinSheetItem()
-        }
-        set {
-            if newValue == nil {
-                activeSheetConfiguration = nil
-            }
-        }
-    }
-
-    var giftSheetItem: GiftSheetItem? {
-        get {
-            guard let config = activeSheetConfiguration, config.id == .gift else { return nil }
-            let giftConfig = config.data as? GiftConfig
-            guard let code = giftConfig?.code, let amount = giftConfig?.amount else { return nil }
-            return GiftSheetItem(code: code, amount: amount)
         }
         set {
             if newValue == nil {

@@ -197,6 +197,8 @@
 "fee__custom__longRange" = "Depende da taxa";
 "lightning__funding__nav_title" = "Saldo de Gastos";
 "lightning__funding__title" = "Transfira para seu <accent>saldo de gastos</accent>";
+"lightning__funding__button1" = "Transferir do Saldo de Poupança";
+"lightning__funding__button2" = "Transferir de Outra Carteira";
 "lightning__funding__button3" = "Configuração manual";
 "lightning__funding_advanced__button_short" = "Configuração Avançada";
 "lightning__transfer__nav_title" = "Transf. fundos";
@@ -343,6 +345,7 @@
 "lightning__force_failed_msg" = "Não foi possível transferir seus fundos de volta para sua poupança. Por favor, tente novamente.";
 "lightning__channel_opened_title" = "Saldo de Gastos Pronto";
 "lightning__channel_opened_msg" = "Agora é possível pagar qualquer pessoa, em qualquer lugar, instantaneamente.";
+"lightning__funding__button_hw" = "Transferir da carteira HW";
 "lightning__order_given_up_title" = "Falha no setup dos Pagamentos Instantâneos";
 "lightning__order_given_up_msg" = "O processo de configuração expirou. Por favor, tente novamente.";
 "lightning__order_expired_title" = "Falha no setup dos Pagamentos Instantâneos";
@@ -522,14 +525,7 @@
 "other__transfer_notification__body" = "Abra a Bitkit para concluir sua transferência";
 "other__scan__error__generic" = "Bitkit não consegue ler os dados fornecidos.";
 "other__scan__error__expired" = "Este invoice lightning expirou.";
-"other__gift__claimed__text" = "Desculpe, você chegou tarde! Todos os presentes para este código já foram resgatados.";
-"other__gift__claiming__text" = "Reivindicando seu gitf code Bitkit...";
-"other__gift__claiming__title" = "Reivindicando presente";
-"other__gift__error__title" = "Erro no código de presente";
-"other__gift__error__text" = "A Bitkit não pôde reivindicar os fundos. Tente novamente mais tarde ou entre em contato conosco.";
 "other__gift__error__button" = "OK";
-"other__gift__used__title" = "Código usado";
-"other__gift__used__text" = "Este gift code da Bitkit já foi usado e os fundos já foram pagos.";
 "other__gift__used__button" = "OK";
 "other__shop__intro__title" = "Comprar";
 "other__shop__intro__description" = "Coloque sua vida no padrão Bitcoin. Gaste seu Bitcoin em cartões-presente digitais, eSIMs, recargas de telefone e muito mais.";

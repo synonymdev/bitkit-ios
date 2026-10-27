@@ -110,14 +110,6 @@ struct MainNavView: View {
             config in BackupSheet(config: config)
         }
         .sheet(
-            item: $sheets.giftSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.gift, reason: "Gift sheet dismissed")
-            }
-        ) {
-            config in GiftSheet(config: config)
-        }
-        .sheet(
             item: $sheets.connectionClosedSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.connectionClosed, reason: "Connection closed sheet dismissed")
