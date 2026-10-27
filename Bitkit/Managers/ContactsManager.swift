@@ -453,6 +453,9 @@ class ContactsManager: ObservableObject {
             } catch {
                 guard !Task.isCancelled, generation == loadGeneration else { return }
                 guard contactsRevision == revision else { continue }
+                if error as? PaykitPaymentRequestError == .operationInProgress {
+                    throw error
+                }
                 // A failed consolidated observation is not evidence that contacts were deleted.
                 if missingDataIsEmpty, Self.isMissingContactsDataError(error) {
                     contacts = []
