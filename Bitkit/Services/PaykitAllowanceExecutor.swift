@@ -131,19 +131,24 @@ struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
     /// Nil when the state can't be read, so the rest of the wallet backup still goes out.
     func backupSnapshot() -> PaykitAllowanceStateBackups? {
         do {
-            return try PaykitAllowanceStateBackups(loadAll().mapValues(PaykitAllowanceStateBackup.init))
+            var byIdentity: [String: PaykitAllowanceStateBackup] = [:]
+            for (identity, state) in try loadAll() {
+                byIdentity[PubkyPublicKeyFormat.normalized(identity) ?? identity] = PaykitAllowanceStateBackup(state)
+            }
+            return PaykitAllowanceStateBackups(byIdentity)
         } catch {
             Logger.warn("Left allowance state out of the wallet backup: \(error)", context: "PaykitAllowance")
             return nil
         }
     }
 
-    /// Restores each identity's state it can read; a failure here never stops the rest of the wallet restore.
+    /// Restores each identity's state it can read over the local one; identities the backup lacks keep theirs. A failure
+    /// here never stops the rest of the wallet restore.
     func restoreBackup(_ snapshot: PaykitAllowanceStateBackups) {
-        var all: Stored = [:]
+        var all = (try? loadAll()) ?? [:]
         for (identity, backup) in snapshot.byIdentity {
             do {
-                all[identity] = try backup.restored()
+                all[PubkyPublicKeyFormat.normalized(identity) ?? identity] = try backup.restored()
             } catch {
                 Logger.warn("Skipped an unreadable allowance state in a backup: \(error)", context: "PaykitAllowance")
             }

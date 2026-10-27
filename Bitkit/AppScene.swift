@@ -2021,6 +2021,8 @@ struct AppScene: View {
                 if activatedAutomaticPaykitIdentity == pk {
                     activatedAutomaticPaykitIdentity = nil
                 }
+                // A new session for the same key may already have appeared while this one waited.
+                startAutomaticPaykitSession()
                 return
             }
             try? await contactsManager.loadContacts(for: pk)
@@ -2040,10 +2042,11 @@ struct AppScene: View {
 
     /// One announcement for all offers accepted in a refresh, since each fallback toast would replace the one before it.
     private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
-        var names: [String] = []
-        for offer in offers where !names.contains(contactName(offer.counterparty)) {
-            names.append(contactName(offer.counterparty))
+        var counterparties: [String] = []
+        for offer in offers where !counterparties.contains(where: { PubkyPublicKeyFormat.matches($0, offer.counterparty) }) {
+            counterparties.append(offer.counterparty)
         }
+        let names = counterparties.map(contactName)
         guard let first = names.first else { return }
         let title = t("subscriptions__allowance_offer_accepted_title")
         let description = names.count == 1
