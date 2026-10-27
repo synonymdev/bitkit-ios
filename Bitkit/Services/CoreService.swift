@@ -934,6 +934,14 @@ class ActivityService {
         }
     }
 
+    /// Records a Lightning payment the channel-free rail sent or received the way an LDK payment is recorded, so it keeps
+    /// its Paykit contact and seen state across syncs.
+    func recordChannelFreeRailPayment(_ payment: PaymentDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try await self.processLightningPayment(payment)
+        }
+    }
+
     private func processLightningPayment(_ payment: PaymentDetails) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 

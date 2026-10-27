@@ -1946,6 +1946,8 @@ class TransferViewModel: ObservableObject {
         }
 
         do {
+            // The confirm screen counts Spark's balance in the transfer, and the swap moves only the channel's.
+            try await withdrawSparkToSavings()
             let claimAddress = try await lightningService.newAddress()
             let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
             Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")

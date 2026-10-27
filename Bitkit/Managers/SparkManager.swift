@@ -163,6 +163,19 @@ final class SparkManager: ChannelFreeLightningRail {
         return invoiceDetails.paymentHash
     }
 
+    nonisolated func lightningPayments() async -> [ChannelFreeRailPayment] {
+        guard let payments = try? await requireSdk().listPayments(request: ListPaymentsRequest()).payments else { return [] }
+        return payments.compactMap { payment in
+            guard case let .lightning(_, _, _, htlcDetails, _, _, _, _) = payment.details else { return nil }
+            return ChannelFreeRailPayment(
+                paymentHash: htlcDetails.paymentHash,
+                direction: payment.paymentType == .send ? .outbound : .inbound,
+                status: Self.ldkStatus(payment.status),
+                preimage: htlcDetails.preimage
+            )
+        }
+    }
+
     nonisolated func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64 {
         let prepared = try await prepareSend(paymentRequest: bolt11, amountSats: amountSats)
         guard case let .bolt11Invoice(_, sparkTransferFeeSats, lightningFeeSats) = prepared.paymentMethod else { return 0 }
@@ -401,32 +414,23 @@ final class SparkManager: ChannelFreeLightningRail {
 
     private func recordActivity(_ payment: Payment) async {
         guard case let .lightning(description, invoice, _, htlcDetails, _, _, _, _) = payment.details else { return }
-        if payment.status == .pending, payment.paymentType == .receive {
-            return
-        }
-        let state: PaymentState = switch payment.status {
-        case .completed: .succeeded
-        case .pending: .pending
-        case .failed: .failed
-        }
-        let activity = LightningActivity(
-            walletId: WalletScope.default,
+        let details = PaymentDetails(
             id: htlcDetails.paymentHash,
-            txType: payment.paymentType == .send ? .sent : .received,
-            status: state,
-            value: Self.sats(payment.amount),
-            fee: Self.sats(payment.fees),
-            invoice: invoice,
-            message: description ?? "",
-            timestamp: payment.timestamp,
-            preimage: htlcDetails.preimage,
-            contact: nil,
-            createdAt: payment.timestamp,
-            updatedAt: payment.timestamp,
-            seenAt: nil
+            kind: .bolt11(
+                hash: htlcDetails.paymentHash,
+                preimage: htlcDetails.preimage,
+                secret: nil,
+                description: description,
+                bolt11: invoice
+            ),
+            amountMsat: Self.sats(payment.amount) * 1000,
+            feePaidMsat: Self.sats(payment.fees) * 1000,
+            direction: payment.paymentType == .send ? .outbound : .inbound,
+            status: Self.ldkStatus(payment.status),
+            latestUpdateTimestamp: payment.timestamp
         )
         do {
-            try await CoreService.shared.activity.upsert(.lightning(activity))
+            try await CoreService.shared.activity.recordChannelFreeRailPayment(details)
         } catch {
             Logger.error("Failed to record Spark payment '\(payment.id)': \(error)", context: "SparkManager")
         }
@@ -449,6 +453,14 @@ final class SparkManager: ChannelFreeLightningRail {
             return .paymentFailed(paymentId: hash, paymentHash: hash, reason: .unexpectedError)
         default:
             return nil
+        }
+    }
+
+    private nonisolated static func ldkStatus(_ status: BreezSdkSpark.PaymentStatus) -> LDKNode.PaymentStatus {
+        switch status {
+        case .completed: .succeeded
+        case .pending: .pending
+        case .failed: .failed
         }
     }
 

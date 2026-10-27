@@ -13,6 +13,15 @@ protocol ChannelFreeLightningRail: AnyObject {
     func receive(amountSats: UInt64?, description: String, expirySecs: UInt32) async throws -> String
     func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash
     func estimateRoutingFees(bolt11: String, amountSats: UInt64?) async throws -> UInt64
+    func lightningPayments() async -> [ChannelFreeRailPayment]
+}
+
+/// A Lightning payment the channel-free rail sent or received, for checks that would otherwise read only LDK's payments.
+struct ChannelFreeRailPayment: Equatable {
+    let paymentHash: String
+    let direction: PaymentDirection
+    let status: PaymentStatus
+    let preimage: String?
 }
 
 class LightningService {
@@ -37,6 +46,8 @@ class LightningService {
     @MainActor private var cachedChannels: [ChannelDetails]?
 
     private var storedEventCallback: ((Event) -> Void)?
+    /// Rail events that arrived before the node's event callback was set, delivered once it is.
+    private var pendingChannelFreeRailEvents: [Event] = []
     weak var channelFreeRail: ChannelFreeLightningRail?
     var onchainTransactionConfirmed: (@Sendable (String) async -> Void)?
     var onchainTransactionReceived: (@Sendable (String) async -> Void)?
@@ -255,7 +266,7 @@ class LightningService {
         }
 
         if let onEvent {
-            storedEventCallback = onEvent
+            setEventCallback(onEvent)
         }
 
         listenForEvents(onEvent: storedEventCallback)
@@ -313,6 +324,7 @@ class LightningService {
 
         if clearEventCallback {
             storedEventCallback = nil
+            pendingChannelFreeRailEvents = []
         }
 
         await MainActor.run {
@@ -862,6 +874,16 @@ class LightningService {
         beforeSubmission: @escaping () throws -> Void = {}
     ) async throws -> PaymentHash {
         if let rail = channelFreeRail, await shouldPayWithRail(rail, bolt11: bolt11, sats: sats) {
+            // Spark takes no route parameters, so a caller's routing fee cap is checked against its estimate instead.
+            if let maxFeeMsat = params?.maxTotalRoutingFeeMsat {
+                let feeSats = try await rail.estimateRoutingFees(bolt11: bolt11, amountSats: sats)
+                guard feeSats * 1000 <= maxFeeMsat else {
+                    throw AppError(
+                        message: "Spark routing fee exceeds the limit",
+                        debugMessage: "Fee \(feeSats) sats, limit \(maxFeeMsat / 1000) sats"
+                    )
+                }
+            }
             try beforeSubmission()
             return try await rail.send(bolt11: bolt11, sats: sats)
         }
@@ -1386,8 +1408,25 @@ extension LightningService {
 
 extension LightningService {
     /// Delivers a channel-free rail's payment as an LDK event, so flows that wait on node events cover both rails.
+    /// Sets the callback node and rail events are delivered to, and delivers the rail events that arrived before it.
+    func setEventCallback(_ onEvent: @escaping (Event) -> Void) {
+        storedEventCallback = onEvent
+        let pending = pendingChannelFreeRailEvents
+        pendingChannelFreeRailEvents = []
+        pending.forEach(onEvent)
+    }
+
+    /// Spark runs before the node starts, so its events wait until the node's event callback is set rather than being lost.
     func emitChannelFreeRailEvent(_ event: Event) {
-        storedEventCallback?(event)
+        guard let storedEventCallback else {
+            pendingChannelFreeRailEvents.append(event)
+            return
+        }
+        storedEventCallback(event)
+    }
+
+    func channelFreeRailPayments() async -> [ChannelFreeRailPayment] {
+        await channelFreeRail?.lightningPayments() ?? []
     }
 
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {

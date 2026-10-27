@@ -268,13 +268,20 @@ struct SendSheet: View {
             // there is nothing to \"sync into\". Let validation/UX handle this as
             // an \"insufficient capacity / no channels\" case instead of a sync wait.
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            guard hasAnyChannels else { return false }
+            guard hasAnyChannels, !sparkCanPayScannedInvoice else { return false }
 
             // We have channels but none are usable yet → show sync overlay
             return !wallet.hasUsableChannels
         }
 
         return false
+    }
+
+    /// Spark pays without channels, so a channel that is still reconnecting is no reason to wait.
+    private var sparkCanPayScannedInvoice: Bool {
+        let spark = SparkManager.shared
+        let amountSats = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
+        return spark.isReady && amountSats > 0 && spark.balanceSats >= amountSats
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
@@ -728,7 +735,7 @@ struct SendSheet: View {
             // usable, proceed with validation/fallback.
             // Use channelCount as fallback in case channels array is nil but count is cached
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait {
+            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait, !sparkCanPayScannedInvoice {
                 // We have channels but none usable yet → wait
                 return .waiting
             }

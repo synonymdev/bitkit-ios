@@ -144,6 +144,17 @@ struct QuickPayReconcileRow {
         }
     }
 
+    init(railPayment: ChannelFreeRailPayment) {
+        paymentId = railPayment.paymentHash
+        invoicePaymentHash = railPayment.paymentHash
+        isOutboundBolt11 = railPayment.direction == .outbound
+        status = switch railPayment.status {
+        case .succeeded: .succeeded
+        case .failed: .failed
+        case .pending: .pending
+        }
+    }
+
     init(paymentId: String, invoicePaymentHash: String, isOutboundBolt11: Bool, status: Status) {
         self.paymentId = paymentId
         self.invoicePaymentHash = invoicePaymentHash

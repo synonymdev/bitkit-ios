@@ -192,7 +192,7 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
         guard let payment = await LightningService.shared.listPayments()?.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
-            return .unknown
+            return await Self.railStatus(paymentHash: paymentHash)
         }
 
         switch payment.status {
@@ -203,6 +203,20 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
         case .succeeded:
             guard case let .bolt11(_, preimage, _, _, _) = payment.kind else { return .unknown }
             return .succeeded(preimage: preimage)
+        }
+    }
+
+    /// Spark payments are not in LDK's list, so a proof whose completion event was missed settles from Spark's own record.
+    static func railStatus(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
+        guard let payment = await LightningService.shared.channelFreeRailPayments().first(where: {
+            $0.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame && $0.direction == .outbound
+        }) else {
+            return .unknown
+        }
+        switch payment.status {
+        case .pending: return .pending
+        case .failed: return .failed
+        case .succeeded: return .succeeded(preimage: payment.preimage)
         }
     }
 }

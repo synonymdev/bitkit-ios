@@ -116,33 +116,35 @@ extension PrivatePaykitService {
     }
 
     func receivedSettledPaymentHashes() async -> Set<String> {
-        guard let payments = await LightningService.shared.listPayments() else { return [] }
+        let payments = await LightningService.shared.listPayments() ?? []
+        let ldkHashes = payments.compactMap { payment -> String? in
+            guard payment.direction == .inbound,
+                  payment.status == .succeeded,
+                  case .bolt11 = payment.kind
+            else { return nil }
 
-        return Set(
-            payments.compactMap { payment in
-                guard payment.direction == .inbound,
-                      payment.status == .succeeded,
-                      case .bolt11 = payment.kind
-                else { return nil }
-
-                return payment.id
-            }
-        )
+            return payment.id
+        }
+        let railHashes = await LightningService.shared.channelFreeRailPayments()
+            .filter { $0.direction == .inbound && $0.status == .succeeded }
+            .map(\.paymentHash)
+        return Set(ldkHashes + railHashes)
     }
 
     func attemptedOutboundBolt11PaymentHashes() async -> Set<String> {
-        guard let payments = await LightningService.shared.listPayments() else { return [] }
+        let payments = await LightningService.shared.listPayments() ?? []
+        let ldkHashes = payments.compactMap { payment -> String? in
+            guard payment.direction == .outbound,
+                  payment.status != .failed,
+                  case .bolt11 = payment.kind
+            else { return nil }
 
-        return Set(
-            payments.compactMap { payment in
-                guard payment.direction == .outbound,
-                      payment.status != .failed,
-                      case .bolt11 = payment.kind
-                else { return nil }
-
-                return payment.id
-            }
-        )
+            return payment.id
+        }
+        let railHashes = await LightningService.shared.channelFreeRailPayments()
+            .filter { $0.direction == .outbound && $0.status != .failed }
+            .map(\.paymentHash)
+        return Set(ldkHashes + railHashes)
     }
 
     func localInvoice(for publicKey: String) -> StoredInvoice? {
