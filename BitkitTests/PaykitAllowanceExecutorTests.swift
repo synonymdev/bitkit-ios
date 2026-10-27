@@ -1405,6 +1405,46 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerAnnouncesAnOfferWhoseMarkCouldNotBeSaved() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        harness.store.failSaves()
+
+        let first = await manager.acceptOffersFromAllowers()
+        harness.store.restoreSaves()
+        let second = await manager.acceptOffersFromAllowers()
+
+        XCTAssertEqual((first + second).map(\.counterparty), [Fixtures.counterpartyKey], "An offer accepted for the user is announced")
+    }
+
+    @MainActor
+    func testManagerDoesNotAnnounceAnOfferAgainWhenClearingItsMarkFails() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([
+            Fixtures.record(localRole: .allowee, state: .proposed, terms: Fixtures.standardTerms(), proposedByMe: false),
+        ])
+        let manager = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await manager.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setAcceptAllowanceErrorAfterCommit(CancellationError())
+        _ = await manager.acceptOffersFromAllowers()
+        await harness.sdk.setAcceptAllowanceErrorAfterCommit(nil)
+        let relaunched = PaykitAllowanceManager(sdk: harness.sdk, executor: harness.executor, now: { PaykitAllowanceFixtures.now })
+        await relaunched.activate(identity: Fixtures.identityKey)
+
+        harness.store.failSaves()
+        let announced = await relaunched.acceptOffersFromAllowers()
+        harness.store.restoreSaves()
+        let announcedAgain = await relaunched.acceptOffersFromAllowers()
+
+        XCTAssertEqual(announced.map(\.counterparty), [Fixtures.counterpartyKey])
+        XCTAssertTrue(announcedAgain.isEmpty, "An offer already announced is not announced again")
+    }
+
+    @MainActor
     func testAutomaticOfferAcceptanceKeepsAManualProposalWorking() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([

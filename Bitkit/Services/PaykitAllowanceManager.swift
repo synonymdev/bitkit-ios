@@ -69,6 +69,8 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
     @ObservationIgnored private var isAcceptingOffers = false
+    /// Offers already returned for announcement, so a mark whose clear failed to save is not announced again on every poll.
+    @ObservationIgnored private var announcedOfferIds: Set<String> = []
     private var updateDepth = 0
 
     /// Whether allowances are being refreshed or a pass is deciding requests, so a covered request may still change hands.
@@ -277,7 +279,13 @@ final class PaykitAllowanceManager {
         for offer in offers {
             guard self.identity == identity, canContinue() else { break }
             let ids = offer.allowances.map(\.scopedId)
-            await executor.updateLocalState(identity: identity) { $0.unannouncedOfferIds.formUnion(ids) }
+            do {
+                // An offer accepted without its mark would never be announced, so it waits unanswered for the next refresh.
+                try await executor.checkedUpdateLocalState(identity: identity) { $0.unannouncedOfferIds.formUnion(ids) }
+            } catch {
+                Logger.warn("Failed to mark an allowance offer before accepting it: \(error)", context: "PaykitAllowance")
+                continue
+            }
             do {
                 // A background accept must not clear the progress flag of a proposal the user has in flight.
                 try await accept(offer, showsProgress: false)
@@ -290,11 +298,12 @@ final class PaykitAllowanceManager {
     }
 
     private func takeUnannouncedOffers(identity: String) async -> [PaykitAllowanceEntry] {
-        let marked = await executor.localState(identity: identity).unannouncedOfferIds
+        let marked = await executor.localState(identity: identity).unannouncedOfferIds.subtracting(announcedOfferIds)
         guard !marked.isEmpty else { return [] }
         let accepted = entries.filter { entry in
             entry.allowances.contains { marked.contains($0.scopedId) && $0.role == .allowee && $0.lifecycleState == .accepted }
         }
+        announcedOfferIds.formUnion(accepted.flatMap(\.allowances).map(\.scopedId).filter(marked.contains))
         // An offer still unanswered keeps its mark; one ended or withdrawn before the accept will never be announced.
         let settled = Set(allowances.filter { $0.lifecycleState != .proposed }.map(\.scopedId))
         await executor.updateLocalState(identity: identity) { $0.unannouncedOfferIds.subtract(settled) }

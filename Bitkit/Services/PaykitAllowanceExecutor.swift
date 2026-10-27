@@ -385,6 +385,12 @@ actor PaykitAllowanceExecutor {
         }
     }
 
+    func checkedUpdateLocalState(identity: String, _ change: (inout PaykitAllowanceLocalState) -> Void) throws {
+        var state = try store.load(identity: identity)
+        change(&state)
+        try store.save(state, identity: identity)
+    }
+
     func isHandling(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         inFlightRequestIds.contains(requestId)
     }
