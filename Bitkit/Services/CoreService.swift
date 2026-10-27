@@ -2224,30 +2224,6 @@ class BlocktankService {
         try await info(refresh: refresh)?.onchain.feeRates
     }
 
-    func createCjit(
-        channelSizeSat: UInt64,
-        invoiceSat: UInt64,
-        invoiceDescription: String,
-        nodeId: String,
-        channelExpiryWeeks: UInt32,
-        options: CreateCjitOptions
-    ) async throws -> IcJitEntry {
-        Logger.info("Creating CJIT invoice with channel size: \(channelSizeSat) and invoice amount: \(invoiceSat)", context: "BlocktankService")
-
-        return try await ServiceQueue.background(.core) {
-            let entry = try await createCjitEntry(
-                channelSizeSat: channelSizeSat,
-                invoiceSat: invoiceSat,
-                invoiceDescription: invoiceDescription,
-                nodeId: nodeId,
-                channelExpiryWeeks: channelExpiryWeeks,
-                options: options
-            )
-            self.stateChangedSubject.send()
-            return entry
-        }
-    }
-
     func cjitOrders(entryIds: [String]? = nil, filter: CJitStateEnum? = nil, refresh: Bool = true) async throws -> [IcJitEntry] {
         try await ServiceQueue.background(.core) {
             try await getCjitEntries(entryIds: entryIds, filter: filter, refresh: refresh)
@@ -2262,36 +2238,6 @@ class BlocktankService {
             }
         } catch {
             return nil
-        }
-    }
-
-    func newOrder(
-        lspBalanceSat: UInt64,
-        channelExpiryWeeks: UInt32,
-        options: CreateOrderOptions
-    ) async throws -> IBtOrder {
-        try await ServiceQueue.background(.core) {
-            let order = try await createOrder(
-                lspBalanceSat: lspBalanceSat,
-                channelExpiryWeeks: channelExpiryWeeks,
-                options: options
-            )
-            self.stateChangedSubject.send()
-            return order
-        }
-    }
-
-    func estimateFee(
-        lspBalanceSat: UInt64,
-        channelExpiryWeeks: UInt32,
-        options: CreateOrderOptions? = nil
-    ) async throws -> IBtEstimateFeeResponse2 {
-        try await ServiceQueue.background(.core) {
-            try await estimateOrderFeeFull(
-                lspBalanceSat: lspBalanceSat,
-                channelExpiryWeeks: channelExpiryWeeks,
-                options: options
-            )
         }
     }
 
@@ -2624,37 +2570,6 @@ class CoreService {
             case let .failure(error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
-        }
-    }
-
-    func checkGeoStatus() async throws -> Bool? {
-        if !Env.isGeoblockingEnabled {
-            return false
-        }
-
-        return try await ServiceQueue.background(.core) {
-            Logger.info("Checking geo status...", context: "GeoCheck")
-            guard let url = URL(string: Env.geoCheckUrl) else {
-                Logger.error("Invalid geocheck URL: \(Env.geoCheckUrl)", context: "GeoCheck")
-                return nil as Bool?
-            }
-
-            let (_, response) = try await URLSession.shared.data(from: url)
-            if let httpResponse = response as? HTTPURLResponse {
-                Logger.debug("Received geo status response: \(httpResponse.statusCode)", context: "GeoCheck")
-                switch httpResponse.statusCode {
-                case 200:
-                    Logger.info("Region allowed", context: "GeoCheck")
-                    return false
-                case 403:
-                    Logger.warn("Region blocked", context: "GeoCheck")
-                    return true
-                default:
-                    Logger.warn("Unexpected status code: \(httpResponse.statusCode)", context: "GeoCheck")
-                    return nil as Bool?
-                }
-            }
-            return nil as Bool?
         }
     }
 }

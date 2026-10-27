@@ -39,19 +39,7 @@ enum Route: Hashable {
     case subscriptions(showPayments: Bool)
     case paymentRequestDetail(PaykitPaymentRequest.ID)
     case subscriptionDetail(PaykitSubscription.ID)
-    case transferIntro
     case fundingOptions
-    case spendingIntro
-    case spendingIntroHw(walletId: String)
-    case spendingAmount
-    case spendingAmountHw(walletId: String)
-    case spendingHwSign(walletId: String)
-    case spendingHwSigned
-    case spendingConfirm
-    case spendingAdvanced(walletId: String? = nil)
-    case transferLearnMore
-    case settingUp
-    case fundingAdvanced
     case fundManual(nodeUri: String?)
     case fundManualAmount(lnPeer: LnPeer)
     case fundManualConfirm(lnPeer: LnPeer, amountSats: UInt64)

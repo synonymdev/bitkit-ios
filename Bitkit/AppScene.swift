@@ -442,15 +442,6 @@ struct AppScene: View {
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
-            hwFunding: hwWalletManager,
-            hwConnecting: hwWalletManager,
-            hwFeeRateProvider: {
-                guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
-                return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
-            },
-            hwAddressProvider: {
-                try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
-            },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())

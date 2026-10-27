@@ -3,13 +3,10 @@ import SwiftUI
 
 enum ReceiveRoute: Hashable {
     case usdt
-    case qr(cjitInvoice: String?, tab: ReceiveQr.ReceiveTab?)
-    case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool, replacesCurrentQr: Bool = false)
+    case qr(tab: ReceiveQr.ReceiveTab?)
+    case edit(tab: ReceiveQr.ReceiveTab, onchainOnly: Bool)
     case tag
-    case cjitAmount
-    case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
-    case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
-    case cjitGeoBlocked
+    case transferUnavailable
     case requestOrPay(publicKey: String)
     case paymentRequestRecipient(PaykitPaymentRequestDraft)
     case paymentRequestAmount(PaykitPaymentRequestDraft, PaykitPaymentRequestTarget)
@@ -18,7 +15,7 @@ enum ReceiveRoute: Hashable {
 
     var requiresInvoiceRefresh: Bool {
         switch self {
-        case .qr, .edit, .tag, .cjitAmount, .cjitConfirm, .cjitLearnMore, .cjitGeoBlocked:
+        case .qr, .edit, .tag, .transferUnavailable:
             return true
         case .usdt, .requestOrPay, .paymentRequestRecipient, .paymentRequestAmount, .paymentRequestDetails, .paymentRequestSent:
             return false
@@ -30,7 +27,7 @@ struct ReceiveConfig {
     let initialRoute: ReceiveRoute
     let hardwareWalletId: String?
 
-    init(view: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
+    init(view: ReceiveRoute = .qr(tab: nil), hardwareWalletId: String? = nil) {
         initialRoute = view
         self.hardwareWalletId = hardwareWalletId
     }
@@ -42,7 +39,7 @@ struct ReceiveSheetItem: SheetItem {
     let initialRoute: ReceiveRoute
     let hardwareWalletId: String?
 
-    init(id: UUID = UUID(), initialRoute: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil), hardwareWalletId: String? = nil) {
+    init(id: UUID = UUID(), initialRoute: ReceiveRoute = .qr(tab: nil), hardwareWalletId: String? = nil) {
         self.id = id
         self.initialRoute = initialRoute
         self.hardwareWalletId = hardwareWalletId
@@ -62,7 +59,7 @@ struct ReceiveSheet: View {
     private var usesUsdtHeader: Bool {
         switch navigationPath.last ?? config.initialRoute {
         case .usdt: isUsdtSelected ?? true
-        case let .qr(_, tab): isUsdtSelected ?? (tab == .usdt)
+        case let .qr(tab): isUsdtSelected ?? (tab == .usdt)
         default: false
         }
     }
@@ -112,28 +109,21 @@ struct ReceiveSheet: View {
         case .usdt:
             ReceiveQr(navigationPath: $navigationPath, tab: .usdt, hardwareWalletId: config.hardwareWalletId,
                       onUsdtSelectionChange: { isUsdtSelected = $0 })
-        case let .qr(cjitInvoice, tab):
+        case let .qr(tab):
             ReceiveQr(
                 navigationPath: $navigationPath,
-                cjitInvoice: cjitInvoice,
                 tab: tab,
                 hardwareWalletId: config.hardwareWalletId,
                 onUsdtSelectionChange: { isUsdtSelected = $0 }
             )
-        case let .edit(tab, onchainOnly, replacesCurrentQr):
-            ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab, onchainOnly: onchainOnly, replacesCurrentQr: replacesCurrentQr) { draft in
+        case let .edit(tab, onchainOnly):
+            ReceiveEdit(navigationPath: $navigationPath, sourceTab: tab, onchainOnly: onchainOnly) { draft in
                 navigationPath.append(.paymentRequestRecipient(draft))
             }
         case .tag:
             ReceiveTag(navigationPath: $navigationPath)
-        case .cjitAmount:
-            ReceiveCjitAmount(navigationPath: $navigationPath)
-        case let .cjitConfirm(entry, receiveAmountSats, isAdditional):
-            ReceiveCjitConfirmation(navigationPath: $navigationPath, entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
-        case let .cjitLearnMore(entry, receiveAmountSats, isAdditional):
-            ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
-        case .cjitGeoBlocked:
-            ReceiveCjitGeoBlocked()
+        case .transferUnavailable:
+            ReceiveTransferUnavailable()
         case let .requestOrPay(publicKey):
             RequestOrPayView(publicKey: publicKey) { target in
                 navigationPath.append(.paymentRequestAmount(Self.defaultPaymentRequestDraft, target))

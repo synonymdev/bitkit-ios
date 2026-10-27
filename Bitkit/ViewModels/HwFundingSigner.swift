@@ -831,3 +831,87 @@ final class HwSendCoordinator {
         let connecting: HwTransferConnecting
     }
 }
+
+/// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
+/// case to the matching localized toast.
+enum HwTransferError: Error, Equatable {
+    /// Reconnect failed. `isBluetooth` selects the softer INFO toast for a known BLE device
+    /// (advertises intermittently — "check that it is unlocked and try again") vs the ERROR toast.
+    case reconnect(isBluetooth: Bool)
+    case signingTimeout
+    case broadcastUncertain
+    /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
+    case broadcastConnectivity
+    /// The device is locked or otherwise busy before signing can start. Carries the vendor so the
+    /// toast can name the device.
+    case deviceBusy(HwWalletVendor)
+    /// Firmware error (code 99) — user must reconnect the device.
+    case firmwareReconnect
+    /// The entered passphrase opened a different wallet than the one being spent from.
+    case passphraseMismatch
+    /// The device holds another wallet than the one being spent from, so reconnecting cannot help.
+    case walletMismatch
+    case funding(String?)
+    case generic(String?)
+}
+
+/// The hardware-wallet funding capability the transfer flow needs. Implemented by `HwWalletManager`;
+/// declared as a protocol so the flow stays testable.
+@MainActor
+protocol HwTransferFunding: Sendable {
+    func getFundingAccount(walletId: String, addressType: AddressScriptType) throws -> HwFundingAccount
+    func maxSpendableFunding(
+        walletId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func composeFundingTransaction(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> HwFundingTransaction
+    /// Offline coin-selection estimate for the exact funding amount (`fingerprint: nil`); fee only.
+    func estimateOfflineFundingMiningFee(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
+    ) async throws -> String
+}
+
+/// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
+/// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
+/// reaching its transport. Implemented by `HwWalletManager`.
+@MainActor
+protocol HwTransferConnecting: Sendable {
+    func ensureConnected(walletId: String) async throws
+    /// How long `ensureConnected` may take for this wallet's device before the flow gives up.
+    func reconnectTimeout(walletId: String) -> Double
+    func disconnectStaleSession(walletId: String) async
+    func scheduleStaleSessionCleanup(walletId: String)
+    /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
+    /// the softer BLE "check that it is unlocked and try again" toast instead of the generic error.
+    func isKnownBluetoothDevice(walletId: String) -> Bool
+    /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
+    /// likely to hit a cold reconnect. Fire-and-forget.
+    func warmUpConnection(walletId: String)
+    /// Whether the wallet's passphrase has to be collected again before the device can sign for it.
+    func needsPassphrase(walletId: String) -> Bool
+    /// Reopens a hidden wallet for signing, refusing a session that resolves to a different wallet.
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws
+}
+
+// MARK: - Hardware transfer capability conformances
+
+extension HwWalletManager: HwTransferFunding {}
+extension HwWalletManager: HwTransferConnecting {}

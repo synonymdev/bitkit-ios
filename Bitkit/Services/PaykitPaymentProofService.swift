@@ -557,15 +557,9 @@ actor PaykitPaymentProofService {
     /// Whether the request behind an unresolved payment can no longer be paid: the payee ended it, or its deadline
     /// passed. A record that is missing, carries a proof or needs recovery never counts as ended.
     func onchainRequestHasEnded(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws -> Bool {
-        // Blocktank no longer sells channels, so its order ends once transfers are unavailable: only an explicit
-        // "allowed" geocheck keeps it open, as for a retry.
+        // Blocktank no longer sells channels, so an unpaid order has ended.
         if attempt.isBlocktankFunding {
-            guard attempt.canBeAbandoned else { return false }
-            if attempt.releaseApproved == true {
-                return true
-            }
-            let isGeoBlocked = try? await CoreService.shared.checkGeoStatus()
-            return isGeoBlocked != false
+            return attempt.canBeAbandoned
         }
         guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
         else { return false }

@@ -42,9 +42,6 @@ struct HardwareWalletScreen: View {
         .task(id: wallet?.walletId) {
             await loadActivities()
         }
-        .task {
-            await app.checkGeoStatus()
-        }
         .onReceive(activity.activitiesChangedPublisher) { _ in
             Task { await loadActivities() }
         }
@@ -130,13 +127,7 @@ struct HardwareWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if GeoService.shared.isGeoBlocked {
-                sheets.showSheet(.transferUnavailable)
-            } else if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmountHw(walletId: walletId))
-            } else {
-                navigation.navigate(.spendingIntroHw(walletId: walletId))
-            }
+            sheets.showSheet(.transferUnavailable)
         }
         .accessibilityIdentifier("HardwareTransferToSpending")
     }

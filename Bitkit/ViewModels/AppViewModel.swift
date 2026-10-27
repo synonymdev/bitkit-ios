@@ -413,7 +413,6 @@ class AppViewModel: ObservableObject {
         setupManualEntryValidationDebounce()
 
         Task {
-            await checkGeoStatus()
             // Check for app updates on startup
             await AppUpdateService.shared.checkForAppUpdate()
         }
@@ -551,11 +550,6 @@ class AppViewModel: ObservableObject {
     }
 
     deinit {}
-
-    func checkGeoStatus() async {
-        // Delegate to GeoService singleton for centralized geo-blocking management
-        await GeoService.shared.checkGeoStatus()
-    }
 
     func wipe() async throws {
         hasSeenContactsIntro = false

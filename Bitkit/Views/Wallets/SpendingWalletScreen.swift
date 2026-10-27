@@ -115,13 +115,7 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            if GeoService.shared.isGeoBlocked {
-                sheets.showSheet(.transferUnavailable)
-            } else if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.spendingAmount)
-            } else {
-                navigation.navigate(.spendingIntro)
-            }
+            sheets.showSheet(.transferUnavailable)
         }
         .accessibilityIdentifier("TransferFromSavings")
     }

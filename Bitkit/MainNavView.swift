@@ -80,12 +80,6 @@ struct MainNavView: View {
         NavigationStack(path: $navigation.path) {
             navigationContent
         }
-        .onChange(of: transfer.hwFundingComplete) { _, complete in
-            if complete {
-                transfer.consumeHwFundingComplete()
-                navigation.navigate(.spendingHwSigned)
-            }
-        }
         .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
             guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
             navigation.navigate(.createProfile)
@@ -523,19 +517,7 @@ struct MainNavView: View {
                 case .scanner: ScannerScreen()
 
                 // Transfer
-                case .transferIntro: TransferIntroView()
                 case .fundingOptions: FundingOptions()
-                case .spendingIntro: SpendingIntroView()
-                case let .spendingIntroHw(walletId): SpendingIntroView(walletId: walletId)
-                case .spendingAmount: SpendingAmount()
-                case let .spendingAmountHw(walletId): SpendingAmountHw(walletId: walletId)
-                case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
-                case .spendingHwSigned: SpendingHwSigned()
-                case .spendingConfirm: SpendingConfirm()
-                case let .spendingAdvanced(walletId): SpendingAdvancedView(walletId: walletId)
-                case .transferLearnMore: TransferLearnMoreView()
-                case .settingUp: SettingUpView()
-                case .fundingAdvanced: FundAdvancedOptions()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)

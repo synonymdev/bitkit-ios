@@ -561,7 +561,7 @@ Ensure accessibility modifiers and labels are added to custom components.
   two platforms stay diffable. Change only what the platform forces: `adb` becomes `xcodebuildmcp`,
   and Android `testTag`s become iOS `accessibilityIdentifier`s.
 - MATCH the Android identifier string when adding an `accessibilityIdentifier` for a journey — the
-  vocabulary is deliberately shared (`N9`, `NRemove`, `SpendingAmountContinue`, `HardwareTransferSign`).
+  vocabulary is deliberately shared (`N9`, `NRemove`, `TransferUnavailableContinue`, `HardwareTransferToSpending`).
   Record any name that cannot match in the table in `journeys/README.md`.
 - PAIR a container identifier with `.accessibilityElement(children: .contain)` so it is queryable.
 - ADAPT rather than transcribe when iOS genuinely behaves differently, and say so in the journey's

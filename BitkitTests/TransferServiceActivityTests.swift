@@ -87,12 +87,59 @@ final class TransferServiceActivityTests: XCTestCase {
         )
     }
 
+    /// Pays an order's funding the way the transfer flow did before Blocktank stopped selling channels.
+    private func fundOrder(_ order: IBtOrder, attempts: OnchainSendAttemptService, node: AttemptNodeMock) async throws {
+        let result = try await attempts.send(
+            using: node, address: XCTUnwrap(order.payment?.onchain?.address), amountSats: order.feeSat, satsPerVbyte: 2,
+            utxosToSpend: nil, isMaxAmount: false, orderId: order.id,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: 123, feeRate: 2, tags: [], contact: nil, createdAt: UInt64(Date().timeIntervalSince1970)
+            ),
+            transferContext: OnchainSendTransferContext(
+                clientBalanceSats: order.clientBalanceSat, txTotalSats: order.feeSat + 123,
+                preTransferOnchainSats: 50000, originalOrderFeeSats: order.feeSat
+            )
+        )
+        guard case let .accepted(txid) = result else { throw OnchainSendAttemptError.unresolved }
+        guard try await attempts.resumeAcceptedTransfer(orderId: order.id, txid: txid, using: makeService()) else {
+            throw OnchainSendAttemptError.localFollowupNotSaved
+        }
+    }
+
+    @MainActor
+    func testConfirmedAcceptedOrderRestoresTrackingAndAckWithoutRepayment() async throws {
+        let store = MemoryAttemptStore()
+        let txid = String(repeating: "ab", count: 32)
+        let node = AttemptNodeMock(result: .accepted(txid: txid))
+        let order = IBtOrder.mock()
+        transferDefaults.set(Data("broken-test-transfer-store".utf8), forKey: "transfers")
+        do {
+            try await fundOrder(order, attempts: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }), node: node)
+            XCTFail("Tracking failure was not surfaced")
+        } catch {}
+        transferDefaults.removeObject(forKey: "transfers")
+        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
+        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
+        defer {
+            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
+            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
+        }
+        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }))
+        await Bitkit.LightningService.shared.onchainTransactionConfirmed?(txid)
+        let tracking = try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first
+        XCTAssertEqual(tracking?.fundingTxId, txid)
+        XCTAssertEqual(tracking?.txTotalSats, order.feeSat + 123)
+        XCTAssertEqual(tracking?.preTransferOnchainSats, 50000)
+        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
+        XCTAssertEqual(node.calls, 1)
+        withExtendedLifetime(wallet) {}
+    }
+
     private func makeService() -> Bitkit.TransferService {
         Bitkit.TransferService(
             storage: Bitkit.TransferStorage(defaults: transferDefaults),
             lightningService: .shared,
-            blocktankService: Bitkit.CoreService.shared.blocktank,
-            isGeoBlocked: { false }
+            blocktankService: Bitkit.CoreService.shared.blocktank
         )
     }
 
@@ -969,338 +1016,6 @@ final class TransferServiceActivityTests: XCTestCase {
         // There is no OnchainSending/native broadcast dependency in restore or local completion.
     }
 
-    @MainActor
-    func testReceivedTransferPublishesExactResolutionForVisiblePending() async throws {
-        let confirmed = Bitkit.LightningService.shared.onchainTransactionConfirmed
-        let received = Bitkit.LightningService.shared.onchainTransactionReceived
-        defer {
-            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmed
-            Bitkit.LightningService.shared.onchainTransactionReceived = received
-        }
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .unknown(txid: txid))
-        let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
-        let order = IBtOrder.mock(id: "original-order")
-        let recoveryReady = expectation(description: "Recovered original order resumes funding setup")
-        var balanceRefreshes = 0
-        let vm = TransferViewModel(
-            transferService: makeService(), sheetViewModel: SheetViewModel(),
-            onBalanceRefresh: { balanceRefreshes += 1; recoveryReady.fulfill() },
-            onchainAttemptService: service, onchainSender: node, onchainBalanceProvider: { 10000 }
-        )
-        vm.onOrderCreated(order: order)
-        do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
-        XCTAssertNil(vm.recoveredOnchainFundingOrderId)
-        XCTAssertEqual(balanceRefreshes, 0, "Unknown funding must not advance setup")
-        let unrelatedStore = MemoryAttemptStore()
-        let unrelatedNode = AttemptNodeMock(result: .unknown(txid: String(repeating: "cd", count: 32)))
-        var unrelatedRefreshes = 0
-        let unrelatedVM = TransferViewModel(
-            transferService: makeService(), sheetViewModel: SheetViewModel(),
-            onBalanceRefresh: { unrelatedRefreshes += 1 },
-            onchainAttemptService: OnchainSendAttemptService(store: unrelatedStore, hasPaidOrder: { _ in false }),
-            onchainSender: unrelatedNode, onchainBalanceProvider: { 10000 }
-        )
-        do {
-            try await unrelatedVM.payOrder(order: .mock(id: "other-order"), speed: .normal, txFee: 123, satsPerVbyte: 2)
-        } catch {}
-        let original = try XCTUnwrap(store.snapshot().first)
-        let wallet = makeWallet(attempts: service)
-        let resolutionReady = expectation(description: "Visible Pending receives exact durable transfer resolution")
-        var resolved: OnchainSendLocalResolution?
-        let observation = OnchainSendAttemptService.localResolutionPublisher.sink { resolution in
-            if resolution.attemptId == original.id, resolution.walletId == original.walletId, resolution.txid == txid, resolved == nil {
-                resolved = resolution
-                resolutionReady.fulfill()
-            }
-        }
-        defer { observation.cancel() }
-        await Bitkit.LightningService.shared.onchainTransactionReceived?(txid)
-        await fulfillment(of: [resolutionReady, recoveryReady], timeout: 2)
-        XCTAssertEqual(vm.recoveredOnchainFundingOrderId, order.id)
-        XCTAssertEqual(balanceRefreshes, 1)
-        XCTAssertNil(unrelatedVM.recoveredOnchainFundingOrderId)
-        XCTAssertEqual(unrelatedRefreshes, 0)
-        XCTAssertEqual(unrelatedNode.calls, 1)
-        await Bitkit.LightningService.shared.onchainTransactionReceived?(txid)
-        XCTAssertEqual(balanceRefreshes, 1, "A delayed repeat event must not resume order setup twice")
-        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
-        XCTAssertEqual(resolved?.activity.txId, txid, "Pending Details must refer to the actual winning funding transaction")
-        XCTAssertEqual(resolved?.activity.isTransfer, true)
-        if let resolved {
-            let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
-            XCTAssertTrue(SendPendingScreen.matchesLocalResolution(resolved, attempt: original, context: context, walletId: "new-selected-wallet"))
-            XCTAssertFalse(SendPendingScreen.matchesLocalResolution(resolved, attempt: original,
-                                                                    context: .init(attemptId: UUID(), walletId: original.walletId, txid: txid),
-                                                                    walletId: original.walletId))
-            XCTAssertFalse(SendPendingScreen.matchesLocalResolution(resolved, attempt: original,
-                                                                    context: .init(attemptId: original.id, walletId: "other-wallet", txid: txid),
-                                                                    walletId: original.walletId))
-            let reopened = try await service.resolvedAcceptedTransfer(context: context, using: makeService())
-            XCTAssertEqual(reopened?.txid, txid, "Resolution preceding Pending initialization must still enable exact Details")
-        }
-        XCTAssertEqual(node.calls, 1)
-        withExtendedLifetime(wallet) {}
-    }
-
-    @MainActor
-    func testUnknownOrderFundingOpensExactPendingWithoutFinishingSetup() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .unknown(txid: txid))
-        let sheets = SheetViewModel()
-        let order = IBtOrder.mock()
-        let vm = TransferViewModel(
-            transferService: makeService(), sheetViewModel: sheets,
-            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
-            onchainSender: node, onchainBalanceProvider: { 50000 }
-        )
-        do {
-            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
-            XCTFail("Unknown funding must not finish setup")
-        } catch {}
-        let original = try XCTUnwrap(store.snapshot().first)
-        XCTAssertEqual(original.orderId, order.id)
-        XCTAssertTrue(original.blocksNewSend)
-        XCTAssertTrue(try Bitkit.TransferStorage(defaults: transferDefaults).getAll().isEmpty)
-        XCTAssertEqual(node.calls, 1)
-        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
-        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
-        guard case let .onchainPending(context) = config.initialRoute else {
-            return XCTFail("Funding lost the exact original Pending route")
-        }
-        XCTAssertEqual(context.attemptId, original.id)
-        XCTAssertEqual(context.walletId, original.walletId)
-        XCTAssertEqual(context.txid, txid)
-    }
-
-    @MainActor
-    func testDismissedFundingPendingReopensWithoutCreatingOrSendingAnotherOrder() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .unknown(txid: txid))
-        let sheets = SheetViewModel()
-        let order = IBtOrder.mock()
-        let vm = TransferViewModel(
-            transferService: makeService(), sheetViewModel: sheets,
-            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
-            onchainSender: node, onchainBalanceProvider: { 50000 }
-        )
-        vm.onOrderCreated(order: order)
-        do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
-        let original = try XCTUnwrap(store.snapshot().first)
-        sheets.hideSheet()
-        vm.onEstimateReady(clientBalance: 20000, lspBalance: 10000, feeSat: 21000)
-        XCTAssertNil(vm.uiState.order, "A new estimate drops the screen order, not the global payment guard")
-        do {
-            _ = try await vm.orderForConfirmation { _, _ in
-                XCTFail("Confirmation must route retained funding before creating another order")
-                return IBtOrder.mock(id: "replacement-confirmation-order")
-            }
-            XCTFail("A new confirmation must yield to original Pending")
-        } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong confirmation re-entry error: \(error)") }
-        sheets.hideSheet()
-        do {
-            _ = try await vm.orderForSwipe { _, _ in
-                XCTFail("An unresolved funding operation must not create a new order")
-                return IBtOrder.mock(id: "replacement-order")
-            }
-            XCTFail("The reset swipe must yield to original Pending")
-        } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong funding re-entry error: \(error)") }
-        sheets.hideSheet()
-        await vm.onTransferToSpendingHwConfirm(walletId: "hardware-wallet") { _, _ in
-            XCTFail("Hardware confirmation must not create a replacement order")
-            return IBtOrder.mock(id: "replacement-hardware-order")
-        }
-        XCTAssertNil(vm.hwTransferError, "Routing Pending must not add a generic hardware error")
-        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
-        guard case let .onchainPending(context) = config.initialRoute else { return XCTFail("Missing Pending") }
-        XCTAssertEqual(context.attemptId, original.id)
-        XCTAssertEqual(context.walletId, original.walletId)
-        XCTAssertEqual(context.txid, txid)
-        XCTAssertEqual(node.calls, 1)
-    }
-
-    @MainActor
-    func testRejectedOrderFundingOpensExactPendingWithoutFinishingSetup() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .rejected(txid: txid, reason: "fixture refusal"))
-        let sheets = SheetViewModel()
-        let order = IBtOrder.mock()
-        let vm = TransferViewModel(
-            transferService: makeService(), sheetViewModel: sheets,
-            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
-            onchainSender: node, onchainBalanceProvider: { 50000 }
-        )
-        do {
-            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
-            XCTFail("Rejected funding must not finish setup")
-        } catch {}
-        let original = try XCTUnwrap(store.snapshot().first)
-        XCTAssertEqual(original.orderId, order.id)
-        XCTAssertTrue(original.blocksNewSend)
-        XCTAssertTrue(try Bitkit.TransferStorage(defaults: transferDefaults).getAll().isEmpty)
-        XCTAssertEqual(node.calls, 1)
-        XCTAssertEqual(sheets.activeSheetConfiguration?.id, .send)
-        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
-        guard case let .onchainPending(context) = config.initialRoute else {
-            return XCTFail("Funding lost the exact original Pending route")
-        }
-        XCTAssertEqual(context.attemptId, original.id)
-        XCTAssertEqual(context.walletId, original.walletId)
-        XCTAssertEqual(context.txid, txid)
-    }
-
-    @MainActor
-    func testTransferResumeRetainsOriginalBalanceMetadataAfterTrackingFailure() async throws {
-        for isMax in [false, true] {
-            transferDefaults.removeObject(forKey: "transfers")
-            let store = MemoryAttemptStore()
-            let txid = String(repeating: isMax ? "cd" : "ab", count: 32)
-            let node = AttemptNodeMock(result: .accepted(txid: txid))
-            let attempts = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
-            let order = IBtOrder.mock()
-            let initialTotal = isMax ? UInt64(20000) : order.feeSat + 123
-            if isMax {
-                node.preparedMiningFeeSats = 123
-                node.preparedRecipientAmountSats = initialTotal - 123
-            }
-            let vm = TransferViewModel(
-                transferService: makeService(), sheetViewModel: SheetViewModel(),
-                onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 }
-            )
-            transferDefaults.set(Data("broken-test-transfer-store".utf8), forKey: "transfers")
-            do {
-                try await vm.payOrder(
-                    order: order, speed: .normal, txFee: 123, satsPerVbyte: 2,
-                    isMaxAmount: isMax, maxSendableAmount: isMax ? initialTotal - 123 : nil
-                )
-                XCTFail("Tracking failure was not surfaced")
-            } catch {}
-            XCTAssertEqual(node.calls, 1)
-            transferDefaults.removeObject(forKey: "transfers")
-            let restarted = TransferViewModel(
-                transferService: makeService(), sheetViewModel: SheetViewModel(),
-                onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
-                onchainSender: node, onchainBalanceProvider: { 4000 }
-            )
-            try await restarted.payOrder(
-                order: order, speed: .normal, txFee: 999, satsPerVbyte: 9,
-                isMaxAmount: false, maxSendableAmount: nil
-            )
-            let tracking = try XCTUnwrap(Bitkit.TransferStorage(defaults: transferDefaults).getAll().first)
-            XCTAssertEqual(tracking.txTotalSats, initialTotal)
-            XCTAssertEqual(tracking.preTransferOnchainSats, 50000)
-            XCTAssertEqual(tracking.fundingTxId, txid)
-            XCTAssertEqual(node.calls, 1, "Transfer local resume dispatched funding twice")
-        }
-    }
-
-    @MainActor
-    func testAcceptedIncompleteFundingReopensExpiredOriginalAndRepairsWithoutBroadcast() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .accepted(txid: txid))
-        let attempts = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
-        let sheets = SheetViewModel()
-        let order = IBtOrder.mock()
-        let vm = TransferViewModel(transferService: makeService(), sheetViewModel: sheets,
-                                   onchainAttemptService: attempts, onchainSender: node, onchainBalanceProvider: { 50000 })
-        vm.onOrderCreated(order: order)
-        transferDefaults.set(Data("broken-transfer-store".utf8), forKey: "transfers")
-        do { try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2) } catch {}
-        let original = try XCTUnwrap(store.snapshot().first)
-        XCTAssertEqual(original.status, .accepted)
-        XCTAssertFalse(original.localFollowupComplete)
-        sheets.hideSheet()
-        do {
-            _ = try await vm.orderForSwipe { _, _ in
-                XCTFail("Accepted incomplete funding must retain the expired original order")
-                return IBtOrder.mock(id: "replacement-order")
-            }
-            XCTFail("Incomplete accepted funding must reopen Pending")
-        } catch is OnchainFundingPendingError {} catch { XCTFail("Wrong error: \(error)") }
-        let config = try XCTUnwrap(sheets.activeSheetConfiguration?.data as? SendConfig)
-        guard case let .onchainPending(context) = config.initialRoute else { return XCTFail("Missing Pending") }
-        XCTAssertEqual(context.attemptId, original.id)
-        XCTAssertEqual(context.walletId, original.walletId)
-        XCTAssertEqual(context.txid, txid)
-        XCTAssertEqual(node.calls, 1)
-        transferDefaults.removeObject(forKey: "transfers")
-        try await vm.payOrder(order: order, speed: .normal, txFee: 999, satsPerVbyte: 9)
-        XCTAssertTrue(try XCTUnwrap(store.snapshot().first).localFollowupComplete)
-        XCTAssertEqual(vm.recoveredOnchainFundingOrderId, order.id)
-        XCTAssertEqual(node.calls, 1)
-    }
-
-    @MainActor
-    func testAcceptedOrderFollowupKeepsAdmissionContextWhenWalletChangesAfterDispatch() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .accepted(txid: txid))
-        let order = IBtOrder.mock()
-        node.onSend = {
-            XCTAssertEqual(store.snapshot().first?.walletId, OnchainSendAttemptService.walletId(index: 0))
-            node.currentWalletIndex = 1
-            node.dispatchNode = NSObject()
-        }
-        let vm = TransferViewModel(
-            transferService: makeService(), sheetViewModel: SheetViewModel(),
-            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
-            onchainSender: node, onchainBalanceProvider: { node.currentWalletIndex == 0 ? 50000 : 4000 }
-        )
-        do {
-            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
-        } catch {
-            XCTFail("Accepted original order used the selected wallet after dispatch: \(error)")
-        }
-        let original = store.snapshot().first
-        XCTAssertEqual(original?.walletId, OnchainSendAttemptService.walletId(index: 0))
-        XCTAssertEqual(original?.txid, txid)
-        XCTAssertEqual(original?.localFollowupComplete, true)
-        let tracking = try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first
-        XCTAssertEqual(tracking?.fundingTxId, txid)
-        XCTAssertEqual(tracking?.txTotalSats, order.feeSat + 123)
-        XCTAssertEqual(tracking?.preTransferOnchainSats, 50000)
-        XCTAssertEqual(node.calls, 1)
-    }
-
-    @MainActor
-    func testConfirmedAcceptedOrderRestoresTrackingAndAckWithoutRepayment() async throws {
-        let store = MemoryAttemptStore()
-        let txid = String(repeating: "ab", count: 32)
-        let node = AttemptNodeMock(result: .accepted(txid: txid))
-        let order = IBtOrder.mock()
-        let vm = TransferViewModel(
-            transferService: makeService(), sheetViewModel: SheetViewModel(),
-            onchainAttemptService: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }),
-            onchainSender: node, onchainBalanceProvider: { 50000 }
-        )
-        transferDefaults.set(Data("broken-test-transfer-store".utf8), forKey: "transfers")
-        do {
-            try await vm.payOrder(order: order, speed: .normal, txFee: 123, satsPerVbyte: 2)
-            XCTFail("Tracking failure was not surfaced")
-        } catch {}
-        transferDefaults.removeObject(forKey: "transfers")
-        let confirmedCallback = Bitkit.LightningService.shared.onchainTransactionConfirmed
-        let receivedCallback = Bitkit.LightningService.shared.onchainTransactionReceived
-        defer {
-            Bitkit.LightningService.shared.onchainTransactionConfirmed = confirmedCallback
-            Bitkit.LightningService.shared.onchainTransactionReceived = receivedCallback
-        }
-        let wallet = makeWallet(attempts: OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false }))
-        await Bitkit.LightningService.shared.onchainTransactionConfirmed?(txid)
-        let tracking = try Bitkit.TransferStorage(defaults: transferDefaults).getAll().first
-        XCTAssertEqual(tracking?.fundingTxId, txid)
-        XCTAssertEqual(tracking?.txTotalSats, order.feeSat + 123)
-        XCTAssertEqual(tracking?.preTransferOnchainSats, 50000)
-        XCTAssertEqual(store.snapshot().first?.localFollowupComplete, true)
-        XCTAssertEqual(node.calls, 1)
-        withExtendedLifetime(wallet) {}
-    }
-
     func testAcceptedOrdinaryRecoveryAssociatesSyncCreatedSentRowWithoutDetachedContact() async throws {
         let store = MemoryAttemptStore()
         let txid = String(repeating: "19", count: 32)
@@ -1472,27 +1187,10 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertNil(loaded.resolution)
     }
 
-    func testGeoBlockedPaidOrderStillSavesItsTransferRecord() async throws {
-        let service = Bitkit.TransferService(
-            storage: Bitkit.TransferStorage(defaults: transferDefaults), lightningService: .shared,
-            blocktankService: Bitkit.CoreService.shared.blocktank, isGeoBlocked: { true }
-        )
-        let txid = String(repeating: "cd", count: 32)
-
-        let id = try await service.createTransfer(type: .toSpending, amountSats: 1000, fundingTxId: txid, lspOrderId: "paid-order")
-
-        XCTAssertFalse(id.isEmpty)
-        do {
-            _ = try await service.createTransfer(type: .toSpending, amountSats: 1000, lspOrderId: "unpaid-order")
-            XCTFail("Expected an unpaid order to be refused while geo-blocked")
-        } catch {}
-    }
-
     func testConcurrentPaidOrderFollowupCreatesOneOriginalRecord() async throws {
         let storage = ConcurrentPaidOrderStorage(defaults: transferDefaults)
         let service = Bitkit.TransferService(
-            storage: storage, lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank,
-            isGeoBlocked: { false }
+            storage: storage, lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank
         )
         let txid = String(repeating: "ab", count: 32)
         let first = Task.detached {

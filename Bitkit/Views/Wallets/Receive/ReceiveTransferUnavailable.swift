@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ReceiveCjitGeoBlocked: View {
+struct ReceiveTransferUnavailable: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
 

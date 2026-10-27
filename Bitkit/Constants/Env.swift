@@ -138,14 +138,6 @@ enum Env {
         }
     }
 
-    static var isGeoblockingEnabled: Bool {
-        #if CHECK_GEOBLOCK
-            return true
-        #else
-            return ProcessInfo.processInfo.environment["GEO"] == "true"
-        #endif
-    }
-
     /// The current execution context of the app
     static var currentExecutionContext: ExecutionContext {
         let isNotificationExtension = Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true
@@ -399,7 +391,6 @@ enum Env {
     static let termsOfServiceUrl = "https://www.bitkit.to/terms-of-use"
     static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
     static let blocktankSunsetUrl = "https://blog.bitkit.to/"
-    static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
     static let bitrefillRef = "AL6dyZYt"
     static let btcMapUrl = "https://btcmap.org/map"
     static let helpUrl = "https://help.bitkit.to"
