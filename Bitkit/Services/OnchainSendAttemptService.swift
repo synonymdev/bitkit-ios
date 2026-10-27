@@ -316,8 +316,13 @@ struct OnchainSendAttempt: Codable, Equatable {
 
     /// A Paykit payment from the node wallet that the network never confirmed accepting. Once its request
     /// has ended and no candidate reached the network, it can be released instead of blocking every send.
+    /// A transfer to spending that pays a Blocktank order, which Bitkit no longer buys.
+    var isBlocktankFunding: Bool {
+        requestId == nil && orderId != nil
+    }
+
     var canBeAbandoned: Bool {
-        requestId != nil && orderId == nil && status != .accepted && txid != nil &&
+        (requestId != nil && orderId == nil || isBlocktankFunding) && status != .accepted && txid != nil &&
             walletId.hasPrefix("node:") && recoveryContext?.inputs.isEmpty == false
     }
 

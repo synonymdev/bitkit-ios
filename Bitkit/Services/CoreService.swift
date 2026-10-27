@@ -2343,36 +2343,6 @@ class BlocktankService {
         }
     }
 
-    // MARK: Notifications
-
-    func registerDeviceForNotifications(
-        deviceToken: String, publicKey: String, features: [String], nodeId: String, isoTimestamp: String, signature: String
-    ) async throws -> String {
-        try await ServiceQueue.background(.core) {
-            try await registerDevice(
-                deviceToken: deviceToken,
-                publicKey: publicKey,
-                features: features,
-                nodeId: nodeId,
-                isoTimestamp: isoTimestamp,
-                signature: signature,
-                isProduction: !Env.isDebug,
-                customUrl: Env.blocktankPushNotificationServer
-            )
-        }
-    }
-
-    func pushNotificationTest(deviceToken: String, secretMessage: String, notificationType: String?) async throws -> String {
-        try await ServiceQueue.background(.core) {
-            try await testNotification(
-                deviceToken: deviceToken,
-                secretMessage: secretMessage,
-                notificationType: notificationType,
-                customUrl: Env.blocktankPushNotificationServer
-            )
-        }
-    }
-
     // MARK: Regtest only methods
 
     private func executeWithRetry<T>(maxRetries: Int = 6, operation: @escaping () async throws -> T) async throws -> T {

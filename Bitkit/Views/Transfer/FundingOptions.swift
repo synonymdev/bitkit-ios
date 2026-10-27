@@ -10,15 +10,25 @@ struct FundingOptions: View {
 
     var text: String {
         if GeoService.shared.isGeoBlocked {
-            return t("lightning__funding__text_blocked")
+            return t("lightning__transfer_unavailable__text")
         } else {
             return t("lightning__funding__text")
         }
     }
 
+    private var manualButton: some View {
+        RectangleButton(
+            icon: "pencil",
+            title: t("lightning__funding__button3"),
+            testID: "FundManual"
+        ) {
+            navigation.navigate(.fundManual(nodeUri: nil))
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("lightning__transfer__nav_title"))
+            NavigationBar(title: t("lightning__funding__nav_title"))
                 .padding(.bottom, 16)
 
             DisplayText(
@@ -32,6 +42,10 @@ struct FundingOptions: View {
                 .padding(.bottom, 32)
 
             VStack(spacing: 8) {
+                if GeoService.shared.isGeoBlocked {
+                    manualButton
+                }
+
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
@@ -47,6 +61,15 @@ struct FundingOptions: View {
                     }
                 }
 
+                if GeoService.shared.isGeoBlocked {
+                    RectangleButton(
+                        icon: "device-tablet-speaker",
+                        title: t("lightning__funding__button_hw"),
+                        isDisabled: true,
+                        testID: "FundHardware"
+                    ) {}
+                }
+
                 RectangleButton(
                     icon: "qr",
                     title: t("lightning__funding__button2"),
@@ -57,16 +80,22 @@ struct FundingOptions: View {
                     sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
                 }
 
-                RectangleButton(
-                    icon: "pencil",
-                    title: t("lightning__funding__button3"),
-                    testID: "FundManual"
-                ) {
-                    navigation.navigate(.fundManual(nodeUri: nil))
+                if !GeoService.shared.isGeoBlocked {
+                    manualButton
                 }
             }
 
             Spacer()
+
+            if GeoService.shared.isGeoBlocked {
+                CustomButton(title: t("common__learn_more"), variant: .secondary) {
+                    if let url = URL(string: Env.blocktankSunsetUrl) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .accessibilityIdentifier("FundLearnMore")
+                .padding(.bottom, 16)
+            }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

@@ -557,6 +557,16 @@ actor PaykitPaymentProofService {
     /// Whether the request behind an unresolved payment can no longer be paid: the payee ended it, or its deadline
     /// passed. A record that is missing, carries a proof or needs recovery never counts as ended.
     func onchainRequestHasEnded(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws -> Bool {
+        // Blocktank no longer sells channels, so its order ends once transfers are unavailable: only an explicit
+        // "allowed" geocheck keeps it open, as for a retry.
+        if attempt.isBlocktankFunding {
+            guard attempt.canBeAbandoned else { return false }
+            if attempt.releaseApproved == true {
+                return true
+            }
+            let isGeoBlocked = try? await CoreService.shared.checkGeoStatus()
+            return isGeoBlocked != false
+        }
         guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
         else { return false }
         try await requireRecoveryPayer(payer)
@@ -661,6 +671,15 @@ actor PaykitPaymentProofService {
 
     /// Removes the started proof, then the attempt, so a crash in between leaves an attempt a later cancel finishes.
     private func finishRelease(_ attempt: OnchainSendAttempt, context: OnchainSendPendingContext) async throws {
+        if attempt.isBlocktankFunding {
+            // A Blocktank funding has no Shop proof to remove.
+            try await mutationLock.withLock {
+                guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
+                try await attemptService.abandonUnbroadcast(attempt)
+            }
+            logInfo("Released Blocktank funding \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "")")
+            return
+        }
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
             throw OnchainSendAttemptError.unresolved
         }

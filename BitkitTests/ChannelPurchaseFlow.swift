@@ -96,10 +96,12 @@ final class PaymentFlowTests: XCTestCase {
         XCTAssertFalse(address.isEmpty, "Address should not be empty")
         Logger.test("Generated address: \(address)", context: "PaymentFlowTests")
 
-        // Test connecting to trusted peers
-        Logger.test("Connecting to trusted peers", context: "PaymentFlowTests")
-        try await lightning.connectToTrustedPeers()
-        Logger.test("Connected to trusted peers", context: "PaymentFlowTests")
+        // Connect to the LSP node from Blocktank info
+        Logger.test("Connecting to LSP node", context: "PaymentFlowTests")
+        let lspConnection = try await blocktank.info(refresh: true)?.nodes.first?.connectionStrings.first
+        let lspPeer = try LnPeer(connection: XCTUnwrap(lspConnection, "Blocktank info should list an LSP node"))
+        try await lightning.connectPeer(peer: lspPeer)
+        Logger.test("Connected to LSP node", context: "PaymentFlowTests")
 
         // Verify peers
         let peers = await MainActor.run { lightning.peers }

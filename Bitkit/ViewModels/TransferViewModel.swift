@@ -5,6 +5,8 @@ import SwiftUI
 
 /// Funding was dispatched but unresolved; confirmation must yield to its retained Pending sheet.
 struct OnchainFundingPendingError: Error {}
+/// Blocktank no longer sells channels, so a transfer to spending stops at the Transfer Unavailable sheet.
+struct TransferUnavailableError: Error {}
 
 struct TransferUiState {
     var clientBalanceSat: UInt64 = 0
@@ -151,7 +153,6 @@ class TransferViewModel: ObservableObject {
     @Published var isSettlingAdvancedCapacity = false
     @Published var selectedChannelIds: [String] = []
     @Published var channelsToClose: [ChannelDetails] = []
-    @Published var transferUnavailable = false
 
     /// How the LN -> onchain "transfer to savings" is executed. Closing a channel is the
     /// default because it always works; swapping funds out keeps channels open and is used
@@ -177,6 +178,7 @@ class TransferViewModel: ObservableObject {
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
     private let onBalanceRefresh: (() async -> Void)?
+    private let isTransferUnavailable: () async -> Bool
     /// The device-signing orchestration for a hardware-wallet transfer; nil when the HW capabilities
     /// aren't injected (previews/plain init).
     private let hwSigner: HwFundingSigner?
@@ -225,7 +227,8 @@ class TransferViewModel: ObservableObject {
         onBalanceRefresh: (() async -> Void)? = nil,
         onchainAttemptService: OnchainSendAttemptService = .shared,
         onchainSender: (any OnchainSending)? = nil,
-        onchainBalanceProvider: (() -> UInt64)? = nil
+        onchainBalanceProvider: (() -> UInt64)? = nil,
+        isTransferUnavailable: (() async -> Bool)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
@@ -236,6 +239,11 @@ class TransferViewModel: ObservableObject {
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
         self.onBalanceRefresh = onBalanceRefresh
+        // Only an explicit "allowed" answer lets a transfer through: a failed or unexpected geocheck blocks it.
+        self.isTransferUnavailable = isTransferUnavailable ?? {
+            let isGeoBlocked = try? await coreService.checkGeoStatus()
+            return isGeoBlocked != false
+        }
         if let hwFunding, let hwConnecting {
             self.hwConnecting = hwConnecting
             hwSigner = HwFundingSigner(
@@ -266,7 +274,8 @@ class TransferViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
-        transferDefaults: UserDefaults? = nil
+        transferDefaults: UserDefaults? = nil,
+        isTransferUnavailable: @escaping () async -> Bool = { false }
     ) {
         let transferService = TransferService(
             storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
@@ -278,7 +287,8 @@ class TransferViewModel: ObservableObject {
             lightningService: lightningService,
             currencyService: currencyService,
             transferService: transferService,
-            sheetViewModel: sheetViewModel
+            sheetViewModel: sheetViewModel,
+            isTransferUnavailable: isTransferUnavailable
         )
     }
 
@@ -296,7 +306,8 @@ class TransferViewModel: ObservableObject {
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         sheetViewModel: SheetViewModel = SheetViewModel(),
-        transferDefaults: UserDefaults? = nil
+        transferDefaults: UserDefaults? = nil,
+        isTransferUnavailable: @escaping () async -> Bool = { false }
     ) {
         let transferService = TransferService(
             storage: transferDefaults.map { TransferStorage(defaults: $0) } ?? .shared,
@@ -312,7 +323,8 @@ class TransferViewModel: ObservableObject {
             hwConnecting: hwConnecting,
             hwFeeRateProvider: hwFeeRateProvider,
             hwAddressProvider: hwAddressProvider,
-            hwTimeouts: hwTimeouts
+            hwTimeouts: hwTimeouts,
+            isTransferUnavailable: isTransferUnavailable
         )
     }
 
@@ -386,6 +398,14 @@ class TransferViewModel: ObservableObject {
         return order
     }
 
+    /// Blocktank no longer sells channels, so neither a new order nor one held from before may be paid.
+    private func ensureTransferAvailable() async throws {
+        guard await isTransferUnavailable() else { return }
+        Logger.warn("Stopped a transfer to spending: transfers are unavailable", context: "TransferViewModel")
+        sheetViewModel.showSheet(.transferUnavailable)
+        throw TransferUnavailableError()
+    }
+
     private func currentOrder(
         createOrder: (_ clientBalance: UInt64, _ lspBalance: UInt64) async throws -> IBtOrder,
         isCurrent: () -> Bool
@@ -398,6 +418,7 @@ class TransferViewModel: ObservableObject {
             await showFundingPending(context)
             throw OnchainFundingPendingError()
         }
+        try await ensureTransferAvailable()
         if let order = uiState.order {
             if pendingHwFundingBroadcast?.orderId == order.id {
                 return order
@@ -841,6 +862,8 @@ class TransferViewModel: ObservableObject {
             ), hwOrderCreationToken == token else { return }
             onTransferToSpendingHwConfirm(order: order, walletId: walletId)
         } catch is OnchainFundingPendingError {
+            return
+        } catch is TransferUnavailableError {
             return
         } catch {
             hwTransferError = .generic((error as? AppError)?.message ?? error.localizedDescription)
@@ -1670,50 +1693,25 @@ class TransferViewModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1_000_000_000))
             }
 
-            Logger.info("Giving up on coop close. Checking if force close is possible.")
-
-            // Check if any channels can be force closed (filter out trusted peers)
-            let (_, nonTrustedChannels) = lightningService.separateTrustedChannels(channelsToClose)
-
-            if !nonTrustedChannels.isEmpty {
-                sheetViewModel.showSheet(.forceTransfer)
-            } else {
-                Logger.warn("All channels are with trusted peers. Cannot force close.")
-                channelsToClose.removeAll()
-                transferUnavailable = true
-            }
+            Logger.info("Giving up on coop close.")
+            sheetViewModel.showSheet(.forceTransfer)
         }
     }
 
     /// Force close all channels that failed to cooperatively close
-    /// Returns the number of trusted peer channels that were skipped
-    func forceCloseChannel() async throws -> Int {
+    func forceCloseChannel() async throws {
         guard !channelsToClose.isEmpty else {
             Logger.warn("No channels to force close")
-            return 0
+            return
         }
 
-        // Filter out trusted peer channels (cannot force close LSP channels)
-        let (trustedChannels, nonTrustedChannels) = lightningService.separateTrustedChannels(channelsToClose)
-
-        if !trustedChannels.isEmpty {
-            Logger.warn("Skipping \(trustedChannels.count) trusted peer channel(s)")
-        }
-
-        guard !nonTrustedChannels.isEmpty else {
-            channelsToClose.removeAll()
-            throw AppError(
-                message: "Cannot force close channels with trusted peer",
-                debugMessage: "All channels are with trusted peers (LSP). Force close is disabled."
-            )
-        }
-
-        Logger.info("Force closing \(nonTrustedChannels.count) channel(s)")
+        let channels = channelsToClose
+        Logger.info("Force closing \(channels.count) channel(s)")
 
         var errors: [(channelId: String, error: Error)] = []
         var successfulChannels: [ChannelDetails] = []
 
-        for channel in nonTrustedChannels {
+        for channel in channels {
             do {
                 // Force close the channel first
                 try await lightningService.closeChannel(
@@ -1745,10 +1743,8 @@ class TransferViewModel: ObservableObject {
             }
         }
 
-        // Remove successfully closed channels and trusted peer channels from the list
         channelsToClose.removeAll { channel in
-            successfulChannels.contains { $0.channelId == channel.channelId } ||
-                trustedChannels.contains { $0.channelId == channel.channelId }
+            successfulChannels.contains { $0.channelId == channel.channelId }
         }
 
         try? await transferService.syncTransferStates()
@@ -1763,8 +1759,6 @@ class TransferViewModel: ObservableObject {
                 debugMessage: errorMessages
             )
         }
-
-        return trustedChannels.count
     }
 
     // MARK: - Savings Swap (Boltz reverse swap)

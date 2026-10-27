@@ -1566,6 +1566,23 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(store.snapshot(), [releasing])
     }
 
+    func testRefusedBlocktankFundingCanBeReleased() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .rejected(txid: sender.txid, reason: "min relay fee not met")
+        _ = try? await service.send(using: sender, address: "bcrt1qfunding", amountSats: sender.amount, satsPerVbyte: 2,
+                                    utxosToSpend: nil, isMaxAmount: false, orderId: "order-1")
+        let attempt = try XCTUnwrap(store.snapshot().first)
+        XCTAssertTrue(attempt.isBlocktankFunding)
+        // Retry original is refused while transfers are unavailable, so release is the only exit.
+        XCTAssertTrue(attempt.canBeAbandoned)
+        let approved = try await service.approveRelease(attempt)
+        let releasing = try await service.recordRelease(approved, txid: String(repeating: "77", count: 32))
+        try await service.abandonUnbroadcast(releasing)
+        XCTAssertTrue(store.snapshot().isEmpty)
+    }
+
     func testOrdinaryPaymentIsNeverAbandoned() async throws {
         let store = MemoryAttemptStore()
         let service = OnchainSendAttemptService(store: store)

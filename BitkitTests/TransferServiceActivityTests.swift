@@ -1472,6 +1472,22 @@ final class TransferServiceActivityTests: XCTestCase {
         XCTAssertNil(loaded.resolution)
     }
 
+    func testGeoBlockedPaidOrderStillSavesItsTransferRecord() async throws {
+        let service = Bitkit.TransferService(
+            storage: Bitkit.TransferStorage(defaults: transferDefaults), lightningService: .shared,
+            blocktankService: Bitkit.CoreService.shared.blocktank, isGeoBlocked: { true }
+        )
+        let txid = String(repeating: "cd", count: 32)
+
+        let id = try await service.createTransfer(type: .toSpending, amountSats: 1000, fundingTxId: txid, lspOrderId: "paid-order")
+
+        XCTAssertFalse(id.isEmpty)
+        do {
+            _ = try await service.createTransfer(type: .toSpending, amountSats: 1000, lspOrderId: "unpaid-order")
+            XCTFail("Expected an unpaid order to be refused while geo-blocked")
+        } catch {}
+    }
+
     func testConcurrentPaidOrderFollowupCreatesOneOriginalRecord() async throws {
         let storage = ConcurrentPaidOrderStorage(defaults: transferDefaults)
         let service = Bitkit.TransferService(

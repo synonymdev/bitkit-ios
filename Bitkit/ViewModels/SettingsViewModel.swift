@@ -108,7 +108,6 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 
@@ -227,7 +226,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayAmount = 5
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false
-        enableNotificationsAmount = false
         UserDefaults.standard.set(PaykitFeatureFlags.uiEnabledByDefault, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
