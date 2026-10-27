@@ -210,14 +210,14 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             XCTAssertEqual(navigation.path, [.confirm, .feeRate])
 
             navigation.path.removeLast()
-            try await navigation.waitForAppearance(.confirm)
             await fulfillment(of: [wallet.started], timeout: 3)
             guard wallet.preparationCount > 0 else { continue }
             wallet.resume()
-            await fulfillment(of: [wallet.finished], timeout: 3)
-            try await Task.sleep(for: .milliseconds(100))
+            await fulfillment(of: [wallet.finished, wallet.coinPrepared], timeout: 3)
+            try await navigation.waitForAppearance(operation == .manualUtxos ? .utxoSelection : .confirm)
 
-            XCTAssertEqual(wallet.preparationCount, 1)
+            XCTAssertEqual(wallet.successfulCoinPreparations, 1)
+            XCTAssertEqual(wallet.preparationCount, wallet.wasCancelled ? 2 : 1)
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
             if operation == .selection {
@@ -310,14 +310,9 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             await fulfillment(of: [wallet.resumedStarted], timeout: 3)
             XCTAssertEqual(wallet.preparationCount, 2)
             wallet.resume()
-            if operation == .manualUtxos {
-                try await navigation.waitForAppearance(.utxoSelection)
-            } else {
-                let deadline = ContinuousClock.now + .seconds(3)
-                while wallet.selectedUtxos == nil, ContinuousClock.now < deadline {
-                    try await Task.sleep(for: .milliseconds(10))
-                }
-            }
+            await fulfillment(of: [wallet.coinPrepared], timeout: 3)
+            try await navigation.waitForAppearance(operation == .manualUtxos ? .utxoSelection : .confirm)
+            XCTAssertEqual(wallet.successfulCoinPreparations, 1)
             XCTAssertEqual(wallet.preparationCount, 2)
             XCTAssertEqual(app.selectedWalletToPayFrom, .onchain)
             XCTAssertEqual(navigation.path, operation == .manualUtxos ? [.confirm, .utxoSelection] : [.confirm])
@@ -600,12 +595,14 @@ private final class ControlledSendWallet: WalletViewModel {
     let started = XCTestExpectation(description: "Send preparation suspended")
     let finished = XCTestExpectation(description: "Send preparation resumed")
     let resumedStarted = XCTestExpectation(description: "Resumed send preparation suspended")
+    let coinPrepared = XCTestExpectation(description: "Current send coin preparation applied")
     private let operation: Operation
     private let fails: Bool
     private let suspendsResumedPreparation: Bool
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var wasCancelled = false
     private(set) var preparationCount = 0
+    private(set) var successfulCoinPreparations = 0
 
     init(operation: Operation, fails: Bool = false, suspendsResumedPreparation: Bool = false) {
         self.operation = operation
@@ -629,7 +626,9 @@ private final class ControlledSendWallet: WalletViewModel {
     override func loadAvailableUtxos(isCurrentSend: () -> Bool = { true }) async throws {
         try await suspend()
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        successfulCoinPreparations += 1
         availableUtxos = []
+        coinPrepared.fulfill()
     }
 
     override func setUtxoSelection(
@@ -642,7 +641,9 @@ private final class ControlledSendWallet: WalletViewModel {
             try await suspend()
         }
         guard !Task.isCancelled, isCurrentSend() else { throw CancellationError() }
+        successfulCoinPreparations += 1
         selectedUtxos = []
+        coinPrepared.fulfill()
     }
 
     override func calculateTotalFee(address: String, amountSats: UInt64, satsPerVByte: UInt32,

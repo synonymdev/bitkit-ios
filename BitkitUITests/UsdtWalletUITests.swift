@@ -197,6 +197,7 @@ final class UsdtWalletUITests: XCTestCase {
     func testReceiveAndInvalidPaymentStaySeparateFromBitcoin() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.resetAuthorizationStatus(for: .camera)
         app.launchEnvironment["USDT_RPC_URL"] = forkRpcURL
         app.launchEnvironment["USDT_BUNDLER_URL"] = forkBundlerURL
         app.launch()
@@ -266,6 +267,11 @@ final class UsdtWalletUITests: XCTestCase {
         receiveHeader.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
         XCTAssertTrue(app.buttons["UsdtReceiveDetails"].waitForNonExistence(timeout: 5))
         app.buttons["UsdtSend"].tap()
+        let cameraAlert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts
+            .containing(NSPredicate(format: "label CONTAINS[c] %@", "camera")).firstMatch
+        XCTAssertTrue(cameraAlert.waitForExistence(timeout: 5))
+        cameraAlert.buttons["Allow"].tap()
+        XCTAssertTrue(cameraAlert.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["UsdtManual"].waitForExistence(timeout: 5))
         app.buttons["UsdtManual"].tap()
         let recipient = app.textViews["UsdtRecipient"]

@@ -69,9 +69,68 @@ final class ContactsListViewTests: XCTestCase {
         XCTAssertEqual(manager.contacts.count, 1)
     }
 
-    private func host(_ manager: ContactsManager, app: AppViewModel) -> UIWindow {
-        let profile = PubkyProfileManager()
-        profile.publicKey = "pubky" + String(repeating: "z", count: 52)
+    func testDeferredLoadResumesOnlyWhileScreenAndIdentityRemainCurrent() async throws {
+        let cases: [(payment: Bool, leaveScreen: Bool, changeIdentity: Bool)] = [
+            (false, false, false),
+            (true, false, false),
+            (false, true, false),
+            (false, false, true),
+        ]
+        for testCase in cases {
+            snapshotAppDefaultsDomain()
+            let manager = DeferredContactsListManager()
+            let profile = PubkyProfileManager()
+            profile.publicKey = "pubky" + String(repeating: "z", count: 52)
+            let app = AppViewModel()
+            app.hasSeenContactsIntro = false
+            let activity = PaykitPaymentActivity.shared
+            let token = testCase.payment ? activity.begin() : activity.beginReview()
+            let window = host(manager, app: app, profile: profile)
+            defer {
+                close(window)
+                if testCase.payment {
+                    activity.end(token)
+                } else {
+                    activity.endReview(token)
+                }
+            }
+            await fulfillment(of: [manager.deferred], timeout: 3)
+            XCTAssertTrue(manager.contacts.isEmpty)
+            XCTAssertEqual(manager.attempts, 1)
+            XCTAssertFalse(app.hasSeenContactsIntro)
+
+            if testCase.leaveScreen {
+                window.rootViewController = UIHostingController(rootView: Color.black)
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            if testCase.changeIdentity {
+                profile.publicKey = "pubky" + String(repeating: "x", count: 52)
+            }
+            if testCase.payment {
+                activity.end(token)
+            } else {
+                activity.endReview(token)
+            }
+
+            if testCase.leaveScreen || testCase.changeIdentity {
+                try await Task.sleep(for: .milliseconds(100))
+                XCTAssertEqual(manager.attempts, 1)
+                XCTAssertTrue(manager.contacts.isEmpty)
+                XCTAssertFalse(app.hasSeenContactsIntro)
+            } else {
+                await fulfillment(of: [manager.loaded], timeout: 3)
+                XCTAssertEqual(manager.attempts, 2)
+                XCTAssertEqual(manager.contacts.count, 1)
+                XCTAssertTrue(app.hasSeenContactsIntro)
+            }
+        }
+    }
+
+    private func host(_ manager: ContactsManager, app: AppViewModel, profile: PubkyProfileManager? = nil) -> UIWindow {
+        let profile = profile ?? PubkyProfileManager()
+        if profile.publicKey == nil {
+            profile.publicKey = "pubky" + String(repeating: "z", count: 52)
+        }
         let view = ContactsListView()
             .environmentObject(app)
             .environmentObject(NavigationViewModel())
@@ -128,5 +187,26 @@ private final class SuspendedContactsListManager: ContactsManager {
         if let error {
             throw error
         }
+    }
+}
+
+@MainActor
+private final class DeferredContactsListManager: ContactsManager {
+    let deferred = XCTestExpectation(description: "Contacts observation deferred")
+    let loaded = XCTestExpectation(description: "Contacts loaded after admission")
+    private(set) var attempts = 0
+
+    override func loadObservedContacts(for publicKey: String) async throws {
+        attempts += 1
+        if PaykitPaymentActivity.shared.shouldDeferRefresh {
+            deferred.fulfill()
+            throw PaykitPaymentRequestError.operationInProgress
+        }
+        let key = "pubky" + String(repeating: "y", count: 52)
+        contacts = [PubkyContact(
+            publicKey: key,
+            profile: PubkyProfile(publicKey: key, name: "Contact", bio: "", imageUrl: nil, links: [], status: nil)
+        )]
+        loaded.fulfill()
     }
 }
