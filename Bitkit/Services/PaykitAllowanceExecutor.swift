@@ -513,7 +513,8 @@ actor PaykitAllowanceExecutor {
     }
 
     /// Moves the journal entry to the outcome, and announces an automatic payment only from the call that settles it,
-    /// so a settlement event and recovery never both raise Payment Executed.
+    /// so a settlement event and recovery never both raise Payment Executed. Returns nil when the move can't be saved:
+    /// the entry stays open, so a later settlement or recovery acts on it once instead of twice.
     @discardableResult
     private func applyJournalOutcome(
         attemptId: String,
@@ -523,19 +524,26 @@ actor PaykitAllowanceExecutor {
     ) -> PaykitAllowanceLocalState.JournalEntry? {
         var entry: PaykitAllowanceLocalState.JournalEntry?
         var settledEntry: PaykitAllowanceLocalState.JournalEntry?
-        updateLocalState(identity: identity) { state in
-            guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
-                  !onlyIfOpen || !state.journal[index].stage.isTerminal
-            else { return }
-            entry = state.journal[index]
-            if outcome == .succeeded, state.journal[index].stage != .succeeded {
-                settledEntry = state.journal[index]
+        do {
+            var state = try store.load(identity: identity)
+            if let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
+               !onlyIfOpen || !state.journal[index].stage.isTerminal
+            {
+                entry = state.journal[index]
+                if outcome == .succeeded, state.journal[index].stage != .succeeded {
+                    settledEntry = state.journal[index]
+                }
+                switch outcome {
+                case .succeeded: state.journal[index].stage = .succeeded
+                case .failed: state.journal[index].stage = .failed
+                case .unknown: state.journal[index].stage = .unknown
+                }
+                try store.save(state, identity: identity)
             }
-            switch outcome {
-            case .succeeded: state.journal[index].stage = .succeeded
-            case .failed: state.journal[index].stage = .failed
-            case .unknown: state.journal[index].stage = .unknown
-            }
+        } catch {
+            Logger.warn("Failed to save an allowance attempt's outcome: \(error)", context: "PaykitAllowance")
+            entry = nil
+            settledEntry = nil
         }
         Self.eventSubject.send(.ledgerChanged)
         if let entry = settledEntry, entry.isAutomatic, let paymentHash = entry.paymentHash {

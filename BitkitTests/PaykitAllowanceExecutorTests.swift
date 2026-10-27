@@ -773,8 +773,18 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         let listOutcomes = await harness.payer.paymentListOutcomes
         XCTAssertEqual(listOutcomes, [.uncertain], "A claim still saved in the journal must not be released twice")
-        let released = await harness.payer.releasedLists.map(\.version)
-        XCTAssertEqual(released.count, 1, "Recording the failure releases the list once, from the journal")
+        let releasedWhileSavesFail = await harness.payer.releasedLists
+        XCTAssertEqual(releasedWhileSavesFail, [], "A failure that can't be saved leaves the release to the recovery that saves it")
+
+        harness.store.restoreSaves()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(requestId: "req-a", attempts: [Fixtures.attemptRecord(id: AllowanceSdkMock.automaticAttemptId, status: .failed)]),
+        ]))
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let released = await harness.payer.releasedLists
+        XCTAssertEqual(released.count, 1, "Recovery releases the list once, from the journal")
     }
 
     func testRecoveryResolvesOpenAttemptsWithoutPayingAgain() async throws {
@@ -1627,6 +1637,10 @@ private final class AllowanceMemoryStore: PaykitAllowanceStoring, @unchecked Sen
 
     func failSaves() {
         lock.withLock { savesFail = true }
+    }
+
+    func restoreSaves() {
+        lock.withLock { savesFail = false }
     }
 
     func seed(_ state: PaykitAllowanceLocalState, identity: String) {
