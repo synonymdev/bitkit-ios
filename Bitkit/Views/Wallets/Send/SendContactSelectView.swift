@@ -43,6 +43,7 @@ struct SendContactSelectView: View {
                                     await pay(contact)
                                 }
                             }
+                            .disabled(selectedContactKey != nil)
                             .accessibilityIdentifier("SendContact-\(contact.publicKey)")
                         }
                     }

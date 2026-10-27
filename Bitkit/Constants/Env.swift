@@ -371,17 +371,69 @@ enum Env {
         "bitkit_v1_\(networkName)"
     }
 
+    #if DEBUG || E2E_BUILD
+        struct BackupTestEndpoints: Equatable {
+            let vss: String
+            let auth: String
+
+            static func resolve(enabled: Bool, vss: String?, auth: String?) throws -> Self? {
+                guard enabled else { return nil }
+                let vss = vss?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let auth = auth?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !vss.isEmpty || !auth.isEmpty else { return nil }
+                guard valid(vss), valid(auth) else { throw ConfigurationError.invalidBackupEndpoints }
+                return Self(vss: vss, auth: auth)
+            }
+
+            private static func valid(_ value: String) -> Bool {
+                guard let url = URLComponents(string: value),
+                      url.scheme == "http" || url.scheme == "https", url.host == "localhost",
+                      let port = url.port, (1 ... 65535).contains(port),
+                      url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+                      !url.path.isEmpty
+                else { return false }
+                return true
+            }
+        }
+
+        enum ConfigurationError: Error {
+            case invalidBackupEndpoints
+        }
+
+        private static var backupTestEndpoints: BackupTestEndpoints? {
+            do {
+                return try BackupTestEndpoints.resolve(
+                    enabled: isE2E,
+                    vss: configValue("E2E_VSS_SERVER_URL"),
+                    auth: configValue("E2E_LNURL_AUTH_SERVER_URL")
+                )
+            } catch {
+                preconditionFailure("E2E backup endpoints must be a valid pair of localhost URLs with explicit ports")
+            }
+        }
+    #endif
+
     static var vssServerUrl: String {
+        #if DEBUG || E2E_BUILD
+            if let endpoints = backupTestEndpoints {
+                return endpoints.vss
+            }
+        #endif
         switch network {
-        case .bitcoin: "https://bitkit.to/vss_rs_auth"
-        default: "https://bitkit.stag0.blocktank.to/vss_rs_auth"
+        case .bitcoin: return "https://bitkit.to/vss_rs_auth"
+        default: return "https://bitkit.stag0.blocktank.to/vss_rs_auth"
         }
     }
 
     static var lnurlAuthServerUrl: String {
+        #if DEBUG || E2E_BUILD
+            if let endpoints = backupTestEndpoints {
+                return endpoints.auth
+            }
+        #endif
         switch network {
-        case .bitcoin: "https://bitkit.to/lnurl_auth/auth"
-        default: "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
+        case .bitcoin: return "https://bitkit.to/lnurl_auth/auth"
+        default: return "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
         }
     }
 
