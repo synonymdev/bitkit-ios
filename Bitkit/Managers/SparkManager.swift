@@ -30,6 +30,7 @@ final class SparkManager: ChannelFreeLightningRail {
     private(set) var recoverableFundsSats: UInt64 = 0
     /// On-chain deposits into Spark, pending ones first, for the Lightning Connections screens.
     private(set) var deposits: [SparkDeposit] = []
+    private(set) var withdrawals: [SparkWithdrawal] = []
     /// Called when Spark claims on-chain deposits, which completes a Savings to Spending transfer.
     var onDepositsClaimed: (() -> Void)?
     /// Called after the Spark balance or readiness was read again, so balances and the receive invoice can follow.
@@ -37,6 +38,8 @@ final class SparkManager: ChannelFreeLightningRail {
 
     /// Deposits this app broadcast that Spark hasn't listed yet, by txid, so they show as pending at once.
     @ObservationIgnored private var broadcastDeposits: [String: UInt64] = [:]
+    /// Sends recorded before Spark knew their fee; its completion event reports 0 until a later sync.
+    @ObservationIgnored private var sendsRecordedWithoutFee: Set<String> = []
     @ObservationIgnored private var sdk: BreezSdk?
     @ObservationIgnored private var listenerId: String?
     @ObservationIgnored private var connectTask: Task<Void, Error>?
@@ -253,7 +256,7 @@ final class SparkManager: ChannelFreeLightningRail {
             try FileManager.default.removeItem(at: file)
             Logger.info(
                 "Imported Spark exit data: '\(imported.importedLeaves)' leaves, '\(imported.skippedForeignLeaves)' foreign, "
-                    + "'\(imported.skippedConflictingLeaves)' conflicting",
+                    + "'\(imported.skippedConflictingLeaves)' conflicting, '\(imported.skippedChains)' already held",
                 context: "SparkManager"
             )
         } catch {
@@ -324,8 +327,8 @@ final class SparkManager: ChannelFreeLightningRail {
         let sdk = try await requireSdk()
         let info = try await sdk.getInfo(request: GetInfoRequest(ensureSynced: false))
         let unclaimed = try await sdk.listUnclaimedDeposits(request: ListUnclaimedDepositsRequest()).deposits
-        let claimed = try await sdk.listPayments(request: ListPaymentsRequest()).payments
-            .filter { $0.method == .deposit && $0.status == .completed }
+        let payments = try await sdk.listPayments(request: ListPaymentsRequest()).payments
+        let claimed = payments.filter { $0.method == .deposit && $0.status == .completed }
         let pending = unclaimed.reduce(0) { $0 + $1.amountSats }
         let changed = !isReady || balanceSats != info.balanceSats || pendingDepositSats != pending
         isReady = true
@@ -333,12 +336,37 @@ final class SparkManager: ChannelFreeLightningRail {
         pendingDepositSats = pending
         recoverableFundsSats = info.recoverableFundsSats
         deposits = await Self.deposits(unclaimed: unclaimed, claimed: claimed)
+        withdrawals = Self.withdrawals(payments)
         for deposit in deposits {
             broadcastDeposits[deposit.txid] = nil
         }
         applyBroadcastDeposits()
         if changed {
             onStateChanged?()
+        }
+        for payment in payments where sendsRecordedWithoutFee.contains(payment.id) && Self.sats(payment.fees) > 0 {
+            await recordActivity(payment)
+        }
+        for txId in Self.transferTxIds(unclaimed: unclaimed, payments: payments) {
+            await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txId)
+        }
+    }
+
+    nonisolated static func withdrawals(_ payments: [Payment]) -> [SparkWithdrawal] {
+        payments.compactMap { payment in
+            guard payment.status != .failed, case let .withdraw(txId) = payment.details else { return nil }
+            return SparkWithdrawal(txid: txId, amountSats: sats(payment.amount), feeSats: sats(payment.fees))
+        }
+    }
+
+    /// On-chain transactions that moved funds between Savings and Spark, so their activities show as transfers.
+    nonisolated static func transferTxIds(unclaimed: [DepositInfo], payments: [Payment]) -> [String] {
+        unclaimed.map(\.txid) + payments.compactMap { payment in
+            guard payment.status != .failed else { return nil }
+            switch payment.details {
+            case let .deposit(txId, _), let .withdraw(txId): return txId
+            default: return nil
+            }
         }
     }
 
@@ -429,6 +457,11 @@ final class SparkManager: ChannelFreeLightningRail {
             status: Self.ldkStatus(payment.status),
             latestUpdateTimestamp: payment.timestamp
         )
+        if payment.paymentType == .send, Self.sats(payment.fees) == 0 {
+            sendsRecordedWithoutFee.insert(payment.id)
+        } else {
+            sendsRecordedWithoutFee.remove(payment.id)
+        }
         do {
             try await CoreService.shared.activity.recordChannelFreeRailPayment(details)
         } catch {
@@ -464,7 +497,7 @@ final class SparkManager: ChannelFreeLightningRail {
         }
     }
 
-    private static func sats(_ value: U128) -> UInt64 {
+    private nonisolated static func sats(_ value: U128) -> UInt64 {
         UInt64(value.description) ?? 0
     }
 }
@@ -481,6 +514,17 @@ struct SparkDeposit: Identifiable, Equatable {
 
     var id: String {
         "\(txid)-\(isClaimed)"
+    }
+}
+
+/// A Transfer to Savings out of Spark, with what Spark kept for it.
+struct SparkWithdrawal: Identifiable, Equatable {
+    let txid: String
+    let amountSats: UInt64
+    let feeSats: UInt64
+
+    var id: String {
+        txid
     }
 }
 

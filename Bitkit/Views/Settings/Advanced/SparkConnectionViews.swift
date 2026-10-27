@@ -49,29 +49,46 @@ struct SparkConnectionRow: View {
     }
 }
 
-/// A deposit into Spark with its amount, confirmations while pending, and a link to its transaction.
+/// A deposit into Spark or a withdrawal out of it, with its amount, confirmations while pending, and a link to
+/// its transaction.
 struct SparkDepositRow: View {
     @Environment(\.openURL) private var openURL
 
-    let deposit: SparkDeposit
+    let title: String
+    let txid: String
+    let amountSats: UInt64
+    var confirmations: UInt32?
+
+    init(deposit: SparkDeposit) {
+        title = t("lightning__spark_deposit")
+        txid = deposit.txid
+        amountSats = deposit.amountSats
+        confirmations = deposit.confirmations
+    }
+
+    init(withdrawal: SparkWithdrawal) {
+        title = t("wallet__activity_transfer_to_savings")
+        txid = withdrawal.txid
+        amountSats = withdrawal.amountSats
+    }
 
     var body: some View {
         Button {
-            if let url = URL(string: "\(Env.blockExplorerUrl)/tx/\(deposit.txid)") {
+            if let url = URL(string: "\(Env.blockExplorerUrl)/tx/\(txid)") {
                 openURL(url)
             }
         } label: {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    CaptionBText(t("lightning__spark_deposit"), textColor: .textPrimary)
-                    CaptionBText(deposit.txid)
+                    CaptionBText(title, textColor: .textPrimary)
+                    CaptionBText(txid)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    MoneyText(sats: Int(deposit.amountSats), size: .captionB, symbol: true)
-                    if let confirmations = deposit.confirmations {
+                    MoneyText(sats: Int(amountSats), size: .captionB, symbol: true)
+                    if let confirmations {
                         CaptionBText(
                             t("lightning__spark_confirmations", variables: ["count": "\(min(confirmations, 3))"]),
                             textColor: .purpleAccent
@@ -155,6 +172,17 @@ struct SparkConnectionDetailView: View {
                                         SparkDepositRow(deposit: deposit)
                                             .padding(.bottom, 8)
                                         amountRow(label: t("lightning__spark_claim_fee"), amount: deposit.feeSats)
+                                    }
+                                }
+                            }
+
+                            if !spark.withdrawals.isEmpty {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    SettingsSectionHeader(t("lightning__savings_confirm__label"))
+                                    ForEach(spark.withdrawals) { withdrawal in
+                                        SparkDepositRow(withdrawal: withdrawal)
+                                            .padding(.bottom, 8)
+                                        amountRow(label: t("wallet__activity_fee"), amount: withdrawal.feeSats)
                                     }
                                 }
                             }

@@ -1446,6 +1446,24 @@ class ActivityService {
         }
     }
 
+    /// Marks the on-chain activity for `txId` as a transfer between Savings and Spending that has no channel,
+    /// such as a Spark deposit or withdrawal. No-op until the activity exists or once it is marked.
+    func markOnchainActivityAsTransfer(txId: String) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                guard let existing = try BitkitCore.getActivityByTxId(walletId: WalletScope.default, txId: txId),
+                      !existing.isTransfer
+                else { return }
+                var updated = existing
+                updated.isTransfer = true
+                try updateActivity(activityId: existing.id, activity: .onchain(updated))
+                self.activitiesChangedSubject.send()
+            }
+        } catch {
+            Logger.error("Failed to mark activity as transfer for \(txId): \(error)", context: "ActivityService")
+        }
+    }
+
     /// Resolve the on-chain activity for `txId`, preferring the row that most likely represents the
     /// transfer: one already flagged as a transfer, then a hardware-wallet send (the hardware
     /// funding path), then whatever else matches.

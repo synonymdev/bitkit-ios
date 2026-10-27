@@ -137,7 +137,7 @@ struct LightningChannel: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(spendingColor)
+                    .fill(localBalance == 0 ? Color.gray6 : spendingColor)
                     .cornerRadius(8)
 
                 Rectangle()
