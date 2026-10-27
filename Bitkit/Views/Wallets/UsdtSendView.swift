@@ -13,6 +13,7 @@ struct UsdtSendView: View {
     var quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)?
     var authenticatePayment: (() async -> Bool)?
     var sendPayment: ((UsdtQuote) async throws -> Void)?
+    var fundingSourceButton: AnyView?
     var onReviewChange: ((Bool) -> Void)?
     var onBack: (() -> Void)?
     var onClose: (() -> Void)?
@@ -60,6 +61,7 @@ struct UsdtSendView: View {
         quotePayment: ((String, String, UsdtDestination) async throws -> UsdtQuote)? = nil,
         authenticatePayment: (() async -> Bool)? = nil,
         sendPayment: ((UsdtQuote) async throws -> Void)? = nil,
+        fundingSourceButton: AnyView? = nil,
         onReviewChange: ((Bool) -> Void)? = nil,
         onBack: (() -> Void)? = nil,
         onClose: (() -> Void)? = nil
@@ -73,6 +75,7 @@ struct UsdtSendView: View {
         self.quotePayment = quotePayment
         self.authenticatePayment = authenticatePayment
         self.sendPayment = sendPayment
+        self.fundingSourceButton = fundingSourceButton
         self.onReviewChange = onReviewChange
         self.onBack = onBack
         self.onClose = onClose
@@ -130,7 +133,7 @@ struct UsdtSendView: View {
             }
             return t(submissionFailed ? "wallet__send_error_tx_failed" : "usdt__submitted")
         }
-        if quote != nil {
+        if quote != nil || paymentRequest != nil {
             return t(paymentRequest == nil ? "wallet__send_review" : "wallet__payment_request")
         }
         return t(editingAmount ? "usdt__amount" : "usdt__send_title")
@@ -235,6 +238,8 @@ struct UsdtSendView: View {
                 submittedContent
             } else if let quote {
                 confirmation(quote)
+            } else if paymentRequest != nil {
+                preparingConfirmation
             } else if editingAmount {
                 amountContent
             } else if editingRecipient {
@@ -466,11 +471,35 @@ struct UsdtSendView: View {
     private var reviewDetailsButton: some View {
         CustomButton(
             title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
-            icon: Image(showDetails ? "eye-slash" : "speed-normal").resizable().frame(width: 16, height: 16)
+            icon: Image(showDetails ? "eye-slash" : "currency-dollar").resizable().frame(width: 16, height: 16)
                 .foregroundColor(.usdtAccent), background: Color.white06, showsHighlightShadow: false, titleKerning: 0, titleLineHeight: 13
         ) { showDetails.toggle() }
             .frame(maxWidth: .infinity)
             .accessibilityIdentifier("UsdtReviewDetails")
+    }
+
+    private var preparingConfirmation: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            UsdtAmountHeader(amount: amount)
+            if paymentContext?.endpoints.count ?? 0 > 1, let fundingSourceButton {
+                fundingSourceButton.disabled(busy || submitted).frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            PaymentRequestSummary(contactName: contactName, note: requestNote, accentColor: .usdtAccent)
+            PaymentReviewIllustration(imageSize: 329, isPaymentRequest: true).frame(maxHeight: 256)
+            Spacer(minLength: 0)
+            if let error {
+                BodySText(error, textColor: .brandAccent).accessibilityIdentifier("UsdtError")
+                CustomButton(title: t("common__try_again"), size: .small, isDisabled: busy) {
+                    busy = true
+                    defer { busy = false }
+                    do { quote = try await prepareQuote(); self.error = nil }
+                    catch { self.error = UsdtWalletManager.message(for: error) }
+                }
+            }
+            SwipeButton(title: t("wallet__send_swipe"), accentColor: .usdtAccent, isDisabled: true, isLoading: busy) {}
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("UsdtConfirmLoading")
     }
 
     private func confirmation(_ quote: UsdtQuote) -> some View {
@@ -481,6 +510,10 @@ struct UsdtSendView: View {
                         UsdtAmountHeader(amount: usdtFormatAmount(amount: quote.amount), displayAmount: usdtOverviewAmount(quote.amount))
                             .contentShape(Rectangle()).onTapGesture(perform: goBack)
                             .allowsHitTesting(!busy && !embedded)
+                        if !showDetails, paymentContext?.endpoints.count ?? 0 > 1, let fundingSourceButton {
+                            fundingSourceButton.disabled(busy || submitted)
+                                .frame(maxWidth: .infinity, alignment: .trailing).padding(.top, 16)
+                        }
                         Spacer().frame(height: 24)
                         if showDetails {
                             quoteDetails(quote)
@@ -494,7 +527,8 @@ struct UsdtSendView: View {
                             Spacer(minLength: 0)
                             PaymentReviewIllustration(
                                 swipeProgress: busy || paymentComplete ? 1 : swipeProgress,
-                                imageSize: 329
+                                imageSize: 329,
+                                isPaymentRequest: paymentRequest != nil
                             )
                             .padding(.top, 16).frame(height: 256)
                         }
@@ -531,14 +565,18 @@ struct UsdtSendView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 SendSectionView(t("usdt__pay_from"), dividerSpacing: 15, labelKerning: 1, labelLineHeight: 18) {
-                    NumberPadActionButton(
-                        text: "USDT",
-                        titleKerning: 1,
-                        titleLineHeight: 18,
-                        color: .usdtAccent,
-                        variant: .secondary,
-                        disabled: true
-                    ) {}
+                    if let fundingSourceButton {
+                        fundingSourceButton.disabled(busy || submitted)
+                    } else {
+                        NumberPadActionButton(
+                            text: "USDT",
+                            titleKerning: 1,
+                            titleLineHeight: 18,
+                            color: .usdtAccent,
+                            variant: .secondary,
+                            disabled: true
+                        ) {}
+                    }
                 }
                 UsdtDetailCell(title: t("usdt__network"), value: UsdtDestination.arbitrum.label, icon: "usdt-network", minimumValueHeight: 28)
             }

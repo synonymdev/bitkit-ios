@@ -220,7 +220,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
-    func testQuotedLnurlRequestKeepsFundingSelectionWhenSavingsIsAvailable() throws {
+    func testQuotedLnurlRequestConfirmsWithSavingsAvailable() throws {
         settings.usdtPreference = .disabled
         let lightning = PublicPaykitService.MethodId.bitcoinLightningLnurl
         let onchain = PublicPaykitService.MethodId.regtestOnchainP2wpkh
@@ -251,11 +251,17 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 )
                 XCTAssertEqual(try request.payment(using: onchain).amount.atomic, 5000)
             }
-            XCTAssertEqual(contactPaymentRoute(for: app), offersSavings ? .amount : .lnurlPayConfirm)
+            XCTAssertEqual(contactPaymentRoute(for: app), .lnurlPayConfirm)
+            XCTAssertTrue(SendSheet.requiresLightningReadiness(app: app))
+            if offersSavings {
+                app.selectedWalletToPayFrom = .onchain
+                XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+                XCTAssertFalse(SendSheet.requiresLightningReadiness(app: app))
+            }
         }
     }
 
-    func testDollarRequestOffersAssetSelectionOnlyWhenUsdtIsEnabled() async throws {
+    func testDollarRequestConfirmsWhetherUsdtIsEnabled() async throws {
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
         let method = PublicPaykitService.onchainMethodId(for: address)
         let request = try incomingPaymentRequest(
@@ -272,8 +278,8 @@ final class PaymentNavigationHelperTests: XCTestCase {
             ])
             XCTAssertTrue(app.claimContactPaymentContext(context))
             try await app.handleScannedData(address, claimedContactPaymentContext: context)
-            XCTAssertEqual(contactPaymentRoute(for: app), enabled ? .amount : .confirm)
-            XCTAssertEqual(app.paykitPaymentTerms == nil, enabled)
+            XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+            XCTAssertNotNil(app.paykitPaymentTerms)
         }
     }
 

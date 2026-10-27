@@ -822,8 +822,7 @@ extension AppViewModel {
                 isUsdtEnabled: SettingsViewModel.shared.isUsdtEnabled
             ) || context.incomingPaymentRequest.map { PaykitUsdtPaymentService.shared.hasBinding(for: $0.id) } == true
             selectedWalletToPayFrom = canUseLightning || (hasLightning && scannedOnchainInvoice == nil) ? .lightning : .onchain
-            let canSelectUsdt = SettingsViewModel.shared.isUsdtEnabled && context.endpoints.contains { $0.methodId == .usdtArbitrum }
-            if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
+            if let request = context.incomingPaymentRequest {
                 do {
                     let terms = try request.payment(using: paykitPaymentMethod)
                     guard terms.isValid(at: Date()) else { return }
