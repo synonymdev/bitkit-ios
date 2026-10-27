@@ -1971,3 +1971,5 @@
 "subscriptions__allowance_limit_title" = "Osiągnięto limit";
 "subscriptions__allowance_limit_description" = "Żądanie {amount} od {name} przekracza Twój przydział. Przejrzyj je, aby zapłacić.";
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";
+
+"wallet__balance_updating" = "Aktualizowanie salda…";
