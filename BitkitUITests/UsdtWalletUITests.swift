@@ -1,6 +1,10 @@
 import XCTest
 
 final class UsdtWalletUITests: XCTestCase {
+    private let forkRpcURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_RPC_URL"] ?? "http://127.0.0.1:18545"
+    private let forkBundlerURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_BUNDLER_URL"] ?? "http://127.0.0.1:18546"
+    private let offlineRpcURL = ProcessInfo.processInfo.environment["BITKIT_TEST_USDT_OFFLINE_RPC_URL"] ?? "http://127.0.0.1:18549"
+
     @MainActor
     func testUnknownBalanceAndManualEntryUseConsistentAmountsInCommaRegion() throws {
         continueAfterFailure = false
@@ -35,7 +39,7 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Could not update USDT. Check your connection and try again."].exists)
         XCTAssertFalse(app.staticTexts["Older activity is still syncing. Your balance is up to date when the connection is available."].exists)
         capture(app, "USDT unknown wallet in German region")
-        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        try tapBack(in: app)
         app.buttons["Send"].tap()
         XCTAssertTrue(app.buttons["RecipientManual"].waitForExistence(timeout: 5))
         app.buttons["RecipientManual"].tap()
@@ -65,9 +69,9 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(network.isEnabled)
         network.tap()
         XCTAssertTrue(app.buttons["UsdtNetwork-Polygon"].waitForExistence(timeout: 5))
-        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        try tapBack(in: app)
         XCTAssertTrue(app.buttons["UsdtReview"].waitForExistence(timeout: 5))
-        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        try tapBack(in: app)
         let restoredRecipient = app.textViews["RecipientInput"]
         XCTAssertTrue(restoredRecipient.waitForExistence(timeout: 5))
         XCTAssertEqual(restoredRecipient.value as? String, recipient)
@@ -85,8 +89,8 @@ final class UsdtWalletUITests: XCTestCase {
         guard client.lowercased().contains("anvil") else { throw XCTSkip("Requires Anvil") }
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
-        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.launchEnvironment["USDT_RPC_URL"] = forkRpcURL
+        app.launchEnvironment["USDT_BUNDLER_URL"] = forkBundlerURL
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
             app.buttons["Continue"].tap()
@@ -166,12 +170,22 @@ final class UsdtWalletUITests: XCTestCase {
         let nativeBalance = try await forkCall("eth_getBalance", [address, "latest"]) as? String
         XCTAssertEqual(nativeBalance, "0x0")
         app.terminate()
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18549"
+        app.launchEnvironment["USDT_RPC_URL"] = offlineRpcURL
         app.launch()
         XCTAssertTrue(app.buttons["UsdtWallet"].waitForExistence(timeout: 30))
         app.buttons["UsdtWallet"].tap()
         XCTAssertTrue(app.buttons["UsdtActivity-0"].waitForExistence(timeout: 10))
         capture(app, "USDT saved activity offline after restart")
+    }
+
+    @MainActor
+    private func tapBack(in app: XCUIApplication) throws {
+        let buttons = app.buttons.matching(identifier: "NavigationBack")
+        let available = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            buttons.allElementsBoundByIndex.contains(where: \.isHittable)
+        }, object: app)
+        XCTAssertEqual(XCTWaiter.wait(for: [available], timeout: 10), .completed, app.debugDescription)
+        try XCTUnwrap(buttons.allElementsBoundByIndex.first(where: \.isHittable)).tap()
     }
 
     @MainActor
@@ -183,7 +197,7 @@ final class UsdtWalletUITests: XCTestCase {
     }
 
     private func forkCall(_ method: String, _ params: [Any]) async throws -> Any {
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:18546")!)
+        var request = URLRequest(url: URL(string: forkBundlerURL)!)
         request.timeoutInterval = 5
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -197,8 +211,9 @@ final class UsdtWalletUITests: XCTestCase {
     func testReceiveAndInvalidPaymentStaySeparateFromBitcoin() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchEnvironment["USDT_RPC_URL"] = "http://127.0.0.1:18545"
-        app.launchEnvironment["USDT_BUNDLER_URL"] = "http://127.0.0.1:18546"
+        app.resetAuthorizationStatus(for: .camera)
+        app.launchEnvironment["USDT_RPC_URL"] = forkRpcURL
+        app.launchEnvironment["USDT_BUNDLER_URL"] = forkBundlerURL
         app.launch()
         if app.buttons["Continue"].waitForExistence(timeout: 3) {
             app.buttons["Continue"].tap()
@@ -221,9 +236,29 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(qr.waitForExistence(timeout: 5))
         let amountlessUri = qr.label
         XCTAssertFalse(amountlessUri.contains("uint256="))
+        for swipingRight in [true, false] {
+            let copyButton = app.buttons["ReceiveCopyQR"]
+            let networkButton = app.buttons["UsdtReceiveNetwork"]
+            XCTAssertTrue(copyButton.waitForExistence(timeout: 5))
+            XCTAssertTrue(networkButton.waitForExistence(timeout: 5))
+            let bandTop = copyButton.frame.maxY
+            let bandBottom = networkButton.frame.minY
+            XCTAssertGreaterThan(bandBottom, bandTop, "Receive must leave space between the QR controls and Network")
+            let y = (bandTop + bandBottom) / 2
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let left = origin.withOffset(CGVector(dx: app.frame.width * 0.2, dy: y))
+            let right = origin.withOffset(CGVector(dx: app.frame.width * 0.8, dy: y))
+            capture(app, "USDT Receive before blank-band swipe")
+            (swipingRight ? left : right).press(forDuration: 0.05, thenDragTo: swipingRight ? right : left)
+            XCTAssertTrue(app.buttons["UsdtReceiveDetails"].waitForNonExistence(timeout: 5), "Swiping the blank band must leave the USDT tab")
+            XCTAssertTrue(app.staticTexts["Receive Bitcoin"].waitForExistence(timeout: 5))
+            app.buttons["Tab-usdt"].tap()
+            XCTAssertTrue(qr.waitForExistence(timeout: 5))
+            XCTAssertEqual(qr.label, amountlessUri)
+        }
         app.buttons["SpecifyInvoiceButton"].tap()
         app.buttons["N5"].tap()
-        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        try tapBack(in: app)
         XCTAssertTrue(qr.waitForExistence(timeout: 5))
         XCTAssertEqual(qr.label, amountlessUri)
         app.buttons["SpecifyInvoiceButton"].tap()
@@ -234,7 +269,7 @@ final class UsdtWalletUITests: XCTestCase {
         XCTAssertTrue(committedUri.contains("uint256=3000000"))
         app.buttons["SpecifyInvoiceButton"].tap()
         app.buttons["N5"].tap()
-        try XCTUnwrap(app.buttons.matching(identifier: "NavigationBack").allElementsBoundByIndex.first(where: \.isHittable)).tap()
+        try tapBack(in: app)
         XCTAssertTrue(qr.waitForExistence(timeout: 5))
         XCTAssertEqual(qr.label, committedUri)
         app.buttons["UsdtReceiveDetails"].tap()
@@ -246,6 +281,11 @@ final class UsdtWalletUITests: XCTestCase {
         receiveHeader.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
         XCTAssertTrue(app.buttons["UsdtReceiveDetails"].waitForNonExistence(timeout: 5))
         app.buttons["UsdtSend"].tap()
+        let cameraAlert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts
+            .containing(NSPredicate(format: "label CONTAINS[c] %@", "camera")).firstMatch
+        XCTAssertTrue(cameraAlert.waitForExistence(timeout: 5))
+        cameraAlert.buttons["Allow"].tap()
+        XCTAssertTrue(cameraAlert.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["UsdtManual"].waitForExistence(timeout: 5))
         app.buttons["UsdtManual"].tap()
         let recipient = app.textViews["UsdtRecipient"]

@@ -634,7 +634,7 @@ actor PaykitSdkService {
 
     func identityStatus(priority: PaykitSdkOperationLock.Priority) async throws -> IdentityStatus? {
         try await withSdk(priority: priority) { sdk in
-            try await sdk.identityStatus()
+            try await readRetryingSharedStateBusy { try await sdk.identityStatus() }
         }
     }
 
@@ -827,7 +827,7 @@ actor PaykitSdkService {
 
     /// Refreshes display data under the native operation lock; views keep using their current projections.
     func observeState(priority: PaykitSdkOperationLock.Priority, expectedIdentity: String? = nil) async throws -> Paykit.PaykitStateObservation {
-        try await withSdk(priority: priority) { sdk in
+        try await withSdk(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             let observation = try await sdk.observeState()
             try Task.checkCancellation()
             if let expectedIdentity {
@@ -1053,7 +1053,7 @@ actor PaykitSdkService {
     }
 
     func receivePrivateMessagesFromLinkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [PrivateStreamCounterpartyIntakeReport] {
-        try await withStateRevisionTracking(priority: priority) { sdk in
+        try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.receivePrivateMessagesFromLinkedPeers()
         }
     }
@@ -1078,8 +1078,25 @@ actor PaykitSdkService {
         counterparty: String,
         priority: PaykitSdkOperationLock.Priority
     ) async throws -> OutboundPrivateSendReport {
+        try await processOutboundPrivateMessages(counterparty: counterparty, priority: priority, expectedIdentity: nil)
+    }
+
+    func processOutboundPrivateMessages(
+        counterparty: String,
+        priority: PaykitSdkOperationLock.Priority,
+        expectedIdentity: String?
+    ) async throws -> OutboundPrivateSendReport {
         try await withStateRevisionTracking(priority: priority, deferDuringPayment: priority == .background) { sdk in
-            try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
+            if let expectedIdentity {
+                guard try await PubkyPublicKeyFormat.matches(sdk.identityStatus()?.publicKey, expectedIdentity) else {
+                    throw PubkyServiceError.identityChanged
+                }
+            }
+            if priority == .background {
+                guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
+                try Task.checkCancellation()
+            }
+            return try await sdk.processOutboundPrivateMessages(counterparty: counterparty)
         }
     }
 
@@ -1089,13 +1106,25 @@ actor PaykitSdkService {
     }
 
     func processPendingPrivateMessages(priority: PaykitSdkOperationLock.Priority) async throws -> [OutboundPrivateCounterpartySendReport] {
-        try await withStateRevisionTracking(priority: priority) { sdk in
+        try await withStateRevisionTracking(priority: priority, beforeOperation: { try await self.checkRefreshAdmission(priority) }) { sdk in
             try await sdk.processPendingPrivateMessages()
         }
     }
 
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
         try await sharedPaymentRequests().filter(Self.isBitkitPaymentRequest)
+    }
+
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> Paykit.PaymentRequestRead {
+        try await withSdk { sdk in
+            let read = try await readRetryingSharedStateBusy {
+                try await sdk.readPaymentRequests(counterparty: counterparty, expectedIdentity: expectedIdentity)
+            }
+            return Paykit.PaymentRequestRead(
+                identityStatus: read.identityStatus,
+                paymentRequests: read.paymentRequests.filter(Self.isBitkitPaymentRequest)
+            )
+        }
     }
 
     func sharedPaymentRequests() async throws -> [Paykit.PaymentRequestRecord] {
@@ -1136,9 +1165,10 @@ actor PaykitSdkService {
     func submitPaymentProof(
         counterparty: String,
         paymentRequestId: String,
-        proof: Paykit.PaymentProofSubmission
+        proof: Paykit.PaymentProofSubmission,
+        priority: PaykitSdkOperationLock.Priority = .ordered
     ) async throws -> Paykit.PaymentRequestRecord {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(priority: priority) { sdk in
             try await sdk.submitPaymentProof(
                 counterparty: counterparty,
                 paymentRequestId: paymentRequestId,
@@ -1342,7 +1372,15 @@ actor PaykitSdkService {
 
     func linkedPeers(priority: PaykitSdkOperationLock.Priority) async throws -> [LinkedPeerRecord] {
         try await withSdk(priority: priority) { sdk in
-            try await sdk.linkedPeers()
+            try await readRetryingSharedStateBusy { try await sdk.linkedPeers() }
+        }
+    }
+
+    func privateMessageSchedulingSnapshot(
+        priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async throws -> Paykit.PrivateMessageSchedulingSnapshot {
+        try await withSdk(priority: priority) { sdk in
+            try await readRetryingSharedStateBusy { try await sdk.privateMessageSchedulingSnapshot() }
         }
     }
 
@@ -1518,8 +1556,15 @@ actor PaykitSdkService {
     private func withSdk<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
         deferDuringPayment: Bool = false,
+        operationName: StaticString = #function,
+        beforeOperation: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
+        #if DEBUG
+            let trace = UUID().uuidString
+            let clock = ContinuousClock()
+            let started = clock.now
+        #endif
         let generation = deferDuringPayment ? try operationLock.walletGeneration() : nil
         let instance = deferDuringPayment ? try handle() : nil
         while true {
@@ -1527,6 +1572,15 @@ actor PaykitSdkService {
                 try await PaykitPaymentActivity.shared.waitUntilIdle()
             }
             let result: T? = try await operationLock.withLock(priority: priority) {
+                #if DEBUG
+                    let admitted = clock.now
+                    defer {
+                        Logger.debug(
+                            "Finished Paykit operation \(operationName) trace=\(trace) queue=\(started.duration(to: admitted)) work=\(admitted.duration(to: clock.now))",
+                            context: "PaykitSdkService"
+                        )
+                    }
+                #endif
                 if let instance {
                     guard sdk === instance, try operationLock.walletGeneration() == generation else {
                         throw PubkyServiceError.identityChanged
@@ -1534,9 +1588,20 @@ actor PaykitSdkService {
                     // Release the SDK lock before waiting if payment started while this operation was queued.
                     guard await !PaykitPaymentActivity.shared.isActive else { return nil }
                 }
+                try await beforeOperation()
                 do {
                     return try await withSdkErrorHandling {
+                        #if DEBUG
+                            let keyStarted = clock.now
+                        #endif
                         try await refreshPaykitKey()
+                        #if DEBUG
+                            Logger.debug(
+                                "Prepared Paykit key trace=\(trace) duration=\(keyStarted.duration(to: clock.now))",
+                                context: "PaykitSdkService"
+                            )
+                        #endif
+                        try await beforeOperation()
                         return try await .some(operation(handle()))
                     }
                 } catch OperationDeferral.paymentActive {
@@ -1546,6 +1611,16 @@ actor PaykitSdkService {
             if let result {
                 return result
             }
+        }
+    }
+
+    private func readRetryingSharedStateBusy<T>(_ read: () async throws -> T) async throws -> T {
+        do {
+            return try await read()
+        } catch PaykitError.SharedStateBusy {
+            // Acquisition failed before the read ran. Retry only this read, never a payment or uncertain write.
+            try await Task.sleep(for: .milliseconds(250))
+            return try await read()
         }
     }
 
@@ -1565,15 +1640,34 @@ actor PaykitSdkService {
         cachedBackupState = nil
     }
 
+    private func checkRefreshAdmission(_ priority: PaykitSdkOperationLock.Priority) async throws {
+        if priority == .background, await PaykitPaymentActivity.shared.shouldDeferRefresh {
+            throw PaykitPaymentRequestError.operationInProgress
+        }
+    }
+
     private func withStateRevisionTracking<T>(
         priority: PaykitSdkOperationLock.Priority = .ordered,
         deferDuringPayment: Bool = false,
+        operationName: StaticString = #function,
+        beforeOperation: () async throws -> Void = {},
         admit: () async throws -> Void = {},
         _ operation: (PaykitSdk) async throws -> T
     ) async throws -> T {
-        try await withSdk(priority: priority, deferDuringPayment: deferDuringPayment) { sdk in
+        try await withSdk(
+            priority: priority, deferDuringPayment: deferDuringPayment, operationName: operationName, beforeOperation: beforeOperation
+        ) { sdk in
             return try await Self.withBackupStateRevisionTracking(
-                readRevision: { try await self.withSdkErrorHandling { try await sdk.backupStateRevision() } },
+                readRevision: {
+                    #if DEBUG
+                        let clock = ContinuousClock()
+                        let started = clock.now
+                        defer {
+                            Logger.debug("Read Paykit backup revision duration=\(started.duration(to: clock.now))", context: "PaykitSdkService")
+                        }
+                    #endif
+                    return try await self.withSdkErrorHandling { try await sdk.backupStateRevision() }
+                },
                 readStateRevision: { try sdk.stateRevision() },
                 readObservedSnapshot: {
                     try sdk.observedBackupStateRevision().map {
@@ -1584,6 +1678,7 @@ actor PaykitSdkService {
                 onSnapshot: { self.cachedBackupState = $0 },
                 onChange: { self.markWalletBackupDataChanged() },
                 beforeOperation: {
+                    try await beforeOperation()
                     if deferDuringPayment {
                         guard await !PaykitPaymentActivity.shared.isActive else { throw OperationDeferral.paymentActive }
                         try Task.checkCancellation()
@@ -1616,6 +1711,8 @@ actor PaykitSdkService {
         let result: T
         do {
             result = try await operation()
+        } catch OperationDeferral.paymentActive {
+            throw OperationDeferral.paymentActive
         } catch {
             // A failed write can change remote state without advancing the local revision.
             onSnapshot(nil)
