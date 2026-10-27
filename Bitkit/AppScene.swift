@@ -1095,7 +1095,7 @@ struct AppScene: View {
         } catch {
             guard connectionRecovery.canReportOperationFailure() else { return }
             Logger.error(error, context: "Failed to start wallet")
-            if walletIsInitializing == true {
+            if walletIsInitializing == true, connectionRecovery.canReportStartupFailure() {
                 didWalletBackupRestoreFail = true
             }
             if playsErrorHaptic {

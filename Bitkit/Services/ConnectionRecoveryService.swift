@@ -261,6 +261,10 @@ final class ConnectionRecoveryService: ObservableObject {
         return !isWiping && activeID == access.id && generation == access.generation
     }
 
+    func canReportStartupFailure() -> Bool {
+        canReportOperationFailure() && readyGeneration != generation
+    }
+
     private func currentAccess() throws -> Access {
         guard let access = Self.access, access.service === self else { throw failure("Connection recovery requires an active wallet operation") }
         try validate(access)

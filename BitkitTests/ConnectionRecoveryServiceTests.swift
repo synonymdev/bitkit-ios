@@ -451,6 +451,59 @@ final class ConnectionRecoveryServiceTests: XCTestCase {
         recovery.endWipe(wipe)
     }
 
+    func testActivitySyncFailureAfterAcknowledgedStartDoesNotReopenRecovery() async throws {
+        try await service.save(editor: service.editor(), electrum: server)
+        let lifecycle = service.lifecycleID
+        var showingError = true
+        var didSync = false
+        try await service.perform {
+            do {
+                let revision = try self.service.replay()
+                try self.service.complete(revision: revision, hasPendingRestore: false, isRunning: true) {
+                    showingError = false
+                }
+                let sync: () async throws -> Void = {
+                    didSync = true
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                try await sync()
+            } catch {
+                XCTAssertTrue(self.service.canReportOperationFailure(), "The sync error still belongs to this operation")
+                if self.service.canReportStartupFailure() {
+                    showingError = true
+                }
+            }
+        }
+        XCTAssertTrue(didSync)
+        XCTAssertFalse(showingError)
+        XCTAssertNil(data)
+        XCTAssertTrue(service.canFinishInitialization(lifecycle: lifecycle, isRunning: true,
+                                                      hasPendingRestore: false, didFail: showingError))
+    }
+
+    func testStartupFailureRemainsReportableUntilRecoveryIsAcknowledged() async throws {
+        try await service.save(editor: service.editor(), electrum: server)
+        try await service.perform {
+            let revision = try self.service.replay()
+            XCTAssertTrue(self.service.canReportStartupFailure())
+            try self.service.complete(revision: revision, hasPendingRestore: true, isRunning: true)
+            XCTAssertTrue(self.service.canReportStartupFailure())
+            try self.service.complete(revision: revision, hasPendingRestore: false, isRunning: false)
+            XCTAssertTrue(self.service.canReportStartupFailure())
+        }
+        XCTAssertNotNil(data)
+        XCTAssertFalse(service.canReportStartupFailure(), "A completed operation cannot report a late error")
+    }
+
+    func testAnotherStartDoesNotInheritEarlierSuccessfulRecovery() async throws {
+        try await service.perform {
+            try self.service.complete(revision: nil, hasPendingRestore: false, isRunning: true)
+        }
+        try await service.perform {
+            XCTAssertTrue(self.service.canReportStartupFailure())
+        }
+    }
+
     func testAutomaticResumeClearsPriorErrorOnlyAfterAcknowledgedStartup() async throws {
         var showingError = true
         try await service.save(editor: service.editor(), electrum: server)
