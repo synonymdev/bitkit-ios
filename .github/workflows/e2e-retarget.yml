@@ -9,6 +9,9 @@ on:
       workflow_ref:
         description: "Workflow definitions to use (master after merge)"
         default: master
+      probe_closed_check:
+        description: "Temporary fixture: exercise recovery of a completed check"
+        default: ""
   pull_request:
     types: [edited]
     branches: [master]
@@ -36,7 +39,26 @@ jobs:
         run: node --test .github/scripts/retarget-tests.test.cjs
       - name: Start tests and create pending PR checks
         uses: actions/github-script@v9
+        env:
+          PROBE_CHECK: ${{ inputs.probe_closed_check }}
+          PROBE_PR: ${{ inputs.pr }}
         with:
           script: |
-            const {dispatchRetargetTests} = require('./.github/scripts/retarget-tests.cjs');
-            await dispatchRetargetTests({github, context, core});
+            const {dispatchRetargetTests, reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
+            if (process.env.PROBE_CHECK) {
+              const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: Number(process.env.PROBE_PR)});
+              const {data: check} = process.env.PROBE_CHECK === 'new'
+                ? await github.rest.checks.create({...context.repo, name: 'Run Integration Tests', head_sha: pr.head.sha,
+                    external_id: `retarget:${context.runId}-1:Run Integration Tests`, status: 'completed', conclusion: 'failure',
+                    output: {title: 'Intentional closed-check fixture', summary: 'This check exists only to verify retry-control behavior.'}})
+                : await github.rest.checks.get({...context.repo, check_run_id: Number(process.env.PROBE_CHECK)});
+              await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start', inputs: {
+                RETARGET_CHECK_RUN_ID: String(check.id),
+                RETARGET_RUN: check.external_id.match(/^retarget:(\d+-\d+):/)[1],
+                RETARGET_HEAD_SHA: pr.head.sha,
+                RETARGET_MERGE_COMMIT: pr.merge_commit_sha,
+                RETARGET_PR: process.env.PROBE_PR,
+              }});
+            } else {
+              await dispatchRetargetTests({github, context, core});
+            }
