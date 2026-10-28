@@ -460,6 +460,9 @@ struct AppError: LocalizedError {
         case let .TransactionNotFound(ldkMessage):
             message = "Transaction not found"
             debugMessage = ldkMessage
+        case let .TransactionNotBroadcastByWallet(ldkMessage):
+            message = "No broadcast record for this transaction"
+            debugMessage = ldkMessage
         case let .TransactionAlreadyConfirmed(ldkMessage):
             message = "Transaction already confirmed"
             debugMessage = ldkMessage
