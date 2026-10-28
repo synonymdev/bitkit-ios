@@ -5,21 +5,23 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_dispatch:
 
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Metadata-only edits must not cancel validation of the PR merge commit.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && format('metadata-{0}', github.run_id) || 'validation' }}
   cancel-in-progress: true
 
 jobs:
 
   test:
-    if: github.event.pull_request.draft == false
-    name: Run Integration Tests
+    if: github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base != null)
+    # A skipped metadata edit must not satisfy the required integration check.
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'Run Integration Tests (metadata edit ignored)' || 'Run Integration Tests' }}
     runs-on: macos-15
     timeout-minutes: 60
     env:

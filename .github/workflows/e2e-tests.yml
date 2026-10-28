@@ -8,12 +8,12 @@ on:
         required: false
         default: "default-feature-branch"
       pr:
-        description: "PR number to test as merged into master (set by e2e-retarget.yml)"
+        description: "PR number to test as merged into master"
         required: false
         default: ""
-  # PRs stacked on another branch run no E2E until they target master; e2e-retarget.yml starts it on retarget
+  # PRs stacked on another branch run no E2E until they target master.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
     branches: [master]
 
 env:
@@ -22,15 +22,16 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  # Metadata-only edits must not cancel validation of the PR merge commit.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && format('metadata-{0}', github.run_id) || 'validation' }}
   cancel-in-progress: true
 
 jobs:
   detect-changes:
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base != null)
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
+      code: ${{ (github.event.action == 'edited' && github.event.changes.base != null) || (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -290,8 +291,9 @@ jobs:
         run: .github/scripts/namespace-stack.sh down
 
   e2e-status:
-    if: always() && github.event.pull_request.draft == false
-    name: e2e-status
+    if: always() && github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base != null)
+    # A skipped metadata edit must not satisfy the required E2E check.
+    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'e2e-status (metadata edit ignored)' || 'e2e-status' }}
     runs-on: ubuntu-latest
     needs: [detect-changes, e2e-tests-local]
     steps:
