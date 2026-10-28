@@ -1594,7 +1594,7 @@
 "usdt__destination" = "Red del destinatario";
 "usdt__error_address" = "Introduzca una dirección válida para la red seleccionada.";
 "usdt__error_amount" = "Introduzca una cantidad válida con hasta 6 decimales.";
-"usdt__error_backup" = "No se pudo hacer una copia de seguridad de este pago. Se reintentará cuando la copia de seguridad esté disponible.";
+"usdt__error_backup" = "No se pudo hacer una copia de seguridad de este pago. Se reintentará automáticamente el mismo pago firmado cuando la copia de seguridad esté disponible. Cerrar esta pantalla no lo cancela.";
 "usdt__error_balance" = "No tiene suficientes USDT para cubrir la cantidad y las comisiones.";
 "usdt__error_bridge_amount" = "Cantidad demasiado pequeña para cubrir los costes del puente. Pruebe con una cantidad mayor.";
 "usdt__error_clock" = "Configure la fecha y la hora de su dispositivo en automático e inténtelo de nuevo.";

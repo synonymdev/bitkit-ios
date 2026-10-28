@@ -1711,7 +1711,7 @@
 "usdt__destination" = "Empfängernetzwerk";
 "usdt__error_address" = "Gib eine gültige Adresse für das ausgewählte Netzwerk ein.";
 "usdt__error_amount" = "Gib einen gültigen Betrag mit bis zu 6 Dezimalstellen ein.";
-"usdt__error_backup" = "Diese Zahlung kann nicht gesichert werden. Die Sicherung wird wiederholt, sobald sie verfügbar ist.";
+"usdt__error_backup" = "Diese Zahlung kann nicht gesichert werden. Dieselbe signierte Zahlung wird automatisch erneut versucht, sobald die Sicherung verfügbar ist. Das Schließen dieses Bildschirms storniert sie nicht.";
 "usdt__error_balance" = "Nicht genug USDT für Betrag und Gebühren.";
 "usdt__error_bridge_amount" = "Der Betrag ist zu klein, um die Bridge-Kosten zu decken. Versuche einen höheren Betrag.";
 "usdt__error_clock" = "Stelle Datum und Uhrzeit deines Geräts auf automatisch und versuche es dann erneut.";

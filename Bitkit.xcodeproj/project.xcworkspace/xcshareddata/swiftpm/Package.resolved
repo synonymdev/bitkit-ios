@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "53c67bf2cc85eedbd836cd77cbb44bb5580301b6",
-        "version" : "0.8.0-rc10"
+        "revision" : "22e0acc31a97b65205e71f4190cfc659fdecd3ca",
+        "version" : "0.8.0-rc11"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "f38469456c96813f50e00f29698507462a89ea9c",
-        "version" : "0.1.1-rc1"
+        "revision" : "01de5dd232d2b22f132d066697cce041700e7136",
+        "version" : "0.1.1-rc2"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
       "state" : {
-        "revision" : "3476fa45be919244310c4f65945e8d2bc1b8ee15",
-        "version" : "0.5.23"
+        "revision" : "eba41ef62b7314aa75827a5a3e71d2b23930b981",
+        "version" : "0.5.26-rc1"
       }
     }
   ],

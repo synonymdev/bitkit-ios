@@ -1,5 +1,6 @@
 @testable import Bitkit
 import Combine
+import Paykit
 import XCTest
 
 @MainActor
@@ -9,7 +10,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         defer { fixture.removeDefaults() }
         let uploads = UploadRecorder()
         let service = fixture.service(uploadBackup: { key, _ in await uploads.record(key) })
-        await service.startObservingBackups()?.value
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
         let staleAlert = expectation(description: "Recovered backups must not emit a failure alert")
         staleAlert.isInverted = true
         let subscription = service.backupFailurePublisher.sink { _ in staleAlert.fulfill() }
@@ -47,7 +48,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
             started.fulfill()
             for await _ in uploadGate {}
         })
-        await service.startObservingBackups()?.value
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
         let statusSubscription = service.backupStatusesPublisher
             .map { $0[.settings]?.running == true }
             .removeDuplicates()
@@ -92,7 +93,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
     }
 
     func testForegroundDoesNotDuplicateRunningOrScheduledBackups() async throws {
-        let fixture = try Fixture(categories: [.settings, .widgets])
+        let fixture = try Fixture(categories: [])
         defer { fixture.removeDefaults() }
         let uploads = UploadRecorder()
         let uploading = expectation(description: "Manual settings backup started")
@@ -114,7 +115,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
             scheduled.fulfill()
             for await _ in delayGate {}
         })
-        await service.startObservingBackups()?.value
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
         let manual = Task { await service.triggerBackup(category: .settings) }
         await fulfillment(of: [uploading], timeout: 2)
         service.markBackupRequired(category: .widgets)
@@ -149,8 +150,8 @@ final class BackupForegroundRecoveryTests: XCTestCase {
             capturing.fulfill()
             for await _ in captureGate {}
             return Data("isolated-snapshot".utf8)
-        }, uploadBackup: { _, _ in XCTFail("Stopped recovery must not upload") })
-        await service.startObservingBackups()?.value
+        }, uploadBackup: { _, _ in XCTFail("Stopped recovery must not upload") }, waitForBackupDelay: { throw CancellationError() })
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
 
         let recovery = service.setAppActive(true)
         await fulfillment(of: [capturing], timeout: 2)
@@ -172,7 +173,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         let service = fixture.service(uploadBackup: { _, _ in XCTFail("Recovery must not upload") })
         await service.setAppActive(true)?.value
         service.setAppActive(false)
-        await service.startObservingBackups()?.value
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
 
         service.setRestoring(true)
         await service.setAppActive(true)?.value
@@ -184,6 +185,76 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
         service.setAppActive(false)
         await service.stopObservingBackups()
+    }
+
+    func testForegroundRetriesUsdtIndependentlyOfCompleteWalletRestore() async throws {
+        let fixture = try Fixture(categories: [.wallet, .usdt])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let service = fixture.service(uploadBackup: { key, _ in await uploads.record(key) })
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        service.setRestoring(true)
+
+        await service.setAppActive(true)?.value
+
+        let recorded = await uploads.counts
+        XCTAssertEqual(recorded, [BackupCategory.usdt.rawValue: 1])
+        XCTAssertFalse(service.getBackupStatus(category: .usdt).isRequired)
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
+    func testForegroundTemporaryFailureResumesBoundedRetryWithoutAnotherActivation() async throws {
+        let fixture = try Fixture(categories: [.settings])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let delays = UploadRecorder()
+        let completed = expectation(description: "Foreground failure resumes the pending backup")
+        let service = BackupService(defaults: fixture.defaults, backupData: { _ in Data("snapshot".utf8) }, uploadBackup: { key, _ in
+            await uploads.record(key)
+            let counts = await uploads.counts
+            if counts[key] == 1 {
+                throw PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "held lease")
+            }
+        }, waitForBackupDelay: {
+            throw CancellationError()
+        }, waitForTemporaryFailureDelay: { delay in
+            await delays.record(String(delay))
+        })
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.settings].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        defer { subscription.cancel() }
+
+        await service.setAppActive(true)?.value
+        await fulfillment(of: [completed], timeout: 2)
+
+        let recorded = await uploads.counts
+        let waited = await delays.counts
+        XCTAssertEqual(recorded, [BackupCategory.settings.rawValue: 2])
+        XCTAssertEqual(waited, ["10000000000": 1])
+        XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
+    private func startAfterPendingJobsSettle(_ service: BackupService, categories: [BackupCategory]) async {
+        let settled = categories.map { expectation(description: "Initial \($0.rawValue) scheduling settled") }
+        let subscriptions = zip(categories, settled).map { category, completed in
+            service.backupStatusesPublisher
+                .map { $0[category]?.running == true }
+                .removeDuplicates()
+                .drop(while: { !$0 })
+                .filter { !$0 }
+                .first().sink { _ in completed.fulfill() }
+        }
+        await service.startObservingBackups()?.value
+        if !settled.isEmpty {
+            await fulfillment(of: settled, timeout: 2)
+        }
+        subscriptions.forEach { $0.cancel() }
     }
 
     func testHungRetryDoesNotSuppressOtherOverdueFailures() async throws {
@@ -209,7 +280,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         }, waitForForegroundRecoveryTimeout: {
             for await _ in timeoutGate {}
         })
-        await service.startObservingBackups()?.value
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
         let failedSubscription = service.backupStatusesPublisher
             .map { $0[.settings]?.running == true }
             .removeDuplicates()
@@ -293,7 +364,7 @@ final class BackupForegroundRecoveryTests: XCTestCase {
                 for await _ in newTimeout {}
             }
         })
-        await service.startObservingBackups()?.value
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
         let subscription = service.backupStatusesPublisher
             .filter { $0[.metadata].map { !$0.isRequired && !$0.running } == true }
             .first()

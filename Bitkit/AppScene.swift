@@ -1219,11 +1219,17 @@ struct AppScene: View {
         if shouldRestoreRN {
             do {
                 try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
-                return true
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
                 return await restoreVssBackup()
+            }
+            do {
+                try await BackupService.shared.restoreUsdtRecoveryAfterLegacyMigration()
+                return true
+            } catch {
+                app.toast(error)
+                return false
             }
         }
 
