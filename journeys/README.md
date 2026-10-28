@@ -182,6 +182,7 @@ Known naming differences:
 | Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row; tell rows apart by their key caption) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
 | Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` (the same tag on every row) | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
 | Contact import overview profile and friend count | — *(no tag; read the "Import" title and the "N friends" text)* | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
+| Lightning Connections add connection | `add_connection_button` | `NavigationAction` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
 but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
