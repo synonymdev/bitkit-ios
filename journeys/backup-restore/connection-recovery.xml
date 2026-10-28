@@ -22,5 +22,6 @@
     <action>Allow restoration of the old SETTINGS backup; verify only the explicitly corrected endpoints override that backup and unrelated preferences restore normally</action>
     <action>Complete required WALLET and USDT recovery; verify ordinary wallet actions become available only after both acknowledgements</action>
     <action>Repeat with only optional profile caching unavailable after required recovery; verify that error retains its optional recovery controls and is not classified as failed node startup</action>
+    <action>On a separate empty test installation, go offline before tapping New Wallet; verify creation stays in initialization without Spending balance error or Connection Settings. Restore connectivity and verify startup resumes through the ordinary coordinator without bypassing any required recovery marker</action>
   </actions>
 </journey>

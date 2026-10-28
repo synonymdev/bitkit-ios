@@ -1057,9 +1057,6 @@ struct AppScene: View {
         // Check network before attempting to start - LDK hangs when VSS is unreachable
         guard network.isConnected else {
             Logger.warn("Network offline, skipping wallet start", context: "AppScene")
-            if walletIsInitializing == true {
-                didWalletBackupRestoreFail = true
-            }
             if MigrationsService.shared.isShowingMigrationLoading {
                 await MainActor.run {
                     MigrationsService.shared.isShowingMigrationLoading = false
