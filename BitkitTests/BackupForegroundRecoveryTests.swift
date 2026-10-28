@@ -186,6 +186,35 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testConcurrentSubscriptionRegistrationAndCancellationRetainsEveryCancellation() {
+        let subscriptions = BackupObservationSubscriptions()
+        let cancellations = CancellationRecorder()
+
+        DispatchQueue.concurrentPerform(iterations: 256) { index in
+            subscriptions.store(AnyCancellable { cancellations.record() })
+            if index.isMultiple(of: 8) {
+                subscriptions.cancelAll()
+            }
+        }
+        subscriptions.cancelAll()
+
+        XCTAssertEqual(cancellations.count, 256)
+    }
+
+    func testSubscriptionCancellationCanRegisterAnotherSubscription() {
+        let subscriptions = BackupObservationSubscriptions()
+        let cancellations = CancellationRecorder()
+        subscriptions.store(AnyCancellable {
+            cancellations.record()
+            subscriptions.store(AnyCancellable { cancellations.record() })
+        })
+
+        subscriptions.cancelAll()
+        XCTAssertEqual(cancellations.count, 1)
+        subscriptions.cancelAll()
+        XCTAssertEqual(cancellations.count, 2)
+    }
+
     func testHungRetryDoesNotSuppressOtherOverdueFailures() async throws {
         let fixture = try Fixture(categories: [.settings, .metadata])
         defer { fixture.removeDefaults() }
@@ -342,6 +371,19 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await newWindowCompletion.value
         await oldWindowCompletion.value
         await service.stopObservingBackups()
+    }
+}
+
+private final class CancellationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancellations = 0
+
+    var count: Int {
+        lock.withLock { cancellations }
+    }
+
+    func record() {
+        lock.withLock { cancellations += 1 }
     }
 }
 

@@ -114,7 +114,7 @@ class BackupService {
     @MainActor weak var usdtWallet: UsdtWalletManager?
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
-    private var cancellables = Set<AnyCancellable>()
+    private let cancellables = BackupObservationSubscriptions()
     private var periodicCheckTask: Task<Void, Never>?
     private var isObserving = false
     private var isRestoring = false
@@ -301,7 +301,7 @@ class BackupService {
         _ = await stopped?.metadataTask?.value
         await walletBackupWriter.waitUntilIdle()
         guard stopped?.wasObserving == true else { return }
-        cancellables.removeAll()
+        cancellables.cancelAll()
         Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
     }
 
@@ -660,7 +660,7 @@ class BackupService {
                         }
                     }
                 }
-                .store(in: &cancellables)
+                .store(in: cancellables)
         }
 
         Logger.debug("Started \(BackupCategory.allCases.count) backup status observers", context: "BackupService")
@@ -676,7 +676,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup() else { return }
                     markBackupRequired(category: .settings)
                 }
-                .store(in: &cancellables)
+                .store(in: cancellables)
 
             // WIDGETS
             SettingsViewModel.shared.widgetsPublisher
@@ -685,7 +685,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup() else { return }
                     markBackupRequired(category: .widgets)
                 }
-                .store(in: &cancellables)
+                .store(in: cancellables)
         }
 
         // Record requirements synchronously; the scheduled upload already has a debounce.
@@ -695,7 +695,7 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .wallet)
             }
-            .store(in: &cancellables)
+            .store(in: cancellables)
 
         // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
@@ -704,7 +704,7 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .activity)
             }
-            .store(in: &cancellables)
+            .store(in: cancellables)
 
         // METADATA (from ActivityService)
         CoreService.shared.activity.metadataChangedPublisher
@@ -713,7 +713,7 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .metadata)
             }
-            .store(in: &cancellables)
+            .store(in: cancellables)
 
         // METADATA (hardware wallet names). Scoped to the names alone: the known-device store is also
         // rewritten by every connect, and reconnect traffic must not re-upload the whole envelope.
@@ -723,7 +723,7 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .metadata)
             }
-            .store(in: &cancellables)
+            .store(in: cancellables)
 
         // APP STATE (UserDefaults changes, etc.)
         Task { @MainActor [weak self] in
@@ -734,7 +734,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup() else { return }
                     markBackupRequired(category: .metadata)
                 }
-                .store(in: &cancellables)
+                .store(in: cancellables)
         }
 
         // BLOCKTANK
@@ -744,7 +744,7 @@ class BackupService {
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .blocktank)
             }
-            .store(in: &cancellables)
+            .store(in: cancellables)
 
         // LIGHTNING SYNC STATUS
         LightningService.shared.syncStatusChangedPublisher
@@ -759,7 +759,7 @@ class BackupService {
                     )
                 }
             }
-            .store(in: &cancellables)
+            .store(in: cancellables)
 
         Logger.debug("Started data store listeners", context: "BackupService")
     }
@@ -1268,6 +1268,32 @@ final class WalletBackupChangeTracker {
             }
         }
         throw WalletBackupSnapshotError.changed
+    }
+}
+
+/// The lock owns every access to subscription storage; no mutable collection escapes.
+final class BackupObservationSubscriptions: @unchecked Sendable {
+    private let lock = NSLock()
+    private var subscriptions = Set<AnyCancellable>()
+
+    func store(_ subscription: AnyCancellable) {
+        lock.withLock { _ = subscriptions.insert(subscription) }
+    }
+
+    func cancelAll() {
+        let cancelled = lock.withLock {
+            let cancelled = subscriptions
+            subscriptions.removeAll()
+            return cancelled
+        }
+        // Cancellation can re-enter subscription storage; do not hold its lock across callbacks.
+        cancelled.forEach { $0.cancel() }
+    }
+}
+
+private extension AnyCancellable {
+    func store(in subscriptions: BackupObservationSubscriptions) {
+        subscriptions.store(self)
     }
 }
 
