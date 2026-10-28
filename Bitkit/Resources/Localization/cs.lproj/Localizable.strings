@@ -599,6 +599,7 @@
 "security__pin_forgot_text" = "Zapomněli jste svůj PIN? Resetujte a obnovte svou peněženku Bitkit pomocí vaší obnovovací fráze. Po dokončení obnovení nastavte nový PIN.";
 "security__pin_forgot_reset" = "Resetovat (vyžaduje obnovovací frázi)";
 "security__pin_send" = "Pro potvrzení a odeslání této platby prosím zadejte svůj PIN kód.";
+"security__pin_allowance" = "Pro potvrzení této změny povolení plateb prosím zadejte svůj PIN kód.";
 "security__pin_send_title" = "Zadejte kód PIN";
 "security__pin_use_biometrics" = "Použít {biometricsName}";
 "security__bio" = "Biometrické údaje";
@@ -1881,6 +1882,7 @@
 "subscriptions__allowance_executed_description" = "Automatická platba odeslala {amount} uživateli {name}";
 "subscriptions__allowance_offer_accepted_title" = "Povolení plateb přidáno";
 "subscriptions__allowance_offer_accepted_description" = "Uživatel {name} vám nastavil povolení plateb";
+"subscriptions__allowance_offers_accepted_description" = "Uživatelé {names} vám nastavili povolení plateb";
 "subscriptions__allowance_limit_title" = "Limit dosažen";
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";

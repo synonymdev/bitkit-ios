@@ -597,6 +597,7 @@
 "security__pin_forgot_text" = "PIN vergessen? Setze hier dein Bitkit-Wallet zurück und stelle es mit deiner Wiederherstellungsphrase wieder her. Vergebe eine neue PIN nach deiner Wiederherstellung.";
 "security__pin_forgot_reset" = "Zurücksetzen (erfordert Wiederherstellungsphrase)";
 "security__pin_send" = "Bitte gib deinen PIN-Code ein, um diese Zahlung zu bestätigen und zu senden.";
+"security__pin_allowance" = "Bitte gib deinen PIN-Code ein, um diese Änderung des Kontingents zu bestätigen.";
 "security__pin_send_title" = "PIN-Code eingeben";
 "security__pin_use_biometrics" = "Verwende {biometricsName}";
 "security__bio" = "Biometrie";
@@ -1878,6 +1879,7 @@
 "subscriptions__allowance_executed_description" = "Auto-Pay hat {amount} an {name} gesendet";
 "subscriptions__allowance_offer_accepted_title" = "Kontingent hinzugefügt";
 "subscriptions__allowance_offer_accepted_description" = "{name} hat ein Kontingent für dich eingerichtet";
+"subscriptions__allowance_offers_accepted_description" = "{names} haben Kontingente für dich eingerichtet";
 "subscriptions__allowance_limit_title" = "Limit erreicht";
 "subscriptions__allowance_limit_description" = "Eine Anforderung über {amount} von {name} übersteigt dein Kontingent. Prüfe sie, um zu bezahlen.";
 "subscriptions__allowance_auto_paid" = "Automatisch bezahlt";

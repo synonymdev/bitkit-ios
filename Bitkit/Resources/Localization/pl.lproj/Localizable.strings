@@ -599,6 +599,7 @@
 "security__pin_forgot_text" = "Zapomniałeś kodu PIN? Zresetuj i odzyskaj swój portfel Bitkit używając mnemonika. Ustaw nowy kod PIN po zakończeniu odzyskiwania portfela.";
 "security__pin_forgot_reset" = "Reset (wymaga mnemonika)";
 "security__pin_send" = "Proszę podaj swój kod PIN aby potwierdzić i wysłać płatność.";
+"security__pin_allowance" = "Proszę podaj swój kod PIN aby potwierdzić tę zmianę przydziału.";
 "security__pin_send_title" = "Wprowadź kod PIN";
 "security__pin_use_biometrics" = "Użyj {biometricsName}";
 "security__bio" = "Biometria";
@@ -1891,6 +1892,7 @@
 "subscriptions__allowance_executed_description" = "Autopłatność wysłała {amount} do {name}";
 "subscriptions__allowance_offer_accepted_title" = "Przydział dodany";
 "subscriptions__allowance_offer_accepted_description" = "Użytkownik {name} ustawił dla Ciebie przydział";
+"subscriptions__allowance_offers_accepted_description" = "Użytkownicy {names} ustawili dla Ciebie przydziały";
 "subscriptions__allowance_limit_title" = "Osiągnięto limit";
 "subscriptions__allowance_limit_description" = "Żądanie {amount} od {name} przekracza Twój przydział. Przejrzyj je, aby zapłacić.";
 "subscriptions__allowance_auto_paid" = "Opłacono automatycznie";
