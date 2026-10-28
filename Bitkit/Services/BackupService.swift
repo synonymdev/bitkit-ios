@@ -497,7 +497,7 @@ class BackupService {
         if let address = cache.onchainAddress, !address.isEmpty {
             markBackupRequired(category: .wallet, schedule: false)
         }
-        try await SettingsViewModel.shared.restoreAppCacheData(cache)
+        await SettingsViewModel.shared.restoreAppCacheData(cache)
     }
 
     private func performFullRestoreFromLatestBackup(retainedWalletBackup: Data?) async throws -> Bool {
@@ -1079,7 +1079,7 @@ class BackupService {
 
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
-            let cache = try await SettingsViewModel.shared.getAppCacheData()
+            let cache = await SettingsViewModel.shared.getAppCacheData()
             let pubkySession = try PubkyProfileManager.snapshotSessionBackupState()
             let pubkyContactProfileOverrides = ContactsManager.backupContactProfileOverrides()
 

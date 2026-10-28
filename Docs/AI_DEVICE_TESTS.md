@@ -20,7 +20,7 @@ TEST_TREZOR_RESET_STATE=1 \
 TREZOR_BRIDGE=true \
 TREZOR_BRIDGE_URL=http://127.0.0.1:21325 \
 TREZOR_ELECTRUM_URL=tcp://127.0.0.1:60001 \
-E2E=true E2E_BACKEND=local E2E_NETWORK=regtest GEO=false \
+E2E=true E2E_BACKEND=local E2E_NETWORK=regtest \
 xcodebuild test \
   -workspace Bitkit.xcodeproj/project.xcworkspace \
   -scheme BitkitAITests \

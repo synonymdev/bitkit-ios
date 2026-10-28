@@ -605,7 +605,7 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
             legacyPublicAddresses: walletBackup.publicPaykitLegacyAddresses
         )
         let metadata = try decodeAndroidMetadata(cache: ["onchainAddress": legacyAddress])
-        try SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
+        SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
         defaults.set("", forKey: "onchainAddress")
 
         let restarted = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
@@ -649,7 +649,7 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
                 walletBackup.privatePaykitHighestReservedReceiveIndexByAddressType,
                 legacyPublicAddresses: walletBackup.publicPaykitLegacyAddresses
             )
-            try SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
+            SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
             defaults.set("", forKey: "onchainAddress")
 
             let restarted = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
@@ -676,11 +676,11 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
             defaults.set([retainedAddress], forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
             defaults.set(ordinaryAddress, forKey: "onchainAddress")
             let metadata = try decodeAndroidMetadata(cache: cache)
-            try SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
+            SettingsViewModel.shared.restoreAppCacheData(metadata.cache)
             XCTAssertEqual(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey), [retainedAddress])
             XCTAssertEqual(defaults.string(forKey: "onchainAddress"), ordinaryAddress)
 
-            let nextCache = try SettingsViewModel.shared.getAppCacheData()
+            let nextCache = SettingsViewModel.shared.getAppCacheData()
             let encodedCache = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(nextCache)) as? [String: Any])
             XCTAssertNil(encodedCache["onchainAddress"])
         }

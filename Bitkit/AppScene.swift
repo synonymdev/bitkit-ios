@@ -402,8 +402,7 @@ struct AppScene: View {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
         let transferService = TransferService(
-            lightningService: LightningService.shared,
-            blocktankService: CoreService.shared.blocktank
+            lightningService: LightningService.shared
         )
 
         // Run app data migrations before any feature code loads migrated state
@@ -442,15 +441,6 @@ struct AppScene: View {
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
-            hwFunding: hwWalletManager,
-            hwConnecting: hwWalletManager,
-            hwFeeRateProvider: {
-                guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
-                return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
-            },
-            hwAddressProvider: {
-                try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
-            },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
@@ -1029,9 +1019,6 @@ struct AppScene: View {
                 await retryPendingPaykitEndpointRemoval()
             }
 
-            // Start watching pending orders after wallet is ready
-            await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
-
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.
             wallet.ensureSwapUpdatesRunning()
@@ -1111,7 +1098,8 @@ struct AppScene: View {
                 appViewModel: app,
                 settingsViewModel: settings,
                 walletViewModel: wallet,
-                currencyViewModel: currency
+                currencyViewModel: currency,
+                paykitPaymentRequestManager: paykitPaymentRequestManager
             )
         } catch {
             app.toast(error)

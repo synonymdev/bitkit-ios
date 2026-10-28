@@ -63,19 +63,12 @@ extension PubkySessionBackupV1 {
     }
 }
 
-struct BlocktankRefundAddress: Codable, Equatable {
-    let address: String
-    let index: UInt32
-}
-
 struct AppCacheData: Codable {
     let hasSeenContactsIntro: Bool
     let hasSeenProfileIntro: Bool
     let hasSeenNotificationsIntro: Bool
     let hasSeenQuickpayIntro: Bool
     let hasSeenShopIntro: Bool
-    let hasSeenTransferIntro: Bool
-    let hasSeenTransferToSpendingIntro: Bool
     let hasSeenTransferToSavingsIntro: Bool
     let hasSeenWidgetsIntro: Bool
     let hasDismissedWidgetsOnboardingHint: Bool
@@ -86,7 +79,6 @@ struct AppCacheData: Codable {
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
     let quickPayLedger: QuickPayLedger?
-    let blocktankRefundAddress: BlocktankRefundAddress?
     let detachedActivityContacts: Set<String>
     /// Imported cache addresses may have been public; local snapshots do not export the live receive address.
     let onchainAddress: String?
@@ -97,8 +89,6 @@ struct AppCacheData: Codable {
         hasSeenNotificationsIntro: Bool,
         hasSeenQuickpayIntro: Bool,
         hasSeenShopIntro: Bool,
-        hasSeenTransferIntro: Bool,
-        hasSeenTransferToSpendingIntro: Bool,
         hasSeenTransferToSavingsIntro: Bool,
         hasSeenWidgetsIntro: Bool,
         hasDismissedWidgetsOnboardingHint: Bool,
@@ -109,7 +99,6 @@ struct AppCacheData: Codable {
         dismissedSuggestions: [String],
         lastUsedTags: [String],
         quickPayLedger: QuickPayLedger? = nil,
-        blocktankRefundAddress: BlocktankRefundAddress? = nil,
         detachedActivityContacts: Set<String> = []
     ) {
         self.hasSeenContactsIntro = hasSeenContactsIntro
@@ -117,8 +106,6 @@ struct AppCacheData: Codable {
         self.hasSeenNotificationsIntro = hasSeenNotificationsIntro
         self.hasSeenQuickpayIntro = hasSeenQuickpayIntro
         self.hasSeenShopIntro = hasSeenShopIntro
-        self.hasSeenTransferIntro = hasSeenTransferIntro
-        self.hasSeenTransferToSpendingIntro = hasSeenTransferToSpendingIntro
         self.hasSeenTransferToSavingsIntro = hasSeenTransferToSavingsIntro
         self.hasSeenWidgetsIntro = hasSeenWidgetsIntro
         self.hasDismissedWidgetsOnboardingHint = hasDismissedWidgetsOnboardingHint
@@ -129,7 +116,6 @@ struct AppCacheData: Codable {
         self.dismissedSuggestions = dismissedSuggestions
         self.lastUsedTags = lastUsedTags
         self.quickPayLedger = quickPayLedger
-        self.blocktankRefundAddress = blocktankRefundAddress
         self.detachedActivityContacts = detachedActivityContacts
         onchainAddress = nil
     }
@@ -141,8 +127,6 @@ struct AppCacheData: Codable {
         hasSeenNotificationsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenNotificationsIntro) ?? false
         hasSeenQuickpayIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenQuickpayIntro) ?? false
         hasSeenShopIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenShopIntro) ?? false
-        hasSeenTransferIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferIntro) ?? false
-        hasSeenTransferToSpendingIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSpendingIntro) ?? false
         hasSeenTransferToSavingsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenTransferToSavingsIntro) ?? false
         hasSeenWidgetsIntro = try c.decodeIfPresent(Bool.self, forKey: .hasSeenWidgetsIntro) ?? false
         hasDismissedWidgetsOnboardingHint = try c.decodeIfPresent(Bool.self, forKey: .hasDismissedWidgetsOnboardingHint) ?? false
@@ -153,19 +137,17 @@ struct AppCacheData: Codable {
         dismissedSuggestions = try c.decodeIfPresent([String].self, forKey: .dismissedSuggestions) ?? []
         lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags) ?? []
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
-        blocktankRefundAddress = try c.decodeIfPresent(BlocktankRefundAddress.self, forKey: .blocktankRefundAddress)
         detachedActivityContacts = try c.decodeIfPresent(Set<String>.self, forKey: .detachedActivityContacts) ?? []
         onchainAddress = try c.decodeIfPresent(String.self, forKey: .onchainAddress)
     }
 
     private enum CodingKeys: String, CodingKey {
         case hasSeenContactsIntro, hasSeenProfileIntro, hasSeenNotificationsIntro, hasSeenQuickpayIntro
-        case hasSeenShopIntro, hasSeenTransferIntro, hasSeenTransferToSpendingIntro, hasSeenTransferToSavingsIntro
+        case hasSeenShopIntro, hasSeenTransferToSavingsIntro
         case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
         case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
         case dismissedSuggestions, lastUsedTags
         case quickPayLedger
-        case blocktankRefundAddress
         case detachedActivityContacts
         case onchainAddress
     }
