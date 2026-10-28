@@ -5,17 +5,20 @@ import SwiftUI
 struct SparkFundingAmountView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var amountViewModel = AmountInputViewModel()
+    @State private var fastMaxSats: UInt64?
 
     private var amountSats: UInt64 {
         amountViewModel.amountSats
     }
 
+    /// The balance less a fast-rate fee for sending all of it to the deposit address, the rate the transfer pays.
     private var maxSats: UInt64 {
-        UInt64(max(0, wallet.spendableOnchainBalanceSats))
+        fastMaxSats ?? UInt64(max(0, wallet.spendableOnchainBalanceSats))
     }
 
     private var isValidAmount: Bool {
@@ -79,6 +82,7 @@ struct SparkFundingAmountView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task(id: wallet.spendableOnchainBalanceSats) { await loadFastMax() }
         .onChange(of: maxSats, initial: true) {
             amountViewModel.maxAmountOverride = maxSats > 0 ? maxSats : nil
         }
@@ -92,6 +96,17 @@ struct SparkFundingAmountView: View {
                 ),
                 visibilityTime: Toast.visibilityTimeShort
             )
+        }
+    }
+
+    private func loadFastMax() async {
+        do {
+            let address = try await SparkManager.shared.depositAddress()
+            guard let feeRates = await feeEstimatesManager.getEstimates(refresh: false) else { return }
+            let rate = TransactionSpeed.fast.getFeeRate(from: feeRates)
+            fastMaxSats = try await wallet.calculateMaxSendableAmount(address: address, satsPerVByte: rate)
+        } catch {
+            Logger.warn("Failed to estimate the most Spark funding can send: \(error)", context: "SparkFundingAmountView")
         }
     }
 
@@ -345,6 +360,7 @@ struct SparkFundingDepositView: View {
                 }
             } catch {
                 Logger.warn("Failed to quote Spark deposit \(txid): \(error)", context: "SparkFundingDepositView")
+                return
             }
             await SparkManager.shared.refreshState()
             try? await Task.sleep(for: Self.pollInterval)
