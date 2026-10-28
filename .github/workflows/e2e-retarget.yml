@@ -60,5 +60,9 @@ jobs:
                 RETARGET_PR: process.env.PROBE_PR,
               }});
             } else {
+              if (context.eventName === 'pull_request') {
+                context.eventName = 'workflow_dispatch';
+                context.payload.inputs = {pr: String(context.payload.pull_request.number), workflow_ref: 'ci/ios-retarget-probe-01a1835c'};
+              }
               await dispatchRetargetTests({github, context, core});
             }
