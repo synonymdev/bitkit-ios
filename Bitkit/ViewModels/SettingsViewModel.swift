@@ -498,6 +498,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         wallet?.syncState()
         if !enabled, let wallet {
             await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: wallet, reason: "address type monitoring changed")
+            await wallet.refreshPublicPaykitAddressIfNeeded()
         }
         return true
     }

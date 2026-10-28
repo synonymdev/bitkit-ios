@@ -140,7 +140,7 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         }
         await fulfillment(of: [captured], timeout: 5)
         await addresses.markUsed(first)
-        await wallet.refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isCurrent)
+        await wallet.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isCurrent)
         let rotated = try XCTUnwrap(wallet.publishedAddresses.last)
         XCTAssertNotEqual(rotated, first)
         XCTAssertFalse(PublicPaykitService.isCleanupPending)
@@ -334,7 +334,7 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         })
         XCTAssertTrue(rawEventDelivered)
         XCTAssertNotNil(completion)
-        let usedBeforePersistence = try await store.isCurrentPublicAddressUsed(for: alice)
+        let usedBeforePersistence = try await store.needsPublicAddressRotation(for: alice)
         XCTAssertFalse(usedBeforePersistence)
         let persistenceStarted = expectation(description: "Activity persistence started")
         var finishPersistence: CheckedContinuation<Void, Never>?
@@ -364,12 +364,12 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         let noContact = await store.contactPublicKey(forReservedAddress: first)
         XCTAssertTrue(oldUnavailable)
         XCTAssertNil(noContact)
-        await wallet.refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isCurrent)
+        await wallet.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isCurrent)
         XCTAssertEqual(wallet.publishedAddresses.count, 2, "Unrelated activity must not republish an unused public address")
 
         await addresses.markUsed(rotated)
         wallet.failPublication = true
-        await wallet.refreshPublicPaykitAddressAfterOnchainActivity(isSessionCurrent: isCurrent)
+        await wallet.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isCurrent)
         XCTAssertTrue(PublicPaykitService.isCleanupPending)
         wallet.failPublication = false
         try await PublicPaykitService.retryPendingEndpointReconciliation(
@@ -380,6 +380,51 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
         XCTAssertNotEqual(wallet.publishedAddresses.last, rotated)
         XCTAssertEqual(wallet.onchainAddress, AddressWallet.address(0))
         XCTAssertEqual(wallet.bolt11, ordinaryInvoice)
+    }
+
+    @MainActor
+    func testPublicAddressRotatesWhenItsTypeIsNoLongerMonitored() async throws {
+        snapshotAppDefaultsDomain()
+        let lightning = Bitkit.LightningService.shared
+        let previousCompletion = lightning.onchainActivityWillPersist
+        defer { lightning.onchainActivityWillPersist = previousCompletion }
+        UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        let defaults = try makeIsolatedDefaults()
+        defaults.set("taproot", forKey: "selectedAddressType")
+        defaults.set("nativeSegwit,taproot", forKey: "addressTypesToMonitor")
+        defaults.set(AddressWallet.address(0), forKey: "onchainAddress")
+        let store = PrivatePaykitAddressReservationStore(defaults: defaults, operations: AddressWallet().operations)
+        let profile = PubkyProfileManager()
+        profile.publicKey = alice
+        profile.authState = .authenticated
+        let session = try XCTUnwrap(profile.automaticPaykitSession)
+        let wallet = PublicActivityWallet(pubkyProfile: profile)
+        wallet.reservations = store
+        wallet.channels = []
+        wallet.onchainAddress = AddressWallet.address(0)
+        let isCurrent = { profile.automaticPaykitSession == session }
+        try await wallet.syncReceivePublicPaykitEndpoints(isSessionCurrent: isCurrent)
+        let original = try XCTUnwrap(wallet.publishedAddresses.last)
+
+        defaults.set("nativeSegwit", forKey: "selectedAddressType")
+        await wallet.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isCurrent)
+        XCTAssertEqual(wallet.publishedAddresses, [original])
+
+        defaults.set("nativeSegwit", forKey: "addressTypesToMonitor")
+        await wallet.refreshPublicPaykitAddressIfNeeded()
+        let replacement = try XCTUnwrap(wallet.publishedAddresses.last)
+        XCTAssertNotEqual(replacement, original)
+        XCTAssertEqual(wallet.publishedAddresses.count, 2)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
+        XCTAssertEqual(wallet.onchainAddress, AddressWallet.address(0))
+        let originalUnavailable = await store.isUnavailableForReusableReceive(address: original)
+        XCTAssertTrue(originalUnavailable)
+        await wallet.refreshPublicPaykitAddressIfNeeded(isSessionCurrent: isCurrent)
+        XCTAssertEqual(wallet.publishedAddresses, [original, replacement])
     }
 
     @MainActor
@@ -484,7 +529,7 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
                 }
                 return true
             }
-            await wallet.refreshPublicPaykitAddressAfterOnchainActivity { profile.automaticPaykitSession == session }
+            await wallet.refreshPublicPaykitAddressIfNeeded { profile.automaticPaykitSession == session }
             XCTAssertTrue(wallet.publishedAddresses.isEmpty)
             XCTAssertFalse(PublicPaykitService.isCleanupPending)
         }
@@ -718,12 +763,12 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
             return snapshot
         }
 
-        override func isPublicPaykitAddressUsed(for publicKey: String) async throws -> Bool {
+        override func needsPublicPaykitAddressRotation(for publicKey: String) async throws -> Bool {
             usageLookupCount += 1
             if let usageLookup {
                 return try await usageLookup()
             }
-            return try await XCTUnwrap(reservations).isCurrentPublicAddressUsed(for: publicKey)
+            return try await XCTUnwrap(reservations).needsPublicAddressRotation(for: publicKey)
         }
 
         override func publishPublicPaykitEndpoints(refreshIfNeeded: Bool, isSessionCurrent: @escaping @MainActor () -> Bool) async throws {
@@ -770,20 +815,27 @@ final class PublicPaykitAddressReservationTests: XCTestCase {
 
         nonisolated var operations: PrivatePaykitAddressReservationStore.AddressOperations {
             .init(
-                next: { _ in await self.next() },
-                resolve: { _, index in Self.address(index) },
+                next: { addressType in await self.next(addressType: addressType) },
+                resolve: { addressType, index in Self.address(index, addressType: addressType) },
                 reveal: { _, index in await self.reveal(index) },
                 isUsed: { try await self.isUsed($0) }
             )
         }
 
-        static func address(_ index: UInt32) -> String {
-            "\(Env.network == .bitcoin ? "bc1q" : "bcrt1q")reserved\(index)"
+        static func address(_ index: UInt32, addressType: LDKNode.AddressType = .nativeSegwit) -> String {
+            let isMainnet = Env.network == .bitcoin
+            let prefix: String = switch addressType {
+            case .legacy: isMainnet ? "1" : "m"
+            case .nestedSegwit: isMainnet ? "3" : "2"
+            case .nativeSegwit: isMainnet ? "bc1q" : "bcrt1q"
+            case .taproot: isMainnet ? "bc1p" : "bcrt1p"
+            }
+            return "\(prefix)reserved\(index)"
         }
 
-        func next() -> Bitkit.LightningService.AddressDerivationInfo {
+        func next(addressType: LDKNode.AddressType) -> Bitkit.LightningService.AddressDerivationInfo {
             defer { nextIndex += 1 }
-            return .init(address: Self.address(nextIndex), index: nextIndex)
+            return .init(address: Self.address(nextIndex, addressType: addressType), index: nextIndex)
         }
 
         func reveal(_ index: UInt32) {

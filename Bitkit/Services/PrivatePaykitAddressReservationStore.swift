@@ -221,11 +221,12 @@ actor PrivatePaykitAddressReservationStore {
         )
     }
 
-    func isCurrentPublicAddressUsed(for publicKey: String) async throws -> Bool {
+    func needsPublicAddressRotation(for publicKey: String) async throws -> Bool {
         let key = try Self.normalizedPublicKey(publicKey)
         guard let assignment = ledger.publicAssignments?[key],
               let addressType = LDKNode.AddressType.from(string: assignment.addressType)
         else { return false }
+        guard isAddressTypeMonitored(addressType) else { return true }
         let address = try await address(for: addressType, receiveIndex: assignment.receiveIndex)
         return try await operations.isUsed(address)
     }
