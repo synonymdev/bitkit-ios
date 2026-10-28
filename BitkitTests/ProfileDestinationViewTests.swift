@@ -40,13 +40,21 @@ final class ProfileDestinationViewTests: XCTestCase {
             XCTAssertFalse(manager.isAdoptingRingIdentity)
             let admission = ProfileOperationAdmission.shared
             let transition = try admission.reserveSessionTransition()
+            defer { admission.release(transition) }
             let view = CreateProfileView()
                 .environmentObject(manager as PubkyProfileManager)
                 .environmentObject(AppViewModel())
                 .environmentObject(NavigationViewModel())
+            let keyboardShown = XCTNSNotificationExpectation(name: UIResponder.keyboardDidShowNotification)
             let window = try host(view)
             defer { close(window) }
-            try await Task.sleep(for: .milliseconds(200))
+            let hostedView = try XCTUnwrap(window.rootViewController?.view)
+            if hostedView.keyboardLayoutGuide.layoutFrame.height > hostedView.safeAreaInsets.bottom {
+                keyboardShown.fulfill()
+            }
+            // Let keyboard presentation settle when available before measuring admission resumption.
+            let keyboardResult = await XCTWaiter.fulfillment(of: [keyboardShown], timeout: 5)
+            print("Keyboard presentation setup: \(keyboardResult)")
             XCTAssertEqual(manager.keyLoads, 0)
             if replaceOwner {
                 manager.publicKey = "replacement"
@@ -451,6 +459,7 @@ final class ProfileDestinationViewTests: XCTestCase {
     }
 
     private func close(_ window: UIWindow) {
+        window.endEditing(true)
         window.isHidden = true
         window.rootViewController = nil
     }

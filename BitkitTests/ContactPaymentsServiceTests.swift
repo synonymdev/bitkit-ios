@@ -1112,8 +1112,9 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 let contactsManager = ContactsManager(contactRecords: { [record] })
                 let endpoints = LockedEndpointWrites()
                 let reachedHeldPoint = expectation(description: "\(testCase.name): removal reached its held point")
-                let enableRequested = expectation(description: "\(testCase.name): enable requested")
+                let enableAdmitted = expectation(description: "\(testCase.name): enable owns the sharing change")
                 let (gate, release) = AsyncStream<Void>.makeStream()
+                defer { release.finish() }
                 let held = testCase.held
                 let operations = OperationsSpy()
                 operations.removePrivateEndpoints = { isChangeCurrent in
@@ -1154,13 +1155,17 @@ final class ContactPaymentsServiceTests: XCTestCase {
                 await fulfillment(of: [reachedHeldPoint], timeout: 2)
 
                 let enable = Task {
-                    enableRequested.fulfill()
                     return try await ContactPaymentsService.setEnabled(
                         true, pubkyProfile: pubkyProfile, contactsManager: contactsManager, operations: operations.makeOperations(),
-                        defaults: defaults
+                        defaults: defaults,
+                        privatePaymentAccess: { publicKey in
+                            let hasAccess = try PubkyProfileManager.hasPrivatePaymentAccess(for: publicKey)
+                            enableAdmitted.fulfill()
+                            return hasAccess
+                        }
                     )
                 }
-                await fulfillment(of: [enableRequested], timeout: 2)
+                await fulfillment(of: [enableAdmitted], timeout: 2)
                 release.finish()
                 let disableResult = await disable.result
                 let enableResult = await enable.result
