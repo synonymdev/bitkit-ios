@@ -287,7 +287,17 @@ class PubkyProfileManager: ObservableObject {
         if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision {
             return
         }
-        guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
+        guard !Task.isCancelled else { return }
+        if let session = automaticPaykitSession {
+            if isInitialized, profile == nil {
+                Task {
+                    guard automaticPaykitSession == session, isInitialized, profile == nil else { return }
+                    await loadProfile()
+                }
+            }
+            return
+        }
+        guard publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
             await initialize(mode: .automaticRecovery, initializeSession: initializeSession)
