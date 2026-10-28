@@ -223,22 +223,6 @@ struct OrderDetailView: View {
                 DetailRow(label: "Created", value: order.createdAt)
                 DetailRow(label: "Updated", value: order.updatedAt)
             }
-
-            if order.state2 == .paid {
-                Button("Open Channel") {
-                    Task {
-                        Logger.info("Opening channel for order \(order.id)")
-
-                        do {
-                            try await CoreService.shared.blocktank.open(orderId: order.id)
-                            Logger.info("Channel opened for order \(order.id)")
-                        } catch {
-                            Logger.error("Error opening channel for order \(order.id): \(error)")
-                            LightningService.shared.dumpLdkLogs()
-                        }
-                    }
-                }
-            }
         }
         .navigationTitle("Order Details")
     }

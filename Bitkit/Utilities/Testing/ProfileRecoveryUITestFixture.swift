@@ -30,6 +30,7 @@
                     .accessibilityIdentifier("ProfileFixtureClipboardValue")
                 CaptionText(profile.isLoadingProfile ? "Loading" : profile.isDisconnectPending ? "Disconnecting" : "Idle")
                     .accessibilityIdentifier("ProfileFixtureStatus")
+                    .accessibilityValue(profile.events.joined(separator: "\n"))
                 NavigationStack(path: $navigation.path) {
                     ProfileDestinationView(hasSeenIntro: true)
                         .navigationDestination(for: Route.self) { route in
@@ -56,6 +57,9 @@
         )
 
         @Published private(set) var isDisconnectPending = false
+        @Published private(set) var events: [String] = []
+        private var nextOperation = 0
+        private var pendingOperation: String?
         private var hasLoaded = false
         private var pendingResult: CheckedContinuation<Bool, Never>?
 
@@ -77,34 +81,67 @@
         ) async {}
 
         override func loadProfile() async {
+            let operation = beginOperation("load")
             guard hasLoaded else {
+                record("\(operation) skipped initial load")
                 hasLoaded = true
                 return
             }
             isLoadingProfile = true
-            let success = await withCheckedContinuation { pendingResult = $0 }
+            let success = await withCheckedContinuation {
+                record("\(operation) installed; previous=\(pendingOperation ?? "none")")
+                pendingOperation = operation
+                pendingResult = $0
+            }
+            record("\(operation) resumed success=\(success)")
             if success {
                 profile = Self.savedProfile
             }
             isLoadingProfile = false
+            record("\(operation) ended")
         }
 
         override func signOut() async throws {
+            let operation = beginOperation("disconnect")
             isDisconnectPending = true
-            _ = await withCheckedContinuation { pendingResult = $0 }
+            _ = await withCheckedContinuation {
+                record("\(operation) installed; previous=\(pendingOperation ?? "none")")
+                pendingOperation = operation
+                pendingResult = $0
+            }
+            record("\(operation) resumed")
             isDisconnectPending = false
+            record("\(operation) ended")
             throw PubkyServiceError.sessionNotActive
         }
 
         func restoreSession() {
+            record("restore action")
             publicKey = Self.savedProfile.publicKey
             authState = .authenticated
         }
 
         func finish(success: Bool) {
+            record("finish action success=\(success); pending=\(pendingOperation ?? "none")")
             let result = pendingResult
             pendingResult = nil
+            pendingOperation = nil
             result?.resume(returning: success)
+            record("finish returned; resumed=\(result != nil)")
+        }
+
+        private func beginOperation(_ name: String) -> String {
+            nextOperation += 1
+            let operation = "\(name)#\(nextOperation)"
+            record("\(operation) entered")
+            return operation
+        }
+
+        private func record(_ event: String) {
+            events.append(event)
+            if events.count > 40 {
+                events.removeFirst()
+            }
         }
     }
 #endif
