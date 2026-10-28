@@ -345,8 +345,8 @@ xcodebuildmcp simulator test
 ```
 
 Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
-evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
-hardware wallet pairing and transfers. Nothing in `.github/workflows` runs them; reviewers drive the
+evaluates by driving a running simulator — number pad caps, widget flows, hardware wallet pairing
+and the Transfer Unavailable sheet. Nothing in `.github/workflows` runs them; reviewers drive the
 ones a PR lists. Read `journeys/README.md` before running or writing one, and see the Journeys
 section under Code Style & Conventions.
 
@@ -443,7 +443,7 @@ While the project is transitioning away from traditional ViewModels, these still
 - `ActivityListViewModel`: Transaction/payment history
 - `TransferViewModel`: Transfer flows (send/receive)
 - `NavigationViewModel`, `SheetViewModel`: UI navigation state
-- `BlocktankViewModel`: Lightning channel ordering via Blocktank
+- `BlocktankViewModel`: Reads existing Blocktank channel orders and CJIT entries
 
 **Key Directories:**
 - `Components/`: Reusable UI components (buttons, sliders, widgets)
@@ -561,7 +561,7 @@ Ensure accessibility modifiers and labels are added to custom components.
   two platforms stay diffable. Change only what the platform forces: `adb` becomes `xcodebuildmcp`,
   and Android `testTag`s become iOS `accessibilityIdentifier`s.
 - MATCH the Android identifier string when adding an `accessibilityIdentifier` for a journey — the
-  vocabulary is deliberately shared (`N9`, `NRemove`, `SpendingAmountContinue`, `HardwareTransferSign`).
+  vocabulary is deliberately shared (`N9`, `NRemove`, `TransferUnavailableContinue`, `HardwareTransferToSpending`).
   Record any name that cannot match in the table in `journeys/README.md`.
 - PAIR a container identifier with `.accessibilityElement(children: .contain)` so it is queryable.
 - ADAPT rather than transcribe when iOS genuinely behaves differently, and say so in the journey's

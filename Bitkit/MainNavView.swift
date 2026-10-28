@@ -80,12 +80,6 @@ struct MainNavView: View {
         NavigationStack(path: $navigation.path) {
             navigationContent
         }
-        .onChange(of: transfer.hwFundingComplete) { _, complete in
-            if complete {
-                transfer.consumeHwFundingComplete()
-                navigation.navigate(.spendingHwSigned)
-            }
-        }
         .onChange(of: pendingProfileSetupResumeState, initial: true) { _, resumeState in
             guard resumeState.shouldResume(didResume: &didResumePendingPubkyProfileSetup) else { return }
             navigation.navigate(.createProfile)
@@ -116,20 +110,20 @@ struct MainNavView: View {
             config in BackupSheet(config: config)
         }
         .sheet(
-            item: $sheets.giftSheetItem,
-            onDismiss: {
-                sheets.hideSheetIfActive(.gift, reason: "Gift sheet dismissed")
-            }
-        ) {
-            config in GiftSheet(config: config)
-        }
-        .sheet(
             item: $sheets.connectionClosedSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.connectionClosed, reason: "Connection closed sheet dismissed")
             }
         ) {
             config in ConnectionClosedSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.transferUnavailableSheetItem,
+            onDismiss: {
+                sheets.hideSheetIfActive(.transferUnavailable, reason: "Transfer unavailable sheet dismissed")
+            }
+        ) {
+            config in TransferUnavailableSheet(config: config)
         }
         .sheet(
             item: $sheets.highBalanceSheetItem,
@@ -389,23 +383,6 @@ struct MainNavView: View {
                     notificationManager.unregister()
                 }
             }
-            .onChange(of: notificationManager.deviceToken) { _, token in
-                // Register with backend if device token changed and notifications are enabled
-                if let token, settings.enableNotifications {
-                    Task {
-                        do {
-                            try await notificationManager.registerWithBackend(deviceToken: token)
-                        } catch {
-                            Logger.error("Failed to sync push notifications with backend: \(error)")
-                            app.toast(
-                                type: .error,
-                                title: t("other__notification_registration_failed_title"),
-                                description: t("other__notification_registration_failed_description")
-                            )
-                        }
-                    }
-                }
-            }
             .onChange(of: settings.enableNotifications) { _, newValue in
                 Task {
                     await paykitPaymentRequestManager.synchronizeSubscriptionNotifications(enabled: newValue)
@@ -414,21 +391,6 @@ struct MainNavView: View {
                 if newValue {
                     // Request permission in case user was not prompted yet
                     notificationManager.requestPermission()
-
-                    if let token = notificationManager.deviceToken {
-                        Task {
-                            do {
-                                try await notificationManager.registerWithBackend(deviceToken: token)
-                            } catch {
-                                Logger.error("Failed to sync push notifications: \(error)")
-                                app.toast(
-                                    type: .error,
-                                    title: t("other__notification_registration_failed_title"),
-                                    description: t("other__notification_registration_failed_description")
-                                )
-                            }
-                        }
-                    }
                 } else {
                     // Disable notifications (unregister)
                     notificationManager.unregister()
@@ -547,19 +509,7 @@ struct MainNavView: View {
                 case .scanner: ScannerScreen()
 
                 // Transfer
-                case .transferIntro: TransferIntroView()
                 case .fundingOptions: FundingOptions()
-                case .spendingIntro: SpendingIntroView()
-                case let .spendingIntroHw(walletId): SpendingIntroView(walletId: walletId)
-                case .spendingAmount: SpendingAmount()
-                case let .spendingAmountHw(walletId): SpendingAmountHw(walletId: walletId)
-                case let .spendingHwSign(walletId): SpendingHwSign(walletId: walletId)
-                case .spendingHwSigned: SpendingHwSigned()
-                case .spendingConfirm: SpendingConfirm()
-                case let .spendingAdvanced(walletId): SpendingAdvancedView(walletId: walletId)
-                case .transferLearnMore: TransferLearnMoreView()
-                case .settingUp: SettingUpView()
-                case .fundingAdvanced: FundAdvancedOptions()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)

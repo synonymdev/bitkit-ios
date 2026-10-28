@@ -65,7 +65,6 @@ jobs:
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GEO: false
           E2E_BACKEND: network
           E2E_NETWORK: regtest
         run: |
