@@ -1,0 +1,42 @@
+name: e2e-retarget
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Ready PR into master to validate"
+        required: true
+      workflow_ref:
+        description: "Workflow definitions to use (master after merge)"
+        default: master
+  pull_request:
+    types: [edited]
+    branches: [master]
+
+jobs:
+  retarget-tests:
+    name: Retarget validation
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.changes.base != null &&
+       github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+      checks: write
+    concurrency:
+      group: retarget-validation-${{ github.event.pull_request.number || inputs.pr }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test retarget reporting
+        run: node --test .github/scripts/retarget-tests.test.cjs
+      - name: Start tests and create pending PR checks
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {dispatchRetargetTests} = require('./.github/scripts/retarget-tests.cjs');
+            await dispatchRetargetTests({github, context, core});

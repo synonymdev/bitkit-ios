@@ -1,4 +1,6 @@
 name: e2e-tests
+run-name: >-
+  ${{ inputs.retarget_run && format('Retarget #{0} [{1}]', inputs.pr, inputs.retarget_run) || github.event.pull_request.title || github.workflow }}
 
 on:
   workflow_dispatch:
@@ -11,9 +13,24 @@ on:
         description: "PR number to test as merged into master"
         required: false
         default: ""
-  # PRs stacked on another branch run no E2E until they target master.
+      merge_commit:
+        description: "Pinned PR merge commit for retarget validation"
+        default: ""
+      head_sha:
+        description: "PR head verified by the retarget dispatcher"
+        default: ""
+      app_branch:
+        description: "PR branch for selecting matching E2E coverage"
+        default: ""
+      check_run_id:
+        description: "PR check owned by this retarget validation"
+        default: ""
+      retarget_run:
+        description: "Retarget status owner (set by e2e-retarget.yml)"
+        default: ""
+  # PRs stacked on another branch run no E2E until they target master; e2e-retarget.yml starts it on retarget
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [master]
 
 env:
@@ -22,21 +39,22 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  # Metadata-only edits must not cancel validation of the PR merge commit.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}-${{ github.event.action == 'edited' && github.event.changes.base == null && format('metadata-{0}', github.run_id) || 'validation' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: true
 
 jobs:
   detect-changes:
-    if: github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base != null)
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ (github.event.action == 'edited' && github.event.changes.base != null) || (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
+      code: ${{ inputs.retarget_run != '' || (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.merge_commit || '' }}
       - uses: dorny/paths-filter@v4
         # a dispatch with a PR number filters the PR branch against master, as a pull_request run does
-        if: github.event_name == 'pull_request' || inputs.pr
+        if: github.event_name == 'pull_request' || (inputs.pr && !inputs.retarget_run)
         id: filter
         with:
           base: master
@@ -51,6 +69,11 @@ jobs:
 
   build-local:
     needs: detect-changes
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      checks: write
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
 
@@ -58,7 +81,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+
+      - name: Report retarget tests running
+        if: inputs.retarget_run != ''
+        uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -137,10 +174,15 @@ jobs:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
     with:
-      app_branch: ${{ github.head_ref || github.ref_name }}
+      app_branch: ${{ inputs.app_branch || github.head_ref || github.ref_name }}
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      checks: write
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: namespace-profile-mac
     needs: [detect-changes, build-local, e2e-branch]
@@ -164,7 +206,22 @@ jobs:
       - name: Checkout stack scripts
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.merge_commit || '' }}
           sparse-checkout: .github/scripts
+
+      - name: Report retarget tests running
+        if: inputs.retarget_run != ''
+        uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
 
       - name: Resolve E2E tests ref
         id: e2e-ref
@@ -291,9 +348,8 @@ jobs:
         run: .github/scripts/namespace-stack.sh down
 
   e2e-status:
-    if: always() && github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base != null)
-    # A skipped metadata edit must not satisfy the required E2E check.
-    name: ${{ github.event.action == 'edited' && github.event.changes.base == null && 'e2e-status (metadata edit ignored)' || 'e2e-status' }}
+    if: always() && github.event.pull_request.draft == false
+    name: e2e-status
     runs-on: ubuntu-latest
     needs: [detect-changes, e2e-tests-local]
     steps:
@@ -309,3 +365,30 @@ jobs:
             exit 1
           fi
           echo "✅ All E2E shards passed!"
+
+  report-retarget-result:
+    name: Report retarget E2E result
+    if: always() && inputs.retarget_run != ''
+    needs: [detect-changes, build-local, e2e-branch, e2e-tests-local, e2e-status]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.merge_commit }}
+      - uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          TEST_RESULTS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
+            const result = Object.values(JSON.parse(process.env.TEST_RESULTS)).every(job => job.result === 'success') ? 'success' : 'failure';
+            await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'complete', result});
