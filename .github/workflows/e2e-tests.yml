@@ -1,4 +1,6 @@
 name: e2e-tests
+run-name: >-
+  ${{ inputs.retarget_run && format('Retarget E2E for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 on:
   workflow_dispatch:
@@ -45,17 +47,23 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ inputs.retarget_run != '' || (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && !inputs.pr) || steps.filter.outputs.code == 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.merge_commit || '' }}
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+          fetch-depth: 2
+      - name: Resolve pinned merge base
+        if: inputs.retarget_run != ''
+        id: merge-base
+        run: echo "sha=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v4
-        # a dispatch with a PR number filters the PR branch against master, as a pull_request run does
-        if: github.event_name == 'pull_request' || (inputs.pr && !inputs.retarget_run)
+        # Retarget filters the exact tested merge against its first parent.
+        if: github.event_name == 'pull_request' || inputs.pr
         id: filter
         with:
-          base: master
+          base: ${{ steps.merge-base.outputs.sha || 'master' }}
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
           filters: |
             code:
               - 'Bitkit/**'
@@ -67,6 +75,8 @@ jobs:
 
   build-local:
     needs: detect-changes
+    # PR code must not publish dependency caches into the dispatch ref's scope.
+    cache-mode: read
     permissions:
       contents: read
       packages: read
@@ -82,6 +92,13 @@ jobs:
         with:
           ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
 
+      - name: Checkout retarget reporter
+        if: inputs.retarget_run != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
       - name: Report retarget tests running
         if: inputs.retarget_run != ''
         uses: actions/github-script@v9
@@ -93,7 +110,7 @@ jobs:
           RETARGET_PR: ${{ inputs.pr }}
         with:
           script: |
-            const {reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
             await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
 
       - name: Set up Xcode
@@ -177,6 +194,7 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
+    cache-mode: read
     permissions:
       contents: read
       packages: read
@@ -209,6 +227,13 @@ jobs:
           ref: ${{ inputs.merge_commit || '' }}
           sparse-checkout: .github/scripts
 
+      - name: Checkout retarget reporter
+        if: inputs.retarget_run != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
       - name: Report retarget tests running
         if: inputs.retarget_run != ''
         uses: actions/github-script@v9
@@ -220,7 +245,7 @@ jobs:
           RETARGET_PR: ${{ inputs.pr }}
         with:
           script: |
-            const {reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
             await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'start'});
 
       - name: Resolve E2E tests ref
@@ -378,7 +403,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.merge_commit }}
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
       - uses: actions/github-script@v9
         env:
           RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
@@ -389,6 +416,6 @@ jobs:
           TEST_RESULTS: ${{ toJSON(needs) }}
         with:
           script: |
-            const {reportRetargetResult} = require('./.github/scripts/retarget-tests.cjs');
-            const result = Object.values(JSON.parse(process.env.TEST_RESULTS)).every(job => job.result === 'success') ? 'success' : 'failure';
+            const {reportRetargetResult, e2eRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            const result = e2eRetargetResult(JSON.parse(process.env.TEST_RESULTS));
             await reportRetargetResult({github, context, core, name: 'e2e-status', phase: 'complete', result});

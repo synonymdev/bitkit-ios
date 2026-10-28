@@ -9,6 +9,11 @@ on:
       workflow_ref:
         description: "Workflow definitions to use (master after merge)"
         default: master
+      suite:
+        description: "Suite to recover (automatic retarget validates both)"
+        type: choice
+        options: [all, e2e, integration]
+        default: all
   pull_request:
     types: [edited]
     branches: [master]

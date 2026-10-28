@@ -1,26 +1,41 @@
 const CHECKS = [
-  {workflow: 'e2e-tests.yml', context: 'e2e-status'},
-  {workflow: 'integration-tests.yml', context: 'Run Integration Tests'},
+  {suite: 'e2e', workflow: 'e2e-tests.yml', context: 'e2e-status'},
+  {suite: 'integration', workflow: 'integration-tests.yml', context: 'Run Integration Tests'},
 ];
 const runUrl = context => `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 const externalId = (generation, name) => `retarget:${generation}:${name}`;
 
-async function dispatchRetargetTests({github, context, core, sleep = ms => new Promise(resolve => setTimeout(resolve, ms))}) {
+function e2eRetargetResult(jobs) {
+  if (jobs['detect-changes'].result !== 'success' || jobs['e2e-status'].result !== 'success') return 'failure';
+  if (jobs['detect-changes'].outputs.code === 'false') return 'not_required';
+  return Object.values(jobs).every(job => job.result === 'success') ? 'success' : 'failure';
+}
+
+async function dispatchRetargetTests({github, context, core, attempt = process.env.GITHUB_RUN_ATTEMPT || '1', sleep = ms => new Promise(resolve => setTimeout(resolve, ms))}) {
   const event = context.payload;
   const manual = context.eventName === 'workflow_dispatch';
+  const suite = manual && event.inputs?.suite || 'all';
+  if (!['all', ...CHECKS.map(check => check.suite)].includes(suite)) throw new Error('Unknown retarget test suite');
+  const selected = CHECKS.filter(check => suite === 'all' || check.suite === suite);
   let original = event.pull_request;
   if (manual) {
     if (!/^\d+$/.test(event.inputs?.pr || '')) throw new Error('A PR number is required');
     ({data: original} = await github.rest.pulls.get({...context.repo, pull_number: Number(event.inputs.pr)}));
   }
-  if ((!manual && !event.changes?.base) || original?.draft || original?.base.ref !== 'master' || original?.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) return;
-  const generation = `${context.runId}-${process.env.GITHUB_RUN_ATTEMPT || '1'}`;
+  if ((!manual && !event.changes?.base) || original?.draft || original?.base.ref !== 'master' || original?.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+    if (manual) core.setFailed('Manual recovery requires a ready, same-repository PR targeting master');
+    return;
+  }
+  const generation = `${context.runId}-${attempt}`;
   const {data: current} = await github.rest.pulls.get({...context.repo, pull_number: original.number});
-  if (current.state !== 'open' || current.head.sha !== original.head.sha || current.base.ref !== 'master' || current.draft) return;
+  if (current.state !== 'open' || current.head.sha !== original.head.sha || current.base.ref !== 'master' || current.draft) {
+    if (manual) core.setFailed('Manual recovery PR is closed, changed revision, draft, or no longer targets master');
+    return;
+  }
   const sha = current.head.sha;
   const checks = new Map();
   try {
-    for (const check of CHECKS) {
+    for (const check of selected) {
       const {data} = await github.rest.checks.create({
         ...context.repo, name: check.context, head_sha: sha,
         external_id: externalId(generation, check.context), status: 'queued', details_url: runUrl(context),
@@ -35,15 +50,21 @@ async function dispatchRetargetTests({github, context, core, sleep = ms => new P
       if (pr.mergeable === false) throw new Error('PR has merge conflicts');
       if (pr.merge_commit_sha) {
         const {data: commit} = await github.rest.git.getCommit({...context.repo, commit_sha: pr.merge_commit_sha});
-        if (commit.parents.length === 2 && commit.parents[0].sha === pr.base.sha && commit.parents[1].sha === sha) {
-          merge = pr.merge_commit_sha;
-          break;
+        if (commit.parents.length === 2 && commit.parents[1].sha === sha) {
+          // PR base.sha can lag both its merge candidate and the current master tip.
+          const {data: comparison} = await github.rest.repos.compareCommits({
+            ...context.repo, base: commit.parents[0].sha, head: 'master',
+          });
+          if (['identical', 'ahead'].includes(comparison.status)) {
+            merge = pr.merge_commit_sha;
+            break;
+          }
         }
       }
       await sleep(2000);
     }
     if (!merge) throw new Error('No verified PR merge commit is available');
-    for (const check of CHECKS) {
+    for (const check of selected) {
       try {
         await github.rest.actions.createWorkflowDispatch({
           ...context.repo, workflow_id: check.workflow, ref: manual && event.inputs.workflow_ref || 'master',
@@ -89,20 +110,21 @@ async function reportRetargetResult({github, context, core, name, phase, result,
       const workflowRef = context.ref?.replace(/^refs\/heads\//, '') || 'master';
       await github.rest.actions.createWorkflowDispatch({
         ...context.repo, workflow_id: 'e2e-retarget.yml', ref: workflowRef,
-        inputs: {pr: number, workflow_ref: workflowRef},
+        inputs: {pr: number, workflow_ref: workflowRef, suite: CHECKS.find(check => check.context === name).suite},
       });
       core.setFailed('Started a fresh retarget validation; completed checks cannot be reopened.');
     }
     return;
   }
   const start = phase === 'start';
-  const success = result === 'success';
+  const notRequired = name === 'e2e-status' && result === 'not_required';
+  const success = result === 'success' || notRequired;
   await github.rest.checks.update({
     ...context.repo, check_run_id: Number(id), details_url: runUrl(context),
     status: start ? 'in_progress' : 'completed',
     ...(start ? {} : {conclusion: success ? 'success' : 'failure'}),
-    output: {title: start ? 'Tests are running' : success ? 'Tests passed' : 'Tests failed or did not complete', summary: `[Open the test run](${runUrl(context)}).\n\nPR #${number}, head ${sha}, merge ${merge}.`},
+    output: {title: start ? 'Tests are running' : notRequired ? 'No E2E code changes' : success ? 'Tests passed' : 'Tests failed or did not complete', summary: `[Open the test run](${runUrl(context)}).\n\nPR #${number}, head ${sha}, merge ${merge}.`},
   });
 }
 
-module.exports = {dispatchRetargetTests, reportRetargetResult};
+module.exports = {dispatchRetargetTests, reportRetargetResult, e2eRetargetResult};

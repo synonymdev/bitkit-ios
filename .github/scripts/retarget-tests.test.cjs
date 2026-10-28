@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {dispatchRetargetTests, reportRetargetResult} = require('./retarget-tests.cjs');
+const {dispatchRetargetTests, reportRetargetResult, e2eRetargetResult} = require('./retarget-tests.cjs');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -19,10 +19,13 @@ function fixture() {
   const rest = {
     pulls: {get: async () => ({data: pr})},
     git: {getCommit: async () => ({data: commits})},
+    repos: {compareCommits: async ({base, head}) => {
+      assert.equal(head, 'master');
+      return {data: {status: base === BASE ? 'identical' : 'diverged'}};
+    }},
     checks: {
       create: async value => {const check = {id: checks.size + 1, ...value}; checks.set(check.id, check); return {data: check};},
       get: async value => ({data: checks.get(value.check_run_id)}),
-      listForRef: Symbol('check runs'),
       update: async value => {
         const check = checks.get(value.check_run_id);
         if (check.status === 'completed' && value.status !== 'completed') throw new Error('Completed check cannot reopen');
@@ -31,9 +34,9 @@ function fixture() {
     },
     actions: {createWorkflowDispatch: async value => {dispatches.push(value);}},
   };
-  const github = {rest, paginate: async () => [...checks.values()]};
+  const github = {rest};
   const core = {setFailed: value => failures.push(value), info: () => {}};
-  return {pr, context, checks, dispatches, failures, commits, github, core, sleep: async () => {}};
+  return {pr, context, checks, dispatches, failures, commits, github, core, attempt: '1', sleep: async () => {}};
 }
 const start = async f => {await dispatchRetargetTests(f); return f;};
 
@@ -55,6 +58,36 @@ test('manual recovery can validate a PR with workflow definitions from a specifi
   f.context.payload = {inputs: {pr: '7', workflow_ref: 'ci/fix'}};
   await start(f);
   assert.deepEqual(f.dispatches.map(d => d.ref), ['ci/fix', 'ci/fix']);
+});
+
+test('a later helper attempt owns distinct checks that its reporter can complete', async () => {
+  const f = fixture(); f.attempt = '2'; await start(f);
+  assert.deepEqual(f.dispatches.map(d => d.inputs.retarget_run), ['200-2', '200-2']);
+  assert.equal(f.checks.get(1).external_id, 'retarget:200-2:e2e-status');
+  await report(f, {inputs: inputs(1, '200-2')});
+  assert.equal(f.checks.get(1).conclusion, 'success');
+  await assert.rejects(report(f, {inputs: inputs(1, '200-1')}), /does not belong/);
+});
+
+for (const status of ['identical', 'ahead']) test(`stale PR base metadata permits a merge based on master history (${status})`, async () => {
+  const f = fixture();
+  f.pr.base.sha = 'd'.repeat(40);
+  f.github.rest.repos.compareCommits = async ({base, head}) => {
+    assert.equal(base, BASE); assert.equal(head, 'master');
+    return {data: {status}};
+  };
+  await start(f);
+  assert.equal(f.dispatches.length, 2);
+  assert.ok(f.dispatches.every(d => d.inputs.merge_commit === MERGE));
+  assert.deepEqual(f.failures, []);
+});
+
+for (const status of ['behind', 'diverged']) test(`a merge base outside current master history (${status}) is rejected`, async () => {
+  const f = fixture();
+  f.github.rest.repos.compareCommits = async () => ({data: {status}});
+  await start(f);
+  assert.equal(f.dispatches.length, 0);
+  assert.deepEqual([...f.checks.values()].map(c => c.conclusion), ['failure', 'failure']);
 });
 
 for (const [name, mutate] of [
@@ -114,7 +147,7 @@ test('rerunning a completed suite requests fresh validation instead of reopening
   assert.equal(f.checks.get(1).conclusion, 'failure');
   assert.equal(f.checks.size, 2);
   assert.equal(f.dispatches[2].workflow_id, 'e2e-retarget.yml');
-  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: 'master'});
+  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: 'master', suite: 'e2e'});
   assert.equal(f.failures.length, 1);
   await report(f);
   assert.equal(f.checks.get(1).conclusion, 'failure');
@@ -158,4 +191,68 @@ test('reporter cannot update the check owned by another generation or suite', as
 
 test('normal runs produce no retarget checks', async () => {
   const f = fixture(); await report(f, {inputs: {}}); assert.equal(f.checks.size, 0);
+});
+
+for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', INTEGRATION, 2, 1]]) {
+  test(`recovering ${suite} preserves the other suite's completed check`, async () => {
+    const f = await start(fixture());
+    await report(f, {name: otherId === 1 ? E2E : INTEGRATION, inputs: inputs(otherId)});
+    await report(f, {name, inputs: inputs(id), result: 'failure'});
+    await report(f, {name, inputs: inputs(id), phase: 'start'});
+    assert.equal(f.dispatches[2].inputs.suite, suite);
+    f.context.eventName = 'workflow_dispatch'; f.context.runId = 201;
+    f.context.payload = {inputs: {pr: '7', suite}};
+    await start(f);
+    assert.equal(f.checks.size, 3);
+    assert.equal(f.checks.get(3).name, name);
+    assert.equal(f.checks.get(otherId).conclusion, 'success');
+    assert.equal(f.dispatches.length, 4);
+    assert.equal(f.dispatches[3].workflow_id, suite === 'e2e' ? 'e2e-tests.yml' : 'integration-tests.yml');
+  });
+}
+
+for (const [reason, mutate] of [
+  ['draft', f => {f.pr.draft = true;}],
+  ['fork', f => {f.pr.head.repo.full_name = 'fork/repo';}],
+  ['other base', f => {f.pr.base.ref = 'parent';}],
+  ['closed', f => {f.pr.state = 'closed';}],
+  ['changed head', f => {
+    const original = structuredClone(f.pr); let reads = 0;
+    f.pr.head.sha = 'd'.repeat(40);
+    f.github.rest.pulls.get = async () => ({data: reads++ === 0 ? original : f.pr});
+  }],
+]) test(`manual recovery explains an ineligible PR (${reason})`, async () => {
+  const f = fixture(); f.context.eventName = 'workflow_dispatch';
+  f.context.payload = {inputs: {pr: '7'}}; mutate(f); await start(f);
+  assert.equal(f.dispatches.length, 0); assert.equal(f.checks.size, 0);
+  assert.match(f.failures[0], /Manual recovery/);
+});
+
+test('unknown manual suites fail before creating checks', async () => {
+  const f = fixture(); f.context.eventName = 'workflow_dispatch';
+  f.context.payload = {inputs: {pr: '7', suite: 'typo'}};
+  await assert.rejects(start(f), /Unknown retarget test suite/);
+  assert.equal(f.checks.size, 0);
+});
+
+test('docs-only retargets report not required, while filter errors and failed code runs fail closed', () => {
+  const jobs = {'detect-changes': {result: 'success', outputs: {code: 'false'}}, 'e2e-status': {result: 'success'}, 'build-local': {result: 'skipped'}};
+  assert.equal(e2eRetargetResult(jobs), 'not_required');
+  jobs['detect-changes'].result = 'failure';
+  assert.equal(e2eRetargetResult(jobs), 'failure');
+  jobs['detect-changes'].result = 'success'; jobs['detect-changes'].outputs.code = 'true';
+  assert.equal(e2eRetargetResult(jobs), 'failure');
+  jobs['build-local'].result = 'success';
+  assert.equal(e2eRetargetResult(jobs), 'success');
+  jobs['e2e-status'].result = 'failure'; jobs['detect-changes'].outputs.code = 'false';
+  assert.equal(e2eRetargetResult(jobs), 'failure');
+});
+
+test('only E2E can report not required, with an explicit check explanation', async () => {
+  const f = await start(fixture());
+  await report(f, {result: 'not_required'});
+  assert.equal(f.checks.get(1).conclusion, 'success');
+  assert.equal(f.checks.get(1).output.title, 'No E2E code changes');
+  await report(f, {name: INTEGRATION, inputs: inputs(2), result: 'not_required'});
+  assert.equal(f.checks.get(2).conclusion, 'failure');
 });
