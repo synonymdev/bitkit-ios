@@ -91,10 +91,15 @@ struct SendFundingSourceButton: View {
             showingFundingSources = true
         }
         .accessibilityIdentifier("AssetButton-\(assetButtonTestIdentifier)")
-        .popover(isPresented: $showingFundingSources, arrowEdge: .bottom) {
-            fundingSourceMenu
-                .presentationCompactAdaptation(.popover)
-                .presentationBackground(Color.gray6)
+        .popover(isPresented: $showingFundingSources) {
+            ViewThatFits(in: .vertical) {
+                fundingSourceMenu.fixedSize(horizontal: false, vertical: true)
+                ScrollView {
+                    fundingSourceMenu
+                }
+            }
+            .presentationCompactAdaptation(.popover)
+            .presentationBackground(Color.gray6)
         }
     }
 
