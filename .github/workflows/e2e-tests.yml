@@ -53,17 +53,19 @@ jobs:
         with:
           ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
           fetch-depth: 2
-      - name: Resolve pinned merge base
-        if: inputs.retarget_run != ''
+      - name: Resolve tested PR merge commits
+        if: inputs.pr != ''
         id: merge-base
-        run: echo "sha=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "base=$(git rev-parse HEAD^1)" >> "$GITHUB_OUTPUT"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v4
         # Retarget filters the exact tested merge against its first parent.
         if: github.event_name == 'pull_request' || inputs.pr
         id: filter
         with:
-          base: ${{ steps.merge-base.outputs.sha || 'master' }}
-          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+          base: ${{ steps.merge-base.outputs.base || 'master' }}
+          ref: ${{ steps.merge-base.outputs.head || '' }}
           filters: |
             code:
               - 'Bitkit/**'
@@ -378,6 +380,12 @@ jobs:
     runs-on: ubuntu-latest
     needs: [detect-changes, e2e-tests-local]
     steps:
+      - name: Verify change detection succeeded
+        if: needs.detect-changes.result != 'success'
+        run: |
+          echo "Change detection failed or did not complete."
+          exit 1
+
       - name: E2E skipped - no code changes
         if: needs.detect-changes.outputs.code != 'true'
         run: echo "✅ E2E skipped - no code changes"
