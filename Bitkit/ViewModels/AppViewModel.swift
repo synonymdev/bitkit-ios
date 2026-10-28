@@ -204,8 +204,6 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
-    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
-    @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
@@ -413,7 +411,6 @@ class AppViewModel: ObservableObject {
         setupManualEntryValidationDebounce()
 
         Task {
-            await checkGeoStatus()
             // Check for app updates on startup
             await AppUpdateService.shared.checkForAppUpdate()
         }
@@ -552,18 +549,12 @@ class AppViewModel: ObservableObject {
 
     deinit {}
 
-    func checkGeoStatus() async {
-        // Delegate to GeoService singleton for centralized geo-blocking management
-        await GeoService.shared.checkGeoStatus()
-    }
-
     func wipe() async throws {
         hasSeenContactsIntro = false
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
         hasSeenShopIntro = false
-        hasSeenTransferToSpendingIntro = false
         hasSeenTransferToSavingsIntro = false
         hasSeenWidgetsIntro = false
         hasDismissedWidgetsOnboardingHint = false
@@ -1124,8 +1115,13 @@ extension AppViewModel {
                 return
             }
             await handlePubkyAuthApproval(sourceURI)
-        case let .gift(code, amount):
-            sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
+        case .gift:
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")

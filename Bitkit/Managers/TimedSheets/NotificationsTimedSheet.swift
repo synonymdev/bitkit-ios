@@ -9,28 +9,30 @@ struct NotificationsTimedSheet: TimedSheetItem {
 
     private let appViewModel: AppViewModel
     private let settingsViewModel: SettingsViewModel
-    private let walletViewModel: WalletViewModel
+    private let hasActiveSubscription: @MainActor () -> Bool
 
     init(
         appViewModel: AppViewModel,
         settingsViewModel: SettingsViewModel,
-        walletViewModel: WalletViewModel
+        hasActiveSubscription: @escaping @MainActor () -> Bool
     ) {
         self.appViewModel = appViewModel
         self.settingsViewModel = settingsViewModel
-        self.walletViewModel = walletViewModel
+        self.hasActiveSubscription = hasActiveSubscription
     }
 
     @MainActor
     func shouldShow() async -> Bool {
-        // Check if user has enabled notifications
-        let notificationsEnabled = settingsViewModel.enableNotifications
-        // Check if user hasn't seen this prompt
-        let hasSeenNotificationsIntro = appViewModel.hasSeenNotificationsIntro
-        // Check if user has spending balance
-        let hasSpendingBalance = walletViewModel.totalLightningSats > 0
+        Self.shouldShow(
+            notificationsEnabled: settingsViewModel.enableNotifications,
+            hasSeenIntro: appViewModel.hasSeenNotificationsIntro,
+            hasActiveSubscription: hasActiveSubscription()
+        )
+    }
 
-        return !notificationsEnabled && !hasSeenNotificationsIntro && hasSpendingBalance
+    /// Paykit subscription reminders are the notifications Bitkit posts, so the prompt waits for a subscription.
+    static func shouldShow(notificationsEnabled: Bool, hasSeenIntro: Bool, hasActiveSubscription: Bool) -> Bool {
+        !notificationsEnabled && !hasSeenIntro && hasActiveSubscription
     }
 
     func onShown() {

@@ -678,6 +678,7 @@ struct AllowanceReviewView: View {
         do {
             if accept {
                 try await allowances.accept(entry)
+                PushNotificationManager.shared.requestPermissionIfUndecided()
             } else {
                 try await allowances.reject(entry)
             }
