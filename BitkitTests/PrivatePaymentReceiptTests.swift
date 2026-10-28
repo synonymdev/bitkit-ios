@@ -23,6 +23,68 @@ final class PrivatePaymentReceiptTests: XCTestCase {
         try await super.tearDown()
     }
 
+    func testReceiptsCannotStartDuringReservedPersistedOrUnreadableWipe() async throws {
+        for state in ["reserved", "persisted", "unreadable"] {
+            let marker = database.appendingPathComponent("pending-\(state).json")
+            let store = ProfileRemovalStore(url: marker)
+            let admission = ProfileOperationAdmission(store: store)
+            let scope = try admission.reserve(kind: .walletWipe, id: UUID())
+            defer { admission.release(scope) }
+            if state != "reserved" {
+                try admission.persist(scope)
+                admission.release(scope)
+            }
+            if state == "unreadable" {
+                try Data("unreadable".utf8).write(to: marker)
+            }
+            let activity = Bitkit.ActivityService(coreService: .shared, channelLookup: { _, _, _ in nil })
+            activity.setPrivatePaykitContactResolvers(invoice: { _ in
+                XCTFail("Rejected receipt reached invoice lookup")
+                return nil
+            }, onchainAddresses: { _, _ in
+                XCTFail("Rejected receipt reached address lookup")
+                return nil
+            }, receiptOperation: { try await admission.withReceiptAttribution($0) })
+            let hash = String(repeating: "a", count: 64)
+            let payments = [
+                invoicePayment(hash: hash),
+                LDKNode.PaymentDetails(id: hash, kind: .onchain(txid: hash, status: .unconfirmed), amountMsat: 5_000_000,
+                                       feePaidMsat: 0, direction: .inbound, status: .succeeded,
+                                       latestUpdateTimestamp: UInt64(Date().timeIntervalSince1970)),
+            ]
+            for payment in payments {
+                do {
+                    try await activity.syncLdkNodePayments([payment])
+                    XCTFail("Receipt started while wallet admission was closed: \(state)")
+                } catch {
+                    let underlying = (error as? Bitkit.AppError)?.underlyingError ?? error
+                    XCTAssertTrue(underlying is ProfileRemovalStore.StoreError, "Unexpected error: \(error)")
+                }
+            }
+            let details = LDKNode.TransactionDetails(amountSats: 5000, inputs: [], outputs: [])
+            for confirmed in [false, true] {
+                do {
+                    if confirmed {
+                        try await activity.handleOnchainTransactionConfirmed(txid: hash, details: details)
+                    } else {
+                        try await activity.handleOnchainTransactionReceived(txid: hash, details: details)
+                    }
+                    XCTFail("Rejected onchain event entered its storage path")
+                } catch is ProfileRemovalStore.StoreError {}
+            }
+            let storedDetails = try await Bitkit.ServiceQueue.background(.core) {
+                try BitkitCore.getTransactionDetails(walletId: WalletScope.default, txId: hash)
+            }
+            XCTAssertNil(storedDetails)
+            if state == "reserved" {
+                try await admission.drain(before: scope)
+                try admission.persist(scope)
+            }
+            let rows = try await activity.get(walletId: WalletScope.default)
+            XCTAssertTrue(rows.isEmpty)
+        }
+    }
+
     func testPrivateInvoiceReceiptsDuringRemovalRetainTheirContact() async throws {
         let directory = database.appendingPathComponent("profile-removal")
         let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: directory.appendingPathComponent("pending.json")))

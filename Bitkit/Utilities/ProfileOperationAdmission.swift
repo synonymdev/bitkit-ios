@@ -27,7 +27,7 @@ final class ProfileOperationAdmission: @unchecked Sendable {
         fileprivate let stored: UUID
     }
 
-    private struct ReceiptScope: Sendable {
+    private struct WalletOperationScope: Sendable {
         let admission: ProfileOperationAdmission
         let id: UUID
         let generation: UUID
@@ -50,7 +50,7 @@ final class ProfileOperationAdmission: @unchecked Sendable {
     static let shared = ProfileOperationAdmission(store: .shared)
     static let didReleaseOperation = Notification.Name("ProfileOperationAdmissionDidReleaseOperation")
     @TaskLocal static var current: Scope?
-    @TaskLocal private static var currentReceipt: ReceiptScope?
+    @TaskLocal private static var currentWalletOperation: WalletOperationScope?
 
     private let lock = NSLock()
     private let store: ProfileRemovalStore
@@ -59,8 +59,8 @@ final class ProfileOperationAdmission: @unchecked Sendable {
     private var exclusive: UUID?
     private var localFailureID: UUID?
     private var drainWaiters: [(UUID, CheckedContinuation<Void, Never>)] = []
-    private var receiptGeneration = UUID()
-    private var receipts: [UUID: Bool] = [:]
+    private var walletGeneration = UUID()
+    private var walletOperations: [UUID: Bool] = [:]
 
     init(store: ProfileRemovalStore) {
         self.store = store
@@ -68,24 +68,34 @@ final class ProfileOperationAdmission: @unchecked Sendable {
 
     /// Receipt associations belong to the wallet history, not the live profile. Wipe drains their database writes.
     func withReceiptAttribution(_ operation: (@escaping @Sendable () -> Bool) async throws -> Void) async throws {
-        try Task.checkCancellation()
-        let receipt = try? captureReceipt()
-        guard let receipt else {
-            return try await Self.$currentReceipt.withValue(nil) { try await operation { false } }
+        try await withWalletOperation(operation)
+    }
+
+    func withWalletRestore<T>(_ operation: () async throws -> T) async throws -> T {
+        try await withWalletOperation { isCurrent in
+            let result = try await operation()
+            try Task.checkCancellation()
+            guard isCurrent() else { throw ProfileRemovalStore.StoreError.changed }
+            return result
         }
+    }
+
+    private func withWalletOperation<T>(_ operation: (@escaping @Sendable () -> Bool) async throws -> T) async throws -> T {
+        try Task.checkCancellation()
+        let receipt = try captureWalletOperation()
         defer {
-            _ = lock.withLock { receipts.removeValue(forKey: receipt.id) }
+            _ = lock.withLock { walletOperations.removeValue(forKey: receipt.id) }
             resumeDrains()
         }
-        try await withTaskCancellationHandler {
-            try await Self.$currentReceipt.withValue(receipt) {
+        return try await withTaskCancellationHandler {
+            try await Self.$currentWalletOperation.withValue(receipt) {
                 try Task.checkCancellation()
-                try await operation { (try? self.validateReceipt(receipt)) != nil }
+                return try await operation { (try? self.validateWalletOperation(receipt)) != nil }
             }
         } onCancel: {
             self.lock.withLock {
-                if self.receipts[receipt.id] != nil {
-                    self.receipts[receipt.id] = false
+                if self.walletOperations[receipt.id] != nil {
+                    self.walletOperations[receipt.id] = false
                 }
             }
         }
@@ -93,26 +103,26 @@ final class ProfileOperationAdmission: @unchecked Sendable {
 
     func checkReceiptAttribution() throws {
         try Task.checkCancellation()
-        guard let receipt = Self.currentReceipt, receipt.admission === self else { throw ProfileRemovalStore.StoreError.changed }
-        try validateReceipt(receipt)
+        guard let receipt = Self.currentWalletOperation, receipt.admission === self else { throw ProfileRemovalStore.StoreError.changed }
+        try validateWalletOperation(receipt)
     }
 
-    private func captureReceipt() throws -> ReceiptScope {
-        let expected = lock.withLock { receiptGeneration }
+    private func captureWalletOperation() throws -> WalletOperationScope {
+        let expected = lock.withLock { walletGeneration }
         guard try store.pending()?.scope != .walletWipe else { throw ProfileRemovalStore.StoreError.pending }
         return try lock.withLock {
-            guard localFailureID == nil, receiptGeneration == expected,
+            guard localFailureID == nil, walletGeneration == expected,
                   exclusive.flatMap({ entries[$0]?.kind }) != .walletWipe else { throw ProfileRemovalStore.StoreError.changed }
-            let receipt = ReceiptScope(admission: self, id: UUID(), generation: expected)
-            receipts[receipt.id] = true
+            let receipt = WalletOperationScope(admission: self, id: UUID(), generation: expected)
+            walletOperations[receipt.id] = true
             return receipt
         }
     }
 
-    private func validateReceipt(_ receipt: ReceiptScope) throws {
+    private func validateWalletOperation(_ receipt: WalletOperationScope) throws {
         guard try store.pending()?.scope != .walletWipe else { throw ProfileRemovalStore.StoreError.pending }
         try lock.withLock {
-            guard receipt.admission === self, receipts[receipt.id] == true, receipt.generation == receiptGeneration,
+            guard receipt.admission === self, walletOperations[receipt.id] == true, receipt.generation == walletGeneration,
                   localFailureID == nil, exclusive.flatMap({ entries[$0]?.kind }) != .walletWipe
             else { throw ProfileRemovalStore.StoreError.changed }
         }
@@ -555,7 +565,7 @@ final class ProfileOperationAdmission: @unchecked Sendable {
                 throw ProfileRemovalStore.StoreError.changed
             }
             if kind == .walletWipe {
-                receiptGeneration = UUID()
+                walletGeneration = UUID()
             }
             for key in entries.keys {
                 entries[key]?.revoked = true
@@ -754,6 +764,6 @@ final class ProfileOperationAdmission: @unchecked Sendable {
     }
 
     private func hasOutstandingWork(before id: UUID) -> Bool {
-        entries.keys.contains(where: { $0 != id }) || (entries[id]?.kind == .walletWipe && !receipts.isEmpty)
+        entries.keys.contains(where: { $0 != id }) || (entries[id]?.kind == .walletWipe && !walletOperations.isEmpty)
     }
 }

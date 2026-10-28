@@ -119,7 +119,7 @@ class BackupService {
     }
 
     private let vssBackupClient = VssBackupClient.shared
-    private let walletRestoreGate = WalletBackupRestoreGate.keychain
+    private let walletRestoreGate: WalletBackupRestoreGate
     private let walletBackupWriter = WalletBackupWriter()
     private let usdtBackupWriter = WalletBackupWriter()
     private let usdtRecoveryBackup: UsdtRecoveryBackupStore
@@ -169,6 +169,7 @@ class BackupService {
     init(
         defaults: UserDefaults = .standard,
         profileAdmission: ProfileOperationAdmission = .shared,
+        walletRestoreGate: WalletBackupRestoreGate = .keychain,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
         usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
         uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
@@ -186,6 +187,7 @@ class BackupService {
     ) {
         self.defaults = defaults
         self.profileAdmission = profileAdmission
+        self.walletRestoreGate = walletRestoreGate
         self.backupData = backupData
         self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
@@ -561,6 +563,12 @@ class BackupService {
 
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async throws {
+        try await profileAdmission.withWalletRestore {
+            try await restoreLatestBackup()
+        }
+    }
+
+    private func restoreLatestBackup() async throws {
         if UsdtRecoveryRestoreGate.isPending, try !walletRestoreGate.hasPendingRestore() {
             try await restoreUsdtRecoveryAfterLegacyMigration()
             return
@@ -605,6 +613,12 @@ class BackupService {
     }
 
     func restoreUsdtRecoveryAfterLegacyMigration() async throws {
+        try await profileAdmission.withWalletRestore {
+            try await restoreMigratedUsdtRecovery()
+        }
+    }
+
+    private func restoreMigratedUsdtRecovery() async throws {
         let retained = try UsdtRecoveryRestoreGate.begin()
         await usdtWallet?.pauseForRecoveryRestore()
         await usdtBackupWriter.waitUntilIdle()

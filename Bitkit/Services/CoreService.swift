@@ -116,6 +116,14 @@ class ActivityService {
         self.receiptOperation = receiptOperation
     }
 
+    func withPaymentSync(_ operation: @escaping @Sendable () async throws -> Void) async throws {
+        if let receiptOperation {
+            try await receiptOperation { _ in try await operation() }
+        } else {
+            try await operation()
+        }
+    }
+
     private func withReceiptContacts(for payment: PaymentDetails, _ operation: @escaping ReceiptOperationBody) async throws {
         if payment.direction == .inbound, let receiptOperation {
             try await receiptOperation(operation)
@@ -825,110 +833,116 @@ class ActivityService {
     }
 
     func handleOnchainTransactionReceived(txid: String, details: LDKNode.TransactionDetails) async throws {
-        let coreDetails = mapToCoreTransactionDetails(txid: txid, details)
+        try await withPaymentSync { [self] in
+            let coreDetails = mapToCoreTransactionDetails(txid: txid, details)
 
-        try await ServiceQueue.background(.core) {
-            try BitkitCore.upsertTransactionDetails(detailsList: [coreDetails])
-            try await self.processOnchainTransaction(txid: txid, details: coreDetails, context: "CoreService.handleOnchainTransactionReceived")
+            try await ServiceQueue.background(.core) {
+                try BitkitCore.upsertTransactionDetails(detailsList: [coreDetails])
+                try await self.processOnchainTransaction(txid: txid, details: coreDetails, context: "CoreService.handleOnchainTransactionReceived")
+            }
         }
     }
 
     func handleOnchainTransactionConfirmed(txid: String, details: LDKNode.TransactionDetails) async throws {
-        let coreDetails = mapToCoreTransactionDetails(txid: txid, details)
+        try await withPaymentSync { [self] in
+            let coreDetails = mapToCoreTransactionDetails(txid: txid, details)
 
-        try await ServiceQueue.background(.core) {
-            try BitkitCore.upsertTransactionDetails(detailsList: [coreDetails])
-            try await self.processOnchainTransaction(txid: txid, details: coreDetails, context: "CoreService.handleOnchainTransactionConfirmed")
+            try await ServiceQueue.background(.core) {
+                try BitkitCore.upsertTransactionDetails(detailsList: [coreDetails])
+                try await self.processOnchainTransaction(txid: txid, details: coreDetails, context: "CoreService.handleOnchainTransactionConfirmed")
+            }
         }
     }
 
     func handleOnchainTransactionReplaced(txid: String, conflicts: [String]) async throws {
-        try await ServiceQueue.background(.core) {
-            // Find the activity for the replaced transaction
-            let replacedActivity = try await self.getOnchainActivityByTxId(txid: txid)
+        try await withPaymentSync { [self] in
+            try await ServiceQueue.background(.core) {
+                // Find the activity for the replaced transaction
+                let replacedActivity = try await self.getOnchainActivityByTxId(txid: txid)
 
-            if var existing = replacedActivity {
-                Logger.info(
-                    "Transaction \(txid) replaced by \(conflicts.count) conflict(s): \(conflicts.joined(separator: ", "))",
-                    context: "CoreService.handleOnchainTransactionReplaced"
-                )
-
-                // Mark the replaced transaction as not existing
-                existing.doesExist = false
-                existing.isBoosted = false
-                existing.updatedAt = UInt64(Date().timeIntervalSince1970)
-                try await self.update(id: existing.id, activity: .onchain(existing))
-                Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
-            } else {
-                Logger.info(
-                    "Activity not found for replaced transaction \(txid) - will be created when transaction is processed",
-                    context: "CoreService.handleOnchainTransactionReplaced"
-                )
-            }
-
-            // For each replacement transaction, update its boostTxIds to include the replaced txid
-            for conflictTxid in conflicts {
-                // Try to get the replacement activity, or process it if it doesn't exist
-                var replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
-
-                if replacementActivity == nil,
-                   let payments = await LightningService.shared.listPayments(),
-                   let replacementPayment = payments.first(where: { payment in
-                       if case let .onchain(paymentTxid, _) = payment.kind {
-                           return paymentTxid == conflictTxid
-                       }
-                       return false
-                   })
-                {
+                if var existing = replacedActivity {
                     Logger.info(
-                        "Processing replacement transaction \(conflictTxid) that was already in payments list",
+                        "Transaction \(txid) replaced by \(conflicts.count) conflict(s): \(conflicts.joined(separator: ", "))",
                         context: "CoreService.handleOnchainTransactionReplaced"
                     )
-                    do {
-                        try await self.processOnchainPayment(replacementPayment, transactionDetails: nil)
-                        replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
-                    } catch {
-                        Logger.error(
-                            "Failed to process replacement transaction \(conflictTxid): \(error)",
-                            context: "CoreService.handleOnchainTransactionReplaced"
-                        )
-                        continue
-                    }
+
+                    // Mark the replaced transaction as not existing
+                    existing.doesExist = false
+                    existing.isBoosted = false
+                    existing.updatedAt = UInt64(Date().timeIntervalSince1970)
+                    try await self.update(id: existing.id, activity: .onchain(existing))
+                    Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
+                } else {
+                    Logger.info(
+                        "Activity not found for replaced transaction \(txid) - will be created when transaction is processed",
+                        context: "CoreService.handleOnchainTransactionReplaced"
+                    )
                 }
 
-                // Update the replacement transaction's boostTxIds to include the replaced txid
-                if var activity = replacementActivity,
-                   !activity.boostTxIds.contains(txid)
-                {
-                    activity.boostTxIds.append(txid)
-                    activity.isBoosted = true
-                    activity.contact = activity.contact ?? replacedActivity?.contact
-                    activity.updatedAt = UInt64(Date().timeIntervalSince1970)
-                    try await self.update(id: activity.id, activity: .onchain(activity))
+                // For each replacement transaction, update its boostTxIds to include the replaced txid
+                for conflictTxid in conflicts {
+                    // Try to get the replacement activity, or process it if it doesn't exist
+                    var replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
 
-                    // Move tags from the replaced transaction
-                    if let replacedActivity {
+                    if replacementActivity == nil,
+                       let payments = await LightningService.shared.listPayments(),
+                       let replacementPayment = payments.first(where: { payment in
+                           if case let .onchain(paymentTxid, _) = payment.kind {
+                               return paymentTxid == conflictTxid
+                           }
+                           return false
+                       })
+                    {
+                        Logger.info(
+                            "Processing replacement transaction \(conflictTxid) that was already in payments list",
+                            context: "CoreService.handleOnchainTransactionReplaced"
+                        )
                         do {
-                            let replacedTags = try await self.tags(forActivity: replacedActivity.id)
-                            if !replacedTags.isEmpty {
-                                try await self.appendTags(toActivity: activity.id, replacedTags)
-                            }
+                            try await self.processOnchainPayment(replacementPayment, transactionDetails: nil)
+                            replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
                         } catch {
                             Logger.error(
-                                "Failed to copy tags from replaced transaction \(txid) to replacement transaction \(conflictTxid): \(error)",
+                                "Failed to process replacement transaction \(conflictTxid): \(error)",
                                 context: "CoreService.handleOnchainTransactionReplaced"
                             )
+                            continue
                         }
                     }
 
-                    Logger.info(
-                        "Updated replacement transaction \(conflictTxid) with boostTxId \(txid)",
-                        context: "CoreService.handleOnchainTransactionReplaced"
-                    )
-                }
-            }
+                    // Update the replacement transaction's boostTxIds to include the replaced txid
+                    if var activity = replacementActivity,
+                       !activity.boostTxIds.contains(txid)
+                    {
+                        activity.boostTxIds.append(txid)
+                        activity.isBoosted = true
+                        activity.contact = activity.contact ?? replacedActivity?.contact
+                        activity.updatedAt = UInt64(Date().timeIntervalSince1970)
+                        try await self.update(id: activity.id, activity: .onchain(activity))
 
-            self.activitiesChangedSubject.send()
+                        // Move tags from the replaced transaction
+                        if let replacedActivity {
+                            do {
+                                let replacedTags = try await self.tags(forActivity: replacedActivity.id)
+                                if !replacedTags.isEmpty {
+                                    try await self.appendTags(toActivity: activity.id, replacedTags)
+                                }
+                            } catch {
+                                Logger.error(
+                                    "Failed to copy tags from replaced transaction \(txid) to replacement transaction \(conflictTxid): \(error)",
+                                    context: "CoreService.handleOnchainTransactionReplaced"
+                                )
+                            }
+                        }
+
+                        Logger.info(
+                            "Updated replacement transaction \(conflictTxid) with boostTxId \(txid)",
+                            context: "CoreService.handleOnchainTransactionReplaced"
+                        )
+                    }
+                }
+
+                self.activitiesChangedSubject.send()
+            }
         }
     }
 
@@ -965,17 +979,19 @@ class ActivityService {
 
     /// Handle a single payment event by processing the specific payment
     func handlePaymentEvent(paymentHash: String) async throws {
-        guard let payments = await LightningService.shared.listPayments() else {
-            Logger.warn("No payments available for hash \(paymentHash)", context: "CoreService.handlePaymentEvent")
-            return
-        }
+        try await withPaymentSync { [self] in
+            guard let payments = await LightningService.shared.listPayments() else {
+                Logger.warn("No payments available for hash \(paymentHash)", context: "CoreService.handlePaymentEvent")
+                return
+            }
 
-        try await ServiceQueue.background(.core) {
-            if let payment = payments.first(where: { $0.id == paymentHash }) {
-                try await self.processLightningPayment(payment)
-            } else {
-                Logger.info("Payment not found for hash \(paymentHash) - syncing all payments", context: "CoreService.handlePaymentEvent")
-                try await self.syncLdkNodePayments(payments)
+            try await ServiceQueue.background(.core) {
+                if let payment = payments.first(where: { $0.id == paymentHash }) {
+                    try await self.processLightningPayment(payment)
+                } else {
+                    Logger.info("Payment not found for hash \(paymentHash) - syncing all payments", context: "CoreService.handlePaymentEvent")
+                    try await self.syncLdkNodePayments(payments)
+                }
             }
         }
     }
@@ -1079,48 +1095,50 @@ class ActivityService {
     /// Use for initial wallet load, manual refresh, or after operations that create new payments.
     /// Events handle individual payment updates, so this should not be called on every event.
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
-        try await ServiceQueue.background(.core) {
-            var addedCount = 0
-            var updatedCount = 0
-            var latestCaughtError: Error?
+        try await withPaymentSync { [self] in
+            try await ServiceQueue.background(.core) {
+                var addedCount = 0
+                var updatedCount = 0
+                var latestCaughtError: Error?
 
-            for payment in payments {
-                if case let .onchain(txid, _) = payment.kind {
-                    do {
-                        let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
-                        try await self.processOnchainPayment(payment, transactionDetails: nil)
-                        if hadExistingActivity {
-                            updatedCount += 1
-                        } else {
-                            addedCount += 1
+                for payment in payments {
+                    if case let .onchain(txid, _) = payment.kind {
+                        do {
+                            let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
+                            try await self.processOnchainPayment(payment, transactionDetails: nil)
+                            if hadExistingActivity {
+                                updatedCount += 1
+                            } else {
+                                addedCount += 1
+                            }
+                        } catch {
+                            Logger.error("Error processing onchain payment \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
+                            latestCaughtError = error
                         }
-                    } catch {
-                        Logger.error("Error processing onchain payment \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
-                        latestCaughtError = error
-                    }
-                } else if case .bolt11 = payment.kind {
-                    do {
-                        let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
-                        try await self.processLightningPayment(payment)
-                        if hadExistingActivity {
-                            updatedCount += 1
-                        } else {
-                            addedCount += 1
+                    } else if case .bolt11 = payment.kind {
+                        do {
+                            let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
+                            try await self.processLightningPayment(payment)
+                            if hadExistingActivity {
+                                updatedCount += 1
+                            } else {
+                                addedCount += 1
+                            }
+                        } catch {
+                            Logger.error("Error processing lightning payment \(payment.id): \(error)", context: "CoreService.syncLdkNodePayments")
+                            latestCaughtError = error
                         }
-                    } catch {
-                        Logger.error("Error processing lightning payment \(payment.id): \(error)", context: "CoreService.syncLdkNodePayments")
-                        latestCaughtError = error
                     }
                 }
-            }
 
-            // If any of the inserts failed, we want to throw the error up
-            if let error = latestCaughtError {
-                throw error
-            }
+                // If any of the inserts failed, we want to throw the error up
+                if let error = latestCaughtError {
+                    throw error
+                }
 
-            Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
-            self.activitiesChangedSubject.send()
+                Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
+                self.activitiesChangedSubject.send()
+            }
         }
     }
 

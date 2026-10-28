@@ -6,6 +6,127 @@ import XCTest
 
 @MainActor
 final class BackupServiceTests: XCTestCase {
+    func testPendingRestoreRetriesRejectWipeBeforeReadingOrChangingBackupState() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for state in ["reserved", "persisted", "unreadable"] {
+            for pendingReadFails in [false, true] {
+                let marker = directory.appendingPathComponent(UUID().uuidString)
+                let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: marker))
+                let scope = try admission.reserve(kind: .walletWipe, id: UUID())
+                defer { admission.release(scope) }
+                if state != "reserved" {
+                    try admission.persist(scope)
+                    admission.release(scope)
+                }
+                if state == "unreadable" {
+                    try Data("unreadable".utf8).write(to: marker)
+                }
+                let suite = "RestoreWipe.\(UUID().uuidString)"
+                let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+                defer { defaults.removePersistentDomain(forName: suite) }
+                var reads = 0
+                let gate = WalletBackupRestoreGate(load: {
+                    reads += 1
+                    if pendingReadFails {
+                        throw KeychainError.failedToLoad
+                    }
+                    return Data("retained-wallet".utf8)
+                }, store: { _ in XCTFail("Rejected restore changed its pending payload") },
+                clear: { XCTFail("Rejected restore cleared its pending gate") })
+                let service = BackupService(defaults: defaults, profileAdmission: admission, walletRestoreGate: gate)
+                XCTAssertTrue(service.hasPendingWalletRestore())
+                XCTAssertEqual(reads, 1, "The pending restore decision must exercise its keychain read")
+                let readsBeforeRetry = reads
+                for legacyRecovery in [false, true] {
+                    do {
+                        if legacyRecovery {
+                            try await service.restoreUsdtRecoveryAfterLegacyMigration()
+                        } else {
+                            try await service.performFullRestoreFromLatestBackup()
+                        }
+                        XCTFail("Restore started while wallet admission was closed: \(state)")
+                    } catch is ProfileRemovalStore.StoreError {}
+                }
+                do {
+                    try await Bitkit.MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: "unused", passphrase: nil) {
+                        try await admission.withWalletRestore($0)
+                    }
+                    XCTFail("Legacy restore started while wallet admission was closed")
+                } catch is ProfileRemovalStore.StoreError {}
+                XCTAssertEqual(reads, readsBeforeRetry, "Admission must precede restore payload access")
+                XCTAssertTrue(service.hasPendingWalletRestore())
+            }
+        }
+    }
+
+    func testWipeDrainsRestoreTailAndRejectsItsCompletionBeforeReplacement() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for cancelled in [false, true] {
+            let marker = directory.appendingPathComponent(UUID().uuidString)
+            let storage = directory.appendingPathComponent(UUID().uuidString)
+            let admission = ProfileOperationAdmission(store: ProfileRemovalStore(url: marker))
+            let entered = expectation(description: "Restore reached its local write")
+            let gate = BackupDelayGate()
+            var pending: Data?
+            let restoreGate = WalletBackupRestoreGate(load: { pending }, store: { pending = $0 }, clear: { pending = nil })
+            var didStart = false
+            let restoring = Task {
+                try await admission.withWalletRestore {
+                    _ = try await restoreGate.performRestore { _ in
+                        try restoreGate.retain(Data("retained-wallet".utf8))
+                        try await admission.withSessionTransition {
+                            try admission.checkCurrent()
+                        }
+                        XCTAssertNoThrow(try admission.snapshot(), "Wallet restore must not hold profile exclusivity")
+                        await gate.wait(started: entered)
+                        try Data("original-wallet".utf8).write(to: storage)
+                        return true
+                    }
+                }
+                didStart = true
+            }
+            await fulfillment(of: [entered], timeout: 3)
+            let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+            defer { admission.release(wipe) }
+            if cancelled {
+                restoring.cancel()
+            }
+            XCTAssertThrowsError(try admission.persist(wipe), "Restore still owns its actual write tail")
+            let wiping = Task {
+                try await admission.drain(before: wipe)
+                try admission.persist(wipe)
+                try FileManager.default.removeItem(at: storage)
+            }
+            await gate.release()
+            do {
+                try await restoring.value
+                XCTFail("Invalidated restore reported success")
+            } catch is CancellationError {
+                XCTAssertTrue(cancelled)
+            } catch is ProfileRemovalStore.StoreError {
+                XCTAssertFalse(cancelled)
+            }
+            try await wiping.value
+            XCTAssertFalse(didStart)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: storage.path))
+            XCTAssertNil(pending)
+            try admission.complete(wipe)
+            admission.release(wipe)
+            try await admission.withWalletRestore {
+                _ = try await restoreGate.performRestore { _ in
+                    try Data("replacement-wallet".utf8).write(to: storage)
+                    return true
+                }
+            }
+            XCTAssertEqual(try Data(contentsOf: storage), Data("replacement-wallet".utf8))
+            XCTAssertNoThrow(try restoreGate.requireReplacementBackupAllowed())
+        }
+    }
+
     func testMetadataLocalFailureRetainsWalletGateAndRemoteAuthFailureCanComplete() async throws {
         for localFailure in [true, false] {
             let suite = "BackupServiceTests.\(UUID().uuidString)"

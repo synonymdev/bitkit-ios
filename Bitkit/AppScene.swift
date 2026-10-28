@@ -1161,26 +1161,32 @@ struct AppScene: View {
     }
 
     private func restoreWalletBackupAndStart() async {
-        guard !isWalletBackupRestoreRunning else { return }
+        guard !isWalletBackupRestoreRunning, !pubkyProfile.removalRecovery.blocksWalletStartup else { return }
         isWalletBackupRestoreRunning = true
         walletIsInitializing = true
         didWalletBackupRestoreFail = false
         defer { isWalletBackupRestoreRunning = false }
 
-        let didRestore: Bool = if BackupService.shared.hasPendingWalletRestore() {
-            await restoreVssBackup()
-        } else {
-            await restoreFromMostRecentBackup()
-        }
-        guard didRestore else {
-            didWalletBackupRestoreFail = true
-            return
-        }
+        do {
+            let didRestore = try await ProfileOperationAdmission.shared.withWalletRestore {
+                let restored: Bool = if BackupService.shared.hasPendingWalletRestore() {
+                    await restoreVssBackup()
+                } else {
+                    await restoreFromMostRecentBackup()
+                }
+                guard restored else { return false }
 
-        widgets.loadSavedWidgets()
-        widgets.objectWillChange.send()
-        pubkyProfile.scheduleInitializationAfterRestore()
-        await startWallet(completingBackupRestore: true)
+                widgets.loadSavedWidgets()
+                widgets.objectWillChange.send()
+                pubkyProfile.scheduleInitializationAfterRestore()
+                await startWallet(completingBackupRestore: true)
+                return true
+            }
+            didWalletBackupRestoreFail = !didRestore
+        } catch {
+            Logger.warn("Wallet backup restore could not complete: \(error)", context: "AppScene")
+            didWalletBackupRestoreFail = true
+        }
     }
 
     private func retryWalletStart() async {
@@ -1195,7 +1201,7 @@ struct AppScene: View {
     }
 
     private func retryPendingWalletRestoreIfNeeded() -> Bool {
-        if isWalletBackupRestoreRunning {
+        if pubkyProfile.removalRecovery.blocksWalletStartup || ProfileOperationAdmission.shared.isWalletWiping || isWalletBackupRestoreRunning {
             return true
         }
         guard BackupService.shared.hasPendingWalletRestore() else { return false }
@@ -1234,7 +1240,9 @@ struct AppScene: View {
 
         if shouldRestoreRN {
             do {
-                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase) {
+                    try await ProfileOperationAdmission.shared.withWalletRestore($0)
+                }
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS

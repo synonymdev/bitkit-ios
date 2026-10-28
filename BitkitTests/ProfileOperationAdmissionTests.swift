@@ -28,10 +28,12 @@ final class ProfileOperationAdmissionTests: XCTestCase {
             XCTAssertThrowsError(try self.admission.checkCurrent(access: .local))
         }
         try Data("unreadable".utf8).write(to: directory.appendingPathComponent("pending.json"))
-        try await admission.withReceiptAttribution { isCurrent in
-            XCTAssertFalse(isCurrent())
-            XCTAssertThrowsError(try self.admission.checkReceiptAttribution())
-        }
+        do {
+            try await admission.withReceiptAttribution { _ in
+                XCTFail("Unreadable recovery admitted a receipt")
+            }
+            XCTFail("Unreadable recovery did not reject the receipt")
+        } catch ProfileRemovalStore.StoreError.unavailable {}
     }
 
     func testReservationRevokesEarlierWorkAndDrainsItsActualTail() async throws {

@@ -227,17 +227,19 @@ class ActivityListViewModel: ObservableObject {
         isSyncingLdkNodePayments = true
         defer { isSyncingLdkNodePayments = false }
 
-        guard let ldkPayments = await listPayments() else { return }
-        try await coreService.activity.syncLdkNodePayments(ldkPayments)
-        await syncState()
+        try await coreService.activity.withPaymentSync { @MainActor [self] in
+            guard let ldkPayments = await listPayments() else { return }
+            try await coreService.activity.syncLdkNodePayments(ldkPayments)
+            await syncState()
 
-        // This ensures pending transfers are marked as settled when channels become ready
-        do {
-            try await transferService.syncTransferStates()
-            Logger.debug("Transfer states synced after LDK payments sync", context: "ActivityListViewModel")
-        } catch {
-            Logger.error("Failed to sync transfer states after LDK payments sync", context: error.localizedDescription)
-            // Don't throw - we don't want to fail the entire sync if transfer sync fails
+            // This ensures pending transfers are marked as settled when channels become ready
+            do {
+                try await transferService.syncTransferStates()
+                Logger.debug("Transfer states synced after LDK payments sync", context: "ActivityListViewModel")
+            } catch {
+                Logger.error("Failed to sync transfer states after LDK payments sync", context: error.localizedDescription)
+                // Don't throw - we don't want to fail the entire sync if transfer sync fails
+            }
         }
     }
 
