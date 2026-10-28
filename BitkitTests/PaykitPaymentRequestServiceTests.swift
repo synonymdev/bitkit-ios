@@ -320,6 +320,49 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertFalse(SwipeBackState.allowSwipeBack)
     }
 
+    func testUsdtPaymentReviewDisplaysExactAmountsBeforeAuthorization() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let view = UsdtSendView(onDetails: { _ in }, authenticatePayment: {
+            XCTFail("Displaying review must not authorize payment")
+            return false
+        }, sendPayment: { _ in XCTFail("Displaying review must not send payment") })
+        let currency = CurrencyViewModel(currencyService: OfflineCurrencyService())
+        for (amount, expected): (UInt64, String) in [(123_456, "0.123456"), (1, "0.000001")] {
+            let quote = UsdtQuote(bridgeProvider: nil, id: "exact-review", recipient: initialUsdtQuote.recipient,
+                                  destination: .ethereum, amount: amount, receivedAmount: amount, maximumFee: 1,
+                                  expiresAt: UInt64(Date().timeIntervalSince1970) + 60)
+            for details in [false, true] {
+                let content = Group {
+                    if details {
+                        view.quoteDetails(quote)
+                    } else {
+                        view.confirmation(quote)
+                    }
+                }
+                .padding(16)
+                .environmentObject(currency)
+                .environmentObject(SettingsViewModel.shared)
+                .preferredColorScheme(.dark)
+                let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+                window.rootViewController = UIHostingController(rootView: content)
+                window.makeKeyAndVisible()
+                defer { window.isHidden = true; window.rootViewController = nil }
+                window.rootViewController?.view.layoutIfNeeded()
+                try await Task.sleep(for: .milliseconds(200))
+                let labels = try initialPaymentSnapshot(window, name: "exact-review-\(amount)-\(details)")
+                XCTAssertTrue(labels.contains { $0.contains(expected) }, "\(labels)")
+                if details {
+                    XCTAssertEqual(labels.joined(separator: " ").components(separatedBy: expected).count - 1,
+                                   amount == 1 ? 3 : 2, "Payment, recipient amount and matching fee: \(labels)")
+                    XCTAssertTrue(labels.contains { $0.contains("0.000001") }, "Fee: \(labels)")
+                    let total = amount == 1 ? "0.000002" : "0.123457"
+                    XCTAssertTrue(labels.contains { $0.contains(total) }, "Maximum total: \(labels)")
+                }
+            }
+        }
+    }
+
     private func initialPaymentNavigation(_ window: UIWindow) -> UINavigationController? {
         var controllers = window.rootViewController.map { [$0] } ?? []
         while !controllers.isEmpty {

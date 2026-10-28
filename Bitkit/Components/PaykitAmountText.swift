@@ -6,10 +6,10 @@ struct PaykitAmountText: View {
     var prefix = ""
     var color: Color = .textPrimary
 
-    private var displayValue: String {
+    var displayValue: String {
         switch amount.asset {
         case .usd: usdDisplayAmount(amount.atomic)
-        case .usdt: usdtOverviewAmount(amount.atomic)
+        case .usdt: usdtExactAmount(amount.atomic)
         case .btc: amount.value
         }
     }
