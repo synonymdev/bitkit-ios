@@ -24,7 +24,7 @@ async function dispatchRetargetTests({github, context, core, sleep = ms => new P
       const {data} = await github.rest.checks.create({
         ...context.repo, name: check.context, head_sha: sha,
         external_id: externalId(generation, check.context), status: 'queued', details_url: runUrl(context),
-        output: {title: 'Waiting for retarget validation', summary: `Testing PR #${original.number} at ${sha}.`},
+        output: {title: 'Waiting for retarget validation', summary: `[Retarget dispatcher](${runUrl(context)}) is starting tests for PR #${original.number} at ${sha}.`},
       });
       checks.set(check.context, data.id);
     }
@@ -89,7 +89,7 @@ async function reportRetargetResult({github, context, core, name, phase, result,
     ...context.repo, check_run_id: Number(id), details_url: runUrl(context),
     status: start ? 'in_progress' : 'completed',
     ...(start ? {} : {conclusion: success ? 'success' : 'failure'}),
-    output: {title: start ? 'Tests are running' : success ? 'Tests passed' : 'Tests failed or did not complete', summary: `PR #${number}, head ${sha}, merge ${merge}.`},
+    output: {title: start ? 'Tests are running' : success ? 'Tests passed' : 'Tests failed or did not complete', summary: `[Open the test run](${runUrl(context)}).\n\nPR #${number}, head ${sha}, merge ${merge}.`},
   });
 }
 

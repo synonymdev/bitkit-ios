@@ -1,6 +1,4 @@
 name: integration-tests
-run-name: >-
-  ${{ inputs.retarget_run && format('Retarget #{0} [{1}]', inputs.pr, inputs.retarget_run) || github.event.pull_request.title || github.workflow }}
 
 on:
   push:
@@ -30,7 +28,7 @@ env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr || github.ref }}
+  group: integration-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: true
 
 jobs:

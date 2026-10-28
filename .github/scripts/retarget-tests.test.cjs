@@ -98,6 +98,7 @@ for (const [result, conclusion] of [['success', 'success'], ['failure', 'failure
     await report(f, {result});
     assert.equal(f.checks.get(1).conclusion, conclusion);
     assert.equal(f.checks.get(1).details_url, 'https://github.com/owner/repo/actions/runs/300');
+    assert.ok(f.checks.get(1).output.summary.includes('[Open the test run](https://github.com/owner/repo/actions/runs/300)'));
   });
 }
 
