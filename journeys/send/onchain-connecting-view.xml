@@ -7,10 +7,11 @@
     channels have loaded keeps the purple Spending variant.
 
     iOS differs from Android here: the LDK debug Restart restarts the node without leaving the
-    running state, and a launch shows home only once the node runs, so neither brings this view up.
-    Reach it by opening Send while the node is still starting (for example right after the app
-    returns from a background stop on a device), or with a local build that keeps the sync overlay
-    on. Take a screenshot or record as soon as Send opens.
+    running state, and returning from the background leaves the node running, so neither brings
+    this view up. The only stock window is the node's start right after a cold launch: open Send
+    from home as soon as it shows. On a fast device or simulator the node is often running by then;
+    a local build that keeps the sync overlay on shows the view reliably. Take a screenshot or
+    record as soon as Send opens.
 
     Precondition: onboarded dev wallet with no Lightning channels. Start on the wallet home screen.
   </description>
