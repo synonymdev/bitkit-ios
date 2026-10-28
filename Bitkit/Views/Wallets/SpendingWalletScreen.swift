@@ -115,7 +115,7 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            sheets.showSheet(.transferUnavailable)
+            showTransferToSpending(sheets: sheets, navigation: navigation)
         }
         .accessibilityIdentifier("TransferFromSavings")
     }

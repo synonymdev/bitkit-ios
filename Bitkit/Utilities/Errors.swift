@@ -383,6 +383,18 @@ struct AppError: LocalizedError {
         case let .LiquiditySourceUnavailable(message: ldkMessage):
             message = "Liquidity source unavailable"
             debugMessage = ldkMessage
+        case let .LiquiditySourceInsufficientFunds(message: ldkMessage):
+            message = "The primary node has too little funds for this amount"
+            debugMessage = ldkMessage
+        case let .LiquidityRequestRejected(message: ldkMessage):
+            message = "The primary node declined this receive"
+            debugMessage = ldkMessage
+        case let .LiquidityRequestTimedOut(message: ldkMessage):
+            message = "The primary node did not answer in time"
+            debugMessage = ldkMessage
+        case let .LiquidityReceiveAmountTooSmall(message: ldkMessage):
+            message = "The amount is too small to receive through the primary node"
+            debugMessage = ldkMessage
         case let .LiquidityFeeTooHigh(message: ldkMessage):
             message = "Liquidity fee too high"
             debugMessage = ldkMessage

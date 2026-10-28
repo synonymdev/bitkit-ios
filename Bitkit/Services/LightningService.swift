@@ -121,6 +121,9 @@ class LightningService {
 
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
+        if let primary = Env.primaryNode {
+            builder.setPrimaryNode(nodeId: primary.nodeId)
+        }
 
         let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
 
@@ -264,6 +267,10 @@ class LightningService {
             try node.start()
         }
 
+        if let primary = Env.primaryNode {
+            try? await connectPeer(peer: primary)
+        }
+
         #if !BITKIT_NOTIFICATION_EXTENSION
             do {
                 try await reconcileWatchOnlyAccounts()
@@ -372,7 +379,7 @@ class LightningService {
         try await ServiceQueue.background(.ldk) {
             let balances = node.listBalances()
             let idlePeerIds = Self.idlePeerIds(
-                peers: node.listPeers(),
+                peers: node.listPeers().filter { $0.nodeId != Env.primaryNode?.nodeId },
                 channels: node.listChannels(),
                 lightningBalances: balances.lightningBalances,
                 pendingSweeps: balances.pendingBalancesFromChannelClosures
@@ -716,6 +723,36 @@ class LightningService {
         try await receiveMsats(amountMsats: amountSats.map { $0 * 1000 }, description: description, expirySecs: expirySecs)
     }
 
+    /// Creates an invoice the primary node delivers through a channel it opens or grows just in time,
+    /// accepting at most the fee it quotes now. Primaries authorize such a receive for ten minutes.
+    func receiveViaPrimary(amountSats: UInt64, description: String) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        guard let primary = Env.primaryNode else {
+            throw AppError(message: "No primary node", debugMessage: "No primary node for \(Env.network)")
+        }
+
+        let bolt11 = try await ServiceQueue.background(.ldk) {
+            if !node.listPeers().contains(where: { $0.nodeId == primary.nodeId && $0.isConnected }) {
+                try node.connect(nodeId: primary.nodeId, address: primary.address, persist: true)
+            }
+            let amountMsat = amountSats * 1000
+            let quote = try node.quotePrimaryReceive(nodeId: primary.nodeId, amountMsat: amountMsat, targetInboundSats: 0)
+            Logger.info("Received primary quote: \(quote)")
+            return try node.receiveViaPrimary(
+                nodeId: primary.nodeId,
+                amountMsat: amountMsat,
+                description: Bolt11InvoiceDescription.direct(description: description),
+                expirySecs: 600,
+                maxFeeMsat: quote.feeMsat,
+                targetInboundSats: 0
+            )
+        }
+
+        return bolt11.description
+    }
+
     func receiveMsats(amountMsats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -930,6 +967,20 @@ class LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             node.signMessage(msg: [UInt8](msg))
+        }
+    }
+
+    func spliceIn(channel: ChannelDetails, amountSats: UInt64) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            try node.spliceIn(
+                userChannelId: channel.userChannelId,
+                counterpartyNodeId: channel.counterpartyNodeId,
+                spliceAmountSats: amountSats
+            )
         }
     }
 

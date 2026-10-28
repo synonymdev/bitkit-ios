@@ -13,8 +13,13 @@ enum ReceiveLiquidityDecision {
     static func canCreateLightningInvoice(
         hasReadyChannels: Bool,
         inboundCapacitySats: UInt64?,
-        invoiceAmountSats: UInt64?
+        invoiceAmountSats: UInt64?,
+        hasPrimaryNode: Bool = false
     ) -> Bool {
+        if hasPrimaryNode, (invoiceAmountSats ?? 0) > 0 {
+            return true
+        }
+
         guard hasReadyChannels, let inboundCapacitySats else {
             return false
         }
@@ -29,9 +34,13 @@ enum ReceiveLiquidityDecision {
     static func additionalLiquidityAction(
         source: ReceiveLiquiditySource,
         invoiceAmountSats: UInt64,
-        inboundCapacitySats: UInt64?
+        inboundCapacitySats: UInt64?,
+        hasPrimaryNode: Bool = false
     ) -> ReceiveAdditionalLiquidityAction {
-        guard source == .spending, needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats),
+        guard source == .spending, !hasPrimaryNode, needsInboundLiquidity(
+                  invoiceAmountSats: invoiceAmountSats,
+                  inboundCapacitySats: inboundCapacitySats
+              ),
               (inboundCapacitySats ?? 0) > 0
         else {
             return .none

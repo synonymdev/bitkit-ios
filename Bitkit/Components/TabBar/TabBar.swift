@@ -95,7 +95,8 @@ struct TabBar: View {
         wallet: WalletViewModel,
         hasPendingTransfersToSpending: Bool
     ) -> Bool {
-        isSpendingWallet && !wallet.canCreateReceiveLightningInvoice(amountSats: nil) && !hasPendingTransfersToSpending
+        isSpendingWallet && Env.primaryNode == nil && !wallet.canCreateReceiveLightningInvoice(amountSats: nil)
+            && !hasPendingTransfersToSpending
     }
 }
 

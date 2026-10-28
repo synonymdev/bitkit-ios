@@ -2,6 +2,38 @@
 import XCTest
 
 final class ReceiveLiquidityDecisionTests: XCTestCase {
+    func testPrimaryNodeCoversFixedAmountsWithoutChannels() {
+        XCTAssertTrue(
+            ReceiveLiquidityDecision.canCreateLightningInvoice(
+                hasReadyChannels: false,
+                inboundCapacitySats: nil,
+                invoiceAmountSats: 5000,
+                hasPrimaryNode: true
+            )
+        )
+
+        XCTAssertFalse(
+            ReceiveLiquidityDecision.canCreateLightningInvoice(
+                hasReadyChannels: false,
+                inboundCapacitySats: nil,
+                invoiceAmountSats: nil,
+                hasPrimaryNode: true
+            )
+        )
+    }
+
+    func testPrimaryNodeNeedsNoAdditionalLiquidityAction() {
+        XCTAssertEqual(
+            ReceiveLiquidityDecision.additionalLiquidityAction(
+                source: .spending,
+                invoiceAmountSats: 10000,
+                inboundCapacitySats: 1000,
+                hasPrimaryNode: true
+            ),
+            .none
+        )
+    }
+
     func testLightningInvoiceRequiresReadyChannel() {
         XCTAssertFalse(
             ReceiveLiquidityDecision.canCreateLightningInvoice(

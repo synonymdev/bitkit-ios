@@ -234,7 +234,8 @@ struct ReceiveEdit: View {
         ReceiveLiquidityDecision.additionalLiquidityAction(
             source: liquiditySource,
             invoiceAmountSats: amountViewModel.amountSats,
-            inboundCapacitySats: wallet.totalReadyInboundLightningSats
+            inboundCapacitySats: wallet.totalReadyInboundLightningSats,
+            hasPrimaryNode: Env.primaryNode != nil
         )
     }
 

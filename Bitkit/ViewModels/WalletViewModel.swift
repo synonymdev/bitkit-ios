@@ -1310,6 +1310,15 @@ class WalletViewModel: ObservableObject {
         ReceiveLiquidityDecision.canCreateLightningInvoice(
             hasReadyChannels: hasReadyChannels,
             inboundCapacitySats: totalReadyInboundLightningSats,
+            invoiceAmountSats: amountSats,
+            hasPrimaryNode: Env.primaryNode != nil
+        )
+    }
+
+    private func canReceiveOnReadyChannels(amountSats: UInt64?) -> Bool {
+        ReceiveLiquidityDecision.canCreateLightningInvoice(
+            hasReadyChannels: hasReadyChannels,
+            inboundCapacitySats: totalReadyInboundLightningSats,
             invoiceAmountSats: amountSats
         )
     }
@@ -1547,7 +1556,13 @@ class WalletViewModel: ObservableObject {
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
             var invoice = ""
-            if canCreateReceiveLightningInvoice(amountSats: amountSats) {
+            if !canReceiveOnReadyChannels(amountSats: amountSats), let amountSats, Env.primaryNode != nil {
+                do {
+                    invoice = try await lightningService.receiveViaPrimary(amountSats: amountSats, description: note).lowercased()
+                } catch {
+                    Logger.warn("Failed to create primary invoice for \(amountSats) sats: \(error)")
+                }
+            } else if canCreateReceiveLightningInvoice(amountSats: amountSats) {
                 if forceRefreshBolt11 || wasUpdating || !hasMatchingInputs || cachedInvoice.isEmpty {
                     invoice = try await createInvoice(amountSats: amountSats, note: note)
                 } else if try await isReceiveInvoiceReusable(cachedInvoice) {

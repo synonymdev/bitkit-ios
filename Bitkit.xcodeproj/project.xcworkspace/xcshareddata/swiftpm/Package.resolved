@@ -13,10 +13,9 @@
     {
       "identity" : "ldk-node",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/synonymdev/ldk-node",
+      "location" : "https://github.com/ovitrif/ldk-node",
       "state" : {
-        "revision" : "1976754dd49886e102f2b3132d5f700d6aabd8d7",
-        "version" : "0.7.0-rc.78"
+        "revision" : "46ecee6b1e8ef4e2d6c258767b0c3eee8be3cbe6"
       }
     },
     {

@@ -221,7 +221,11 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            navigationPath.append(.transferUnavailable)
+                            if Env.primaryNode != nil, let route = editRoute(for: .spending) {
+                                navigationPath.append(route)
+                            } else {
+                                navigationPath.append(.transferUnavailable)
+                            }
                         }
                     } else if showDetails {
                         VStack(spacing: 16) {

@@ -86,6 +86,10 @@ class TransferViewModel: ObservableObject {
         onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
         removeEvent: @escaping (String) -> Void
     ) async throws -> (channelId: String, fundingTxId: String?) {
+        if let readyChannel = lightningService.channels?.first(where: { $0.counterpartyNodeId == peer.nodeId && $0.isChannelReady }) {
+            return try await spliceIn(channel: readyChannel, amountSats: amountSats, onEvent: onEvent, removeEvent: removeEvent)
+        }
+
         // Open the channel - this returns the user channel ID
         let userChannelId = try await lightningService.openChannel(
             peer: peer,
@@ -133,6 +137,53 @@ class TransferViewModel: ObservableObject {
         return (actualChannelId, fundingTxId)
     }
 
+    /// Grows a ready channel with on-chain funds and tracks the transfer like a channel open.
+    private func spliceIn(
+        channel: ChannelDetails,
+        amountSats: UInt64,
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async throws -> (channelId: String, fundingTxId: String?) {
+        let channelCapture = ChannelPendingCapture()
+        let userChannelId = channel.userChannelId.description
+        let eventId = "manual-channel-splice-\(userChannelId)"
+        onEvent(eventId) { event in
+            if case let .splicePending(eventChannelId, eventUserChannelId, _, newFundingTxo) = event,
+               eventUserChannelId.description == userChannelId
+            {
+                Task {
+                    await channelCapture.setChannelData(
+                        channelId: eventChannelId.description,
+                        fundingTxId: newFundingTxo.txid.description
+                    )
+                }
+            }
+        }
+        defer { removeEvent(eventId) }
+
+        try await lightningService.spliceIn(channel: channel, amountSats: amountSats)
+        let (channelId, fundingTxId) = await Self.waitForChannelData(capture: channelCapture, maxAttempts: 10, initialDelayMs: 50)
+        guard let channelId else {
+            throw AppError(
+                message: "Timeout waiting for splice pending event",
+                debugMessage: "Did not receive splicePending event for userChannelId: \(userChannelId)"
+            )
+        }
+
+        do {
+            _ = try await transferService.createTransfer(
+                type: .toSpending,
+                amountSats: amountSats,
+                channelId: channelId,
+                fundingTxId: fundingTxId
+            )
+        } catch {
+            Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
+        }
+
+        return (channelId, fundingTxId)
+    }
+
     /// Waits for a channel pending event and captures both the channel ID and funding transaction ID
     /// - Parameters:
     ///   - userChannelId: The user channel ID returned from openChannel
@@ -149,13 +200,13 @@ class TransferViewModel: ObservableObject {
 
         onEvent(eventId) { event in
             if case let .channelPending(
-                eventChannelId,
-                eventUserChannelId,
-                _,
-                _,
-                fundingTxo
-            ) = event,
-                // Match by user channel ID
+                   eventChannelId,
+                   eventUserChannelId,
+                   _,
+                   _,
+                   fundingTxo
+               ) = event,
+               // Match by user channel ID
                eventUserChannelId.description == userChannelId
             {
                 Task {
