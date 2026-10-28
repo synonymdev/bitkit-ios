@@ -161,8 +161,9 @@ enum Env {
     private static let primaryNodeUriMainnet = "024a6cc632544189896cca8e06e375bdb1d1f34a71a4c25d09a39cf0ed920a299c@bore.pub:39101"
 
     /// The Lightning-first primary node: it funds channels just in time and grows them by splicing.
+    /// A `PRIMARY_NODE_URI` config value overrides it, for regtest runs against a local primary.
     static var primaryNodeUri: String? {
-        network == .bitcoin ? primaryNodeUriMainnet : nil
+        configValue("PRIMARY_NODE_URI") ?? (network == .bitcoin ? primaryNodeUriMainnet : nil)
     }
 
     static var primaryNode: LnPeer? {

@@ -40,6 +40,8 @@
 	<string>$(E2E_HOMESERVER_PUBKY)</string>
 	<key>E2E_LOCAL_HOST</key>
 	<string>$(E2E_LOCAL_HOST)</string>
+	<key>PRIMARY_NODE_URI</key>
+	<string>$(PRIMARY_NODE_URI)</string>
 	<key>E2E_NETWORK</key>
 	<string>$(E2E_NETWORK)</string>
 	<key>TREZOR_BRIDGE</key>
