@@ -2468,12 +2468,18 @@ class UtilityService {
         }
     }
 
-    /// Check if an address has been used (has any transactions)
+    /// Check if an address appears in any stored activity or transaction output.
     /// - Parameter address: The Bitcoin address to check
     /// - Returns: true if the address has been used, false otherwise
     func isAddressUsed(address: String) async throws -> Bool {
         return try await ServiceQueue.background(.core) {
-            try BitkitCore.isAddressUsed(address: address)
+            if try BitkitCore.isAddressUsed(address: address) {
+                return true
+            }
+            // Batch outputs remain used after spending, even when the activity displays another address.
+            return try BitkitCore.getAllTransactionDetails().contains { details in
+                details.outputs.contains { $0.scriptpubkeyAddress == address }
+            }
         }
     }
 
