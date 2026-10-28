@@ -33,7 +33,15 @@ extension ContactPaymentContext {
 extension PrivatePaykitService {
     func contactPublicKey(forPrivateInvoicePaymentHash paymentHash: String) -> String? {
         guard !paymentHash.isEmpty, (try? profileAdmission.snapshot()) != nil else { return nil }
+        return storedInvoiceContact(paymentHash: paymentHash)
+    }
 
+    func contactPublicKeyForReceipt(paymentHash: String) -> String? {
+        guard !paymentHash.isEmpty, (try? profileAdmission.checkReceiptAttribution()) != nil else { return nil }
+        return storedInvoiceContact(paymentHash: paymentHash)
+    }
+
+    private func storedInvoiceContact(paymentHash: String) -> String? {
         return state.contacts.first { _, contactState in
             contactState.localInvoice?.paymentHash == paymentHash ||
                 contactState.receivedInvoicePaymentHashes.contains(paymentHash)

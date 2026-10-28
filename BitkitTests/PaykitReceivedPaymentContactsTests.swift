@@ -53,6 +53,48 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         }
     }
 
+    func testRetainedRequestCannotHideAReservationClearedDuringRemoval() async throws {
+        let suite = "ReceiptRemovalConflict.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let ledger: [String: Any] = [
+            "version": 1, "reservedReceiveIndexesByAddressType": ["nativeSegwit": [3]],
+            "contactAssignments": [bob: ["addressType": "nativeSegwit", "receiveIndex": 3]],
+            "contactAssignmentHistory": [:], "restoredReservedReceiveIndexCeilingsByAddressType": [:],
+        ]
+        try defaults.set(JSONSerialization.data(withJSONObject: ledger), forKey: PrivatePaykitAddressReservationStore.defaultsKey)
+        let reservations = PrivatePaykitAddressReservationStore(defaults: defaults)
+        let requests = try contacts(address: receivingAddress, counterparty: alice)
+        let outputs = [receivingAddress, otherAddress]
+        let before = await requests.includingReservations(for: outputs) { $0 == self.otherAddress ? self.bob : nil }
+        XCTAssertNil(before.contact(receivingAddress: receivingAddress, outputAddresses: outputs))
+        let previousRevision = await reservations.attributionRevision
+        let admission = ProfileOperationAdmission.shared
+        let removal = try admission.reserve(kind: .removal, id: UUID(), expected: admission.snapshot())
+        defer {
+            _ = try? admission.complete(removal)
+            admission.release(removal)
+        }
+        try admission.persist(removal)
+        _ = try await reservations.clearContactAssignmentsForRemoval()
+        let clearedRevision = await reservations.attributionRevision
+        try await admission.withReceiptAttribution { _ in
+            let combined = try? await reservations.contactsForReceipt(requests, outputAddresses: outputs, expectedRevision: clearedRevision)
+            XCTAssertNil(combined?.contact(receivingAddress: self.receivingAddress, outputAddresses: outputs),
+                         "A retained request must not become an unambiguous match when cleanup erases its conflict")
+        }
+        try admission.complete(removal)
+        admission.release(removal)
+        try await admission.withReceiptAttribution { canAttribute in
+            XCTAssertTrue(canAttribute())
+            let stale = try? await reservations.contactsForReceipt(requests, outputAddresses: outputs, expectedRevision: previousRevision)
+            XCTAssertNil(stale, "Request and reservation snapshots must describe the same ledger revision")
+            let current = try await reservations.contactsForReceipt(requests, outputAddresses: outputs, expectedRevision: clearedRevision)
+            XCTAssertEqual(current.contact(receivingAddress: self.receivingAddress, outputAddresses: outputs), self.alice,
+                           "A request-only receipt remains attributable when the profile is available")
+        }
+    }
+
     func testSameContactAcrossRequestAndReservationsIsUnambiguous() async throws {
         try await assertAttribution(
             contacts: contacts(address: otherAddress, counterparty: alice),

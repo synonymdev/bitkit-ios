@@ -18,6 +18,22 @@ final class ProfileOperationAdmissionTests: XCTestCase {
         }
     }
 
+    func testReceiptAttributionDoesNotGrantProfileAuthorityOrHideUnreadableState() async throws {
+        let id = UUID()
+        try store.begin(id: id)
+        try await admission.withReceiptAttribution { isCurrent in
+            XCTAssertTrue(isCurrent())
+            XCTAssertNoThrow(try self.admission.checkReceiptAttribution())
+            XCTAssertThrowsError(try self.admission.capture())
+            XCTAssertThrowsError(try self.admission.checkCurrent(access: .local))
+        }
+        try Data("unreadable".utf8).write(to: directory.appendingPathComponent("pending.json"))
+        try await admission.withReceiptAttribution { isCurrent in
+            XCTAssertFalse(isCurrent())
+            XCTAssertThrowsError(try self.admission.checkReceiptAttribution())
+        }
+    }
+
     func testReservationRevokesEarlierWorkAndDrainsItsActualTail() async throws {
         let original = try admission.capture()
         let generation = try admission.snapshot()

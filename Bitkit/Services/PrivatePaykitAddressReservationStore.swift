@@ -15,6 +15,7 @@ actor PrivatePaykitAddressReservationStore {
     private static let schemaVersion = 1
 
     private let defaults: UserDefaults
+    private let addressLookup: ((LDKNode.AddressType, UInt32) async throws -> String)?
     private(set) var attributionRevision: UInt64 = 0
     private var storedLedgerWasUnreadable = false
     private var ledger: Ledger {
@@ -23,8 +24,9 @@ actor PrivatePaykitAddressReservationStore {
 
     // MARK: - Initialization
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, addressLookup: ((LDKNode.AddressType, UInt32) async throws -> String)? = nil) {
         self.defaults = defaults
+        self.addressLookup = addressLookup
 
         if let data = defaults.data(forKey: Self.defaultsKey),
            let decoded = Self.decodeStoredLedger(data), decoded.version == Self.schemaVersion
@@ -81,17 +83,41 @@ actor PrivatePaykitAddressReservationStore {
 
     func contactPublicKeyForAttribution(forReservedAddress address: String) async throws -> String? {
         return try await ProfileOperationAdmission.shared.withOperation(access: .local) {
-            guard !address.isEmpty else { return nil }
-            for (publicKey, assignment) in contactAssignmentsForAttribution() {
-                guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
-                      addressType.matchesAddressFormat(address, network: Env.network)
-                else { continue }
-                if try await self.address(for: addressType, receiveIndex: assignment.receiveIndex) == address {
-                    return publicKey
-                }
-            }
-            return nil
+            try await contactPublicKey(for: address, assignments: contactAssignmentsForAttribution())
         }
+    }
+
+    func contactsForReceipt(
+        _ contacts: PaykitReceivedPaymentContacts,
+        outputAddresses: [String],
+        expectedRevision: UInt64
+    ) async throws -> PaykitReceivedPaymentContacts {
+        try ProfileOperationAdmission.shared.checkReceiptAttribution()
+        guard attributionRevision == expectedRevision else { throw ProfileRemovalStore.StoreError.changed }
+        // Keep all outputs on the same snapshot, including when profile cleanup runs during derivation.
+        let assignments = contactAssignmentsForAttribution()
+        // Pending cleanup may have erased a reservation that conflicts with a retained request.
+        if !contacts.isEmpty, assignments.isEmpty {
+            _ = try ProfileOperationAdmission.shared.snapshot()
+        }
+        let result = try await contacts.includingReservations(for: outputAddresses) { address in
+            try await self.contactPublicKey(for: address, assignments: assignments)
+        }
+        try ProfileOperationAdmission.shared.checkReceiptAttribution()
+        return result
+    }
+
+    private func contactPublicKey(for address: String, assignments: [(publicKey: String, assignment: StoredAssignment)]) async throws -> String? {
+        guard !address.isEmpty else { return nil }
+        for (publicKey, assignment) in assignments {
+            guard let addressType = LDKNode.AddressType.from(string: assignment.addressType),
+                  addressType.matchesAddressFormat(address, network: Env.network)
+            else { continue }
+            if try await self.address(for: addressType, receiveIndex: assignment.receiveIndex) == address {
+                return publicKey
+            }
+        }
+        return nil
     }
 
     func currentContactPublicKey(forReservedAddress address: String) async -> String? {
@@ -419,6 +445,9 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     private func address(for addressType: LDKNode.AddressType, receiveIndex: UInt32) async throws -> String {
+        if let addressLookup {
+            return try await addressLookup(addressType, receiveIndex)
+        }
         let addressInfo = try await LightningService.shared.addressInfoForType(addressType, atIndex: receiveIndex)
         return addressInfo.address
     }

@@ -469,21 +469,24 @@ struct AppScene: View {
     private func configurePrivatePaykitContactResolvers() {
         CoreService.shared.activity.setPrivatePaykitContactResolvers(
             invoice: { paymentHash in
-                await PrivatePaykitService.shared.contactPublicKey(forPrivateInvoicePaymentHash: paymentHash)
+                await PrivatePaykitService.shared.contactPublicKeyForReceipt(paymentHash: paymentHash)
             },
             onchainAddresses: { @MainActor address, outputAddresses in
-                let identity = pubkyProfile.publicKey
-                let contacts = paykitPaymentRequestManager.receivedPaymentContacts
+                guard (try? ProfileOperationAdmission.shared.checkReceiptAttribution()) != nil else { return nil }
                 let reservations = PrivatePaykitAddressReservationStore.shared
-                let reservationRevision = await reservations.attributionRevision
-                guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
-                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                }), pubkyProfile.authState == .authenticated,
-                      PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
-                      contacts == paykitPaymentRequestManager.receivedPaymentContacts,
-                      await reservations.attributionRevision == reservationRevision
+                let revision = await reservations.attributionRevision
+                let contacts = pubkyProfile.authState == .authenticated
+                    ? paykitPaymentRequestManager.receivedPaymentContacts : PaykitReceivedPaymentContacts()
+                guard let combined = try? await reservations.contactsForReceipt(
+                    contacts,
+                    outputAddresses: outputAddresses,
+                    expectedRevision: revision
+                )
                 else { return nil }
                 return combined.contact(receivingAddress: address, outputAddresses: outputAddresses)
+            },
+            receiptOperation: { operation in
+                try await ProfileOperationAdmission.shared.withReceiptAttribution(operation)
             }
         )
     }

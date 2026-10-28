@@ -41,6 +41,10 @@ enum ReceiveTagMutation {
 }
 
 class ActivityService {
+    typealias ReceiptContactValidation = @Sendable () -> Bool
+    typealias ReceiptOperationBody = @Sendable (@escaping ReceiptContactValidation) async throws -> Void
+    typealias ReceiptOperation = @Sendable (@escaping ReceiptOperationBody) async throws -> Void
+
     private let coreService: CoreService
     private static let detachedContactsKey = "activityDetachedContacts"
 
@@ -100,13 +104,24 @@ class ActivityService {
 
     private var privateInvoiceContactResolver: (@Sendable (String) async -> String?)?
     private var privateOnchainAddressContactResolver: (@Sendable (String, [String]) async -> String?)?
+    private var receiptOperation: ReceiptOperation?
 
     func setPrivatePaykitContactResolvers(
         invoice: (@Sendable (String) async -> String?)?,
-        onchainAddresses: (@Sendable (String, [String]) async -> String?)?
+        onchainAddresses: (@Sendable (String, [String]) async -> String?)?,
+        receiptOperation: ReceiptOperation? = nil
     ) {
         privateInvoiceContactResolver = invoice
         privateOnchainAddressContactResolver = onchainAddresses
+        self.receiptOperation = receiptOperation
+    }
+
+    private func withReceiptContacts(for payment: PaymentDetails, _ operation: @escaping ReceiptOperationBody) async throws {
+        if payment.direction == .inbound, let receiptOperation {
+            try await receiptOperation(operation)
+        } else {
+            try await operation { true }
+        }
     }
 
     // MARK: - Constants
@@ -612,6 +627,16 @@ class ActivityService {
         _ payment: PaymentDetails,
         transactionDetails: BitkitCore.TransactionDetails? = nil
     ) async throws {
+        try await withReceiptContacts(for: payment) { canAttribute in
+            try await self.storeOnchainPayment(payment, transactionDetails: transactionDetails, canAttribute: canAttribute)
+        }
+    }
+
+    private func storeOnchainPayment(
+        _ payment: PaymentDetails,
+        transactionDetails: BitkitCore.TransactionDetails?,
+        canAttribute: @escaping ReceiptContactValidation
+    ) async throws {
         guard case let .onchain(txid, txStatus) = payment.kind else { return }
         let paymentTimestamp = payment.latestUpdateTimestamp
         let snapshot = try await getOnchainActivityByTxId(txid: txid)
@@ -710,7 +735,7 @@ class ActivityService {
             let isTransfer = (existingOnchain?.isTransfer ?? false) || resolvedChannelId != nil
             let channelId = existingOnchain?.channelId ?? resolvedChannelId
             let transferTxId = existingOnchain?.transferTxId
-            var contact = existingOnchain?.contact ?? resolvedContact
+            var contact = existingOnchain?.contact ?? (canAttribute() ? resolvedContact : nil)
             let feeRate = existingOnchain?.feeRate ?? 1
             let address = resolvedAddress ?? existingOnchain?.address ?? "Loading..."
             let doesExist = existingOnchain?.doesExist ?? true
@@ -956,6 +981,12 @@ class ActivityService {
     }
 
     private func processLightningPayment(_ payment: PaymentDetails) async throws {
+        try await withReceiptContacts(for: payment) { canAttribute in
+            try await self.storeLightningPayment(payment, canAttribute: canAttribute)
+        }
+    }
+
+    private func storeLightningPayment(_ payment: PaymentDetails, canAttribute: @escaping ReceiptContactValidation) async throws {
         guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
@@ -1013,6 +1044,9 @@ class ActivityService {
         if existingActivity != nil {
             try await ServiceQueue.background(.core) {
                 var updated = ln
+                if existingLightning?.contact == nil, !canAttribute() {
+                    updated.contact = nil
+                }
                 if case let .lightning(latest)? = try getActivityById(walletId: ln.walletId, activityId: payment.id),
                    latest.contact != existingLightning?.contact
                 {
@@ -1025,7 +1059,14 @@ class ActivityService {
                 self.activitiesChangedSubject.send()
             }
         } else {
-            try await upsert(.lightning(ln))
+            try await ServiceQueue.background(.core) {
+                var updated = ln
+                if !canAttribute() || self.isContactDetached(activityId: payment.id, walletId: ln.walletId) {
+                    updated.contact = nil
+                }
+                try upsertActivity(activity: .lightning(updated))
+                self.activitiesChangedSubject.send()
+            }
         }
     }
 
