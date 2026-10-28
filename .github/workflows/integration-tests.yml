@@ -43,6 +43,7 @@ jobs:
       packages: read
       pull-requests: read
       checks: write
+      actions: write
     env:
       DERIVED_DATA: ${{ github.workspace }}/DerivedData
       RESULT_BUNDLE: ${{ github.workspace }}/IntegrationTests.xcresult

@@ -72,6 +72,7 @@ jobs:
       packages: read
       pull-requests: read
       checks: write
+      actions: write
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
 
@@ -181,6 +182,7 @@ jobs:
       packages: read
       pull-requests: read
       checks: write
+      actions: write
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: namespace-profile-mac
     needs: [detect-changes, build-local, e2e-branch]

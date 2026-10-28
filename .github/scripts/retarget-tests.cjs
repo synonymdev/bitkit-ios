@@ -83,6 +83,18 @@ async function reportRetargetResult({github, context, core, name, phase, result,
   if (commit.parents.length !== 2 || commit.parents[1].sha !== sha) throw new Error('Test merge commit does not contain the reported PR head');
   const {data: check} = await github.rest.checks.get({...context.repo, check_run_id: Number(id)});
   if (check.head_sha !== sha || check.name !== name || check.external_id !== externalId(generation, name)) throw new Error('Check does not belong to this retarget validation');
+  if (check.status === 'completed') {
+    if (phase === 'start') {
+      // Completed checks cannot reopen; the helper owns creation of fresh checks.
+      const workflowRef = context.ref?.replace(/^refs\/heads\//, '') || 'master';
+      await github.rest.actions.createWorkflowDispatch({
+        ...context.repo, workflow_id: 'e2e-retarget.yml', ref: workflowRef,
+        inputs: {pr: number, workflow_ref: workflowRef},
+      });
+      core.setFailed('Started a fresh retarget validation; completed checks cannot be reopened.');
+    }
+    return;
+  }
   const start = phase === 'start';
   const success = result === 'success';
   await github.rest.checks.update({

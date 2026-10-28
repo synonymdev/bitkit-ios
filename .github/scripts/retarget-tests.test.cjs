@@ -22,11 +22,16 @@ function fixture() {
     checks: {
       create: async value => {const check = {id: checks.size + 1, ...value}; checks.set(check.id, check); return {data: check};},
       get: async value => ({data: checks.get(value.check_run_id)}),
-      update: async value => {Object.assign(checks.get(value.check_run_id), value);},
+      listForRef: Symbol('check runs'),
+      update: async value => {
+        const check = checks.get(value.check_run_id);
+        if (check.status === 'completed' && value.status !== 'completed') throw new Error('Completed check cannot reopen');
+        Object.assign(check, value);
+      },
     },
     actions: {createWorkflowDispatch: async value => {dispatches.push(value);}},
   };
-  const github = {rest};
+  const github = {rest, paginate: async () => [...checks.values()]};
   const core = {setFailed: value => failures.push(value), info: () => {}};
   return {pr, context, checks, dispatches, failures, commits, github, core, sleep: async () => {}};
 }
@@ -102,13 +107,17 @@ for (const [result, conclusion] of [['success', 'success'], ['failure', 'failure
   });
 }
 
-test('a partial rerun can mark the same check in progress and publish its new result', async () => {
+test('rerunning a completed suite requests fresh validation instead of reopening or creating checks inline', async () => {
   const f = await start(fixture());
   await report(f, {result: 'failure'});
   await report(f, {phase: 'start'});
-  assert.equal(f.checks.get(1).status, 'in_progress');
+  assert.equal(f.checks.get(1).conclusion, 'failure');
+  assert.equal(f.checks.size, 2);
+  assert.equal(f.dispatches[2].workflow_id, 'e2e-retarget.yml');
+  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: 'master'});
+  assert.equal(f.failures.length, 1);
   await report(f);
-  assert.equal(f.checks.get(1).conclusion, 'success');
+  assert.equal(f.checks.get(1).conclusion, 'failure');
 });
 
 test('an older reporter racing with a newer retarget updates only its own check ID', async () => {
