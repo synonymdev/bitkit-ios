@@ -480,36 +480,44 @@ actor PaykitAllowanceExecutor {
                 localState(identity: identity).journal.map { ($0.attemptId, $0.stage) },
                 uniquingKeysWith: { first, _ in first }
             )
-            for attempt in state.history.occurrences.flatMap(\.attempts) {
-                switch attempt.status {
-                case .prepared:
-                    guard attempt.epoch == state.epoch else { continue }
-                    try await record(attemptId: attempt.attemptId, outcome: .failed, identity: identity)
-                case .submitted, .unknown:
-                    let verified: Paykit.PaymentOutcome?
-                    do {
-                        verified = try await verifiedOutcome(for: attempt, identity: identity)
-                    } catch {
-                        // Left as it is until the node can answer; recovery runs again once it is running.
-                        continue
-                    }
-                    guard let outcome = verified else {
-                        if attempt.status == .submitted {
-                            try await record(attemptId: attempt.attemptId, outcome: .unknown, identity: identity)
+            for occurrence in state.history.occurrences {
+                let requestId = PaykitPaymentRequest.ID(
+                    paymentRequestId: occurrence.key.request.paymentRequestId,
+                    counterparty: occurrence.key.request.counterparty
+                )
+                // A payment in progress owns its attempts; checked per occurrence, since one can start while this loop awaits.
+                guard !inFlightRequestIds.contains(requestId) else { continue }
+                for attempt in occurrence.attempts {
+                    switch attempt.status {
+                    case .prepared:
+                        guard attempt.epoch == state.epoch else { continue }
+                        try await record(attemptId: attempt.attemptId, outcome: .failed, identity: identity)
+                    case .submitted, .unknown:
+                        let verified: Paykit.PaymentOutcome?
+                        do {
+                            verified = try await verifiedOutcome(for: attempt, identity: identity)
+                        } catch {
+                            // Left as it is until the node can answer; recovery runs again once it is running.
+                            continue
                         }
-                        continue
-                    }
-                    try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
-                case .succeeded, .failed:
-                    // Reconciliation can settle an attempt the journal still shows as open.
-                    let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
-                    // The cached stage only skips settled attempts cheaply; a settlement while this loop awaited may have
-                    // settled one since, so the move itself checks the current stage.
-                    if let stage = journalStages[attempt.attemptId], !stage.isTerminal,
-                       let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity, onlyIfOpen: true),
-                       outcome == .failed
-                    {
-                        await releaseConsumedPaymentList(of: entry, identity: identity)
+                        guard let outcome = verified else {
+                            if attempt.status == .submitted {
+                                try await record(attemptId: attempt.attemptId, outcome: .unknown, identity: identity)
+                            }
+                            continue
+                        }
+                        try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
+                    case .succeeded, .failed:
+                        // Reconciliation can settle an attempt the journal still shows as open.
+                        let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
+                        // The cached stage only skips settled attempts cheaply; a settlement while this loop awaited may have
+                        // settled one since, so the move itself checks the current stage.
+                        if let stage = journalStages[attempt.attemptId], !stage.isTerminal,
+                           let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity, onlyIfOpen: true),
+                           outcome == .failed
+                        {
+                            await releaseConsumedPaymentList(of: entry, identity: identity)
+                        }
                     }
                 }
             }

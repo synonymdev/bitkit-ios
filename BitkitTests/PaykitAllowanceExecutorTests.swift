@@ -444,6 +444,30 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(journal.map(\.stage), [.succeeded])
     }
 
+    func testRecoveryLeavesTheAttemptOfAPaymentInProgressAlone() async throws {
+        let harness = AllowanceHarness()
+        let gate = await harness.payer.holdLightning()
+        let request = try Fixtures.paymentRequest()
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(occurrences: [
+            Fixtures.occurrence(
+                requestId: request.paymentRequestId,
+                attempts: [Fixtures.attemptRecord(id: AllowanceSdkMock.automaticAttemptId, status: .prepared)]
+            ),
+        ]))
+        await harness.executor.activate(identity: Fixtures.identityKey)
+
+        let caller = Task { await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey) }
+        await Self.waitUntil { harness.log.entries.contains("payLightning") }
+        await harness.executor.recover(identity: Fixtures.identityKey)
+        let outcomesDuringTheSend = await harness.sdk.recordedOutcomes
+        gate.open()
+        _ = await caller.value
+
+        XCTAssertEqual(outcomesDuringTheSend, [], "A node restart during the send must not fail the attempt being sent")
+        let journal = await harness.executor.localState(identity: Fixtures.identityKey).journal
+        XCTAssertEqual(journal.map(\.stage), [.sent])
+    }
+
     // MARK: Cancellation
 
     func testLightningPaymentStillStartsWhenItsCallerIsCancelledDuringTheSend() async throws {
