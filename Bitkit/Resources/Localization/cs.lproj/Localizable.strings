@@ -1214,6 +1214,7 @@
 "wallet__send_from" = "Z";
 "wallet__send_sync_title" = "<accent>Připojování</accent>\nk síti";
 "wallet__send_sync_description" = "Počkejte prosím, než se Bitkit připojí k platební síti (±10 sekund).";
+"wallet__send_sync_description_onchain" = "Počkejte prosím, než se Bitkit připojí k síti bitcoin (±10 sekund).";
 "wallet__send_sync_long_title" = "<accent>Problémy</accent>\ns připojením";
 "wallet__send_sync_long_description" = "Zdá se, že jste odpojeni. Zkontrolujte prosím připojení. Bitkit se bude každých několik sekund pokoušet znovu připojit.";
 "wallet__send_to" = "Komu";

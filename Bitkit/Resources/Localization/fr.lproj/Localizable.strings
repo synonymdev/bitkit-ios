@@ -1225,6 +1225,7 @@
 "wallet__send_from" = "De";
 "wallet__send_sync_title" = "<accent>Connexion</accent>\nau réseau";
 "wallet__send_sync_description" = "Veuillez patienter pendant que Bitkit se connecte au réseau de paiement (±10 secondes).";
+"wallet__send_sync_description_onchain" = "Veuillez patienter pendant que Bitkit se connecte au réseau bitcoin (±10 secondes).";
 "wallet__send_sync_long_title" = "Problèmes de\n<accent>connexion</accent>";
 "wallet__send_sync_long_description" = "Il semble que vous soyez déconnecté. Veuillez vérifier votre connexion. Bitkit tentera de se reconnecter toutes les quelques secondes.";
 "wallet__send_to" = "Pour";

@@ -988,6 +988,7 @@
 "wallet__send_from" = "من";
 "wallet__send_sync_title" = "<accent>جارٍ الاتصال</accent>\nبالشبكة";
 "wallet__send_sync_description" = "يرجى الانتظار حتى يتصل Bitkit بشبكة الدفع (±10 ثوانٍ).";
+"wallet__send_sync_description_onchain" = "يرجى الانتظار حتى يتصل Bitkit بشبكة البيتكوين (±10 ثوانٍ).";
 "wallet__send_sync_long_title" = "مشاكل\n<accent>الاتصال</accent>";
 "wallet__send_sync_long_description" = "يبدو أنك غير متصل. يرجى التحقق من اتصالك. سيحاول Bitkit إعادة الاتصال كل بضع ثوانٍ.";
 "wallet__send_to" = "إلى";

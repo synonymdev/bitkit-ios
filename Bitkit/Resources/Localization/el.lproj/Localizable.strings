@@ -1006,6 +1006,7 @@
 "wallet__send_from" = "Από";
 "wallet__send_sync_title" = "<accent>Σύνδεση</accent>\nστο δίκτυο";
 "wallet__send_sync_description" = "Περιμένετε να συνδεθεί το Bitkit στο δίκτυο πληρωμών (±10 δευτερόλεπτα).";
+"wallet__send_sync_description_onchain" = "Περιμένετε να συνδεθεί το Bitkit στο δίκτυο bitcoin (±10 δευτερόλεπτα).";
 "wallet__send_sync_long_title" = "<accent>Προβλήματα</accent>\nσύνδεσης";
 "wallet__send_sync_long_description" = "Φαίνεται ότι είστε αποσυνδεδεμένοι. Ελέγξτε τη σύνδεσή σας. Το Bitkit θα προσπαθεί να επανασυνδεθεί κάθε λίγα δευτερόλεπτα.";
 "wallet__send_to" = "Προς";

@@ -1220,6 +1220,7 @@
 "wallet__send_from" = "Van";
 "wallet__send_sync_title" = "<accent>Verbinden</accent>\nmet netwerk";
 "wallet__send_sync_description" = "Wacht tot Bitkit verbinding heeft gemaakt met het betaalnetwerk (±10 seconden).";
+"wallet__send_sync_description_onchain" = "Wacht tot Bitkit verbinding heeft gemaakt met het bitcoinnetwerk (±10 seconden).";
 "wallet__send_sync_long_title" = "<accent>Verbindings</accent>\nproblemen";
 "wallet__send_sync_long_description" = "Het lijkt erop dat u niet verbonden bent. Controleer uw verbinding. Bitkit probeert om de paar seconden opnieuw verbinding te maken.";
 "wallet__send_to" = "Naar";

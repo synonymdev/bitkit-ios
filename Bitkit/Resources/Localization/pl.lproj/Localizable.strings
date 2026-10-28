@@ -1224,6 +1224,7 @@
 "wallet__send_from" = "Z";
 "wallet__send_sync_title" = "<accent>Łączenie</accent>\nz siecią";
 "wallet__send_sync_description" = "Poczekaj, aż Bitkit połączy się z siecią płatności (±10 sekund).";
+"wallet__send_sync_description_onchain" = "Poczekaj, aż Bitkit połączy się z siecią bitcoin (±10 sekund).";
 "wallet__send_sync_long_title" = "<accent>Problemy</accent>\nz połączeniem";
 "wallet__send_sync_long_description" = "Wygląda na to, że nie masz połączenia. Sprawdź połączenie. Bitkit będzie próbował połączyć się ponownie co kilka sekund.";
 "wallet__send_to" = "Do";
