@@ -1,0 +1,4 @@
+// Base settings for the Bitkit app target.
+// Local secrets stay out of git: copy Secrets.xcconfig.template to Secrets.xcconfig and fill it in.
+// Without it the app builds with Spark (Lightning without channels) off on mainnet.
+#include? "Secrets.xcconfig"

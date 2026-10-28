@@ -19,6 +19,7 @@
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* LDKNode */; };
+		72B5EE0000000000000000A3 /* BreezSdkSpark in Frameworks */ = {isa = PBXBuildFile; productRef = 72B5EE0000000000000000A2 /* BreezSdkSpark */; };
 		968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 968FE13F2DFB016B0053CD7F /* LDKNode */; };
 		96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA0392DE8BBA1009932BF /* BitkitCore */; };
 		96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA03B2DE8BBAB009932BF /* BitkitCore */; };
@@ -74,6 +75,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bitkit.xcconfig; sourceTree = "<group>"; };
 		3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		4A319B4F2E8F24F2002B9AC9 /* BitkitWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4A319B502E8F24F2002B9AC9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
@@ -262,6 +264,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				182817C12F59A7F10055A441 /* Paykit in Frameworks */,
+				72B5EE0000000000000000A3 /* BreezSdkSpark in Frameworks */,
 				3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
@@ -302,6 +305,7 @@
 		96FE1F582C2DE6AA006D0C8B = {
 			isa = PBXGroup;
 			children = (
+				B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */,
 				4A319B6E2E8F25F6002B9AC9 /* BitkitWidgetExtension.entitlements */,
 				96A44E912CEF5EA700FBACFF /* Bitkit */,
 				96A44F4A2CEF5F4B00FBACFF /* BitkitTests */,
@@ -378,6 +382,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 96FE1F862C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "Bitkit" */;
 			buildPhases = (
+				B17C0F1A2EAE000000000002 /* Check Breez API Key */,
 				96FE1F5D2C2DE6AA006D0C8B /* Sources */,
 				96FE1F5E2C2DE6AA006D0C8B /* Frameworks */,
 				96FE1F5F2C2DE6AA006D0C8B /* Resources */,
@@ -402,6 +407,7 @@
 				4AAB08C92E1FE77600BA63DF /* Lottie */,
 				18D65DFF2EB964B500252335 /* VssRustClientFfi */,
 				182817C02F59A7F10055A441 /* Paykit */,
+				72B5EE0000000000000000A2 /* BreezSdkSpark */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -511,6 +517,7 @@
 				4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */,
 				18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */,
 				182817BF2F59A7F10055A441 /* XCRemoteSwiftPackageReference "paykit-rs" */,
+				72B5EE0000000000000000A1 /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -565,6 +572,26 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		B17C0F1A2EAE000000000002 /* Check Breez API Key */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Check Breez API Key";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ] && [ -z \"$(echo \"${BREEZ_API_KEY}\" | tr -d ' ')\" ]; then\n  echo \"error: BREEZ_API_KEY is empty. Copy Secrets.xcconfig.template to Secrets.xcconfig and set the key before a Release build or archive (Docs/RELEASE.md).\"\n  exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
 		751000000000000000000001 /* Generate Plural Localizations */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -944,6 +971,7 @@
 		};
 		96FE1F872C2DE6AC006D0C8B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -997,6 +1025,7 @@
 		};
 		96FE1F882C2DE6AC006D0C8B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B17C0F1A2EAE000000000001 /* Bitkit.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1219,6 +1248,14 @@
 				version = 4.6.1;
 			};
 		};
+		72B5EE0000000000000000A1 /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/breez/breez-sdk-spark-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 0.27.2;
+			};
+		};
 		968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
@@ -1265,6 +1302,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */;
 			productName = Lottie;
+		};
+		72B5EE0000000000000000A2 /* BreezSdkSpark */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 72B5EE0000000000000000A1 /* XCRemoteSwiftPackageReference "breez-sdk-spark-swift" */;
+			productName = BreezSdkSpark;
 		};
 		9613018B2C5022D700878183 /* LDKNode */ = {
 			isa = XCSwiftPackageProductDependency;

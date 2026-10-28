@@ -106,6 +106,8 @@ struct ScanPaymentState {
     let totalLightningBalanceSats: UInt64
     let hasChannels: Bool
     let hasUsableChannels: Bool
+    /// Spark sends Lightning without channels.
+    var hasChannelFreeRail = false
 }
 
 struct ScanPaymentOperations {
@@ -121,9 +123,11 @@ struct ScanPaymentOperations {
                 return ScanPaymentState(
                     isNodeRunning: lightningService.status?.isRunning == true,
                     spendableOnchainBalanceSats: lightningService.balances?.spendableOnchainBalanceSats ?? 0,
-                    totalLightningBalanceSats: lightningService.balances?.totalLightningBalanceSats ?? 0,
+                    totalLightningBalanceSats: (lightningService.balances?.totalLightningBalanceSats ?? 0)
+                        + (lightningService.channelFreeRail?.balanceSats ?? 0),
                     hasChannels: channels?.isEmpty == false,
-                    hasUsableChannels: channels?.contains(where: \.isUsable) == true
+                    hasUsableChannels: channels?.contains(where: \.isUsable) == true,
+                    hasChannelFreeRail: lightningService.channelFreeRail?.isReady == true
                 )
             },
             canSendLightning: lightningService.canSend
@@ -1063,13 +1067,13 @@ extension AppViewModel {
                 let paymentAmount = requestedAmount ?? invoice.amountSatoshis
                 // If user has no channels at all, they can never pay a pure lightning invoice.
                 // Show insufficient spending toast and do not navigate to the send flow.
-                if !paymentState.hasChannels {
+                if !paymentState.hasChannels, !paymentState.hasChannelFreeRail {
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: paymentState.totalLightningBalanceSats)
                     return
                 }
 
-                // If channels are usable, validate capacity immediately
-                if paymentState.hasUsableChannels {
+                // If channels are usable or Spark can pay, validate capacity immediately
+                if paymentState.hasUsableChannels || paymentState.hasChannelFreeRail {
                     guard scanPaymentOperations.canSendLightning(paymentAmount) else {
                         showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: paymentState.totalLightningBalanceSats)
                         return
@@ -1243,8 +1247,9 @@ extension AppViewModel {
             return
         }
 
+        // Spark receives without inbound liquidity, so only a channel-only wallet can lack the capacity.
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < max(1, data.minWithdrawableSat) {
+        if lightningService.channelFreeRail?.isReady != true, lightningBalance < max(1, data.minWithdrawableSat) {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),

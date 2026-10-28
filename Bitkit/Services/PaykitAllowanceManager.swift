@@ -98,7 +98,8 @@ final class PaykitAllowanceManager {
         guard LightningService.shared.status?.isRunning == true,
               let channels = LightningService.shared.channels
         else { return false }
-        return channels.isEmpty || channels.contains(where: \.isUsable)
+        // Spark pays without channels, so a channel still reconnecting does not hold it back.
+        return channels.isEmpty || channels.contains(where: \.isUsable) || LightningService.shared.channelFreeRail?.isReady == true
     }
 
     var entries: [PaykitAllowanceEntry] {

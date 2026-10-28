@@ -41,7 +41,7 @@ struct SpendingWalletScreen: View {
                     }
 
                     if !shouldShowOnboarding {
-                        if let channels = wallet.channels, !channels.isEmpty {
+                        if wallet.channels?.isEmpty == false || SparkManager.shared.balanceSats > 0 {
                             transferButton
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                                 .padding(.top, 28)
@@ -115,7 +115,11 @@ struct SpendingWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            sheets.showSheet(.transferUnavailable)
+            if SparkManager.shared.isReady {
+                navigation.navigate(.sparkFundingAmount)
+            } else {
+                sheets.showSheet(.transferUnavailable)
+            }
         }
         .accessibilityIdentifier("TransferFromSavings")
     }
