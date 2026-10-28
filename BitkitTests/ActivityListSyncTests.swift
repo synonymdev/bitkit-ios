@@ -41,7 +41,7 @@ final class ActivityListSyncTests: XCTestCase {
             latestUpdateTimestamp: UInt64(Date().timeIntervalSince1970)
         )
         let model = Bitkit.ActivityListViewModel(transferService: Bitkit.TransferService(
-            lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank
+            lightningService: .shared
         ), listPayments: {
             await withCheckedContinuation {
                 continuation = $0
@@ -81,8 +81,7 @@ final class ActivityListSyncTests: XCTestCase {
         var loads = 0
         let model = Bitkit.ActivityListViewModel(
             transferService: Bitkit.TransferService(
-                lightningService: .shared,
-                blocktankService: Bitkit.CoreService.shared.blocktank
+                lightningService: .shared
             ),
             listPayments: {
                 loads += 1

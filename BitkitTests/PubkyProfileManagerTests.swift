@@ -3985,8 +3985,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             hasSeenNotificationsIntro: false,
             hasSeenQuickpayIntro: false,
             hasSeenShopIntro: false,
-            hasSeenTransferIntro: false,
-            hasSeenTransferToSpendingIntro: false,
             hasSeenTransferToSavingsIntro: false,
             hasSeenWidgetsIntro: false,
             hasDismissedWidgetsOnboardingHint: false,

@@ -728,7 +728,7 @@ class BackupService {
                     categoriesNeedingRewrite.insert(.metadata)
                 }
 
-                try await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
+                await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
                 try await Self.restoreProfileMetadata {
                     try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
@@ -1248,7 +1248,7 @@ class BackupService {
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
             let profileGeneration = try ProfileOperationAdmission.shared.snapshot()
-            let cache = try await SettingsViewModel.shared.getAppCacheData()
+            let cache = await SettingsViewModel.shared.getAppCacheData()
             let (pubkySession, pubkyContactProfileOverrides) = try ProfileOperationAdmission.shared.withSynchronousOperation(access: .local) {
                 try (PubkyProfileManager.snapshotSessionBackupState(), ContactsManager.backupContactProfileOverrides())
             }

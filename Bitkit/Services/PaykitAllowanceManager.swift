@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Paykit
+import UIKit
 import UserNotifications
 
 /// One grant as the user sees it. An SDK Allowance binds this wallet's identity to the contact's identity and covers
@@ -404,8 +405,16 @@ final class PaykitAllowanceManager {
 
 /// Allowance outcomes reach the user as a notification banner when notifications are allowed, or as a toast.
 enum PaykitAllowanceNotifier {
+    /// `skipsWhileActive` posts nothing while the app is in the foreground, for an outcome whose request the app
+    /// already shows in-app.
     @MainActor
-    static func post(title: String, body: String, fallback: @escaping @MainActor () -> Void) {
+    static func post(
+        title: String,
+        body: String,
+        skipsWhileActive: Bool = false,
+        fallback: @escaping @MainActor () -> Void
+    ) {
+        guard shouldPost(skipsWhileActive: skipsWhileActive, isAppActive: UIApplication.shared.applicationState == .active) else { return }
         Task {
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
@@ -424,5 +433,9 @@ enum PaykitAllowanceNotifier {
                 fallback()
             }
         }
+    }
+
+    static func shouldPost(skipsWhileActive: Bool, isAppActive: Bool) -> Bool {
+        !(skipsWhileActive && isAppActive)
     }
 }

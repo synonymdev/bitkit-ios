@@ -115,7 +115,22 @@ final class ProfileRecoveryUITests: XCTestCase {
     private func waitForStatus(_ value: String) {
         let status = app.staticTexts["ProfileFixtureStatus"]
         let matches = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", value), object: status)
-        XCTAssertEqual(XCTWaiter.wait(for: [matches], timeout: 5), .completed)
+        let result = XCTWaiter.wait(for: [matches], timeout: 5)
+        if result != .completed {
+            let trace = XCTAttachment(string: "Expected: \(value)\nStatus: \(status.label)\n\(status.value as? String ?? "No fixture trace")")
+            trace.name = "Profile recovery fixture events"
+            trace.lifetime = .keepAlways
+            add(trace)
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "Profile recovery hierarchy"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.name = "Profile recovery screen"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+        }
+        XCTAssertEqual(result, .completed)
     }
 
     private func scrollToTop() {

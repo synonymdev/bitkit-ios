@@ -128,8 +128,7 @@ class ActivityListViewModel: ObservableObject {
         lightningService: LightningService = .shared
     ) {
         let transferService = TransferService(
-            lightningService: lightningService,
-            blocktankService: coreService.blocktank
+            lightningService: lightningService
         )
         self.init(
             coreService: coreService,

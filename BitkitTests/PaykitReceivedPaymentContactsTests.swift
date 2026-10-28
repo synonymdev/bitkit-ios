@@ -256,7 +256,7 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         service.setContactDetached(false, activityId: activity.activityId, walletId: WalletScope.default)
         service.setContactDetached(false, activityId: activity.activityId, walletId: hardwareWalletId)
         XCTAssertFalse(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
-        try await MainActor.run { try SettingsViewModel.shared.restoreAppCacheData(restored) }
+        await MainActor.run { SettingsViewModel.shared.restoreAppCacheData(restored) }
         XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: WalletScope.default))
         XCTAssertTrue(service.isContactDetached(activityId: activity.activityId, walletId: hardwareWalletId))
         let restoredCache = PaykitReceivedPaymentBackfillCache(activityChanges: service.activitiesChangedPublisher)

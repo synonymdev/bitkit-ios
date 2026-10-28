@@ -10,7 +10,6 @@ struct DevSettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
-    @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
@@ -174,23 +173,6 @@ struct DevSettingsView: View {
                         }
                     } label: {
                         SettingsRow(title: "Export Logs", rightIcon: nil)
-                    }
-
-                    Button {
-                        Task {
-                            do {
-                                try await notificationManager.sendTestNotification()
-                            } catch {
-                                Logger.error(error, context: "failed to test push notification")
-                                app.toast(
-                                    type: .error,
-                                    title: "Error",
-                                    description: "Failed to send test notification: \(error)"
-                                )
-                            }
-                        }
-                    } label: {
-                        SettingsRow(title: "Test Push Notification", rightIcon: nil)
                     }
 
                     Button {

@@ -402,8 +402,7 @@ struct AppScene: View {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
         let transferService = TransferService(
-            lightningService: LightningService.shared,
-            blocktankService: CoreService.shared.blocktank
+            lightningService: LightningService.shared
         )
 
         // Run app data migrations before any feature code loads migrated state
@@ -442,15 +441,6 @@ struct AppScene: View {
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
-            hwFunding: hwWalletManager,
-            hwConnecting: hwWalletManager,
-            hwFeeRateProvider: {
-                guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
-                return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
-            },
-            hwAddressProvider: {
-                try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
-            },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
@@ -1031,8 +1021,6 @@ struct AppScene: View {
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
-            // Start watching pending orders after wallet is ready
-            await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
 
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.
@@ -1115,7 +1103,8 @@ struct AppScene: View {
                 appViewModel: app,
                 settingsViewModel: settings,
                 walletViewModel: wallet,
-                currencyViewModel: currency
+                currencyViewModel: currency,
+                paykitPaymentRequestManager: paykitPaymentRequestManager
             )
         } catch {
             app.toast(error)
@@ -2035,7 +2024,9 @@ struct AppScene: View {
                 "subscriptions__allowance_limit_description",
                 variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
             )
-            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+            // The Payment Request sheet opens for the same request while the app is in the foreground and unlocked; behind
+            // the PIN screen the sheet waits, so the notification is posted.
+            PaykitAllowanceNotifier.post(title: title, body: description, skipsWhileActive: !isLockedForDeepLinks, fallback: {
                 app.toast(type: .warning, title: title, description: description, accessibilityIdentifier: "AllowanceLimitToast")
             })
         case .ledgerChanged:
