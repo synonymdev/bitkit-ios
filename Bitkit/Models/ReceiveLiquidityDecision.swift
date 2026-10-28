@@ -38,10 +38,10 @@ enum ReceiveLiquidityDecision {
         hasPrimaryNode: Bool = false
     ) -> ReceiveAdditionalLiquidityAction {
         guard source == .spending, !hasPrimaryNode, needsInboundLiquidity(
-                  invoiceAmountSats: invoiceAmountSats,
-                  inboundCapacitySats: inboundCapacitySats
-              ),
-              (inboundCapacitySats ?? 0) > 0
+            invoiceAmountSats: invoiceAmountSats,
+            inboundCapacitySats: inboundCapacitySats
+        ),
+            (inboundCapacitySats ?? 0) > 0
         else {
             return .none
         }

@@ -200,13 +200,13 @@ class TransferViewModel: ObservableObject {
 
         onEvent(eventId) { event in
             if case let .channelPending(
-                   eventChannelId,
-                   eventUserChannelId,
-                   _,
-                   _,
-                   fundingTxo
-               ) = event,
-               // Match by user channel ID
+                eventChannelId,
+                eventUserChannelId,
+                _,
+                _,
+                fundingTxo
+            ) = event,
+                // Match by user channel ID
                eventUserChannelId.description == userChannelId
             {
                 Task {
