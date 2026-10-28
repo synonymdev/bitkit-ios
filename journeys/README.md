@@ -289,6 +289,10 @@ merges, the two platforms share the journeys and that identifier. Android master
 then. The identifiers the journeys use that still differ on Android are in the Identifiers table
 above.
 
+`paykit-quoted-usdt.xml` uses the iOS dot-decimal convention for USD and USDT, including
+in comma-decimal system regions, matching `usdt-number-format.xml`. Keep the region checks and
+exact-value, trailing-zero and six-decimal assertions; the locale does not change the separator.
+
 A journey is a shared spec, so a behaviour that is meant to match Android can be checked by running
 the same file on both sides: `xcodebuildmcp` here, the `android` CLI against a `bitkit-android`
 checkout there (`android layout` is the `snapshot-ui` equivalent). A disagreement is worth writing
