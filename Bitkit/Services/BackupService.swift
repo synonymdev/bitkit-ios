@@ -1,6 +1,7 @@
 import BitkitCore
 import Combine
 import Foundation
+import Paykit
 import VssRustClientFfi
 
 // MARK: - BackupService
@@ -95,22 +96,26 @@ class BackupService {
     private enum MetadataBackupError: Error {
         case deferred
         case walletBackupFailed
+        case walletTemporarilyUnavailable
     }
 
     enum BackupOutcome {
         case completed
         case snapshotChanged
         case busy
+        case temporarilyUnavailable
         case failed
 
         var canRetryPendingBackup: Bool {
-            self == .completed || self == .snapshotChanged || self == .busy
+            self == .completed || self == .snapshotChanged || self == .busy || self == .temporarilyUnavailable
         }
     }
 
     private let vssBackupClient = VssBackupClient.shared
     private let walletRestoreGate = WalletBackupRestoreGate.keychain
     private let walletBackupWriter = WalletBackupWriter()
+    private let usdtBackupWriter = WalletBackupWriter()
+    private let usdtRecoveryBackup: UsdtRecoveryBackupStore
     @MainActor weak var usdtWallet: UsdtWalletManager?
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
@@ -120,11 +125,13 @@ class BackupService {
     private var isRestoring = false
     private var isWiping = false
     private var backupFailureNotificationGate = BackupFailureNotificationGate()
+    private var foregroundObservationGeneration: UInt64 = 0
 
     private let defaults: UserDefaults
     private let backupData: ((BackupCategory) async throws -> Data)?
     private let uploadBackup: (String, Data) async throws -> Void
     private let waitForBackupDelay: () async throws -> Void
+    private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
     private let waitForForegroundRecoveryTimeout: () async throws -> Void
     private let backupStatusesKey = "backupStatuses"
     private var backupVersions: [BackupCategory: UInt64] = [:]
@@ -151,11 +158,15 @@ class BackupService {
     init(
         defaults: UserDefaults = .standard,
         backupData: ((BackupCategory) async throws -> Data)? = nil,
+        usdtRecoveryBackup: UsdtRecoveryBackupStore = UsdtRecoveryBackupStore(),
         uploadBackup: @escaping (String, Data) async throws -> Void = { key, data in
             _ = try await VssBackupClient.shared.putObject(key: key, data: data)
         },
         waitForBackupDelay: @escaping () async throws -> Void = {
             try await Task.sleep(nanoseconds: 5_000_000_000)
+        },
+        waitForTemporaryFailureDelay: @escaping (UInt64) async throws -> Void = {
+            try await Task.sleep(nanoseconds: $0)
         },
         waitForForegroundRecoveryTimeout: @escaping () async throws -> Void = {
             try await Task.sleep(for: .seconds(BackupService.backupFailureCheckInterval))
@@ -163,8 +174,10 @@ class BackupService {
     ) {
         self.defaults = defaults
         self.backupData = backupData
+        self.usdtRecoveryBackup = usdtRecoveryBackup
         self.uploadBackup = uploadBackup
         self.waitForBackupDelay = waitForBackupDelay
+        self.waitForTemporaryFailureDelay = waitForTemporaryFailureDelay
         self.waitForForegroundRecoveryTimeout = waitForForegroundRecoveryTimeout
         let statuses = getAllBackupStatuses()
         var clearedStatuses = statuses
@@ -201,14 +214,14 @@ class BackupService {
 
     @discardableResult
     func setAppActive(_ isActive: Bool) -> Task<Void, Never>? {
-        let shouldRecover = stateQueue.sync {
+        let (shouldRecover, generation) = stateQueue.sync {
             backupFailureNotificationGate.setActive(isActive)
-            return isActive && backupFailureNotificationGate.beginForegroundRecovery()
+            return (isActive && backupFailureNotificationGate.beginForegroundRecovery(), foregroundObservationGeneration)
         }
 
         guard shouldRecover else { return nil }
         return Task {
-            await waitForForegroundRetries()
+            await waitForForegroundRetries(generation: generation)
             self.stateQueue.sync {
                 self.backupFailureNotificationGate.endForegroundRecovery()
             }
@@ -216,7 +229,7 @@ class BackupService {
                 self.isObserving
             }
             let shouldCheck = self.stateQueue.sync {
-                self.backupFailureNotificationGate.shouldCheckForFailedBackups(
+                self.foregroundObservationGeneration == generation && self.backupFailureNotificationGate.shouldCheckForFailedBackups(
                     isObserving: isObserving == true
                 )
             }
@@ -226,11 +239,11 @@ class BackupService {
         }
     }
 
-    private func waitForForegroundRetries() async {
+    private func waitForForegroundRetries(generation: UInt64) async {
         let (settled, finish) = AsyncStream<Void>.makeStream()
         // Bound alert suppression, not the uploads: an FFI write may ignore cancellation.
         Task {
-            await self.retryPendingBackups()
+            await self.retryPendingBackups(generation: generation)
             finish.finish()
         }
         let timeout = Task {
@@ -244,17 +257,25 @@ class BackupService {
         timeout.cancel()
     }
 
-    private func retryPendingBackups() async {
+    private func retryPendingBackups(generation: UInt64) async {
         let tasks = try? await ServiceQueue.background(.backup) { [self] in
-            guard isObserving, !shouldSkipBackup() else { return [Task<BackupOutcome, Never>]() }
+            guard isObserving, stateQueue.sync(execute: { foregroundObservationGeneration == generation }) else {
+                return [Task<BackupOutcome, Never>]()
+            }
             return BackupCategory.allCases.compactMap { category -> Task<BackupOutcome, Never>? in
-                guard category != .lightningConnections else { return nil }
+                guard category != .lightningConnections, !shouldSkipBackup(category: category) else { return nil }
                 let status = getBackupStatus(category: category)
                 guard status.isRequired, !status.running,
                       backupJobs[category] == nil, runningBackupTasks[category] == nil
                 else { return nil }
 
-                let task = Task { await self.runBackup(category: category, isScheduled: true) }
+                let task = Task {
+                    let outcome = await self.runBackup(category: category, isScheduled: true)
+                    if outcome.canRetryPendingBackup, !Task.isCancelled, self.getBackupStatus(category: category).isRequired {
+                        await self.scheduleBackup(category: category, initialOutcome: outcome, foregroundGeneration: generation)
+                    }
+                    return outcome
+                }
                 runningBackupTasks[category] = task
                 return task
             }
@@ -288,6 +309,7 @@ class BackupService {
         let stopped = try? await ServiceQueue.background(.backup) {
             let wasObserving = self.isObserving
             self.isObserving = false
+            self.stateQueue.sync { self.foregroundObservationGeneration &+= 1 }
 
             self.backupJobs.values.forEach { $0.cancel() }
             self.backupJobs.removeAll()
@@ -300,6 +322,7 @@ class BackupService {
 
         _ = await stopped?.metadataTask?.value
         await walletBackupWriter.waitUntilIdle()
+        await usdtBackupWriter.waitUntilIdle()
         guard stopped?.wasObserving == true else { return }
         cancellables.cancelAll()
         Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
@@ -345,10 +368,12 @@ class BackupService {
 
         do {
             try Task.checkCancellation()
-            if isScheduled, shouldSkipBackup() {
+            if isScheduled, shouldSkipBackup(category: category) {
                 throw CancellationError()
             }
-            if category == .wallet {
+            if category == .usdt, backupData == nil {
+                try await backupUsdtRecoveryIfPresent()
+            } else if category == .wallet {
                 try await PaykitPaymentActivity.shared.waitUntilIdle()
                 if isScheduled {
                     try await writeWalletBackup()
@@ -364,7 +389,7 @@ class BackupService {
                     try requireMetadataBackupReady()
                 }
                 try Task.checkCancellation()
-                if isScheduled, shouldSkipBackup() {
+                if isScheduled, shouldSkipBackup(category: category) {
                     throw CancellationError()
                 }
                 try await uploadBackup(category.rawValue, data)
@@ -397,6 +422,9 @@ class BackupService {
             } else if error is WalletBackupSnapshotError {
                 outcome = .snapshotChanged
                 Logger.warn("Wallet backup deferred after three changing snapshots", context: "BackupService")
+            } else if Self.isTemporaryBackupFailure(error) {
+                outcome = .temporarilyUnavailable
+                Logger.warn("Backup temporarily unavailable for: '\(category.rawValue)'", context: "BackupService")
             } else {
                 Logger.error("Backup failed for: '\(category.rawValue)': \(error)", context: "BackupService")
                 checkForFailedBackups()
@@ -412,6 +440,9 @@ class BackupService {
         if getBackupStatus(category: .wallet).isRequired {
             let outcome = await triggerBackup(category: .wallet, isScheduled: true, waitForExisting: true)
             try Task.checkCancellation()
+            if outcome == .temporarilyUnavailable {
+                throw MetadataBackupError.walletTemporarilyUnavailable
+            }
             guard outcome == .completed else {
                 if outcome == .busy || outcome == .snapshotChanged {
                     throw MetadataBackupError.deferred
@@ -429,21 +460,72 @@ class BackupService {
         }
     }
 
-    func persistWalletBackup(usdt: String? = nil) async throws {
+    static func isTemporaryBackupFailure(_ error: Error) -> Bool {
+        switch error {
+        case MetadataBackupError.walletTemporarilyUnavailable,
+             PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
+             VssError.ConnectionError, VssError.NetworkError, VssError.StoreError, VssError.PutError:
+            true
+        default:
+            false
+        }
+    }
+
+    func persistWalletBackup() async throws {
         do {
-            try await writeWalletBackup(usdt: usdt)
+            try await writeWalletBackup()
         } catch {
             markBackupRequired(category: .wallet, schedule: !(error is CancellationError))
             throw error
         }
     }
 
+    func persistUsdtRecoveryBackup(snapshot: String) async throws {
+        markBackupRequired(category: .usdt, schedule: false)
+        do {
+            try await usdtBackupWriter.write {
+                guard !self.isWipingOrRestoringUsdt() else { throw UsdtError.BackupUnavailable }
+                let paymentState = try await PaykitUsdtPaymentService.shared.backupSnapshot()
+                try Task.checkCancellation()
+                guard !self.isWipingOrRestoringUsdt() else { throw UsdtError.BackupUnavailable }
+                try await self.usdtRecoveryBackup.persist(snapshot: snapshot, paymentState: paymentState)
+            }
+        } catch {
+            markBackupRequired(category: .usdt, schedule: !(error is CancellationError))
+            throw error
+        }
+    }
+
+    private func isWipingOrRestoringUsdt() -> Bool {
+        stateQueue.sync { isWiping } || UsdtRecoveryRestoreGate.isPending
+    }
+
+    private func backupUsdtRecoveryIfPresent() async throws {
+        guard backupData == nil else { return }
+        guard let wallet = await usdtWallet else { throw UsdtError.BackupUnavailable }
+        try await usdtBackupWriter.write {
+            guard !self.isWipingOrRestoringUsdt() else { throw UsdtError.BackupUnavailable }
+            let changes = Publishers.Merge(UsdtWalletManager.walletBackupDataChangedPublisher,
+                                           PaykitUsdtPaymentService.walletBackupDataChangedPublisher).eraseToAnyPublisher()
+            let tracker = WalletBackupChangeTracker(changes: changes)
+            let snapshot = try await tracker.capture { () -> UsdtRecoveryBackupV1? in
+                guard let core = try await wallet.backupSnapshot() else { return nil }
+                return try await UsdtRecoveryBackupV1(version: 1, usdtWallet: core,
+                                                      paykitUsdtState: PaykitUsdtPaymentService.shared.backupSnapshot())
+            }
+            guard !self.isWipingOrRestoringUsdt() else { throw UsdtError.BackupUnavailable }
+            if let snapshot {
+                try await self.usdtRecoveryBackup.persist(snapshot: snapshot.usdtWallet, paymentState: snapshot.paykitUsdtState)
+            }
+        }
+    }
+
     /// Writes the wallet backup. The scheduler calls this directly and retries by its own rules, so its failure does not
     /// schedule another attempt; `persistWalletBackup` marks the wallet required again for every other caller.
-    private func writeWalletBackup(usdt: String? = nil) async throws {
+    private func writeWalletBackup() async throws {
         try await walletBackupWriter.write {
             guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
-            let data = try await self.getBackupDataBytes(category: .wallet, usdt: usdt)
+            let data = try await self.getBackupDataBytes(category: .wallet)
             try Task.checkCancellation()
             guard !self.shouldSkipBackup() else { throw UsdtError.BackupUnavailable }
             try await self.uploadBackup(BackupCategory.wallet.rawValue, data)
@@ -451,6 +533,9 @@ class BackupService {
     }
 
     func hasPendingWalletRestore() -> Bool {
+        if UsdtRecoveryRestoreGate.isPending {
+            return true
+        }
         do {
             return try walletRestoreGate.hasPendingRestore()
         } catch {
@@ -461,18 +546,35 @@ class BackupService {
 
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async throws {
+        if UsdtRecoveryRestoreGate.isPending, try !walletRestoreGate.hasPendingRestore() {
+            try await restoreUsdtRecoveryAfterLegacyMigration()
+            return
+        }
         defer {
             setRestoring(false)
         }
         try await prepareForRestore()
 
-        VssStoreIdProvider.shared.clearCache()
-        await VssBackupClient.shared.reset()
         Logger.debug("Full restore starting", context: "BackupService")
 
         do {
             _ = try await walletRestoreGate.performRestore { retainedWalletBackup in
-                try await performFullRestoreFromLatestBackup(retainedWalletBackup: retainedWalletBackup)
+                try UsdtRecoveryRestoreGate.begin()
+                await usdtWallet?.pauseForRecoveryRestore()
+                await usdtBackupWriter.waitUntilIdle()
+                await walletBackupWriter.waitUntilIdle()
+                VssStoreIdProvider.shared.clearCache()
+                await VssBackupClient.shared.reset()
+                let walletData: Data? = if let retainedWalletBackup {
+                    retainedWalletBackup
+                } else {
+                    try await vssBackupClient.getObject(key: BackupCategory.wallet.rawValue)?.value
+                }
+                if let walletData {
+                    try walletRestoreGate.retain(walletData)
+                }
+                try await restoreUsdtRecovery(legacyWallet: walletData)
+                return try await performFullRestoreFromLatestBackup(retainedWalletBackup: walletData)
             }
             markRestoreComplete(category: .wallet)
             Logger.info("Full restore success", context: "BackupService")
@@ -500,6 +602,41 @@ class BackupService {
         await SettingsViewModel.shared.restoreAppCacheData(cache)
     }
 
+    func restoreUsdtRecoveryAfterLegacyMigration() async throws {
+        let retained = try UsdtRecoveryRestoreGate.begin()
+        await usdtWallet?.pauseForRecoveryRestore()
+        await usdtBackupWriter.waitUntilIdle()
+        await walletBackupWriter.waitUntilIdle()
+        let legacyWallet: Data? = if let retained {
+            retained
+        } else {
+            try await usdtRecoveryBackup.get(BackupCategory.wallet.rawValue)
+        }
+        if let legacyWallet {
+            try UsdtRecoveryRestoreGate.retain(legacyWallet)
+        }
+        try await restoreUsdtRecovery(legacyWallet: legacyWallet)
+    }
+
+    private func restoreUsdtRecovery(legacyWallet: Data?) async throws {
+        let legacy = try legacyWallet.map { try JSONDecoder().decode(WalletBackupV1.self, from: $0) }
+        try await usdtRecoveryBackup.restore(
+            legacyWallet: legacy?.usdtWallet,
+            legacyPaymentState: legacy?.paykitPaymentState?.usdt,
+            restoreWallet: { snapshot in
+                guard let wallet = await self.usdtWallet else { throw UsdtError.InvalidBackup }
+                try await wallet.restoreBackup(snapshot)
+            },
+            restorePayments: {
+                guard await self.usdtWallet != nil else { throw UsdtError.InvalidBackup }
+                try await PaykitUsdtPaymentService.shared.restoreBackup($0)
+            }
+        )
+        try UsdtRecoveryRestoreGate.complete()
+        await usdtWallet?.resumeAfterRecoveryRestore()
+        markRestoreComplete(category: .usdt)
+    }
+
     private func performFullRestoreFromLatestBackup(retainedWalletBackup: Data?) async throws -> Bool {
         do {
             try await performRestore(category: .settings) { dataBytes in
@@ -525,17 +662,10 @@ class BackupService {
             try await performRestore(category: .wallet, retainedData: retainedWalletBackup) { dataBytes in
                 try walletRestoreGate.retain(dataBytes)
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
-                if let usdt = payload.usdtWallet {
-                    guard let wallet = await self.usdtWallet else { throw UsdtError.InvalidBackup }
-                    try await wallet.restoreBackup(usdt)
-                }
                 if let paymentState = payload.paykitPaymentState {
                     // VssBackupClient's existing custom backup namespace is explicitly wallet index 0.
                     let backupWallet = try await PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
                     try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
-                    if let usdt = paymentState.usdt {
-                        try await PaykitUsdtPaymentService.shared.restoreBackup(usdt)
-                    }
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
                 await PrivatePaykitAddressReservationStore.shared.restoreBackup(
@@ -641,6 +771,7 @@ class BackupService {
     private func startBackupStatusObservers() {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
+                .prepend(getAllBackupStatuses())
                 .map { statuses -> BackupItemStatus in
                     statuses[category] ?? BackupItemStatus()
                 }
@@ -651,9 +782,8 @@ class BackupService {
                 }
 
             distinctPublisher
-                .dropFirst()
                 .sink { [weak self] status in
-                    guard let self, !self.shouldSkipBackup() else { return }
+                    guard let self, !self.shouldSkipBackup(category: category) else { return }
                     if status.isRequired && !status.running {
                         Task {
                             await self.scheduleBackup(category: category)
@@ -694,6 +824,14 @@ class BackupService {
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .wallet)
+            }
+            .store(in: cancellables)
+
+        UsdtWalletManager.walletBackupDataChangedPublisher
+            .merge(with: PaykitUsdtPaymentService.walletBackupDataChangedPublisher)
+            .sink { [weak self] _ in
+                guard let self, !self.isWipingOrRestoringUsdt() else { return }
+                markBackupRequired(category: .usdt)
             }
             .store(in: cancellables)
 
@@ -782,7 +920,13 @@ class BackupService {
         stateQueue.sync { isRestoring = value }
     }
 
-    private func shouldSkipBackup() -> Bool {
+    private func shouldSkipBackup(category: BackupCategory? = nil) -> Bool {
+        if category == .usdt {
+            return isWipingOrRestoringUsdt()
+        }
+        if category == nil || category == .wallet, UsdtRecoveryRestoreGate.isPending {
+            return true
+        }
         return stateQueue.sync {
             isRestoring || isWiping
         }
@@ -801,7 +945,7 @@ class BackupService {
         guard schedule else { return }
         Task {
             let status = getBackupStatus(category: category)
-            if status.isRequired && !shouldSkipBackup() {
+            if status.isRequired && !shouldSkipBackup(category: category) {
                 await scheduleBackup(category: category)
             } else if !status.isRequired {
                 updateBackupStatus(category: category) { status in
@@ -815,8 +959,13 @@ class BackupService {
         }
     }
 
-    private func scheduleBackup(category: BackupCategory) async {
+    private func scheduleBackup(category: BackupCategory, initialOutcome: BackupOutcome = .failed, foregroundGeneration: UInt64? = nil) async {
         try? await ServiceQueue.background(.backup) { [self] in
+            if let foregroundGeneration {
+                guard isObserving, !shouldSkipBackup(category: category),
+                      stateQueue.sync(execute: { foregroundObservationGeneration == foregroundGeneration })
+                else { return }
+            }
             guard backupJobs[category] == nil else { return }
             updateBackupStatus(category: category) { status in
                 BackupItemStatus(
@@ -825,20 +974,27 @@ class BackupService {
                     running: true
                 )
             }
-            backupJobs[category] = Task { await self.runScheduledBackup(category: category) }
+            backupJobs[category] = Task { await self.runScheduledBackup(category: category, initialOutcome: initialOutcome) }
         }
     }
 
-    private func runScheduledBackup(category: BackupCategory) async {
-        var outcome = BackupOutcome.failed
+    private func runScheduledBackup(category: BackupCategory, initialOutcome: BackupOutcome) async {
+        var outcome = initialOutcome
+        var retryDelay: UInt64 = 10_000_000_000
         while !Task.isCancelled {
             do {
-                try await waitForBackupDelay()
+                if outcome == .temporarilyUnavailable {
+                    try await waitForTemporaryFailureDelay(retryDelay)
+                    retryDelay = min(retryDelay * 2, 300_000_000_000)
+                } else {
+                    retryDelay = 10_000_000_000
+                    try await waitForBackupDelay()
+                }
                 try Task.checkCancellation()
             } catch {
                 break
             }
-            guard getBackupStatus(category: category).isRequired && !shouldSkipBackup() else { break }
+            guard getBackupStatus(category: category).isRequired && !shouldSkipBackup(category: category) else { break }
             outcome = await triggerBackup(category: category, isScheduled: true)
             if !outcome.canRetryPendingBackup || !getBackupStatus(category: category).isRequired {
                 break
@@ -849,7 +1005,7 @@ class BackupService {
             BackupItemStatus(synced: status.synced, required: status.required, running: false)
         }
         if outcome.canRetryPendingBackup, !Task.isCancelled,
-           getBackupStatus(category: category).isRequired, !shouldSkipBackup()
+           getBackupStatus(category: category).isRequired, !shouldSkipBackup(category: category)
         {
             await scheduleBackup(category: category)
         }
@@ -903,7 +1059,7 @@ class BackupService {
 
     func getLatestBackupTime() async -> UInt64? {
         let timestamps = await withTaskGroup(of: UInt64?.self) { group in
-            for category in BackupCategory.allCases where category != .lightningConnections {
+            for category in BackupCategory.allCases where category != .lightningConnections && category != .usdt {
                 group.addTask {
                     await self.getRemoteBackupTimestamp(category: category)
                 }
@@ -1004,11 +1160,13 @@ class BackupService {
         }
     }
 
-    private func getBackupDataBytes(category: BackupCategory, usdt: String? = nil) async throws -> Data {
+    private func getBackupDataBytes(category: BackupCategory) async throws -> Data {
         if let backupData {
             return try await backupData(category)
         }
         switch category {
+        case .usdt:
+            throw UsdtError.BackupUnavailable
         case .settings:
             let settingsDict = await SettingsViewModel.shared.getSettingsDictionary()
             let payload = SettingsBackupV1(
@@ -1046,9 +1204,7 @@ class BackupService {
                 let privatePaykitHighestReservedReceiveIndexByAddressType = await PrivatePaykitAddressReservationStore.shared.backupSnapshot()
                 let watchOnlyAccountSnapshot = try WatchOnlyAccountStore.backupSnapshot()
                 let usdtSnapshot: String?
-                if let usdt {
-                    usdtSnapshot = usdt
-                } else if let wallet = await usdtWallet {
+                if let wallet = await usdtWallet {
                     usdtSnapshot = try await wallet.backupSnapshot()
                 } else {
                     guard !Env.isUsdtEnabled else { throw UsdtError.BackupUnavailable }

@@ -9,6 +9,18 @@ final class UsdtSendFailureTests: XCTestCase {
         XCTAssertEqual(failure.title, t("common__error"))
         XCTAssertEqual(failure.message, t("usdt__error_backup"))
         XCTAssertNotEqual(failure.title, t("wallet__payment_request_expired"))
+        XCTAssertTrue(failure.canRetryRecovery)
+    }
+
+    func testRecoveryRemainsRetryableWhenTheLatestFailureIsRateLimitedOrOffline() {
+        for error: UsdtError in [.RateLimited, .NetworkUnavailable] {
+            let failure = UsdtSendView.submissionFailure(for: error, transferStatus: .pending, isRecoveryAttempt: true)
+            XCTAssertTrue(failure.canRetryRecovery)
+            XCTAssertEqual(failure.message, UsdtWalletManager.message(for: error))
+            XCTAssertTrue(failure.isCurrent(for: .pending))
+            XCTAssertFalse(failure.isCurrent(for: .confirmed))
+            XCTAssertFalse(UsdtSendView.submissionFailure(for: error, transferStatus: .pending).canRetryRecovery)
+        }
     }
 
     func testExpiredSubmissionKeepsItsSpecificExplanation() {

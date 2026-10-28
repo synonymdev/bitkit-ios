@@ -290,3 +290,5 @@ a bug report. `AGENTS.md` has the commands.
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and
 `PaymentRequestAmountTooLowToast` identifier on both platforms.
+
+`usdt-independent-recovery.xml` shares its journey name and seven recovery actions with Android; Android adds a deadline-transition action. It covers independent acknowledged recovery, Pubky lock contention, backup failure, same-operation retry, restart, migration and concurrent writers. It requires disposable local USDT and fault-injection endpoints; the standard staging environment does not supply those fixtures. A missing fixture is a verification gap, not a passed journey.

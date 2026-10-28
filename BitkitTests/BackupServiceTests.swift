@@ -169,6 +169,62 @@ final class BackupServiceTests: XCTestCase {
         }
     }
 
+    func testTemporaryFailureRemainsPendingAcrossServiceRestart() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for category in [BackupCategory.wallet, .usdt] {
+            let unavailable = BackupService(defaults: defaults, backupData: { _ in
+                throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "pending reconciliation")
+            }, waitForBackupDelay: { try await Task.sleep(nanoseconds: 60_000_000_000) })
+            await unavailable.triggerBackup(category: category)
+            unavailable.setWiping(true)
+            await unavailable.stopObservingBackups()
+            let restarted = BackupService(defaults: defaults, backupData: { _ in Data("complete".utf8) },
+                                          uploadBackup: { _, _ in }, waitForBackupDelay: {})
+            XCTAssertTrue(restarted.getBackupStatus(category: category).isRequired)
+            let completed = expectation(description: "Restart resumed pending backup")
+            let subscription = restarted.backupStatusesPublisher
+                .filter { $0[category].map { !$0.isRequired && !$0.running } == true }
+                .first().sink { _ in completed.fulfill() }
+            restarted.startObservingBackups()
+            await fulfillment(of: [completed], timeout: 5)
+            subscription.cancel()
+            XCTAssertFalse(restarted.getBackupStatus(category: category).isRequired)
+            restarted.setWiping(true)
+            await restarted.stopObservingBackups()
+        }
+    }
+
+    func testTemporaryPubkyFailureKeepsWalletWorkAndRetriesWithBoundedBackoff() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let completed = expectation(description: "Pending Paykit snapshot acknowledged")
+        var captures = 0
+        var delays: [UInt64] = []
+        let service = BackupService(defaults: defaults, backupData: { _ in
+            captures += 1
+            if captures <= 8 {
+                throw PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "lock held")
+            }
+            return Data("complete-wallet".utf8)
+        }, uploadBackup: { _, data in
+            XCTAssertEqual(data, Data("complete-wallet".utf8))
+        }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { delays.append($0) })
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.wallet].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        defer { subscription.cancel() }
+        service.markBackupRequired(category: .wallet)
+        await fulfillment(of: [completed], timeout: 5)
+        XCTAssertEqual(captures, 9)
+        XCTAssertEqual(delays, [10, 20, 40, 80, 160, 300, 300, 300].map { UInt64($0) * 1_000_000_000 })
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).isRequired)
+        service.setWiping(true)
+        await service.stopObservingBackups()
+    }
+
     func testAutomaticBackupDoesNotRepeatUnrelatedFailures() async throws {
         let firstAttempts = expectation(description: "Scheduled backups attempted")
         firstAttempts.expectedFulfillmentCount = 6
@@ -424,6 +480,33 @@ final class BackupServiceTests: XCTestCase {
         await assertWalletExclusionsPrecedeMetadataReplacement(remote)
         restarted.setWiping(true)
         await restarted.stopObservingBackups()
+    }
+
+    func testTemporaryWalletFailureKeepsMetadataRetryable() async throws {
+        let remote = LegacyMetadataBackupServer()
+        let defaults = try makeLegacyMetadataBackupDefaults()
+        let service = BackupService(
+            defaults: defaults,
+            backupData: { try await remote.backupData(for: $0) },
+            uploadBackup: { key, data in
+                if key == BackupCategory.wallet.rawValue {
+                    throw PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "held lease")
+                }
+                try await remote.upload(key: key, data: data)
+            },
+            waitForBackupDelay: { throw CancellationError() }
+        )
+        service.markBackupRequired(category: .wallet, schedule: false)
+
+        let outcome = await service.triggerBackup(category: .metadata)
+        let metadata = await remote.metadata
+        XCTAssertTrue(outcome == .temporarilyUnavailable)
+        XCTAssertTrue(outcome.canRetryPendingBackup)
+        XCTAssertEqual(metadata, LegacyMetadataBackupServer.legacyMetadata)
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        XCTAssertTrue(service.getBackupStatus(category: .metadata).isRequired)
+        service.setWiping(true)
+        await service.stopObservingBackups()
     }
 
     func testCancelledWalletBackupPreservesLegacyRemoteMetadataUntilRetry() async throws {

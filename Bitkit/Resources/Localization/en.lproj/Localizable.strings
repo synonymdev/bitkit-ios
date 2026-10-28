@@ -1808,7 +1808,7 @@
 "usdt__empty" = "No activity found yet.";
 "usdt__error_address" = "Enter a valid address for the selected network.";
 "usdt__error_amount" = "Enter a valid amount with up to 6 decimal places.";
-"usdt__error_backup" = "Unable to back up this payment. It will be retried when backup is available.";
+"usdt__error_backup" = "Unable to back up this payment. The same signed payment will retry automatically when backup is available. Closing this screen does not cancel it.";
 "usdt__error_balance" = "Not enough USDT to cover the amount and fees.";
 "usdt__error_bridge_amount" = "Amount too small to cover bridge costs. Try a larger amount.";
 "usdt__error_clock" = "Set your device date and time automatically, then try again.";
