@@ -126,7 +126,7 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         )
         for orderId in [nil, "original-order"] as [String?] {
             let store = MemoryAttemptStore()
-            let service = OnchainSendAttemptService(store: store, hasPaidOrder: { _ in false })
+            let service = OnchainSendAttemptService(store: store)
             let id = try await service.admit(
                 walletId: XCTUnwrap(wallet.originalWalletId), requestId: nil, orderId: orderId,
                 address: "bcrt1qoriginal", amountSats: 1000, isMaxAmount: false,
@@ -1340,24 +1340,6 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         XCTAssertEqual(node.calls, 1)
     }
 
-    func testPaidOrderStoreProtectsOlderOrderAfterCurrentAttemptIsReplaced() async throws {
-        let store = MemoryAttemptStore()
-        let service = OnchainSendAttemptService(store: store, hasPaidOrder: { $0 == "paid-order" })
-        let id = try await admit(service)
-        try await service.record(.accepted(txid: txid), attemptId: id)
-        try await service.acknowledgeLocalFollowup(txid: txid)
-        _ = try await admit(service)
-        let node = AttemptNodeMock(result: .unknown(txid: txid))
-        do {
-            _ = try await send(service, node: node, orderId: "paid-order")
-            XCTFail("Older paid order was dispatched again")
-        } catch let error as OnchainSendAttemptError {
-            guard case .duplicate = error else { return XCTFail("Expected paid-order guard") }
-        }
-        XCTAssertEqual(node.calls, 0)
-        XCTAssertEqual(store.snapshot().first?.status, .pending)
-    }
-
     @MainActor
     func testActualSendSerializesFixedMaxAndTransferBeforeNodeDispatch() async {
         let store = MemoryAttemptStore()
@@ -1564,6 +1546,23 @@ final class OnchainSendAttemptServiceTests: XCTestCase {
         let releasing = try await service.recordRelease(approved, txid: String(repeating: "77", count: 32))
         try await service.restoreBackup(attempt)
         XCTAssertEqual(store.snapshot(), [releasing])
+    }
+
+    func testRefusedBlocktankFundingCanBeReleased() async throws {
+        let store = MemoryAttemptStore()
+        let service = OnchainSendAttemptService(store: store)
+        let sender = PreparedAttemptNodeMock()
+        sender.result = .rejected(txid: sender.txid, reason: "min relay fee not met")
+        _ = try? await service.send(using: sender, address: "bcrt1qfunding", amountSats: sender.amount, satsPerVbyte: 2,
+                                    utxosToSpend: nil, isMaxAmount: false, orderId: "order-1")
+        let attempt = try XCTUnwrap(store.snapshot().first)
+        XCTAssertTrue(attempt.isBlocktankFunding)
+        // Retry original is refused while transfers are unavailable, so release is the only exit.
+        XCTAssertTrue(attempt.canBeAbandoned)
+        let approved = try await service.approveRelease(attempt)
+        let releasing = try await service.recordRelease(approved, txid: String(repeating: "77", count: 32))
+        try await service.abandonUnbroadcast(releasing)
+        XCTAssertTrue(store.snapshot().isEmpty)
     }
 
     func testOrdinaryPaymentIsNeverAbandoned() async throws {

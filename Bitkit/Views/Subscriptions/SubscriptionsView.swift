@@ -719,7 +719,9 @@ struct SubscriptionSheet: View {
         isAccepting = true
         defer { isAccepting = false }
 
-        guard let dueRequest = try await paymentRequests.accept(subscription) else {
+        let dueRequest = try await paymentRequests.accept(subscription)
+        PushNotificationManager.shared.requestPermissionIfUndecided()
+        guard let dueRequest else {
             guard paymentRequests.subscriptions.contains(where: {
                 $0.id == subscription.id && $0.lifecycleState == .activeRecurring
             }) else {
