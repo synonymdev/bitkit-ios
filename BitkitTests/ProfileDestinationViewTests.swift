@@ -42,19 +42,13 @@ final class ProfileDestinationViewTests: XCTestCase {
             let transition = try admission.reserveSessionTransition()
             defer { admission.release(transition) }
             let view = CreateProfileView()
+                .disabled(true)
                 .environmentObject(manager as PubkyProfileManager)
                 .environmentObject(AppViewModel())
                 .environmentObject(NavigationViewModel())
-            let keyboardShown = XCTNSNotificationExpectation(name: UIResponder.keyboardDidShowNotification)
             let window = try host(view)
             defer { close(window) }
-            let hostedView = try XCTUnwrap(window.rootViewController?.view)
-            if hostedView.keyboardLayoutGuide.layoutFrame.height > hostedView.safeAreaInsets.bottom {
-                keyboardShown.fulfill()
-            }
-            // Let keyboard presentation settle when available before measuring admission resumption.
-            let keyboardResult = await XCTWaiter.fulfillment(of: [keyboardShown], timeout: 5)
-            print("Keyboard presentation setup: \(keyboardResult)")
+            await fulfillment(of: [manager.presentationOwnerCaptured], timeout: 2)
             XCTAssertEqual(manager.keyLoads, 0)
             if replaceOwner {
                 manager.publicKey = "replacement"
@@ -526,6 +520,17 @@ private final class WaitingCreateProfileManager: PubkyProfileManager {
     var rowLoads = 0
     let loaded = XCTestExpectation(description: "Create resumes when its original admission becomes ready")
     let rowsLoaded = XCTestExpectation(description: "Choice resumes when its original admission becomes ready")
+    let presentationOwnerCaptured = XCTestExpectation(description: "The screen captures its original owner")
+    private var didCapturePresentationOwner = false
+
+    override var removalPresentationOwner: RemovalPresentationOwner {
+        let owner = super.removalPresentationOwner
+        if !didCapturePresentationOwner {
+            didCapturePresentationOwner = true
+            presentationOwnerCaptured.fulfill()
+        }
+        return owner
+    }
 
     override func activePublicKey() async throws -> String {
         keyLoads += 1
