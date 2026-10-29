@@ -17,7 +17,12 @@ Fractional-satoshi Lightning payments and dynamic quotes remain unsupported.
 `fixed-quoted-confirmation.xml` also covers funding choices and rail-specific quotes. On iOS,
 requests offering both LNURL Spending and Savings retain the Amount funding-source selector;
 LNURL confirmation has no wallet selector. Android provides that choice in its common
-confirmation view. LNURL-only requests go directly to confirmation on both platforms.
+confirmation view. LNURL-only requests with a quote meeting the endpoint minimum go directly to confirmation on both platforms.
+On iOS, initially below-minimum Savings or LNURL quotes stay on Amount with Continue disabled,
+and Back after failed automatic coin preparation closes that fallback review. A controlled manual
+UTXO-loading failure exercises the same Back behavior in `SendConfirmationLifecycleTests`; the
+standard journey environment has no selector for that fault, so the automatic failure journey is
+not evidence for the manual fault case.
 
 ### Setup
 

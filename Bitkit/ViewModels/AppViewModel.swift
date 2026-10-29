@@ -817,7 +817,8 @@ extension AppViewModel {
             if !paykitUsesUsdt, !canSelectUsdt, let request = context.incomingPaymentRequest {
                 do {
                     let terms = try request.payment(using: paykitPaymentMethod)
-                    guard terms.isValid(at: Date()) else { return }
+                    let minimumAmount = selectedWalletToPayFrom == .lightning ? max(1, lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
+                    guard terms.isValid(at: Date()), terms.amount.atomic >= minimumAmount else { return }
                     paykitPaymentTerms = terms
                     paykitReviewedAmount = terms.amount
                 } catch PaykitAmountError.rateUnavailable {

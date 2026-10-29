@@ -1758,7 +1758,12 @@ struct SendConfirmationView: View {
     }
 
     private func returnToAmountReviewIfNeeded(rebindMethod: Bool = false) -> Bool {
-        guard let request = app.contactPaymentContext?.incomingPaymentRequest, request.pricing.conversion != nil else { return false }
+        guard let request = app.contactPaymentContext?.incomingPaymentRequest else { return false }
+        if hasShownAmountReview, !amountIsRoot, navigationPath.isEmpty, app.paykitPaymentTerms == nil, let presentationID {
+            sheets.hideSheetIfActive(presentationID: presentationID, reason: "Back from the request amount review")
+            return true
+        }
+        guard request.pricing.conversion != nil else { return false }
         let terms = try? request.payment(using: app.paykitPaymentMethod, quoteId: app.paykitPaymentTerms?.quoteId)
         let minimumAmount = app.selectedWalletToPayFrom == .lightning ? (app.lnurlPayData?.minSendableSat ?? 1) : UInt64(Env.dustLimit)
         let meetsMinimum = terms.map { $0.amount.atomic >= minimumAmount } == true
@@ -1775,14 +1780,18 @@ struct SendConfirmationView: View {
                 sheets.hideSheetIfActive(presentationID: presentationID, reason: "Back from the request amount review")
                 return true
             }
-            hasShownAmountReview = true
-            app.paykitPaymentTerms = nil
-            app.paykitReviewedAmount = nil
-            navigationPath = amountIsRoot ? [] : [.amount]
+            returnToAmountReview()
             return true
         }
         hasShownAmountReview = false
         return false
+    }
+
+    private func returnToAmountReview() {
+        hasShownAmountReview = true
+        app.paykitPaymentTerms = nil
+        app.paykitReviewedAmount = nil
+        navigationPath = amountIsRoot ? [] : [.amount]
     }
 
     private func navigateToAmount() {
@@ -1853,7 +1862,7 @@ struct SendConfirmationView: View {
             if app.contactPaymentContext?.incomingPaymentRequest == nil || app.scannedLightningInvoice != nil {
                 app.selectedWalletToPayFrom = .lightning
             } else {
-                navigationPath = amountIsRoot ? [] : [.amount]
+                returnToAmountReview()
             }
         }
 
