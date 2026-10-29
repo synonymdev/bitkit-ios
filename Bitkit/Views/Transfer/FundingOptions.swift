@@ -2,6 +2,12 @@ import SwiftUI
 
 struct FundingOptions: View {
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
+
+    /// Arkade keeps Spending fundable from savings or another wallet without a channel.
+    private var canFundWithArkade: Bool {
+        ArkadeManager.shared.isReady
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,11 +20,21 @@ struct FundingOptions: View {
             )
             .padding(.bottom, 8)
 
-            BodyMText(t("lightning__transfer_unavailable__text"))
+            BodyMText(t(canFundWithArkade ? "lightning__funding__text" : "lightning__transfer_unavailable__text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 32)
 
             VStack(spacing: 8) {
+                if canFundWithArkade {
+                    RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), testID: "FundTransfer") {
+                        navigation.navigate(.arkadeFundingAmount)
+                    }
+                    RectangleButton(icon: "qr", title: t("lightning__funding__button2"), testID: "FundReceive") {
+                        navigation.reset()
+                        sheets.showSheet(.receive)
+                    }
+                }
+
                 RectangleButton(
                     icon: "pencil",
                     title: t("lightning__funding__button3"),
@@ -27,14 +43,18 @@ struct FundingOptions: View {
                     navigation.navigate(.fundManual(nodeUri: nil))
                 }
 
-                RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: true, testID: "FundTransfer") {}
+                if !canFundWithArkade {
+                    RectangleButton(icon: "transfer", title: t("lightning__funding__button1"), isDisabled: true, testID: "FundTransfer") {}
+                }
                 RectangleButton(
                     icon: "device-tablet-speaker",
                     title: t("lightning__funding__button_hw"),
                     isDisabled: true,
                     testID: "FundHardware"
                 ) {}
-                RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: true, testID: "FundReceive") {}
+                if !canFundWithArkade {
+                    RectangleButton(icon: "qr", title: t("lightning__funding__button2"), isDisabled: true, testID: "FundReceive") {}
+                }
             }
 
             Spacer()

@@ -195,11 +195,15 @@ protocol PaykitLightningPaymentProofLookingUp: Sendable {
 
 struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
-        guard let payments = await LightningService.shared.listPayments() else { return .unavailable }
+        guard let payments = await LightningService.shared.listPayments() else {
+            let railStatus = await Self.railStatus(paymentHash: paymentHash)
+            guard case .unknown = railStatus else { return railStatus }
+            return .unavailable
+        }
         guard let payment = payments.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
-            return .unknown
+            return await Self.railStatus(paymentHash: paymentHash)
         }
 
         switch payment.status {
@@ -210,6 +214,20 @@ struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
         case .succeeded:
             guard case let .bolt11(_, preimage, _, _, _) = payment.kind else { return .unknown }
             return .succeeded(preimage: preimage)
+        }
+    }
+
+    /// Arkade payments are not in LDK's list, so a proof whose completion event was missed settles from Arkade's own record.
+    static func railStatus(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
+        guard let payment = await LightningService.shared.channelFreeRailPayments().first(where: {
+            $0.paymentHash.caseInsensitiveCompare(paymentHash) == .orderedSame && $0.direction == .outbound
+        }) else {
+            return .unknown
+        }
+        switch payment.status {
+        case .pending: return .pending
+        case .failed: return .failed
+        case .succeeded: return .succeeded(preimage: payment.preimage)
         }
     }
 }
@@ -847,11 +865,11 @@ actor PaykitPaymentProofService {
             }
             let proofs = try await loadProofs()
             guard let proof = proofs.first(where: {
-                PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
-                    $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
-                    $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
-                    $0.proofData == nil && $0.onchainAcceptanceVerified != true
-            }), let raw = proof.hardwareSignedTransaction,
+                      PubkyPublicKeyFormat.matches($0.identity, identity) && $0.requestId == requestId &&
+                          $0.kind == .onchain && $0.paymentStarted && $0.onchainWalletId == walletId &&
+                          $0.onchainAddress == address && $0.onchainAmountSats == amountSats &&
+                          $0.proofData == nil && $0.onchainAcceptanceVerified != true
+                  }), let raw = proof.hardwareSignedTransaction,
                   try SignedTransactionId.fromHex(raw) == proof.paymentIdentifier,
                   let fee = proof.hardwareMiningFeeSats, let rate = proof.hardwareFeeRate,
                   let spent = proof.hardwareTotalSpent

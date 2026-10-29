@@ -297,6 +297,16 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         return IncomingPaykitPaymentRequestPresentationFeedback(paymentDetailsPendingWasRequested: wasRequested)
     }
 
+    /// Ends a presentation the user asked for once its payment details fail to resolve, so the send sheet stops loading
+    /// and the user sees why; the request stays in Payment Requests to try again. Automatic presentations keep retrying.
+    static func finishRequestedPresentationAfterResolutionFailure(
+        for request: PaykitPaymentRequest,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback? {
+        guard manager.requestedPresentationId == request.id else { return nil }
+        return finishPendingPrivateLink(for: request, with: manager)
+    }
+
     static func handleStateChange(
         from previous: IncomingPaykitPaymentRequestPresentationState,
         to current: IncomingPaykitPaymentRequestPresentationState,
@@ -509,8 +519,8 @@ struct AppScene: View {
                 let reservations = PrivatePaykitAddressReservationStore.shared
                 let reservationRevision = await reservations.attributionRevision
                 guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
-                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                }), pubkyProfile.authState == .authenticated,
+                          try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                      }), pubkyProfile.authState == .authenticated,
                       PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
                       contacts == paykitPaymentRequestManager.receivedPaymentContacts,
                       await reservations.attributionRevision == reservationRevision
@@ -1718,6 +1728,20 @@ struct AppScene: View {
                         return
                     }
                     guard case let .opened(paymentTarget, privatePaymentContext, endpoints) = result else {
+                        let isWaitingForUpdatedList = if case .waitingForUpdatedPaymentList = result {
+                            true
+                        } else {
+                            false
+                        }
+                        if !isWaitingForUpdatedList,
+                           let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                               for: request,
+                               with: paykitPaymentRequestManager
+                           )
+                        {
+                            presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+                            return
+                        }
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
                             reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
@@ -1843,6 +1867,13 @@ struct AppScene: View {
                     return
                 } catch {
                     guard isCurrentIncomingPaymentRequestPreparation(preparation) else { return }
+                    if let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                        for: request,
+                        with: paykitPaymentRequestManager
+                    ) {
+                        presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+                        return
+                    }
                     deferIncomingPaykitPaymentRequestPresentation(request, reason: .resolutionFailed)
                     return
                 }
@@ -1994,14 +2025,14 @@ struct AppScene: View {
             return
         }
         guard IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-            manager: paykitPaymentRequestManager, app: app, sheets: sheets
-        ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
-        !Task.isCancelled,
-        pubkyProfile.automaticPaykitSession == session,
-        PaykitSubscriptionNotificationTargetStore.load() == target,
-        IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-            manager: paykitPaymentRequestManager, app: app, sheets: sheets
-        )
+                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
+              ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
+              !Task.isCancelled,
+              pubkyProfile.automaticPaykitSession == session,
+              PaykitSubscriptionNotificationTargetStore.load() == target,
+              IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
+              )
         else { return }
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {

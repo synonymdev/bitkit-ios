@@ -149,13 +149,13 @@ class TransferViewModel: ObservableObject {
 
         onEvent(eventId) { event in
             if case let .channelPending(
-                eventChannelId,
-                eventUserChannelId,
-                _,
-                _,
-                fundingTxo
-            ) = event,
-                // Match by user channel ID
+                   eventChannelId,
+                   eventUserChannelId,
+                   _,
+                   _,
+                   fundingTxo
+               ) = event,
+               // Match by user channel ID
                eventUserChannelId.description == userChannelId
             {
                 Task {
@@ -245,8 +245,54 @@ class TransferViewModel: ObservableObject {
         savingsSwapState.quote != nil ? .swap : .close
     }
 
+    /// Whether Transfer to Savings closes channels, rather than only withdrawing Arkade's balance.
+    var hasChannelsToClose: Bool {
+        !channelsToClose.isEmpty
+    }
+
     func closeSelectedChannels() async throws -> [ChannelDetails] {
+        try await withdrawArkadeToSavings()
         return try await closeChannels(channels: channelsToClose)
+    }
+
+    private func withdrawArkadeToSavings() async throws {
+        let arkade = ArkadeManager.shared
+        guard arkade.balanceSats > 0 else { return }
+        let address = try await lightningService.newAddress()
+        try await arkade.withdrawAll(to: address)
+    }
+
+    // MARK: - Arkade Funding
+
+    /// Sends `amountSats` of savings to the Arkade boarding address and returns its txid. Once it confirms, the Arkade
+    /// wallet boards it into the operator's next batch.
+    func fundArkade(address: String, amountSats: UInt64, satsPerVbyte: UInt32, txFee: UInt64, isMaxAmount: Bool) async throws -> String {
+        let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+        let attempts = OnchainSendAttemptService.shared
+        let result = try await attempts.send(
+            using: lightningService,
+            address: address,
+            amountSats: amountSats,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: nil,
+            isMaxAmount: isMaxAmount,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee,
+                feeRate: satsPerVbyte,
+                tags: [],
+                contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            )
+        )
+        guard case let .accepted(txid) = result else {
+            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Arkade funding outcome: \(result)")
+        }
+        _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+        await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
+        ArkadeManager.shared.onDepositBroadcast(txid: txid, amountSats: amountSats)
+        Logger.info("Funded Arkade wallet with \(amountSats) sats in \(txid)", context: "TransferViewModel")
+        await onBalanceRefresh?()
+        return txid
     }
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
@@ -528,6 +574,8 @@ class TransferViewModel: ObservableObject {
         }
 
         do {
+            // The confirm screen counts Arkade's balance in the transfer, and the swap moves only the channel's.
+            try await withdrawArkadeToSavings()
             let claimAddress = try await lightningService.newAddress()
             let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
             Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")

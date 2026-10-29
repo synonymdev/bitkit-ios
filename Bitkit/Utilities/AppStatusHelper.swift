@@ -70,10 +70,11 @@ struct AppStatusHelper {
             return .error
         }
 
-        if !hasChannels {
-            return .error
-        } else if wallet.hasUsableChannels {
+        // Arkade carries Lightning without channels, so an Arkade wallet's connection is ready.
+        if wallet.hasUsableChannels || ArkadeManager.shared.isReady {
             return .ready
+        } else if !hasChannels {
+            return .error
         } else {
             return .pending
         }

@@ -54,7 +54,11 @@ struct LightningConnectionsView: View {
                                         .resizable()
                                         .frame(width: 22, height: 22)
                                         .foregroundColor(.white)
-                                    TitleText(formatNumber(receivingCapacity), textColor: .white)
+                                    // Arkade receives without inbound liquidity, so no channel caps receiving.
+                                    TitleText(
+                                        ArkadeManager.shared.isReady ? t("lightning__arkade_receiving_unlimited") : formatNumber(receivingCapacity),
+                                        textColor: .white
+                                    )
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -67,6 +71,12 @@ struct LightningConnectionsView: View {
                             EmptyStateView()
                                 .padding(.top, 16)
                         } else {
+                            if ArkadeConnectionRow.isVisible {
+                                SettingsSectionHeader(t("lightning__arkade"))
+                                ArkadeConnectionRow()
+                                    .padding(.bottom, 16)
+                            }
+
                             // Pending Connections section
                             if !pendingConnections.isEmpty {
                                 SettingsSectionHeader(t("lightning__conn_pending"))
@@ -229,8 +239,9 @@ struct LightningConnectionsView: View {
     // MARK: - Computed Properties
 
     private var spendingBalance: UInt64 {
-        guard let balanceDetails = wallet.balanceDetails else { return 0 }
-        return balanceDetails.totalLightningBalanceSats
+        let arkadeSats = ArkadeManager.shared.balanceSats
+        guard let balanceDetails = wallet.balanceDetails else { return arkadeSats }
+        return balanceDetails.totalLightningBalanceSats + arkadeSats
     }
 
     private var receivingCapacity: UInt64 {
@@ -243,7 +254,7 @@ struct LightningConnectionsView: View {
     }
 
     private var shouldShowEmptyState: Bool {
-        openChannels.isEmpty && pendingConnections.isEmpty && closedChannels.isEmpty
+        !ArkadeConnectionRow.isVisible && openChannels.isEmpty && pendingConnections.isEmpty && closedChannels.isEmpty
     }
 
     private var buttonText: String {
@@ -288,6 +299,10 @@ struct LightningConnectionsView: View {
                 } catch {
                     Logger.error("Failed to refresh Blocktank orders: \(error)")
                 }
+            }
+
+            group.addTask {
+                await ArkadeManager.shared.refreshState()
             }
 
             // Sync wallet channels

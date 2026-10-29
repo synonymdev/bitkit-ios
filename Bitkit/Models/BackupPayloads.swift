@@ -214,3 +214,27 @@ struct WidgetsBackupV1 {
         return try JSONSerialization.data(withJSONObject: dict)
     }
 }
+
+/// Everything the Arkade wallet keeps locally, as the bridge's `exportState` returns it, kept so a wallet restored on
+/// another device has its outputs, swaps and exit data before it scans the operator again.
+struct ArkadeExitBackupV1: Codable {
+    var version = 1
+    let createdAt: UInt64
+    let network: String
+    let exitState: String
+
+    init(version: Int = 1, createdAt: UInt64, network: String, exitState: String) {
+        self.version = version
+        self.createdAt = createdAt
+        self.network = network
+        self.exitState = exitState
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        createdAt = try container.decode(UInt64.self, forKey: .createdAt)
+        network = try container.decode(String.self, forKey: .network)
+        exitState = try container.decode(String.self, forKey: .exitState)
+    }
+}

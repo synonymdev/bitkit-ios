@@ -293,13 +293,20 @@ struct SendSheet: View {
             // there is nothing to \"sync into\". Let validation/UX handle this as
             // an \"insufficient capacity / no channels\" case instead of a sync wait.
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            guard hasAnyChannels else { return false }
+            guard hasAnyChannels, !arkadeCanPayScannedInvoice else { return false }
 
             // We have channels but none are usable yet → show sync overlay
             return !wallet.hasUsableChannels
         }
 
         return false
+    }
+
+    /// Arkade pays without channels, so a channel that is still reconnecting is no reason to wait.
+    private var arkadeCanPayScannedInvoice: Bool {
+        let arkade = ArkadeManager.shared
+        let amountSats = wallet.sendAmountSats ?? app.scannedLightningInvoice?.amountSatoshis ?? 0
+        return arkade.isReady && amountSats > 0 && arkade.balanceSats >= amountSats
     }
 
     /// Identity for the sync timeout task. The timer only counts down while the overlay is visible
@@ -577,11 +584,11 @@ struct SendSheet: View {
             }
             if let request = flow.incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true || app.paykitPaymentTerms != nil {
                 guard isCurrentIncomingRequest(request.id), let amount = try? request.payment(
-                    using: app.paykitPaymentMethod,
-                    quoteId: app.paykitPaymentTerms?.quoteId
-                ).amount.atomic,
-                    await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id),
-                    isCurrentIncomingRequest(request.id) else { return }
+                          using: app.paykitPaymentMethod,
+                          quoteId: app.paykitPaymentTerms?.quoteId
+                      ).amount.atomic,
+                      await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id),
+                      isCurrentIncomingRequest(request.id) else { return }
                 if !shouldShowSyncOverlay {
                     validatePaymentAfterSync()
                 }
@@ -760,7 +767,8 @@ struct SendSheet: View {
                 return .failed
             }
             guard LightningService.shared.canSend(amountSats: requestedAmount) else {
-                let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
+                    + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                 showInsufficientSpendingToast(invoiceAmount: requestedAmount, spendingBalance: spendingBalance)
                 flow.hasValidatedAfterSync = true
                 return .failed
@@ -777,7 +785,7 @@ struct SendSheet: View {
             // usable, proceed with validation/fallback.
             // Use channelCount as fallback in case channels array is nil but count is cached
             let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
-            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait {
+            if hasAnyChannels, !wallet.hasUsableChannels, !ignoreChannelWait, !arkadeCanPayScannedInvoice {
                 // We have channels but none usable yet → wait
                 return .waiting
             }
@@ -827,7 +835,8 @@ struct SendSheet: View {
                     return .ready
                 } else {
                     // For pure lightning invoices, show error toast and dismiss sheet
-                    let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
+                    let spendingBalance = (LightningService.shared.balances?.totalLightningBalanceSats ?? 0)
+                        + (LightningService.shared.channelFreeRail?.balanceSats ?? 0)
                     showInsufficientSpendingToast(invoiceAmount: paymentAmount, spendingBalance: spendingBalance)
                     flow.hasValidatedAfterSync = true
                     return .failed

@@ -1,3 +1,5 @@
+"lightning__funding__text" = "A forma mais fácil é usar as suas poupanças Bitkit ou enviar bitcoin de uma carteira diferente.";
+"lightning__spending_amount__title" = "Transferir\n<accent>para gastos</accent>";
 "security__cp_text" = "Você pode alterar seu código PIN para uma nova\ncombinação de 4 dígitos. Primeiro, digite seu código PIN atual.";
 "wallet__onchain_abandon_transfer_note" = "As transferências para o saldo de gastos já não estão disponíveis. A Bitkit verifica primeiro a rede e depois devolve as moedas desta transferência à sua carteira, para que a transferência original nunca seja confirmada. Isto tem uma taxa de rede.";
 "wallet__payment_recipient_rejected" = "O destinatário rejeitou este pagamento Lightning. Verifique a fatura e tente novamente.";
@@ -309,6 +311,21 @@
 "lightning__transaction" = "Transação";
 "lightning__order_fee" = "Taxa de pedido";
 "lightning__balance" = "Saldo";
+"lightning__arkade" = "Arkade";
+"lightning__arkade_claim_fee" = "Taxa de embarque";
+"lightning__arkade_confirmations" = "{count}/1 confirmações";
+"lightning__arkade_deposit" = "Depósito";
+"lightning__arkade_deposit__boarded" = "A Arkade adicionou-o ao seu saldo de gastos.";
+"lightning__arkade_deposit__boarding" = "Confirmado. A Arkade adiciona-o ao seu saldo de gastos no próximo lote, normalmente em menos de um minuto.";
+"lightning__arkade_deposit__looking" = "A aguardar a primeira confirmação, cerca de 10 minutos.";
+"lightning__arkade_deposits_claimed" = "Depósitos embarcados";
+"lightning__arkade_deposits_pending" = "Depósitos em curso";
+"lightning__arkade_expiry" = "Próxima renovação";
+"lightning__arkade_lightning_address" = "Endereço Lightning";
+"lightning__arkade_provider" = "Fornecedor";
+"lightning__arkade_provider_value" = "Ark Labs";
+"lightning__arkade_receiving_unlimited" = "Sem limite";
+"lightning__arkade_trust" = "Este saldo é mantido na Arkade, operada pela Ark Labs, que não o pode gastar sem si. Os fundos expiram se não forem renovados: o Bitkit renova-os enquanto está aberto, e o serviço de renovação da Ark Labs enquanto está fechado. Sair sem a Ark Labs exige uma saída on-chain de cerca de uma semana.";
 "lightning__reserve_balance" = "Saldo de reserva (não utilizável)";
 "lightning__total_size" = "Tamanho total do canal";
 "lightning__fees" = "Taxas";
@@ -730,6 +747,7 @@
 "settings__backup__category_transaction_log" = "Histórico de transações";
 "settings__backup__category_wallet" = "Boosts e transferências";
 "settings__backup__category_settings" = "Ajustes";
+"settings__backup__category_arkade_exit" = "Dados da carteira do Arkade";
 "settings__backup__category_widgets" = "Widgets";
 "settings__backup__category_tags" = "Tags";
 "settings__support__title" = "Suporte";

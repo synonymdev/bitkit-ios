@@ -301,6 +301,10 @@ class BackupService {
                 self.startDataStoreListeners(settings: publishers.0, widgets: publishers.1, appState: publishers.2)
                 self.startPeriodicBackupFailureCheck()
             }
+            // Arkade's connect signal is missed when it connected before observing started.
+            if await ArkadeManager.shared.isConnected, !shouldSkipBackup() {
+                markBackupRequired(category: .arkadeExit)
+            }
         }
     }
 
@@ -373,6 +377,11 @@ class BackupService {
                     try await writeWalletBackup()
                 } else {
                     try await persistWalletBackup()
+                }
+            } else if category == .arkadeExit {
+                // Nothing to back up until Arkade connects, which marks this category required again.
+                if let data = try await arkadeExitBackupData() {
+                    try await uploadBackup(category.rawValue, data)
                 }
             } else {
                 let data = try await getBackupDataBytes(category: category)
@@ -698,6 +707,11 @@ class BackupService {
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
+            try await performRestore(category: .arkadeExit) { dataBytes in
+                let backup = try JSONDecoder().decode(ArkadeExitBackupV1.self, from: dataBytes)
+                try await ArkadeManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
+            }
+
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
@@ -763,6 +777,13 @@ class BackupService {
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .widgets)
+            }
+            .store(in: &cancellables)
+
+        ArkadeManager.exitStateChangedPublisher
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .arkadeExit)
             }
             .store(in: &cancellables)
 
@@ -1248,7 +1269,25 @@ class BackupService {
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "LIGHTNING_CONNECTIONS backup is managed by ldk-node"]
             )
+
+        case .arkadeExit:
+            guard let data = try await arkadeExitBackupData() else {
+                throw NSError(
+                    domain: "BackupService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "ARKADE_EXIT has nothing to back up while Arkade is not connected"]
+                )
+            }
+            return data
         }
+    }
+
+    private func arkadeExitBackupData() async throws -> Data? {
+        if let backupData {
+            return try await backupData(.arkadeExit)
+        }
+        guard let backup = try await ArkadeManager.shared.exitBackup() else { return nil }
+        return try JSONEncoder().encode(backup)
     }
 
     /// Re-upload the envelopes whose Core-owned fields the restore had to migrate, so later restores

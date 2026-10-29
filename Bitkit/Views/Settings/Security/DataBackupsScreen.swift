@@ -40,8 +40,13 @@ private struct StatusItemView: View {
 struct DataBackupsScreen: View {
     @StateObject private var viewModel = BackupViewModel()
 
+    /// Arkade's wallet data shows only where Arkade runs.
+    private var categories: [BackupCategory] {
+        BackupCategory.allCases.filter { $0 != .arkadeExit || ArkadeManager.shared.isSupported }
+    }
+
     private var allSynced: Bool {
-        BackupCategory.allCases.allSatisfy { category in
+        categories.allSatisfy { category in
             let status = viewModel.getStatus(for: category)
             return !status.running && !status.isRequired
         }
@@ -65,7 +70,7 @@ struct DataBackupsScreen: View {
                         }
                         .padding(.top, 16)
 
-                        ForEach(BackupCategory.allCases, id: \.self) { category in
+                        ForEach(categories, id: \.self) { category in
                             let status = viewModel.getStatus(for: category)
                             let statusText = viewModel.formatStatusText(for: category)
                             let iconColor = viewModel.iconColor(for: status)
