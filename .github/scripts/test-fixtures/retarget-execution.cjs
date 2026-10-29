@@ -25,7 +25,7 @@ function executionFixture() {
   };
   const repos = {getCommit: async ({ref}) => {
     const sha = aliases.get(ref) || refs.get(`heads/${ref}`) || ref;
-    if (!commits.has(sha)) throw missing();
+    if (!commits.has(sha)) throw Object.assign(new Error(`No commit found for SHA: ${ref}`), {status: 422});
     return {data: structuredClone(commits.get(sha))};
   }};
   const graphql = async (query, variables) => {

@@ -117,7 +117,8 @@ async function reportRetargetResult({github, context, core, name, phase, result,
       try {
         await github.rest.repos.getCommit({...context.repo, ref: helperRef});
       } catch (error) {
-        if (error.status !== 404) throw error;
+        // The commits endpoint returns 422 when a previously valid ref no longer exists.
+        if (![404, 422].includes(error.status)) throw error;
         helperRef = 'master';
       }
       await github.rest.actions.createWorkflowDispatch({

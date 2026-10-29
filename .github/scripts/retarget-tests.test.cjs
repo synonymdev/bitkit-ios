@@ -281,10 +281,31 @@ test('unsigned execution preparation fails both PR checks and never dispatches t
   assert.deepEqual([...f.checks.values()].map(c => c.conclusion), ['failure', 'failure']);
 });
 
-test('a deleted pre-merge helper branch falls back to master while retaining the pinned workflow source', async () => {
+for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', INTEGRATION, 2, 1]]) {
+  for (const status of [404, 422]) test(`a deleted helper (${status}) recovers only ${suite} on master with the pinned workflow source`, async () => {
+    const f = await start(fixture());
+    await report(f, {name: otherId === 1 ? E2E : INTEGRATION, inputs: inputs(otherId)});
+    const other = structuredClone(f.checks.get(otherId));
+    await report(f, {name, inputs: inputs(id), result: 'failure'});
+    const getCommit = f.github.rest.repos.getCommit;
+    f.github.rest.repos.getCommit = async value => {
+      if (value.ref === 'deleted-branch' && status === 404) throw Object.assign(new Error('Not found'), {status});
+      return getCommit(value);
+    };
+    await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'deleted-branch'}});
+    assert.equal(f.dispatches[2].ref, 'master');
+    assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: f.execution.SOURCE, suite});
+    assert.equal(f.checks.get(id).conclusion, 'failure');
+    assert.deepEqual(f.checks.get(otherId), other);
+    assert.equal(f.checks.size, 2);
+  });
+}
+
+for (const status of [403, 429, 500]) test(`helper lookup failure (${status}) does not silently dispatch recovery on master`, async () => {
   const f = await start(fixture());
   await report(f, {result: 'failure'});
-  await report(f, {phase: 'start', inputs: {...inputs(), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'deleted-branch'}});
-  assert.equal(f.dispatches[2].ref, 'master');
-  assert.equal(f.dispatches[2].inputs.workflow_ref, f.execution.SOURCE);
+  f.github.rest.repos.getCommit = async () => {throw Object.assign(new Error('Lookup failed'), {status});};
+  await assert.rejects(report(f, {phase: 'start'}), error => error.status === status);
+  assert.equal(f.dispatches.length, 2);
+  assert.equal(f.checks.get(1).conclusion, 'failure');
 });
