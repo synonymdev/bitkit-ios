@@ -304,7 +304,7 @@ class Keychain {
         static let allowed: Set<String> = [
             "paykit_session:delete", "pubky_secret_key:delete",
             "shared-own:enumerate", "shared-own:delete",
-            "preferences:flush", "marker:persist", "marker:complete",
+            "preferences:flush", "reservations:acknowledge", "marker:persist", "marker:complete",
         ]
 
         private static func selected() -> String? {

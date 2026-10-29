@@ -352,6 +352,9 @@ actor PrivatePaykitAddressReservationStore {
     }
 
     func validateRemovalState(_ encoded: Data) throws {
+        #if DEBUG
+            try ProfileRemovalTestFault.check("reservations:acknowledge")
+        #endif
         guard Self.decodeStoredLedger(encoded) == ledger, defaults.data(forKey: Self.defaultsKey) == encoded else {
             throw ProfileRemovalStore.StoreError.changed
         }
