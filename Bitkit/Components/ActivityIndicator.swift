@@ -4,7 +4,6 @@ struct ActivityIndicator: View {
     let size: CGFloat
     let theme: Theme
     let tint: Color?
-    let rotationDuration: Double
 
     enum Theme {
         case light
@@ -14,11 +13,10 @@ struct ActivityIndicator: View {
     @State private var isRotating = false
     @State private var opacity: Double = 0
 
-    init(size: CGFloat = 32, theme: Theme = .light, tint: Color? = nil, rotationDuration: Double = 1.2) {
+    init(size: CGFloat = 32, theme: Theme = .light, tint: Color? = nil) {
         self.size = size
         self.theme = theme
         self.tint = tint
-        self.rotationDuration = rotationDuration
     }
 
     var body: some View {
@@ -38,7 +36,7 @@ struct ActivityIndicator: View {
                 )
                 .frame(width: size, height: size)
                 .rotationEffect(.degrees(isRotating ? 360 : 0))
-                .animation(.linear(duration: rotationDuration).repeatForever(autoreverses: false), value: isRotating)
+                .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: isRotating)
         }
         .opacity(opacity)
         .onAppear {
