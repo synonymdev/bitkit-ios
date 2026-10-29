@@ -283,10 +283,13 @@ class BackupService {
     @discardableResult
     func startObservingBackups() -> Task<Void, Never>? {
         guard !shouldSkipBackup() else { return nil }
+        let foregroundGeneration = stateQueue.sync { foregroundObservationGeneration }
 
         return Task {
             let generation = try? await ServiceQueue.background(.backup) { () -> UInt64? in
-                guard !self.isObserving else { return nil }
+                guard !self.isObserving, !self.shouldSkipBackup(),
+                      self.stateQueue.sync(execute: { self.foregroundObservationGeneration == foregroundGeneration })
+                else { return nil }
                 self.isObserving = true
                 let generation = self.stateQueue.sync {
                     self.observationGeneration &+= 1
@@ -299,7 +302,7 @@ class BackupService {
             guard let generation else { return }
 
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
-            await installBackupObservers(generation: generation)
+            await installBackupObservers(generation: generation, foregroundGeneration: foregroundGeneration)
         }
     }
 
@@ -721,10 +724,10 @@ class BackupService {
     // MARK: - Private Methods
 
     @MainActor
-    private func installBackupObservers(generation: UInt64) {
+    private func installBackupObservers(generation: UInt64, foregroundGeneration: UInt64) {
         guard stateQueue.sync(execute: { observationGeneration == generation }) else { return }
         cancellables.removeAll()
-        startBackupStatusObservers()
+        startBackupStatusObservers(generation: foregroundGeneration)
         startDataStoreListeners()
     }
 
@@ -735,7 +738,7 @@ class BackupService {
     }
 
     @MainActor
-    private func startBackupStatusObservers() {
+    private func startBackupStatusObservers(generation: UInt64) {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
                 .prepend(getAllBackupStatuses())
@@ -753,7 +756,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup(category: category) else { return }
                     if status.isRequired && !status.running {
                         Task {
-                            await self.scheduleBackup(category: category)
+                            await self.scheduleBackup(category: category, foregroundGeneration: generation)
                         }
                     }
                 }
