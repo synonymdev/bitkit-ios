@@ -240,6 +240,84 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testStoppingObservationRetainsChangesWhileUploadFinishes() async throws {
+        let fixture = try Fixture(categories: [])
+        defer { fixture.removeDefaults() }
+        let uploadStarted = expectation(description: "Wallet upload is held")
+        let uploadCancelled = expectation(description: "Stop cancelled the held wallet upload")
+        let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
+        let heldUpload = Task { for await _ in uploadGate {} }
+        defer {
+            releaseUpload.finish()
+            heldUpload.cancel()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            XCTAssertEqual(key, BackupCategory.wallet.rawValue)
+            await withTaskCancellationHandler {
+                uploadStarted.fulfill()
+                await heldUpload.value
+            } onCancel: {
+                uploadCancelled.fulfill()
+            }
+        })
+        await service.startObservingBackups()?.value
+        let upload = Task { await service.triggerBackup(category: .wallet) }
+        await fulfillment(of: [uploadStarted], timeout: 2)
+
+        let stop = Task { await service.stopObservingBackups() }
+        await fulfillment(of: [uploadCancelled], timeout: 2)
+        XCTAssertNoThrow(try Bitkit.WatchOnlyAccountStore.save([], defaults: fixture.defaults))
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        releaseUpload.finish()
+        _ = await upload.value
+        await stop.value
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired,
+                      "Finishing the old upload must not acknowledge a change made while stopping")
+    }
+
+    func testStoppingOldObservationPreservesRestartedListeners() async throws {
+        let fixture = try Fixture(categories: [])
+        defer { fixture.removeDefaults() }
+        let uploadStarted = expectation(description: "Wallet upload is held")
+        let uploadCancelled = expectation(description: "Stop cancelled the held wallet upload")
+        let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
+        let heldUpload = Task { for await _ in uploadGate {} }
+        defer {
+            releaseUpload.finish()
+            heldUpload.cancel()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            XCTAssertEqual(key, BackupCategory.wallet.rawValue)
+            await withTaskCancellationHandler {
+                uploadStarted.fulfill()
+                await heldUpload.value
+            } onCancel: {
+                uploadCancelled.fulfill()
+            }
+        })
+        await service.startObservingBackups()?.value
+        let upload = Task { await service.triggerBackup(category: .wallet) }
+        await fulfillment(of: [uploadStarted], timeout: 2)
+
+        let oldStop = Task { await service.stopObservingBackups() }
+        await fulfillment(of: [uploadCancelled], timeout: 2)
+        await service.startObservingBackups()?.value
+        releaseUpload.finish()
+        _ = await upload.value
+        await oldStop.value
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).isRequired)
+
+        let changed = expectation(description: "Restarted observation captures a new wallet change")
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.wallet]?.isRequired == true }
+            .first().sink { _ in changed.fulfill() }
+        defer { subscription.cancel() }
+        XCTAssertNoThrow(try Bitkit.WatchOnlyAccountStore.save([], defaults: fixture.defaults))
+        await fulfillment(of: [changed], timeout: 2)
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        await service.stopObservingBackups()
+    }
+
     private func startAfterPendingJobsSettle(_ service: BackupService, categories: [BackupCategory]) async {
         let settled = categories.map { expectation(description: "Initial \($0.rawValue) scheduling settled") }
         let subscriptions = zip(categories, settled).map { category, completed in
