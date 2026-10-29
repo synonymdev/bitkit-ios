@@ -738,6 +738,7 @@ final class PrivatePaykitServiceTests: XCTestCase {
             var received: [String] = []
             var peerReads = 0
             var outboundReads = 0
+            var schedulingReads = 0
             let service = PrivatePaykitService(messageRetryOperations: .init(
                 now: { now }, currentPublicKey: { _ in "identity" },
                 drain: { priority in
@@ -751,6 +752,13 @@ final class PrivatePaykitServiceTests: XCTestCase {
                         linkedPeers: {
                             peerReads += 1
                             return keys.map { self.drainPeer($0, state: linked.contains($0) ? .linked : .linking) }
+                        },
+                        schedulingSnapshot: {
+                            schedulingReads += 1
+                            return Paykit.PrivateMessageSchedulingSnapshot(
+                                linkedPeers: keys.map { self.drainPeer($0, state: linked.contains($0) ? .linked : .linking) },
+                                pendingOutboundCounterparties: Array(pending)
+                            )
                         },
                         processPending: { key in
                             XCTAssertNotNil(pending.remove(key))
@@ -779,11 +787,46 @@ final class PrivatePaykitServiceTests: XCTestCase {
             await task?.value
             XCTAssertEqual(sent, keys)
             XCTAssertEqual(received, keys)
-            XCTAssertEqual(peerReads, 7)
-            XCTAssertEqual(outboundReads, explicit ? 6 : 7)
+            XCTAssertEqual(peerReads, explicit ? 4 : 3)
+            XCTAssertEqual(outboundReads, 3)
+            XCTAssertEqual(schedulingReads, explicit ? 3 : 4)
             let retries = await service.pendingMessageDrainRetryKeys
             XCTAssertTrue(retries.isEmpty)
         }
+    }
+
+    func testFailedSchedulingReadRetainsRetryIntent() async {
+        PrivatePaykitService.setContactSharingCleanupPending(false)
+        let key = "pubky" + String(repeating: "y", count: 52)
+        let now = Date(timeIntervalSince1970: 100)
+        let waiting = expectation(description: "Failed inspection remains scheduled")
+        var received = 0
+        let service = PrivatePaykitService(messageRetryOperations: .init(
+            now: { now },
+            sleep: { _ in
+                waiting.fulfill()
+                try await Task.sleep(for: .seconds(3600))
+            },
+            currentPublicKey: { _ in "identity" },
+            drain: { _ in
+                .init(
+                    ensureLink: { _ in XCTFail("Already linked") },
+                    pendingOutbound: { [] },
+                    linkedPeers: { [self.drainPeer(key)] },
+                    schedulingSnapshot: { throw PrivatePaykitError.privateUnavailable },
+                    processPending: { _ in XCTFail("No outbound messages") },
+                    receive: { _ in received += 1 }
+                )
+            }
+        ))
+        _ = await service.rememberSavedContacts([key], replacing: true)
+        await service.setTestRetry(.init(nextAttemptAt: now), for: key)
+        await service.schedulePrivatePaymentRecovery(for: key)
+        await fulfillment(of: [waiting], timeout: 2)
+        let retries = await service.pendingMessageDrainRetryKeys
+        XCTAssertEqual(retries, [key])
+        XCTAssertEqual(received, 1)
+        await service.invalidateContactPreparation()
     }
 
     func testDuePeerSnapshotIsDiscardedAfterPreparationPauseOrIdentityInvalidation() async {
@@ -1749,7 +1792,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let backup = PrivatePaykitService.Backup(
             sdkState: "opaque recovery state",
-            consumedPrivatePaymentListVersions: [publicKey: 7]
+            consumedPrivatePaymentListVersions: [publicKey: 7],
+            consumedPrivatePaymentListOwners: [publicKey: "attempt-a"]
         )
         let encoded = try String(decoding: JSONEncoder().encode(backup), as: UTF8.self)
         let service = PrivatePaykitService()
@@ -1759,8 +1803,18 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(try Keychain.loadString(key: .paykitRecoveryBackup), backup.sdkState)
         let state = await service.testContactState(publicKey: publicKey)
         XCTAssertEqual(state?.consumedPrivatePaymentListVersion, 7)
+        XCTAssertEqual(state?.consumedPrivatePaymentListOwner, "attempt-a", "A restored failed attempt can still give its list back")
         XCTAssertNil(try Keychain.load(key: .paykitSession))
         XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
+    }
+
+    func testBackupMadeBeforeListOwnersDecodes() throws {
+        let saved = #"{"sdkState":"opaque recovery state","consumedPrivatePaymentListVersions":{"pubkycontact":7}}"#
+
+        let backup = try JSONDecoder().decode(PrivatePaykitService.Backup.self, from: Data(saved.utf8))
+
+        XCTAssertEqual(backup.consumedPrivatePaymentListVersions, ["pubkycontact": 7])
+        XCTAssertNil(backup.consumedPrivatePaymentListOwners)
     }
 
     func testReservationStoreBacksUpRestoredCeiling() async throws {
@@ -3165,5 +3219,25 @@ private extension PrivatePaykitService {
 
     func clearTestPendingMessageDrainRetries() {
         invalidateContactPreparation()
+    }
+}
+
+private extension PrivatePaykitService.PrivateMessageDrainOperations {
+    init(
+        ensureLink: @escaping (String) async throws -> Void,
+        pendingOutbound: @escaping () async throws -> [String],
+        linkedPeers: @escaping () async throws -> [LinkedPeerRecord],
+        processPending: @escaping (String) async throws -> Void,
+        receive: @escaping (String) async throws -> Void
+    ) {
+        self.init(
+            ensureLink: ensureLink, pendingOutbound: pendingOutbound, linkedPeers: linkedPeers,
+            schedulingSnapshot: {
+                let peers = try await linkedPeers()
+                let pending = try await pendingOutbound()
+                return Paykit.PrivateMessageSchedulingSnapshot(linkedPeers: peers, pendingOutboundCounterparties: pending)
+            },
+            processPending: processPending, receive: receive
+        )
     }
 }

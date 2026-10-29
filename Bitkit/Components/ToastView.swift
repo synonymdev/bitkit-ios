@@ -9,6 +9,8 @@ struct ToastView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var hasPausedAutoHide = false
     private let dismissThreshold: CGFloat = 50
+    /// The 16pt close icon plus an 8pt gap, kept clear of the text on toasts that do not auto-hide.
+    private let closeButtonInset: CGFloat = 24
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -19,6 +21,7 @@ struct ToastView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, toast.autoHide ? 0 : closeButtonInset)
         .padding(16)
         .background(accentColor.opacity(0.32))
         .background(BlurView())

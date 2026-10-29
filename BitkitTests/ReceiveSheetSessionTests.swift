@@ -42,16 +42,13 @@ final class ReceiveSheetSessionTests: XCTestCase {
 
     func testReceiveRoutesRequireInvoiceRefresh() {
         let routes: [ReceiveRoute] = [
-            .qr(cjitInvoice: nil, tab: nil),
-            .qr(cjitInvoice: "cjit-invoice", tab: .spending),
-            .qr(cjitInvoice: nil, tab: .hardware),
+            .qr(tab: nil),
+            .qr(tab: .spending),
+            .qr(tab: .hardware),
             .edit(tab: .spending, onchainOnly: false),
             .edit(tab: .hardware, onchainOnly: true),
             .tag,
-            .cjitAmount,
-            .cjitConfirm(entry: .mock(), receiveAmountSats: 1000, isAdditional: false),
-            .cjitLearnMore(entry: .mock(), receiveAmountSats: 1000, isAdditional: false),
-            .cjitGeoBlocked,
+            .transferUnavailable,
         ]
 
         for route in routes {

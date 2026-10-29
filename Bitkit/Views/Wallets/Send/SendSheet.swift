@@ -92,6 +92,8 @@ final class SendPresentationState {
     var hasValidatedAfterSync = false
     var incomingPaymentRequest: PaykitPaymentRequest?
     var isSubmittingPayment = false
+    var paymentReview: UUID?
+    var isReviewingUsdtPayment = false
     var pendingEmbeddedRetryRoute: SendRoute?
     var routingCacheResetAttempted = false
     var syncTimedOut = false
@@ -170,6 +172,7 @@ struct SendSheetItem: SheetItem {
 }
 
 struct SendSheet: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var settings: SettingsViewModel
@@ -205,6 +208,27 @@ struct SendSheet: View {
 
     private var currentRoot: SendRoute {
         flow.rootOverride ?? flow.rootRoute
+    }
+
+    private var isReviewingPayment: Bool {
+        guard isCurrentPresentation, !flow.didFinish, scenePhase != .background else { return false }
+        switch flow.navigationPath.last ?? currentRoot {
+        case .confirm, .pin, .hardwareSign: return true
+        case .usdt, .usdtAddress: return flow.isReviewingUsdtPayment
+        default: return false
+        }
+    }
+
+    private func updatePaymentReview(_ reviewing: Bool) {
+        if reviewing, flow.paymentReview == nil {
+            if !isEmbedded {
+                flow.onDismiss = { cleanup() }
+            }
+            flow.paymentReview = PaykitPaymentActivity.shared.beginReview()
+        } else if !reviewing, let paymentReview = flow.paymentReview {
+            PaykitPaymentActivity.shared.endReview(paymentReview)
+            flow.paymentReview = nil
+        }
     }
 
     private var isPreparingRequest: Bool {
@@ -326,6 +350,9 @@ struct SendSheet: View {
             guard shouldDismiss else { return }
             sheets.hideSheetIfActive(isEmbedded ? .subscription : .send, reason: "Incoming payment request is no longer available")
         }
+        .onChange(of: isReviewingPayment, initial: true) { _, reviewing in
+            updatePaymentReview(reviewing)
+        }
         .onChange(of: isMissingLnurlPayData, initial: true) { _, isMissing in
             guard isMissing, isCurrentPresentation else { return }
             exitMissingLnurlPayment()
@@ -405,7 +432,7 @@ struct SendSheet: View {
         if isPreparingRequest, config.preparation?.request == nil {
             Color.clear
         } else if shouldShowSyncOverlay {
-            SendSyncScreen()
+            SendSyncScreen(isOnchain: wallet.channels?.isEmpty != false)
                 .transition(.opacity)
         } else {
             NavigationStack(path: $flow.navigationPath) {
@@ -422,6 +449,7 @@ struct SendSheet: View {
     private func cleanup() {
         // Content recreation keeps the presentation, its setup and its payment operation alive.
         guard isEmbedded || !isCurrentPresentation, !flow.didFinish else { return }
+        updatePaymentReview(false)
         flow.didFinish = true
         flow.onDismiss = nil
         flow.setupTask?.cancel()
@@ -958,11 +986,18 @@ struct SendSheet: View {
                     }
                     guard app.ownsContactPaymentContext(context) else { throw PaykitPaymentRequestError.requestUnavailable }
                 }
-            }, onBack: { flow.navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
+            }, onReviewChange: { flow.isReviewingUsdtPayment = $0 }, onBack: {
+                if flow.navigationPath.isEmpty {
+                    sheets.hideSheet()
+                } else {
+                    flow.navigationPath.removeLast()
+                }
+            }, onClose: { sheets.hideSheet() })
         case let .usdtAddress(recipient, amount):
             UsdtSendView(onDetails: { id in
                 flow.usdtDetails = id
             }, initialRecipient: recipient, initialAmount: amount, hosted: true,
+            onReviewChange: { flow.isReviewingUsdtPayment = $0 },
             onBack: { flow.navigationPath.removeLast() }, onClose: { sheets.hideSheet() })
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $flow.navigationPath)
@@ -1132,8 +1167,13 @@ struct SendSheet: View {
             throw PaykitPaymentRequestError.operationInProgress
         }
 
+        guard !app.paykitUsesUsdt, let privatePaymentContext = context.privatePaymentContext,
+              privatePaymentContext.paymentListVersion != nil
+        else {
+            try await paykitPaymentRequestManager.prepareForPayment(request)
+            return
+        }
         try await paykitPaymentRequestManager.prepareForPayment(request) {
-            guard !app.paykitUsesUsdt, let privatePaymentContext = context.privatePaymentContext else { return }
             try await PrivatePaykitService.shared.consumePrivatePaymentList(
                 publicKey: context.publicKey,
                 context: privatePaymentContext,
@@ -1448,7 +1488,13 @@ struct SendSheet: View {
                 return
             }
         }
-        flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(), let recipient = context.endpoints.first?.value {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            flow.pendingEmbeddedRetryRoute = .usdt(recipient: recipient, amount: terms.amount.value)
+        } else {
+            flow.pendingEmbeddedRetryRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+        }
         flow.hasValidatedAfterSync = false
         guard !shouldShowSyncOverlay else { return }
         validatePaymentAfterSync()

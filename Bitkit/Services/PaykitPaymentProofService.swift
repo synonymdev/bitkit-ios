@@ -16,7 +16,7 @@ enum PaykitPaymentProofKind: String, Codable {
     }
 }
 
-struct PaykitOnchainPaymentResolution: Equatable {
+struct PaykitOnchainPaymentResolution: Hashable {
     let identity: String
     let requestId: PaykitPaymentRequest.ID
     let transactionId: String
@@ -166,11 +166,15 @@ struct PaykitPaymentProofStore: PaykitPaymentProofStoring {
 protocol PaykitPaymentProofSdkHandling: Sendable {
     func identityStatus() async throws -> Paykit.IdentityStatus?
     func paymentRequests() async throws -> [Paykit.PaymentRequestRecord]
-    func processPendingPrivateMessages() async throws -> [Paykit.OutboundPrivateCounterpartySendReport]
+    func readPaymentRequests(counterparty: String, expectedIdentity: String?) async throws -> Paykit.PaymentRequestRead
+    func processOutboundPrivateMessages(
+        counterparty: String, priority: PaykitSdkOperationLock.Priority, expectedIdentity: String?
+    ) async throws -> Paykit.OutboundPrivateSendReport
     func submitPaymentProof(
         counterparty: String,
         paymentRequestId: String,
-        proof: Paykit.PaymentProofSubmission
+        proof: Paykit.PaymentProofSubmission,
+        priority: PaykitSdkOperationLock.Priority
     ) async throws -> Paykit.PaymentRequestRecord
 }
 
@@ -181,6 +185,8 @@ enum PaykitLightningPaymentProofStatus: Equatable {
     case succeeded(preimage: String?)
     case failed
     case unknown
+    /// The node has no payment history yet, as before it starts, so it can't say whether it knows the payment.
+    case unavailable
 }
 
 protocol PaykitLightningPaymentProofLookingUp: Sendable {
@@ -189,7 +195,8 @@ protocol PaykitLightningPaymentProofLookingUp: Sendable {
 
 struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
-        guard let payment = await LightningService.shared.listPayments()?.first(where: {
+        guard let payments = await LightningService.shared.listPayments() else { return .unavailable }
+        guard let payment = payments.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
             return .unknown
@@ -251,6 +258,7 @@ actor PaykitPaymentProofService {
     private let logInfo: @Sendable (String) -> Void
     private let logWarning: @Sendable (String) -> Void
     private let mutationLock = PaykitProofMutationLock()
+    private let submissionLock = PaykitProofMutationLock()
     private struct HardwareCompletionKey: Hashable {
         let identity: String
         let requestId: PaykitPaymentRequest.ID
@@ -293,7 +301,8 @@ actor PaykitPaymentProofService {
             return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
                                                 pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
                                                 acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
-                                                    .backupSnapshot())
+                                                    .backupSnapshot(),
+                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot())
         }
     }
 
@@ -305,6 +314,9 @@ actor PaykitPaymentProofService {
         try await mutationLock.withLock { try await persist(restored?.1 ?? proofs) }
         try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
+        if let allowances = state.allowances {
+            PaykitAllowanceKeychainStore().restoreBackup(allowances)
+        }
     }
 
     func restoreBackup(_ proofs: [PaykitPaymentStateBackup.Proof]) async throws {
@@ -416,8 +428,12 @@ actor PaykitPaymentProofService {
         kind: PaykitPaymentProofKind
     ) async throws -> PendingPaykitPaymentProof {
         guard request.acceptedPaymentEndpointIdentifiers.contains(paymentEndpointIdentifier),
-              Self.endpoint(paymentEndpointIdentifier, supports: kind),
-              let identityStatus = try await sdk.identityStatus(),
+              Self.endpoint(paymentEndpointIdentifier, supports: kind)
+        else {
+            throw PaykitPaymentRequestError.requestUnavailable
+        }
+        let read = try await sdk.readPaymentRequests(counterparty: request.counterparty, expectedIdentity: nil)
+        guard let identityStatus = read.identityStatus,
               identityStatus.capability == .privateLinkCapable,
               let publicKey = identityStatus.publicKey,
               let identity = PubkyPublicKeyFormat.normalized(publicKey)
@@ -425,8 +441,7 @@ actor PaykitPaymentProofService {
             throw PaykitPaymentRequestError.requestUnavailable
         }
 
-        let records = try await sdk.paymentRequests()
-        if records.contains(where: { record in
+        if read.paymentRequests.contains(where: { record in
             guard record.localRole == .payer,
                   record.paymentRequestId == request.paymentRequestId,
                   PubkyPublicKeyFormat.matches(record.counterparty, request.counterparty)
@@ -549,6 +564,10 @@ actor PaykitPaymentProofService {
     /// Whether the request behind an unresolved payment can no longer be paid: the payee ended it, or its deadline
     /// passed. A record that is missing, carries a proof or needs recovery never counts as ended.
     func onchainRequestHasEnded(_ attempt: OnchainSendAttempt, now: Date = Date()) async throws -> Bool {
+        // Blocktank no longer sells channels, so an unpaid order has ended.
+        if attempt.isBlocktankFunding {
+            return attempt.canBeAbandoned
+        }
         guard attempt.canBeAbandoned, let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity
         else { return false }
         try await requireRecoveryPayer(payer)
@@ -653,6 +672,15 @@ actor PaykitPaymentProofService {
 
     /// Removes the started proof, then the attempt, so a crash in between leaves an attempt a later cancel finishes.
     private func finishRelease(_ attempt: OnchainSendAttempt, context: OnchainSendPendingContext) async throws {
+        if attempt.isBlocktankFunding {
+            // A Blocktank funding has no Shop proof to remove.
+            try await mutationLock.withLock {
+                guard try await attemptService.pendingAttempt(context: context) == attempt else { throw OnchainSendAttemptError.unresolved }
+                try await attemptService.abandonUnbroadcast(attempt)
+            }
+            logInfo("Released Blocktank funding \(attempt.txid ?? "") through \(attempt.releaseTxid ?? "")")
+            return
+        }
         guard let requestId = attempt.requestId, let payer = attempt.recoveryContext?.paymentIdentity else {
             throw OnchainSendAttemptError.unresolved
         }
@@ -682,7 +710,8 @@ actor PaykitPaymentProofService {
     }
 
     func resolvedOnchainPayment(requestId: PaykitPaymentRequest.ID, identity: String,
-                                context: OnchainSendPendingContext?) async -> PaykitOnchainPaymentResolution?
+                                context: OnchainSendPendingContext?,
+                                priority: PaykitSdkOperationLock.Priority = .ordered) async -> PaykitOnchainPaymentResolution?
     {
         do {
             try await requireRecoveryPayer(identity)
@@ -693,10 +722,17 @@ actor PaykitPaymentProofService {
                 nil
             }
             let txid: String?
+            var completionPriority: PaykitSdkOperationLock.Priority = .ordered
             if let attempt, attempt.requestId == requestId, attempt.status == .accepted,
                PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity ?? identity, identity)
             {
                 txid = attempt.txid
+                if attempt.walletId == OnchainSendAttemptService.walletId(index: 0),
+                   let proof, !proof.hasUnsupportedOnchainWallet,
+                   PubkyPublicKeyFormat.matches(attempt.recoveryContext?.paymentIdentity, identity)
+                {
+                    completionPriority = priority
+                }
             } else if let proof, !proof.hasUnsupportedOnchainWallet, proof.onchainAcceptanceVerified == true,
                       proof.paymentIdentifier == proof.proofData
             {
@@ -704,7 +740,9 @@ actor PaykitPaymentProofService {
             } else {
                 return nil
             }
-            guard let txid, await completeOnchainPayment(requestId: requestId, identity: identity, txid: txid) else { return nil }
+            guard let txid, await completeOnchainPayment(
+                requestId: requestId, identity: identity, txid: txid, priority: completionPriority
+            ) else { return nil }
             return PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid)
         } catch { return nil }
     }
@@ -996,7 +1034,7 @@ actor PaykitPaymentProofService {
             if deliverInBackground {
                 submitInBackground(completed)
             } else {
-                _ = await submit(completed)
+                _ = await submit(completed, onlyIfRetained: true)
             }
             return true
         } catch {
@@ -1067,7 +1105,9 @@ actor PaykitPaymentProofService {
         return PaykitOnchainPaymentResolution(identity: identity, requestId: requestId, transactionId: txid.lowercased(), walletId: walletId)
     }
 
-    func completeLightningPayment(paymentHash: String, preimage: String?) async {
+    func completeLightningPayment(
+        paymentHash: String, preimage: String?, priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async {
         guard let preimage,
               Self.preimage(preimage, matchesPaymentHash: paymentHash)
         else {
@@ -1078,7 +1118,7 @@ actor PaykitPaymentProofService {
         }
 
         do {
-            let completed: [PendingPaykitPaymentProof] = try await mutationLock.withLock {
+            let (completed, persisted) = try await mutationLock.withLock {
                 var proofs = try await loadProofs()
                 let indexes = proofs.indices
                     .filter { proofs[$0].kind == .lightning && proofs[$0].paymentIdentifier?.caseInsensitiveCompare(paymentHash) == .orderedSame }
@@ -1088,11 +1128,19 @@ actor PaykitPaymentProofService {
                 let completed = indexes.map { proofs[$0] }
                 if !completed.isEmpty {
                     do { try await persist(proofs) }
-                    catch { logWarning("Failed to persist completed Lightning proof; attempting immediate delivery: \(error)") }
+                    catch {
+                        logWarning("Failed to persist completed Lightning proof; attempting immediate delivery: \(error)")
+                        return (completed, false)
+                    }
                 }
-                return completed
+                return (completed, true)
             }
-            for proof in completed where await !submit(proof) {
+            for proof in completed {
+                if persisted {
+                    submitInBackground(proof, priority: priority)
+                    continue
+                }
+                guard await !submit(proof) else { continue }
                 try await mutationLock.withLock {
                     var proofs = try await loadProofs()
                     guard let index = proofs.firstIndex(where: {
@@ -1117,14 +1165,16 @@ actor PaykitPaymentProofService {
         return await completeOnchainPayment(
             requestId: request.id,
             identity: identity,
-            txid: txid
+            txid: txid,
+            priority: .interactive
         )
     }
 
     private func completeOnchainPayment(
         requestId: PaykitPaymentRequest.ID,
         identity: String,
-        txid: String
+        txid: String,
+        priority: PaykitSdkOperationLock.Priority = .ordered
     ) async -> Bool {
         guard Self.isHex(txid, byteCount: 32) else { return false }
         do {
@@ -1178,7 +1228,7 @@ actor PaykitPaymentProofService {
             }
             guard result.0 else { return false }
             if let completed = result.1 {
-                submitInBackground(completed)
+                submitInBackground(completed, priority: priority)
             }
             guard await resumeAcceptedRequestFollowup(requestId: requestId, txid: txid) else { return false }
             if let completed = result.1 {
@@ -1357,7 +1407,7 @@ actor PaykitPaymentProofService {
                             }
                             continue
                         }
-                        await submit(proof)
+                        await submit(proof, onlyIfRetained: proof.kind != .usdt)
                         continue
                     }
                     if proof.kind == .onchain,
@@ -1369,7 +1419,7 @@ actor PaykitPaymentProofService {
                     }
                     guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
                     switch await lightningPaymentLookup.status(paymentHash: paymentHash) {
-                    case .pending, .unknown:
+                    case .pending, .unknown, .unavailable:
                         continue
                     case .failed:
                         await failLightningPayment(paymentHash: paymentHash)
@@ -1500,6 +1550,9 @@ actor PaykitPaymentProofService {
     }
 
     func retainedHardwarePaymentForRetry(request: PaykitPaymentRequest) async throws -> PendingPaykitPaymentProof? {
+        let proofs = try await loadProofs()
+        try Task.checkCancellation()
+        guard proofs.contains(where: { $0.requestId == request.id && $0.hardwareSignedTransaction != nil }) else { return nil }
         let identity = try await currentIdentity()
         let proof = await retainedHardwarePaymentsForRetry(identity: identity)[request.id]
         guard let proof, request.matchesOnchainPayment(proof), proof.billingPeriod == request.billingPeriod,
@@ -1610,22 +1663,33 @@ actor PaykitPaymentProofService {
     }
 
     @discardableResult
-    private func submit(_ pendingProof: PendingPaykitPaymentProof) async -> Bool {
+    private func submit(
+        _ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool = false, priority: PaykitSdkOperationLock.Priority = .ordered
+    ) async -> Bool {
+        await submissionLock.withLock { await submitReady(pendingProof, onlyIfRetained: onlyIfRetained, priority: priority) }
+    }
+
+    private func submitReady(
+        _ pendingProof: PendingPaykitPaymentProof, onlyIfRetained: Bool, priority: PaykitSdkOperationLock.Priority
+    ) async -> Bool {
         guard !pendingProof.hasUnsupportedOnchainWallet ||
             pendingProof.onchainWalletId.map({ hardwareTransactionLookup.hasWallet(walletId: $0) }) == true,
             let proofData = pendingProof.proofData,
             pendingProof.kind != .onchain || pendingProof.onchainAcceptanceVerified == true else { return false }
         do {
-            guard let identityStatus = try await sdk.identityStatus(),
+            if onlyIfRetained {
+                guard try await loadProofs().contains(pendingProof) else { return false }
+            }
+            let read = try await sdk.readPaymentRequests(
+                counterparty: pendingProof.requestId.counterparty,
+                expectedIdentity: pendingProof.identity
+            )
+            guard let identityStatus = read.identityStatus,
                   identityStatus.capability == .privateLinkCapable,
-                  PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity)
-            else { return false }
-
-            let records = try await sdk.paymentRequests()
-            guard let request = records.first(where: {
-                $0.paymentRequestId == pendingProof.requestId.paymentRequestId &&
-                    PubkyPublicKeyFormat.matches($0.counterparty, pendingProof.requestId.counterparty)
-            }) else { return false }
+                  PubkyPublicKeyFormat.matches(identityStatus.publicKey, pendingProof.identity), let request = read.paymentRequests.first(where: {
+                      $0.paymentRequestId == pendingProof.requestId.paymentRequestId &&
+                          PubkyPublicKeyFormat.matches($0.counterparty, pendingProof.requestId.counterparty)
+                  }) else { return false }
 
             let proofText = try Self.proofText(kind: pendingProof.kind, data: proofData)
             let isAlreadyQueued = request.paymentProofs.contains(where: {
@@ -1647,11 +1711,19 @@ actor PaykitPaymentProofService {
                         allowanceId: pendingProof.allowanceId,
                         conversionQuoteId: pendingProof.conversionQuoteId,
                         proof: Paykit.PrivateJsonObject(text: proofText)
-                    )
+                    ),
+                    priority: priority
                 )
                 logInfo("Queued a Paykit payment proof for private delivery")
+            }
+            // The SDK queue is durable; delivery must not hold the proof submission lock.
+            Task { [sdk, logWarning] in
                 do {
-                    _ = try await sdk.processPendingPrivateMessages()
+                    _ = try await sdk.processOutboundPrivateMessages(
+                        counterparty: pendingProof.requestId.counterparty,
+                        priority: .background,
+                        expectedIdentity: pendingProof.identity
+                    )
                 } catch {
                     logWarning("Paykit payment proof remains queued for private delivery: \(error)")
                 }
@@ -1675,8 +1747,8 @@ actor PaykitPaymentProofService {
         Self.proofStateChangedSubject.send()
     }
 
-    private func submitInBackground(_ proof: PendingPaykitPaymentProof) {
-        Task { [weak self] in await self?.submit(proof) }
+    private func submitInBackground(_ proof: PendingPaykitPaymentProof, priority: PaykitSdkOperationLock.Priority = .ordered) {
+        Task { [weak self] in await self?.submit(proof, onlyIfRetained: true, priority: priority) }
     }
 
     private func removeRequestProofs(_ proof: PendingPaykitPaymentProof) async {

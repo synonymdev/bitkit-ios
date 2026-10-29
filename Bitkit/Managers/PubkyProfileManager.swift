@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import enum Paykit.PaykitError
 import struct Paykit.PubkySessionBootstrapResult
@@ -145,6 +146,17 @@ class PubkyProfileManager: ObservableObject {
 
     private static func endSessionMutation() {
         sessionMutationCount -= 1
+        if sessionMutationCount == 0 {
+            sessionSettledSubject.send()
+        }
+    }
+
+    private static let sessionSettledSubject = PassthroughSubject<Void, Never>()
+
+    /// Fires when the last session change in flight ends. `currentSession` reads nil until then, and nothing published
+    /// changes at that moment, so work that needs the session (a sign-in completing during that change) waits for this.
+    static var sessionSettledPublisher: AnyPublisher<Void, Never> {
+        sessionSettledSubject.eraseToAnyPublisher()
     }
 
     init(

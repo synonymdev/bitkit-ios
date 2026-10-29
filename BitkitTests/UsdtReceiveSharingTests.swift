@@ -1,5 +1,6 @@
 @testable import Bitkit
 import CoreImage
+import SwiftUI
 import XCTest
 
 final class UsdtReceiveSharingTests: XCTestCase {
@@ -12,6 +13,76 @@ final class UsdtReceiveSharingTests: XCTestCase {
             let networkTitle = t("usdt__receive_network", variables: ["network": network])
             let expected = "\(networkTitle)\n\(address)" + (amount.isEmpty ? "" : "\n\(amount) USDT")
             XCTAssertEqual(view.shareText, expected)
+        }
+    }
+
+    @MainActor
+    func testQrLogoPreservesSquareLayoutInTallContainer() {
+        for logo: String? in [nil, "btc", "tether-circle"] {
+            let host = UIHostingController(rootView: QR(content: "bitcoin:bcrt1qexample", imageAsset: logo))
+            for width: CGFloat in [140, 343] {
+                let size = host.sizeThatFits(in: CGSize(width: width, height: 600))
+                XCTAssertEqual(size.width, width, accuracy: 0.5)
+                XCTAssertEqual(size.height, width, accuracy: 0.5, "Logo must not add vertical space below the QR")
+            }
+        }
+    }
+
+    @MainActor
+    func testReceiveAddressContentFillsAvailableHeight() {
+        for width: CGFloat in [288, 370] {
+            for textSize: DynamicTypeSize in [.large, .accessibility5] {
+                let host = UIHostingController(rootView: VStack(spacing: 0) {
+                    UsdtReceiveAddressContent(
+                        address: "0x1111111111111111111111111111111111111111",
+                        uri: "ethereum:token/transfer",
+                        network: "Arbitrum One",
+                        onEdit: {}, onNetwork: {}
+                    )
+                }.environment(\.dynamicTypeSize, textSize))
+                let size = host.sizeThatFits(in: CGSize(width: width, height: 700))
+                XCTAssertEqual(size.height, 700, accuracy: 0.5, "The Receive footer must stay anchored at \(width) pt and \(textSize)")
+            }
+        }
+    }
+
+    @MainActor
+    func testCompactQrWithLogoRemainsScannable() async throws {
+        let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil,
+                                                options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        defer { previousWindow?.makeKeyAndVisible() }
+        for (uri, logo) in [
+            (
+                "ethereum:0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9@42161/transfer?address=0x1111111111111111111111111111111111111111",
+                "tether-circle"
+            ),
+            ("bitcoin:bcrt1q5y0ejj4qxm2kahxdx3r6lqqcjr2wtj3agypvuu?amount=0.001", "btc"),
+        ] {
+            for height: CGFloat in [140, 343] {
+                let host = UIHostingController(rootView: QR(content: uri, imageAsset: logo))
+                let window = UIWindow(windowScene: scene)
+                window.frame = CGRect(x: 0, y: 0, width: 343, height: height)
+                window.rootViewController = host
+                window.makeKeyAndVisible()
+                defer { window.isHidden = true }
+                var decoded: String?
+                for _ in 0 ..< 40 {
+                    try await Task.sleep(for: .milliseconds(50))
+                    host.view.frame = window.bounds
+                    host.view.layoutIfNeeded()
+                    let image = UIGraphicsImageRenderer(size: window.bounds.size).image { context in
+                        window.layer.render(in: context.cgContext)
+                    }
+                    let features = try detector.features(in: XCTUnwrap(CIImage(image: image)))
+                    decoded = (features.first as? CIQRCodeFeature)?.messageString
+                    if decoded == uri {
+                        break
+                    }
+                }
+                XCTAssertEqual(decoded, uri, "QR must remain scannable at height \(height)")
+            }
         }
     }
 

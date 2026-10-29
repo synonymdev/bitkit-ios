@@ -163,7 +163,6 @@
 				Extensions/PaymentDetails.swift,
 				"Extensions/PaymentFailureReason+UserMessage.swift",
 				Models/BlocksWidgetOptions.swift,
-				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
@@ -171,7 +170,6 @@
 				Models/TransferType.swift,
 				Services/BackupFieldMigration.swift,
 				Services/CoreService.swift,
-				Services/GeoService.swift,
 				Services/HwActivityTagBackup.swift,
 				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
@@ -200,12 +198,10 @@
 				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				"Extensions/PaymentFailureReason+UserMessage.swift",
-				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
-				Services/GeoService.swift,
 				Services/HwActivityTagBackup.swift,
 				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
@@ -886,7 +882,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -warnings-as-errors -Wwarning DeprecatedDeclaration";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG CHECK_GEOBLOCK $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -941,7 +937,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "$(inherited) -warnings-as-errors -Wwarning DeprecatedDeclaration";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CHECK_GEOBLOCK $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -1204,7 +1200,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0";
+				version = "0.1.1-rc2";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
@@ -1212,7 +1208,7 @@
 			repositoryURL = "https://github.com/synonymdev/vss-rust-client-ffi";
 			requirement = {
 				kind = exactVersion;
-				version = 0.5.23;
+				version = "0.5.26-rc1";
 			};
 		};
 		4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
@@ -1228,7 +1224,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = exactVersion;
-				version = "0.7.0-rc.77";
+				version = "0.7.0-rc.78";
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
