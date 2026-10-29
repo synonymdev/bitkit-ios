@@ -1144,7 +1144,7 @@
 "profile__edit_delete_section" = "ELIMINA";
 "profile__edit_unlink_section" = "SCOLLEGA";
 "profile__edit_public_note" = "Tieni presente che le informazioni del profilo sono salvate in file pubblici.";
-"profile__delete_active_subscription" = "Termina gli abbonamenti attivi prima di rimuovere questo profilo.";
+"profile__delete_active_subscription" = "Gli abbonamenti attivi impediscono la rimozione di questo profilo.";
 "profile__delete_title" = "Eliminare il Profilo?";
 "profile__delete_description" = "Eliminando il profilo lo rimuovi da Pubky. I contatti potrebbero conservare le informazioni di profilo e di pagamento condivise in precedenza con loro.";
 "profile__delete_confirm" = "Sì, Elimina";

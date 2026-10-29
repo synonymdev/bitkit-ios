@@ -1079,7 +1079,7 @@
 "profile__edit_delete_section" = "ELIMINAR";
 "profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Tenga en cuenta que la información del perfil se guarda en archivos públicos.";
-"profile__delete_active_subscription" = "Finaliza las suscripciones activas antes de eliminar este perfil.";
+"profile__delete_active_subscription" = "Las suscripciones activas impiden eliminar este perfil.";
 "profile__delete_title" = "¿Eliminar el perfil?";
 "profile__delete_description" = "Al eliminar su perfil, se elimina de Pubky. Es posible que sus contactos conserven la información de perfil y de pago que compartió con ellos anteriormente.";
 "profile__delete_confirm" = "Sí, eliminar";

@@ -160,9 +160,12 @@ struct EditProfileView: View {
             try await pubkyProfile.performProfileDeletion {
                 do {
                     try await performDeleteProfile(session: session)
-                } catch PubkyServiceError.activeSubscription {
+                } catch let PubkyServiceError.activeSubscription(endsAt) {
                     guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
-                    app.toast(type: .error, title: t("profile__delete_active_subscription"))
+                    let description = endsAt.map {
+                        t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
+                    }
+                    app.toast(type: .error, title: t("profile__delete_active_subscription"), description: description)
                 } catch {
                     guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
                     Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")

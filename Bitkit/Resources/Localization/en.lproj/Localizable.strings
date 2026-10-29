@@ -1180,7 +1180,7 @@
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_unlink_section" = "UNLINK";
 "profile__edit_public_note" = "Please note profile information is stored in public files.";
-"profile__delete_active_subscription" = "End active subscriptions before removing this profile.";
+"profile__delete_active_subscription" = "Active subscriptions prevent removing this profile.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "Deleting your profile removes it from Pubky. Contacts may still retain profile and payment information previously shared with them.";
 "profile__delete_confirm" = "Yes, Delete";
