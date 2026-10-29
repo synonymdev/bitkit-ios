@@ -195,7 +195,11 @@ protocol PaykitLightningPaymentProofLookingUp: Sendable {
 
 struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
-        guard let payments = await LightningService.shared.listPayments() else { return .unavailable }
+        guard let payments = await LightningService.shared.listPayments() else {
+            let railStatus = await Self.railStatus(paymentHash: paymentHash)
+            guard case .unknown = railStatus else { return railStatus }
+            return .unavailable
+        }
         guard let payment = payments.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
