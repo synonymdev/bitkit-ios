@@ -148,16 +148,6 @@ struct SavingsProgressView: View {
                 // Ensure we re-enable screen timeout when view disappears
                 UIApplication.shared.isIdleTimerDisabled = false
             }
-            .onChange(of: transfer.transferUnavailable) { _, unavailable in
-                if unavailable {
-                    transfer.transferUnavailable = false
-                    app.toast(
-                        type: .error,
-                        title: t("lightning__close_error"),
-                        description: t("lightning__close_error_msg")
-                    )
-                }
-            }
     }
 
     /// Swaps spending funds out to on-chain savings. A pending claim is shown as "settling"
@@ -210,26 +200,11 @@ struct SavingsProgressView: View {
                     progressState = .success
                 }
             } else {
-                // Check if any channels can be retried (filter out trusted peers)
-                let (_, nonTrustedChannels) = LightningService.shared.separateTrustedChannels(channelsFailedToCoopClose)
-
-                if nonTrustedChannels.isEmpty {
-                    // All channels are trusted peers - show error and navigate back
-                    UIApplication.shared.isIdleTimerDisabled = false
-                    app.toast(
-                        type: .error,
-                        title: t("lightning__close_error"),
-                        description: t("lightning__close_error_msg")
-                    )
-                    navigation.reset()
-                } else {
-                    withAnimation {
-                        progressState = .failed
-                    }
-
-                    // Start retrying the cooperative close for non-trusted channels
-                    transfer.startCoopCloseRetries(channels: nonTrustedChannels)
+                withAnimation {
+                    progressState = .failed
                 }
+
+                transfer.startCoopCloseRetries(channels: channelsFailedToCoopClose)
             }
         } catch {
             app.toast(error)

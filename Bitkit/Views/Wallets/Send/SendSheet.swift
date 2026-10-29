@@ -432,7 +432,7 @@ struct SendSheet: View {
         if isPreparingRequest, config.preparation?.request == nil {
             Color.clear
         } else if shouldShowSyncOverlay {
-            SendSyncScreen()
+            SendSyncScreen(isOnchain: wallet.channels?.isEmpty != false)
                 .transition(.opacity)
         } else {
             NavigationStack(path: $flow.navigationPath) {

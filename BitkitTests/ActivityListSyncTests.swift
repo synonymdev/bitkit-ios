@@ -29,8 +29,7 @@ final class ActivityListSyncTests: XCTestCase {
         var loads = 0
         let model = Bitkit.ActivityListViewModel(
             transferService: Bitkit.TransferService(
-                lightningService: .shared,
-                blocktankService: Bitkit.CoreService.shared.blocktank
+                lightningService: .shared
             ),
             listPayments: {
                 loads += 1
