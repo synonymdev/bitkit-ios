@@ -599,6 +599,7 @@
 "security__pin_forgot_text" = "Esqueceu seu PIN? Redefina e recupere sua carteira Bitkit com a sua frase de recuperação. Defina um novo PIN após concluir a recuperação.";
 "security__pin_forgot_reset" = "Restaurar (Requer a Frase de Recuperação)";
 "security__pin_send" = "Digite seu código PIN para confirmar e enviar esse pagamento.";
+"security__pin_allowance" = "Digite seu código PIN para confirmar esta alteração da pré-aprovação.";
 "security__pin_send_title" = "Digitar o código PIN";
 "security__pin_use_biometrics" = "Usar {biometricsName}";
 "security__bio" = "Biometria";
@@ -1178,7 +1179,7 @@
 "profile__edit_delete_section" = "EXCLUIR";
 "profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Observe que as informações do perfil são armazenadas em arquivos públicos.";
-"profile__delete_active_subscription" = "Encerre as assinaturas ativas antes de remover este perfil.";
+"profile__delete_active_subscription" = "As assinaturas ativas impedem a remoção deste perfil.";
 "profile__delete_title" = "Excluir Perfil?";
 "profile__delete_description" = "Excluir seu perfil o remove do Pubky. Os contatos ainda podem manter informações de perfil e de pagamento compartilhadas anteriormente com eles.";
 "profile__delete_confirm" = "Sim, Excluir";
@@ -1226,6 +1227,7 @@
 "wallet__send_from" = "De";
 "wallet__send_sync_title" = "<accent>Conectando</accent>\nà rede";
 "wallet__send_sync_description" = "Aguarde a Bitkit se conectar à rede de pagamentos (±10 segundos).";
+"wallet__send_sync_description_onchain" = "Aguarde a Bitkit se conectar à rede bitcoin (±10 segundos).";
 "wallet__send_sync_long_title" = "Problemas de\n<accent>conexão</accent>";
 "wallet__send_sync_long_description" = "Parece que você está desconectado. Verifique sua conexão. A Bitkit tentará se reconectar a cada poucos segundos.";
 "wallet__send_to" = "Para";
@@ -1892,6 +1894,7 @@
 "subscriptions__allowance_executed_description" = "O pagamento automático enviou {amount} para {name}";
 "subscriptions__allowance_offer_accepted_title" = "Pré-aprovação Adicionada";
 "subscriptions__allowance_offer_accepted_description" = "{name} configurou uma pré-aprovação para você";
+"subscriptions__allowance_offers_accepted_description" = "{names} configuraram pré-aprovações para você";
 "subscriptions__allowance_limit_title" = "Limite Atingido";
 "subscriptions__allowance_limit_description" = "Uma solicitação de {amount} de {name} excede sua pré-aprovação. Revise-a para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";

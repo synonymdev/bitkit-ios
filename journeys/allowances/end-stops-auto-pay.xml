@@ -16,10 +16,10 @@
     <action>On the payer instance, verify it is not paid: no "Payment Executed" notification, and the request waits in the bell (id "PaymentRequestsBell") as an ordinary Payment Request</action>
     <action>Dismiss that request</action>
     <action>On the payee instance, open Subscriptions and the Allowances tab, and verify the payer's row reads "Ended"</action>
-    <action>Set and accept a fresh $5 a payment, $50 a month allowance between the same two instances, per set-and-accept.xml</action>
+    <action>Set a fresh $5 a payment, $50 a month allowance between the same two instances, per set-and-accept.xml; the payee's wallet accepts it by itself</action>
     <action>On the payee instance, tap the Active row, verify the detail ends with "Swipe To End Allowance", and swipe it to the end</action>
     <action>Verify the payee's row reads "Ended"</action>
-    <action>On the payer instance, verify its row for that allowance reads "Ended · $0.00 paid automatically"</action>
+    <action>On the payer instance, verify its row for that allowance reads "Ended", with no amount since nothing was paid automatically</action>
     <action>On the payee instance, send the payer a one-time Payment Request for $2 with the note "AfterPayeeEnd"</action>
     <action>On the payer instance, verify it is not paid and waits in the bell as an ordinary Payment Request, then dismiss it</action>
   </actions>

@@ -591,6 +591,7 @@
 "security__pin_forgot_text" = "Ha dimenticato il PIN? Resetta e recupera il tuo wallet Bitkit con la recovery phrase. Imposta un nuovo PIN dopo aver completato il recupero.";
 "security__pin_forgot_reset" = "Reset (Richiede la Recovery Phrase)";
 "security__pin_send" = "Inserisci il codice PIN per confermare e inviare questo pagamento.";
+"security__pin_allowance" = "Inserisci il codice PIN per confermare questa modifica del Plafond.";
 "security__pin_send_title" = "Inserisci Codice PIN";
 "security__pin_use_biometrics" = "Utilizza {biometricsName}";
 "security__bio" = "Biometria";
@@ -1144,7 +1145,7 @@
 "profile__edit_delete_section" = "ELIMINA";
 "profile__edit_unlink_section" = "SCOLLEGA";
 "profile__edit_public_note" = "Tieni presente che le informazioni del profilo sono salvate in file pubblici.";
-"profile__delete_active_subscription" = "Termina gli abbonamenti attivi prima di rimuovere questo profilo.";
+"profile__delete_active_subscription" = "Gli abbonamenti attivi impediscono la rimozione di questo profilo.";
 "profile__delete_title" = "Eliminare il Profilo?";
 "profile__delete_description" = "Eliminando il profilo lo rimuovi da Pubky. I contatti potrebbero conservare le informazioni di profilo e di pagamento condivise in precedenza con loro.";
 "profile__delete_confirm" = "Sì, Elimina";
@@ -1191,6 +1192,7 @@
 "wallet__send_from" = "Da";
 "wallet__send_sync_title" = "<accent>Connessione</accent>\nalla rete";
 "wallet__send_sync_description" = "Attendi che Bitkit si connetta alla rete di pagamento (±10 secondi).";
+"wallet__send_sync_description_onchain" = "Attendi che Bitkit si connetta alla rete bitcoin (±10 secondi).";
 "wallet__send_sync_long_title" = "Problemi di\n<accent>connessione</accent>";
 "wallet__send_sync_long_description" = "Sembra che tu sia disconnesso. Controlla la connessione. Bitkit proverà a riconnettersi ogni pochi secondi.";
 "wallet__send_to" = "A";
@@ -1851,6 +1853,7 @@
 "subscriptions__allowance_executed_description" = "Il pagamento automatico ha inviato {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Plafond Aggiunto";
 "subscriptions__allowance_offer_accepted_description" = "{name} ha impostato un Plafond per te";
+"subscriptions__allowance_offers_accepted_description" = "{names} hanno impostato dei Plafond per te";
 "subscriptions__allowance_limit_title" = "Limite Raggiunto";
 "subscriptions__allowance_limit_description" = "Una richiesta di {amount} da {name} supera il tuo plafond. Controllala per pagare.";
 "subscriptions__allowance_auto_paid" = "Pagato automaticamente";
