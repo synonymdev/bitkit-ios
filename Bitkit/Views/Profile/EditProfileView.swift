@@ -160,6 +160,9 @@ struct EditProfileView: View {
             try await pubkyProfile.performProfileDeletion {
                 do {
                     try await performDeleteProfile(session: session)
+                } catch PubkyServiceError.activeSubscription {
+                    guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
+                    app.toast(type: .error, title: t("profile__delete_active_subscription"))
                 } catch {
                     guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
                     Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
@@ -189,7 +192,7 @@ struct EditProfileView: View {
         contactsManager: ContactsManager,
         removePrivateEndpoints: () async throws -> Void
     ) async throws {
-        try pubkyProfile.requireCurrentSession(session)
+        try await pubkyProfile.validateProfileDeletion(for: session)
         try await removePrivateEndpoints()
         try pubkyProfile.requireCurrentSession(session)
         try await contactsManager.deleteAllContacts()

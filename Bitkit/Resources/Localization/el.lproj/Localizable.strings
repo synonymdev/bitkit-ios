@@ -963,6 +963,7 @@
 "profile__edit_delete_section" = "ΔΙΑΓΡΑΦΗ";
 "profile__edit_unlink_section" = "ΑΠΟΣΥΝΔΕΣΗ";
 "profile__edit_public_note" = "Τα στοιχεία του προφίλ αποθηκεύονται σε δημόσια αρχεία.";
+"profile__delete_active_subscription" = "Τερμάτισε τις ενεργές συνδρομές πριν αφαιρέσεις αυτό το προφίλ.";
 "profile__delete_title" = "Διαγραφή Προφίλ;";
 "profile__delete_description" = "Η διαγραφή του προφίλ σας το αφαιρεί από το Pubky. Οι επαφές μπορεί να διατηρούν ακόμα πληροφορίες προφίλ και πληρωμών που τους κοινοποιήθηκαν παλαιότερα.";
 "profile__delete_confirm" = "Ναι, Διαγραφή";
