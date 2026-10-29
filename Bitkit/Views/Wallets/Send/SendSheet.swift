@@ -584,11 +584,11 @@ struct SendSheet: View {
             }
             if let request = flow.incomingPaymentRequest, app.contactPaymentContext?.requiresAssetSelection != true || app.paykitPaymentTerms != nil {
                 guard isCurrentIncomingRequest(request.id), let amount = try? request.payment(
-                          using: app.paykitPaymentMethod,
-                          quoteId: app.paykitPaymentTerms?.quoteId
-                      ).amount.atomic,
-                      await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id),
-                      isCurrentIncomingRequest(request.id) else { return }
+                    using: app.paykitPaymentMethod,
+                    quoteId: app.paykitPaymentTerms?.quoteId
+                ).amount.atomic,
+                    await selectHardwareFundingSourceIfNeeded(amountSats: amount, requestId: request.id),
+                    isCurrentIncomingRequest(request.id) else { return }
                 if !shouldShowSyncOverlay {
                     validatePaymentAfterSync()
                 }

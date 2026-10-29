@@ -519,8 +519,8 @@ struct AppScene: View {
                 let reservations = PrivatePaykitAddressReservationStore.shared
                 let reservationRevision = await reservations.attributionRevision
                 guard let combined = try? await contacts.includingReservations(for: outputAddresses, lookup: {
-                          try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
-                      }), pubkyProfile.authState == .authenticated,
+                    try await reservations.contactPublicKeyForAttribution(forReservedAddress: $0)
+                }), pubkyProfile.authState == .authenticated,
                       PubkyPublicKeyFormat.matches(identity, pubkyProfile.publicKey),
                       contacts == paykitPaymentRequestManager.receivedPaymentContacts,
                       await reservations.attributionRevision == reservationRevision
@@ -2025,14 +2025,14 @@ struct AppScene: View {
             return
         }
         guard IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
-              ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
-              !Task.isCancelled,
-              pubkyProfile.automaticPaykitSession == session,
-              PaykitSubscriptionNotificationTargetStore.load() == target,
-              IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
-                  manager: paykitPaymentRequestManager, app: app, sheets: sheets
-              )
+            manager: paykitPaymentRequestManager, app: app, sheets: sheets
+        ), await refreshIncomingPaykitPaymentRequests(presentItems: false, mode: .stored),
+        !Task.isCancelled,
+        pubkyProfile.automaticPaykitSession == session,
+        PaykitSubscriptionNotificationTargetStore.load() == target,
+        IncomingPaykitPaymentRequestPresentationDispatcher.canHandleSubscriptionNotification(
+            manager: paykitPaymentRequestManager, app: app, sheets: sheets
+        )
         else { return }
         guard let request = paykitPaymentRequestManager.pendingRequests.first(where: target.matches) else {
             if paykitPaymentRequestManager.historyRequests.contains(where: target.matches) {
