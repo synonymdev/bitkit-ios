@@ -168,7 +168,7 @@ private extension MoneyStack {
     var balanceLoader: some View {
         ZStack {
             if showEyeIcon && isLoading && !settings.hideBalance {
-                ActivityIndicator(size: 24)
+                ActivityIndicator(size: 16, rotationDuration: 2)
                     .opacity(0.75)
                     .transition(.opacity)
                     .accessibilityElement(children: .ignore)
