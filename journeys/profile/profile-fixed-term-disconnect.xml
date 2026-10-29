@@ -13,7 +13,7 @@
   <actions>
     <action>Open the fixed-term subscription and verify End subscription is unavailable</action>
     <action>Open Edit Profile and request Delete Profile, or Unlink pubky for a Ring identity; verify subscription refusal and truthful expiry guidance without remote mutation</action>
-    <action>Verify the separate Disconnect choice (id "ProfileLocalDisconnect") is visible and explains that the remote profile and subscriptions remain, with no subscription cancellation or remote access revocation</action>
+    <action>Verify the separate Disconnect choice (id "ProfileLocalDisconnect") is visible and explains that this action only removes this device’s access and makes no further changes to the profile, subscriptions or access on the server</action>
     <action>Choose Disconnect and verify a fresh local-only confirmation; cancel it and verify the original profile remains connected with no pending cleanup or remote mutation</action>
     <action>Choose Disconnect again and confirm (id "ProfileLocalDisconnectConfirm"); verify profile onboarding appears only after required local cleanup completes, without claiming remote deletion</action>
     <action>Using the independent peer and homeserver journal, verify that the original profile, subscription, contacts, endpoints and grant remain unchanged and no remote cleanup or cancellation was sent</action>

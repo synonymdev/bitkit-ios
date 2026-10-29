@@ -1113,7 +1113,7 @@
 "profile__sign_out" = "Disconnetti";
 "profile__sign_out_title" = "Disconnetti Profilo";
 "profile__sign_out_description" = "Questo disconnetterà il tuo profilo Pubky da Bitkit. Puoi ricollegarlo in qualsiasi momento.";
-"profile__disconnect_local_description" = "Questa operazione disconnette il tuo profilo solo su questo dispositivo. Il profilo e gli abbonamenti rimangono sul server. Non annulla gli abbonamenti né revoca l’accesso remoto.";
+"profile__disconnect_local_description" = "Rimuovi l’accesso di questo dispositivo e completa la pulizia locale. Questa operazione non apporta ulteriori modifiche al profilo, agli abbonamenti o all’accesso sul server.";
 "profile__choice_title" = "Entra nel\n<accent>web della libertà</accent>";
 "profile__choice_description" = "Crea un nuovo pubky e un profilo in Bitkit.";
 "profile__choice_description_ring" = "Usa un pubky esistente da Pubky Ring.";

@@ -1142,7 +1142,7 @@
 "profile__sign_out" = "Ontkoppelen";
 "profile__sign_out_title" = "Profiel ontkoppelen";
 "profile__sign_out_description" = "Hiermee wordt uw Pubky-profiel ontkoppeld van Bitkit. U kunt op elk moment opnieuw verbinden.";
-"profile__disconnect_local_description" = "Dit koppelt je profiel alleen op dit apparaat los. Je profiel en abonnementen blijven op de server staan. Abonnementen worden niet opgezegd en externe toegang wordt niet ingetrokken.";
+"profile__disconnect_local_description" = "Verwijder de toegang van dit apparaat en voltooi de lokale opschoning. Dit brengt geen verdere wijzigingen aan in je profiel, abonnementen of toegang op de server.";
 "profile__choice_title" = "Betreed het\n<accent>vrije web</accent>";
 "profile__choice_description" = "Maak een nieuwe pubky en een profiel aan in Bitkit.";
 "profile__choice_description_ring" = "Gebruik een bestaande pubky uit Pubky Ring.";

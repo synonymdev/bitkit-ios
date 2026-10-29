@@ -1132,7 +1132,7 @@
 "profile__sign_out" = "Отключить";
 "profile__sign_out_title" = "Отключить Профиль";
 "profile__sign_out_description" = "Ваш профиль Pubky будет отключён от Bitkit. Вы можете переподключиться в любое время.";
-"profile__disconnect_local_description" = "Это отключит ваш профиль только на этом устройстве. Ваш профиль и подписки останутся на сервере. Подписки не будут отменены, а удалённый доступ не будет отозван.";
+"profile__disconnect_local_description" = "Удалите доступ этого устройства и завершите локальную очистку. Это не вносит дополнительных изменений в ваш профиль, подписки или доступ на сервере.";
 "profile__choice_title" = "Войдите в\n<accent>свободный веб</accent>";
 "profile__choice_description" = "Создайте новый pubky и профиль в Bitkit.";
 "profile__choice_description_ring" = "Используйте существующий pubky из Pubky Ring.";

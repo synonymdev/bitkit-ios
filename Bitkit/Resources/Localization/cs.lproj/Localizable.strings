@@ -1136,7 +1136,7 @@
 "profile__sign_out" = "Odpojit";
 "profile__sign_out_title" = "Odpojit profil";
 "profile__sign_out_description" = "Tímto odpojíte svůj profil Pubky od Bitkitu. Kdykoli se můžete znovu připojit.";
-"profile__disconnect_local_description" = "Tímto se váš profil odpojí pouze na tomto zařízení. Váš profil a předplatná zůstanou na serveru. Předplatná se nezruší a vzdálený přístup nebude odvolán.";
+"profile__disconnect_local_description" = "Odeberte přístup tohoto zařízení a dokončete místní vyčištění. Tím se neprovedou žádné další změny vašeho profilu, předplatných ani přístupu na serveru.";
 "profile__choice_title" = "Vstupte do\n<accent>svobodného webu</accent>";
 "profile__choice_description" = "Vytvořte si v Bitkitu nový pubky a profil.";
 "profile__choice_description_ring" = "Použijte existující pubky z Pubky Ring.";

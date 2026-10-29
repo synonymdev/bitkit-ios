@@ -1031,7 +1031,7 @@
 "profile__sign_out" = "Desconnectar";
 "profile__sign_out_title" = "Desconnectar el perfil";
 "profile__sign_out_description" = "Això desconnectarà el teu perfil de Pubky de Bitkit. Pots tornar a connectar-lo en qualsevol moment.";
-"profile__disconnect_local_description" = "Això només desconnecta el teu perfil en aquest dispositiu. El perfil i les subscripcions es mantenen al servidor. No cancel·la les subscripcions ni revoca l’accés remot.";
+"profile__disconnect_local_description" = "Elimina l’accés d’aquest dispositiu i acaba la neteja local. Això no fa cap altre canvi al perfil, les subscripcions ni l’accés al servidor.";
 "profile__choice_title" = "Entra a la\n<accent>web de la llibertat</accent>";
 "profile__choice_description" = "Crea un nou pubky i un perfil a Bitkit.";
 "profile__choice_description_ring" = "Utilitza un pubky existent de Pubky Ring.";
