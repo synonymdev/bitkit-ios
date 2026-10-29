@@ -1914,3 +1914,4 @@
 "primary_transfer__started" = "Ваши сбережения переводятся на баланс расходов.";
 "primary_transfer__started_title" = "Перевод начат";
 "primary_transfer__title" = "Перевод в расходы";
+"primary_node__balance" = "Биткоин";

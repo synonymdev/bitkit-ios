@@ -1926,3 +1926,4 @@
 "primary_transfer__started" = "Sus ahorros se están moviendo a su saldo de gasto.";
 "primary_transfer__started_title" = "Transferencia iniciada";
 "primary_transfer__title" = "Transferir a gasto";
+"primary_node__balance" = "Bitcoin";

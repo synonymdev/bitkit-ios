@@ -1600,3 +1600,4 @@
 "primary_transfer__started" = "يجري نقل مدخراتك إلى رصيد الإنفاق.";
 "primary_transfer__started_title" = "بدأ التحويل";
 "primary_transfer__title" = "التحويل إلى الإنفاق";
+"primary_node__balance" = "بيتكوين";

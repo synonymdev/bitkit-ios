@@ -1784,3 +1784,4 @@
 "primary_transfer__started" = "Els teus estalvis s'estan movent al teu saldo de despesa.";
 "primary_transfer__started_title" = "Transferència iniciada";
 "primary_transfer__title" = "Transferir a despesa";
+"primary_node__balance" = "Bitcoin";

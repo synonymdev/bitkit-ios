@@ -79,7 +79,7 @@ struct PrimaryTransferScreen: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            plan = try await PrimaryNodeService.shared.fundingPlan()
+            plan = try await PrimaryNodeService.shared.fundingPlan(isManual: true)
         } catch {
             errorMessage = error.primaryErrorMessage
         }

@@ -1920,3 +1920,4 @@
 "primary_transfer__started" = "Dein Sparguthaben wird auf dein Ausgabenkonto verschoben.";
 "primary_transfer__started_title" = "Übertragung gestartet";
 "primary_transfer__title" = "Auf Ausgabenkonto übertragen";
+"primary_node__balance" = "Bitcoin";

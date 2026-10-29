@@ -136,10 +136,22 @@ final class PrimaryNodeService {
     // MARK: Funding
 
     /// How much of the confirmed savings can move into the primary channel now, and at what fee.
+    /// For a manual transfer, an offline primary or a pending funding throws instead of planning nothing.
     @MainActor
-    func fundingPlan() async throws -> PrimaryFundingPlan? {
-        guard primaryNode != nil, isPrimaryConnected() else { return nil }
-        guard try await !lightningService.hasPendingFundingOperation() else { return nil }
+    func fundingPlan(isManual: Bool = false) async throws -> PrimaryFundingPlan? {
+        guard primaryNode != nil else { return nil }
+        guard isPrimaryConnected() else {
+            if isManual {
+                throw PrimaryReceiveError.offline
+            }
+            return nil
+        }
+        guard try await !lightningService.hasPendingFundingOperation() else {
+            if isManual {
+                throw PrimaryReceiveError.busy
+            }
+            return nil
+        }
         let spendable = lightningService.balances?.spendableOnchainBalanceSats ?? 0
         let inputs = try await UInt64(lightningService.listSpendableOutputs().count)
         let feeRate = try await lightningService.channelFundingFeeRate()

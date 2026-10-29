@@ -1928,3 +1928,4 @@
 "primary_transfer__started" = "Je spaargeld wordt verplaatst naar je bestedingssaldo.";
 "primary_transfer__started_title" = "Overboeking gestart";
 "primary_transfer__title" = "Overboeken naar besteden";
+"primary_node__balance" = "Bitcoin";

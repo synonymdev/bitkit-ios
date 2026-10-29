@@ -2012,3 +2012,4 @@
 "primary_transfer__started" = "Your savings are moving into your spending balance.";
 "primary_transfer__started_title" = "Transfer started";
 "primary_transfer__title" = "Transfer to spending";
+"primary_node__balance" = "Bitcoin";

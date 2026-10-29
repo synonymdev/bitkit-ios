@@ -3,13 +3,14 @@ import SwiftUI
 struct WalletBalanceView: View {
     let type: WalletType
     let sats: UInt64
+    var title: String?
     var amountTestIdentifier: String?
 
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
         WalletBalanceContent {
-            CaptionMText(type.title)
+            CaptionMText(title ?? type.title)
         } icon: {
             Image(type.imageAsset).resizable().scaledToFit().frame(width: 24, height: 24)
         } amount: {

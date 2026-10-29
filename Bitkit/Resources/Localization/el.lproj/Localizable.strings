@@ -1655,3 +1655,4 @@
 "primary_transfer__started" = "Οι Αποταμιεύσεις σου μετακινούνται στο υπόλοιπο Δαπανών.";
 "primary_transfer__started_title" = "Η μεταφορά ξεκίνησε";
 "primary_transfer__title" = "Μεταφορά στις Δαπάνες";
+"primary_node__balance" = "Μπιτκόιν";

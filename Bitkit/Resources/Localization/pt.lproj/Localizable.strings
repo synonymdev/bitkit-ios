@@ -1580,3 +1580,4 @@
 "primary_transfer__started" = "A sua poupança está a ser movida para o seu saldo de gastos.";
 "primary_transfer__started_title" = "Transferência iniciada";
 "primary_transfer__title" = "Transferir para gastos";
+"primary_node__balance" = "Bitcoin";

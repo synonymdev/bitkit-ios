@@ -52,6 +52,27 @@ struct HomeWalletView: View {
             (balance != 0 && (rateRefreshing || (try? rate?.value(at: now)) == nil))
     }
 
+    @ViewBuilder
+    private var savingsAndSpending: some View {
+        NavigationLink(value: Route.savingsWallet) {
+            WalletBalanceView(
+                type: .onchain,
+                sats: UInt64(wallet.totalOnchainSats),
+                amountTestIdentifier: "ActivitySavings"
+            )
+        }
+
+        CustomDivider(color: .gray4, type: .vertical)
+
+        NavigationLink(value: Route.spendingWallet) {
+            WalletBalanceView(
+                type: .lightning,
+                sats: UInt64(wallet.totalLightningSats),
+                amountTestIdentifier: "ActivitySpending"
+            )
+        }
+    }
+
     var body: some View {
         let total = headlineSats
         VStack(spacing: 0) {
@@ -72,22 +93,17 @@ struct HomeWalletView: View {
             Spacer().frame(height: 32)
 
             HStack(spacing: 16) {
-                NavigationLink(value: Route.savingsWallet) {
-                    WalletBalanceView(
-                        type: .onchain,
-                        sats: UInt64(wallet.totalOnchainSats),
-                        amountTestIdentifier: "ActivitySavings"
-                    )
-                }
-
-                CustomDivider(color: .gray4, type: .vertical)
-
-                NavigationLink(value: Route.spendingWallet) {
-                    WalletBalanceView(
-                        type: .lightning,
-                        sats: UInt64(wallet.totalLightningSats),
-                        amountTestIdentifier: "ActivitySpending"
-                    )
+                if PrimaryNodeService.shared.primaryNode != nil {
+                    NavigationLink(value: Route.spendingWallet) {
+                        WalletBalanceView(
+                            type: .onchain,
+                            sats: UInt64(wallet.totalOnchainSats + wallet.totalLightningSats),
+                            title: t("primary_node__balance"),
+                            amountTestIdentifier: "ActivityBitcoin"
+                        )
+                    }
+                } else {
+                    savingsAndSpending
                 }
             }
             .frame(height: 50)

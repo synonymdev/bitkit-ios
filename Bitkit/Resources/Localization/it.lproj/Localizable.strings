@@ -1893,3 +1893,4 @@
 "primary_transfer__started" = "I tuoi risparmi si stanno spostando nel tuo saldo di spesa.";
 "primary_transfer__started_title" = "Trasferimento avviato";
 "primary_transfer__title" = "Trasferisci alla spesa";
+"primary_node__balance" = "Bitcoin";
