@@ -260,12 +260,9 @@ class WalletViewModel: ObservableObject {
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21(reportsError: false)
                         }
-                    case let .channelReady(_, _, _, fundingTxo):
+                    case .channelReady:
                         self.invalidateReceiveInvoice()
                         Task {
-                            if let txid = fundingTxo?.txid {
-                                await self.confirmPrimaryChannelSend(fundingTxid: txid)
-                            }
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21(reportsError: false)
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
@@ -595,6 +592,7 @@ class WalletViewModel: ObservableObject {
         isSyncingWallet = false
         syncState()
         Task { await PrimaryNodeService.shared.fundIfNeeded() }
+        await confirmPrimaryChannelSend()
         QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
         if isPaykitUIActive {
             await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
@@ -624,7 +622,7 @@ class WalletViewModel: ObservableObject {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
 
-        let hasPaymentContext = requestId != nil || paymentIdentity != nil || followupContext != nil || paymentDeadline != nil
+        let hasPaymentContext = requestId != nil || paymentIdentity != nil || paymentDeadline != nil
         if !hasPaymentContext, await paysFromPrimaryChannel(address: address, sats: sats, feeRate: selectedFeeRateSatsPerVByte) {
             try await beforeBroadcastAttempt()
             let txid = try await PrimaryNodeService.shared.sendOnchain(
@@ -632,13 +630,21 @@ class WalletViewModel: ObservableObject {
                 amountSats: sats,
                 feeRate: UInt64(selectedFeeRateSatsPerVByte)
             )
+            if let followupContext {
+                try? await CoreService.shared.activity.upsertPreActivityMetadata([BitkitCore.PreActivityMetadata(
+                    walletId: WalletScope.default, paymentId: txid, tags: followupContext.tags, paymentHash: nil,
+                    txId: txid, address: address, isReceive: false, feeRate: UInt64(selectedFeeRateSatsPerVByte),
+                    isTransfer: false, channelId: nil, createdAt: followupContext.createdAt
+                )])
+            }
             // ldk-node records no payment for a splice-out to an address outside the wallet, so the send is added here.
             await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
                 txid: txid,
                 address: address,
                 amount: sats,
                 fee: PrimaryNodeService.shared.spliceOutFeeAt(feeRate: UInt64(selectedFeeRateSatsPerVByte)),
-                feeRate: selectedFeeRateSatsPerVByte
+                feeRate: selectedFeeRateSatsPerVByte,
+                contact: followupContext?.contact
             )
             Task {
                 try? await sync()
@@ -676,9 +682,12 @@ class WalletViewModel: ObservableObject {
         return result
     }
 
-    /// A splice locks in once its transaction confirms, which confirms a send made out of the primary channel.
-    private func confirmPrimaryChannelSend(fundingTxid: String) async {
-        guard var activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: fundingTxid),
+    /// A send out of the primary channel is a splice, so it confirms with the channel's funding transaction.
+    /// The splice can lock in at 0 confirmations, so the channel's confirmation count decides, not `ChannelReady`.
+    private func confirmPrimaryChannelSend() async {
+        guard let channel = PrimaryNodeService.shared.primaryChannel(), let fundingTxid = channel.fundingTxo?.txid,
+              (channel.confirmations ?? 0) > 0,
+              var activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: fundingTxid),
               !activity.confirmed, activity.txType == .sent
         else { return }
         let now = UInt64(Date().timeIntervalSince1970)

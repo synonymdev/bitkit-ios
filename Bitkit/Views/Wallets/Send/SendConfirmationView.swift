@@ -1602,7 +1602,9 @@ struct SendConfirmationView: View {
                 warnings.append(.balance)
             }
         } else {
-            let onchainBalance = hwSend.isActive ? hwSend.availableSats : UInt64(clamping: wallet.totalOnchainSats)
+            let onchainBalance = hwSend.isActive
+                ? hwSend.availableSats
+                : max(UInt64(clamping: wallet.totalOnchainSats), PrimaryNodeService.shared.maxSpliceOutSats(feeRate: 1))
             if amount > onchainBalance / 2 {
                 warnings.append(.balance)
             }
