@@ -150,6 +150,21 @@ final class SendConfirmationSwipeTests: XCTestCase {
         ))
     }
 
+    func testManualPaymentKeepsTheSwipeBusyWhenConfirmationIsRecreated() {
+        XCTAssertTrue(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: false,
+            feeRateLoadFailed: false,
+            isSubmittingPayment: true
+        ))
+        XCTAssertFalse(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: false,
+            feeRateLoadFailed: false,
+            isSubmittingPayment: false
+        ))
+    }
+
     func testSwipeStopsItsSpinnerOnceTheFeeRateLoadFailed() {
         XCTAssertFalse(SendConfirmationView.isSwipeLoading(
             hasStartedAutomaticPayment: false,
