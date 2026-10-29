@@ -185,6 +185,8 @@ enum PaykitLightningPaymentProofStatus: Equatable {
     case succeeded(preimage: String?)
     case failed
     case unknown
+    /// The node has no payment history yet, as before it starts, so it can't say whether it knows the payment.
+    case unavailable
 }
 
 protocol PaykitLightningPaymentProofLookingUp: Sendable {
@@ -193,7 +195,8 @@ protocol PaykitLightningPaymentProofLookingUp: Sendable {
 
 struct PaykitLightningPaymentProofLookup: PaykitLightningPaymentProofLookingUp {
     func status(paymentHash: String) async -> PaykitLightningPaymentProofStatus {
-        guard let payment = await LightningService.shared.listPayments()?.first(where: {
+        guard let payments = await LightningService.shared.listPayments() else { return .unavailable }
+        guard let payment = payments.first(where: {
             $0.id.caseInsensitiveCompare(paymentHash) == .orderedSame
         }), payment.direction == .outbound else {
             return .unknown
@@ -298,7 +301,8 @@ actor PaykitPaymentProofService {
             return try PaykitPaymentStateBackup(subscriptions: PaykitSubscriptionStateStore().backupSnapshot(),
                                                 pendingProofs: proofs.map(PaykitPaymentStateBackup.Proof.init), activeOnchainAttempt: active,
                                                 acceptedOneTimeRequests: PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests)
-                                                    .backupSnapshot())
+                                                    .backupSnapshot(),
+                                                allowances: PaykitAllowanceKeychainStore().backupSnapshot())
         }
     }
 
@@ -310,6 +314,9 @@ actor PaykitPaymentProofService {
         try await mutationLock.withLock { try await persist(restored?.1 ?? proofs) }
         try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
+        if let allowances = state.allowances {
+            PaykitAllowanceKeychainStore().restoreBackup(allowances)
+        }
     }
 
     func restoreBackup(_ proofs: [PaykitPaymentStateBackup.Proof]) async throws {
@@ -1412,7 +1419,7 @@ actor PaykitPaymentProofService {
                     }
                     guard proof.kind == PaykitPaymentProofKind.lightning, let paymentHash = proof.paymentIdentifier else { continue }
                     switch await lightningPaymentLookup.status(paymentHash: paymentHash) {
-                    case .pending, .unknown:
+                    case .pending, .unknown, .unavailable:
                         continue
                     case .failed:
                         await failLightningPayment(paymentHash: paymentHash)

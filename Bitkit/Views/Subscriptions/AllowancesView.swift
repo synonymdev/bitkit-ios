@@ -381,7 +381,7 @@ struct SetAllowanceView: View {
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(PaykitAllowanceManager.self) private var allowances
-    @State private var authorization = PaymentAuthorization()
+    @State private var authorization = PaymentAuthorization(pinMessage: t("security__pin_allowance"))
 
     let contact: PubkyContact
     let onBack: () -> Void
@@ -606,7 +606,7 @@ struct AllowanceReviewView: View {
     @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(PaykitAllowanceManager.self) private var allowances
-    @State private var authorization = PaymentAuthorization()
+    @State private var authorization = PaymentAuthorization(pinMessage: t("security__pin_allowance"))
 
     let entry: PaykitAllowanceEntry
 
@@ -697,7 +697,7 @@ struct AllowanceDetailView: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(PaykitAllowanceManager.self) private var allowances
-    @State private var authorization = PaymentAuthorization()
+    @State private var authorization = PaymentAuthorization(pinMessage: t("security__pin_allowance"))
 
     let entry: PaykitAllowanceEntry
 

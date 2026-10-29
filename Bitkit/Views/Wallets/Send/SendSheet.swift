@@ -211,7 +211,8 @@ struct SendSheet: View {
     }
 
     private var isReviewingPayment: Bool {
-        guard isCurrentPresentation, !flow.didFinish, scenePhase != .background else { return false }
+        guard isCurrentPresentation, !flow.didFinish, scenePhase != .background,
+              config.preparation?.isSuspendedForAppLock != true else { return false }
         switch flow.navigationPath.last ?? currentRoot {
         case .confirm, .pin, .hardwareSign: return true
         case .usdt, .usdtAddress: return flow.isReviewingUsdtPayment
@@ -274,7 +275,7 @@ struct SendSheet: View {
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
         if isPreparingRequest || hwSend.isActive || flow.isResumingAcceptedOrdinarySend || app.paykitUsesUsdt ||
-            (app.contactPaymentContext?.requiresAssetSelection == true && flow.navigationPath.isEmpty)
+            (app.contactPaymentContext?.requiresAssetSelection == true && currentRoot == .amount && flow.navigationPath.isEmpty)
         {
             return false
         }
@@ -368,11 +369,10 @@ struct SendSheet: View {
         }
         .task(id: config.preparation?.resolvedRoute) {
             if let preparation = config.preparation {
-                guard let route = preparation.resolvedRoute, preparation.ownsSheet(sheets),
-                      let request = preparation.request,
-                      app.contactPaymentContext == preparation.paymentContext,
-                      app.contactPaymentContext?.incomingPaymentRequest?.id == request.id
+                guard let route = preparation.resolvedRoute,
+                      preparation.ownsResolvedContext(session: pubkyProfile.currentSession, app: app, sheets: sheets)
                 else { return }
+                preparation.isSuspendedForAppLock = false
                 flow.rootRoute = route
             }
             setUpSend()
@@ -432,7 +432,7 @@ struct SendSheet: View {
         if isPreparingRequest, config.preparation?.request == nil {
             Color.clear
         } else if shouldShowSyncOverlay {
-            SendSyncScreen()
+            SendSyncScreen(isOnchain: wallet.channels?.isEmpty != false)
                 .transition(.opacity)
         } else {
             NavigationStack(path: $flow.navigationPath) {
@@ -448,12 +448,34 @@ struct SendSheet: View {
 
     private func cleanup() {
         // Content recreation keeps the presentation, its setup and its payment operation alive.
-        guard isEmbedded || !isCurrentPresentation, !flow.didFinish else { return }
+        guard isEmbedded || !isCurrentPresentation || config.preparation?.isSuspendedForAppLock == true,
+              !flow.didFinish else { return }
         updatePaymentReview(false)
-        flow.didFinish = true
-        flow.onDismiss = nil
+        let retainsReview = config.preparation?.retainReviewOnAppLock(
+            root: currentRoot,
+            path: flow.navigationPath,
+            isSubmittingPayment: flow.isSubmittingPayment || PaykitPaymentActivity.shared.isActive,
+            isHardwarePayment: hwSend.isActive,
+            session: pubkyProfile.currentSession,
+            app: app,
+            sheets: sheets
+        ) == true
+        if !isEmbedded, isCurrentPresentation, !retainsReview {
+            return
+        }
         flow.setupTask?.cancel()
         flow.setupTask = nil
+        if retainsReview {
+            flow.didStartSetup = false
+            flow.isSetupPending = true
+            flow.rootOverride = nil
+            flow.navigationPath = []
+            resolvePinCheck(false)
+            return
+        }
+        flow.didFinish = true
+        flow.onDismiss = nil
+        config.preparation?.isSuspendedForAppLock = false
         hwSend.cancel()
         if isPreparingRequest {
             return
