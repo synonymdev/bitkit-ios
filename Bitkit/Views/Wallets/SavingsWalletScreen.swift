@@ -122,7 +122,7 @@ struct SavingsWalletScreen: View {
                 .frame(width: 16, height: 16)
                 .foregroundColor(.white80)
         ) {
-            showTransferToSpending(sheets: sheets, navigation: navigation)
+            navigation.navigate(.primaryTransfer)
         }
         .accessibilityIdentifier("TransferToSpending")
     }

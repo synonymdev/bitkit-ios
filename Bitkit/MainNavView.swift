@@ -695,6 +695,8 @@ struct MainNavView: View {
                 case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
                 case .node: NodeStateView()
                 case .electrumSettings: ElectrumSettingsScreen()
+                case .primaryNodeSettings: PrimaryNodeSettingsScreen()
+                case .primaryTransfer: PrimaryTransferScreen()
                 case .rgsSettings: RgsSettingsScreen()
                 case .addressViewer: AddressViewer()
                 case .watchOnlyAccounts: WatchOnlyAccountsView()

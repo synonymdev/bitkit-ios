@@ -79,6 +79,14 @@ struct AdvancedSettingsView: View {
                     SettingsSectionHeader(t("settings__adv__section_networks"))
                         .padding(.top, 16)
 
+                    NavigationLink(value: Route.primaryNodeSettings) {
+                        SettingsRow(
+                            title: t("primary_node__title"),
+                            iconName: "bolt-hollow"
+                        )
+                    }
+                    .accessibilityIdentifier("PrimaryNodeSettings")
+
                     NavigationLink(value: Route.connections) {
                         SettingsRow(
                             title: t("settings__adv__lightning_connections"),

@@ -225,6 +225,10 @@ class WalletViewModel: ObservableObject {
                     for handler in self.eventHandlers.values {
                         handler(event)
                     }
+                    PrimaryNodeService.shared.handle(event: event)
+                    if case .paymentReceived = event {
+                        self.approvedPrimaryInvoice = nil
+                    }
 
                     // Handle specific events for targeted UI updates
                     switch event {
@@ -579,6 +583,7 @@ class WalletViewModel: ObservableObject {
 
         isSyncingWallet = false
         syncState()
+        Task { await PrimaryNodeService.shared.fundIfNeeded() }
         QuickPayPaymentCoordinator.shared.reconcileAgainstLdk()
         if isPaykitUIActive {
             await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
@@ -606,6 +611,20 @@ class WalletViewModel: ObservableObject {
     ) async throws -> OnchainSendResult {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
+        }
+
+        let hasPaymentContext = requestId != nil || paymentIdentity != nil || followupContext != nil || paymentDeadline != nil
+        if !hasPaymentContext, await shouldSendFromPrimaryChannel(address: address, sats: sats, feeRate: selectedFeeRateSatsPerVByte) {
+            try await beforeBroadcastAttempt()
+            let txid = try await PrimaryNodeService.shared.sendOnchain(
+                address: address,
+                amountSats: sats,
+                feeRate: UInt64(selectedFeeRateSatsPerVByte)
+            )
+            Task {
+                try? await sync()
+            }
+            return .accepted(txid: txid)
         }
 
         if let selectedUtxos {
@@ -636,6 +655,18 @@ class WalletViewModel: ObservableObject {
         }
 
         return result
+    }
+
+    /// True when savings can't cover `sats` and its fee, but the primary channel can.
+    private func shouldSendFromPrimaryChannel(address: String, sats: UInt64, feeRate: UInt32) async -> Bool {
+        guard selectedUtxos == nil, PrimaryNodeService.shared.primaryChannel() != nil else { return false }
+        let spendable = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+        if let fee = try? await lightningService.calculateTotalFee(address: address, amountSats: sats, satsPerVByte: feeRate),
+           sats + fee <= spendable
+        {
+            return false
+        }
+        return PrimaryNodeService.shared.spliceOutFee(amountSats: sats, feeRate: UInt64(feeRate)) != nil
     }
 
     func resolvedAcceptedOnchainTransfer(context: OnchainSendPendingContext, attempts: OnchainSendAttemptService) async throws
@@ -833,13 +864,20 @@ class WalletViewModel: ObservableObject {
         let spendableBalance = UInt64(spendableOnchainBalanceSats)
         try await loadAvailableUtxos(isCurrentSend: isCurrentSend)
 
-        let fee = try await lightningService.estimateSendAllFee(
-            address: address,
-            satsPerVByte: satsPerVByte
-        )
+        let maxSpliceOut = PrimaryNodeService.shared.maxSpliceOutSats(feeRate: UInt64(satsPerVByte))
+        let fee: UInt64
+        do {
+            fee = try await lightningService.estimateSendAllFee(
+                address: address,
+                satsPerVByte: satsPerVByte
+            )
+        } catch {
+            guard maxSpliceOut > 0 else { throw error }
+            return maxSpliceOut
+        }
 
         // Use spendableBalance (not utxoTotal) to respect anchor channel reserves
-        return spendableBalance >= fee ? spendableBalance - fee : 0
+        return max(spendableBalance >= fee ? spendableBalance - fee : 0, maxSpliceOut)
     }
 
     /// Estimates the routing fees for a lightning payment
@@ -1310,15 +1348,6 @@ class WalletViewModel: ObservableObject {
         ReceiveLiquidityDecision.canCreateLightningInvoice(
             hasReadyChannels: hasReadyChannels,
             inboundCapacitySats: totalReadyInboundLightningSats,
-            invoiceAmountSats: amountSats,
-            hasPrimaryNode: Env.primaryNode != nil
-        )
-    }
-
-    private func canReceiveOnReadyChannels(amountSats: UInt64?) -> Bool {
-        ReceiveLiquidityDecision.canCreateLightningInvoice(
-            hasReadyChannels: hasReadyChannels,
-            inboundCapacitySats: totalReadyInboundLightningSats,
             invoiceAmountSats: amountSats
         )
     }
@@ -1556,12 +1585,10 @@ class WalletViewModel: ObservableObject {
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
             var invoice = ""
-            if !canReceiveOnReadyChannels(amountSats: amountSats), let amountSats, Env.primaryNode != nil {
-                do {
-                    invoice = try await lightningService.receiveViaPrimary(amountSats: amountSats, description: note).lowercased()
-                } catch {
-                    Logger.warn("Failed to create primary invoice for \(amountSats) sats: \(error)")
-                }
+            if let approved = approvedPrimaryInvoice, approved.amountSats == amountSats,
+               try await isReceiveInvoiceReusable(approved.bolt11)
+            {
+                invoice = approved.bolt11
             } else if canCreateReceiveLightningInvoice(amountSats: amountSats) {
                 if forceRefreshBolt11 || wasUpdating || !hasMatchingInputs || cachedInvoice.isEmpty {
                     invoice = try await createInvoice(amountSats: amountSats, note: note)
@@ -1636,6 +1663,15 @@ class WalletViewModel: ObservableObject {
             receiveInvoiceError = error.localizedDescription
             throw error
         }
+    }
+
+    /// An invoice the primary node delivers, approved by the user for `amountSats`; the receive QR shows it.
+    private(set) var approvedPrimaryInvoice: (bolt11: String, amountSats: UInt64)?
+
+    func setPrimaryReceiveInvoice(bolt11: String, amountSats: UInt64) async throws {
+        approvedPrimaryInvoice = (bolt11, amountSats)
+        invoiceAmountSats = amountSats
+        try await refreshBip21(forceRefreshBolt11: false)
     }
 
     func invalidateReceiveInvoice() {

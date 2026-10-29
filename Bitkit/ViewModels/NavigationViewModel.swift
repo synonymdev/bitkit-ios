@@ -96,6 +96,8 @@ enum Route: Hashable {
     case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings
+    case primaryNodeSettings
+    case primaryTransfer
     case rgsSettings
     case addressViewer
     case watchOnlyAccounts

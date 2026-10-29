@@ -6,6 +6,12 @@ enum ScannerContext {
     case main
     case send
     case electrum
+    case primaryNode
+}
+
+extension Notification.Name {
+    /// Posted with the scanned node URI as its object, for the Primary node settings screen.
+    static let primaryNodeScanned = Notification.Name("primaryNodeScanned")
 }
 
 @MainActor
@@ -72,6 +78,10 @@ class ScannerManager: ObservableObject {
         case .electrum:
             playScanSuccess()
             await handleElectrumScan(uri)
+        case .primaryNode:
+            playScanSuccess()
+            NotificationCenter.default.post(name: .primaryNodeScanned, object: uri)
+            navigation?.navigateBack()
         }
     }
 

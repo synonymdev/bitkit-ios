@@ -221,8 +221,8 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if Env.primaryNode != nil, let route = editRoute(for: .spending) {
-                                navigationPath.append(route)
+                            if PrimaryNodeService.shared.primaryNode != nil {
+                                navigationPath.append(.edit(tab: .spending, onchainOnly: false))
                             } else {
                                 navigationPath.append(.transferUnavailable)
                             }

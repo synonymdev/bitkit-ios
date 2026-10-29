@@ -86,10 +86,6 @@ class TransferViewModel: ObservableObject {
         onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
         removeEvent: @escaping (String) -> Void
     ) async throws -> (channelId: String, fundingTxId: String?) {
-        if let readyChannel = lightningService.channels?.first(where: { $0.counterpartyNodeId == peer.nodeId && $0.isChannelReady }) {
-            return try await spliceIn(channel: readyChannel, amountSats: amountSats, onEvent: onEvent, removeEvent: removeEvent)
-        }
-
         // Open the channel - this returns the user channel ID
         let userChannelId = try await lightningService.openChannel(
             peer: peer,
@@ -135,53 +131,6 @@ class TransferViewModel: ObservableObject {
         }
 
         return (actualChannelId, fundingTxId)
-    }
-
-    /// Grows a ready channel with on-chain funds and tracks the transfer like a channel open.
-    private func spliceIn(
-        channel: ChannelDetails,
-        amountSats: UInt64,
-        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
-        removeEvent: @escaping (String) -> Void
-    ) async throws -> (channelId: String, fundingTxId: String?) {
-        let channelCapture = ChannelPendingCapture()
-        let userChannelId = channel.userChannelId.description
-        let eventId = "manual-channel-splice-\(userChannelId)"
-        onEvent(eventId) { event in
-            if case let .splicePending(eventChannelId, eventUserChannelId, _, newFundingTxo) = event,
-               eventUserChannelId.description == userChannelId
-            {
-                Task {
-                    await channelCapture.setChannelData(
-                        channelId: eventChannelId.description,
-                        fundingTxId: newFundingTxo.txid.description
-                    )
-                }
-            }
-        }
-        defer { removeEvent(eventId) }
-
-        try await lightningService.spliceIn(channel: channel, amountSats: amountSats)
-        let (channelId, fundingTxId) = await Self.waitForChannelData(capture: channelCapture, maxAttempts: 10, initialDelayMs: 50)
-        guard let channelId else {
-            throw AppError(
-                message: "Timeout waiting for splice pending event",
-                debugMessage: "Did not receive splicePending event for userChannelId: \(userChannelId)"
-            )
-        }
-
-        do {
-            _ = try await transferService.createTransfer(
-                type: .toSpending,
-                amountSats: amountSats,
-                channelId: channelId,
-                fundingTxId: fundingTxId
-            )
-        } catch {
-            Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
-        }
-
-        return (channelId, fundingTxId)
     }
 
     /// Waits for a channel pending event and captures both the channel ID and funding transaction ID
@@ -293,7 +242,8 @@ class TransferViewModel: ObservableObject {
     }
 
     private var resolvedSavingsTransferMode: SavingsTransferMode {
-        savingsSwapState.quote != nil ? .swap : .close
+        if PrimaryNodeService.shared.primaryChannel() != nil { return .close }
+        return savingsSwapState.quote != nil ? .swap : .close
     }
 
     func closeSelectedChannels() async throws -> [ChannelDetails] {
@@ -303,6 +253,20 @@ class TransferViewModel: ObservableObject {
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
         var failedChannels: [ChannelDetails] = []
         var successfulChannels: [ChannelDetails] = []
+        var channels = channels
+
+        // The primary channel stays open: its balance is spliced out to savings instead.
+        if let primaryChannelId = PrimaryNodeService.shared.primaryChannel()?.channelId,
+           let primaryChannel = channels.first(where: { $0.channelId == primaryChannelId })
+        {
+            channels.removeAll { $0.channelId == primaryChannelId }
+            do {
+                _ = try await PrimaryNodeService.shared.transferToSavings()
+            } catch {
+                Logger.warn("Failed to splice out primary channel: \(error)", context: "TransferViewModel")
+                failedChannels.append(primaryChannel)
+            }
+        }
 
         // Close channels in parallel and track which ones succeeded
         try await withThrowingTaskGroup(of: ChannelDetails?.self) { group in

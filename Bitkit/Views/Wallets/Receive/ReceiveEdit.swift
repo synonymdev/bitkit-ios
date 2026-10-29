@@ -204,6 +204,8 @@ struct ReceiveEdit: View {
                     dismiss()
                 case .transferUnavailable:
                     navigationPath.append(.transferUnavailable)
+                case .primaryReceive:
+                    navigationPath.append(.primaryReceive(amountSats: amountSats))
                 }
             } catch {
                 app.toast(error)
@@ -235,7 +237,7 @@ struct ReceiveEdit: View {
             source: liquiditySource,
             invoiceAmountSats: amountViewModel.amountSats,
             inboundCapacitySats: wallet.totalReadyInboundLightningSats,
-            hasPrimaryNode: Env.primaryNode != nil
+            hasPrimaryNode: PrimaryNodeService.shared.primaryNode != nil
         )
     }
 

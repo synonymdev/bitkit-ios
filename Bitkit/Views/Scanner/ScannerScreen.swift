@@ -19,6 +19,10 @@ struct ScannerScreen: View {
             return .electrum
         }
 
+        if navigation.path.contains(.primaryNodeSettings) {
+            return .primaryNode
+        }
+
         if navigation.path.dropLast().last == .contacts {
             return .addContact
         }

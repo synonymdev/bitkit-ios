@@ -74,7 +74,7 @@ struct TabBar: View {
 
         let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
 
-        if Self.shouldOpenSpendingTransferUnavailable(
+        if PrimaryNodeService.shared.primaryNode == nil, Self.shouldOpenSpendingTransferUnavailable(
             isSpendingWallet: navigation.currentRoute == .spendingWallet,
             wallet: wallet,
             hasPendingTransfersToSpending: hasPendingTransfersToSpending
@@ -95,8 +95,7 @@ struct TabBar: View {
         wallet: WalletViewModel,
         hasPendingTransfersToSpending: Bool
     ) -> Bool {
-        isSpendingWallet && Env.primaryNode == nil && !wallet.canCreateReceiveLightningInvoice(amountSats: nil)
-            && !hasPendingTransfersToSpending
+        isSpendingWallet && !wallet.canCreateReceiveLightningInvoice(amountSats: nil) && !hasPendingTransfersToSpending
     }
 }
 

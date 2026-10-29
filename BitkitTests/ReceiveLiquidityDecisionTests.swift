@@ -2,38 +2,6 @@
 import XCTest
 
 final class ReceiveLiquidityDecisionTests: XCTestCase {
-    func testPrimaryNodeCoversFixedAmountsWithoutChannels() {
-        XCTAssertTrue(
-            ReceiveLiquidityDecision.canCreateLightningInvoice(
-                hasReadyChannels: false,
-                inboundCapacitySats: nil,
-                invoiceAmountSats: 5000,
-                hasPrimaryNode: true
-            )
-        )
-
-        XCTAssertFalse(
-            ReceiveLiquidityDecision.canCreateLightningInvoice(
-                hasReadyChannels: false,
-                inboundCapacitySats: nil,
-                invoiceAmountSats: nil,
-                hasPrimaryNode: true
-            )
-        )
-    }
-
-    func testPrimaryNodeNeedsNoAdditionalLiquidityAction() {
-        XCTAssertEqual(
-            ReceiveLiquidityDecision.additionalLiquidityAction(
-                source: .spending,
-                invoiceAmountSats: 10000,
-                inboundCapacitySats: 1000,
-                hasPrimaryNode: true
-            ),
-            .none
-        )
-    }
-
     func testLightningInvoiceRequiresReadyChannel() {
         XCTAssertFalse(
             ReceiveLiquidityDecision.canCreateLightningInvoice(
@@ -107,6 +75,43 @@ final class ReceiveLiquidityDecisionTests: XCTestCase {
         XCTAssertEqual(
             ReceiveLiquidityDecision.additionalLiquidityAction(source: .spending, invoiceAmountSats: 10000, inboundCapacitySats: 5000),
             .transferUnavailable
+        )
+    }
+
+    func testReceiveAboveInboundGoesThroughPrimaryWhenOneIsSet() {
+        for source in [ReceiveLiquiditySource.spending, .auto] {
+            for inbound: UInt64 in [0, 1000] {
+                XCTAssertEqual(
+                    ReceiveLiquidityDecision.additionalLiquidityAction(
+                        source: source,
+                        invoiceAmountSats: 10000,
+                        inboundCapacitySats: inbound,
+                        hasPrimaryNode: true
+                    ),
+                    .primaryReceive
+                )
+            }
+        }
+    }
+
+    func testPrimaryIsNotAskedForReceiveThatFitsOrSavingsInvoice() {
+        XCTAssertEqual(
+            ReceiveLiquidityDecision.additionalLiquidityAction(
+                source: .spending,
+                invoiceAmountSats: 10000,
+                inboundCapacitySats: 20000,
+                hasPrimaryNode: true
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            ReceiveLiquidityDecision.additionalLiquidityAction(
+                source: .savings,
+                invoiceAmountSats: 10000,
+                inboundCapacitySats: 1000,
+                hasPrimaryNode: true
+            ),
+            .none
         )
     }
 }

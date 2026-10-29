@@ -15,7 +15,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ovitrif/ldk-node",
       "state" : {
-        "revision" : "46ecee6b1e8ef4e2d6c258767b0c3eee8be3cbe6"
+        "revision" : "e2643c7b7eee9b4fe0b6162dee234cbf9367823f"
       }
     },
     {

@@ -1,15 +1,5 @@
 import SwiftUI
 
-/// Opens a channel with the primary node, or explains that transfers need manual setup without one.
-@MainActor
-func showTransferToSpending(sheets: SheetViewModel, navigation: NavigationViewModel) {
-    guard let primaryNodeUri = Env.primaryNodeUri else {
-        sheets.showSheet(.transferUnavailable)
-        return
-    }
-    navigation.navigate(.fundManual(nodeUri: primaryNodeUri))
-}
-
 struct TransferUnavailableSheetItem: SheetItem {
     let id: SheetID = .transferUnavailable
     let size: SheetSize = .large

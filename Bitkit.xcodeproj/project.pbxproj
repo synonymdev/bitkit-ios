@@ -164,6 +164,7 @@
 				"Extensions/PaymentFailureReason+UserMessage.swift",
 				Models/BlocksWidgetOptions.swift,
 				Models/LnPeer.swift,
+				Models/PrimaryNode.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Models/Transfer.swift,
@@ -199,6 +200,7 @@
 				Extensions/PaymentDetails.swift,
 				"Extensions/PaymentFailureReason+UserMessage.swift",
 				Models/LnPeer.swift,
+				Models/PrimaryNode.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
@@ -1224,7 +1226,7 @@
 			repositoryURL = "https://github.com/ovitrif/ldk-node";
 			requirement = {
 				kind = revision;
-				revision = 46ecee6b1e8ef4e2d6c258767b0c3eee8be3cbe6;
+				revision = e2643c7b7eee9b4fe0b6162dee234cbf9367823f;
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {

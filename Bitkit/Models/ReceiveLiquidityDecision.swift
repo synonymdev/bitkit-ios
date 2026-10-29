@@ -1,6 +1,8 @@
 enum ReceiveAdditionalLiquidityAction: Equatable {
     case none
     case transferUnavailable
+    /// The primary node opens or grows the channel for this receive, once the user approves its fee.
+    case primaryReceive
 }
 
 enum ReceiveLiquiditySource: Equatable {
@@ -13,13 +15,8 @@ enum ReceiveLiquidityDecision {
     static func canCreateLightningInvoice(
         hasReadyChannels: Bool,
         inboundCapacitySats: UInt64?,
-        invoiceAmountSats: UInt64?,
-        hasPrimaryNode: Bool = false
+        invoiceAmountSats: UInt64?
     ) -> Bool {
-        if hasPrimaryNode, (invoiceAmountSats ?? 0) > 0 {
-            return true
-        }
-
         guard hasReadyChannels, let inboundCapacitySats else {
             return false
         }
@@ -37,12 +34,14 @@ enum ReceiveLiquidityDecision {
         inboundCapacitySats: UInt64?,
         hasPrimaryNode: Bool = false
     ) -> ReceiveAdditionalLiquidityAction {
-        guard source == .spending, !hasPrimaryNode, needsInboundLiquidity(
-            invoiceAmountSats: invoiceAmountSats,
-            inboundCapacitySats: inboundCapacitySats
-        ),
-            (inboundCapacitySats ?? 0) > 0
+        guard source != .savings, needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats)
         else {
+            return .none
+        }
+        if hasPrimaryNode, invoiceAmountSats > 0 {
+            return .primaryReceive
+        }
+        guard source == .spending, (inboundCapacitySats ?? 0) > 0 else {
             return .none
         }
 

@@ -54,6 +54,8 @@ enum SettingsBackupConfig {
         "enableNotifications": .bool,
         "quickpayAmount": .double(optional: false),
         "quickpayDailyLimitMultiplier": .double(optional: false),
+        "primaryNodeUri": .string(optional: true),
+        "primaryFundingPaused": .bool,
     ]
 
     static var settingsKeys: [String] {
