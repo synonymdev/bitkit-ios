@@ -60,15 +60,10 @@ struct HomeWalletView: View {
                 isUnavailable: total == nil,
                 showSymbol: true,
                 showEyeIcon: true,
+                isLoading: balanceUpdating,
                 enableSwipeGesture: settings.swipeBalanceToHide,
                 enableHide: true
             )
-            if balanceUpdating {
-                CaptionMText(t("wallet__balance_updating"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 8)
-                    .accessibilityIdentifier("TotalBalanceUpdating")
-            }
             Spacer().frame(height: 32)
 
             HStack(spacing: 16) {
