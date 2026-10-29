@@ -464,8 +464,9 @@ class AppViewModel: ObservableObject {
     }
 
     /// Validates the onchain request amount and balance, showing feedback when invalid.
-    private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance: UInt64) -> Bool {
+    private func validateOnchainBalance(invoiceAmount: UInt64, onchainBalance savingsBalance: UInt64) -> Bool {
         guard validateIncomingOnchainPaymentRequestAmount(invoiceAmount) else { return false }
+        let onchainBalance = max(savingsBalance, PrimaryNodeService.shared.maxSpliceOutSats(feeRate: 1))
         if invoiceAmount > 0 {
             guard onchainBalance >= invoiceAmount else {
                 didRejectScannedPayment = true

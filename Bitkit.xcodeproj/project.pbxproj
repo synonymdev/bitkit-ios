@@ -1226,7 +1226,7 @@
 			repositoryURL = "https://github.com/ovitrif/ldk-node";
 			requirement = {
 				kind = revision;
-				revision = e2643c7b7eee9b4fe0b6162dee234cbf9367823f;
+				revision = e09626aa88d43a8a7d9e969beb99920b72ad32b1;
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {

@@ -25,7 +25,8 @@ struct SendEnterManuallyView: View {
                     newValue,
                     savingsBalanceSats: max(
                         wallet.spendableOnchainBalanceSats,
-                        Int(clamping: hwWalletManager.maximumFundingBalanceSats)
+                        Int(clamping: hwWalletManager.maximumFundingBalanceSats),
+                        Int(clamping: PrimaryNodeService.shared.maxSpliceOutSats(feeRate: 1))
                     ),
                     spendingBalanceSats: wallet.maxSendLightningSats,
                     scope: hwSend.isActive ? .onchainPayments : .unrestricted

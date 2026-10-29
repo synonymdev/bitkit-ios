@@ -207,7 +207,9 @@ struct SavingsProgressView: View {
                 transfer.startCoopCloseRetries(channels: channelsFailedToCoopClose)
             }
         } catch {
-            app.toast(error)
+            UIApplication.shared.isIdleTimerDisabled = false
+            app.toast(type: .error, title: t("common__error"), description: error.primaryErrorMessage)
+            navigation.reset()
         }
     }
 }

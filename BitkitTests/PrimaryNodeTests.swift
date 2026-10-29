@@ -44,14 +44,16 @@ final class PrimaryNodeTests: XCTestCase {
     }
 
     func testLiquidityErrorsMapToWhatTheUserIsTold() {
-        func map(_ error: NodeError) -> PrimaryReceiveError? {
-            PrimaryNodeService.mapError(error) as? PrimaryReceiveError
-        }
+        XCTAssertEqual(NodeError.LiquiditySourceInsufficientFunds(message: "").primaryErrorMessage, t("primary_node__error_insufficient_funds"))
+        XCTAssertEqual(NodeError.LiquidityRequestRejected(message: "").primaryErrorMessage, t("primary_node__error_rejected"))
+        XCTAssertEqual(NodeError.LiquidityRequestTimedOut(message: "").primaryErrorMessage, t("primary_node__error_timed_out"))
+        XCTAssertEqual(NodeError.LiquidityReceiveAmountTooSmall(message: "").primaryErrorMessage, t("primary_node__error_amount_too_small"))
+        XCTAssertEqual(NodeError.ConnectionFailed(message: "").primaryErrorMessage, t("primary_node__error_offline"))
+    }
 
-        XCTAssertEqual(map(.LiquiditySourceInsufficientFunds(message: "")), .insufficientFunds)
-        XCTAssertEqual(map(.LiquidityRequestRejected(message: "")), .rejected)
-        XCTAssertEqual(map(.LiquidityRequestTimedOut(message: "")), .timedOut)
-        XCTAssertEqual(map(.LiquidityReceiveAmountTooSmall(message: "")), .amountTooSmall)
-        XCTAssertEqual(map(.ConnectionFailed(message: "")), .offline)
+    func testAnUnreachablePrimaryWrappedByTheServiceQueueIsReportedAsOffline() {
+        let wrapped = Bitkit.AppError(error: NodeError.ConnectionFailed(message: ""))
+
+        XCTAssertEqual(wrapped.primaryErrorMessage, t("primary_node__error_offline"))
     }
 }

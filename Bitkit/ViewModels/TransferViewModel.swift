@@ -265,8 +265,8 @@ class TransferViewModel: ObservableObject {
             do {
                 _ = try await PrimaryNodeService.shared.transferToSavings()
             } catch {
-                Logger.warn("Failed to splice out primary channel: \(error)", context: "TransferViewModel")
-                failedChannels.append(primaryChannel)
+                Logger.warn("Failed to splice out primary channel \(primaryChannel.channelId): \(error)", context: "TransferViewModel")
+                throw error
             }
         }
 

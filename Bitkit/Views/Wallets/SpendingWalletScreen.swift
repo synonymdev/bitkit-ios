@@ -34,7 +34,7 @@ struct SpendingWalletScreen: View {
                             .padding(.top, 16)
                     }
 
-                    if shouldShowOnboarding && wallet.totalOnchainSats > 0 {
+                    if shouldShowOnboarding || PrimaryNodeService.shared.primaryNode != nil, wallet.totalOnchainSats > 0 {
                         transferFromSavingsButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 28)

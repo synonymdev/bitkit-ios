@@ -20,8 +20,8 @@ struct PrimaryNodeSettingsScreen: View {
         return wallet.peers?.contains { $0.nodeId == primary.nodeId && $0.isConnected } ?? false
     }
 
-    private var isDefault: Bool {
-        currentPrimary?.uri == PrimaryNode.parseOrNil(Env.defaultPrimaryNodeUri)?.uri
+    private var isInputDefault: Bool {
+        input == Env.defaultPrimaryNodeUri
     }
 
     var body: some View {
@@ -104,7 +104,7 @@ struct PrimaryNodeSettingsScreen: View {
                         Spacer()
 
                         HStack(spacing: 16) {
-                            CustomButton(title: t("settings__es__button_reset"), variant: .secondary, isDisabled: isLoading || isDefault) {
+                            CustomButton(title: t("settings__es__button_reset"), variant: .secondary, isDisabled: isLoading || isInputDefault) {
                                 input = Env.defaultPrimaryNodeUri
                             }
                             .accessibilityIdentifier("PrimaryNodeReset")

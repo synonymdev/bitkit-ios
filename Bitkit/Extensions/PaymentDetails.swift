@@ -26,3 +26,13 @@ extension PaymentDetails {
         Date(timeIntervalSince1970: TimeInterval(latestUpdateTimestamp))
     }
 }
+
+extension PaymentKind {
+    /// A payment for a BOLT 11 invoice, including one the primary node delivers through a just-in-time channel.
+    var isBolt11Invoice: Bool {
+        switch self {
+        case .bolt11, .bolt11Jit: true
+        default: false
+        }
+    }
+}

@@ -956,7 +956,18 @@ class ActivityService {
     }
 
     private func processLightningPayment(_ payment: PaymentDetails) async throws {
-        guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
+        let preimage: PaymentPreimage?
+        let description: String?
+        let bolt11: String?
+        switch payment.kind {
+        case let .bolt11(_, kindPreimage, _, kindDescription, kindBolt11),
+             let .bolt11Jit(_, kindPreimage, _, _, _, kindDescription, kindBolt11):
+            preimage = kindPreimage
+            description = kindDescription
+            bolt11 = kindBolt11
+        default:
+            return
+        }
 
         // Skip pending inbound payments - just means they created an invoice
         guard !(payment.status == .pending && payment.direction == .inbound) else { return }
@@ -1057,7 +1068,7 @@ class ActivityService {
                         Logger.error("Error processing onchain payment \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
                         latestCaughtError = error
                     }
-                } else if case .bolt11 = payment.kind {
+                } else if payment.kind.isBolt11Invoice {
                     do {
                         let hadExistingActivity = try getActivityById(walletId: WalletScope.default, activityId: payment.id) != nil
                         try await self.processLightningPayment(payment)

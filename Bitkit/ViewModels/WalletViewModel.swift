@@ -334,6 +334,14 @@ class WalletViewModel: ObservableObject {
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
                         Task {
                             await self.refreshAndSyncState()
+                            if syncType == .onchainWallet {
+                                await PrimaryNodeService.shared.fundIfNeeded()
+                            }
+                        }
+
+                    case .splicePending, .spliceFailed:
+                        Task {
+                            try? await self.sync()
                         }
 
                     // MARK: Balance Events
@@ -1341,6 +1349,9 @@ class WalletViewModel: ObservableObject {
 
     var canCreateReceiveLightningInvoice: Bool {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
+        if let approved = approvedPrimaryInvoice, approved.amountSats == amountSats, bolt11 == approved.bolt11 {
+            return true
+        }
         return canCreateReceiveLightningInvoice(amountSats: amountSats)
     }
 

@@ -18,11 +18,13 @@ struct PrimaryFundingPlan: Equatable {
     static let fundingInputVbytes: UInt64 = 300
 
     /// Plans moving `spendableSats` of savings, held in `inputs` outputs, into the primary channel at `feeRate`.
+    /// ldk-node leaves outputs of a channel's own funding transaction out of `inputs`, such as savings from a
+    /// splice-out, so the estimate counts at least one input whenever there is something to move.
     /// Returns nil when there is nothing worth moving; `isAutomatic` is false when the fee is above
     /// `maxFundingFeePercent`, so only a manual transfer moves it.
     static func plan(spendableSats: UInt64, inputs: UInt64, feeRate: UInt64, hasChannel: Bool) -> PrimaryFundingPlan? {
-        guard inputs > 0, feeRate > 0 else { return nil }
-        let fee = feeRate * (fundingBaseVbytes + fundingInputVbytes * inputs)
+        guard spendableSats > 0, feeRate > 0 else { return nil }
+        let fee = feeRate * (fundingBaseVbytes + fundingInputVbytes * max(inputs, 1))
         guard spendableSats > fee else { return nil }
         return PrimaryFundingPlan(
             amountSats: spendableSats - fee,
@@ -100,6 +102,9 @@ final class PrimaryNodeService {
         do {
             try await lightningService.restart()
             guard let peer = primary.peer else { throw PrimaryNodeError.addressUnknown }
+            if let stale = lightningService.peers?.first(where: { $0.nodeId == peer.nodeId && $0.isConnected && $0.address != peer.address }) {
+                try? await lightningService.disconnectPeer(peer: stale)
+            }
             try await lightningService.connectPeer(peer: peer)
             try await lightningService.checkPrimaryConnection(nodeId: primary.nodeId)
             return primary
@@ -176,8 +181,12 @@ final class PrimaryNodeService {
     /// Transfer to Spending: moves the planned savings now, below the automatic fee limit too, and resumes funding.
     @MainActor
     func transferToSpending(_ plan: PrimaryFundingPlan) async throws {
-        isFundingPaused = false
+        guard !isFunding else { throw PrimaryReceiveError.busy }
+        isFunding = true
+        defer { isFunding = false }
         do {
+            guard try await !lightningService.hasPendingFundingOperation() else { throw PrimaryReceiveError.busy }
+            isFundingPaused = false
             try await executeFunding(plan)
         } catch {
             throw Self.mapError(error)
@@ -294,6 +303,7 @@ final class PrimaryNodeService {
 
     /// Maps a node error to what the user is told about the primary node.
     static func mapError(_ error: Error) -> Error {
+        let error = (error as? AppError)?.underlyingError ?? error
         guard let nodeError = error as? NodeError else { return error }
         switch nodeError {
         case .LiquiditySourceInsufficientFunds: return PrimaryReceiveError.insufficientFunds
