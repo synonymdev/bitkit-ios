@@ -59,8 +59,11 @@ struct MoneyStack: View {
 
                     Spacer()
 
-                    trailingSlot
+                    if showEyeIcon && settings.hideBalance {
+                        eyeIconButton
+                    }
                 }
+                .overlay(alignment: .trailing) { balanceLoader }
                 .transition(
                     .move(edge: .top)
                         .combined(with: .opacity)
@@ -104,8 +107,11 @@ struct MoneyStack: View {
 
                     Spacer()
 
-                    trailingSlot
+                    if showEyeIcon && settings.hideBalance {
+                        eyeIconButton
+                    }
                 }
+                .overlay(alignment: .trailing) { balanceLoader }
                 .transition(
                     .move(edge: .top)
                         .combined(with: .opacity)
@@ -157,27 +163,21 @@ struct MoneyStack: View {
 // MARK: - Helper Views
 
 private extension MoneyStack {
-    /// Fixed slot for the eye icon and the balance loader, so neither moves the layout.
-    /// The eye keeps the slot while the balance is hidden.
-    @ViewBuilder
-    var trailingSlot: some View {
-        if showEyeIcon {
-            ZStack {
-                if settings.hideBalance {
-                    eyeIconButton
-                } else if isLoading {
-                    ActivityIndicator(size: 24)
-                        .opacity(0.75)
-                        .transition(.opacity)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(t("wallet__balance_updating"))
-                        .accessibilityIdentifier("TotalBalanceUpdating")
-                }
+    /// Drawn over the row's trailing edge, in the eye icon's place, so it takes no layout space.
+    /// The eye keeps its place while the balance is hidden.
+    var balanceLoader: some View {
+        ZStack {
+            if showEyeIcon && isLoading && !settings.hideBalance {
+                ActivityIndicator(size: 24)
+                    .opacity(0.75)
+                    .transition(.opacity)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(t("wallet__balance_updating"))
+                    .accessibilityIdentifier("TotalBalanceUpdating")
             }
-            .frame(width: 24, height: 24)
-            .padding(.leading, 8)
-            .animation(.easeInOut(duration: 0.3), value: isLoading)
         }
+        .frame(width: 24, height: 24)
+        .animation(.easeInOut(duration: 0.3), value: isLoading)
     }
 
     var eyeIconButton: some View {
@@ -188,6 +188,7 @@ private extension MoneyStack {
                 .foregroundColor(.textPrimary)
         }
         .accessibilityIdentifier("ShowBalance")
+        .padding(.leading, 8)
     }
 }
 
