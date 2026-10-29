@@ -53,10 +53,10 @@ struct MoneyStack: View {
                         enableHide: enableHide,
                         prefix: prefix,
                         color: .textPrimary,
-                        testIdentifier: "MoneyText"
+                        testIdentifier: "MoneyText",
+                        shimmer: isLoading
                     )
                     .contentTransition(.numericText())
-                    .modifier(BalanceShimmer(isActive: isLoading))
 
                     Spacer()
 
@@ -101,10 +101,10 @@ struct MoneyStack: View {
                         enableHide: enableHide,
                         prefix: prefix,
                         color: .textPrimary,
-                        testIdentifier: "MoneyText"
+                        testIdentifier: "MoneyText",
+                        shimmer: isLoading
                     )
                     .contentTransition(.numericText())
-                    .modifier(BalanceShimmer(isActive: isLoading))
 
                     Spacer()
 
@@ -172,75 +172,6 @@ private extension MoneyStack {
         }
         .accessibilityIdentifier("ShowBalance")
         .padding(.leading, 8)
-    }
-}
-
-/// A soft diagonal sweep over the headline while its balance refreshes. The text dims to 75% and the band brings it
-/// back to full, so the cached amount stays readable. With Reduce Motion on, the text only dims.
-private struct BalanceShimmer: ViewModifier {
-    let isActive: Bool
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var intensity: Double = 0
-    @State private var isSweeping = false
-
-    private let sweepDuration: TimeInterval = 2
-    private let minOpacity = 0.75
-    /// `DisplayText` draws glyph tops and descenders outside its frame; the mask reaches past it so they stay visible.
-    private let maskOutset: CGFloat = 24
-
-    func body(content: Content) -> some View {
-        content
-            .mask {
-                ZStack {
-                    Color.white.opacity(minOpacity)
-                    if !reduceMotion {
-                        TimelineView(.animation(paused: !isSweeping)) { context in
-                            band(at: context.date)
-                        }
-                    }
-                    Color.white.opacity(1 - intensity)
-                }
-                .padding(-maskOutset)
-            }
-            .overlay {
-                if isActive {
-                    Color.clear
-                        .accessibilityElement()
-                        .accessibilityLabel(t("wallet__balance_updating"))
-                        .accessibilityIdentifier("TotalBalanceUpdating")
-                }
-            }
-            .onAppear {
-                intensity = isActive ? 1 : 0
-                isSweeping = isActive
-            }
-            .onChange(of: isActive) { _, active in
-                if active {
-                    isSweeping = true
-                }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    intensity = active ? 1 : 0
-                } completion: {
-                    if !active {
-                        isSweeping = false
-                    }
-                }
-            }
-    }
-
-    private func band(at date: Date) -> some View {
-        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: sweepDuration) / sweepDuration
-        return GeometryReader { geometry in
-            let width = geometry.size.width * 0.5
-            LinearGradient(
-                colors: [.clear, .white, .clear],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .frame(width: width)
-            .offset(x: -width + phase * (geometry.size.width + width))
-        }
     }
 }
 
