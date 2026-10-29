@@ -182,9 +182,12 @@ private struct BalanceShimmer: ViewModifier {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var intensity: Double = 0
+    @State private var isSweeping = false
 
     private let sweepDuration: TimeInterval = 2
     private let minOpacity = 0.75
+    /// `DisplayText` draws glyph tops and descenders outside its frame; the mask reaches past it so they stay visible.
+    private let maskOutset: CGFloat = 24
 
     func body(content: Content) -> some View {
         content
@@ -192,12 +195,13 @@ private struct BalanceShimmer: ViewModifier {
                 ZStack {
                     Color.white.opacity(minOpacity)
                     if !reduceMotion {
-                        TimelineView(.animation(paused: intensity == 0)) { context in
+                        TimelineView(.animation(paused: !isSweeping)) { context in
                             band(at: context.date)
                         }
                     }
                     Color.white.opacity(1 - intensity)
                 }
+                .padding(-maskOutset)
             }
             .overlay {
                 if isActive {
@@ -207,9 +211,21 @@ private struct BalanceShimmer: ViewModifier {
                         .accessibilityIdentifier("TotalBalanceUpdating")
                 }
             }
-            .onAppear { intensity = isActive ? 1 : 0 }
+            .onAppear {
+                intensity = isActive ? 1 : 0
+                isSweeping = isActive
+            }
             .onChange(of: isActive) { _, active in
-                withAnimation(.easeInOut(duration: 0.3)) { intensity = active ? 1 : 0 }
+                if active {
+                    isSweeping = true
+                }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    intensity = active ? 1 : 0
+                } completion: {
+                    if !active {
+                        isSweeping = false
+                    }
+                }
             }
     }
 
