@@ -242,7 +242,9 @@ class TransferViewModel: ObservableObject {
     }
 
     private var resolvedSavingsTransferMode: SavingsTransferMode {
-        if PrimaryNodeService.shared.primaryChannel() != nil { return .close }
+        if PrimaryNodeService.shared.primaryChannel() != nil {
+            return .close
+        }
         return savingsSwapState.quote != nil ? .swap : .close
     }
 

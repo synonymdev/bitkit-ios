@@ -808,7 +808,9 @@ class LightningService {
     }
 
     private static func connectPrimaryIfNeeded(node: Node, primary: PrimaryNode) throws {
-        if node.listPeers().contains(where: { $0.nodeId == primary.nodeId && $0.isConnected }) { return }
+        if node.listPeers().contains(where: { $0.nodeId == primary.nodeId && $0.isConnected }) {
+            return
+        }
         guard let address = primary.address else { throw PrimaryNodeError.addressUnknown }
         try node.connect(nodeId: primary.nodeId, address: address, persist: true)
     }
