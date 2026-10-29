@@ -228,7 +228,7 @@ struct SendPendingScreen: View {
                 Task { await abandonExpiredPayment() }
             }
         } message: {
-            Text(t("wallet__onchain_abandon_note"))
+            Text(t(abandonableAttempt?.isBlocktankFunding == true ? "wallet__onchain_abandon_transfer_note" : "wallet__onchain_abandon_note"))
         }
         .onChange(of: isReviewingRecovery, initial: true) { _, reviewing in
             updatePaymentReview(reviewing)
@@ -328,7 +328,7 @@ struct SendPendingScreen: View {
             // The request can end, or a failed check recover, while this screen stays open.
             while paymentHash == nil, abandonableAttempt == nil, !Task.isCancelled {
                 if pendingHardwareWalletId == nil {
-                    await loadAbandonableAttempt()
+                    guard await loadAbandonableAttempt() else { return }
                 }
                 guard abandonableAttempt == nil else { return }
                 do { try await Task.sleep(for: .seconds(30)) }
@@ -356,6 +356,12 @@ struct SendPendingScreen: View {
         defer { retryingOnchain = false }
         let context = OnchainSendPendingContext(attemptId: original.id, walletId: original.walletId, txid: original.txid)
         do {
+            // Blocktank no longer sells channels, so an unpaid order is never paid again.
+            if original.orderId != nil {
+                Logger.warn("Stopped a retry of a transfer to spending: transfers are unavailable", context: "SendPendingScreen")
+                sheets.showSheet(.transferUnavailable)
+                return
+            }
             let feeLimits = await wallet.getFeeLimits()
             guard feeRate > 0, feeRate <= feeLimits.maxFee else {
                 app.toast(type: .warning, title: t("wallet__onchain_retry_invalid_fee"))
@@ -396,18 +402,6 @@ struct SendPendingScreen: View {
                         guard authorization.paymentDeadline == paymentDeadline,
                               let payer = attempt.recoveryContext?.paymentIdentity else { throw PaykitPaymentRequestError.requestUnavailable }
                         try await proofService.requireRecoveryPayer(payer)
-                    } else if let orderId = attempt.orderId {
-                        let orders = try await CoreService.shared.blocktank.orders(orderIds: [orderId], refresh: true)
-                        guard let order = orders.first(where: { $0.id == orderId }), order.state2 == .created,
-                              order.payment?.onchain?.address == attempt.address,
-                              order.clientBalanceSat == attempt.transferContext?.clientBalanceSats,
-                              order.feeSat <= attempt.amountSats
-                        else { throw OnchainSendAttemptError.unresolved }
-                        let formatter = ISO8601DateFormatter()
-                        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                        guard let expiry = formatter.date(from: order.orderExpiresAt) ?? ISO8601DateFormatter().date(from: order.orderExpiresAt),
-                              expiry > Date()
-                        else { throw OnchainSendAttemptError.unresolved }
                     }
                 }
             )
@@ -427,11 +421,14 @@ struct SendPendingScreen: View {
         }
     }
 
+    /// Returns whether to check again later. Transfers do not come back once unavailable, so one check decides a
+    /// Blocktank funding.
     @MainActor
-    private func loadAbandonableAttempt() async {
-        guard let attempt = try? await attemptService.blockingAttempt(), attempt.canBeAbandoned else { return }
+    private func loadAbandonableAttempt() async -> Bool {
+        guard let attempt = try? await attemptService.blockingAttempt(), attempt.canBeAbandoned else { return true }
         let hasEnded = await (try? proofService.onchainRequestHasEnded(attempt)) ?? false
         abandonableAttempt = hasEnded ? attempt : nil
+        return !attempt.isBlocktankFunding
     }
 
     private func abandonExpiredPayment() async {

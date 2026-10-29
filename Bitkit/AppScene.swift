@@ -365,6 +365,7 @@ struct AppScene: View {
         activityChanges: CoreService.shared.activity.activitiesChangedPublisher
     )
     @State private var paykitAllowanceManager = PaykitAllowanceManager()
+    @State private var activatedAutomaticPaykitIdentity: String?
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -402,8 +403,7 @@ struct AppScene: View {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
         let transferService = TransferService(
-            lightningService: LightningService.shared,
-            blocktankService: CoreService.shared.blocktank
+            lightningService: LightningService.shared
         )
 
         // Run app data migrations before any feature code loads migrated state
@@ -442,15 +442,6 @@ struct AppScene: View {
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
             sheetViewModel: sheetViewModel,
-            hwFunding: hwWalletManager,
-            hwConnecting: hwWalletManager,
-            hwFeeRateProvider: {
-                guard let rates = await feeEstimatesManager.getEstimates() else { return nil }
-                return UInt64(TransactionSpeed.fast.getFeeRate(from: rates))
-            },
-            hwAddressProvider: {
-                try await LightningService.shared.addressInfoForType(.nativeSegwit, atIndex: 0).address
-            },
             onBalanceRefresh: { await walletVm.updateBalanceState() }
         ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
@@ -611,31 +602,21 @@ struct AppScene: View {
                 receivedPaymentBackfillCache.invalidate()
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
-                    Task {
-                        guard let session = pubkyProfile.automaticPaykitSession,
-                              PubkyPublicKeyFormat.matches(pk, session.publicKey)
-                        else { return }
-                        await paykitAllowanceManager.activate(identity: pk)
-                        await handlePendingPaykitSubscriptionNotification()
-                        guard pubkyProfile.automaticPaykitSession == session else { return }
-                        try? await contactsManager.loadContacts(for: pk)
-                        if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
-                            await retryPendingPaykitEndpointRemoval()
-                        }
-                        guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
-                              PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
-                        else { return }
-                        await refreshPrivateOnlyPaykitApp()
-                        await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
-                        if PaykitSubscriptionNotificationTargetStore.load() == nil {
-                            await presentNextIncomingPaykitItem()
-                        }
-                    }
+                    startAutomaticPaykitSession()
                 } else if authState == .idle {
+                    activatedAutomaticPaykitIdentity = nil
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
                     paykitAllowanceManager.deactivate()
                     hasPendingExpiryToast = false
+                }
+            }
+            // A sign-in, or a session that was still changing or being deleted, has no automatic session yet when
+            // authState turns authenticated; activate allowances and load contacts once it appears.
+            .onReceive(PubkyProfileManager.sessionSettledPublisher) { startAutomaticPaykitSession() }
+            .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
+                if !isDeleting {
+                    startAutomaticPaykitSession()
                 }
             }
             .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
@@ -1029,9 +1010,6 @@ struct AppScene: View {
                 await retryPendingPaykitEndpointRemoval()
             }
 
-            // Start watching pending orders after wallet is ready
-            await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
-
             // Open the swap updates stream so any pending LN -> onchain swaps resume
             // and auto-claim once their lockup confirms. Retries until the stream starts.
             wallet.ensureSwapUpdatesRunning()
@@ -1111,7 +1089,8 @@ struct AppScene: View {
                 appViewModel: app,
                 settingsViewModel: settings,
                 walletViewModel: wallet,
-                currencyViewModel: currency
+                currencyViewModel: currency,
+                paykitPaymentRequestManager: paykitPaymentRequestManager
             )
         } catch {
             app.toast(error)
@@ -1231,11 +1210,17 @@ struct AppScene: View {
         if shouldRestoreRN {
             do {
                 try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
-                return true
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
                 return await restoreVssBackup()
+            }
+            do {
+                try await BackupService.shared.restoreUsdtRecoveryAfterLegacyMigration()
+                return true
+            } catch {
+                app.toast(error)
+                return false
             }
         }
 
@@ -1263,7 +1248,9 @@ struct AppScene: View {
                 if !PaykitFeatureFlags.isUIEnabled {
                     await retryPendingPaykitEndpointRemoval()
                 }
-                guard PaykitFeatureFlags.isUIEnabled, isPaykitSceneActive else { return }
+                guard PaykitFeatureFlags.isUIEnabled else { return }
+                await paykitAllowanceManager.recoverOpenAttempts()
+                guard isPaykitSceneActive else { return }
                 await refreshPrivateOnlyPaykitApp()
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                 await prepareSavedPaykitContacts()
@@ -1282,6 +1269,7 @@ struct AppScene: View {
             isContactRefreshForeground = newPhase == .active
         }
         Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
+        BackupService.shared.setAppActive(newPhase == .active)
 
         let returnedFromBackground = foregroundReturnTracker.scenePhaseChanged(to: newPhase)
 
@@ -2020,7 +2008,9 @@ struct AppScene: View {
                 "subscriptions__allowance_limit_description",
                 variables: ["amount": AllowanceAmountText.fiat(sats: amountSats, currency: currency), "name": contactName(counterparty)]
             )
-            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+            // The Payment Request sheet opens for the same request while the app is in the foreground and unlocked; behind
+            // the PIN screen the sheet waits, so the notification is posted.
+            PaykitAllowanceNotifier.post(title: title, body: description, skipsWhileActive: !isLockedForDeepLinks, fallback: {
                 app.toast(type: .warning, title: title, description: description, accessibilityIdentifier: "AllowanceLimitToast")
             })
         case .ledgerChanged:
@@ -2028,14 +2018,54 @@ struct AppScene: View {
         }
     }
 
-    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
-        for offer in offers {
-            let title = t("subscriptions__allowance_offer_accepted_title")
-            let description = t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(offer.counterparty)])
-            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
-                app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
-            })
+    private func startAutomaticPaykitSession() {
+        guard let session = pubkyProfile.automaticPaykitSession,
+              !PubkyPublicKeyFormat.matches(session.publicKey, activatedAutomaticPaykitIdentity)
+        else { return }
+        let pk = session.publicKey
+        activatedAutomaticPaykitIdentity = pk
+        Task {
+            await paykitAllowanceManager.activate(identity: pk)
+            await handlePendingPaykitSubscriptionNotification()
+            guard pubkyProfile.automaticPaykitSession == session else {
+                // A deletion or session change cut this start short; let the session's next appearance run it again.
+                if activatedAutomaticPaykitIdentity == pk {
+                    activatedAutomaticPaykitIdentity = nil
+                }
+                // A new session for the same key may already have appeared while this one waited.
+                startAutomaticPaykitSession()
+                return
+            }
+            try? await contactsManager.loadContacts(for: pk)
+            if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
+                await retryPendingPaykitEndpointRemoval()
+            }
+            guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                  PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
+            else { return }
+            await refreshPrivateOnlyPaykitApp()
+            await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
+            if PaykitSubscriptionNotificationTargetStore.load() == nil {
+                await presentNextIncomingPaykitItem()
+            }
         }
+    }
+
+    /// One announcement for all offers accepted in a refresh, since each fallback toast would replace the one before it.
+    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
+        var counterparties: [String] = []
+        for offer in offers where !counterparties.contains(where: { PubkyPublicKeyFormat.matches($0, offer.counterparty) }) {
+            counterparties.append(offer.counterparty)
+        }
+        let names = counterparties.map(contactName)
+        guard let first = names.first else { return }
+        let title = t("subscriptions__allowance_offer_accepted_title")
+        let description = names.count == 1
+            ? t("subscriptions__allowance_offer_accepted_description", variables: ["name": first])
+            : t("subscriptions__allowance_offers_accepted_description", variables: ["names": ListFormatter.localizedString(byJoining: names)])
+        PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+            app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
+        })
     }
 
     private func contactName(_ publicKey: String) -> String {

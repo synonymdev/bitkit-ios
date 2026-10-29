@@ -917,7 +917,7 @@ private final class ControlledSendWallet: WalletViewModel {
         self.fails = fails
         self.suspendsResumedPreparation = suspendsResumedPreparation
         super.init(
-            transferService: TransferService(lightningService: .shared, blocktankService: Bitkit.CoreService.shared.blocktank),
+            transferService: TransferService(lightningService: .shared),
             sheetViewModel: SheetViewModel(),
             feeEstimatesManager: FeeEstimatesManager()
         )
