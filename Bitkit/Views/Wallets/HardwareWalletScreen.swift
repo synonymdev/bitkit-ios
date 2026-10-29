@@ -197,14 +197,13 @@ private struct DeviceIllustrationPlacement {
         case .trezor:
             rotation = .degrees(-15)
             offset = CGSize(width: 9, height: 13)
-            trailingOverhang = 118
+            trailingOverhang = 105
         case .blockstream:
-            // The Jade asset lies landscape with its own tilt, so turning it 86° stands it upright with
-            // the same lean as the Trezor and the wordmark reading left to right. The smaller overhang
-            // keeps its screen, button and wordmark on screen above the activity list.
-            rotation = .degrees(86)
-            offset = CGSize(width: 9, height: -5)
-            trailingOverhang = 80
+            // The Jade asset already stands upright at a three-quarter angle, so it needs only a slight
+            // lean. The smaller overhang keeps its screen and wordmark on screen above the activity list.
+            rotation = .degrees(-5)
+            offset = CGSize(width: 0, height: 5)
+            trailingOverhang = 70
         }
     }
 }

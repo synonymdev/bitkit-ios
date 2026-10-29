@@ -70,6 +70,8 @@ final class PaykitAllowanceManager {
     @ObservationIgnored private var identity: String?
     @ObservationIgnored private var isProcessingRequests = false
     @ObservationIgnored private var isAcceptingOffers = false
+    /// Offers already returned for announcement, so a mark whose clear failed to save is not announced again on every poll.
+    @ObservationIgnored private var announcedOfferIds: Set<String> = []
     private var updateDepth = 0
 
     /// Whether allowances are being refreshed or a pass is deciding requests, so a covered request may still change hands.
@@ -131,9 +133,16 @@ final class PaykitAllowanceManager {
         await executor.activate(identity: identity)
         if identityChanged {
             manualRequestIds = [:]
+            announcedOfferIds = []
             await executor.recover(identity: identity)
         }
         await refresh()
+    }
+
+    /// Settles open attempts again, for the ones the node could not answer for before it was running.
+    func recoverOpenAttempts() async {
+        guard let identity else { return }
+        await executor.recover(identity: identity)
     }
 
     func deactivate() {
@@ -144,6 +153,7 @@ final class PaykitAllowanceManager {
         autoPaidRequestIds = []
         autoPaidSatsByScopedId = [:]
         manualRequestIds = [:]
+        announcedOfferIds = []
     }
 
     func refresh() async {
@@ -161,11 +171,11 @@ final class PaykitAllowanceManager {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
         localState = await executor.localState(identity: identity)
-        let paid = await executor.succeededAutomaticPayments(identity: identity)
+        guard let paid = await executor.succeededAutomaticPayments(identity: identity) else { return }
         autoPaidRequestIds = Set(paid.map(\.requestId))
-        autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, entry in
-            guard let allowanceId = entry.allowanceId else { return }
-            totals[PaykitAllowance.scopedId(counterparty: entry.requestId.counterparty, allowanceId: allowanceId), default: 0] += entry.amountSats
+        autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, payment in
+            totals[PaykitAllowance.scopedId(counterparty: payment.requestId.counterparty, allowanceId: payment.allowanceId), default: 0] +=
+                payment.amountSats
         }
     }
 
@@ -176,7 +186,9 @@ final class PaykitAllowanceManager {
     /// Whether an incoming request is covered by an active Allowance this wallet granted. A request created before the
     /// Allowance was accepted stays manual: it may already have been shown to the user for a decision.
     func coversRequest(_ request: PaykitPaymentRequest) -> Bool {
-        guard request.isAllowancePayable else { return false }
+        guard request.isAllowancePayable,
+              request.acceptedPaymentEndpointIdentifiers.contains(where: Self.automaticPaymentEndpointIdentifiers.contains)
+        else { return false }
         return allowances.contains { allowance in
             guard allowance.isAllower, allowance.status(at: now()) == .active,
                   PubkyPublicKeyFormat.matches(allowance.counterparty, request.counterparty), let acceptedAt = allowance.lastEventAt,
@@ -258,33 +270,56 @@ final class PaykitAllowanceManager {
 
     /// Accepts the offers that make this wallet the allowee, and returns the ones now active so the caller can tell the
     /// user. A failed accept stays unanswered and is tried again on the next refresh. `canContinue` gates each further
-    /// accept; an accept already made is still returned while this identity is active and `canAnnounce` holds, since
-    /// the offer is no longer answerable afterwards and nothing else would tell the user about it.
+    /// accept. Each offer is marked before its accept and unmarked only when returned, so an accept whose announcement a
+    /// stop or a cancelled refresh cut short is returned by a later call, while this identity is active and `canAnnounce`
+    /// holds: the offer is no longer answerable afterwards and nothing else would tell the user about it.
     func acceptOffersFromAllowers(
         canContinue: @MainActor () -> Bool = { true },
         canAnnounce: @MainActor () -> Bool = { true }
     ) async -> [PaykitAllowanceEntry] {
         guard let identity, !isAcceptingOffers else { return [] }
+        isAcceptingOffers = true
+        defer { isAcceptingOffers = false }
+
         let offers = entries.filter { entry in
             let answerable = entry.allowances.filter(\.isAnswerable)
             return !answerable.isEmpty && answerable.allSatisfy(\.isOfferFromAllower)
         }
-        guard !offers.isEmpty else { return [] }
-
-        isAcceptingOffers = true
-        defer { isAcceptingOffers = false }
-        var accepted: [PaykitAllowanceEntry] = []
         for offer in offers {
             guard self.identity == identity, canContinue() else { break }
+            let ids = offer.allowances.map(\.scopedId)
+            do {
+                // An offer accepted without its mark would never be announced, so it waits unanswered for the next refresh.
+                try await executor.checkedUpdateLocalState(identity: identity) { $0.unannouncedOfferIds.formUnion(ids) }
+            } catch {
+                Logger.warn("Failed to mark an allowance offer before accepting it: \(error)", context: "PaykitAllowance")
+                continue
+            }
             do {
                 // A background accept must not clear the progress flag of a proposal the user has in flight.
                 try await accept(offer, showsProgress: false)
-                accepted.append(offer)
             } catch {
                 Logger.warn("Failed to accept an allowance offer: \(error)", context: "PaykitAllowance")
             }
         }
-        return self.identity == identity && canAnnounce() ? accepted : []
+        guard self.identity == identity, canAnnounce() else { return [] }
+        return await takeUnannouncedOffers(identity: identity)
+    }
+
+    private func takeUnannouncedOffers(identity: String) async -> [PaykitAllowanceEntry] {
+        let stored = await executor.localState(identity: identity).unannouncedOfferIds
+        guard !stored.isEmpty else { return [] }
+        // Marks already returned stay stored until a clear saves; each call retries that clear.
+        let marked = stored.subtracting(announcedOfferIds)
+        let accepted = entries.filter { entry in
+            entry.allowances.contains { marked.contains($0.scopedId) && $0.role == .allowee && $0.lifecycleState == .accepted }
+        }
+        announcedOfferIds.formUnion(accepted.flatMap(\.allowances).map(\.scopedId).filter(marked.contains))
+        // An offer still unanswered keeps its mark; one ended or withdrawn before the accept will never be announced.
+        let settled = Set(allowances.filter { $0.lifecycleState != .proposed }.map(\.scopedId))
+        await executor.updateLocalState(identity: identity) { $0.unannouncedOfferIds.subtract(settled) }
+        localState.unannouncedOfferIds.subtract(settled)
+        return accepted
     }
 
     private func respond(
@@ -396,6 +431,11 @@ final class PaykitAllowanceManager {
     }
 
     static let acceptanceClockTolerance: TimeInterval = 30
+
+    /// An on-chain miner fee falls outside an allowance's limits, so only a Lightning endpoint pays automatically.
+    static let automaticPaymentEndpointIdentifiers: Set<String> = Set(allowedPaymentEndpointIdentifiers.filter {
+        $0 == PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue || $0 == PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+    })
 
     static let allowedPaymentEndpointIdentifiers: [String] = PaykitIssuerInterop.supportedEndpointIdentifiers(
         PublicPaykitService.MethodId.publishableMethodIds.filter { $0 != .usdtArbitrum }.map(\.rawValue),

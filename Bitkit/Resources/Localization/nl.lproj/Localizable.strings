@@ -597,6 +597,7 @@
 "security__pin_forgot_text" = "Uw pincode vergeten? Reset en herstel uw Bitkit wallet met de herstelwoorden. Na het herstel kunt u een niewe pincode configureren.";
 "security__pin_forgot_reset" = "Reset (Vereist de Herstelwooden)";
 "security__pin_send" = "Voer uw pincode in om deze betaling te bevestigen en versturen.";
+"security__pin_allowance" = "Voer uw pincode in om deze wijziging van de toelage te bevestigen.";
 "security__pin_send_title" = "Voer Pincode In";
 "security__pin_use_biometrics" = "Gebruik {biometricsName}";
 "security__bio" = "Biometrie";
@@ -1220,6 +1221,7 @@
 "wallet__send_from" = "Van";
 "wallet__send_sync_title" = "<accent>Verbinden</accent>\nmet netwerk";
 "wallet__send_sync_description" = "Wacht tot Bitkit verbinding heeft gemaakt met het betaalnetwerk (±10 seconden).";
+"wallet__send_sync_description_onchain" = "Wacht tot Bitkit verbinding heeft gemaakt met het bitcoinnetwerk (±10 seconden).";
 "wallet__send_sync_long_title" = "<accent>Verbindings</accent>\nproblemen";
 "wallet__send_sync_long_description" = "Het lijkt erop dat u niet verbonden bent. Controleer uw verbinding. Bitkit probeert om de paar seconden opnieuw verbinding te maken.";
 "wallet__send_to" = "Naar";
@@ -1885,6 +1887,7 @@
 "subscriptions__allowance_executed_description" = "Automatisch betalen heeft {amount} naar {name} gestuurd";
 "subscriptions__allowance_offer_accepted_title" = "Toelage toegevoegd";
 "subscriptions__allowance_offer_accepted_description" = "{name} heeft een toelage voor je ingesteld";
+"subscriptions__allowance_offers_accepted_description" = "{names} hebben toelagen voor je ingesteld";
 "subscriptions__allowance_limit_title" = "Limiet bereikt";
 "subscriptions__allowance_limit_description" = "Een verzoek van {amount} van {name} overschrijdt uw toelage. Bekijk het om te betalen.";
 "subscriptions__allowance_auto_paid" = "Automatisch betaald";

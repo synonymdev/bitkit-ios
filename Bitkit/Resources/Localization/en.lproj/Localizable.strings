@@ -588,6 +588,7 @@
 "security__pin_forgot_text" = "Forgot your PIN? Reset and recover your Bitkit wallet with your recovery phrase. Set a new PIN after completing recovery.";
 "security__pin_forgot_reset" = "Reset (Requires Recovery Phrase)";
 "security__pin_send" = "Please enter your PIN code to confirm and send out this payment.";
+"security__pin_allowance" = "Please enter your PIN code to confirm this allowance change.";
 "security__pin_send_title" = "Enter PIN Code";
 "security__pin_use_biometrics" = "Use {biometricsName}";
 "security__bio" = "Biometrics";
@@ -1227,6 +1228,7 @@
 "wallet__send_from" = "From";
 "wallet__send_sync_title" = "<accent>Connecting</accent>\nto network";
 "wallet__send_sync_description" = "Please wait for Bitkit to connect to the payment network (±10 seconds).";
+"wallet__send_sync_description_onchain" = "Please wait for Bitkit to connect to the bitcoin network (±10 seconds).";
 "wallet__send_sync_long_title" = "<accent>Connection</accent>\nissues";
 "wallet__send_sync_long_description" = "It appears you’re disconnected. Please check your connection. Bitkit will try to reconnect every few seconds.";
 "wallet__send_to" = "To";
@@ -1756,6 +1758,7 @@
 "subscriptions__allowance_limit_description" = "A {amount} request from {name} is above your allowance. Review it to pay.";
 "subscriptions__allowance_offer_accepted_title" = "Allowance Added";
 "subscriptions__allowance_offer_accepted_description" = "{name} set up an allowance for you";
+"subscriptions__allowance_offers_accepted_description" = "{names} set up allowances for you";
 "subscriptions__allowance_auto_paid" = "Auto-paid";
 
 // On-chain acceptance and original-payment follow-up

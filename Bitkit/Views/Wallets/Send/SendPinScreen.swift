@@ -7,6 +7,7 @@ struct SendPinScreen: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
+    var message: String = t("security__pin_send")
     let onCancel: () -> Void
     let onPinVerified: () -> Void
 
@@ -21,7 +22,7 @@ struct SendPinScreen: View {
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
-                BodyMText(t("security__pin_send"))
+                BodyMText(message)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 32)
 
