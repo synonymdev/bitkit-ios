@@ -113,7 +113,8 @@ class BackupService {
     @MainActor weak var usdtWallet: UsdtWalletManager?
     private var backupJobs: [BackupCategory: Task<Void, Never>] = [:]
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
-    @MainActor private var cancellables = Set<AnyCancellable>()
+    // Register and cancel subscriptions on the synchronous backup queue.
+    private var cancellables = Set<AnyCancellable>()
     private var periodicCheckTask: Task<Void, Never>?
     private var isObserving = false
     private var isRestoring = false
@@ -282,22 +283,24 @@ class BackupService {
     @discardableResult
     func startObservingBackups() -> Task<Void, Never>? {
         guard !shouldSkipBackup() else { return nil }
+        let generation = stateQueue.sync { foregroundObservationGeneration }
 
         return Task {
-            let shouldStart = try? await ServiceQueue.background(.backup) {
-                guard !self.isObserving else { return false }
+            let publishers = await MainActor.run {
+                let settings = SettingsViewModel.shared
+                return (settings.settingsPublisher, settings.widgetsPublisher, settings.appStatePublisher)
+            }
+            try? await ServiceQueue.background(.backup) {
+                guard !self.isObserving, !self.shouldSkipBackup(),
+                      self.stateQueue.sync(execute: { self.foregroundObservationGeneration == generation })
+                else { return }
                 self.isObserving = true
-                return true
-            }
 
-            guard shouldStart == true else { return }
-
-            Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
-            await MainActor.run {
-                startBackupStatusObservers()
-                startDataStoreListeners()
+                Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
+                self.startBackupStatusObservers(generation: generation)
+                self.startDataStoreListeners(settings: publishers.0, widgets: publishers.1, appState: publishers.2)
+                self.startPeriodicBackupFailureCheck()
             }
-            startPeriodicBackupFailureCheck()
         }
     }
 
@@ -313,13 +316,13 @@ class BackupService {
             self.runningBackupTasks.removeAll()
             self.periodicCheckTask?.cancel()
             self.periodicCheckTask = nil
+            self.cancellables.removeAll()
             return wasObserving
         }
 
         await walletBackupWriter.waitUntilIdle()
         await usdtBackupWriter.waitUntilIdle()
         guard shouldStop == true else { return }
-        await MainActor.run { cancellables.removeAll() }
         Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
     }
 
@@ -712,7 +715,7 @@ class BackupService {
 
     // MARK: - Private Methods
 
-    @MainActor private func startBackupStatusObservers() {
+    private func startBackupStatusObservers(generation: UInt64) {
         for category in BackupCategory.allCases {
             let categoryPublisher = backupStatusesPublisher
                 .prepend(getAllBackupStatuses())
@@ -730,7 +733,7 @@ class BackupService {
                     guard let self, !self.shouldSkipBackup(category: category) else { return }
                     if status.isRequired && !status.running {
                         Task {
-                            await self.scheduleBackup(category: category)
+                            await self.scheduleBackup(category: category, foregroundGeneration: generation)
                         }
                     }
                 }
@@ -740,9 +743,13 @@ class BackupService {
         Logger.debug("Started \(BackupCategory.allCases.count) backup status observers", context: "BackupService")
     }
 
-    @MainActor private func startDataStoreListeners() {
+    private func startDataStoreListeners(
+        settings: AnyPublisher<[String: Any], Never>,
+        widgets: AnyPublisher<Data?, Never>,
+        appState: AnyPublisher<Void, Never>
+    ) {
         // SETTINGS
-        SettingsViewModel.shared.settingsPublisher
+        settings
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -751,7 +758,7 @@ class BackupService {
             .store(in: &cancellables)
 
         // WIDGETS
-        SettingsViewModel.shared.widgetsPublisher
+        widgets
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -805,7 +812,7 @@ class BackupService {
             .store(in: &cancellables)
 
         // APP STATE (UserDefaults changes, etc.)
-        SettingsViewModel.shared.appStatePublisher
+        appState
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
@@ -841,15 +848,11 @@ class BackupService {
     }
 
     private func startPeriodicBackupFailureCheck() {
-        Task {
-            try? await ServiceQueue.background(.backup) {
-                self.periodicCheckTask = Task {
-                    while !Task.isCancelled {
-                        try? await Task.sleep(nanoseconds: UInt64(Self.backupFailureCheckInterval * 1_000_000_000))
-                        guard !Task.isCancelled else { break }
-                        self.checkForFailedBackups()
-                    }
-                }
+        periodicCheckTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.backupFailureCheckInterval * 1_000_000_000))
+                guard !Task.isCancelled else { break }
+                self.checkForFailedBackups()
             }
         }
     }
