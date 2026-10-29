@@ -1,8 +1,6 @@
 enum ReceiveAdditionalLiquidityAction: Equatable {
     case none
-    case chooseAmount
-    case createCjit(UInt64)
-    case geoBlocked
+    case transferUnavailable
 }
 
 enum ReceiveLiquiditySource: Equatable {
@@ -31,49 +29,15 @@ enum ReceiveLiquidityDecision {
     static func additionalLiquidityAction(
         source: ReceiveLiquiditySource,
         invoiceAmountSats: UInt64,
-        inboundCapacitySats: UInt64?,
-        minCjitSats: UInt64?,
-        maxCjitAmountSats: UInt64?,
-        isGeoBlocked: Bool
+        inboundCapacitySats: UInt64?
     ) -> ReceiveAdditionalLiquidityAction {
-        guard source == .spending, needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats) else {
-            return .none
-        }
-
-        let inboundCapacitySats = inboundCapacitySats ?? 0
-        if inboundCapacitySats == 0 {
-            return .none
-        }
-
-        if isGeoBlocked {
-            return .geoBlocked
-        }
-
-        let minCjitSats = minCjitSats ?? 0
-        guard let maxCjitAmountSats, maxCjitAmountSats > 0 else {
-            return .chooseAmount
-        }
-
-        if invoiceAmountSats == 0 || minCjitSats == 0 || invoiceAmountSats < minCjitSats || invoiceAmountSats > maxCjitAmountSats {
-            return .chooseAmount
-        }
-
-        return .createCjit(invoiceAmountSats)
-    }
-
-    static func needsCjitLimitsForAdditionalLiquidity(
-        source: ReceiveLiquiditySource,
-        invoiceAmountSats: UInt64,
-        inboundCapacitySats: UInt64?,
-        isGeoBlocked: Bool
-    ) -> Bool {
         guard source == .spending, needsInboundLiquidity(invoiceAmountSats: invoiceAmountSats, inboundCapacitySats: inboundCapacitySats),
               (inboundCapacitySats ?? 0) > 0
         else {
-            return false
+            return .none
         }
 
-        return !isGeoBlocked
+        return .transferUnavailable
     }
 
     static func needsInboundLiquidity(invoiceAmountSats: UInt64, inboundCapacitySats: UInt64?) -> Bool {

@@ -2,15 +2,6 @@ import SwiftUI
 
 struct NotificationPreview: View {
     var disabled: Bool
-    var enableAmount: Bool
-
-    var amountText: String {
-        if enableAmount {
-            return "₿ 21 000 ($21.00)"
-        } else {
-            return t("settings__notifications__settings__preview__text")
-        }
-    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -21,7 +12,7 @@ struct NotificationPreview: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(t("settings__notifications__settings__preview__title"))
+                    Text(t("subscriptions__payment_due_title"))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color(hex: 0x222222))
                     Spacer()
@@ -30,7 +21,7 @@ struct NotificationPreview: View {
                         .foregroundColor(Color(hex: 0x3F3F3F).opacity(0.5))
                 }
 
-                Text(amountText)
+                Text(t("subscriptions__payment_due_description"))
                     .font(.system(size: 15))
                     .foregroundColor(Color(hex: 0x3F3F3F))
             }

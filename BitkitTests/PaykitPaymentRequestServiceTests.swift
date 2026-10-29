@@ -281,13 +281,22 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testInitialUsdtSuccessCannotNavigateBackToPaidAmount() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let previousSwipeBack = SwipeBackState.allowSwipeBack
         SwipeBackState.allowSwipeBack = true
         defer { SwipeBackState.allowSwipeBack = previousSwipeBack }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let mnemonic = "test test test test test test test test test test test junk"
-        let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, loadCredentials: { (mnemonic, nil) })
+        let manager = UsdtWalletManager(
+            storageDirectory: directory,
+            rpcUrl: nil,
+            bundlerUrl: nil,
+            defaults: defaults,
+            loadCredentials: { (mnemonic, nil) }
+        )
         let address = try usdtAddress(mnemonic: mnemonic, passphrase: nil)
         let snapshot = """
         {"identity":"42161:\(address)","transfers":[{"transfer":{
@@ -1141,6 +1150,74 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
             XCTAssertEqual(contact?.consumedPrivatePaymentListVersion, 7)
             XCTAssertEqual(contact?.cachedResolvedEndpoints.map(\.endpointData), [latest.rawPayload])
         }
+    }
+
+    func testReleaseGivesBackOnlyAListItsOwnAttemptConsumed() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: listContext(version: 6), attemptId: UUID())
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: listContext(version: 7), attemptId: UUID(), owner: "attempt-a")
+
+        try await service.releaseConsumedPaymentList(publicKey: publicKey, version: 7, previousVersion: 6, owner: "attempt-b")
+        let afterOtherOwner = await service.state.contacts[publicKey]
+        try await service.releaseConsumedPaymentList(publicKey: publicKey, version: 7, previousVersion: 6, owner: "attempt-a")
+        let afterOwner = await service.state.contacts[publicKey]
+
+        XCTAssertEqual(afterOtherOwner?.consumedPrivatePaymentListVersion, 7)
+        XCTAssertEqual(afterOwner?.consumedPrivatePaymentListVersion, 6)
+        XCTAssertNil(afterOwner?.consumedPrivatePaymentListOwner)
+    }
+
+    func testReleaseLeavesAManualPaymentsConsumptionOfTheSameVersion() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: listContext(version: 7), attemptId: UUID())
+
+        // An automatic attempt journaled version 7 but a restart came before it consumed the list.
+        try await service.releaseConsumedPaymentList(publicKey: publicKey, version: 7, previousVersion: nil, owner: "attempt-a")
+
+        let contact = await service.state.contacts[publicKey]
+        XCTAssertEqual(contact?.consumedPrivatePaymentListVersion, 7)
+    }
+
+    func testConsumeFailsWhenTheListChangedSinceItsPreviousVersionWasRead() async throws {
+        snapshotAppDefaultsDomain()
+        UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+        let service = PrivatePaykitService()
+        let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        try await service.consumePrivatePaymentList(publicKey: publicKey, context: listContext(version: 6), attemptId: UUID())
+
+        do {
+            try await service.consumePrivatePaymentList(
+                publicKey: publicKey,
+                context: listContext(version: 7),
+                attemptId: UUID(),
+                owner: "attempt-a",
+                expectedPreviousVersion: .some(nil)
+            )
+            XCTFail("A list consumed since the attempt read it must not be consumed over")
+        } catch PrivatePaykitError.paymentListAlreadyConsumed {}
+
+        let contact = await service.state.contacts[publicKey]
+        XCTAssertEqual(contact?.consumedPrivatePaymentListVersion, 6)
+        XCTAssertNil(contact?.consumedPrivatePaymentListOwner)
+    }
+
+    func testContactStateSavedBeforeListOwnersDecodes() throws {
+        let saved = #"{"cachedResolvedEndpoints":[],"consumedPrivatePaymentListVersion":3,"receivedInvoicePaymentHashes":[],"hasPublishedPrivatePaymentList":false}"#
+
+        let contact = try JSONDecoder().decode(PrivatePaykitService.ContactState.self, from: Data(saved.utf8))
+
+        XCTAssertEqual(contact.consumedPrivatePaymentListVersion, 3)
+        XCTAssertNil(contact.consumedPrivatePaymentListOwner)
+    }
+
+    private func listContext(version: UInt64) -> PrivatePaykitPaymentContext {
+        PrivatePaykitPaymentContext(paymentAppsByEndpoint: [:], paymentListVersion: version)
     }
 
     func testUsdtOnlyPrivateContactRetainsItsEndpointAndListVersion() async throws {
@@ -9674,9 +9751,11 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     }
 
     func testProposalDefaultsToAvailableMethodsAndHonorsRestrictions() async throws {
-        let originalPreference = UserDefaults.standard.object(forKey: UsdtPreference.key)
+        snapshotAppDefaultsDomain()
         UserDefaults.standard.set(UsdtPreference.enabled.rawValue, forKey: UsdtPreference.key)
-        defer { UserDefaults.standard.set(originalPreference, forKey: UsdtPreference.key) }
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        UserDefaults.standard.set(true, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
         let publicKey = "pubky\(String(repeating: "y", count: 52))"
         let onchain = PublicPaykitService.MethodId.onchainMethodId(network: Env.network, scriptType: .p2wpkh).rawValue
         let lightning = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
