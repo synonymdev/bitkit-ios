@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Combine
 import enum Paykit.PaykitError
 import class Paykit.PubkySessionAccess
 import struct Paykit.PubkySessionBootstrapResult
@@ -124,6 +125,90 @@ final class PubkyProfileManagerTests: XCTestCase {
                 let expected = !isCurrent ? initiallyPending : outcome != "success"
                 XCTAssertEqual(UserDefaults.standard.bool(forKey: PrivatePaykitService.cleanupPendingKey), expected, outcome)
             }
+        }
+    }
+
+    @MainActor
+    func testAutomaticPaykitSessionAppearsWhenTheSessionChangeEndsAndIsAnnounced() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let manager = PubkyProfileManager()
+            manager.publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            manager.authState = .authenticated
+            var sessionsWhenSettled: [PubkyProfileManager.SignedInSession?] = []
+            let subscription = PubkyProfileManager.sessionSettledPublisher.sink { sessionsWhenSettled.append(manager.automaticPaykitSession) }
+            defer { subscription.cancel() }
+            var sessionDuringChange: PubkyProfileManager.SignedInSession?
+
+            _ = try? await manager.adoptRingIdentity(pubky: XCTUnwrap(manager.publicKey), loadSecret: { _, _ in
+                sessionDuringChange = manager.automaticPaykitSession
+                return nil
+            })
+
+            XCTAssertNil(sessionDuringChange, "No automatic session while a session change is in flight, though authState reads authenticated")
+            XCTAssertEqual(sessionsWhenSettled.count, 1)
+            XCTAssertNotNil(sessionsWhenSettled.first ?? nil, "The session is readable when the change is announced as settled")
+        }
+    }
+
+    @MainActor
+    func testSessionRecoveryReloadsMissingProfileWithoutReauthenticationOrWaiting() async {
+        await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Recovered")])
+            await stub.makeUnreachable(ringKeyA)
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            manager.isInitialized = true
+            let session = manager.currentSession
+            await manager.loadProfile()
+            XCTAssertNil(manager.profile)
+
+            await stub.makeReachable(ringKeyA)
+            await stub.setHoldsRequests(true)
+            for _ in 0 ..< 3 {
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: {
+                    XCTFail("An active identity must not inspect or import saved credentials")
+                    return false
+                })
+            }
+            await stub.waitForRequests(2)
+            XCTAssertTrue(manager.isLoadingProfile)
+            XCTAssertEqual(manager.currentSession, session)
+            let heldRequests = await stub.requests
+            XCTAssertEqual(heldRequests, [ringKeyA, ringKeyA])
+
+            await stub.release(request: 1)
+            await waitUntil("the missing profile recovers") { manager.profile?.name == "Recovered" }
+            await manager.restoreSessionIfNeeded()
+            await Task.yield()
+            let completedRequests = await stub.requests
+            XCTAssertEqual(completedRequests, [ringKeyA, ringKeyA])
+            XCTAssertEqual(manager.cachedName, "Recovered")
+        }
+    }
+
+    @MainActor
+    func testSessionRecoveryDropsMissingProfileResultFromClearedStateWithSameKey() async {
+        await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(
+                profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Stale")],
+                holdsRequests: true
+            )
+            let manager = ObservedProfileReadManager(remoteProfileResolver: { try await stub.resolve($0) })
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            manager.isInitialized = true
+
+            await manager.restoreSessionIfNeeded()
+            await stub.waitForRequests(1)
+            manager.clearAuthenticatedStateForTesting()
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            await stub.release(request: 0)
+            await waitUntil("the old profile read finishes") { manager.completedReads == 1 }
+            XCTAssertNil(manager.profile)
+            XCTAssertNil(manager.cachedName)
         }
     }
 
@@ -4054,6 +4139,10 @@ private actor RemoteProfileStub {
         unreachableKeys.insert(key)
     }
 
+    func makeReachable(_ key: String) {
+        unreachableKeys.remove(key)
+    }
+
     func waitForRequests(_ count: Int, file: StaticString = #filePath, line: UInt = #line) async {
         guard requests.count < count else { return }
         let id = UUID()
@@ -4258,5 +4347,15 @@ private actor ProfileDeletionNativeCompletion {
     func finish() {
         continuation?.resume()
         continuation = nil
+    }
+}
+
+@MainActor
+private final class ObservedProfileReadManager: PubkyProfileManager {
+    private(set) var completedReads = 0
+
+    override func loadProfile() async {
+        await super.loadProfile()
+        completedReads += 1
     }
 }

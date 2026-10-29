@@ -460,19 +460,66 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         XCTAssertEqual(setup.pinChecks, [false], "The payment starts once and is not cancelled while it awaits the PIN")
     }
 
+    func testRecreatedConfirmationDoesNotAuthorizeWhilePaymentIsSubmitting() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        let settings = SettingsViewModel.shared
+        let pinEnabled = settings.pinEnabled
+        addTeardownBlock { @MainActor in settings.pinEnabled = pinEnabled }
+        settings.pinEnabled = true
+        settings.requirePinForPayments = true
+        settings.useBiometrics = false
+        settings.coinSelectionMethod = .autopilot
+        let app = AppViewModel()
+        let wallet = WalletViewModel()
+        let sheets = SheetViewModel()
+        sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+        app.contactPaymentContext = ContactPaymentContext(publicKey: "pubkytest", isInitialSubscriptionPayment: true)
+        app.scannedLightningInvoice = LightningInvoice(
+            bolt11: "test-invoice", paymentHash: Data(), amountSatoshis: 6007,
+            timestampSeconds: 0, expirySeconds: 0, isExpired: false,
+            description: nil, networkType: .regtest, payeeNodeId: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+        wallet.sendAmountSats = 6007
+        wallet.totalLightningSats = 1_000_000
+        let setup = SendConfirmationTestSetup()
+        setup.isPending = false
+        var isSubmittingPayment = true
+        var path: [SendRoute] = []
+
+        for _ in 0 ..< 2 {
+            let window = host(
+                app: app,
+                wallet: wallet,
+                sheets: sheets,
+                path: Binding(get: { path }, set: { path = $0 }),
+                setup: setup,
+                isSubmittingPayment: Binding(get: { isSubmittingPayment }, set: { isSubmittingPayment = $0 })
+            )
+            try await Task.sleep(for: .milliseconds(500))
+            close(window)
+        }
+
+        XCTAssertTrue(setup.pinChecks.isEmpty, "Restoring an in-flight payment must not request authorization again")
+        XCTAssertTrue(path.isEmpty, "Ignoring the duplicate entry must preserve the original payment's navigation")
+        XCTAssertTrue(isSubmittingPayment, "The original payment owns the retained submission flag")
+    }
+
     private func host(
         app: AppViewModel,
         wallet: WalletViewModel,
         sheets: SheetViewModel,
         path: Binding<[SendRoute]>,
         navigation: SendConfirmationTestNavigation? = nil,
-        setup: SendConfirmationTestSetup? = nil
+        setup: SendConfirmationTestSetup? = nil,
+        isSubmittingPayment: Binding<Bool> = .constant(false)
     ) -> UIWindow {
         let hwSend = HwSendCoordinator()
         let makeConfirmation = { (isSetupPending: Bool) in
             SendConfirmationView(
                 navigationPath: path,
-                isSubmittingPayment: .constant(false),
+                isSubmittingPayment: isSubmittingPayment,
                 hwSend: hwSend,
                 requestPinCheck: {
                     guard let setup else {

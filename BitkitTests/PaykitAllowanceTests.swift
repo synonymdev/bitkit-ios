@@ -9,6 +9,104 @@ final class PaykitAllowanceTests: XCTestCase {
 
     // MARK: Terms and records
 
+    func testAllowanceStateBackupKeepsLabelsAndJournalInTheSharedFormat() throws {
+        let requestId = PaykitPaymentRequest.ID(paymentRequestId: "req-1", counterparty: Fixtures.counterpartyKey)
+        let state = try PaykitAllowanceLocalState(
+            groups: [.init(
+                id: "group-1",
+                counterparty: Fixtures.counterpartyKey,
+                limits: PaykitAllowanceLimits(
+                    perPaymentUsd: XCTUnwrap(Decimal(string: "4.99")),
+                    monthlyUsd: 50,
+                    perPaymentSats: 4990,
+                    monthlySats: 50000
+                ),
+                allowanceIds: [Fixtures.walletAllowanceId],
+                createdAt: Fixtures.now
+            )],
+            journal: [.init(
+                attemptId: "attempt-1",
+                isAutomatic: true,
+                requestId: requestId,
+                allowanceId: Fixtures.walletAllowanceId,
+                amountSats: 1000,
+                paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+                paymentHash: String(repeating: "a", count: 64),
+                onchainAddress: nil,
+                transactionId: nil,
+                stage: .sent,
+                createdAt: Fixtures.now,
+                paymentListVersion: 7,
+                previousPaymentListVersion: 6
+            )],
+            presentedProposalIds: ["presented"],
+            unannouncedOfferIds: ["unannounced"],
+            notifiedRequestIds: ["notified"],
+            lastTrustedTime: Fixtures.now
+        )
+
+        let data = try JSONEncoder().encode(PaykitAllowanceStateBackup(state))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let group = try XCTUnwrap((json["groups"] as? [[String: Any]])?.first)
+        let limits = try XCTUnwrap(group["limits"] as? [String: Any])
+        XCTAssertEqual(limits["perPaymentUsd"] as? String, "4.99")
+        XCTAssertEqual(limits["monthlySats"] as? Int, 50000)
+        XCTAssertEqual(group["createdAt"] as? String, "2026-09-24T12:00:00.000Z")
+        let entry = try XCTUnwrap((json["journal"] as? [[String: Any]])?.first)
+        XCTAssertEqual(entry["stage"] as? String, "sent")
+        XCTAssertEqual(entry["paymentListVersion"] as? Int, 7)
+        XCTAssertEqual((entry["requestId"] as? [String: Any])?["paymentRequestId"] as? String, "req-1")
+        XCTAssertEqual(json["lastTrustedTime"] as? String, "2026-09-24T12:00:00.000Z")
+        XCTAssertTrue(entry["onchainAddress"] is NSNull, "Android requires every key, so an absent value is written as null")
+        XCTAssertTrue(entry["transactionId"] is NSNull)
+
+        let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: data).restored()
+        XCTAssertEqual(restored, state)
+    }
+
+    func testAManualPaymentJournalEntryWritesItsMissingAllowanceAsNull() throws {
+        var state = PaykitAllowanceLocalState()
+        state.journal = [.init(
+            attemptId: "manual-1",
+            isAutomatic: false,
+            requestId: PaykitPaymentRequest.ID(paymentRequestId: "req-1", counterparty: Fixtures.counterpartyKey),
+            allowanceId: nil,
+            amountSats: 1000,
+            paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+            paymentHash: nil,
+            onchainAddress: nil,
+            transactionId: nil,
+            stage: .submitted,
+            createdAt: Fixtures.now
+        )]
+
+        let data = try JSONEncoder().encode(PaykitAllowanceStateBackup(state))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let entry = try XCTUnwrap((json["journal"] as? [[String: Any]])?.first)
+
+        for key in ["allowanceId", "paymentHash", "onchainAddress", "transactionId", "paymentListVersion", "previousPaymentListVersion"] {
+            XCTAssertTrue(entry[key] is NSNull, "\(key) is written as null for Android")
+        }
+        XCTAssertTrue(json["lastTrustedTime"] is NSNull)
+    }
+
+    func testAnUnreadableAllowanceStateLeavesTheRestOfTheBackupReadable() throws {
+        let json = Data(#"""
+        {
+          "subscriptions": {},
+          "pendingProofs": [],
+          "allowances": {
+            "pubky-good": {"groups": [], "journal": [], "presentedProposalIds": [], "unannouncedOfferIds": [], "notifiedRequestIds": []},
+            "pubky-bad": {"groups": [], "journal": [{"stage": "teleported"}]}
+          }
+        }
+        """#.utf8)
+
+        let backup = try JSONDecoder().decode(PaykitPaymentStateBackup.self, from: json)
+
+        XCTAssertEqual(backup.allowances.map { Array($0.byIdentity.keys) }, ["pubky-good"])
+    }
+
     func testTermsCarryPerPaymentRangeAnchoredUtcMonthAndAllowlist() throws {
         let monthAnchor = PaykitAllowanceTime.monthStart(containing: Fixtures.now)
         let allowlist = [Fixtures.lightningIdentifier, Fixtures.onchainIdentifier]
@@ -603,7 +701,8 @@ enum PaykitAllowanceFixtures {
         amount: String = "0.00001",
         asset: String = PaykitIssuerInterop.bitcoinAsset,
         conversion: Paykit.PaymentConversion? = nil,
-        createdAt: String = "2026-09-24T11:00:00Z"
+        createdAt: String = "2026-09-24T11:00:00Z",
+        acceptedEndpoints: [String] = [lightningIdentifier]
     ) throws -> PaykitPaymentRequest {
         let record = try Paykit.PaymentRequestRecord(
             counterparty: counterparty,
@@ -622,7 +721,7 @@ enum PaykitAllowanceFixtures {
                 paymentReference: Paykit.PaymentReference(text: "invoice-123"),
                 proposalExpiresAt: nil,
                 recurrence: nil,
-                acceptedPaymentEndpointIdentifiers: [lightningIdentifier],
+                acceptedPaymentEndpointIdentifiers: acceptedEndpoints,
                 paymentEndpoints: nil,
                 requiredAppId: "bitkit",
                 conversion: conversion,

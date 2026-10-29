@@ -1878,7 +1878,8 @@ final class PrivatePaykitServiceTests: XCTestCase {
         let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
         let backup = PrivatePaykitService.Backup(
             sdkState: "opaque recovery state",
-            consumedPrivatePaymentListVersions: [publicKey: 7]
+            consumedPrivatePaymentListVersions: [publicKey: 7],
+            consumedPrivatePaymentListOwners: [publicKey: "attempt-a"]
         )
         let encoded = try String(decoding: JSONEncoder().encode(backup), as: UTF8.self)
         let service = PrivatePaykitService()
@@ -1888,8 +1889,18 @@ final class PrivatePaykitServiceTests: XCTestCase {
         XCTAssertEqual(try Keychain.loadString(key: .paykitRecoveryBackup), backup.sdkState)
         let state = await service.testContactState(publicKey: publicKey)
         XCTAssertEqual(state?.consumedPrivatePaymentListVersion, 7)
+        XCTAssertEqual(state?.consumedPrivatePaymentListOwner, "attempt-a", "A restored failed attempt can still give its list back")
         XCTAssertNil(try Keychain.load(key: .paykitSession))
         XCTAssertNil(try Keychain.load(key: .pubkySecretKey))
+    }
+
+    func testBackupMadeBeforeListOwnersDecodes() throws {
+        let saved = #"{"sdkState":"opaque recovery state","consumedPrivatePaymentListVersions":{"pubkycontact":7}}"#
+
+        let backup = try JSONDecoder().decode(PrivatePaykitService.Backup.self, from: Data(saved.utf8))
+
+        XCTAssertEqual(backup.consumedPrivatePaymentListVersions, ["pubkycontact": 7])
+        XCTAssertNil(backup.consumedPrivatePaymentListOwners)
     }
 
     func testReservationStoreBacksUpRestoredCeiling() async throws {

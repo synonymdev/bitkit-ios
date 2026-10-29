@@ -282,6 +282,17 @@ class PubkyProfileManager: ObservableObject {
 
     private static func endSessionMutation() {
         sessionMutationCount -= 1
+        if sessionMutationCount == 0 {
+            sessionSettledSubject.send()
+        }
+    }
+
+    private static let sessionSettledSubject = PassthroughSubject<Void, Never>()
+
+    /// Fires when the last session change in flight ends. `currentSession` reads nil until then, and nothing published
+    /// changes at that moment, so work that needs the session (a sign-in completing during that change) waits for this.
+    static var sessionSettledPublisher: AnyPublisher<Void, Never> {
+        sessionSettledSubject.eraseToAnyPublisher()
     }
 
     init(
@@ -493,8 +504,17 @@ class PubkyProfileManager: ObservableObject {
             return
         }
         refreshRemovalRecovery()
-        guard removalRecovery == .ready, !Task.isCancelled, publicKey == nil, authState == .idle,
-              Self.sessionMutationCount == 0 else { return }
+        guard removalRecovery == .ready, !Task.isCancelled else { return }
+        if let session = automaticPaykitSession {
+            if isInitialized, profile == nil {
+                Task {
+                    guard automaticPaykitSession == session, isInitialized, profile == nil else { return }
+                    await loadProfile()
+                }
+            }
+            return
+        }
+        guard publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
             await initialize(mode: .automaticRecovery, initializeSession: initializeSession)
@@ -2322,6 +2342,25 @@ class PubkyProfileManager: ObservableObject {
     var automaticPaykitSession: SignedInSession? {
         guard authState == .authenticated, !isDeletingProfile else { return nil }
         return currentSession
+    }
+
+    /// Automatic work announced inside a transition must inherit its next ordinary scope, not its expiring token.
+    func scheduleAutomaticPaykitSession(_ operation: @escaping @MainActor (SignedInSession) async -> Void) throws {
+        guard let session = automaticPaykitSession else { return }
+        let admission = removalAdmission
+        try admission.scheduleAfterTransition { scope in
+            Task { @MainActor [weak self] in
+                defer { admission.release(scope) }
+                do {
+                    try await admission.withScope(scope) {
+                        guard let self, self.automaticPaykitSession == session else { return }
+                        await operation(session)
+                    }
+                } catch {
+                    Logger.debug("Automatic Paykit startup stopped: \(error)", context: "PubkyProfileManager")
+                }
+            }
+        }
     }
 
     func storedIdentityGuard() -> (@MainActor () -> Bool)? {

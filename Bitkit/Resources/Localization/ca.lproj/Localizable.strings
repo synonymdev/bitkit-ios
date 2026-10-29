@@ -557,6 +557,7 @@
 "security__pin_forgot_text" = "Has oblidat el PIN? Restableix i recupera la teva cartera Bitkit amb la teva frase de recuperació. Configura un nou PIN després de completar la recuperació.";
 "security__pin_forgot_reset" = "Restablir (Es necessita la frase de recuperació)";
 "security__pin_send" = "Si us plau, introdueix el teu codi PIN per confirmar i enviar aquest pagament.";
+"security__pin_allowance" = "Si us plau, introdueix el teu codi PIN per confirmar aquest canvi de l'assignació.";
 "security__pin_send_title" = "Introdueix el codi PIN";
 "security__pin_use_biometrics" = "Utilitzar {biometricsName}";
 "security__bio" = "Biometria";
@@ -1063,7 +1064,7 @@
 "profile__edit_delete_section" = "ELIMINAR";
 "profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Tingues en compte que la informació del perfil es desa en fitxers públics.";
-"profile__delete_active_subscription" = "Finalitza les subscripcions actives abans d’eliminar aquest perfil.";
+"profile__delete_active_subscription" = "Les subscripcions actives impedeixen eliminar aquest perfil.";
 "profile__delete_title" = "Eliminar el perfil?";
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
 "profile__delete_confirm" = "Sí, elimina";
@@ -1109,6 +1110,7 @@
 "wallet__send_from" = "Des de";
 "wallet__send_sync_title" = "<accent>Connectant</accent>\na la xarxa";
 "wallet__send_sync_description" = "Espera que Bitkit es connecti a la xarxa de pagaments (±10 segons).";
+"wallet__send_sync_description_onchain" = "Espera que Bitkit es connecti a la xarxa bitcoin (±10 segons).";
 "wallet__send_sync_long_title" = "Problemes de\n<accent>connexió</accent>";
 "wallet__send_sync_long_description" = "Sembla que estàs desconnectat. Comprova la connexió. Bitkit intentarà tornar a connectar-se cada pocs segons.";
 "wallet__send_to" = "A";
@@ -1743,6 +1745,7 @@
 "subscriptions__allowance_executed_description" = "El pagament automàtic ha enviat {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Assignació afegida";
 "subscriptions__allowance_offer_accepted_description" = "{name} ha configurat una assignació per a tu";
+"subscriptions__allowance_offers_accepted_description" = "{names} han configurat assignacions per a tu";
 "subscriptions__allowance_limit_title" = "Límit assolit";
 "subscriptions__allowance_limit_description" = "Una sol·licitud de {amount} de {name} supera la teva assignació. Revisa-la per pagar.";
 "subscriptions__allowance_auto_paid" = "Pagat automàticament";

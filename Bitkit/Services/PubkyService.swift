@@ -1131,10 +1131,16 @@ actor PaykitSdkService {
         let requests = try await sdk.paymentRequests()
         try Task.checkCancellation()
         let now = Date()
-        guard !requests.contains(where: {
+        let activeSubscriptions = requests.filter {
             $0.state == .activeRecurring &&
                 ($0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate).map { $0 > now } ?? true)
-        }) else { throw PubkyServiceError.activeSubscription(endsAt: nil) }
+        }
+        guard !activeSubscriptions.isEmpty else { return }
+        let endDates = activeSubscriptions.compactMap {
+            $0.terms?.recurrence?.endsAt.flatMap(PaykitPaymentRequest.parseDate)
+        }
+        let latestEndDate = endDates.count == activeSubscriptions.count ? endDates.max() : nil
+        throw PubkyServiceError.activeSubscription(endsAt: latestEndDate)
     }
 
     func deletePaykitProfile(expectedIdentity: String? = nil) async throws {

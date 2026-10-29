@@ -194,6 +194,99 @@ final class ProfileSessionTransitionTests: XCTestCase {
         XCTAssertNoThrow(try admission.snapshot())
     }
 
+    @MainActor
+    func testAutomaticSessionWorkUsesOrdinaryAdmissionAfterTransition() async throws {
+        let gate = try XCTUnwrap(admission)
+        let manager = PubkyProfileManager(removalStore: store, removalAdmission: gate)
+        manager.publicKey = "original"
+        manager.authState = .authenticated
+        let session = try XCTUnwrap(manager.automaticPaykitSession)
+        let completed = expectation(description: "Automatic work uses live admission")
+        var didStart = false
+        try await gate.withSessionTransition {
+            try manager.scheduleAutomaticPaykitSession { owner in
+                didStart = true
+                XCTAssertEqual(owner, session)
+                do {
+                    try gate.checkCurrent()
+                    _ = try gate.snapshot()
+                } catch {
+                    XCTFail("Automatic work must have ordinary admission after the transition: \(error)")
+                }
+                completed.fulfill()
+            }
+            XCTAssertFalse(didStart)
+        }
+        await fulfillment(of: [completed], timeout: 2)
+    }
+
+    @MainActor
+    func testAutomaticSessionWorkCannotStartAfterASuccessorReservesAdmission() async throws {
+        let gate = try XCTUnwrap(admission)
+        let manager = PubkyProfileManager(removalStore: store, removalAdmission: gate)
+        manager.publicKey = "same-key"
+        manager.authState = .authenticated
+        for successorIsWipe in [false, true] {
+            let transition = try gate.reserveSessionTransition()
+            var didStart = false
+            try await gate.withScope(transition, access: .control) {
+                try manager.scheduleAutomaticPaykitSession { _ in didStart = true }
+            }
+            // Release and replace without yielding the main actor to the scheduled startup.
+            gate.release(transition)
+            let successor = try successorIsWipe
+                ? gate.reserve(kind: .walletWipe, id: UUID())
+                : gate.reserveSessionTransition()
+            try await gate.drain(before: successor)
+            gate.release(successor)
+            XCTAssertFalse(didStart, "A successor with the same visible key must still invalidate queued startup")
+        }
+    }
+
+    @MainActor
+    func testAutomaticSessionWorkRetainsAdmissionUntilItsAsyncTailReturns() async throws {
+        let gate = try XCTUnwrap(admission)
+        let manager = PubkyProfileManager(removalStore: store, removalAdmission: gate)
+        manager.publicKey = "original"
+        manager.authState = .authenticated
+        let started = expectation(description: "Automatic startup suspended")
+        let finished = expectation(description: "Automatic startup tail returned")
+        var continuation: CheckedContinuation<Void, Never>?
+        var tailReturned = false
+        try await gate.withSessionTransition {
+            try manager.scheduleAutomaticPaykitSession { _ in
+                await withCheckedContinuation {
+                    continuation = $0
+                    started.fulfill()
+                }
+                do {
+                    try gate.checkCurrent()
+                    XCTFail("The wipe must revoke further authenticated work")
+                } catch ProfileRemovalStore.StoreError.changed {
+                } catch {
+                    XCTFail("Unexpected admission error: \(error)")
+                }
+                tailReturned = true
+                finished.fulfill()
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let wipe = try gate.reserve(kind: .walletWipe, id: UUID())
+        defer { gate.release(wipe) }
+        var drained = false
+        let drain = Task {
+            try await gate.drain(before: wipe)
+            drained = true
+        }
+        await Task.yield()
+        XCTAssertFalse(drained)
+        continuation?.resume()
+        try await drain.value
+        await fulfillment(of: [finished], timeout: 2)
+        XCTAssertTrue(tailReturned)
+        XCTAssertTrue(drained)
+    }
+
     func testOptionalWorkReceivesCommittedOwnerWithoutRetainingTransition() async throws {
         let started = expectation(description: "Optional work scheduled after transition")
         let gate = try XCTUnwrap(admission)

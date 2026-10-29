@@ -278,10 +278,13 @@ extension PrivatePaykitService {
         )
     }
 
+    /// `expectedPreviousVersion`, when given, makes the consumption fail unless the list consumed so far is still that version.
     func consumePrivatePaymentList(
         publicKey: String,
         context: PrivatePaykitPaymentContext,
-        attemptId: UUID
+        attemptId: UUID,
+        owner: String? = nil,
+        expectedPreviousVersion: UInt64?? = nil
     ) throws {
         return try profileAdmission.withSynchronousOperation {
             guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
@@ -297,8 +300,13 @@ extension PrivatePaykitService {
                 throw PrivatePaykitError.paymentListAlreadyConsumed
             }
 
+            if let expectedPreviousVersion, expectedPreviousVersion != consumedVersion {
+                throw PrivatePaykitError.paymentListAlreadyConsumed
+            }
+
             let previousContactState = state.contacts[publicKey]
             contactState.consumedPrivatePaymentListVersion = paymentListVersion
+            contactState.consumedPrivatePaymentListOwner = owner
             contactState.cachedResolvedEndpoints.removeAll()
             state.contacts[publicKey] = contactState
             do {
@@ -356,6 +364,7 @@ extension PrivatePaykitService {
 
             let previousContactState = state.contacts[publicKey]
             contactState.consumedPrivatePaymentListVersion = consumption.previousPaymentListVersion
+            contactState.consumedPrivatePaymentListOwner = nil
             state.contacts[publicKey] = contactState
             do {
                 try persistStateOrThrow(markWalletBackup: true)
@@ -372,15 +381,19 @@ extension PrivatePaykitService {
     }
 
     /// Rolls back a list version a failed automatic payment consumed, which a restart may have left without its
-    /// in-memory consumption record. A newer consumption is left alone.
-    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) throws {
+    /// in-memory consumption record. A list another payment consumed, or one this attempt never consumed, is left alone.
+    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?, owner: String) throws {
         return try profileAdmission.withSynchronousOperation {
             guard let publicKey = PubkyPublicKeyFormat.normalized(publicKey) else {
                 throw PrivatePaykitError.invalidPublicKey
             }
-            guard var contactState = state.contacts[publicKey], contactState.consumedPrivatePaymentListVersion == version else { return }
+            guard var contactState = state.contacts[publicKey],
+                  contactState.consumedPrivatePaymentListVersion == version,
+                  contactState.consumedPrivatePaymentListOwner == owner
+            else { return }
             let previousContactState = state.contacts[publicKey]
             contactState.consumedPrivatePaymentListVersion = previousVersion
+            contactState.consumedPrivatePaymentListOwner = nil
             state.contacts[publicKey] = contactState
             do {
                 try persistStateOrThrow(markWalletBackup: true)
@@ -413,6 +426,7 @@ extension PrivatePaykitService {
             }
             let previous = state.contacts[key]
             contact.consumedPrivatePaymentListVersion = version
+            contact.consumedPrivatePaymentListOwner = nil
             contact.cachedResolvedEndpoints.removeAll()
             state.contacts[key] = contact
             do {
@@ -428,7 +442,10 @@ extension PrivatePaykitService {
     func releaseUnsentPaymentListVersion(publicKey: String, version: UInt64, previousVersion: UInt64? = nil) throws {
         return try profileAdmission.withSynchronousOperation {
             guard let key = PubkyPublicKeyFormat.normalized(publicKey) else { throw PrivatePaykitError.invalidPublicKey }
-            guard var contact = state.contacts[key], contact.consumedPrivatePaymentListVersion == version else { return }
+            // A list an automatic payment attempt consumed is that attempt's to give back.
+            guard var contact = state.contacts[key], contact.consumedPrivatePaymentListVersion == version,
+                  contact.consumedPrivatePaymentListOwner == nil
+            else { return }
             let previous = contact
             guard previousVersion.map({ $0 < version }) ?? true else { throw PaykitPaymentRequestError.requestUnavailable }
             contact.consumedPrivatePaymentListVersion = previousVersion

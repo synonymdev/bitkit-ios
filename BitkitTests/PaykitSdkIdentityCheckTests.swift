@@ -506,11 +506,45 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 do {
                     try await operation()
                     XCTAssertFalse(blocked)
-                } catch PubkyServiceError.activeSubscription {
+                } catch let PubkyServiceError.activeSubscription(actualEnd) {
                     XCTAssertTrue(blocked)
+                    XCTAssertEqual(actualEnd, endsAt.flatMap(PaykitPaymentRequest.parseDate))
                 }
             }
             XCTAssertEqual(sdk.writes, blocked ? [] : ["remove-contacts:1", "delete-profile:test", "delete-profile:confirmed"])
+        }
+    }
+
+    func testProfileRemovalOnlyReportsAnEndWhenEveryBlockingSubscriptionHasOne() async throws {
+        let earlier = "2999-01-01T00:00:00Z"
+        let later = "3000-01-01T00:00:00Z"
+        let cases: [(ends: [String?], expected: String?)] = [
+            ([earlier, later], later),
+            ([later, earlier], later),
+            ([earlier, nil], nil),
+            (["invalid", later], nil),
+            (["2000-01-01T00:00:00Z", later], later),
+        ]
+        for testCase in cases {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            let requests = try testCase.ends.map { endsAt in
+                var request = try paymentRequestRecord(appId: "another-app")
+                request.state = .activeRecurring
+                request.terms?.recurrence = PaymentRequestRecurrence(
+                    every: 1, unit: "month", startsAt: "1999-01-01T00:00:00Z", anchor: "1999-01-01T00:00:00Z", endsAt: endsAt
+                )
+                return request
+            }
+            sdk.rawPaymentRequests = { requests }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            do {
+                try await service.requireNoActiveSubscriptions(expectedIdentity: identityA)
+                XCTFail("Every case contains a blocking subscription")
+            } catch let PubkyServiceError.activeSubscription(endsAt) {
+                XCTAssertEqual(endsAt, testCase.expected.flatMap(PaykitPaymentRequest.parseDate))
+            }
+            XCTAssertTrue(sdk.writes.isEmpty)
         }
     }
 
