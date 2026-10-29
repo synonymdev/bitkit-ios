@@ -558,6 +558,7 @@
 "security__pin_forgot_text" = "¿Ha olvidado su PIN? Reinicie y recupere su monedero Bitkit con su frase de recuperación. Establezca un nuevo PIN después de completar la recuperación.";
 "security__pin_forgot_reset" = "Restablecer (requiere frase de recuperación)";
 "security__pin_send" = "Por favor, introduzca su código PIN para confirmar y enviar este pago.";
+"security__pin_allowance" = "Por favor, introduzca su código PIN para confirmar este cambio en la asignación.";
 "security__pin_send_title" = "Introduzca el Código PIN";
 "security__pin_use_biometrics" = "Utilizar {biometricsName}";
 "security__bio" = "Biometría";
@@ -1125,6 +1126,7 @@
 "wallet__send_from" = "Desde";
 "wallet__send_sync_title" = "<accent>Conectando</accent>\na la red";
 "wallet__send_sync_description" = "Espere a que Bitkit se conecte a la red de pagos (±10 segundos).";
+"wallet__send_sync_description_onchain" = "Espere a que Bitkit se conecte a la red bitcoin (±10 segundos).";
 "wallet__send_sync_long_title" = "Problemas de\n<accent>conexión</accent>";
 "wallet__send_sync_long_description" = "Parece que está desconectado. Compruebe su conexión. Bitkit intentará reconectarse cada pocos segundos.";
 "wallet__send_to" = "Para";
@@ -1762,6 +1764,7 @@
 "subscriptions__allowance_executed_description" = "El pago automático envió {amount} a {name}";
 "subscriptions__allowance_offer_accepted_title" = "Asignación añadida";
 "subscriptions__allowance_offer_accepted_description" = "{name} ha configurado una asignación para ti";
+"subscriptions__allowance_offers_accepted_description" = "{names} han configurado asignaciones para ti";
 "subscriptions__allowance_limit_title" = "Límite alcanzado";
 "subscriptions__allowance_limit_description" = "Una solicitud de {amount} de {name} supera su asignación. Revísela para pagar.";
 "subscriptions__allowance_auto_paid" = "Pagado automáticamente";

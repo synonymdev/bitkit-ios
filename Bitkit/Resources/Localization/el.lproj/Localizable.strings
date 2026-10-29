@@ -513,6 +513,7 @@
 "security__pin_forgot_text" = "Ξεχάσατε το PIN σας; Επαναφέρετε και ανακτήστε το πορτοφόλι Bitkit σας με τη φράση ανάκτησής σας. Ορίστε νέο PIN μετά την ολοκλήρωση της ανάκτησης.";
 "security__pin_forgot_reset" = "Επαναφορά (Απαιτείται Φράση Ανάκτησης)";
 "security__pin_send" = "Παρακαλώ εισάγετε τον κωδικό PIN σας για να επιβεβαιώσετε και να στείλετε αυτή την πληρωμή.";
+"security__pin_allowance" = "Παρακαλώ εισάγετε τον κωδικό PIN σας για να επιβεβαιώσετε αυτή την αλλαγή της προέγκρισης.";
 "security__pin_send_title" = "Εισάγετε Κωδικό PIN";
 "security__pin_use_biometrics" = "Χρήση {biometricsName}";
 "security__bio" = "Βιομετρικά";
@@ -1007,6 +1008,7 @@
 "wallet__send_from" = "Από";
 "wallet__send_sync_title" = "<accent>Σύνδεση</accent>\nστο δίκτυο";
 "wallet__send_sync_description" = "Περιμένετε να συνδεθεί το Bitkit στο δίκτυο πληρωμών (±10 δευτερόλεπτα).";
+"wallet__send_sync_description_onchain" = "Περιμένετε να συνδεθεί το Bitkit στο δίκτυο bitcoin (±10 δευτερόλεπτα).";
 "wallet__send_sync_long_title" = "<accent>Προβλήματα</accent>\nσύνδεσης";
 "wallet__send_sync_long_description" = "Φαίνεται ότι είστε αποσυνδεδεμένοι. Ελέγξτε τη σύνδεσή σας. Το Bitkit θα προσπαθεί να επανασυνδεθεί κάθε λίγα δευτερόλεπτα.";
 "wallet__send_to" = "Προς";
@@ -1613,6 +1615,7 @@
 "subscriptions__allowance_executed_description" = "Η αυτόματη πληρωμή έστειλε {amount} σε {name}";
 "subscriptions__allowance_offer_accepted_title" = "Η προέγκριση προστέθηκε";
 "subscriptions__allowance_offer_accepted_description" = "Ο χρήστης {name} όρισε μια προέγκριση για εσάς";
+"subscriptions__allowance_offers_accepted_description" = "Οι χρήστες {names} όρισαν προεγκρίσεις για εσάς";
 "subscriptions__allowance_limit_title" = "Το όριο εξαντλήθηκε";
 "subscriptions__allowance_limit_description" = "Ένα αίτημα {amount} από {name} υπερβαίνει την προέγκρισή σου. Έλεγξέ το για να πληρώσεις.";
 "subscriptions__allowance_auto_paid" = "Πληρώθηκε αυτόματα";

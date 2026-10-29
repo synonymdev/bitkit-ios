@@ -18,6 +18,9 @@ extension PrivatePaykitService {
             sdkState: exported.state,
             consumedPrivatePaymentListVersions: state.contacts.compactMapValues { contactState in
                 contactState.consumedPrivatePaymentListVersion
+            },
+            consumedPrivatePaymentListOwners: state.contacts.compactMapValues { contactState in
+                contactState.consumedPrivatePaymentListVersion == nil ? nil : contactState.consumedPrivatePaymentListOwner
             }
         )
         let data = try JSONEncoder().encode(backup)
@@ -41,6 +44,7 @@ extension PrivatePaykitService {
         if let decoded {
             for (publicKey, versions) in decoded.consumedPrivatePaymentListVersions {
                 state.contacts[publicKey, default: ContactState()].consumedPrivatePaymentListVersion = versions
+                state.contacts[publicKey]?.consumedPrivatePaymentListOwner = decoded.consumedPrivatePaymentListOwners?[publicKey]
             }
         } else {
             await PaykitSdkService.shared.clearState()
