@@ -121,6 +121,7 @@ class PubkyProfileManager: ObservableObject {
     private let remoteProfileResolver: RemoteProfileResolver
     private let profilePublisher: ProfilePublisher
     private let avatarUploader: AvatarUploader
+    private let profileDeletionValidator: ProfileDeleter
     private let profileDeleter: ProfileDeleter
     /// Bumped whenever a profile save starts, `profile` is written or the identity changes, so a remote read that started
     /// earlier is dropped.
@@ -157,6 +158,9 @@ class PubkyProfileManager: ObservableObject {
         avatarUploader: @escaping AvatarUploader = {
             try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
         },
+        profileDeletionValidator: @escaping ProfileDeleter = {
+            try await PubkyService.requireNoActiveSubscriptions(expectedIdentity: $0)
+        },
         profileDeleter: @escaping ProfileDeleter = {
             try await PubkyService.deletePaykitProfile(expectedIdentity: $0)
         }
@@ -164,6 +168,7 @@ class PubkyProfileManager: ObservableObject {
         self.remoteProfileResolver = remoteProfileResolver
         self.profilePublisher = profilePublisher
         self.avatarUploader = avatarUploader
+        self.profileDeletionValidator = profileDeletionValidator
         self.profileDeleter = profileDeleter
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
@@ -1045,6 +1050,12 @@ class PubkyProfileManager: ObservableObject {
         await PrivatePaykitService.shared.endProfileDeletion()
     }
 
+    func validateProfileDeletion(for session: SignedInSession) async throws {
+        try requireCurrentSession(session)
+        try await profileDeletionValidator(session.publicKey)
+        try requireCurrentSession(session)
+    }
+
     func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true, expectedSession: SignedInSession? = nil) async throws {
         guard let session = expectedSession ?? currentSession else { throw PubkyServiceError.sessionNotActive }
         try requireCurrentSession(session)
@@ -1060,7 +1071,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     private func deleteProfile(for session: SignedInSession, cleanPrivatePaykitEndpoints: Bool) async throws {
-        try requireCurrentSession(session)
+        try await validateProfileDeletion(for: session)
         if cleanPrivatePaykitEndpoints {
             try await Self.removePrivatePaykitEndpoints(
                 context: "PubkyProfileManager.deleteProfile", deferAppSync: true,

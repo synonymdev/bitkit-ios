@@ -1178,6 +1178,7 @@
 "profile__edit_delete_section" = "EXCLUIR";
 "profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Observe que as informações do perfil são armazenadas em arquivos públicos.";
+"profile__delete_active_subscription" = "Encerre as assinaturas ativas antes de remover este perfil.";
 "profile__delete_title" = "Excluir Perfil?";
 "profile__delete_description" = "Excluir seu perfil o remove do Pubky. Os contatos ainda podem manter informações de perfil e de pagamento compartilhadas anteriormente com eles.";
 "profile__delete_confirm" = "Sim, Excluir";

@@ -193,7 +193,7 @@ class ContactsManager: ObservableObject {
             _ = try await PubkyService.removeContact(publicKey: $0)
         },
         removeContactRecords: @escaping @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord] = {
-            try await PubkyService.removeContacts(publicKeys: $0)
+            try await PubkyService.removeContactsForProfile(publicKeys: $0)
         },
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)

@@ -946,6 +946,7 @@
 "profile__edit_delete_section" = "حذف";
 "profile__edit_unlink_section" = "إلغاء الربط";
 "profile__edit_public_note" = "يرجى ملاحظة أن معلومات الملف الشخصي مخزنة في ملفات عامة.";
+"profile__delete_active_subscription" = "أنه الاشتراكات النشطة قبل إزالة هذا الملف الشخصي.";
 "profile__delete_title" = "حذف الملف الشخصي؟";
 "profile__delete_description" = "يؤدي حذف ملفك الشخصي إلى إزالته من Pubky. قد تحتفظ جهات الاتصال بمعلومات الملف الشخصي والدفع التي شاركتها معهم سابقًا.";
 "profile__delete_confirm" = "نعم، احذف";

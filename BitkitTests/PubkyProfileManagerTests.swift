@@ -12,12 +12,52 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testActiveSubscriptionStopsProfileRemovalBeforePrivateOrContactCleanup() async throws {
+        try await withEmptyIdentityStorage {
+            for entry in ["screen", "manager"] {
+                let key = "pubky" + String(repeating: "y", count: 52)
+                let manager = PubkyProfileManager(profileDeletionValidator: { expectedIdentity in
+                    XCTAssertEqual(expectedIdentity, key)
+                    throw PubkyServiceError.activeSubscription(endsAt: nil)
+                }, profileDeleter: { _ in
+                    XCTFail("An active subscription must preserve the profile")
+                })
+                manager.publicKey = key
+                manager.authState = .authenticated
+                let session = try XCTUnwrap(manager.currentSession)
+                let contacts = ContactsManager(contactRecords: {
+                    XCTFail("An active subscription must stop before contact cleanup")
+                    return []
+                })
+                UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                UserDefaults.standard.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+                do {
+                    if entry == "screen" {
+                        try await manager.performProfileDeletion {
+                            try await EditProfileView.performDeleteProfile(
+                                session: session, pubkyProfile: manager, contactsManager: contacts
+                            ) { XCTFail("An active subscription must preserve private endpoints") }
+                        }
+                    } else {
+                        try await manager.deleteProfile()
+                    }
+                    XCTFail("Expected subscription refusal")
+                } catch PubkyServiceError.activeSubscription {}
+                XCTAssertEqual(manager.currentSession, session)
+                XCTAssertFalse(manager.isDeletingProfile)
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey))
+                XCTAssertTrue(UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+            }
+        }
+    }
+
+    @MainActor
     func testProfileRemovalStopsBeforeDeletingWhenCleanupIsIncomplete() async throws {
         snapshotAppDefaultsDomain()
         for failure in ["private endpoints", "contacts"] {
             let key = "pubky" + String(repeating: "y", count: 52)
             let originalError = KeychainError.failedToDelete
-            let manager = PubkyProfileManager(profileDeleter: { _ in
+            let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { _ in
                 XCTFail("Incomplete cleanup must not delete the profile")
                 throw PublicPaykitError.publicationFailed
             })
@@ -243,7 +283,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 let started = expectation(description: "Profile delete admitted")
                 let (resume, continuation) = AsyncStream<Void>.makeStream()
                 defer { continuation.finish() }
-                let manager = PubkyProfileManager(profileDeleter: { expectedIdentity in
+                let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { expectedIdentity in
                     XCTAssertEqual(expectedIdentity, original)
                     started.fulfill()
                     for await _ in resume {}
@@ -332,7 +372,7 @@ final class PubkyProfileManagerTests: XCTestCase {
                 NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileReadNoSuchFile.rawValue),
             ]
             for failure in errors {
-                let manager = PubkyProfileManager(profileDeleter: { _ in
+                let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { _ in
                     if let failure {
                         throw failure
                     }
@@ -364,7 +404,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         try await withEmptyIdentityStorage {
             let secret = String(repeating: "01", count: 32)
             let original = try PubkyProfileManager.publicKeyFromSecretKey(secret)
-            let manager = PubkyProfileManager(profileDeleter: { _ in
+            let manager = PubkyProfileManager(profileDeletionValidator: { _ in }, profileDeleter: { _ in
                 XCTFail("A stale deletion must not reach profile storage")
             })
             manager.publicKey = original
