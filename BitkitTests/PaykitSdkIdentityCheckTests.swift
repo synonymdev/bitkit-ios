@@ -86,6 +86,35 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testBackgroundReadsRecheckPaymentAdmissionBeforeContentionRetry() async throws {
+        let operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.identityStatus(priority: .background) },
+            { _ = try await $0.linkedPeers(priority: .background) },
+            { _ = try await $0.privateMessageSchedulingSnapshot(priority: .background) },
+        ]
+        for operation in operations {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.readErrors = [sharedStateBusy]
+            sdk.schedulingRead = {
+                await sdk.reads.record()
+                throw sharedStateBusy
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let read = Task { try await operation(service) }
+            try await sdk.reads.waitForEntries(count: 1)
+            let payment = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(payment) }
+            do {
+                try await read.value
+                XCTFail("A new payment must prevent the delayed acquisition retry")
+            } catch PaykitPaymentRequestError.operationInProgress {}
+            let attempts = await sdk.reads.count
+            XCTAssertEqual(attempts, 1)
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
     func testPaymentRequestReadRetainsItsRuntimeThroughContentionAndFiltersRecords() async throws {
         let sdk = IdentitySwitchingSdk(noPointer: .init())
         let freshSdk = IdentitySwitchingSdk(noPointer: .init())

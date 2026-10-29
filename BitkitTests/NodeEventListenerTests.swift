@@ -8,7 +8,7 @@ final class NodeEventListenerTests: XCTestCase {
         let listener = NodeEventListener()
         for _ in 0 ..< 3 {
             var node: EventNode? = EventNode(noPointer: .init())
-            weak var releasedNode = node
+            let releasedNode = { [weak node] in node }
             node?.startError = TestError.failed
             do {
                 try await listener.start(node: XCTUnwrap(node)) { _ in XCTFail("A failed node must not deliver events") }
@@ -18,7 +18,7 @@ final class NodeEventListenerTests: XCTestCase {
             XCTAssertEqual(node?.pollCount, 0)
             XCTAssertEqual(node?.asyncWaitCount, 0)
             node = nil
-            XCTAssertNil(releasedNode)
+            XCTAssertNil(releasedNode())
         }
     }
 
@@ -26,7 +26,7 @@ final class NodeEventListenerTests: XCTestCase {
         let listener = NodeEventListener()
         for _ in 0 ..< 2 {
             var node: EventNode? = EventNode(noPointer: .init())
-            weak var releasedNode = node
+            let releasedNode = { [weak node] in node }
             node?.enqueue()
             let delivered = expectation(description: "Startup event delivered")
             let empty = expectation(description: "Empty queue reached")
@@ -37,7 +37,7 @@ final class NodeEventListenerTests: XCTestCase {
             XCTAssertEqual(node?.handledCount, 1)
             XCTAssertEqual(node?.asyncWaitCount, 0)
             node = nil
-            XCTAssertNil(releasedNode, "A correction cleanup failure followed by Retry must release the previous node")
+            XCTAssertNil(releasedNode(), "A correction cleanup failure followed by Retry must release the previous node")
         }
     }
 
