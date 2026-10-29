@@ -19,7 +19,7 @@ test('execution uses a distinct verified commit with the trusted workflow tree a
   assert.equal(commit.commit.tree.sha, f.TREE);
   assert.equal(commit.commit.verification.verified, true);
   assert.equal(commit.author.login, 'github-actions[bot]');
-  assert.equal(f.mutations[0].fileChanges, undefined);
+  assert.deepEqual(f.mutations[0].fileChanges, {additions: [], deletions: []});
 });
 
 test('an existing generation is reconciled without appending another execution commit', async () => {
@@ -111,4 +111,20 @@ test('cleanup refuses changed refs, foreign metadata and unsigned commits', asyn
   const get = f.github.rest.git.getRef;
   f.github.rest.git.getRef = async params => ({data: {...(await get(params)).data, object: {sha: f.SOURCE}}});
   await cleanupExecutionRefs(f); assert.equal(f.deleted.length, 0);
+});
+
+test('retained preparation refs cannot starve a later expired execution', async () => {
+  const f = fixture();
+  for (let index = 0; index < 100; index++) f.refs.set(`heads/ci/retarget-execution/pr-7-${index + 1000}-1`, f.SOURCE);
+  const result = await prepareExecutionRef(f);
+  await cleanupExecutionRefs(f);
+  assert.deepEqual(f.deleted, [`heads/${result.ref}`]);
+  assert.equal(f.refs.size, 100);
+});
+
+test('cleanup bounds deletions and makes progress on the next run', async () => {
+  const f = fixture();
+  for (let index = 0; index < 101; index++) await prepareExecutionRef({...f, generation: `${index + 200}-1`});
+  await cleanupExecutionRefs(f); assert.equal(f.deleted.length, 100); assert.equal(f.refs.size, 1);
+  await cleanupExecutionRefs(f); assert.equal(f.deleted.length, 101); assert.equal(f.refs.size, 0);
 });

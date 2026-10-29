@@ -4,7 +4,7 @@ const TREE = 'e'.repeat(40);
 function executionFixture() {
   const owner = 'github-actions[bot]';
   const refs = new Map();
-  const commits = new Map([[SOURCE, {sha: SOURCE, commit: {tree: {sha: TREE}}}]]);
+  const commits = new Map([[SOURCE, {sha: SOURCE, commit: {tree: {sha: TREE}, message: 'Workflow source', committer: {date: '2026-10-29T00:00:00Z'}}}]]);
   const aliases = new Map([['master', SOURCE], ['ci/fix', SOURCE]]);
   const mutations = [];
   const deleted = [];

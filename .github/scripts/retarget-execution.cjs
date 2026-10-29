@@ -62,6 +62,7 @@ async function prepareExecutionRef({github, context, number, generation, sourceR
       await github.graphql(`mutation($input: CreateCommitOnBranchInput!) {
         createCommitOnBranch(input: $input) { commit { oid } }
       }`, {input: {branch: {repositoryNameWithOwner: expected.repository, branchName: branch}, expectedHeadOid: source.sha,
+        fileChanges: {additions: [], deletions: []},
         message: {headline: `ci: isolated retarget validation for PR #${number} [skip ci]`, body: JSON.stringify(expected)}}});
     } catch (error) {
       // A timeout may have committed successfully. Reconcile instead of appending again.
@@ -84,7 +85,9 @@ async function prepareExecutionRef({github, context, number, generation, sourceR
 async function cleanupExecutionRefs({github, context, core, now = Date.now()}) {
   const {viewer} = await github.graphql('query { viewer { login } }');
   const refs = await github.paginate(github.rest.git.listMatchingRefs, {...context.repo, ref: `heads/${PREFIX}`});
-  for (const ref of refs.slice(0, 100)) {
+  let deleted = 0;
+  for (const ref of refs) {
+    if (deleted === 100) break;
     const match = ownedRef.exec(ref.ref);
     if (!match || ref.object.type !== 'commit') continue;
     try {
@@ -109,6 +112,7 @@ async function cleanupExecutionRefs({github, context, core, now = Date.now()}) {
       const current = await readRef(github, context.repo, branch);
       if (current?.object.sha !== commit.sha) continue;
       await github.rest.git.deleteRef({...context.repo, ref: `heads/${branch}`});
+      deleted++;
       core.info(`Removed expired execution ref ${branch}`);
     } catch (error) {
       core.warning(`Kept execution ref ${ref.ref}: ${error.message}`);
