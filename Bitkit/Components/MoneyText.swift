@@ -333,6 +333,8 @@ private struct AmountShimmer: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var intensity: Double = 0
     @State private var isSweeping = false
+    /// Bumped on every change, so a fade-out that finishes after a newer change leaves the sweep running.
+    @State private var changeCount = 0
 
     private let sweepDuration: TimeInterval = 2
     private let minOpacity = 0.75
@@ -373,13 +375,15 @@ private struct AmountShimmer: ViewModifier {
                 isSweeping = isActive
             }
             .onChange(of: isActive) { _, active in
+                changeCount += 1
+                let change = changeCount
                 if active {
                     isSweeping = true
                 }
                 withAnimation(.easeInOut(duration: 0.3)) {
                     intensity = active ? 1 : 0
                 } completion: {
-                    if !active {
+                    if !active, change == changeCount {
                         isSweeping = false
                     }
                 }
