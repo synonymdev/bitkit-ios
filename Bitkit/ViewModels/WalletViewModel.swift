@@ -220,124 +220,122 @@ class WalletViewModel: ObservableObject {
                 )
             }
             try await lightningService.start(onEvent: { event in
-                Task { @MainActor in
-                    // Notify all event handlers
-                    for handler in self.eventHandlers.values {
-                        handler(event)
+                // Notify all event handlers
+                for handler in self.eventHandlers.values {
+                    handler(event)
+                }
+
+                // Handle specific events for targeted UI updates
+                switch event {
+                case let .probeSuccessful(paymentId, paymentHash: paymentHash, routeFeeMsat: routeFeeMsat):
+                    self.cacheProbeOutcome(
+                        success: true,
+                        paymentId: paymentId,
+                        paymentHash: paymentHash,
+                        shortChannelId: nil,
+                        routeFeeMsat: routeFeeMsat
+                    )
+                case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId, routeFeeMsat: routeFeeMsat):
+                    self.cacheProbeOutcome(
+                        success: false,
+                        paymentId: paymentId,
+                        paymentHash: paymentHash,
+                        shortChannelId: shortChannelId.map(String.init),
+                        routeFeeMsat: routeFeeMsat
+                    )
+                case let .paymentReceived(_, paymentHash, _, _):
+                    self.invalidateReceiveInvoice()
+                    let rotatedPublicInvoice = self.isPaykitUIActive && self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
+                    let isSessionCurrent = self.publicPaykitPublicationAdmission()
+                    Task {
+                        await self.refreshAfterPaymentReceived(
+                            paymentHash: paymentHash, rotatedPublicInvoice: rotatedPublicInvoice, isSessionCurrent: isSessionCurrent
+                        )
+                    }
+                case .channelReady:
+                    self.invalidateReceiveInvoice()
+                    Task {
+                        await self.refreshAndSyncState()
+                        try? await self.refreshBip21(reportsError: false)
+                        await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
+                        try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
+                        guard !Task.isCancelled else { return }
+                        await self.refreshAndSyncState()
+                        try? await self.refreshBip21(reportsError: false)
+                        await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
+                            reason: "channel-ready delayed refresh",
+                            forceRefreshLightning: true
+                        )
                     }
 
-                    // Handle specific events for targeted UI updates
-                    switch event {
-                    case let .probeSuccessful(paymentId, paymentHash: paymentHash, routeFeeMsat: routeFeeMsat):
-                        self.cacheProbeOutcome(
-                            success: true,
-                            paymentId: paymentId,
-                            paymentHash: paymentHash,
-                            shortChannelId: nil,
-                            routeFeeMsat: routeFeeMsat
-                        )
-                    case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId, routeFeeMsat: routeFeeMsat):
-                        self.cacheProbeOutcome(
-                            success: false,
-                            paymentId: paymentId,
-                            paymentHash: paymentHash,
-                            shortChannelId: shortChannelId.map(String.init),
-                            routeFeeMsat: routeFeeMsat
-                        )
-                    case let .paymentReceived(_, paymentHash, _, _):
-                        self.invalidateReceiveInvoice()
-                        let rotatedPublicInvoice = self.isPaykitUIActive && self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
-                        let isSessionCurrent = self.publicPaykitPublicationAdmission()
-                        Task {
-                            await self.refreshAfterPaymentReceived(
-                                paymentHash: paymentHash, rotatedPublicInvoice: rotatedPublicInvoice, isSessionCurrent: isSessionCurrent
-                            )
+                case let .channelClosed(channelId, _, _, reason):
+                    self.invalidateReceiveInvoice()
+                    Task {
+                        await self.refreshAndSyncState()
+                        await self.handleChannelClosed(channelId: channelId, reason: reason)
+                        try? await self.refreshBip21(reportsError: false)
+                        if self.isPaykitUIActive {
+                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
                         }
-                    case .channelReady:
-                        self.invalidateReceiveInvoice()
-                        Task {
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21(reportsError: false)
-                            await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
-                            try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
-                            guard !Task.isCancelled else { return }
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21(reportsError: false)
-                            await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(
-                                reason: "channel-ready delayed refresh",
-                                forceRefreshLightning: true
-                            )
-                        }
-
-                    case let .channelClosed(channelId, _, _, reason):
-                        self.invalidateReceiveInvoice()
-                        Task {
-                            await self.refreshAndSyncState()
-                            await self.handleChannelClosed(channelId: channelId, reason: reason)
-                            try? await self.refreshBip21(reportsError: false)
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
-                            }
-                        }
-
-                    // MARK: Onchain Transaction Events
-
-                    case let .onchainTransactionReceived(_, details):
-                        Task {
-                            await self.refreshAndSyncState()
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.handleOnchainActivity(
-                                    receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
-                                    wallet: self
-                                )
-                            }
-                        }
-
-                    case let .onchainTransactionConfirmed(_, _, _, _, details):
-                        Task {
-                            await self.refreshAndSyncState()
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.handleOnchainActivity(
-                                    receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
-                                    wallet: self
-                                )
-                            }
-                        }
-
-                    case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
-                        Task {
-                            await self.refreshAndSyncState()
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
-                            }
-                        }
-
-                    // MARK: Sync Events
-
-                    case let .syncProgress(syncType, progressPercent, syncCurrentBlockHeight, _):
-                        self.isSyncingWallet = true
-                        if syncCurrentBlockHeight > self.currentBlockHeight {
-                            self.currentBlockHeight = syncCurrentBlockHeight
-                        }
-                        Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
-
-                    case let .syncCompleted(syncType, syncedBlockHeight):
-                        self.isSyncingWallet = false
-                        self.currentBlockHeight = syncedBlockHeight
-                        Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
-                        Task {
-                            await self.refreshAndSyncState()
-                        }
-
-                    // MARK: Balance Events
-
-                    case .balanceChanged:
-                        Task {
-                            await self.refreshAndSyncState()
-                        }
-                    default:
-                        break
                     }
+
+                // MARK: Onchain Transaction Events
+
+                case let .onchainTransactionReceived(_, details):
+                    Task {
+                        await self.refreshAndSyncState()
+                        if self.isPaykitUIActive {
+                            await PrivatePaykitService.shared.handleOnchainActivity(
+                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                wallet: self
+                            )
+                        }
+                    }
+
+                case let .onchainTransactionConfirmed(_, _, _, _, details):
+                    Task {
+                        await self.refreshAndSyncState()
+                        if self.isPaykitUIActive {
+                            await PrivatePaykitService.shared.handleOnchainActivity(
+                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                wallet: self
+                            )
+                        }
+                    }
+
+                case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
+                    Task {
+                        await self.refreshAndSyncState()
+                        if self.isPaykitUIActive {
+                            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
+                        }
+                    }
+
+                // MARK: Sync Events
+
+                case let .syncProgress(syncType, progressPercent, syncCurrentBlockHeight, _):
+                    self.isSyncingWallet = true
+                    if syncCurrentBlockHeight > self.currentBlockHeight {
+                        self.currentBlockHeight = syncCurrentBlockHeight
+                    }
+                    Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
+
+                case let .syncCompleted(syncType, syncedBlockHeight):
+                    self.isSyncingWallet = false
+                    self.currentBlockHeight = syncedBlockHeight
+                    Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+                    Task {
+                        await self.refreshAndSyncState()
+                    }
+
+                // MARK: Balance Events
+
+                case .balanceChanged:
+                    Task {
+                        await self.refreshAndSyncState()
+                    }
+                default:
+                    break
                 }
             })
         } catch {
