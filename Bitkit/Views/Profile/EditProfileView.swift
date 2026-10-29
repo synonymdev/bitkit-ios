@@ -199,7 +199,7 @@ struct EditProfileView: View {
             let description = endsAt.map {
                 t("subscriptions__expires_date", variables: ["date": $0.formatted(date: .long, time: .omitted)])
             }
-            app.toast(type: .error, title: t("contacts__delete_active_subscription"), description: description)
+            app.toast(type: .error, title: t("profile__delete_active_subscription"), description: description)
         } else {
             app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
         }

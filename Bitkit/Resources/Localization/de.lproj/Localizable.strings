@@ -1165,6 +1165,7 @@
 "profile__edit_delete_section" = "LÖSCHEN";
 "profile__edit_unlink_section" = "VERKNÜPFUNG AUFHEBEN";
 "profile__edit_public_note" = "Bitte beachte, dass Profilinformationen in öffentlichen Dateien gespeichert werden.";
+"profile__delete_active_subscription" = "Beende aktive Abonnements, bevor du dieses Profil entfernst.";
 "profile__delete_title" = "Profil löschen?";
 "profile__delete_description" = "Durch das Löschen deines Profils wird es von Pubky entfernt. Kontakte können zuvor mit ihnen geteilte Profil- und Zahlungsinformationen weiterhin behalten.";
 "profile__delete_confirm" = "Ja, löschen";

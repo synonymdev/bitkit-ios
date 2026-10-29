@@ -135,7 +135,7 @@ class PubkyProfileManager: ObservableObject {
         var deleteProfile: @Sendable (String, String) async throws -> Void
         var withdrawPrivate: @MainActor () async throws -> Void
         var withdrawPublic: @MainActor () async throws -> Void
-        var validateContacts: @MainActor (String, [String]) async throws -> Void
+        var validateSubscriptions: @MainActor (String) async throws -> Void
         var revokeSession: @MainActor () async throws -> Void
         var completeLocal: @MainActor () async throws -> Void
         var pause: @MainActor (UUID) async -> Void
@@ -147,7 +147,7 @@ class PubkyProfileManager: ObservableObject {
                 deleteProfile: { try await PaykitSdkService.shared.deleteConfirmedProfile(expectedIdentity: $0, expectedRevision: $1) },
                 withdrawPrivate: { try await removePrivatePaykitEndpoints(context: "Profile removal", deferAppSync: true) },
                 withdrawPublic: { try await removePublicPaykitEndpoints(context: "Profile removal") },
-                validateContacts: { try await PaykitSdkService.shared.requireContactsRemovable(publicKeys: $1, expectedIdentity: $0) },
+                validateSubscriptions: { try await PaykitSdkService.shared.requireNoActiveSubscriptions(expectedIdentity: $0) },
                 revokeSession: { try await PubkyService.signOut() },
                 completeLocal: { try await clearLocalState() },
                 pause: { await PrivatePaykitService.shared.beginProfileDeletion(id: $0) },
@@ -1455,8 +1455,8 @@ class PubkyProfileManager: ObservableObject {
                 let profile = action == .deleteProfile && owner != nil
                     ? try await removalServices.readProfile(owner!) : nil
                 let snapshot = action != .disconnect ? try await contacts?.prepareRemovalSnapshot() : nil
-                if let snapshot, let owner {
-                    try await removalServices.validateContacts(owner, snapshot.publicKeys)
+                if snapshot != nil, let owner {
+                    try await removalServices.validateSubscriptions(owner)
                 }
                 try admission.validate(generation)
                 guard removalPreparation == confirmation.id, Self.sessionRevision == revision,
@@ -1500,7 +1500,7 @@ class PubkyProfileManager: ObservableObject {
         if let snapshot = plan.contactSnapshot, let owner = plan.owner {
             try await admission.withOperation {
                 try await plan.contacts?.validateRemovalSnapshot(snapshot)
-                try await removalServices.validateContacts(owner, snapshot.publicKeys)
+                try await removalServices.validateSubscriptions(owner)
             }
         }
         // The dialog or its owner may have changed while eligibility was being checked.
@@ -1565,7 +1565,7 @@ class PubkyProfileManager: ObservableObject {
                     if let snapshot = plan.contactSnapshot {
                         try await plan.contacts?.validateRemovalSnapshot(snapshot)
                         if let owner = plan.owner {
-                            try await removalServices.validateContacts(owner, snapshot.publicKeys)
+                            try await removalServices.validateSubscriptions(owner)
                         }
                     }
                     try validateRemovalOwner(plan)

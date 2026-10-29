@@ -87,10 +87,10 @@ final class PaykitContactLifecycleTests: XCTestCase {
             )]
             let service = PaykitSdkService(sdkFactory: { sdk })
             do {
-                try await service.requireContactsRemovable(publicKeys: [sdk.publicKey], expectedIdentity: sdk.publicKey)
+                try await service.requireNoActiveSubscriptions(expectedIdentity: sdk.publicKey)
                 XCTFail("Preflight must include subscriptions from every app and role")
             } catch let PubkyServiceError.activeSubscription(endsAt) {
-                XCTAssertEqual(endsAt, testCase.endsAt.flatMap(PaykitPaymentRequest.parseDate))
+                XCTAssertNil(endsAt)
             }
             XCTAssertTrue(sdk.events.isEmpty)
             do {
@@ -108,7 +108,7 @@ final class PaykitContactLifecycleTests: XCTestCase {
             } else {
                 sdk.requests[0].state = .canceled
             }
-            try await service.requireContactsRemovable(publicKeys: [sdk.publicKey], expectedIdentity: sdk.publicKey)
+            try await service.requireNoActiveSubscriptions(expectedIdentity: sdk.publicKey)
             _ = try await service.removeContact(publicKey: sdk.publicKey)
             XCTAssertNil(sdk.record)
             _ = try await sdk.saveContact(update: ContactUpdate(publicKey: sdk.publicKey, label: "Contact"))

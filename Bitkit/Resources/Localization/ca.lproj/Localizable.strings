@@ -1062,6 +1062,7 @@
 "profile__edit_delete_section" = "ELIMINAR";
 "profile__edit_unlink_section" = "DESVINCULAR";
 "profile__edit_public_note" = "Tingues en compte que la informació del perfil es desa en fitxers públics.";
+"profile__delete_active_subscription" = "Finalitza les subscripcions actives abans d’eliminar aquest perfil.";
 "profile__delete_title" = "Eliminar el perfil?";
 "profile__delete_description" = "Eliminar el teu perfil l'esborra de Pubky. És possible que els contactes conservin la informació de perfil i de pagament que s'hi hagi compartit abans.";
 "profile__delete_confirm" = "Sí, elimina";

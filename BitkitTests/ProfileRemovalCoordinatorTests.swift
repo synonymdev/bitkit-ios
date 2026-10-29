@@ -43,7 +43,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
             deleteProfile: delete ?? { [self] key, revision in try await acknowledgeDelete(key: key, revision: revision) },
             withdrawPrivate: { [self] in try step("private") },
             withdrawPublic: { [self] in try step("public") },
-            validateContacts: { [self] expectedOwner, _ in
+            validateSubscriptions: { [self] expectedOwner in
                 XCTAssertEqual(expectedOwner, owner)
                 eligibilityChecks += 1
                 try await duringEligibility?()
@@ -468,29 +468,35 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
 
     func testKnownSubscriptionRefusesPreparationWithoutBeginningCleanup() async throws {
         duringEligibility = { throw PubkyServiceError.activeSubscription(endsAt: nil) }
-        let manager = makeManager()
-        do { _ = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts()); XCTFail("Protected contacts cannot be removed") }
-        catch PubkyServiceError.activeSubscription {}
-        XCTAssertTrue(steps.isEmpty)
-        XCTAssertNil(pauseID)
-        XCTAssertNil(try store.pending())
-        XCTAssertNotNil(manager.currentSession)
-        XCTAssertNoThrow(try admission.snapshot())
-        XCTAssertEqual(watermark, 42)
+        for action in [PubkyProfileManager.RemovalAction.deleteProfile, .unlink] {
+            let manager = makeManager()
+            do { _ = try await manager.prepareRemoval(action: action, contacts: contacts()); XCTFail("Active subscriptions prevent removal") }
+            catch PubkyServiceError.activeSubscription {}
+            XCTAssertTrue(steps.isEmpty)
+            XCTAssertNil(pauseID)
+            XCTAssertNil(try store.pending())
+            XCTAssertNotNil(manager.currentSession)
+            XCTAssertNoThrow(try admission.snapshot())
+            XCTAssertEqual(watermark, 42)
+        }
     }
 
     func testSubscriptionAddedDuringDialogRefusesConfirmationBeforePending() async throws {
-        let manager = makeManager()
-        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
-        duringEligibility = { throw PubkyServiceError.activeSubscription(endsAt: nil) }
-        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Confirmation must recheck subscription eligibility") }
-        catch PubkyServiceError.activeSubscription {}
-        XCTAssertEqual(eligibilityChecks, 2)
-        XCTAssertTrue(steps.isEmpty)
-        XCTAssertNil(pauseID)
-        XCTAssertNil(try store.pending())
-        XCTAssertNotNil(manager.currentSession)
-        XCTAssertNoThrow(try admission.snapshot())
+        for action in [PubkyProfileManager.RemovalAction.deleteProfile, .unlink] {
+            duringEligibility = nil
+            eligibilityChecks = 0
+            let manager = makeManager()
+            let confirmation = try await manager.prepareRemoval(action: action, contacts: contacts())
+            duringEligibility = { throw PubkyServiceError.activeSubscription(endsAt: nil) }
+            do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Confirmation must recheck subscription eligibility") }
+            catch PubkyServiceError.activeSubscription {}
+            XCTAssertEqual(eligibilityChecks, 2)
+            XCTAssertTrue(steps.isEmpty)
+            XCTAssertNil(pauseID)
+            XCTAssertNil(try store.pending())
+            XCTAssertNotNil(manager.currentSession)
+            XCTAssertNoThrow(try admission.snapshot())
+        }
     }
 
     func testCancelledConfirmationDuringEligibilityCannotReserveRemoval() async throws {
