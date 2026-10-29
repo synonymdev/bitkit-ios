@@ -115,6 +115,7 @@ class BackupService {
     private var runningBackupTasks: [BackupCategory: Task<BackupOutcome, Never>] = [:]
     @MainActor private var cancellables = Set<AnyCancellable>()
     private var observationGeneration: UInt64 = 0
+    private var observationRequestGeneration: UInt64 = 0
     private var periodicCheckTask: Task<Void, Never>?
     private var isObserving = false
     private var isRestoring = false
@@ -283,55 +284,70 @@ class BackupService {
     @discardableResult
     func startObservingBackups() -> Task<Void, Never>? {
         guard !shouldSkipBackup() else { return nil }
-        let foregroundGeneration = stateQueue.sync { foregroundObservationGeneration }
+        let request = nextObservationRequest()
 
         return Task {
-            let generation = try? await ServiceQueue.background(.backup) { () -> UInt64? in
+            let observation = try? await ServiceQueue.background(.backup) { () -> (generation: UInt64, foregroundGeneration: UInt64)? in
                 guard !self.isObserving, !self.shouldSkipBackup(),
-                      self.stateQueue.sync(execute: { self.foregroundObservationGeneration == foregroundGeneration })
+                      self.stateQueue.sync(execute: { self.observationRequestGeneration == request })
                 else { return nil }
                 self.isObserving = true
-                let generation = self.stateQueue.sync {
+                let observation = self.stateQueue.sync {
                     self.observationGeneration &+= 1
-                    return self.observationGeneration
+                    return (generation: self.observationGeneration, foregroundGeneration: self.foregroundObservationGeneration)
                 }
                 self.startPeriodicBackupFailureCheck()
-                return generation
+                return observation
             }
 
-            guard let generation else { return }
+            guard let observation else { return }
 
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
-            await installBackupObservers(generation: generation, foregroundGeneration: foregroundGeneration)
+            await installBackupObservers(generation: observation.generation, foregroundGeneration: observation.foregroundGeneration)
         }
     }
 
     func stopObservingBackups() async {
-        let stopped = try? await ServiceQueue.background(.backup) {
-            let wasObserving = self.isObserving
-            self.isObserving = false
-            let generation = self.stateQueue.sync {
-                self.foregroundObservationGeneration &+= 1
-                self.observationGeneration &+= 1
-                return self.observationGeneration
+        await requestStopObservingBackups().value
+    }
+
+    @discardableResult
+    func requestStopObservingBackups() -> Task<Void, Never> {
+        let request = nextObservationRequest()
+        return Task {
+            let stopped = try? await ServiceQueue.background(.backup) { () -> (wasObserving: Bool, generation: UInt64)? in
+                guard self.stateQueue.sync(execute: { self.observationRequestGeneration == request }) else { return nil }
+                let wasObserving = self.isObserving
+                self.isObserving = false
+                let generation = self.stateQueue.sync {
+                    self.foregroundObservationGeneration &+= 1
+                    self.observationGeneration &+= 1
+                    return self.observationGeneration
+                }
+
+                self.backupJobs.values.forEach { $0.cancel() }
+                self.backupJobs.removeAll()
+                self.runningBackupTasks.values.forEach { $0.cancel() }
+                self.runningBackupTasks.removeAll()
+                self.periodicCheckTask?.cancel()
+                self.periodicCheckTask = nil
+                return (wasObserving: wasObserving, generation: generation)
             }
 
-            self.backupJobs.values.forEach { $0.cancel() }
-            self.backupJobs.removeAll()
-            self.runningBackupTasks.values.forEach { $0.cancel() }
-            self.runningBackupTasks.removeAll()
-            self.periodicCheckTask?.cancel()
-            self.periodicCheckTask = nil
-            return (wasObserving: wasObserving, generation: generation)
-        }
-
-        await walletBackupWriter.waitUntilIdle()
-        await usdtBackupWriter.waitUntilIdle()
-        if let stopped {
+            await walletBackupWriter.waitUntilIdle()
+            await usdtBackupWriter.waitUntilIdle()
+            guard let stopped else { return }
             await removeBackupObservers(generation: stopped.generation)
+            guard stopped.wasObserving else { return }
+            Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
         }
-        guard stopped?.wasObserving == true else { return }
-        Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
+    }
+
+    private func nextObservationRequest() -> UInt64 {
+        stateQueue.sync {
+            observationRequestGeneration &+= 1
+            return observationRequestGeneration
+        }
     }
 
     @discardableResult

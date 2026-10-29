@@ -1298,9 +1298,7 @@ struct AppScene: View {
                 await refreshIncomingPaykitPaymentRequests(onlyWhileActive: true)
             }
         } else {
-            Task {
-                await BackupService.shared.stopObservingBackups()
-            }
+            BackupService.shared.requestStopObservingBackups()
         }
     }
 

@@ -167,6 +167,124 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testNewerObservationStartSurvivesQueuedStop() async throws {
+        let fixture = try Fixture(categories: [])
+        defer { fixture.removeDefaults() }
+        let service = fixture.service(uploadBackup: { _, _ in XCTFail("Observation must not upload") })
+        await service.startObservingBackups()?.value
+        let releaseQueue = await holdBackupQueue()
+        defer { releaseQueue.signal() }
+
+        let stop = service.requestStopObservingBackups()
+        let restart = service.startObservingBackups()
+        releaseQueue.signal()
+        await stop.value
+        await restart?.value
+
+        XCTAssertNoThrow(try Bitkit.WatchOnlyAccountStore.save([], defaults: fixture.defaults))
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired,
+                      "A start requested after stop must keep observing wallet changes")
+        await service.stopObservingBackups()
+    }
+
+    func testNewerObservationStopRejectsQueuedStart() async throws {
+        let fixture = try Fixture(categories: [])
+        defer { fixture.removeDefaults() }
+        let service = fixture.service(uploadBackup: { _, _ in XCTFail("Stopped observation must not upload") })
+        let releaseQueue = await holdBackupQueue()
+        defer { releaseQueue.signal() }
+
+        let start = service.startObservingBackups()
+        let stop = service.requestStopObservingBackups()
+        releaseQueue.signal()
+        await start?.value
+        await stop.value
+
+        XCTAssertNoThrow(try Bitkit.WatchOnlyAccountStore.save([], defaults: fixture.defaults))
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).isRequired,
+                       "A start requested before stop must not install listeners afterward")
+        await service.stopObservingBackups()
+    }
+
+    func testRepeatedObservationStartsPreserveWalletChangeListener() async throws {
+        let fixture = try Fixture(categories: [])
+        defer { fixture.removeDefaults() }
+        let service = fixture.service(uploadBackup: { _, _ in XCTFail("Observation must not upload") })
+        let releaseQueue = await holdBackupQueue()
+        defer { releaseQueue.signal() }
+
+        let firstStart = service.startObservingBackups()
+        let secondStart = service.startObservingBackups()
+        releaseQueue.signal()
+        await firstStart?.value
+        await secondStart?.value
+
+        XCTAssertNoThrow(try Bitkit.WatchOnlyAccountStore.save([], defaults: fixture.defaults))
+        XCTAssertTrue(service.getBackupStatus(category: .wallet).isRequired)
+        await service.stopObservingBackups()
+    }
+
+    func testSupersededObservationStopWaitsForActiveUpload() async throws {
+        let fixture = try Fixture(categories: [])
+        defer { fixture.removeDefaults() }
+        let uploadStarted = expectation(description: "Wallet upload is held")
+        let uploadCancelled = expectation(description: "Latest stop cancelled the held upload")
+        let stopCompleted = expectation(description: "Superseded stop must wait for the upload")
+        stopCompleted.isInverted = true
+        let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
+        let heldUpload = Task { for await _ in uploadGate {} }
+        defer {
+            releaseUpload.finish()
+            heldUpload.cancel()
+        }
+        let service = fixture.service(uploadBackup: { key, _ in
+            XCTAssertEqual(key, BackupCategory.wallet.rawValue)
+            await withTaskCancellationHandler {
+                uploadStarted.fulfill()
+                await heldUpload.value
+            } onCancel: {
+                uploadCancelled.fulfill()
+            }
+        })
+        await service.startObservingBackups()?.value
+        let upload = Task { await service.triggerBackup(category: .wallet) }
+        await fulfillment(of: [uploadStarted], timeout: 2)
+        service.setWiping(true)
+        defer { service.setWiping(false) }
+        let releaseQueue = await holdBackupQueue()
+        defer { releaseQueue.signal() }
+
+        let firstStop = service.requestStopObservingBackups()
+        let secondStop = service.requestStopObservingBackups()
+        let uploadState = HeldUploadState()
+        let firstCompletion = Task {
+            await firstStop.value
+            if uploadState.isHeld {
+                stopCompleted.fulfill()
+            }
+        }
+        releaseQueue.signal()
+        await fulfillment(of: [uploadCancelled], timeout: 2)
+        await fulfillment(of: [stopCompleted], timeout: 0.2)
+        uploadState.isHeld = false
+
+        releaseUpload.finish()
+        _ = await upload.value
+        await firstCompletion.value
+        await secondStop.value
+    }
+
+    private func holdBackupQueue() async -> DispatchSemaphore {
+        let entered = expectation(description: "Backup queue is held before lifecycle requests")
+        let release = DispatchSemaphore(value: 0)
+        Bitkit.ServiceQueue.ServiceTypes.backup.queue.async {
+            entered.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 5), .success)
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        return release
+    }
+
     func testStoppingRecoveryRetainsPendingBackupAndDoesNotUpload() async throws {
         let fixture = try Fixture(categories: [.settings])
         defer { fixture.removeDefaults() }
@@ -561,4 +679,9 @@ private actor UploadRecorder {
     func record(_ key: String) {
         counts[key, default: 0] += 1
     }
+}
+
+@MainActor
+private final class HeldUploadState {
+    var isHeld = true
 }
