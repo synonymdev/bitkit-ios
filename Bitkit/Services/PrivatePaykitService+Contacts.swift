@@ -1,5 +1,6 @@
 import Foundation
 import Paykit
+import UIKit
 
 // MARK: - Saved Contacts
 
@@ -14,12 +15,13 @@ extension PrivatePaykitService {
     }
 
     struct EndpointPublicationOperations {
-        let currentPublicKey: () async -> String?
+        let currentPublicKey: () async throws -> String?
         let ensureLink: (_ publicKey: String) async throws -> LinkedPeerState
         let buildEndpoints: (_ publicKey: String) async throws -> [PublicPaykitService.Endpoint]
         let syncPaymentLists: (_ updates: [PrivatePaymentListReservationUpdateInput]) async throws -> PrivatePaymentListDeliveryReport
         var linkedPeers: () async throws -> [LinkedPeerRecord] = { [] }
-        var canPublish: () async -> Bool = { true }
+        var canPublish: () async throws -> Bool = { true }
+        var isApplicationActive: () async -> Bool = { true }
     }
 
     struct PrivateMessageDrainOperations {
@@ -45,6 +47,7 @@ extension PrivatePaykitService {
     struct PrivateMessageRetryOperations {
         var now: () -> Date = Date.init
         var sleep: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+        var shouldDeferRefresh: () async -> Bool = { await PaykitPaymentActivity.shared.shouldDeferRefresh }
         var currentPublicKey: (PaykitSdkOperationLock.Priority) async throws -> String? = {
             try await PaykitSdkService.shared.identityStatus(priority: $0)?.publicKey
         }
@@ -129,7 +132,7 @@ extension PrivatePaykitService {
             return await prepareSavedContacts(
                 publicKeys,
                 publicationUnavailableReason: privateEndpointPublicationUnavailabilityReason(wallet: wallet),
-                prepareLinks: { await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
+                prepareLinks: { try? await self.prepareRelevantPrivateLinksIfAvailable($0, reason: "prepare") },
                 publishEndpoints: { publicKeys in
                     await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                     return await self.syncLocalEndpointPublication(
@@ -303,6 +306,22 @@ extension PrivatePaykitService {
         return generation == preparationGeneration && !Task.isCancelled
     }
 
+    private func waitForForeground(generation: Int, isApplicationActive: () async -> Bool) async -> Bool {
+        guard generation == preparationGeneration, !Task.isCancelled else { return false }
+        let id = UUID()
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        backgroundWorkWaiters[id] = continuation
+        defer {
+            backgroundWorkWaiters.removeValue(forKey: id)
+            continuation.finish()
+        }
+        if await isApplicationActive() {
+            continuation.finish()
+        }
+        for await _ in stream {}
+        return generation == preparationGeneration && !Task.isCancelled
+    }
+
     private func resumeBackgroundWorkWaiters() {
         let waiters = backgroundWorkWaiters.values
         backgroundWorkWaiters.removeAll()
@@ -330,33 +349,66 @@ extension PrivatePaykitService {
         reason: String = "refresh",
         isSessionCurrent: (@MainActor () -> Bool)? = nil
     ) async -> Error? {
-        if let isSessionCurrent, await !isSessionCurrent() {
-            return nil
-        }
         let generation = preparationGeneration
-        if !requireImmediatePublication, await !waitForBackgroundWork(generation: generation) {
-            return nil
-        }
         let operations = endpointPublicationOperations(
             wallet: wallet,
             forceRefreshLightning: forceRefreshLightning,
             readPriority: requireImmediatePublication ? .ordered : .background
         )
-        guard await operations.canPublish() else {
-            await prepareRelevantPrivateLinksIfAvailable(publicKeys, reason: reason, isBackgroundWork: !requireImmediatePublication)
-            return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
+        var expectedIdentity: String?
+        while !Task.isCancelled, generation == preparationGeneration {
+            if !requireImmediatePublication {
+                do {
+                    try await PaykitPaymentActivity.shared.waitUntilIdle(includingReviews: true)
+                } catch {
+                    return nil
+                }
+                guard await waitForBackgroundWork(generation: generation) else { return nil }
+            }
+            if let isSessionCurrent, await !isSessionCurrent() {
+                return nil
+            }
+            guard generation == preparationGeneration else { return nil }
+            do {
+                guard try await operations.canPublish() else {
+                    if !requireImmediatePublication, await !operations.isApplicationActive() {
+                        guard await waitForForeground(generation: generation, isApplicationActive: operations.isApplicationActive) else { return nil }
+                        continue
+                    }
+                    try await prepareRelevantPrivateLinksIfAvailable(
+                        publicKeys, reason: reason, isBackgroundWork: !requireImmediatePublication,
+                        currentPublicKey: operations.currentPublicKey
+                    )
+                    return requireImmediatePublication && !publicKeys.isEmpty ? PrivatePaykitError.privateUnavailable : nil
+                }
+                guard generation == preparationGeneration else {
+                    return requireImmediatePublication ? PrivatePaykitError.privateUnavailable : nil
+                }
+                guard !normalizedSavedContactKeys(publicKeys).isEmpty else { return nil }
+                guard let identity = try await operations.currentPublicKey() else {
+                    return requireImmediatePublication ? PubkyServiceError.sessionNotActive : nil
+                }
+                guard generation == preparationGeneration else {
+                    return requireImmediatePublication ? PrivatePaykitError.privateUnavailable : nil
+                }
+                if let expectedIdentity, expectedIdentity != identity {
+                    return requireImmediatePublication ? PubkyServiceError.identityChanged : nil
+                }
+                expectedIdentity = identity
+                let error = await syncLocalEndpointPublication(
+                    for: publicKeys, reason: reason, requireImmediatePublication: requireImmediatePublication,
+                    isSessionCurrent: isSessionCurrent, operations: operations, expectedIdentity: identity
+                )
+                guard !requireImmediatePublication, case PaykitPaymentRequestError.operationInProgress? = error else { return error }
+            } catch PaykitPaymentRequestError.operationInProgress {
+                if requireImmediatePublication {
+                    return PaykitPaymentRequestError.operationInProgress
+                }
+            } catch {
+                return error
+            }
         }
-        guard generation == preparationGeneration else {
-            return requireImmediatePublication ? PrivatePaykitError.privateUnavailable : nil
-        }
-
-        return await syncLocalEndpointPublication(
-            for: publicKeys,
-            reason: reason,
-            requireImmediatePublication: requireImmediatePublication,
-            isSessionCurrent: isSessionCurrent,
-            operations: operations
-        )
+        return nil
     }
 
     func removePublishedEndpoints(
@@ -369,7 +421,7 @@ extension PrivatePaykitService {
             operations: EndpointCleanupOperations(
                 linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
                 clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0, isSessionCurrent: isSessionCurrent) },
-                drainMessages: { await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
+                drainMessages: { _ = await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
                 pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
                 syncApp: { try await PublicPaykitService.syncPaykitApp() }
             )
@@ -714,7 +766,7 @@ extension PrivatePaykitService {
         }
         return EndpointPublicationOperations(
             currentPublicKey: {
-                await PubkyService.currentPublicKey()
+                try await PubkyService.currentPublicKey(priority: readPriority)
             },
             ensureLink: { publicKey in
                 try await PaykitSdkService.shared.ensureLinkWithPeer(publicKey, priority: readPriority).state
@@ -729,11 +781,13 @@ extension PrivatePaykitService {
             syncPaymentLists: { updates in
                 try await PaykitSdkService.shared.syncPrivatePaymentListsWithReservations(
                     updates,
-                    clearUnlistedLinkedPeers: false
+                    clearUnlistedLinkedPeers: false,
+                    isBackgroundWork: readPriority == .background
                 )
             },
             linkedPeers: { try await PaykitSdkService.shared.linkedPeers(priority: readPriority) },
-            canPublish: { await self.canPublishPrivateEndpoints(wallet: wallet) }
+            canPublish: { try await self.privateEndpointPublicationUnavailabilityReason(wallet: wallet, priority: readPriority) == nil },
+            isApplicationActive: { await MainActor.run { UIApplication.shared.applicationState == .active } }
         )
     }
 
@@ -742,7 +796,8 @@ extension PrivatePaykitService {
         reason: String,
         requireImmediatePublication: Bool,
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
-        operations: EndpointPublicationOperations
+        operations: EndpointPublicationOperations,
+        expectedIdentity: String? = nil
     ) async -> Error? {
         let publicKeys = normalizedSavedContactKeys(publicKeys)
         guard !publicKeys.isEmpty else { return nil }
@@ -751,8 +806,18 @@ extension PrivatePaykitService {
         if !requireImmediatePublication, await !waitForBackgroundWork(generation: generation) {
             return nil
         }
-        guard let identity = await operations.currentPublicKey() else {
-            return requireImmediatePublication ? PubkyServiceError.sessionNotActive : nil
+        let identity: String
+        if let expectedIdentity {
+            identity = expectedIdentity
+        } else {
+            do {
+                guard let currentIdentity = try await operations.currentPublicKey() else {
+                    return requireImmediatePublication ? PubkyServiceError.sessionNotActive : nil
+                }
+                identity = currentIdentity
+            } catch {
+                return error
+            }
         }
 
         var firstError: Error?
@@ -764,6 +829,8 @@ extension PrivatePaykitService {
                 return nil
             }
             peerStates = try await Dictionary(uniqueKeysWithValues: operations.linkedPeers().map { ($0.counterparty, $0.state) })
+        } catch PaykitPaymentRequestError.operationInProgress {
+            return PaykitPaymentRequestError.operationInProgress
         } catch {
             Logger.warn("Failed to read private Paykit links during \(reason): \(error)", context: "PrivatePaykit")
             return requireImmediatePublication ? error : nil
@@ -788,6 +855,8 @@ extension PrivatePaykitService {
                     linkRetryKeys.append(publicKey)
                 }
                 unavailableLinkRetryAt[publicKey] = nil
+            } catch PaykitPaymentRequestError.operationInProgress {
+                return PaykitPaymentRequestError.operationInProgress
             } catch PaykitError.NotFound {
                 unavailableLinkRetryAt[publicKey] = messageRetryOperations.now().addingTimeInterval(5 * 60)
                 continue
@@ -824,7 +893,7 @@ extension PrivatePaykitService {
                     throw PubkyServiceError.sessionNotActive
                 }
                 guard generation == preparationGeneration,
-                      await operations.currentPublicKey() == identity,
+                      try await operations.currentPublicKey() == identity,
                       !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
                 else { throw PrivatePaykitError.privateUnavailable }
                 var updates = [PrivatePaymentListReservationUpdateInput]()
@@ -857,12 +926,21 @@ extension PrivatePaykitService {
                 let retryKeys = linkRetryKeys + privatePaymentListDeliveryRetryKeys(from: report)
                 schedulePendingPrivateMessageDrainRetries(reason: reason, retryKeys: retryKeys)
             }
+        } catch PaykitPaymentRequestError.operationInProgress {
+            return PaykitPaymentRequestError.operationInProgress
         } catch {
             Logger.warn("Failed to sync private Paykit endpoint publications during \(reason): \(error)", context: "PrivatePaykit")
             firstError = firstError ?? error
             if !linkRetryKeys.isEmpty {
                 let sessionIsCurrent = await isSessionCurrent?() ?? true
-                let currentIdentity = await operations.currentPublicKey()
+                let currentIdentity: String?
+                do {
+                    currentIdentity = try await operations.currentPublicKey()
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    return PaykitPaymentRequestError.operationInProgress
+                } catch {
+                    currentIdentity = nil
+                }
                 if !Task.isCancelled, sessionIsCurrent, generation == preparationGeneration, currentIdentity == identity,
                    !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey)
                 {
@@ -876,42 +954,44 @@ extension PrivatePaykitService {
         return requireImmediatePublication ? firstError : nil
     }
 
-    private func prepareRelevantPrivateLinksIfAvailable(_ publicKeys: [String], reason: String, isBackgroundWork: Bool = false) async {
+    private func prepareRelevantPrivateLinksIfAvailable(
+        _ publicKeys: [String],
+        reason: String,
+        isBackgroundWork: Bool = false,
+        currentPublicKey: () async throws -> String? = { await PubkyService.currentPublicKey() }
+    ) async throws {
         let generation = preparationGeneration
         if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
             return
         }
-        guard !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey), await canUsePrivateLinks(), generation == preparationGeneration,
-              !Task.isCancelled else { return }
+        guard !UserDefaults.standard.bool(forKey: Self.cleanupPendingKey), PaykitFeatureFlags.isUIEnabled,
+              let ownPublicKey = try await currentPublicKey(), PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey),
+              generation == preparationGeneration, !Task.isCancelled else { return }
 
-        await drainAndSchedulePrivateLinkRetries(
+        try await drainAndSchedulePrivateLinkRetries(
             reason: reason,
-            retryKeys: normalizedSavedContactKeys(publicKeys),
+            retryKeys: normalizedSavedContactKeys(publicKeys).filter { knownSavedContactKeys.contains($0) },
             isBackgroundWork: isBackgroundWork
         )
     }
 
-    private func canUsePrivateLinks() async -> Bool {
-        guard PaykitFeatureFlags.isUIEnabled,
-              let ownPublicKey = await PubkyService.currentPublicKey()
-        else { return false }
-
-        return PubkyProfileManager.hasLocalSecretKey(for: ownPublicKey)
-    }
-
-    private func drainAndSchedulePrivateLinkRetries(reason: String, retryKeys: [String], isBackgroundWork: Bool) async {
+    private func drainAndSchedulePrivateLinkRetries(reason: String, retryKeys: [String], isBackgroundWork: Bool) async throws {
         let generation = preparationGeneration
         let priority: PaykitSdkOperationLock.Priority = isBackgroundWork ? .background : .ordered
         let retryKeys = Array(Set(retryKeys).subtracting(pendingMessageDrainRetryKeys))
         guard !retryKeys.isEmpty else { return }
 
-        let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys, retryMissingPeers: true, priority: priority)
+        let operations = messageRetryOperations.drain(priority)
+        let drainKeys = await pendingPrivateMessageDrainKeys(retryKeys, retryMissingPeers: true, priority: priority, operations: operations)
         guard generation == preparationGeneration, !Task.isCancelled, !drainKeys.isEmpty else { return }
 
-        await drainPendingPrivateMessages(
-            reason: reason, advancing: Array(drainKeys), isBackgroundWork: isBackgroundWork, operations: .live(readPriority: priority)
-        )
-        let pendingRetryKeys = await pendingPrivateMessageDrainKeys(Array(drainKeys), priority: priority)
+        if let deferral = await drainPendingPrivateMessages(
+            reason: reason, advancing: Array(drainKeys), isBackgroundWork: isBackgroundWork, operations: operations
+        ) {
+            throw deferral
+        }
+        guard generation == preparationGeneration, !Task.isCancelled else { return }
+        let pendingRetryKeys = await pendingPrivateMessageDrainKeys(Array(drainKeys), priority: priority, operations: operations)
         guard generation == preparationGeneration, !Task.isCancelled else { return }
         if !pendingRetryKeys.isEmpty {
             schedulePendingPrivateMessageDrainRetries(reason: reason, retryKeys: Array(pendingRetryKeys))
@@ -922,6 +1002,7 @@ extension PrivatePaykitService {
         normalizedSavedContactKeys((report.queued + report.cleared).map(\.counterparty) + report.failedToDeliver.map(\.counterparty))
     }
 
+    @discardableResult
     func drainPendingPrivateMessages(
         reason: String,
         advancing retryKeys: [String],
@@ -930,16 +1011,16 @@ extension PrivatePaykitService {
         schedulingSnapshot: PrivateMessageSchedulingSnapshot? = nil,
         isCurrent: () async -> Bool = { true },
         onReceived: (Set<String>) -> Void = { _ in }
-    ) async {
+    ) async -> PaykitPaymentRequestError? {
         var retryKeys = Set(retryKeys.map { PubkyPublicKeyFormat.normalized($0) ?? $0 })
-        guard !retryKeys.isEmpty, !Task.isCancelled else { return }
+        guard !retryKeys.isEmpty, !Task.isCancelled else { return nil }
         let generation = preparationGeneration
         var receivedKeys = Set<String>()
         do {
             if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
-                return
+                return nil
             }
-            guard await isCurrent() else { return }
+            guard await isCurrent() else { return nil }
             let peers: [LinkedPeerRecord] = if let schedulingSnapshot, isSchedulingSnapshotCurrent(schedulingSnapshot) {
                 schedulingSnapshot.peers
             } else {
@@ -953,9 +1034,9 @@ extension PrivatePaykitService {
             })
             for retryKey in retryKeys.sorted() {
                 if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
-                    return
+                    return nil
                 }
-                guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return }
+                guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return nil }
                 if alreadyLinkedKeys.contains(retryKey) {
                     continue
                 }
@@ -968,6 +1049,8 @@ extension PrivatePaykitService {
                     if generation == preparationGeneration, !Task.isCancelled {
                         unavailableLinkRetryAt[retryKey] = messageRetryOperations.now().addingTimeInterval(5 * 60)
                     }
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    throw PaykitPaymentRequestError.operationInProgress
                 } catch {
                     Logger.warn(
                         "Failed to advance private Paykit link for \(PubkyPublicKeyFormat.redacted(retryKey)) during \(reason): \(error)",
@@ -976,17 +1059,19 @@ extension PrivatePaykitService {
                 }
             }
             if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
-                return
+                return nil
             }
-            guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return }
+            guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return nil }
             let pendingKeys = try await retryKeys.intersection(operations.pendingOutbound().map { PubkyPublicKeyFormat.normalized($0) ?? $0 })
             for publicKey in pendingKeys.sorted() {
                 if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
-                    return
+                    return nil
                 }
-                guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return }
+                guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return nil }
                 do {
                     try await operations.processPending(publicKey)
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    throw PaykitPaymentRequestError.operationInProgress
                 } catch {
                     Logger.warn(
                         "Failed to send private Paykit messages during \(reason): \(PaykitResolutionFailureDiagnostics.reason(for: error))",
@@ -995,20 +1080,22 @@ extension PrivatePaykitService {
                 }
             }
             if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
-                return
+                return nil
             }
-            guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return }
+            guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return nil }
             let linkedKeys = try await Set(operations.linkedPeers().filter { $0.state == .linked }.map {
                 PubkyPublicKeyFormat.normalized($0.counterparty) ?? $0.counterparty
             })
             for publicKey in retryKeys.intersection(linkedKeys).sorted() {
                 if isBackgroundWork, await !waitForBackgroundWork(generation: generation) {
-                    return
+                    return nil
                 }
-                guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return }
+                guard generation == preparationGeneration, !Task.isCancelled, await isCurrent() else { return nil }
                 do {
                     try await operations.receive(publicKey)
                     receivedKeys.insert(publicKey)
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    throw PaykitPaymentRequestError.operationInProgress
                 } catch {
                     Logger.warn(
                         "Failed to receive private Paykit messages during \(reason): \(PaykitResolutionFailureDiagnostics.reason(for: error))",
@@ -1016,10 +1103,14 @@ extension PrivatePaykitService {
                     )
                 }
             }
+        } catch PaykitPaymentRequestError.operationInProgress {
+            onReceived(receivedKeys)
+            return .operationInProgress
         } catch {
             Logger.warn("Failed to process pending private Paykit messages during \(reason): \(error)", context: "PrivatePaykit")
         }
         onReceived(receivedKeys)
+        return nil
     }
 
     private func withLinkPreparation<T>(_ publicKey: String, operation: () async throws -> T) async throws -> T? {
@@ -1105,11 +1196,13 @@ extension PrivatePaykitService {
             while !Task.isCancelled, retryGeneration == pendingMessageDrainRetryGeneration {
                 guard await waitForBackgroundWork(generation: preparationGeneration) else { break }
                 guard retryGeneration == pendingMessageDrainRetryGeneration else { return }
+                let shouldDeferBackground = await messageRetryOperations.shouldDeferRefresh()
+                guard !Task.isCancelled, retryGeneration == pendingMessageDrainRetryGeneration else { break }
                 let now = messageRetryOperations.now()
                 let due = pendingMessageDrainRetries.filter { $0.value.nextAttemptAt <= now }
                 let foreground = due.filter { $0.value.priority(at: now) == .interactive }
                 let background = due.filter { $0.value.priority(at: now) == .background }
-                let candidates = !foreground.isEmpty && (foregroundAttempts < 3 || background.isEmpty)
+                let candidates = !foreground.isEmpty && (shouldDeferBackground || foregroundAttempts < 3 || background.isEmpty)
                     ? foreground : (background.isEmpty ? pendingMessageDrainRetries : background)
                 guard let next = candidates.min(by: {
                     if $0.value.nextAttemptAt == $1.value.nextAttemptAt {
@@ -1117,6 +1210,31 @@ extension PrivatePaykitService {
                     }
                     return $0.value.nextAttemptAt < $1.value.nextAttemptAt
                 }) else { break }
+                if next.value.priority(at: now) == .background, shouldDeferBackground {
+                    schedulingSnapshot = nil
+                    let foregroundDeadline = pendingMessageDrainRetries.values
+                        .filter { $0.priority(at: now) == .interactive }
+                        .map(\.nextAttemptAt).min()
+                    let sleep = messageRetryOperations.sleep
+                    let idle = Task {
+                        await withTaskGroup(of: Void.self) { group in
+                            group.addTask { _ = try? await PaykitPaymentActivity.shared.waitUntilIdle(includingReviews: true) }
+                            if let foregroundDeadline {
+                                let delay = max(0, foregroundDeadline.timeIntervalSince(now))
+                                group.addTask { _ = try? await sleep(UInt64(delay * 1_000_000_000)) }
+                            }
+                            await group.next()
+                            group.cancelAll()
+                        }
+                    }
+                    pendingMessageDrainRetrySleep = idle
+                    await withTaskCancellationHandler {
+                        await idle.value
+                    } onCancel: { idle.cancel() }
+                    guard retryGeneration == pendingMessageDrainRetryGeneration else { return }
+                    pendingMessageDrainRetrySleep = nil
+                    continue
+                }
                 let delay = next.value.nextAttemptAt.timeIntervalSince(now)
                 if delay > 0 {
                     schedulingSnapshot = nil
@@ -1152,6 +1270,7 @@ extension PrivatePaykitService {
         guard let retry = pendingMessageDrainRetries[publicKey] else { return }
         let generation = preparationGeneration
         var identityInspectionFailed = false
+        var wasDeferred = false
         var linkUnavailable = retry.isMissing
         var inspectedSchedulingGeneration: Int?
         defer {
@@ -1159,7 +1278,7 @@ extension PrivatePaykitService {
                pendingMessageDrainRetries[publicKey]?.foregroundUntil == retry.foregroundUntil
             {
                 pendingMessageDrainRetries[publicKey]?.isMissing = linkUnavailable
-                if identityInspectionFailed {
+                if identityInspectionFailed, !wasDeferred {
                     pendingMessageDrainRetries[publicKey]?.completeAttempt(at: messageRetryOperations.now())
                 }
             }
@@ -1174,6 +1293,10 @@ extension PrivatePaykitService {
                         guard try await self.messageRetryOperations.currentPublicKey(priority) == identity else { return false }
                     } catch {
                         identityInspectionFailed = true
+                        if case PaykitPaymentRequestError.operationInProgress = error {
+                            wasDeferred = true
+                            return false
+                        }
                         Logger.warn(
                             "Failed to inspect private Paykit identity during \(reason): \(PaykitResolutionFailureDiagnostics.reason(for: error))",
                             context: "PrivatePaykit"
@@ -1226,7 +1349,12 @@ extension PrivatePaykitService {
             },
             schedulingSnapshot: {
                 defer { inspectedSchedulingGeneration = nil }
-                return try await self.retryDrainOperations(for: publicKey).schedulingSnapshot()
+                do {
+                    return try await self.retryDrainOperations(for: publicKey).schedulingSnapshot()
+                } catch PaykitPaymentRequestError.operationInProgress {
+                    wasDeferred = true
+                    throw PaykitPaymentRequestError.operationInProgress
+                }
             },
             processPending: {
                 defer { inspectedSchedulingGeneration = nil }
@@ -1251,18 +1379,23 @@ extension PrivatePaykitService {
             }
             drainKeys = schedulingSnapshot?.drainKeys([publicKey]) ?? [publicKey]
         }
-        guard await isCurrent() else { return }
+        guard !wasDeferred, await isCurrent() else { return }
         var received = Set<String>()
-        await drainPendingPrivateMessages(
+        let deferral = await drainPendingPrivateMessages(
             reason: reason, advancing: Array(drainKeys),
             isBackgroundWork: true, operations: operations, schedulingSnapshot: schedulingSnapshot,
             isCurrent: isCurrent, onReceived: { received = $0 }
         )
         guard await waitForBackgroundWork(generation: generation), await isCurrent() else { return }
+        if deferral != nil {
+            schedulingSnapshot = nil
+            return
+        }
         // Post-mutation reads stay fresh; only the next due peer's scheduling can reuse them.
         schedulingSnapshot = await readPrivateMessageSchedulingSnapshot(
             priority: .background, operations: operations, isCurrent: isCurrent
         )
+        guard !wasDeferred else { return }
         schedulingSnapshot?.expectedIdentity = retry.expectedIdentity
         if schedulingSnapshot?.peers.contains(where: {
             $0.state == .linked && PubkyPublicKeyFormat.normalized($0.counterparty) == publicKey
@@ -1342,6 +1475,8 @@ extension PrivatePaykitService {
                 pendingOutbound: Set(snapshot.pendingOutboundCounterparties.compactMap(PubkyPublicKeyFormat.normalized)),
                 preparationGeneration: generation, schedulingGeneration: schedulingGeneration
             )
+        } catch PaykitPaymentRequestError.operationInProgress {
+            return nil
         } catch {
             Logger.warn("Failed to inspect private Paykit scheduling state: \(error)", context: "PrivatePaykit")
             return nil

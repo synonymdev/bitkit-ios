@@ -54,22 +54,13 @@ extension PrivatePaykitService {
                 return try await PublicPaykitService.beginPayment(to: publicKey)
             }
 
-            if prePaymentPublicationKeys.insert(normalizedKey).inserted {
-                let scope = try profileAdmission.capture()
-                Task {
-                    defer {
-                        prePaymentPublicationKeys.remove(normalizedKey)
-                        profileAdmission.release(scope)
-                    }
-                    guard (try? profileAdmission.validate(scope)) != nil,
-                          await canPublishPrivateEndpoints(wallet: wallet) else { return }
-                    _ = await refreshSavedContactEndpointsReturningError(
-                        for: [normalizedKey],
-                        wallet: wallet,
-                        forceRefreshLightning: false,
-                        requireImmediatePublication: false
-                    )
-                }
+            try schedulePrePaymentPublication(for: normalizedKey) {
+                _ = await self.refreshSavedContactEndpointsReturningError(
+                    for: [normalizedKey],
+                    wallet: wallet,
+                    forceRefreshLightning: false,
+                    requireImmediatePublication: false
+                )
             }
 
             var result = try await beginContactPayment(to: normalizedKey)
@@ -80,6 +71,31 @@ extension PrivatePaykitService {
             }
             return result
         }
+    }
+
+    /// Retain the original profile owner while publication waits, and let removal cancel that wait before draining it.
+    @discardableResult
+    func schedulePrePaymentPublication(for publicKey: String, operation: @escaping () async -> Void) throws -> Task<Void, Never>? {
+        guard prePaymentPublicationKeys.insert(publicKey).inserted else { return nil }
+        let admission = profileAdmission
+        let scope: ProfileOperationAdmission.Scope
+        do { scope = try admission.capture() }
+        catch {
+            prePaymentPublicationKeys.remove(publicKey)
+            throw error
+        }
+        let id = UUID()
+        let task = Task {
+            defer {
+                prePaymentPublicationKeys.remove(publicKey)
+                admission.removeCancellationHandler(from: scope, id: id)
+                admission.release(scope)
+            }
+            do { try await admission.withScope(scope, revokeOnCancellation: false) { await operation() } }
+            catch { Logger.debug("Prepayment publication stopped: \(error)", context: "PrivatePaykit") }
+        }
+        admission.onRevocation(of: scope, id: id) { task.cancel() }
+        return task
     }
 
     func beginPaymentRequest(_ request: PaykitPaymentRequest) async throws -> PublicPaykitPaymentLaunchResult {

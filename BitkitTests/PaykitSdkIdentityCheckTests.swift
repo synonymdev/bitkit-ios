@@ -86,6 +86,95 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testBackgroundReadsRecheckPaymentAdmissionBeforeContentionRetry() async throws {
+        let operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.identityStatus(priority: .background) },
+            { _ = try await $0.linkedPeers(priority: .background) },
+            { _ = try await $0.privateMessageSchedulingSnapshot(priority: .background) },
+        ]
+        for operation in operations {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.readErrors = [sharedStateBusy]
+            sdk.schedulingRead = {
+                await sdk.reads.record()
+                throw sharedStateBusy
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let read = Task { try await operation(service) }
+            try await sdk.reads.waitForEntries(count: 1)
+            let payment = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(payment) }
+            do {
+                try await read.value
+                XCTFail("A new payment must prevent the delayed acquisition retry")
+            } catch PaykitPaymentRequestError.operationInProgress {}
+            let attempts = await sdk.reads.count
+            XCTAssertEqual(attempts, 1)
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
+    func testRevokedProfileReadsDoNotReenterSdkAfterContention() async throws {
+        var operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.readPaymentRequests(counterparty: contactKey, expectedIdentity: nil) },
+        ]
+        for priority in [PaykitSdkOperationLock.Priority.ordered, .background] {
+            operations += [
+                { _ = try await $0.identityStatus(priority: priority) },
+                { _ = try await $0.linkedPeers(priority: priority) },
+                { _ = try await $0.privateMessageSchedulingSnapshot(priority: priority) },
+            ]
+        }
+        for kind in [ProfileOperationAdmission.Kind.removal, .walletWipe] {
+            for operation in operations {
+                let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: directory) }
+                let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+                let admission = ProfileOperationAdmission(store: store)
+                let sdk = IdentitySwitchingSdk(noPointer: .init())
+                sdk.readErrors = [sharedStateBusy]
+                await sdk.readGate.close()
+                sdk.paymentRequestRead = { _, _ in
+                    await sdk.reads.record()
+                    await sdk.readGate.wait()
+                    throw sharedStateBusy
+                }
+                sdk.schedulingRead = {
+                    await sdk.reads.record()
+                    await sdk.readGate.wait()
+                    throw sharedStateBusy
+                }
+                let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk })
+                let read = Task { try await operation(service) }
+                try await sdk.reads.waitForEntries(count: 1)
+                let reservation = try admission.reserve(kind: kind, id: UUID(), expected: admission.snapshot())
+                defer { admission.release(reservation) }
+                let completedDrains = IdentityCheckCallLog()
+                let drain = Task {
+                    try await admission.drain(before: reservation)
+                    await completedDrains.record()
+                }
+                await Task.yield()
+                let prematureDrains = await completedDrains.count
+                XCTAssertEqual(prematureDrains, 0, "The original native tail still owns admission")
+                await sdk.readGate.open()
+                let result = await read.result
+                try await drain.value
+                XCTAssertFalse(read.isCancelled, "Revocation must be checked even without task cancellation")
+                XCTAssertThrowsError(try result.get()) { error in
+                    guard case ProfileRemovalStore.StoreError.changed = error else {
+                        return XCTFail("Expected revoked profile admission, got \(error)")
+                    }
+                }
+                let attempts = await sdk.reads.count
+                XCTAssertEqual(attempts, 1, "A revoked caller must not enter the SDK again")
+                XCTAssertTrue(sdk.writes.isEmpty)
+                XCTAssertNil(try store.pending())
+            }
+        }
+    }
+
     func testPaymentRequestReadRetainsItsRuntimeThroughContentionAndFiltersRecords() async throws {
         let sdk = IdentitySwitchingSdk(noPointer: .init())
         let freshSdk = IdentitySwitchingSdk(noPointer: .init())
@@ -895,6 +984,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var pendingReadErrors: [PaykitError] = []
     private var linkedPeerState: LinkedPeerState = .linked
     let reads = IdentityCheckCallLog()
+    let readGate = IdentityCheckGate()
     var paymentRequestRead: (String, String?) async throws -> PaymentRequestRead = { _, _ in
         PaymentRequestRead(identityStatus: nil, paymentRequests: [])
     }
@@ -975,6 +1065,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     override func identityStatus() async throws -> IdentityStatus? {
         await reads.record()
+        await readGate.wait()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
             throw error
@@ -984,6 +1075,7 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
         await reads.record()
+        await readGate.wait()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
             throw error

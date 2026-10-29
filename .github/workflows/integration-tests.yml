@@ -25,6 +25,12 @@ on:
       retarget_run:
         description: "Retarget status owner (set by e2e-retarget.yml)"
         default: ""
+      workflow_ref:
+        description: "Workflow source recorded for this validation generation"
+        default: master
+      helper_ref:
+        description: "Recovery helper branch or tag"
+        default: master
 
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
@@ -74,6 +80,7 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
         with:
           script: |
             const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
@@ -187,6 +194,7 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
           TEST_RESULT: ${{ needs.test.result }}
         with:
           script: |
