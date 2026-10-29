@@ -798,7 +798,7 @@ struct SubscriptionSheet: View {
             app.paykitReviewedAmount = terms.amount
             route = .payment(.usdt(recipient: recipient, amount: terms.amount.value))
         } else {
-            let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            let sendRoute = PaymentNavigationHelper.requestConfirmationRoute(app: app) ?? .amount
             route = .payment(sendRoute)
         }
     }

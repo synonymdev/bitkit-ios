@@ -220,7 +220,7 @@ final class PaymentNavigationHelperTests: XCTestCase {
         }
     }
 
-    func testQuotedLnurlRequestKeepsFundingSelectionWhenSavingsIsAvailable() throws {
+    func testQuotedLnurlRequestConfirmsWithSavingsAvailable() throws {
         settings.usdtPreference = .disabled
         let lightning = PublicPaykitService.MethodId.bitcoinLightningLnurl
         let onchain = PublicPaykitService.MethodId.regtestOnchainP2wpkh
@@ -251,11 +251,47 @@ final class PaymentNavigationHelperTests: XCTestCase {
                 )
                 XCTAssertEqual(try request.payment(using: onchain).amount.atomic, 5000)
             }
-            XCTAssertEqual(contactPaymentRoute(for: app), offersSavings ? .amount : .lnurlPayConfirm)
+            XCTAssertEqual(contactPaymentRoute(for: app), .lnurlPayConfirm)
+            XCTAssertTrue(SendSheet.requiresLightningReadiness(app: app))
+            let limits: [(UInt64, UInt64, SendRoute)] = [
+                (2_500_001, 100_000_000, .amount),
+                (1000, 2_499_999, .amount),
+                (2_500_000, 2_500_000, .lnurlPayConfirm),
+            ]
+            for (minimum, maximum, route) in limits {
+                app.lnurlPayData = LnurlPayData(
+                    uri: "https://example.com/pay", callback: "https://example.com/callback",
+                    minSendable: minimum, maxSendable: maximum,
+                    metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+                )
+                XCTAssertEqual(contactPaymentRoute(for: app), route)
+            }
+            if offersSavings {
+                app.selectedWalletToPayFrom = .onchain
+                XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+                XCTAssertFalse(SendSheet.requiresLightningReadiness(app: app))
+            }
         }
     }
 
-    func testDollarRequestOffersAssetSelectionOnlyWhenUsdtIsEnabled() async throws {
+    func testNativeBitcoinLnurlRequestConfirmsWithoutCachedTerms() throws {
+        let request = try incomingPaymentRequest(
+            endpointIdentifier: PublicPaykitService.MethodId.bitcoinLightningLnurl.rawValue
+        )
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+        app.lnurlPayData = LnurlPayData(
+            uri: "https://example.com/pay", callback: "https://example.com/callback",
+            minSendable: 1_000_000, maxSendable: 1_000_000,
+            metadataStr: "[]", commentAllowed: nil, allowsNostr: false, nostrPubkey: nil
+        )
+        app.selectedWalletToPayFrom = .lightning
+
+        XCTAssertNil(app.paykitPaymentTerms)
+        XCTAssertEqual(contactPaymentRoute(for: app), .lnurlPayConfirm)
+    }
+
+    func testDollarRequestConfirmsWhetherUsdtIsEnabled() async throws {
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
         let method = PublicPaykitService.onchainMethodId(for: address)
         let request = try incomingPaymentRequest(
@@ -272,8 +308,8 @@ final class PaymentNavigationHelperTests: XCTestCase {
             ])
             XCTAssertTrue(app.claimContactPaymentContext(context))
             try await app.handleScannedData(address, claimedContactPaymentContext: context)
-            XCTAssertEqual(contactPaymentRoute(for: app), enabled ? .amount : .confirm)
-            XCTAssertEqual(app.paykitPaymentTerms == nil, enabled)
+            XCTAssertEqual(contactPaymentRoute(for: app), .confirm)
+            XCTAssertNotNil(app.paykitPaymentTerms)
         }
     }
 

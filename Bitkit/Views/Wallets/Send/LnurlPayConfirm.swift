@@ -9,18 +9,22 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
 
     @Binding var navigationPath: [SendRoute]
     @Binding var isSubmittingPayment: Bool
     let requestPinCheck: () async -> Bool
     let prepareIncomingPaymentRequest: () async throws -> Void
     let routingCacheResetAttempted: Bool
+    var fundingSourceButton: AnyView?
 
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
+    @State private var showDetails = false
+    @State private var swipeProgress: CGFloat = 0
     @State private var hasStartedAutomaticPayment = false
     @FocusState private var isCommentFocused: Bool
 
@@ -98,83 +102,130 @@ struct LnurlPayConfirm: View {
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )
-                .padding(.bottom, 32)
+                .padding(.bottom, 24)
+                if !showDetails, app.contactPaymentContext?.endpoints.count ?? 0 > 1, let fundingSourceButton {
+                    fundingSourceButton.disabled(isSubmittingPayment || hasStartedAutomaticPayment)
+                        .frame(maxWidth: .infinity, alignment: .trailing).padding(.bottom, 16)
+                }
 
-                VStack(spacing: 0) {
-                    VStack(alignment: .leading) {
-                        CaptionMText(t("wallet__send_invoice"))
-                            .padding(.bottom, 8)
-                        BodySSBText(lnurlPayData.uri)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .padding(.vertical)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Divider()
-
-                    VStack(alignment: .leading) {
-                        CaptionMText(t("wallet__send_fee_and_speed"))
-                            .padding(.bottom, 8)
-                        HStack(spacing: 0) {
-                            Image("bolt-hollow")
-                                .foregroundColor(.purpleAccent)
-                                .frame(width: 16, height: 16)
-                                .padding(.trailing, 6)
-
-                            // TODO: get actual fee
-                            BodySSBText("Instant (±$0.02)")
-                        }
-                    }
-                    .padding(.vertical)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Divider()
-
-                    if let commentAllowed = lnurlPayData.commentAllowed, commentAllowed > 0 {
-                        VStack(alignment: .leading) {
-                            CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
-                                .padding(.bottom, 8)
-
-                            TextField(
-                                t("wallet__lnurl_pay_confirm__comment_placeholder"),
-                                text: $comment,
-                                axis: .vertical,
-                                testIdentifier: "CommentInput",
-                                submitLabel: .done
-                            )
-                            .focused($isCommentFocused)
-                            .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
-                            .lineLimit(3 ... 3)
-                            .onChange(of: comment) { _, newValue in
-                                let maxLength = Int(commentAllowed)
-                                if newValue.count > maxLength {
-                                    comment = String(newValue.prefix(maxLength))
+                if let request = app.contactPaymentContext?.incomingPaymentRequest, !showDetails {
+                    PaymentRequestSummary(
+                        contactName: contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, request.counterparty) })?
+                            .displayName
+                            ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty),
+                        note: request.note.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
+                        accentColor: .purpleAccent
+                    )
+                    PaymentReviewIllustration(swipeProgress: swipeProgress, imageSize: 329, isPaymentRequest: true)
+                        .frame(maxHeight: 256).padding(.top, 16)
+                } else {
+                    VStack(spacing: 0) {
+                        if let request = app.contactPaymentContext?.incomingPaymentRequest {
+                            HStack(alignment: .top, spacing: 16) {
+                                SendSectionView(t("wallet__send_from")) {
+                                    fundingSourceButton?.disabled(isSubmittingPayment || hasStartedAutomaticPayment)
                                 }
+                                SendSectionView(t("wallet__payment_request_contact")) {
+                                    BodySSBText(contactsManager.contacts.first(where: {
+                                        PubkyPublicKeyFormat.matches($0.publicKey, request.counterparty)
+                                    })?.displayName ?? PubkyPublicKeyFormat.displayTruncated(request.counterparty))
+                                        .lineLimit(1).accessibilityIdentifier("ReviewContactRecipient")
+                                }
+                            }
+                        }
+                        VStack(alignment: .leading) {
+                            CaptionMText(t("wallet__send_invoice"))
+                                .padding(.bottom, 8)
+                            BodySSBText(lnurlPayData.uri)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .padding(.vertical)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider()
+
+                        VStack(alignment: .leading) {
+                            CaptionMText(t("wallet__send_fee_and_speed"))
+                                .padding(.bottom, 8)
+                            HStack(spacing: 0) {
+                                Image("bolt-hollow")
+                                    .foregroundColor(.purpleAccent)
+                                    .frame(width: 16, height: 16)
+                                    .padding(.trailing, 6)
+
+                                // TODO: get actual fee
+                                BodySSBText("Instant (±$0.02)")
                             }
                         }
                         .padding(.vertical)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Divider()
+
+                        if let commentAllowed = lnurlPayData.commentAllowed, commentAllowed > 0 {
+                            VStack(alignment: .leading) {
+                                CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
+                                    .padding(.bottom, 8)
+
+                                TextField(
+                                    t("wallet__lnurl_pay_confirm__comment_placeholder"),
+                                    text: $comment,
+                                    axis: .vertical,
+                                    testIdentifier: "CommentInput",
+                                    submitLabel: .done
+                                )
+                                .focused($isCommentFocused)
+                                .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
+                                .lineLimit(3 ... 3)
+                                .onChange(of: comment) { _, newValue in
+                                    let maxLength = Int(commentAllowed)
+                                    if newValue.count > maxLength {
+                                        comment = String(newValue.prefix(maxLength))
+                                    }
+                                }
+                            }
+                            .padding(.vertical)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    if let note = app.contactPaymentContext?.incomingPaymentRequest?.note,
+                       !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    {
+                        PaymentRequestInvoiceNote(note: note).padding(.top, 16)
                     }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 16)
+
+            if app.contactPaymentContext?.incomingPaymentRequest != nil {
+                CustomButton(
+                    title: t(showDetails ? "common__hide_details" : "common__show_details"), size: .small,
+                    icon: Image(showDetails ? "eye-slash" : "bolt-hollow")
+                        .resizable().frame(width: 16, height: 16).foregroundColor(.purpleAccent),
+                    background: Color.white06
+                ) { showDetails.toggle() }
+                    .frame(maxWidth: .infinity).padding(.bottom, 62)
+                    .accessibilityIdentifier("SendConfirmToggleDetails")
+            }
 
             SwipeButton(
                 title: app.contactPaymentContext?.isInitialSubscriptionPayment == true
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
-                accentColor: .greenAccent,
+                accentColor: app.contactPaymentContext?.incomingPaymentRequest != nil ? .purpleAccent : .greenAccent,
                 isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
-                isSubmitted: hasStartedAutomaticPayment
+                isSubmitted: hasStartedAutomaticPayment,
+                swipeProgress: $swipeProgress
             ) {
                 try await submitPayment()
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .sheetBackground()
+        .modifier(SheetBackgroundModifier(base: app.contactPaymentContext?.incomingPaymentRequest == nil ? .black : .gray7,
+                                          applyGradient: app.contactPaymentContext?.incomingPaymentRequest == nil))
     }
 
     private var reviewTitle: String {

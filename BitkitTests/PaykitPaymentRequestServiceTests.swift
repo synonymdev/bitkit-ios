@@ -55,6 +55,28 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(usdtOnly.prefersUsdt(onchainBalanceSats: 100_000, usdtBalance: 0))
     }
 
+    func testRecurringUsdtRequestUsesTheBoundConfirmationAmount() throws {
+        let now = Date()
+        let usdt = try PaykitUsdt.endpoint(address: "0x1111111111111111111111111111111111111111")
+        let record = try paymentRequestRecord(state: .activeRecurring, amount: "2.50", asset: "usd",
+                                              conversion: .fixed(rates: [.init(asset: "usdt", value: "1")]),
+                                              recurrence: .init(every: 1, unit: "month", startsAt: "2026-01-01T08:00:00Z",
+                                                                anchor: "2026-01-01T08:00:00Z", endsAt: nil),
+                                              endpoints: [usdt.methodId.rawValue])
+        let subscription = try XCTUnwrap(PaykitSubscription(record: record))
+        let request = PaykitPaymentRequest(subscription: subscription,
+                                           billingPeriod: .init(startsAt: now, endsAt: now.addingTimeInterval(3600)),
+                                           lifecycleState: .accepted)
+        let app = AppViewModel()
+        app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request, endpoints: [usdt])
+        app.paykitUsesUsdt = true
+        app.paykitPaymentTerms = try request.payment(using: .usdtArbitrum)
+        app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+        XCTAssertEqual(PaymentNavigationHelper.requestConfirmationRoute(app: app), .usdt(recipient: usdt.value, amount: "2.50"))
+        XCTAssertEqual(app.paykitReviewedAmount?.atomic, 2_500_000)
+        XCTAssertNil(app.contactPaymentContext?.initialUsdtSubscriptionPayment())
+    }
+
     func testInitialUsdtSubscriptionAuthorizationRequiresUnchangedTermsAndSingleMethod() throws {
         let now = try XCTUnwrap(PaykitPaymentRequest.parseDate("2027-01-01T08:00:00Z"))
         let period = PaykitBillingPeriod(startsAt: now, endsAt: now.addingTimeInterval(3600))
