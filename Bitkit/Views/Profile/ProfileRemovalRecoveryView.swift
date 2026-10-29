@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileRemovalRecoveryView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var session: SessionManager
@@ -65,8 +66,12 @@ struct ProfileRemovalRecoveryView: View {
     private func disconnect(id: UUID) async {
         isWorking = true
         defer { isWorking = false }
-        do { _ = try await pubkyProfile.finishPendingRemoval(id: id) }
-        catch { show(error, expectedID: id, expectedScope: .profile) }
+        do {
+            let completion = try await pubkyProfile.finishPendingRemoval(id: id)
+            if pubkyProfile.ownsRemovalCompletion(completion) {
+                navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+            }
+        } catch { show(error, expectedID: id, expectedScope: .profile) }
     }
 
     private func finishWipe() async {

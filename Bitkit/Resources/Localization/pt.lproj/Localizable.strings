@@ -907,6 +907,7 @@
 "profile__sign_out" = "Desligar";
 "profile__sign_out_title" = "Desligar perfil";
 "profile__sign_out_description" = "Isto vai desligar o seu perfil Pubky da Bitkit. Pode voltar a ligá-lo a qualquer momento.";
+"profile__disconnect_local_description" = "Isto apenas desliga o teu perfil neste dispositivo. O teu perfil e as subscrições permanecem no servidor. Não cancela as subscrições nem revoga o acesso remoto.";
 "profile__choice_title" = "Entre na\n<accent>web da liberdade</accent>";
 "profile__choice_description" = "Crie um novo pubky e perfil na Bitkit.";
 "profile__choice_description_ring" = "Use um pubky existente do Pubky Ring.";

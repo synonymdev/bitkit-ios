@@ -47,8 +47,8 @@
                 NavigationStack(path: $navigation.path) {
                     Group {
                         if !local.credentialsPresent, profile.removalRecovery == .ready {
-                            CaptionText("Local cleanup complete")
-                                .accessibilityIdentifier("ProfileFixtureCompleted")
+                            CaptionText("Waiting for profile navigation")
+                                .accessibilityIdentifier("ProfileFixtureAwaitingCompletion")
                         } else {
                             ProfileDestinationView(hasSeenIntro: true)
                         }
@@ -57,6 +57,11 @@
                         if route == .editProfile {
                             CaptionText("Edit profile")
                                 .accessibilityIdentifier("ProfileFixtureEditing")
+                        } else if route == .pubkyChoice || route == .profileIntro, !local.credentialsPresent,
+                                  profile.removalRecovery == .ready
+                        {
+                            CaptionText("Local cleanup complete")
+                                .accessibilityIdentifier("ProfileFixtureCompleted")
                         }
                     }
                 }

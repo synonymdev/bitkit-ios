@@ -67,6 +67,7 @@ class PubkyProfileManager: ObservableObject {
         case deleteProfile
         case unlink
         case disconnect
+        case disconnectLocally
     }
 
     struct RemovalConfirmation: Identifiable, Equatable {
@@ -1421,7 +1422,9 @@ class PubkyProfileManager: ObservableObject {
     #endif
 
     func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true, expectedSession: SignedInSession? = nil) async throws {
-        guard let plan = removalPlan, plan.confirmation.action != .disconnect else { throw RemovalError.confirmationRequired }
+        guard let plan = removalPlan, plan.confirmation.action == .deleteProfile || plan.confirmation.action == .unlink else {
+            throw RemovalError.confirmationRequired
+        }
         if let expectedSession {
             guard expectedSession.revision == plan.sessionRevision, expectedSession.publicKey == plan.owner else {
                 throw RemovalError.confirmationChanged
@@ -1433,6 +1436,9 @@ class PubkyProfileManager: ObservableObject {
     func prepareRemoval(action: RemovalAction, contacts: ContactsManager? = nil,
                         expectedOwner: RemovalPresentationOwner? = nil) async throws -> RemovalConfirmation
     {
+        if action == .disconnectLocally, expectedOwner == nil {
+            throw RemovalError.confirmationRequired
+        }
         if let expectedOwner, !ownsRemovalPresentation(expectedOwner) {
             throw RemovalError.confirmationChanged
         }
@@ -1444,7 +1450,8 @@ class PubkyProfileManager: ObservableObject {
         let owner = publicKey
         let revision = Self.sessionRevision
         let profileGeneration = profileWriteGeneration
-        if action != .disconnect {
+        let removesContacts = action == .deleteProfile || action == .unlink
+        if removesContacts {
             guard currentSession != nil, contacts != nil else { throw PubkyServiceError.sessionNotActive }
         }
         let confirmation = RemovalConfirmation(id: UUID(), action: action)
@@ -1454,7 +1461,7 @@ class PubkyProfileManager: ObservableObject {
             return try await admission.withOperation {
                 let profile = action == .deleteProfile && owner != nil
                     ? try await removalServices.readProfile(owner!) : nil
-                let snapshot = action != .disconnect ? try await contacts?.prepareRemovalSnapshot() : nil
+                let snapshot = removesContacts ? try await contacts?.prepareRemovalSnapshot() : nil
                 if snapshot != nil, let owner {
                     try await removalServices.validateSubscriptions(owner)
                 }
@@ -1463,8 +1470,9 @@ class PubkyProfileManager: ObservableObject {
                       publicKey == owner, profileWriteGeneration == profileGeneration else { throw RemovalError.confirmationChanged }
                 removalPlan = RemovalPlan(confirmation: confirmation, sessionRevision: revision, owner: owner,
                                           profileGeneration: profileGeneration, admissionGeneration: generation,
-                                          profile: profile, withdrawEndpoints: owner != nil && authState == .authenticated,
-                                          contacts: contacts, contactSnapshot: snapshot)
+                                          profile: profile,
+                                          withdrawEndpoints: action != .disconnectLocally && owner != nil && authState == .authenticated,
+                                          contacts: removesContacts ? contacts : nil, contactSnapshot: snapshot)
                 return confirmation
             }
         } catch {

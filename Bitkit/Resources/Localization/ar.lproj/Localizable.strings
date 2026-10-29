@@ -915,6 +915,7 @@
 "profile__sign_out" = "قطع الاتصال";
 "profile__sign_out_title" = "فصل الملف الشخصي";
 "profile__sign_out_description" = "سيؤدي هذا إلى فصل ملف Pubky الشخصي عن Bitkit. يمكنك إعادة الاتصال في أي وقت.";
+"profile__disconnect_local_description" = "يؤدي هذا إلى فصل ملفك الشخصي على هذا الجهاز فقط. يبقى ملفك الشخصي واشتراكاتك على الخادم. لا يؤدي ذلك إلى إلغاء الاشتراكات أو سحب صلاحية الوصول عن بُعد.";
 "profile__choice_title" = "ادخل إلى\n<accent>ويب الحرية</accent>";
 "profile__choice_description" = "أنشئ pubky وملفًا شخصيًا جديدين في Bitkit.";
 "profile__choice_description_ring" = "استخدم pubky موجودًا من Pubky Ring.";

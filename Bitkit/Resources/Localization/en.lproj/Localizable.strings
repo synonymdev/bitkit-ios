@@ -1147,6 +1147,7 @@
 "profile__sign_out" = "Disconnect";
 "profile__sign_out_title" = "Disconnect Profile";
 "profile__sign_out_description" = "This will disconnect your Pubky profile from Bitkit. You can reconnect at any time.";
+"profile__disconnect_local_description" = "This only disconnects your profile on this device. Your profile and subscriptions remain on the server. It does not cancel subscriptions or revoke remote access.";
 "profile__choice_title" = "Enter the\n<accent>freedom web</accent>";
 "profile__choice_description" = "Create a new pubky and profile in Bitkit.";
 "profile__choice_description_ring" = "Use an existing pubky from Pubky Ring.";

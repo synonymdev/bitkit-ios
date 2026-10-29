@@ -93,7 +93,7 @@ final class ProfileRecoveryUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["ProfileFixtureLocalState"].label, "Credentials: cleared, watermark: 0, remote: 0")
         XCTAssertEqual(app.staticTexts["ProfileFixturePendingID"].label, "None")
         XCTAssertFalse(disconnect.exists)
-        XCTAssertTrue(app.staticTexts["ProfileFixtureCompleted"].exists)
+        XCTAssertTrue(app.staticTexts["ProfileFixtureCompleted"].waitForExistence(timeout: 5))
     }
 
     private func assertReadOnlyControls() {

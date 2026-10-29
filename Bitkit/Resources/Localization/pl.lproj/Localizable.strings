@@ -1146,6 +1146,7 @@
 "profile__sign_out" = "Odłącz";
 "profile__sign_out_title" = "Odłącz profil";
 "profile__sign_out_description" = "Spowoduje to odłączenie Twojego profilu Pubky od Bitkit. Możesz połączyć się ponownie w dowolnym momencie.";
+"profile__disconnect_local_description" = "Spowoduje to odłączenie profilu tylko na tym urządzeniu. Profil i subskrypcje pozostaną na serwerze. Nie anuluje to subskrypcji ani nie odbiera dostępu zdalnego.";
 "profile__choice_title" = "Wejdź do\n<accent>wolnej sieci</accent>";
 "profile__choice_description" = "Utwórz nowy pubky i profil w Bitkit.";
 "profile__choice_description_ring" = "Użyj istniejącego pubky z Pubky Ring.";

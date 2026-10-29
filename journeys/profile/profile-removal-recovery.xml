@@ -5,7 +5,7 @@
     Keep a redacted operation counter. Recreate the fixture separately for each failure checkpoint.
     Local Disconnect does not assert remote deletion. Conditional contact deletion across devices is
     not proved by local ownership, and requires the separate native CAS fixture.
-    iOS currently offers local Disconnect only after an uncertain attempt. Its pinned native contact
+    This journey covers local Disconnect after an uncertain attempt. Its pinned native contact
     read can reconcile writes, so remote Review/reconfirmation is deliberately unavailable until a
     native observation API can enforce read-only reconciliation. This differs from the Android UI.
   </description>
