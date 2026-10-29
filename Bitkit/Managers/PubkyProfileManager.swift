@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import enum Paykit.PaykitError
 import struct Paykit.PubkySessionBootstrapResult
@@ -60,6 +61,7 @@ class PubkyProfileManager: ObservableObject {
     typealias RemoteProfileResolver = @Sendable (String) async throws -> PubkyProfile
     typealias ProfilePublisher = @Sendable (_ profile: PubkyProfileData, _ expectedIdentity: String?) async throws -> Void
     typealias AvatarUploader = @Sendable (_ jpegData: Data, _ expectedIdentity: String?) async throws -> String
+    typealias ProfileDeleter = @Sendable (_ expectedIdentity: String) async throws -> Void
 
     private enum SessionInitializationMode {
         case userVisible
@@ -114,9 +116,11 @@ class PubkyProfileManager: ObservableObject {
     private static var isRingAdoptionInFlight = false
     private static var sessionRevision = UUID()
     private static var sessionMutationCount = 0
+    private static var isProfileDeletionInFlight = false
     private let remoteProfileResolver: RemoteProfileResolver
     private let profilePublisher: ProfilePublisher
     private let avatarUploader: AvatarUploader
+    private let profileDeleter: ProfileDeleter
     /// Bumped whenever a profile save starts, `profile` is written or the identity changes, so a remote read that started
     /// earlier is dropped.
     private var profileWriteGeneration = 0
@@ -134,13 +138,25 @@ class PubkyProfileManager: ObservableObject {
     private typealias RingIdentityLookup = (id: UUID, task: Task<Void, Never>, loaders: RingIdentityLookupLoaders)
     private var ringIdentityLookups: [String: RingIdentityLookup] = [:]
 
-    private static func beginSessionMutation() {
+    private static func beginSessionMutation(allowDuringProfileDeletion: Bool = false) throws {
+        guard !isProfileDeletionInFlight || allowDuringProfileDeletion else { throw PubkyServiceError.identityChanged }
         sessionRevision = UUID()
         sessionMutationCount += 1
     }
 
     private static func endSessionMutation() {
         sessionMutationCount -= 1
+        if sessionMutationCount == 0 {
+            sessionSettledSubject.send()
+        }
+    }
+
+    private static let sessionSettledSubject = PassthroughSubject<Void, Never>()
+
+    /// Fires when the last session change in flight ends. `currentSession` reads nil until then, and nothing published
+    /// changes at that moment, so work that needs the session (a sign-in completing during that change) waits for this.
+    static var sessionSettledPublisher: AnyPublisher<Void, Never> {
+        sessionSettledSubject.eraseToAnyPublisher()
     }
 
     init(
@@ -150,11 +166,15 @@ class PubkyProfileManager: ObservableObject {
         },
         avatarUploader: @escaping AvatarUploader = {
             try await PubkyService.uploadProfileAvatar(bytes: $0, contentType: "image/jpeg", expectedIdentity: $1)
+        },
+        profileDeleter: @escaping ProfileDeleter = {
+            try await PubkyService.deletePaykitProfile(expectedIdentity: $0)
         }
     ) {
         self.remoteProfileResolver = remoteProfileResolver
         self.profilePublisher = profilePublisher
         self.avatarUploader = avatarUploader
+        self.profileDeleter = profileDeleter
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
         cachedProfileOwner = UserDefaults.standard.string(forKey: Self.cachedProfileOwnerKey)
@@ -209,7 +229,7 @@ class PubkyProfileManager: ObservableObject {
             await initializationTask.value
             return
         }
-        guard Self.sessionMutationCount == 0 else { return }
+        guard Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return }
         isRestoringSession = true
         let revision = Self.sessionRevision
         let task = Task {
@@ -217,7 +237,7 @@ class PubkyProfileManager: ObservableObject {
                 initializationTask = nil
                 isRestoringSession = false
             }
-            guard Self.sessionMutationCount == 0 else { return }
+            guard Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return }
             await initializeSessionState(mode: mode, initializeSession: initializeSession)
             if case .automaticRecovery = mode, revision == Self.sessionRevision {
                 completedRecoveryVersion += 1
@@ -239,7 +259,9 @@ class PubkyProfileManager: ObservableObject {
         if let initializationTask {
             await initializationTask.value
         }
-        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision { return }
+        if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision {
+            return
+        }
         guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
@@ -362,7 +384,7 @@ class PubkyProfileManager: ObservableObject {
 
     /// Drops the adopted identity when its owner app has provably removed the shared record.
     func checkAdoptedSource() async {
-        guard let adopted = AdoptedPubkyReference.current,
+        guard !Self.isProfileDeletionInFlight, let adopted = AdoptedPubkyReference.current,
               SharedPubkyKeychain.isDefinitelyMissing(sourceApp: adopted.sourceApp, pubky: adopted.pubky)
         else { return }
 
@@ -455,7 +477,7 @@ class PubkyProfileManager: ObservableObject {
             await Task.detached { PubkyProfileManager.activeSecretKeyHex() }.value
         }
     ) async throws {
-        Self.beginSessionMutation()
+        try Self.beginSessionMutation()
         defer { Self.endSessionMutation() }
         if let publicKey, isProfileSetupPending || AdoptedPubkyReference.current != nil {
             try await createProfile(
@@ -558,8 +580,8 @@ class PubkyProfileManager: ObservableObject {
         guard !Self.isRingAdoptionInFlight else {
             throw PubkyServiceError.authFailed("Pubky Ring sign-in already in progress")
         }
+        try Self.beginSessionMutation()
         Self.isRingAdoptionInFlight = true
-        Self.beginSessionMutation()
         defer {
             Self.isRingAdoptionInFlight = false
             isAdoptingRingIdentity = false
@@ -783,8 +805,8 @@ class PubkyProfileManager: ObservableObject {
         authorizationTimeout: Duration = .seconds(30)
     ) async throws {
         guard !isSignupInFlight else { throw PubkySignupError.inProgress }
+        try Self.beginSessionMutation()
         isSignupInFlight = true
-        Self.beginSessionMutation()
         let revision = Self.sessionRevision
         defer {
             isSignupInFlight = false
@@ -977,10 +999,17 @@ class PubkyProfileManager: ObservableObject {
         return true
     }
 
-    func performProfileDeletion(_ operation: () async throws -> Void) async rethrows {
-        guard !isDeletingProfile else { return }
+    func performProfileDeletion(_ operation: () async throws -> Void) async throws {
+        try Task.checkCancellation()
+        guard !Self.isProfileDeletionInFlight, Self.sessionMutationCount == 0, initializationTask == nil else {
+            throw PubkyServiceError.identityChanged
+        }
+        Self.isProfileDeletionInFlight = true
         isDeletingProfile = true
-        defer { isDeletingProfile = false }
+        defer {
+            isDeletingProfile = false
+            Self.isProfileDeletionInFlight = false
+        }
         await PrivatePaykitService.shared.beginProfileDeletion()
         do {
             try await operation()
@@ -991,13 +1020,33 @@ class PubkyProfileManager: ObservableObject {
         await PrivatePaykitService.shared.endProfileDeletion()
     }
 
-    func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true) async throws {
-        if cleanPrivatePaykitEndpoints {
-            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.deleteProfile")
+    func deleteProfile(cleanPrivatePaykitEndpoints: Bool = true, expectedSession: SignedInSession? = nil) async throws {
+        guard let session = expectedSession ?? currentSession else { throw PubkyServiceError.sessionNotActive }
+        try requireCurrentSession(session)
+        if expectedSession != nil {
+            // The UI supplies its captured session from inside performProfileDeletion.
+            guard isDeletingProfile else { throw PubkyServiceError.identityChanged }
+            try await deleteProfile(for: session, cleanPrivatePaykitEndpoints: cleanPrivatePaykitEndpoints)
+        } else {
+            try await performProfileDeletion {
+                try await deleteProfile(for: session, cleanPrivatePaykitEndpoints: cleanPrivatePaykitEndpoints)
+            }
         }
+    }
+
+    private func deleteProfile(for session: SignedInSession, cleanPrivatePaykitEndpoints: Bool) async throws {
+        try requireCurrentSession(session)
+        if cleanPrivatePaykitEndpoints {
+            await Self.removePrivatePaykitEndpointsBestEffort(
+                context: "PubkyProfileManager.deleteProfile", deferAppSync: true,
+                isSessionCurrent: { self.currentSession == session }
+            )
+        }
+        try requireCurrentSession(session)
+        let delete = profileDeleter
         do {
             try await Task.detached {
-                try await PubkyService.deletePaykitProfile()
+                try await delete(session.publicKey)
             }.value
         } catch {
             guard Self.isMissingBitkitProfileStorageError(error) else {
@@ -1007,9 +1056,10 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
         }
 
+        try requireCurrentSession(session)
         invalidateProfileLoads()
         Self.clearPaykitSharingAfterProfileDeletion()
-        try await signOut(cleanPrivatePaykitEndpoints: false)
+        try await signOut(cleanPrivatePaykitEndpoints: false, allowDuringProfileDeletion: true)
     }
 
     private func writeProfile(
@@ -1344,7 +1394,8 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
-        beginSessionMutation()
+        // A wallet reset may revoke deletion's owner, but no replacement identity can start until deletion drains.
+        try? beginSessionMutation(allowDuringProfileDeletion: true)
         defer { endSessionMutation() }
         do {
             try await PubkyService.forgetSessionAccess()
@@ -1410,32 +1461,45 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    static func removePrivatePaykitEndpoints(context: String) async throws {
+    static func removePrivatePaykitEndpoints(
+        context: String, deferAppSync: Bool = false, isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) async throws {
+        try await removePrivatePaykitEndpoints(context: context, isSessionCurrent: isSessionCurrent) {
+            try await PrivatePaykitService.shared.removePublishedEndpoints(isSessionCurrent: isSessionCurrent, deferAppSync: deferAppSync)
+        }
+    }
+
+    static func removePrivatePaykitEndpoints(
+        context: String, isSessionCurrent: (@MainActor () -> Bool)?, operation: () async throws -> Void
+    ) async throws {
+        guard isSessionCurrent?() != false else { throw PubkyServiceError.identityChanged }
         do {
-            try await PrivatePaykitService.shared.removePublishedEndpoints()
+            try Task.checkCancellation()
+            try await operation()
+            guard isSessionCurrent?() != false else { throw PubkyServiceError.identityChanged }
+            try Task.checkCancellation()
             PrivatePaykitService.setContactSharingCleanupPending(false)
         } catch {
-            PrivatePaykitService.setContactSharingCleanupPending(true)
+            if isSessionCurrent?() != false {
+                PrivatePaykitService.setContactSharingCleanupPending(true)
+            }
             Logger.warn("Failed to remove private Paykit endpoints before clearing session: \(error)", context: context)
             throw error
         }
     }
 
-    static func removePrivatePaykitEndpointsBestEffort(context: String) async {
-        do {
-            try await removePrivatePaykitEndpoints(context: context)
-            PrivatePaykitService.setContactSharingCleanupPending(false)
-        } catch {
-            PrivatePaykitService.setContactSharingCleanupPending(true)
-        }
+    static func removePrivatePaykitEndpointsBestEffort(
+        context: String, deferAppSync: Bool = false, isSessionCurrent: (@MainActor () -> Bool)? = nil
+    ) async {
+        try? await removePrivatePaykitEndpoints(context: context, deferAppSync: deferAppSync, isSessionCurrent: isSessionCurrent)
     }
 
     func signOut() async throws {
         try await signOut(cleanPrivatePaykitEndpoints: true)
     }
 
-    private func signOut(cleanPrivatePaykitEndpoints: Bool) async throws {
-        try await signOut {
+    private func signOut(cleanPrivatePaykitEndpoints: Bool, allowDuringProfileDeletion: Bool = false) async throws {
+        try await signOut(allowDuringProfileDeletion: allowDuringProfileDeletion) {
             if cleanPrivatePaykitEndpoints {
                 try await Self.removePrivatePaykitEndpoints(context: "PubkyProfileManager.signOut")
             }
@@ -1445,8 +1509,14 @@ class PubkyProfileManager: ObservableObject {
     }
 
     func signOut(performSessionCleanup: @escaping @Sendable () async throws -> Void) async throws {
+        try await signOut(allowDuringProfileDeletion: false, performSessionCleanup: performSessionCleanup)
+    }
+
+    private func signOut(
+        allowDuringProfileDeletion: Bool, performSessionCleanup: @escaping @Sendable () async throws -> Void
+    ) async throws {
         let retainedProfile = hasReadOnlyProfileIdentity ? readOnlyProfile : nil
-        Self.beginSessionMutation()
+        try Self.beginSessionMutation(allowDuringProfileDeletion: allowDuringProfileDeletion)
         if let retainedProfile {
             readOnlySignOutRevision = Self.sessionRevision
             readOnlyProfile = (retainedProfile.publicKey, retainedProfile.profile, Self.sessionRevision)
@@ -1651,6 +1721,11 @@ class PubkyProfileManager: ObservableObject {
         return SignedInSession(publicKey: publicKey, revision: Self.sessionRevision)
     }
 
+    func requireCurrentSession(_ session: SignedInSession) throws {
+        try Task.checkCancellation()
+        guard currentSession == session else { throw PubkyServiceError.identityChanged }
+    }
+
     var automaticPaykitSession: SignedInSession? {
         guard authState == .authenticated, !isDeletingProfile else { return nil }
         return currentSession
@@ -1667,6 +1742,14 @@ class PubkyProfileManager: ObservableObject {
 
     var hasLocalSecretKeyForCurrentProfile: Bool {
         Self.hasLocalSecretKey(for: publicKey)
+    }
+
+    /// The signed-in pubky is Pubky Ring's, adopted through the shared keychain, so removing it here only unlinks it.
+    var isRingAdoptedIdentity: Bool {
+        guard let adopted = AdoptedPubkyReference.current, adopted.sourceApp == SharedPubkyKeychain.ringSourceApp else {
+            return false
+        }
+        return PubkyPublicKeyFormat.matches(adopted.pubky, publicKey)
     }
 
     nonisolated static func hasStoredIdentity(
@@ -1749,11 +1832,7 @@ class PubkyProfileManager: ObservableObject {
         adopted: (sourceApp: String, pubky: String)? = AdoptedPubkyReference.current
     ) throws -> PubkySessionBackupV1? {
         // A foreign key stays with its owner, so an adopted identity has nothing to back up.
-        guard adopted == nil else {
-            return nil
-        }
-
-        guard let secretKeyHex = try loadKeychainString(.pubkySecretKey), !secretKeyHex.isEmpty else {
+        guard adopted == nil, let secretKeyHex = try loadKeychainString(.pubkySecretKey), !secretKeyHex.isEmpty else {
             return nil
         }
 
@@ -1784,7 +1863,7 @@ class PubkyProfileManager: ObservableObject {
             try await PubkyService.signIn(secretKeyHex: $0)
         }
     ) async throws {
-        await beginSessionMutation()
+        try await beginSessionMutation()
         do {
             do {
                 try await forgetSessionAccess()

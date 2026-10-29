@@ -16,7 +16,9 @@ final class SendConfirmationSwipeTests: XCTestCase {
                     selectedUtxos: nil
                 ) {
                     attempts += 1
-                    if shouldFail { throw SelectionError.unavailable }
+                    if shouldFail {
+                        throw SelectionError.unavailable
+                    }
                     openedSelection = true
                 }
                 XCTFail("Manual selection must stop before payment authorization")
@@ -145,6 +147,21 @@ final class SendConfirmationSwipeTests: XCTestCase {
             hasStartedAutomaticPayment: false,
             isFeeRateMissing: true,
             feeRateLoadFailed: false
+        ))
+    }
+
+    func testManualPaymentKeepsTheSwipeBusyWhenConfirmationIsRecreated() {
+        XCTAssertTrue(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: false,
+            feeRateLoadFailed: false,
+            isSubmittingPayment: true
+        ))
+        XCTAssertFalse(SendConfirmationView.isSwipeLoading(
+            hasStartedAutomaticPayment: false,
+            isFeeRateMissing: false,
+            feeRateLoadFailed: false,
+            isSubmittingPayment: false
         ))
     }
 

@@ -4,10 +4,162 @@ import XCTest
 
 @MainActor
 final class UsdtWalletManagerTests: XCTestCase {
+    func testCachedDisplayBalanceSurvivesRestartWithoutBecomingSpendableAndClearsOnWipe() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let mnemonic = "test test test test test test test test test test test junk"
+        let address = try usdtAddress(mnemonic: mnemonic, passphrase: nil)
+        let cache = UsdtDisplayBalanceCache(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, defaults: defaults)
+        cache.save(1_234_567, address: address)
+        let manager = try UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil,
+                                            defaults: XCTUnwrap(UserDefaults(suiteName: suite)), loadCredentials: { (mnemonic, nil) })
+        await manager.loadCachedBalance()
+        XCTAssertEqual(manager.cachedBalance, 1_234_567)
+        XCTAssertNil(manager.balance)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        await manager.refresh()
+        XCTAssertEqual(manager.cachedBalance, 1_234_567)
+        try await manager.wipe()
+        XCTAssertNil(manager.cachedBalance)
+        XCTAssertNil(cache.balance(for: address))
+    }
+
+    func testDisplayCacheRejectsAnotherWalletNetworkOrInvalidRecordAndPersistsZero() throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let cache = UsdtDisplayBalanceCache(storageDirectory: directory, rpcUrl: "rpc", bundlerUrl: "bundler", defaults: defaults)
+        cache.save(.max, address: "wallet-a")
+        XCTAssertEqual(cache.balance(for: "wallet-a"), .max)
+        XCTAssertNil(cache.balance(for: "wallet-b"))
+        for (path, rpc, bundler) in [(directory.appendingPathComponent("other"), "rpc", "bundler"),
+                                     (directory, "other-rpc", "bundler"), (directory, "rpc", "other-bundler")]
+        {
+            XCTAssertNil(UsdtDisplayBalanceCache(storageDirectory: path, rpcUrl: rpc, bundlerUrl: bundler,
+                                                 defaults: defaults).balance(for: "wallet-a"))
+        }
+        cache.save(0, address: "wallet-a")
+        XCTAssertEqual(cache.balance(for: "wallet-a"), 0)
+        defaults.set(Data("invalid".utf8), forKey: "usdt_display_balance")
+        XCTAssertNil(cache.balance(for: "wallet-a"))
+    }
+
+    func testBridgeRejectionsDescribeLimitsAndLiquidity() {
+        let cases: [(UsdtError, String)] = [
+            (.BridgeAmountBelowMinimum(minUsdCents: "200"), t("usdt__deposit_minimum", variables: ["amount": "200".usdCents])),
+            (.BridgeAmountBelowMinimum(minUsdCents: nil), t("usdt__error_bridge_minimum")),
+            (.BridgeAmountAboveMaximum(maxUsdCents: "10000"), t("usdt__deposit_maximum", variables: ["amount": "10000".usdCents])),
+            (.BridgeAmountAboveMaximum(maxUsdCents: nil), t("usdt__error_bridge_maximum")),
+            (.BridgeLiquidityUnavailable, t("usdt__error_bridge_liquidity")),
+            (.InvalidAmount, t("usdt__error_amount")),
+        ]
+        for (error, expected) in cases {
+            XCTAssertEqual(UsdtWalletManager.message(for: error), expected)
+        }
+    }
+
+    func testQuoteRateLimitPausesPaymentRetriesAndRefreshUntilCooldownExpires() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        var attempts = 0
+        let manager = UsdtWalletManager(now: { now }, loadCredentials: {
+            attempts += 1
+            throw UsdtError.RateLimited
+        })
+        let quote = UsdtQuote(bridgeProvider: nil, id: "quote", recipient: "recipient", destination: .arbitrum,
+                              amount: 1_000_000, receivedAmount: 1_000_000, maximumFee: 20, expiresAt: UInt64.max)
+        do {
+            _ = try await manager.quoteMaximum(recipient: "recipient", destination: .arbitrum)
+            XCTFail("Expected rate limit")
+        } catch UsdtError.RateLimited {}
+        now.addTimeInterval(59)
+        do {
+            _ = try await manager.quote(recipient: "recipient", amount: "1", destination: .arbitrum)
+            XCTFail("Expected cooldown")
+        } catch UsdtError.RateLimited {}
+        do {
+            try await manager.send(quote) { XCTFail("Submission must not start during cooldown") }
+            XCTFail("Expected cooldown")
+        } catch UsdtError.RateLimited {}
+        do {
+            try await manager.retryTransfer("recorded-transfer")
+            XCTFail("Recovery must respect the provider cooldown")
+        } catch UsdtError.RateLimited {}
+        await manager.refresh(includeHistory: true)
+        XCTAssertEqual(attempts, 1)
+        now.addTimeInterval(1)
+        do {
+            _ = try await manager.quoteMaximum(recipient: "recipient", destination: .arbitrum)
+            XCTFail("Expected provider rate limit after cooldown expired")
+        } catch UsdtError.RateLimited {}
+        XCTAssertEqual(attempts, 2)
+    }
+
+    func testRetryRecoversTheRecordedTransferAfterBackupFailureWithoutCreatingAPayment() async throws {
+        try XCTSkipUnless(Env.isUsdtEnabled)
+        let wallet = RecoveryUsdtWallet(noPointer: .init())
+        wallet.transfers = [transfer("original", incoming: false, status: .pending)]
+        let manager = UsdtWalletManager(rpcUrl: "http://127.0.0.1:1", bundlerUrl: "http://127.0.0.1:1", core: wallet,
+                                        loadCredentials: {
+                                            XCTFail("Retry must not load signing credentials for a new payment")
+                                            throw UsdtError.InvalidCredentials
+                                        })
+        manager.isSendPresented = true
+        do {
+            try await manager.retryTransfer("original")
+            XCTFail("A failed recovery backup must propagate to the caller")
+        } catch UsdtError.BackupUnavailable {}
+        XCTAssertEqual(manager.recoveryGeneration, 0)
+        XCTAssertEqual(wallet.transfers.map(\.id), ["original"])
+
+        // Closing the presentation does not cancel the saved operation.
+        manager.isSendPresented = false
+        wallet.backupUnavailable = false
+        try await manager.retryTransfer("original")
+        XCTAssertEqual(manager.transfers.map(\.id), ["original"])
+        XCTAssertEqual(manager.recoveryGeneration, 0, "A refresh without a backup callback is not an acknowledgement")
+        XCTAssertEqual(wallet.refreshCalls, 2)
+
+        do {
+            try await manager.retryTransfer("unknown")
+            XCTFail("Retry must not create an operation for an unknown ID")
+        } catch UsdtError.InvalidBackup {}
+        wallet.transfers = [transfer("original", incoming: false)]
+        try await manager.retryTransfer("original")
+        XCTAssertEqual(wallet.refreshCalls, 2, "A settled operation must not be recovered again")
+        XCTAssertEqual(manager.recoveryGeneration, 0, "A refresh without a backup callback is not an acknowledgement")
+    }
+
+    func testRecoveryGenerationRequiresAnAcknowledgedBackupCallback() async throws {
+        var acknowledgements = 0
+        let failed = UsdtVssBackup(persistSnapshot: { _ in throw UsdtError.NetworkUnavailable }) {
+            acknowledgements += 1
+        }
+        do {
+            try await failed.persist(snapshot: "original")
+            XCTFail("Unacknowledged recovery must remain retryable")
+        } catch UsdtError.BackupUnavailable {}
+        XCTAssertEqual(acknowledgements, 0)
+
+        let succeeded = UsdtVssBackup(persistSnapshot: { snapshot in
+            XCTAssertEqual(snapshot, "original")
+        }) {
+            acknowledgements += 1
+        }
+        try await succeeded.persist(snapshot: "original")
+        XCTAssertEqual(acknowledgements, 1)
+    }
+
     func testOfflineBackupDoesNotCreateAnUnusedWalletAndPreservesRestoredHistory() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, loadCredentials: {
+        let manager = UsdtWalletManager(storageDirectory: directory, rpcUrl: nil, bundlerUrl: nil, defaults: defaults, loadCredentials: {
             ("test test test test test test test test test test test junk", nil)
         })
         XCTAssertFalse(manager.shouldRefresh(enabled: false))
@@ -21,20 +173,24 @@ final class UsdtWalletManagerTests: XCTestCase {
         let restored = try await manager.backupSnapshot()
         XCTAssertNotNil(restored)
         XCTAssertTrue(try manager.hasStoredWallet)
+        let endpoint = try await manager.paymentEndpoint()
+        XCTAssertEqual(endpoint.value, address)
         do {
-            _ = try await manager.paymentEndpoint()
+            _ = try await manager.quote(recipient: "0x1111111111111111111111111111111111111111", amount: "1", destination: .arbitrum)
             XCTFail("Local backup access must not enable network operations")
         } catch UsdtError.NotConfigured {}
     }
 
-    func testEndpointPublicationOmitsUnavailableUsdtAndPropagatesCancellation() async throws {
+    func testEndpointPreparationPropagatesFailureAndCancellation() async throws {
         try XCTSkipUnless(Env.isUsdtEnabled)
         let unavailable = UsdtWalletManager(loadCredentials: { throw UsdtError.InvalidCredentials })
-        let endpoint = try await unavailable.paymentEndpointForPublishing()
-        XCTAssertNil(endpoint)
+        do {
+            _ = try await unavailable.paymentEndpoint()
+            XCTFail("Credentials are required to establish ownership")
+        } catch UsdtError.InvalidCredentials {}
         let cancelled = UsdtWalletManager(loadCredentials: { throw CancellationError() })
         do {
-            _ = try await cancelled.paymentEndpointForPublishing()
+            _ = try await cancelled.paymentEndpoint()
             XCTFail("Cancelled endpoint publication must stop")
         } catch is CancellationError {}
     }
@@ -64,10 +220,10 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
-    func testUsdCentsUseTheLocalesDecimalAndGroupingSeparators() {
+    func testUsdCentsUseTheFiatDecimalAndGroupingSeparators() {
         XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "en_US")), "$10,000.00")
-        XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$10.000,00")
-        XCTAssertEqual("5".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$0,05")
+        XCTAssertEqual("1000000".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$10,000.00")
+        XCTAssertEqual("5".formattedUsdCents(locale: Locale(identifier: "de_DE")), "$0.05")
         XCTAssertEqual("invalid".formattedUsdCents(locale: Locale(identifier: "en_US")), "—")
     }
 
@@ -182,6 +338,11 @@ final class UsdtWalletManagerTests: XCTestCase {
                        t("usdt__deposit_minimum", variables: ["amount": "200".usdCents]))
     }
 
+    func testDepositLiquidityErrorDoesNotDescribeTheNetworkAsUnsupported() {
+        XCTAssertEqual(usdtDepositAmountMessage(UsdtError.BridgeLiquidityUnavailable, amount: "3.5"),
+                       t("usdt__error_bridge_liquidity"))
+    }
+
     func testOwnAddressHasSpecificErrorForExactAndMaximumSends() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -189,8 +350,8 @@ final class UsdtWalletManagerTests: XCTestCase {
         let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
             ("test test test test test test test test test test test junk", nil)
         })
-        _ = try await manager.paymentEndpoint()
-        let recipient = " \(manager.address.lowercased()) "
+        let endpoint = try await manager.paymentEndpoint()
+        let recipient = " \(endpoint.value.lowercased()) "
         do {
             _ = try await manager.quote(recipient: recipient, amount: "1", destination: .arbitrum)
             XCTFail("Self-send must be rejected before requesting a quote")
@@ -320,14 +481,14 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertFalse(detail.canRequestRefund)
     }
 
-    func testRefundConfirmationShowsLocalizedAmountNetworkAndFullAddress() {
+    func testRefundConfirmationShowsExactAmountNetworkAndFullAddress() {
         let address = "0x1111222233334444555566667777888899990000"
         let deposit = UsdtDeposit(id: "deposit", network: "bsc", asset: "USDT", amount: 50_000_001,
                                   sourceTx: "source-tx", status: "held", code: nil, refundTx: nil)
         let detail = UsdtDepositDetail(deposit: deposit, order: nil)
-        for (identifier, amount) in [("en_US", "50.000001"), ("de_DE", "50,000001")] {
+        for identifier in ["en_US", "de_DE", "nl_NL", "fr_FR"] {
             let confirmation = detail.refundConfirmation(address: address, hideBalance: false, locale: Locale(identifier: identifier))
-            for value in [amount, "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
+            for value in ["50.000001", "BNB Smart Chain (BSC)", address, "Refund fees may apply."] {
                 XCTAssertTrue(confirmation.contains(value), value)
             }
         }
@@ -417,13 +578,16 @@ final class UsdtWalletManagerTests: XCTestCase {
         )
     }
 
-    func testWalletReadsCredentialsOncePerSessionAndUsesFreshCredentialsAfterWipe() async throws {
+    func testEndpointChecksOwnershipAndWipeStopsCredentialReads() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let mnemonic = "test test test test test test test test test test test junk"
         var credentialReads = 0
-        let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+        let manager = UsdtWalletManager(storageDirectory: directory, defaults: defaults, loadCredentials: {
             credentialReads += 1
             return (mnemonic, nil)
         })
@@ -438,7 +602,7 @@ final class UsdtWalletManagerTests: XCTestCase {
         XCTAssertTrue(manager.hasProtectedFunds)
         try await manager.restoreBackup(backup)
         XCTAssertFalse(manager.hasProtectedFunds)
-        XCTAssertEqual(credentialReads, 1)
+        XCTAssertEqual(credentialReads, 3)
 
         manager.recordDepositStatus(id: "old-deposit", status: "funded")
         try await manager.wipe()
@@ -448,19 +612,22 @@ final class UsdtWalletManagerTests: XCTestCase {
             _ = try await manager.paymentEndpoint()
             XCTFail("A wiped session must not read credentials or reopen its wallet")
         } catch is CancellationError {}
-        XCTAssertEqual(credentialReads, 1)
+        XCTAssertEqual(credentialReads, 3)
 
-        let restored = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+        let restored = UsdtWalletManager(storageDirectory: directory, defaults: defaults, loadCredentials: {
             credentialReads += 1
             return (mnemonic, "restored passphrase")
         })
         let restoredEndpoint = try await restored.paymentEndpoint()
         XCTAssertNotEqual(restoredEndpoint.value, firstEndpoint.value)
-        XCTAssertEqual(credentialReads, 2)
+        XCTAssertEqual(credentialReads, 4)
         try await restored.wipe()
     }
 
     func testWipeRemovesUsdtPersistenceAndStopsSession() async throws {
+        let suite = "UsdtDisplay-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -474,7 +641,7 @@ final class UsdtWalletManagerTests: XCTestCase {
 
         let initializationStarted = expectation(description: "credential read started")
         var resumeInitialization: CheckedContinuation<Void, Never>?
-        let manager = UsdtWalletManager(storageDirectory: directory, loadCredentials: {
+        let manager = UsdtWalletManager(storageDirectory: directory, defaults: defaults, loadCredentials: {
             await withCheckedContinuation { continuation in
                 resumeInitialization = continuation
                 initializationStarted.fulfill()
@@ -514,5 +681,40 @@ final class UsdtWalletManagerTests: XCTestCase {
 private final class UnavailableUsdtBackup: UsdtBackup {
     func persist(snapshot _: String) async throws {
         throw UsdtError.BackupUnavailable
+    }
+}
+
+private final class RecoveryUsdtWallet: UsdtWallet, @unchecked Sendable {
+    var transfers: [UsdtTransfer] = []
+    var backupUnavailable = true
+    var refreshCalls = 0
+
+    override func history() throws -> [UsdtTransfer] {
+        transfers
+    }
+
+    override func refreshTransfers() async throws -> [UsdtTransfer] {
+        refreshCalls += 1
+        if backupUnavailable {
+            throw UsdtError.BackupUnavailable
+        }
+        return transfers
+    }
+
+    override func quoteTransfer(recipient _: String, amount _: UInt64, destination _: UsdtDestination) async throws -> UsdtQuote {
+        XCTFail("Recovery must not quote a new payment")
+        throw UsdtError.InvalidAmount
+    }
+
+    override func quoteMaxTransfer(recipient _: String, destination _: UsdtDestination) async throws -> UsdtQuote {
+        XCTFail("Recovery must not quote a new payment")
+        throw UsdtError.InvalidAmount
+    }
+
+    override func sendWithDeadline(quoteId _: String, mnemonic _: String, passphrase _: String?,
+                                   submissionDeadline _: String?) async throws -> UsdtTransfer
+    {
+        XCTFail("Recovery must not create a new payment")
+        throw UsdtError.InvalidCredentials
     }
 }

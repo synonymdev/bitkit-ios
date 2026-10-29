@@ -5,7 +5,9 @@ struct TosContent: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 Group {
-                    Text("**Effective date: February 4, 2025**")
+                    Text(
+                        "**Effective date: October 20, 2026**"
+                    )
 
                     Text(
                         """
@@ -24,7 +26,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "**FUNDS TRANSFERRED USING JUST-IN-TIME CHANNELS BY THIRD PARTIES MAY NOT BE DELIVERED TO YOU BY THE THIRD PARTY. YOU ARE REFERRED TO CLAUSE 9.3 OF THE TERMS AS TO SYNONYM'S LIABILITY FOR THIRD PARTY SERVICES.**"
+                        "**FUNDS TRANSFERRED USING CAVEMAN JUST-IN-TIME CHANNELS BY THIRD PARTIES MAY NOT BE DELIVERED TO YOU BY THE THIRD PARTY. YOU ARE REFERRED TO CLAUSE 9.5 OF THE TERMS AS TO SYNONYM’S LIABILITY FOR THIRD PARTY SERVICES.**"
                     )
 
                     Text(
@@ -44,7 +46,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "1.1 These Terms, together with the incorporated materials, constitute the entire agreement and understanding with respect to the access or use of any or all of the Bitkit Services, and any manner of accessing them via the Bitkit Wallet, between you and Synonym Software Ltd., a company with limited liability incorporated in the British Virgin Islands, or any successor operator of the Bitkit Services (together with any successors or assigns, **\"Synonym\"**, **\"we\"**, **\"our\"**) (each of you and Synonym being a **\"Party\"** and collectively the **\"Parties\"**)."
+                        "1.1 These Terms, together with the incorporated materials, constitute the entire agreement and understanding with respect to the access or use of any or all of the Bitkit Services, and any manner of accessing them via the Bitkit Wallet, between you and Synonym Software S.A. de C.V., a company incorporated in the Republic of El Salvador, or any successor operator of the Bitkit Services (together with any successors or assigns, “Synonym”, “we”, “our”) (each of you and Synonym being a “Party” and collectively the “Parties”)."
                     )
 
                     Text(
@@ -115,7 +117,7 @@ struct TosContent: View {
                     Text("2.1.14 **\"CTF\"** means counter-terrorist financing;")
 
                     Text(
-                        "2.1.15 **\"Digital Asset\"** means any digital asset (including a virtual currency or virtual commodity) which is a digital representation of value based on (or built on top of) a cryptographic protocol of a computer network;"
+                        "2.1.15 **“Digital Asset”** means any digital asset (including a virtual currency or virtual commodity) which is a digital representation of value based on (or built on top of) a cryptographic protocol of a computer network."
                     )
 
                     Text(
@@ -147,7 +149,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "2.1.23 **\"Intellectual Property Rights\"** means all patent rights, copyright rights, mask work rights, moral rights, rights of publicity, trademark, trade dress and service mark rights, goodwill, trade secret rights and other intellectual property rights as may now exist or hereafter come into existence, and all applications therefore and registrations, renewals and extensions thereof, under the Laws of any state, country, territory or other jurisdiction;"
+                        "2.1.23 **“Intellectual Property Rights”** means all patent rights, copyright rights, mask work rights, moral rights, rights of publicity, trademark, trade dress and service mark rights, goodwill, trade secret rights and other intellectual property rights as may now exist or hereafter come into existence, and all applications therefore and registrations, renewals and extensions thereof, under the Laws of any state, country, territory or other jurisdiction."
                     )
 
                     Text(
@@ -193,7 +195,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "2.1.35 **\"Prohibited Jurisdiction\"** means any jurisdiction subject to a comprehensive embargo by the United States, the British Virgin Islands or the United Nations, which comprise as of the effective date, Iran, the Democratic People's Republic of Korea (\"North Korea\"), Cuba, Syria, Crimea (a region of Ukraine annexed by the Russian Federation), the self-proclaimed Donetsk People's Republic (a region of Ukraine) and the self-proclaimed Luhansk People's Republic (a region of Ukraine), including Governmental Authorities of those jurisdictions;"
+                        "2.1.35 **“Prohibited Jurisdiction”** means any jurisdiction subject to a comprehensive embargo by the United States, the Republic of El Salvador or the United Nations, which comprise as of the effective date, Iran, the Democratic People's Republic of Korea (“North Korea”), Cuba, Syria, Crimea (a region of Ukraine annexed by the Russian Federation), the self-proclaimed Donetsk People's Republic (a region of Ukraine) and the self-proclaimed Luhansk People's Republic (a region of Ukraine), including Governmental Authorities of those jurisdictions;"
                     )
 
                     Text(
@@ -217,7 +219,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "2.1.41 **\"Sanctions List\"** means the \"Specially Designated Nationals and Blocked Persons\" ('SDN') List and the Non-SDN List, including the \"Sectoral Sanctions Identifications List\", published by the Office of Foreign Assets Control of the U.S. Department of the Treasury; the Section 311 Special Measures for Jurisdictions, Financial Institutions, or International Transactions of Primary Money Laundering Concern published by the Financial Crimes Enforcement Network of the U.S. Department of the Treasury; and, any other foreign terrorist organization or other sanctioned, restricted, or debarred party list published by the Financial Investigation Authority of the British Virgin Islands, or under Economic Sanctions, AML, or CTF Laws of or by Governments of the United States, the British Virgin Islands (including any sanctioned, restricted, or debarred party list under the Laws of the United Kingdom and applicable in the British Virgin Islands), or the United Nations;"
+                        "2.1.41 **“Sanctions List”** means the “Specially Designated Nationals and Blocked Persons” (‘SDN’) List and the Non-SDN List, including the “Sectoral Sanctions Identifications List”, published by the Office of Foreign Assets Control of the U.S. Department of the Treasury; the Section 311 Special Measures for Jurisdictions, Financial Institutions, or International Transactions of Primary Money Laundering Concern published by the Financial Crimes Enforcement Network of the U.S. Department of the Treasury; and, any other foreign terrorist organization or other sanctioned, restricted, or debarred party list published by the Financial Investigation Unit of the Attorney General’s Office of the Republic of El Salvador, or under Economic Sanctions, AML, or CTF Laws of or by Governments of the United States, the Republic of El Salvador or the United Nations;"
                     )
 
                     Text(
@@ -233,11 +235,11 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "2.1.45 **\"Supported Assets\"** means, as of the effective date of these Terms, BTC and LN-BTC;"
+                        "2.1.45 **“Supported Assets”** means, as of the effective date of these Terms, BTC, LN-BTC and, where shown as available in the Bitkit Wallet, USDT, including a supported version identified in the Bitkit Wallet as USDT0, on a Supported Asset Network."
                     )
 
                     Text(
-                        "2.1.46 **\"Supported Asset Networks\"** means, as of the effective date of these Terms, the Bitcoin blockchain and the Lightning Network;"
+                        "2.1.46 **“Supported Asset Networks”** means, as of the effective date of these Terms, the Bitcoin blockchain, the Lightning Network and, where shown as available in the Bitkit Wallet for USDT, Arbitrum One. Support for a Supported Asset or Supported Asset Network may vary by jurisdiction and may be changed, suspended or discontinued in accordance with these Terms."
                     )
 
                     Text(
@@ -245,15 +247,27 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "2.1.48 **\"Third Party Services\"** means any website, node, programming interface, product, data or service that is not controlled by Synonym or any of its Associates; and"
+                        "2.1.48 **“Third Party Services”** means any website, node, programming interface, product, data  or service that is not controlled by Synonym or any of its Associates;"
                     )
 
                     Text(
-                        "2.1.49 **\"User Node\"** means the alphanumeric identifier that represents a means, on the Lightning Network, for holding, storing and transferring LN-BTC;"
+                        "2.1.49 **“USDT”** means the Digital Asset known as Tether USD, in the form supported by the Bitkit Wallet from time to time, including USDT0 on Arbitrum One;"
                     )
 
                     Text(
-                        "2.1.50 **\"Variable Fee\"** means the fee set out in Table B of the Fee Schedule;"
+                        "2.1.50 **“USDT Feature”** means the Bitkit Wallet functionality that enables a User to store, send, receive, view or, where made available, bridge USDT through a Supported Asset Network;"
+                    )
+
+                    Text(
+                        "2.1.51 **“USDT Transfer”** means a Wallet Asset Transfer of USDT through the USDT Feature, including a transfer to another address on a Supported Asset Network and, where made available, a cross-network transfer;"
+                    )
+
+                    Text(
+                        "2.1.52 **“User Node”** means the alphanumeric identifier that represents a means, on the Lightning Network, for holding, storing and transferring LN-BTC; and"
+                    )
+
+                    Text(
+                        "2.1.53 **“Variable Fee”** means the fee set out in Table B of the Fee Schedule."
                     )
 
                     Text(
@@ -266,7 +280,7 @@ struct TosContent: View {
                     Text("**3. BITKIT SERVICES**")
 
                     Text(
-                        "*This section contains the terms of use for the self-custodial Bitkit Wallet through which the user may access the Lightning Connection Services and other Bitkit Services.*"
+                        "*This section sets out the services Synonym provides and who is eligible to use those services.*"
                     )
 
                     Text(
@@ -291,21 +305,25 @@ struct TosContent: View {
                     Text("**4. BITKIT WALLET**")
 
                     Text(
-                        "*This section sets out the services Synonym provides and who is eligible to use those services.*"
+                        "*This section contains the terms of use for the self-custodial Bitkit Wallet through which the user may access the Lightning Connection Services and other Bitkit Services.*"
                     )
 
                     Text("4.1 **Bitkit Wallet.**")
 
                     Text(
-                        "4.1.1 Your use of the Bitkit Wallet allows you to (i) store and access Supported Assets; (ii) broadcast transactions in Supported Assets; (iii) engage in peer-to-peer communication of selected information and (iv) access Third-Party Services. Additional functionality may be added from time to time."
+                        "4.1.1 Your use of the Bitkit Wallet allows you to (i) store and access Supported Assets; (ii) prepare and broadcast transactions in Supported Assets; (iii) engage in peer-to-peer communication of selected information; (iv) access Third-Party Services; and (v) where made available, use the USDT Feature. Additional functionality may be added from time to time."
                     )
 
                     Text(
-                        "4.1.2 Your Bitkit Wallet is intended solely for proper use of Supported Assets. Under no circumstances should you attempt to use your Bitkit Wallet to store, send, request, or receive any assets other than Supported Assets. Synonym assumes no responsibility in connection with any attempt to use your Bitkit Wallet with Digital Assets that it does not support. You acknowledge and agree that Synonym is not liable for any unsupported Digital Asset that is sent to a wallet address associated with your Bitkit Wallet. Synonym may in its sole discretion terminate support for any particular Digital Asset. Services and Supported Assets may vary by jurisdiction and may change without notice to you."
+                        "4.1.2 Your Bitkit Wallet is intended solely for proper use of Supported Assets on Supported Asset Networks. Under no circumstances should you attempt to use your Bitkit Wallet to store, send, request, receive or bridge an asset, token contract or network that is not shown as supported by the Bitkit Wallet for that transaction. Synonym assumes no responsibility for unsupported Digital Assets, an incorrect token contract, an incompatible address, or assets sent on an unsupported network. Such assets may be permanently lost."
                     )
 
                     Text(
-                        "**4.1.3 You own and control the Supported Assets held in your Bitkit Wallet. As the owner of Supported Assets in your Bitkit Wallet, you shall bear all risk of loss of such Digital Assets. Bitkit shall have no liability for Digital Asset fluctuations or loss associated with your use of a Bitkit Wallet. At any time, subject to outages, downtime, and other applicable policies, you may withdraw your Supported Assets by sending it to a different blockchain address**"
+                        "4.1.3 You own and control the Supported Assets held in your Bitkit Wallet. You are solely responsible for safeguarding your recovery phrase, private keys, device access, backups and transaction approvals. Synonym does not possess your recovery phrase or private keys and cannot sign, cancel, reverse or recover a Wallet Asset Transfer for you. As the owner of Supported Assets in your Bitkit Wallet, you bear the risk of loss of those Supported Assets, including loss resulting from a lost recovery phrase or private key, a compromised device, a mistaken transaction, a protocol failure, a network outage, or a Third-Party Service. At any time, subject to outages, downtime, applicable policies and the operation of the relevant network, you may move your Supported Assets to a different blockchain address."
+                    )
+
+                    Text(
+                        "4.1.4 USDT is a third-party Digital Asset. Synonym does not issue, redeem, guarantee the value of, or guarantee any parity between USDT and any fiat currency. Any fiat value or dollar expression shown in the Bitkit Wallet is provided only as a convenience and is not a quote, redemption promise, or guarantee of value."
                     )
 
                     Text("4.2 **Digital Asset Transfers.**")
@@ -327,7 +345,23 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "4.2.5 When you send Supported Assets from your Bitkit Wallet to an external wallet (**\"Wallet Outbound Transfers\"**), such transfers are executed by you on your instruction. You should verify all transaction information prior to submitting instructions. Synonym shall bear no liability or responsibility in the event you enter an incorrect blockchain destination address, incorrect destination tag/memo, or if you send your Digital Assets to an incompatible wallet. We do not guarantee the identity or value received by a recipient of a Wallet Outbound Transfer. Wallet Asset Transfers cannot be reversed once they have been broadcast to the relevant Supported Asset Network, although they may be in a pending state, and designated accordingly, while the transaction is processed by network operators. Synonym does not control any Digital Asset network and makes no guarantees that a Wallet Asset Transfer will be confirmed by the network. We may cancel or refuse to process any pending Wallet Outbound Transfers as required by Law or any court or other authority to which Synonym is subject in any jurisdiction. Additionally, we may require you to wait some amount of time after completion of a transaction before permitting you to use further Bitkit Services and/or before permitting you to engage in transactions beyond certain volume limits."
+                        "4.2.5 A USDT Transfer requires you to verify the recipient, the asset, the token contract where relevant, the Supported Asset Network, the amount, and the total amount to be deducted before approving the transaction. An address alone may not identify the intended network. You are solely responsible for selecting the correct network and recipient information."
+                    )
+
+                    Text(
+                        "4.2.6 The network used for a USDT Transfer may require transaction gas in its native asset. Where the Bitkit Wallet offers a feature allowing network gas to be advanced by a third-party service provider and charged to you in USDT, the displayed USDT amount is a quote from or based on that third-party service. It is not a fee charged by Synonym unless the Bitkit Wallet clearly identifies it as a Synonym fee before you approve the transaction. Quotes, gas estimates, token approvals, eligibility conditions and third-party service availability may change or expire before submission. A USDT Transfer may be rejected, remain pending, fail, or require a new quote. You remain responsible for ensuring you have sufficient USDT for the transfer and the displayed third-party charge."
+                    )
+
+                    Text(
+                        "4.2.7 Once submitted to a Supported Asset Network, a USDT Transfer may be irreversible. A transaction that is pending, submitted, confirmed on a source network, or displayed as completed in the Bitkit Wallet may still be subject to the rules, finality, reorganization risk, delays, outages, fees or failures of the relevant network or Third-Party Service. Synonym does not control any Supported Asset Network and does not guarantee that a transaction will be confirmed, executed, or delivered within a particular time."
+                    )
+
+                    Text(
+                        "4.2.8 Where the Bitkit Wallet makes cross-network transfers available, the transfer may involve more than one transaction, protocol, network, smart contract, relayer or Third-Party Service. Confirmation on the source network does not mean that the corresponding transfer has been delivered or made available on the destination network. Cross-network transfers may be delayed, rejected, held, fail, be subject to compliance, fraud-prevention, risk or operational controls, minimums or other conditions, or result in loss of value. Where a Third-Party Service cannot complete a transfer, a refund may not be automatic and may be subject to that Third-Party Service's eligibility rules, timing, refund route and support process. Synonym does not control, execute, guarantee or reverse the independent steps of a cross-network transfer, delivery or refund."
+                    )
+
+                    Text(
+                        "4.2.9 Synonym may change, suspend, limit or discontinue support for a Supported Asset, Supported Asset Network, USDT Transfer, cross-network transfer, third-party gas-payment feature or related functionality. This does not give Synonym the ability to reverse, cancel or modify a transaction that you have signed and that has been accepted by a Supported Asset Network."
                     )
                 }
 
@@ -350,6 +384,10 @@ struct TosContent: View {
                     Text("5.3 **Transactional Limits.**")
 
                     Text(
+                        "*In this section, we discuss the limits that apply to any Blocktank Connection, and you agree not to circumvent such limits.*"
+                    )
+
+                    Text(
                         "5.3.1 Subject to any further written agreement between you and Synonym, the maximum Connection Capacity, when taken in aggregate with all Blocktank Connections or other Lightning Network channels with the Blocktank Node, is the equivalent in BTC of US$999, at the bid price for BTC in U.S. dollars on Bitfinex.com at the time the Blocktank Connection is established."
                     )
 
@@ -368,7 +406,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "5.4.1 Upon purchasing a Blocktank Connection, you shall be required to confirm how long you wish the Blocktank Connection to be open (the Connection Duration). The configurable Connection Duration shall be 6 weeks, subject to the rights of Synonym to extend or reduce such maximum or minimum Connection Duration at any time, without notice to you and to otherwise close a Blocktank Connection pursuant to these Terms. Irrespective of any Connection Duration, Synonym may opt, in its sole discretion, to extend or reduce the duration of any Blocktank Connection in accordance with these Terms."
+                        "5.4.1 Upon purchasing a Blocktank Connection, you shall be required to confirm how long you wish the Blocktank Connection to be open (the Connection Duration). The minimum configurable Connection Duration shall be four weeks and maximum configurable Connection Duration shall be 12 weeks, subject to the rights of Synonym to extend or reduce such maximum or minimum Connection Duration at any time, without notice to you and to otherwise close a Blocktank Connection pursuant to these Terms. Irrespective of any Connection Duration, Synonym may opt, in its sole discretion, to extend or reduce the duration of any Blocktank Connection in accordance with these Terms."
                     )
 
                     Text(
@@ -519,16 +557,12 @@ struct TosContent: View {
                         "7.1.5 Synonym takes no responsibility and assumes no liability for any User Content that you or any other User or third party posts, sends, or otherwise makes available over the Bitkit Service. You shall be solely responsible for your User Content and the consequences of posting, publishing it, sharing it, or otherwise making it available on the Bitkit Services, and you agree that we are only acting as a passive conduit for your online distribution and publication of your User Content. You understand and agree that you may be exposed to User Content that is inaccurate, objectionable, inappropriate for children, or otherwise unsuited to your purpose, and you agree that Synonym shall not be liable for any damages you allege to incur as a result of or relating to any User Content."
                     )
 
-                    Text("7.2 **Synonym Content**")
-
                     Text(
-                        "Except for your User Content, the Bitkit Services and all materials in the Bitkit Wallet or transferred thereby, including, without limitation, software, images, text, graphics, illustrations, logos, patents, trademarks, service marks, trade names, code, copyrights, photographs, audio, videos, music, and User Content belonging to other Users (the **\"Synonym Content\"**), and all Intellectual Property Rights related thereto, are the exclusive property of Synonym and its licensors (including other Users who post User Content to the Bitkit Services). Except as explicitly provided herein, nothing in these Terms shall be deemed to create a license in or under any such Intellectual Property Rights, and you agree not to appropriate, sell, license, rent, modify, distribute, copy, reproduce, transmit, publicly display, publicly perform, publish, adapt, reverse engineer edit or create derivative works from any Synonym Content. The Synonym Content is protected by copyright, trademark, trade secret and other intellectual property or proprietary rights Laws in various jurisdictions. All rights not expressly granted to you in these Terms are reserved by Synonym or its licensor(s). Use of the Synonym Content for any purpose not expressly permitted by these Terms is strictly prohibited."
+                        "7.2 **Synonym Content**. Except for your User Content, the Bitkit Services and all materials in the Bitkit Wallet or transferred thereby, including, without limitation, software, images, text, graphics, illustrations, logos, patents, trademarks, service marks, trade names, code, copyrights, photographs, audio, videos, music, and User Content belonging to other Users (the “Synonym Content”), and all Intellectual Property Rights related thereto, are the exclusive property of Synonym and its licensors (including other Users who post User Content to the Bitkit Services). Except as explicitly provided herein, nothing in these Terms shall be deemed to create a license in or under any such Intellectual Property Rights, and you agree not to appropriate, sell, license, rent, modify, distribute, copy, reproduce, transmit, publicly display, publicly perform, publish, adapt, reverse engineer edit or create derivative works from any Synonym Content. The Synonym Content is protected by copyright, trademark, trade secret and other intellectual property or proprietary rights Laws in various jurisdictions. All rights not expressly granted to you in these Terms are reserved by Synonym or its licensor(s). Use of the Synonym Content for any purpose not expressly permitted by these Terms is strictly prohibited."
                     )
 
-                    Text("7.3 **Fiat Expressions**")
-
                     Text(
-                        "The Bitkit Wallet enables Users to see values for Supported Assets expressed in certain fiat currencies (**\"Fiat Expressions\"**). Fiat Expressions are provided solely as a convenience to the User, and you should not rely upon them as an accurate reflection of the value of your Supported Assets. Fiat Expressions are hypothetical only and may differ materially from the amount of fiat currency that a User could obtain upon exchange at the time that the Fiat Expression is displayed. Factors that may cause these differences include but are not limited to: delays in the transmission of information (i.e. prices are not real-time), unreliable data, calculation errors, taxes, transaction fees, and currency restrictions. Further, the value of Supported Assets can be volatile and unpredictable, and the prices of Digital Assets have been subject to large fluctuations in the past and may be subject to large fluctuations in the future. To the maximum extent permitted by applicable law:"
+                        "7.3 **Fiat Expressions**.  The Bitkit Wallet enables Users to see values for Supported Assets expressed in certain fiat currencies (“Fiat Expressions”).  Fiat Expressions are provided solely as a convenience to the User, and you should not rely upon them as an accurate reflection of the value of your Supported Assets.  Fiat Expressions are hypothetical only and may differ materially from the amount of fiat currency that a User could obtain upon exchange at the time that the Fiat Expression is displayed. Factors that may cause these differences include but are not limited to: delays in the transmission of information (i.e. prices are not real-time), unreliable data, calculation errors, taxes, transaction fees, and currency restrictions.  Further, the value of Supported Assets can be volatile and unpredictable, and the prices of Digital Assets have been subject to large fluctuations in the past and may be subject to large fluctuations in the future. To the maximum extent permitted by applicable law:"
                     )
 
                     Text(
@@ -541,6 +575,10 @@ struct TosContent: View {
 
                     Text(
                         "7.3.3 You access and use the Fiat Expressions entirely at your sole risk, and Synonym will not be responsible for any actions you take based on the Fiat Expressions."
+                    )
+
+                    Text(
+                        "7.3.4 For the USDT Feature, a display that uses “USD,” “dollar” or similar wording is a convenience display for the supported Digital Asset and does not mean that the Digital Asset is redeemable through Synonym for fiat currency, that one unit will equal one U.S. dollar, or that Synonym guarantees its value."
                     )
                 }
 
@@ -562,15 +600,23 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "9.1 The Bitkit Services utilize and may provide access to or link to Third Party Services, including by enabling you to access such Third Party Services through the Bitkit Wallet through the use of Slashtags, widgets or Connections other than Blocktank Connections. When accessing Third Party Services, you understand that you are at no time transferring your assets to us. We provide access to Third Party Services only as a convenience, do not have control over their content, do not warrant or endorse, and are not responsible for the availability or legitimacy of, the content, products, assets, or services on or accessible from those Third Party Services (including any related websites, resources or links displayed therein). Third Party Services may provide access to assets which have high risks of illiquidity, devaluation, lockup, or loss."
+                        "9.1 The Bitkit Services may utilise, provide access to, or link to Third-Party Services, including through default settings, integrations, widgets, connections, transaction-broadcasting infrastructure, network-data infrastructure, third-party gas-payment services, cross-network transfer services, block explorers and support services. When accessing a Third-Party Service, you understand that you are not transferring your assets to Synonym unless a Bitkit Service clearly says otherwise. We may operate a technical gateway that validates permitted requests and protects service credentials. That gateway does not make Synonym the issuer, custodian, network operator, bridge operator, or guarantor of a Supported Asset or Third-Party Service."
                     )
 
                     Text(
-                        "9.2 You may incur charges from third parties for use of Third Party Services. For example, you may be charged fees for Third Party Services that you may access via the Bitkit Wallet. Third Party Services fees are not charged by Synonym and are not paid to Synonym. Any fees charged by Synonym will be designated as such and presented before you submit your transaction."
+                        "9.2 Third-Party Services act independently of Synonym. We do not control their content, availability, security, privacy practices, terms, compliance decisions, fees, transaction processing, delivery times, or results. Their terms and privacy policies may apply to you. You are responsible for reviewing them and assessing whether a Third-Party Service is appropriate for you."
                     )
 
                     Text(
-                        "9.3 WE MAKE NO WARRANTIES OR REPRESENTATIONS, EXPRESS OR IMPLIED, ABOUT LINKED THIRD PARTY SERVICES, THE THIRD PARTIES THEY ARE OWNED AND OPERATED BY, THE INFORMATION CONTAINED ON THEM, ASSETS AVAILABLE THROUGH THEM, OR THE SUITABILITY, PRIVACY, OR SECURITY OF THEIR PRODUCTS OR SERVICES. YOU ACKNOWLEDGE SOLE RESPONSIBILITY FOR AND ASSUME ALL RISK ARISING FROM YOUR USE OF THIRD-PARTY SERVICES, THIRD-PARTY WEBSITES, APPLICATIONS, OR RESOURCES, INCLUDING RISK OF LOSS FOR ASSETS TRADED THROUGH SUCH THIRD-PARTY SERVICES. IN NO EVENT WILL SYNONYM BE LIABLE FOR ANY DAMAGES ARISING OUT OF OR RELATING TO THIRD PARTY SERVICES. THIS SECTION OPERATES IN ADDITION TO ANY LIMITATION OF LIABILITY EXPRESSED ELSEWHERE IN THIS USER AGREEMENT."
+                        "9.3 A Third-Party Service may apply its own compliance, fraud-prevention, risk or operational controls to a transaction. Those controls may delay, reject, hold or prevent a transfer or refund. If a transaction requires investigation, the Third-Party Service may require transaction details, additional information or a request through its support process. Synonym may provide technical information or help communicate with the Third-Party Service, but does not guarantee an outcome, delivery, refund or response time."
+                    )
+
+                    Text(
+                        "9.4 You may incur fees, deductions or charges from Third-Party Services, including network fees, gas-payment charges, cross-network transfer charges and third-party service fees. Third-party charges are not charged by or paid to Synonym unless the Bitkit Wallet clearly identifies a charge as a Synonym fee before you submit the relevant transaction. A displayed third-party quote may be estimated, time-limited, change before submission, or differ from the final charge as permitted by the applicable Third-Party Service."
+                    )
+
+                    Text(
+                        "**9.5 WE MAKE NO WARRANTIES OR REPRESENTATIONS, EXPRESS OR IMPLIED, ABOUT THIRD-PARTY SERVICES, THE THIRD PARTIES THAT OWN OR OPERATE THEM, THE INFORMATION OR ASSETS AVAILABLE THROUGH THEM, OR THE SUITABILITY, PRIVACY, SECURITY, AVAILABILITY, LEGALITY OR RESULTS OF THEIR PRODUCTS OR SERVICES. YOU ACKNOWLEDGE SOLE RESPONSIBILITY FOR, AND ASSUME ALL RISK ARISING FROM, YOUR USE OF THIRD-PARTY SERVICES, INCLUDING THE RISK OF DELAY, FAILED DELIVERY, LOSS OF VALUE, LOSS OF ASSETS, SMART-CONTRACT FAILURE, PROTOCOL FAILURE, NETWORK CONGESTION, NETWORK REORGANIZATION, EXPLOIT, OR A CHANGE IN THIRD-PARTY SERVICE AVAILABILITY.**"
                     )
                 }
 
@@ -593,7 +639,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "10.2.2 use any Bitkit Services (including the Bitkit Wallet or any Connection) or Wallet in order to disguise the origin or nature of illicit proceeds of, or to breach any Laws, or to transact or deal in, any contraband assets, funds, property, or proceeds;"
+                        "10.2.2 use any Bitkit Services (including the Bitkit Wallet or any Connection) or Wallet in order to disguise the origin or nature of illicit proceeds or to breach any Laws, or to transact or deal in, any contraband assets, funds, property, or proceeds;"
                     )
 
                     Text(
@@ -643,7 +689,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "Any use as described in this Section 10 shall constitute a **\"Prohibited Use\"**. You must assure that any Wallet Asset Transfer, Routed Payment or other use by you of the Connection or the Bitkit Services is not a Prohibited Use. If Synonym determines or suspects that you have engaged in any Prohibited Use, Synonym may address such Prohibited Use through an appropriate sanction, in its sole and absolute discretion. Such sanction may include, without limitation: (i) force closing any active Blocktank Connection associated with you; (ii) making a report to any Government, law enforcement, or other authorities, without providing any notice of you about any such report; or (iii) suspending or terminating your access to any Bitkit Services. **In addition, should your actions or inaction result in Loss being suffered by Synonym or any of its Associates, you shall pay an amount to Synonym or the Associate so as to render Synonym or the Associate whole, including the amount of taxes or penalties that might be imposed on Synonym or the Associate.**"
+                        "Any use as described in this Section 10 shall constitute a \"Prohibited Use\". You must assure that any Wallet Asset Transfer, Routed Payment or other use by you of the Connection or the Bitkit Services is not a Prohibited Use. If Synonym determines or suspects that you have engaged in any Prohibited Use, Synonym may address such Prohibited Use through an appropriate sanction, in its sole and absolute discretion. Such sanction may include, without limitation: (i) force closing any active Blocktank Connection associated with you; (ii) making a report to any Government, law enforcement, or other authorities, without providing any notice to you about any such report; or (iii) suspending or terminating your access to any Bitkit Services. **In addition, should your actions or inaction result in Loss being suffered by Synonym or any of its Associates, you shall pay an amount to Synonym or the Associate so as to render Synonym or the Associate whole, including the amount of taxes or penalties that might be imposed on Synonym or the Associate.**"
                     )
                 }
 
@@ -702,7 +748,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "13.1.5 none of you, your Recipients or any of your respective affiliates will use the Bitkit Services or any Connection to transfer funds which are the proceeds of conduct that is illegal in any applicable jurisdiction, including the British Virgin Islands, the jurisdiction in which you are located, and the jurisdiction in which any Recipient is located;"
+                        "13.1.5 none of you, your Recipients or any of your respective affiliates will use the Bitkit Services or any Connection to transfer funds which are the proceeds of conduct that is illegal in any applicable jurisdiction, including the Republic of El Salvador, the jurisdiction in which you are located, and the jurisdiction in which any Recipient is located;"
                     )
 
                     Text(
@@ -722,7 +768,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "13.1.10 you understand the risks associated with using the Bitkit Services, including that: (a) the Bitkit Services provided by Synonym are limited to technology and related services, (b) Synonym does not provide or control the Lighting Network or any other Person such as other operators of nodes in the Lightning Network or your Recipients, (c) Synonym does not provide or control any Digital Assets networks or protocols, (d) market prices for Digital Assets can be volatile and highly unpredictable, (e) the legality of holding and transacting Digital Assets may not be clear and may vary under the Laws of different jurisdictions throughout the world, (f) the Lightning Network and other Digital Asset networks may be subject to security breaches from cyber-attacks that hack and steal your Digital Assets, or electronic or technological failures that impede or prevent your Wallet Asset Transfers, Routed Payment or cause recordkeeping errors, and (g) Persons other than Synonym may be or become insolvent, bankrupt or default upon their obligations;"
+                        "13.1.10 you understand the risks associated with using the Bitkit Services, including that: (a) the Bitkit Services provided by Synonym are limited to technology and related services, (b) Synonym does not provide or control the Lightning Network or any other Person such as other operators of nodes in the Lightning Network or your Recipients, (c) Synonym does not provide or control any Digital Assets networks or protocols, (d) market prices for Digital Assets can be volatile and highly unpredictable, (e) the legality of holding and transacting Digital Assets may not be clear and may vary under the Laws of different jurisdictions throughout the world, (f) the Lightning Network and other Digital Asset networks may be subject to security breaches from cyber-attacks that hack and steal your Digital Assets, or electronic or technological failures that impede or prevent your Wallet Asset Transfers, Routed Payment or cause recordkeeping errors, and (g) Persons other than Synonym may be or become insolvent, bankrupt or default upon their obligations;"
                     )
 
                     Text(
@@ -787,28 +833,20 @@ struct TosContent: View {
                         "*This section explains certain requirements and restrictions because the Bitkit Wallet is a mobile application.*"
                     )
 
-                    Text("15.1 **Mobile Application**")
-
                     Text(
-                        "To use the Bitkit Wallet you must have a mobile device that is compatible with the Bitkit Wallet. Synonym does not warrant that the Bitkit Wallet will be compatible with your mobile device. You may use mobile data in connection with the Bitkit Wallet and may incur additional charges from your wireless provider for these services. You agree that you are solely responsible for any such charges. You acknowledge that Synonym may from time to time issue upgraded versions of the Bitkit Wallet, and may automatically electronically upgrade the version of the Bitkit Wallet that you are using on your mobile device. You consent to such automatic upgrading on your mobile device, and agree that the terms and conditions of these Terms will apply to all such upgrades."
+                        "15.1 **Mobile Application**. To use the Bitkit Wallet you must have a mobile device that is compatible with the Bitkit Wallet.  Synonym does not warrant that the Bitkit Wallet will be compatible with your mobile device.  You may use mobile data in connection with the Bitkit Wallet and may incur additional charges from your wireless provider for these services.  You agree that you are solely responsible for any such charges.  You acknowledge that Synonym may from time to time issue upgraded versions of the Bitkit Wallet, and may automatically electronically upgrade the version of the Bitkit Wallet that you are using on your mobile device. You consent to such automatic upgrading on your mobile device, and agree that the terms and conditions of these Terms will apply to all such upgrades."
                     )
 
-                    Text("15.2 **Apple App Store Mobile Application**")
-
                     Text(
-                        "The following applies to the Bitkit Wallet you acquire from the Apple App Store (**\"Apple-Sourced Software\"**): You acknowledge and agree that these Terms are solely between you and Synonym, not Apple, Inc. (**\"Apple\"**) and that Apple has no responsibility for the Apple-Sourced Software or content thereof. Your use of the Apple-Sourced Software must comply with the App Store Terms of Service. You acknowledge that Apple has no obligation whatsoever to furnish any maintenance and support services with respect to the Apple-Sourced Software. In the event of any failure of the Apple-Sourced Software to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price for the Apple-Sourced Software to you; to the maximum extent permitted by applicable law, Apple will have no other warranty obligation whatsoever with respect to the Apple-Sourced Software, and any other claims, losses, liabilities, damages, costs or expenses attributable to any failure to conform to any warranty will be solely governed by these Terms and any law applicable to Synonym as provider of the software. You acknowledge that Apple is not responsible for addressing any claims of you or any third party relating to the Apple-Sourced Software or your possession and/or use of the Apple-Sourced Software, including: (i) product liability claims; (ii) any claim that the Apple-Sourced Software fails to conform to any applicable legal or regulatory requirement; and (iii) claims arising under consumer protection or similar legislation; and all such claims are governed solely by these Terms and any law applicable to Synonym as provider of the software. You acknowledge that, in the event of any third-party claim that the Apple-Sourced Software or your possession and use of that Apple-Sourced Software infringes that third party's intellectual property rights, Synonym, not Apple, will be solely responsible for the investigation, defense, settlement and discharge of any such intellectual property infringement claim to the extent required by these Terms. You and Synonym acknowledge and agree that Apple, and Apple's subsidiaries, are third-party beneficiaries of these Terms as relates to your license of the Apple-Sourced Software, and that, upon your acceptance of the terms and conditions of these Terms, Apple will have the right (and will be deemed to have accepted the right) to enforce these Terms as relates to your license of the Apple-Sourced Software against you as a third-party beneficiary thereof."
+                        "15.2 **Apple App Store Mobile Application**. The following applies to the Bitkit Wallet you acquire from the Apple App Store (“Apple-Sourced Software”): You acknowledge and agree that these Terms are solely between you and Synonym, not Apple, Inc. (“Apple”) and that Apple has no responsibility for the Apple-Sourced Software or content thereof. Your use of the Apple-Sourced Software must comply with the App Store Terms of Service. You acknowledge that Apple has no obligation whatsoever to furnish any maintenance and support services with respect to the Apple-Sourced Software. In the event of any failure of the Apple-Sourced Software to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price for the Apple-Sourced Software to you; to the maximum extent permitted by applicable law, Apple will have no other warranty obligation whatsoever with respect to the Apple-Sourced Software, and any other claims, losses, liabilities, damages, costs or expenses attributable to any failure to conform to any warranty will be solely governed by these Terms and any law applicable to Synonym as provider of the software. You acknowledge that Apple is not responsible for addressing any claims of you or any third party relating to the Apple-Sourced Software or your possession and/or use of the Apple-Sourced Software, including: (i) product liability claims; (ii) any claim that the Apple-Sourced Software fails to conform to any applicable legal or regulatory requirement; and (iii) claims arising under consumer protection or similar legislation; and all such claims are governed solely by these Terms and any law applicable to Synonym as provider of the software. You acknowledge that, in the event of any third-party claim that the Apple-Sourced Software or your possession and use of that Apple-Sourced Software infringes that third party’s intellectual property rights, Synonym, not Apple, will be solely responsible for the investigation, defense, settlement and discharge of any such intellectual property infringement claim to the extent required by these Terms. You and Synonym acknowledge and agree that Apple, and Apple’s subsidiaries, are third-party beneficiaries of these Terms as relates to your license of the Apple-Sourced Software, and that, upon your acceptance of the terms and conditions of these Terms, Apple will have the right (and will be deemed to have accepted the right) to enforce these Terms as relates to your license of the Apple-Sourced Software against you as a third-party beneficiary thereof."
                     )
 
-                    Text("15.3 **Google Play Store Mobile Application**")
-
                     Text(
-                        "The following applies to the Bitkit Wallet you acquire from the Google Play Store (**\"Google-Sourced Software\"**): (i) you acknowledge that these Terms are between you and Synonym only, and not with Google LLC (**\"Google\"**); (ii) your use of Google-Sourced Software must comply with Google's then-current Google Play Store Terms of Service; (iii) Google is only a provider of the Google Play Store where you obtained the Google-Sourced Software; (iv) Synonym, and not Google, is solely responsible for its Google-Sourced Software; (v) Google has no obligation or liability to you with respect to Google-Sourced Software or these Terms; and (vi) you acknowledge and agree that Google is a third-party beneficiary to these Terms as it relates to Synonym's Google-Sourced Software."
+                        "15.3 **Google Play Store Mobile Application**. The following applies to the Bitkit Wallet you acquire from the Google Play Store (“Google-Sourced Software”): (i) you acknowledge that these Terms are between you and Synonym only, and not with Google LLC (“Google”); (ii) your use of Google-Sourced Software must comply with Google’s then-current Google Play Store Terms of Service; (iii) Google is only a provider of the Google Play Store where you obtained the Google-Sourced Software; (iv) Synonym, and not Google, is solely responsible for its Google-Sourced Software; (v) Google has no obligation or liability to you with respect to Google-Sourced Software or these Terms; and (vi) you acknowledge and agree that Google is a third-party beneficiary to these Terms as it relates to Synonym’s Google-Sourced Software."
                     )
 
-                    Text("15.4 **CoinGecko Application Programming Interface**")
-
                     Text(
-                        "Fiat Expressions viewed through the Bitkit Wallet incorporate data available through the CoinGecko Application Programming Interface (together with its related documentation, the **\"CoinGecko API\"**). The CoinGecko API is the property of Gecko Labs Pte. Ltd. (**\"CoinGecko\"**), and your use of the CoinGecko API must comply with the then-current CoinGecko API Terms of Service. CoinGecko has no obligation or liability to you for your usage of the CoinGecko API through the Bitkit Wallet. Synonym, and not CoinGecko, is solely responsible for the Bitkit Wallet."
+                        "15.4 **CoinGecko Application Programming Interface**.  Fiat Expressions viewed through the Bitkit Wallet incorporate data available through the CoinGecko Application Programming Interface (together with its related documentation, the “CoinGecko API”).   The CoinGecko API is the  property of Gecko Labs Pte. Ltd. (“CoinGecko”), and your use of the CoinGecko API must comply with the then-current CoinGecko API Terms of Service.  CoinGecko has no obligation or liability to you for your usage of the CoinGecko API through the Bitkit Wallet. Synonym, and not CoinGecko, is solely responsible for the Bitkit Wallet."
                     )
                 }
 
@@ -834,7 +872,7 @@ struct TosContent: View {
                     )
 
                     Text(
-                        "17.1 Synonym is not registered as a money services business or money transmitter in the British Virgin Islands or elsewhere. You accept that any balance standing in, or Routed Payment through, the Bitkit Wallet is not subject to regulatory oversight, protections or insurance provided by any Person. In addition, whilst Synonym may maintain insurance for its own benefit in connection with its business, the insurance, if maintained, is solely for the benefit of Synonym and does not guarantee or insure any User in any way."
+                        "17.1 Synonym is not registered as a money services business or money transmitter in the Republic of El Salvador or elsewhere. You accept that any balance standing in, or Routed Payment through, the Bitkit Wallet is not subject to regulatory oversight, protections or insurance provided by any Person. In addition, whilst Synonym may maintain insurance for its own benefit in connection with its business, the insurance, if maintained, is solely for the benefit of Synonym and does not guarantee or insure any User in any way."
                     )
                 }
 
@@ -884,38 +922,28 @@ struct TosContent: View {
                         "*This Section requires that most disputes relating to the Bitkit Services be resolved through individual arbitration.*"
                     )
 
-                    Text("20.1 **Covered Claims**")
-
                     Text(
-                        "Except for excluded claims described below in Section 20.2, Synonym and you each agree that any dispute, claim or controversy arising out of or relating to (i) these Terms or the existence, breach, termination, enforcement, interpretation or validity thereof; (ii) the Bitkit Wallet or other Bitkit Services; or (iii) your use of any Bitkit Services at any time (each, a \"Claim\"), will be subject to and finally resolved by confidential, binding arbitration and not in a class, representative or consolidated action or proceeding. If you are a Person subject to the jurisdiction of the United States of America, the interpretation and enforceability of this arbitration provision will be governed by the Federal Arbitration Act, 9 U.S.C. §§ 1 et seq. Arbitration will be conducted through the use of videoconferencing technology (unless both arbitration parties agree that an in-person hearing is appropriate given the nature of the dispute) before a single arbitrator in accordance with the Rules of Arbitration of the International Chamber of Commerce, as amended from time to time (the \"ICC Rules\"). Judgment upon the award rendered by the arbitrator may be entered by any court having jurisdiction thereof. If the arbitral parties do not promptly agree on to seat of arbitration if an in-person hearing is selected, the seat will be the British Virgin Islands. The language of the arbitral proceedings will be English. The arbitrator may award any relief that a court of competent jurisdiction could award, including attorneys' fees when authorized by Law, and the arbitral decision may be enforced in court."
-                    )
-
-                    Text("20.2 **Excluded Claims**")
-
-                    Text(
-                        "The following claims and causes of action will be excluded from arbitration as described in Section 20.1 causes of action or claims in which either Party seeks injunctive or other equitable relief for the alleged unlawful use of its intellectual property or its confidential information or private data. The Parties shall be at liberty to pursue claims or causes of actions excluded from arbitration through any court of competent jurisdiction."
-                    )
-
-                    Text("20.3 **Delegation**")
-
-                    Text(
-                        "The arbitrator will have the power to hear and determine challenges to their jurisdiction, including any objections with respect to the existence, scope or validity of the arbitration agreement. This authority extends to jurisdictional challenges with respect to both the subject matter of the dispute and the parties to the arbitration. Further, the arbitrator will have the power to determine the existence, validity, or scope of the contract of which an arbitration clause forms a part. For the purposes of challenges to the jurisdiction of the arbitrator, each clause within this Section 20 will be considered as separable from any contract of which it forms a part. Any challenges to the jurisdiction of the arbitrator, except challenges based on the award itself, will be made not later than the notice of defense or, with respect to a counterclaim, the reply to the counterclaim; **provided**, **however**, that if a claim or counterclaim is later added or amended such a challenge may be made not later than the response to such claim or counterclaim as provided under ICC Rules."
-                    )
-
-                    Text("20.4 **Class Action Waiver**")
-
-                    Text(
-                        "You and Synonym expressly intend and agree that: (i) class action and representative action procedures are hereby waived and will not be asserted, nor will they apply, in any arbitration pursuant to these Terms; (ii) neither you nor Synonym will assert class action or representative action claims against the other in arbitration or otherwise; (iii) each of you and Synonym will only submit their own, individual claims in arbitration and will not seek to represent the interests of any other person, or consolidate claims with any other person; (iv) nothing in these Terms will be interpreted as your or Synonym' intent to arbitrate Claims on a class or representative basis; and (v) any relief awarded to any one User cannot and may not affect any other User. No adjudicator may consolidate or join more than one Person's or Party's claims and may not otherwise preside over any form of a consolidated, representative, or class proceeding."
-                    )
-
-                    Text("20.5 **Confidentiality**")
-
-                    Text(
-                        "You and Synonym and any other arbitration parties will maintain the confidential nature of the arbitration proceeding and any award, including the hearing, except as may be necessary to prepare for or conduct the arbitration hearing on the merits, or except as may be necessary in connection with a court application for a preliminary remedy, a judicial challenge to an award or its enforcement, or unless otherwise required by Law or judicial decision."
+                        "20.1 **Covered Claims**.  Except for excluded claims described below in Section 20.2, Synonym and you each agree that any dispute, claim or controversy arising out of or relating to (i) these Terms or the existence, breach, termination, enforcement, interpretation or validity thereof; (ii) the Bitkit Wallet or other Bitkit Services; or (iii) your use of any Bitkit Services at any time (each, a “Claim”), will be subject to and finally resolved by confidential, binding arbitration and not in a class, representative or consolidated action or proceeding. If you are a Person subject to the jurisdiction of the United States of America, the interpretation and enforceability of this arbitration provision will be governed by the Federal Arbitration Act, 9 U.S.C. §§ 1 et seq.  Arbitration will be conducted through the use of videoconferencing technology (unless both arbitration parties agree that an in-person hearing is appropriate given the nature of the dispute) before a single arbitrator in accordance with the Rules of Arbitration of the International Chamber of Commerce, as amended from time to time (the “ICC Rules”). Judgment upon the award rendered by the arbitrator may be entered by any court having jurisdiction thereof.  If the arbitral parties do not promptly agree on to seat of arbitration if an in-person hearing is selected, the seat will be the Republic of El Salvador.  The language of the arbitral proceedings will be English.  The arbitrator may award any relief that a court of competent jurisdiction could award, including attorneys’ fees when authorized by Law, and the arbitral decision may be enforced in court."
                     )
 
                     Text(
-                        "**20.6 **JURY TRIAL WAIVER**. TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, THE PARTIES HEREBY IRREVOCABLY AND UNCONDITIONALLY WAIVE ALL RIGHT TO TRIAL BY JURY IN ANY LEGAL ACTION OR PROCEEDING OF ANY KIND WHATSOEVER ARISING OUT OF OR RELATING TO THESE TERMS OR ANY BREACH THEREOF, ANY USE OR ATTEMPTED USE OF THE BITKIT SERVICES BY YOU, AND/OR ANY OTHER MATTER INVOLVING THE USER AND SYNONYM.**"
+                        "20.2 **Excluded Claims**.  The following claims and causes of action will be excluded from arbitration as described in Section 20.1 causes of action or claims in which either Party seeks injunctive or other equitable relief for the alleged unlawful use of its intellectual property or its confidential information or private data.  The Parties shall be at liberty to pursue claims or causes of actions excluded from arbitration through any court of competent jurisdiction."
+                    )
+
+                    Text(
+                        "20.3 **Delegation**. The arbitrator will have the power to hear and determine challenges to their jurisdiction, including any objections with respect to the existence, scope or validity of the arbitration agreement. This authority extends to jurisdictional challenges with respect to both the subject matter of the dispute and the parties to the arbitration.  Further, the arbitrator will have the power to determine the existence, validity, or scope of the contract of which an arbitration clause forms a part.  For the purposes of challenges to the jurisdiction of the arbitrator, each clause within this Section 20 will be considered as separable from any contract of which it forms a part.  Any challenges to the jurisdiction of the arbitrator, except challenges based on the award itself, will be made not later than the notice of defense or, with respect to a counterclaim, the reply to the counterclaim; provided, however, that if a claim or counterclaim is later added or amended such a challenge may be made not later than the response to such claim or counterclaim as provided under ICC Rules."
+                    )
+
+                    Text(
+                        "20.4 **Class Action Waiver**.  You and Synonym expressly intend and agree that: (i) class action and representative action procedures are hereby waived and will not be asserted, nor will they apply, in any arbitration pursuant to these Terms; (ii) neither you nor Synonym will assert class action or representative action claims against the other in arbitration or otherwise; (iii) each of you and Synonym will only submit their own, individual claims in arbitration and will not seek to represent the interests of any other person, or consolidate claims with any other person; (iv) nothing in these Terms will be interpreted as your or Synonym’ intent to arbitrate Claims on a class or representative basis; and (v) any relief awarded to any one User cannot and may not affect any other User.  No adjudicator may consolidate or join more than one Person’s or Party’s claims and may not otherwise preside over any form of a consolidated, representative, or class proceeding."
+                    )
+
+                    Text(
+                        "20.5 **Confidentiality**.  You and Synonym and any other arbitration parties will maintain the confidential nature of the arbitration proceeding and any award, including the hearing, except as may be necessary to prepare for or conduct the arbitration hearing on the merits, or except as may be necessary in connection with a court application for a preliminary remedy, a judicial challenge to an award or its enforcement, or unless otherwise required by Law or judicial decision."
+                    )
+
+                    Text(
+                        "20.6 **JURY TRIAL WAIVER. TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, THE PARTIES HEREBY IRREVOCABLY AND UNCONDITIONALLY WAIVE ALL RIGHT TO TRIAL BY JURY IN ANY LEGAL ACTION OR PROCEEDING OF ANY KIND WHATSOEVER ARISING OUT OF OR RELATING TO THESE TERMS OR ANY BREACH THEREOF, ANY USE OR ATTEMPTED USE OF THE BITKIT SERVICES BY YOU, AND/OR ANY OTHER MATTER INVOLVING THE USER AND SYNONYM.**"
                     )
                 }
 
@@ -927,46 +955,32 @@ struct TosContent: View {
                         "*This section contains provisions relating to which law governs these Terms, our relationship and whether we can transfer the rights of these Terms, among other things. It also covers how we propose to resolve disputes and asks you to agree to waive your right to a jury trial and any class action.*"
                     )
 
-                    Text("21.1 **Governing law**")
-
                     Text(
-                        "These Terms shall be governed by and construed and enforced in accordance with the Laws of the British Virgin Islands and shall be interpreted in all respects as a British Virgin Islands contract. Any transaction, dispute, controversy, claim or action arising from or related to your access to the Bitkit Wallet, these Terms or any of the Bitkit Services shall be governed by the Laws of the British Virgin Islands, exclusive of choice-of-law principles."
+                        "21.1 **Governing law**. These Terms shall be governed by and construed and enforced in accordance with the Laws of the Republic of El Salvador and shall be interpreted in all respects as a Republic of El Salvadorian contract. Any transaction, dispute, controversy, claim or action arising from or related to your access to the Bitkit Wallet, these Terms or any of the Bitkit Services shall be governed by the Laws of the Republic of El Salvador, exclusive of choice-of-law principles."
                     )
 
-                    Text("21.2 **We are not acting in partnership with you**")
-
                     Text(
-                        "Nothing herein, including the provision of Bitkit Services, shall be deemed or construed to create a partnership, joint venture, agency relationship or association between you and any of Synonym or its Associates. No Party shall have any right, power or authority to enter into any agreement or undertaking for or act on behalf of, or to act as or be an agent or representative of, or to otherwise bind, the other Party. In providing the Bitkit Services, Synonym is acting as a service provider, and not an agent, of the User, any Recipient or any other Person."
+                        "21.2 **We are not acting in partnership with you**. Nothing herein, including the provision of Bitkit Services, shall be deemed or construed to create a partnership, joint venture, agency relationship or association between you and any of Synonym or its Associates. No Party shall have any right, power or authority to enter into any agreement or undertaking for or act on behalf of, or to act as or be an agent or representative of, or to otherwise bind, the other Party. In providing the Bitkit Services, Synonym is acting as a service provider, and not an agent, of the User, any Recipient or any other Person."
                     )
 
-                    Text("21.3 **No Waiver; Available Remedies**")
-
                     Text(
-                        "Any failure by Synonym to exercise any of its rights, powers, or remedies under these Terms, or any delay by Synonym in doing so, does not constitute a waiver of any such right, power, or remedy. The single or partial exercise of any right, power, or remedy by Synonym does not prevent either from exercising any other rights, powers, or remedies. The remedies of Synonym are cumulative with and not exclusive of any other remedy conferred by the provisions of these Terms, or by law or equity. You agree that the remedies to which Synonym is entitled include (i) injunctions to prevent breaches of these Terms and to enforce specifically the terms and provisions hereof, and you waive the requirement of any posting of a bond in connection with such remedies, (ii) the right to recover the amount of any Losses by set off against any amounts that Synonym would otherwise be obligated to pay to you, and (iii) the right to seize and recover against any of your assets, or your interests therein, that are held by Synonym or any of its Associates."
+                        "21.3 **No Waiver; Available Remedies**. Any failure by Synonym to exercise any of its rights, powers, or remedies under these Terms, or any delay by Synonym in doing so, does not constitute a waiver of any such right, power, or remedy. The single or partial exercise of any right, power, or remedy by Synonym does not prevent either from exercising any other rights, powers, or remedies. The remedies of Synonym are cumulative with and not exclusive of any other remedy conferred by the provisions of these Terms, or by law or equity. You agree that the remedies to which Synonym is entitled include (i) injunctions to prevent breaches of these Terms and to enforce specifically the terms and provisions hereof, and you waive the requirement of any posting of a bond in connection with such remedies, (ii) the right to recover the amount of any Losses by set off against any amounts that Synonym would otherwise be obligated to pay to you, and (iii) the right to seize and recover against any of your assets, or your interests therein, that are held by Synonym or any of its Associates."
                     )
 
-                    Text("21.4 **Assignment and Third Party Rights**")
-
                     Text(
-                        "These Terms, and any of the rights, duties, and obligations contained or incorporated herein, are not assignable by you without prior written consent of Synonym and any attempt by you to assign these Terms without Synonym's written consent is void. These Terms, and any of the rights, duties, and obligations contained herein, are freely assignable by Synonym, in whole or in part, without notice or your consent (for clarity, this assignment right includes the right for Synonym to assign any claim, in whole or in part, arising hereunder). Any attempt by you to assign these Terms without written consent is void. Subject to the foregoing, these Terms, and any of the rights, duties, and obligations contained or incorporated herein, shall be binding upon and inure to the benefit of the heirs, executors, administrators, personal or legal representatives, successors and assigns of you and of Synonym. None of the provisions of these Terms, or any of the rights, duties, and obligations contained or incorporated herein, are for the benefit of or enforceable by any creditors of you or Synonym or any other persons, except (i) such as inure to a successor or assign in accordance herewith and (ii) that the Associates of Synonym are intended third party beneficiaries of the rights and privileges expressly stated to apply to the Associates hereunder and shall be entitled to enforce such rights and privileges (including those rights and privileges set out in Sections 10 (**Prohibited Uses**) and 18 (**Responsibilities, Limitation of Liability and Indemnity**)) as if a direct party to these Terms. No consent of any Person is required for any modification or amendment to these Terms."
+                        "21.4 **Assignment and Third Party Rights**: These Terms, and any of the rights, duties, and obligations contained or incorporated herein, are not assignable by you without prior written consent of Synonym and any attempt by you to assign these Terms without Synonym’s written consent is void. These Terms, and any of the rights, duties, and obligations contained herein, are freely assignable by Synonym, in whole or in part, without notice or your consent (for clarity, this assignment right includes the right for Synonym to assign any claim, in whole or in part, arising hereunder). Any attempt by you to assign these Terms without written consent is void. Subject to the foregoing, these Terms, and any of the rights, duties, and obligations contained or incorporated herein, shall be binding upon and inure to the benefit of the heirs, executors, administrators, personal or legal representatives, successors and assigns of you and of Synonym. None of the provisions of these Terms, or any of the rights, duties, and obligations contained or incorporated herein, are for the benefit of or enforceable by any creditors of you or Synonym or any other persons, except (i) such as inure to a successor or assign in accordance herewith and (ii) that the Associates of Synonym are intended third party beneficiaries of the rights and privileges expressly stated to apply to the Associates hereunder and shall be entitled to enforce such rights and privileges (including those rights and privileges set out in Sections 10 (*Prohibited Uses*) and 18 (*Responsibilities, Limitation of Liability and Indemnity*)) as if a direct party to these Terms. No consent of any Person is required for any modification or amendment to these Terms."
                     )
 
-                    Text("21.5 **No Liability for Termination**")
-
                     Text(
-                        "Synonym shall not be liable to you or any other Person for termination of your access to the Bitkit Services."
+                        "21.5 **No Liability for Termination**. Synonym shall not be liable to you or any other Person for termination of your access to the Bitkit Services."
                     )
 
-                    Text("21.6 **Severability**")
-
                     Text(
-                        "If any provision of these Terms or part thereof, as amended from time to time, is determined to be invalid, void, or unenforceable, in whole or in part, by any court of competent jurisdiction, such invalidity, voidness, or unenforceability attaches only to such provision to the extent of its illegality, unenforceability, invalidity, or voidness, as may be, and everything else in these Terms continues in full force and effect."
+                        "21.6 **Severability**. If any provision of these Terms or part thereof, as amended from time to time, is determined to be invalid, void, or unenforceable, in whole or in part, by any court of competent jurisdiction, such invalidity, voidness, or unenforceability attaches only to such provision to the extent of its illegality, unenforceability, invalidity, or voidness, as may be, and everything else in these Terms continues in full force and effect."
                     )
 
-                    Text("21.7 **Electronic Communications and Acceptance**")
-
                     Text(
-                        "You agree and consent to receive electronically all communications, agreements, documents, receipts, notices and disclosures that Synonym may provide in connection with these Terms through publication on any part of the Bitkit Wallet or to your authorized e-mail address on file with Synonym. Such notices shall be deemed effective and received by you on the date on which the notice is published on any part of the Bitkit Wallet or on which the e-mail is sent to such authorized e-mail address. These Terms may be accepted electronically, and it is the intention of the parties that such acceptance shall be deemed to be as valid as an original signature being applied to these Terms."
+                        "21.7 **Electronic Communications and Acceptance**. You agree and consent to receive electronically all communications, agreements, documents, receipts, notices and disclosures that Synonym may provide in connection with these Terms through publication on any part of the Bitkit Wallet or to your authorized e-mail address on file with Synonym. Such notices shall be deemed effective and received by you on the date on which the notice is published on any part of the Bitkit Wallet or on which the e-mail is sent to such authorized e-mail address. These Terms may be accepted electronically, and it is the intention of the parties that such acceptance shall be deemed to be as valid as an original signature being applied to these Terms."
                     )
                 }
 

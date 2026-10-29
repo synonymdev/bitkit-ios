@@ -11,7 +11,6 @@ struct ReceiveQr: View {
     @Environment(HwWalletManager.self) private var hwWalletManager
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
     @Binding var navigationPath: [ReceiveRoute]
-    let cjitInvoice: String?
     let tab: ReceiveTab?
     let hardwareWalletId: String?
     let onUsdtSelectionChange: ((Bool) -> Void)?
@@ -34,13 +33,11 @@ struct ReceiveQr: View {
 
     init(
         navigationPath: Binding<[ReceiveRoute]>,
-        cjitInvoice: String? = nil,
         tab: ReceiveTab? = nil,
         hardwareWalletId: String? = nil,
         onUsdtSelectionChange: ((Bool) -> Void)? = nil
     ) {
         _navigationPath = navigationPath
-        self.cjitInvoice = cjitInvoice
         self.tab = tab
         self.hardwareWalletId = hardwareWalletId
         self.onUsdtSelectionChange = onUsdtSelectionChange
@@ -89,7 +86,9 @@ struct ReceiveQr: View {
         if selectedHardwareWalletId != nil {
             items.insert(TabItem(.hardware, label: selectedHardwareWallet?.vendor.modelName), at: 0)
         }
-        if settings.isUsdtEnabled, cjitInvoice == nil { items.append(TabItem(.usdt)) }
+        if settings.isUsdtEnabled {
+            items.append(TabItem(.usdt))
+        }
         return items
     }
 
@@ -112,7 +111,7 @@ struct ReceiveQr: View {
     }
 
     private var canShowUnifiedReceive: Bool {
-        (wallet.canCreateReceiveLightningInvoice || wallet.hasCoherentReceiveInvoice) && cjitInvoice == nil
+        wallet.canCreateReceiveLightningInvoice || wallet.hasCoherentReceiveInvoice
     }
 
     private var selectedTabBinding: Binding<ReceiveTab> {
@@ -127,20 +126,48 @@ struct ReceiveQr: View {
         )
     }
 
-    var showingCjitOnboarding: Bool {
-        return !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil && selectedTab == .spending
+    /// A page of the receive `TabView`. The wrap pages sit before the first and after the last tab, so a swipe past
+    /// either end pages on and then selects the tab at the other end. They are hidden from accessibility, so their
+    /// copies of the end tab's buttons never match an identifier lookup.
+    private enum ReceivePage: Hashable {
+        case tab(ReceiveTab)
+        case wrapToLast
+        case wrapToFirst
+    }
+
+    private var pageSelection: Binding<ReceivePage> {
+        Binding(
+            get: { .tab(selectedTab) },
+            set: { page in
+                let tabs = availableTabItems.map(\.tab)
+                switch page {
+                case let .tab(tab):
+                    selectedTabBinding.wrappedValue = tab
+                case .wrapToLast:
+                    if let last = tabs.last {
+                        selectedTabBinding.wrappedValue = last
+                    }
+                case .wrapToFirst:
+                    if let first = tabs.first {
+                        selectedTabBinding.wrappedValue = first
+                    }
+                }
+            }
+        )
+    }
+
+    var showingSpendingOnboarding: Bool {
+        return !wallet.canCreateReceiveLightningInvoice && selectedTab == .spending
     }
 
     var body: some View {
-        Group {
-            if selectedTab == .usdt, !settings.isUsdtEnabled {
-                UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
-                                 onEnable: { settings.usdtPreference = .enabled })
-            } else if selectedTab == .usdt {
-                UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
-            } else {
-                bitcoinContent
-            }
+        if selectedTab == .usdt, !settings.isUsdtEnabled {
+            UsdtIntroContent(isEnablePrompt: true, onDecline: { selectedTabBinding.wrappedValue = .savings },
+                             onEnable: { settings.usdtPreference = .enabled })
+        } else if selectedTab == .usdt {
+            UsdtReceiveView(tabs: availableTabItems, onSelectTab: { selectedTabBinding.wrappedValue = $0 }, contactAction: paymentRequestAction)
+        } else {
+            bitcoinContent
         }
     }
 
@@ -155,7 +182,11 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
-                TabView(selection: selectedTabBinding) {
+                TabView(selection: pageSelection) {
+                    if let last = availableTabItems.last?.tab {
+                        wrapPage(showing: last, tag: .wrapToLast)
+                    }
+
                     if selectedHardwareWalletId != nil {
                         tabContent(for: .hardware)
                     }
@@ -167,7 +198,13 @@ struct ReceiveQr: View {
                     }
 
                     tabContent(for: .spending)
-                    if settings.isUsdtEnabled, cjitInvoice == nil { Color.clear.tag(ReceiveTab.usdt) }
+                    if settings.isUsdtEnabled {
+                        Color.clear.tag(ReceivePage.tab(.usdt))
+                    }
+
+                    if let first = availableTabItems.first?.tab {
+                        wrapPage(showing: first, tag: .wrapToFirst)
+                    }
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
@@ -175,7 +212,7 @@ struct ReceiveQr: View {
                 Spacer()
 
                 Group {
-                    if showingCjitOnboarding {
+                    if showingSpendingOnboarding {
                         CustomButton(
                             title: t("wallet__receive_spending"),
                             icon: Image("bolt")
@@ -184,11 +221,7 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if GeoService.shared.isGeoBlocked {
-                                navigationPath.append(.cjitGeoBlocked)
-                            } else if !wallet.canCreateReceiveLightningInvoice {
-                                navigationPath.append(.cjitAmount)
-                            }
+                            navigationPath.append(.transferUnavailable)
                         }
                     } else if showDetails {
                         VStack(spacing: 16) {
@@ -276,7 +309,6 @@ struct ReceiveQr: View {
             } catch {
                 app.toast(error)
             }
-            await app.checkGeoStatus()
         }
         .onChange(of: wallet.nodeLifecycleState) { _, newState in
             // They may open this view before node has started
@@ -332,7 +364,17 @@ struct ReceiveQr: View {
         )
     }
 
-    func tabContent(for tab: ReceiveTab) -> some View {
+    @ViewBuilder
+    private func wrapPage(showing tab: ReceiveTab, tag: ReceivePage) -> some View {
+        if tab == .usdt {
+            Color.clear.tag(tag)
+        } else {
+            tabContent(for: tab, tag: tag)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func tabContent(for tab: ReceiveTab, tag: ReceivePage? = nil) -> some View {
         VStack(spacing: 0) {
             if needsInvoiceRefresh && tab != .hardware {
                 if invoiceRefreshFailed {
@@ -348,7 +390,7 @@ struct ReceiveQr: View {
                 } else {
                     ProgressView()
                 }
-            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice && cjitInvoice == nil {
+            } else if tab == .spending && !wallet.canCreateReceiveLightningInvoice {
                 cjitOnboarding
             } else if receiveUnavailable(for: tab) {
                 receiveRefreshStatus(for: tab)
@@ -361,7 +403,7 @@ struct ReceiveQr: View {
             Spacer()
         }
         .padding(.horizontal)
-        .tag(tab)
+        .tag(tag ?? .tab(tab))
     }
 
     @ViewBuilder
@@ -413,7 +455,7 @@ struct ReceiveQr: View {
     }
 
     private func receiveUnavailable(for tab: ReceiveTab) -> Bool {
-        guard cjitInvoice == nil, tab == .unified || tab == .spending else { return false }
+        guard tab == .unified || tab == .spending else { return false }
         return wallet.isReceiveInvoiceUpdating || wallet.receiveInvoiceError != nil ||
             (tab == .unified && !wallet.hasCoherentReceiveInvoice)
     }
@@ -454,7 +496,7 @@ struct ReceiveQr: View {
             )
         case .spending:
             return (
-                uri: cjitInvoice ?? wallet.bolt11,
+                uri: wallet.bolt11,
                 imageAsset: "ln",
                 accentColor: .purpleAccent
             )
@@ -516,18 +558,7 @@ struct ReceiveQr: View {
                         )
                     }
                 case .spending:
-                    // Spending: cjitInvoice or bolt11
-                    if let cjitInvoice {
-                        pairs.append(
-                            CopyAddressPair(
-                                title: t("wallet__receive_lightning_invoice"),
-                                address: cjitInvoice,
-                                type: .lightning
-                            )
-                        )
-                        break
-                    }
-
+                    // Spending: bolt11
                     if !wallet.bolt11.isEmpty {
                         pairs.append(
                             CopyAddressPair(
@@ -589,7 +620,7 @@ struct ReceiveQr: View {
     }
 
     private func editRoute(for tab: ReceiveTab) -> ReceiveRoute? {
-        .edit(tab: tab, onchainOnly: tab == .hardware, replacesCurrentQr: tab == .spending && cjitInvoice != nil)
+        .edit(tab: tab, onchainOnly: tab == .hardware)
     }
 
     private struct ImageConfig {

@@ -26,7 +26,7 @@ struct UsdtReceiveAmountView: View {
             .fixedSize(horizontal: false, vertical: true)
             Divider()
             Spacer(minLength: 34)
-            NumberPad(type: .decimal, decimalSeparator: Locale.current.decimalSeparator ?? ".", isDisabled: busy,
+            NumberPad(type: .decimal, isDisabled: busy,
                       onDeleteLongPress: { amount = "" })
             { key in
                 amount = NumberPadInputHandler.handleInput(key: key, current: amount, maxLength: 21, maxDecimals: 6)
@@ -34,7 +34,9 @@ struct UsdtReceiveAmountView: View {
             .padding(.bottom, 36)
             CustomButton(title: t("common__continue"), isDisabled: !canContinue, isLoading: busy, titleKerning: 0, titleLineHeight: 20) {
                 guard canContinue else { return }
-                if let parsed = try? parsePaykitAmountInput(asset: .usdt, value: amount) { amount = parsed.value }
+                if let parsed = try? parsePaykitAmountInput(asset: .usdt, value: amount) {
+                    amount = parsed.value
+                }
                 await onContinue()
             }
             .accessibilityIdentifier("UsdtDepositCreate")

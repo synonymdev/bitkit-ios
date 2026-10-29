@@ -15,11 +15,15 @@ final class BackupServiceTests: XCTestCase {
             service = BackupService(
                 defaults: defaults,
                 backupData: { _ in
-                    if changeDuringCapture, shouldChange { service.markBackupRequired(category: .wallet) }
+                    if changeDuringCapture, shouldChange {
+                        service.markBackupRequired(category: .wallet)
+                    }
                     return Data("snapshot".utf8)
                 },
                 uploadBackup: { _, _ in
-                    if !changeDuringCapture, shouldChange { service.markBackupRequired(category: .wallet) }
+                    if !changeDuringCapture, shouldChange {
+                        service.markBackupRequired(category: .wallet)
+                    }
                 }
             )
 
@@ -99,12 +103,16 @@ final class BackupServiceTests: XCTestCase {
         service = BackupService(defaults: defaults, backupData: { _ in
             try await tracker.capture {
                 captures += 1
-                if captures <= 3 { changes.send() }
+                if captures <= 3 {
+                    changes.send()
+                }
                 return Data("snapshot-\(captures)".utf8)
             }
         }, uploadBackup: { _, data in
             uploads.append(data)
-            if uploads.count == 1 { service.markBackupRequired(category: .wallet) }
+            if uploads.count == 1 {
+                service.markBackupRequired(category: .wallet)
+            }
         })
         let subscription = service.backupStatusesPublisher
             .filter { $0[.wallet].map { !$0.isRequired && !$0.running } == true }
@@ -144,7 +152,9 @@ final class BackupServiceTests: XCTestCase {
                 try await tracker.capture {
                     attempts += 1
                     changes.send()
-                    if identityChanged { throw PubkyServiceError.identityChanged }
+                    if identityChanged {
+                        throw PubkyServiceError.identityChanged
+                    }
                     throw OnchainSendAttemptError.unresolved
                 }
                 XCTFail("Expected capture failure")
@@ -157,6 +167,62 @@ final class BackupServiceTests: XCTestCase {
             }
             XCTAssertEqual(attempts, 1)
         }
+    }
+
+    func testTemporaryFailureRemainsPendingAcrossServiceRestart() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for category in [BackupCategory.wallet, .usdt] {
+            let unavailable = BackupService(defaults: defaults, backupData: { _ in
+                throw PaykitError.SharedStateBusy(code: "shared_state_busy", context: "pending reconciliation")
+            }, waitForBackupDelay: { try await Task.sleep(nanoseconds: 60_000_000_000) })
+            await unavailable.triggerBackup(category: category)
+            unavailable.setWiping(true)
+            await unavailable.stopObservingBackups()
+            let restarted = BackupService(defaults: defaults, backupData: { _ in Data("complete".utf8) },
+                                          uploadBackup: { _, _ in }, waitForBackupDelay: {})
+            XCTAssertTrue(restarted.getBackupStatus(category: category).isRequired)
+            let completed = expectation(description: "Restart resumed pending backup")
+            let subscription = restarted.backupStatusesPublisher
+                .filter { $0[category].map { !$0.isRequired && !$0.running } == true }
+                .first().sink { _ in completed.fulfill() }
+            restarted.startObservingBackups()
+            await fulfillment(of: [completed], timeout: 5)
+            subscription.cancel()
+            XCTAssertFalse(restarted.getBackupStatus(category: category).isRequired)
+            restarted.setWiping(true)
+            await restarted.stopObservingBackups()
+        }
+    }
+
+    func testTemporaryPubkyFailureKeepsWalletWorkAndRetriesWithBoundedBackoff() async throws {
+        let suite = "BackupServiceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let completed = expectation(description: "Pending Paykit snapshot acknowledged")
+        var captures = 0
+        var delays: [UInt64] = []
+        let service = BackupService(defaults: defaults, backupData: { _ in
+            captures += 1
+            if captures <= 8 {
+                throw PaykitError.ConcurrentUpdate(code: "concurrent_update", context: "lock held")
+            }
+            return Data("complete-wallet".utf8)
+        }, uploadBackup: { _, data in
+            XCTAssertEqual(data, Data("complete-wallet".utf8))
+        }, waitForBackupDelay: {}, waitForTemporaryFailureDelay: { delays.append($0) })
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.wallet].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        defer { subscription.cancel() }
+        service.markBackupRequired(category: .wallet)
+        await fulfillment(of: [completed], timeout: 5)
+        XCTAssertEqual(captures, 9)
+        XCTAssertEqual(delays, [10, 20, 40, 80, 160, 300, 300, 300].map { UInt64($0) * 1_000_000_000 })
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).isRequired)
+        service.setWiping(true)
+        await service.stopObservingBackups()
     }
 
     func testAutomaticBackupDoesNotRepeatUnrelatedFailures() async throws {
@@ -175,9 +241,17 @@ final class BackupServiceTests: XCTestCase {
                 var attempts = 0
                 let service = BackupService(defaults: defaults, backupData: { _ in
                     attempts += 1
-                    if attempts == 1 { firstAttempts.fulfill() } else { repeatedAttempt.fulfill() }
-                    if failure == 0 { throw PubkyServiceError.identityChanged }
-                    if failure == 1 { throw OnchainSendAttemptError.unresolved }
+                    if attempts == 1 {
+                        firstAttempts.fulfill()
+                    } else {
+                        repeatedAttempt.fulfill()
+                    }
+                    if failure == 0 {
+                        throw PubkyServiceError.identityChanged
+                    }
+                    if failure == 1 {
+                        throw OnchainSendAttemptError.unresolved
+                    }
                     return Data("snapshot".utf8)
                 }, uploadBackup: { _, _ in throw URLError(.notConnectedToInternet) })
                 services.append((service, category))
@@ -255,7 +329,9 @@ final class BackupServiceTests: XCTestCase {
             var attempts = 0
             try await tracker.capture {
                 attempts += 1
-                if attempts == 3 { withUnsafeCurrentTask { $0?.cancel() } }
+                if attempts == 3 {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
                 throw WalletBackupSnapshotError.changed
             }
         }

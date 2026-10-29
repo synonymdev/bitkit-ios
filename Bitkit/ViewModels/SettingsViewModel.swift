@@ -108,7 +108,6 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("quickpayDailyLimitMultiplier") var quickpayDailyLimitMultiplier: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 
@@ -131,6 +130,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     @Published var rgsIsLoading: Bool = false
     @Published var rgsUrlIsValid: Bool = false
     private var rgsValidationCancellable: AnyCancellable?
+    private(set) var serverConnectionGeneration = UUID()
+    private var serverConnectionTasks: [UUID: Task<Void, Never>] = [:]
+    private var isWipingServerSettings = false
 
     // Services
     let lightningService: LightningService
@@ -212,6 +214,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Call after removePersistentDomain; singleton retains stale @AppStorage values.
     func resetToDefaults() {
+        invalidateServerConnections()
         _swipeBalanceToHide = true
         defaultTransactionSpeed = .normal
         hideBalance = false
@@ -223,7 +226,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         quickpayAmount = 5
         quickpayDailyLimitMultiplier = 5
         enableNotifications = false
-        enableNotificationsAmount = false
         UserDefaults.standard.set(PaykitFeatureFlags.uiEnabledByDefault, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(false, forKey: PrivatePaykitService.publishingEnabledKey)
         UserDefaults.standard.set(false, forKey: PublicPaykitService.publishingEnabledKey)
@@ -241,10 +243,66 @@ class SettingsViewModel: NSObject, ObservableObject {
         _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
         _selectedAddressType = "nativeSegwit"
         _addressTypesToMonitor = "nativeSegwit"
-        BlocktankRefundAddressStore().clear()
         pinEnabled = false
         isChangingAddressType = false
+        lastAddressTypeError = nil
         restoredMonitoredTypesFromBackup = false
+
+        loadElectrumSettings()
+        electrumIsConnected = false
+        electrumIsLoading = false
+
+        rgsValidationCancellable?.cancel()
+        loadRgsSettings()
+        rgsIsLoading = false
+        rgsUrlIsValid = false
+        setupRgsValidationDebounce()
+    }
+
+    func isCurrentServerConnection(_ generation: UUID) -> Bool {
+        generation == serverConnectionGeneration && !isWipingServerSettings && !Task.isCancelled
+    }
+
+    /// Invalidated attempts return nil so callers suppress stale toasts and navigation.
+    func withServerConnection<Result>(_ operation: @escaping @MainActor (UUID) async -> Result?) async -> Result? {
+        guard !isWipingServerSettings, !Task.isCancelled else { return nil }
+        let generation = serverConnectionGeneration
+        let id = UUID()
+        var result: Result?
+        let task = Task { result = await operation(generation) }
+        serverConnectionTasks[id] = task
+        defer { serverConnectionTasks.removeValue(forKey: id) }
+
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        guard isCurrentServerConnection(generation) else { return nil }
+        return result
+    }
+
+    func beginServerSettingsWipe() async {
+        isWipingServerSettings = true
+        invalidateServerConnections()
+        // Rust restarts are not cooperatively cancellable; drain them before wiping node storage.
+        let tasks = Array(serverConnectionTasks.values)
+        for task in tasks {
+            await task.value
+        }
+    }
+
+    func endServerSettingsWipe() {
+        isWipingServerSettings = false
+    }
+
+    private func invalidateServerConnections() {
+        serverConnectionGeneration = UUID()
+        electrumIsLoading = false
+        rgsIsLoading = false
+        for task in serverConnectionTasks.values {
+            task.cancel()
+        }
     }
 
     // MARK: - Computed Properties
@@ -254,7 +312,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     func protectUsdtFunds(_ hasProtectedFunds: Bool) {
-        if hasProtectedFunds { usdtPreference = .enabled }
+        if hasProtectedFunds {
+            usdtPreference = .enabled
+        }
     }
 
     var electrumHasEdited: Bool {
@@ -360,8 +420,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
-        guard !isChangingAddressType else { return false }
-        guard enabled || addressType != .nativeSegwit else { return false }
+        guard !isChangingAddressType, enabled || addressType != .nativeSegwit else { return false }
 
         isChangingAddressType = true
         lastAddressTypeError = nil
@@ -851,10 +910,10 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty {
-            if let server = parseElectrumServerUrlForRestore(electrumServerUrl) {
-                electrumConfigService.saveServerConfig(server)
-            }
+        if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
+           let server = parseElectrumServerUrlForRestore(electrumServerUrl)
+        {
+            electrumConfigService.saveServerConfig(server)
         }
 
         if let rgsServerUrl = dict["rgsServerUrl"] as? String, !rgsServerUrl.isEmpty {
@@ -898,17 +957,14 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Gets the current app cache data for backup
-    func getAppCacheData() throws -> AppCacheData {
+    func getAppCacheData() -> AppCacheData {
         let spend = QuickPaySpendStore.shared.backupSnapshot()
-        let refundAddress = try BlocktankRefundAddressStore().load()
         return AppCacheData(
             hasSeenContactsIntro: defaults.bool(forKey: "hasSeenContactsIntro"),
             hasSeenProfileIntro: defaults.bool(forKey: "hasSeenProfileIntro"),
             hasSeenNotificationsIntro: defaults.bool(forKey: "hasSeenNotificationsIntro"),
             hasSeenQuickpayIntro: defaults.bool(forKey: "hasSeenQuickpayIntro"),
             hasSeenShopIntro: defaults.bool(forKey: "hasSeenShopIntro"),
-            hasSeenTransferIntro: defaults.bool(forKey: "hasSeenTransferIntro"),
-            hasSeenTransferToSpendingIntro: defaults.bool(forKey: "hasSeenTransferToSpendingIntro"),
             hasSeenTransferToSavingsIntro: defaults.bool(forKey: "hasSeenTransferToSavingsIntro"),
             hasSeenWidgetsIntro: defaults.bool(forKey: "hasSeenWidgetsIntro"),
             hasDismissedWidgetsOnboardingHint: defaults.bool(forKey: "hasDismissedWidgetsOnboardingHint"),
@@ -919,20 +975,17 @@ class SettingsViewModel: NSObject, ObservableObject {
             dismissedSuggestions: defaults.stringArray(forKey: "dismissedSuggestions") ?? [],
             lastUsedTags: defaults.stringArray(forKey: "lastUsedTags") ?? [],
             quickPayLedger: spend,
-            blocktankRefundAddress: refundAddress,
             detachedActivityContacts: CoreService.shared.activity.detachedContactsBackupSnapshot()
         )
     }
 
     /// Restores app cache data from backup
-    func restoreAppCacheData(_ cache: AppCacheData) throws {
+    func restoreAppCacheData(_ cache: AppCacheData) {
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")
         defaults.set(cache.hasSeenQuickpayIntro, forKey: "hasSeenQuickpayIntro")
         defaults.set(cache.hasSeenShopIntro, forKey: "hasSeenShopIntro")
-        defaults.set(cache.hasSeenTransferIntro, forKey: "hasSeenTransferIntro")
-        defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
         defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
         defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
         defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
@@ -943,12 +996,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.dismissedSuggestions, forKey: "dismissedSuggestions")
         defaults.set(cache.lastUsedTags, forKey: "lastUsedTags")
         QuickPaySpendStore.shared.restoreFromBackup(ledger: cache.quickPayLedger)
-        let refundAddressStore = BlocktankRefundAddressStore()
-        if let refundAddress = cache.blocktankRefundAddress {
-            try refundAddressStore.save(refundAddress)
-        } else {
-            refundAddressStore.clear()
-        }
         CoreService.shared.activity.restoreDetachedContacts(cache.detachedActivityContacts)
     }
 }

@@ -1,4 +1,6 @@
 name: integration-tests
+run-name: >-
+  ${{ inputs.retarget_run && format('Retarget integration for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 on:
   push:
@@ -7,106 +9,186 @@ on:
     branches: [master]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to test as merged into master"
+        default: ""
+      merge_commit:
+        description: "Pinned PR merge commit for retarget validation"
+        default: ""
+      head_sha:
+        description: "PR head verified by the retarget dispatcher"
+        default: ""
+      check_run_id:
+        description: "PR check owned by this retarget validation"
+        default: ""
+      retarget_run:
+        description: "Retarget status owner (set by e2e-retarget.yml)"
+        default: ""
 
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: integration-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: true
 
 jobs:
 
   test:
+    # PR code must not publish dependency caches into the dispatch ref's scope.
+    cache-mode: read
     if: github.event.pull_request.draft == false
     name: Run Integration Tests
     runs-on: macos-15
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      checks: write
+      actions: write
+    env:
+      DERIVED_DATA: ${{ github.workspace }}/DerivedData
+      RESULT_BUNDLE: ${{ github.workspace }}/IntegrationTests.xcresult
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+
+      - name: Checkout retarget reporter
+        if: inputs.retarget_run != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - name: Report retarget tests running
+        if: inputs.retarget_run != ''
+        uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start'});
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.4'
 
+      # A fresh simulator takes over 10 minutes to boot on the runner. Booting it now lets that
+      # overlap with resolving and building instead of stalling the test step.
+      - name: Boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          version = lambda runtime: [int(part) for part in runtime.rsplit(".", 1)[-1].split("-")[1:]]
+          ios = sorted((r for r in runtimes if ".iOS-" in r and any(d["name"] == "iPhone 16" for d in runtimes[r])), key=version)
+          print(next(d["udid"] for d in runtimes[ios[-1]] if d["name"] == "iPhone 16"))
+          ')
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          echo "DESTINATION=platform=iOS Simulator,id=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+
       - name: Install xcbeautify
         run: |
           brew install xcbeautify
 
-      - name: Cache Swift Package Manager
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+      - name: Swift packages
+        uses: ./.github/actions/swift-packages
 
-      - name: Install dependencies
+      - name: Build for testing
         run: |
-          echo "⏱️  Starting dependency resolution at $(date)"
-          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
-          echo "✅ Dependencies resolved at $(date)"
-
-      - name: Clean build
-        run: |
-          echo "⏱️  Cleaning build at $(date)"
-          xcodebuild clean -scheme Bitkit | xcbeautify
-          echo "✅ Build cleaned at $(date)"
+          echo "⏱️  Starting build at $(date)"
+          set -o pipefail && xcodebuild build-for-testing \
+            -scheme Bitkit \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
+            -enableCodeCoverage NO \
+            | xcbeautify
+          echo "✅ Build finished at $(date)"
 
       - name: Run integration tests
+        timeout-minutes: 25
         run: |
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           echo "⏱️  Starting integration tests at $(date)"
 
-          run_tests() {
-            # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
-            # skips itself unless this is set. This lane runs on a simulator it erases between
-            # attempts; the unit lane does not, and must not run it.
-            #
-            # The TEST_RUNNER_ prefix is required: xcodebuild does not pass the invoking shell's
-            # environment to the simulator-hosted runner, only variables named TEST_RUNNER_<VAR>,
-            # which it forwards with the prefix stripped. Without it the guard never sees the
-            # variable, every test in the suite skips, and the lane still reports green.
-            set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 xcodebuild test \
-              -scheme Bitkit \
-              -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-              -enableCodeCoverage NO \
-              -parallel-testing-enabled NO \
-              -only-testing:BitkitTests/UtxoSelectionTests \
-              -only-testing:BitkitTests/BlocktankTests \
-              -only-testing:BitkitTests/PaymentFlowTests \
-              -only-testing:BitkitTests/BlocktankRefundAddressLiveIntegrationTests \
-              -only-testing:BitkitTests/AddressTypeIntegrationTests \
-              -only-testing:BitkitTests/RNMigrationCleanupTests \
-              | xcbeautify --report junit
-          }
-
-          # Try up to 3 times with simulator reset between failures
-          for attempt in 1 2 3; do
-            echo "🔄 Test attempt $attempt of 3"
-            if run_tests; then
-              echo "✅ Integration tests completed at $(date)"
-              exit 0
-            fi
-
-            if [ $attempt -lt 3 ]; then
-              echo "⚠️  Test attempt $attempt failed, resetting simulator..."
-              xcrun simctl shutdown all || true
-              xcrun simctl erase "iPhone 16" || true
-              xcrun simctl boot "iPhone 16"
-              sleep 5
-            fi
-          done
-
-          echo "❌ All test attempts failed"
-          exit 1
+          # RNMigrationCleanupTests deletes the real ~/Documents/mmkv and ~/Documents/ldk, so it
+          # skips itself unless this is set. This lane runs on a throwaway CI simulator; the unit
+          # lane does not, and must not run it.
+          #
+          # The TEST_RUNNER_ prefix is required: xcodebuild does not pass the invoking shell's
+          # environment to the simulator-hosted runner, only variables named TEST_RUNNER_<VAR>,
+          # which it forwards with the prefix stripped. Without it the guard never sees the
+          # variable, every test in the suite skips, and the lane still reports green.
+          #
+          # The live regtest suites are flaky on CI runners, so a failed test is retried once on
+          # its own instead of rebuilding and rerunning the whole suite.
+          set -o pipefail && TEST_RUNNER_BITKIT_DESTRUCTIVE_TESTS=1 xcodebuild test-without-building \
+            -scheme Bitkit \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath "$RESULT_BUNDLE" \
+            -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+            -disablePackageRepositoryCache \
+            -disableAutomaticPackageResolution \
+            -skipPackageUpdates \
+            -enableCodeCoverage NO \
+            -parallel-testing-enabled NO \
+            -retry-tests-on-failure \
+            -test-iterations 2 \
+            -only-testing:BitkitTests/UtxoSelectionTests \
+            -only-testing:BitkitTests/BlocktankTests \
+            -only-testing:BitkitTests/AddressTypeIntegrationTests \
+            -only-testing:BitkitTests/RNMigrationCleanupTests \
+            | xcbeautify --report junit
+          echo "✅ Integration tests completed at $(date)"
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
           name: integration-test-results
-          path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+          path: ${{ env.RESULT_BUNDLE }}
+
+  report-retarget-result:
+    name: Report retarget integration result
+    if: always() && inputs.retarget_run != ''
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          TEST_RESULT: ${{ needs.test.result }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'complete', result: process.env.TEST_RESULT});

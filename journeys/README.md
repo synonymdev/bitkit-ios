@@ -24,8 +24,8 @@ separately confirmed the app is wrong.
 <journey name="short lowercase name">
   <description>What this proves, and the preconditions needed to prove it.</description>
   <actions>
-    <action>Tap the Spending balance card on the home screen</action>
-    <action>Verify the spending amount screen (id "SpendingAmount") is visible</action>
+    <action>Tap the Savings balance card on the home screen</action>
+    <action>Verify the savings wallet screen (id "TransferToSpending") is visible</action>
   </actions>
 </journey>
 ```
@@ -48,8 +48,8 @@ xcodebuildmcp simulator build-and-run                 # build, install, launch, 
 xcodebuildmcp simulator snapshot-ui                   # semantic snapshot with elementRef targets
 xcodebuildmcp ui-automation tap --element-ref e12     # tap one ref from the latest snapshot
 xcodebuildmcp ui-automation type-text --element-ref e8 --text "..."
-xcodebuildmcp ui-automation wait-for-ui --predicate textContains --text "Spending Balance Maximum"
-xcodebuildmcp ui-automation wait-for-ui --identifier SpendingAmount --predicate exists
+xcodebuildmcp ui-automation wait-for-ui --predicate textContains --text "Manual Setup Required"
+xcodebuildmcp ui-automation wait-for-ui --identifier TransferUnavailable --predicate exists
 xcodebuildmcp simulator screenshot                    # only when a snapshot cannot settle a question
 ```
 
@@ -67,9 +67,9 @@ target list. If an element the journey names is missing from `snapshot-ui`, chec
 `--identifier X --predicate exists` before concluding it is gone. `wait-for-ui` requires the complete
 identifier and does not support prefix matching.
 
-**Identifiers built from localized text are English-only.** `SegmentedControl` derives its identifier
-from the tab's display name, so `Tab-all` is `Tab-todas` when the app runs in Spanish. Journeys that
-name a `Tab-*` identifier assume an English device.
+**Tab identifiers do not follow the app language.** `SegmentedControl` derives its identifier from the
+tab's English name, so `Tab-all` stays `Tab-all` when the app runs in Spanish. A tab given an explicit
+label keeps it, so a hardware wallet tab is `Tab-trezor` or `Tab-jade` in every language.
 
 Prefer `snapshot-ui` over screenshots: it names elements by their accessibility identifier, which is
 what the journeys assert on, and it avoids the image-size limits the Android runner has to work around.
@@ -121,11 +121,14 @@ subscription payment-method switches: preserve the originally entered denominati
 
 ### Paykit payment-method review
 
-In `paykit-quoted-usdt.xml`, Android returns to Amount whenever a quoted request changes payment
-method. iOS keeps confirmation open when the exact amount, quote and validity window are unchanged
-and still valid; changed or expired terms return to Amount. Verify the selected method and exact
-payable amount on both platforms, and close without signing. The optional Savings/Spending
-confirmation check requires existing Bitcoin regtest funds and a usable Lightning channel.
+In `paykit-quoted-usdt.xml`, Android keeps confirmation open when a Savings/Spending switch can
+bind valid quoted Bitcoin terms, showing the selected method's exact amount and refreshed fees.
+Unavailable or expired terms, or a Lightning amount below its minimum, return to Amount for
+review. Opening Amount manually after a valid switch and then tapping Back closes the sheet. iOS
+keeps confirmation open when the exact amount, quote and validity window are unchanged and still
+valid; changed or expired terms return to Amount. Verify the selected method and exact payable
+amount on both platforms, and close without signing. The optional Savings/Spending confirmation
+check requires existing Bitcoin regtest funds and a usable Lightning channel.
 
 ### USDT full-balance errors
 
@@ -134,11 +137,22 @@ fee-collection message when the entire balance is entered manually. Either error
 either platform; the failing validation determines the message.
 Both must keep payment review closed and allow the user to reduce the amount.
 
+### USDT Receive swipe hit area
+
+`receive/usdt-receive-swipe-tabs.xml` keeps the shared seven QR swipe/copy steps and adds two iOS
+checks for the flexible blank band above Network on a tall phone. Android already attaches the
+USDT swipe gesture to a full-height column; the extra iOS steps guard its spacer hit area.
+
 ## Identifiers
 
 iOS uses `accessibilityIdentifier`; Android uses Compose `testTag`. The vocabulary is shared, so a
 journey usually names the same string on both platforms. Where a container needs to be queryable,
 iOS pairs the identifier with `.accessibilityElement(children: .contain)`.
+
+A payment request's preparing confirmation is the one exception: Android tags its disabled swipe
+`PaymentRequestPreparing`, while iOS identifies the sheet as `PaymentRequestConfirm` and keeps its
+swipe (`GRAB`) disabled and loading. `ReviewAmount` on that sheet is the requested amount, not a
+paid request reopening.
 
 ### On-chain payment safety adaptations
 
@@ -150,6 +164,7 @@ Their descriptions record extra iOS manual checks and necessary platform mechani
 | --- | --- |
 | Original payment retry | Max retains its original rate; custom fees use `getFeeLimits()`. Additional channel funding, payer/wallet race and backup checks are in the description. |
 | `send/prepared-fee-recovery.md` | Same four manual fault cases and file on both platforms; the recipe records original-send versus replacement fee retention and iOS Max/identity-flow adaptations. These faults are not journey capabilities. |
+| `send/onchain-connecting-view.xml` | The LDK Debug Restart route does not bring the view up on iOS, since the restart keeps the node in the running state, and returning from the background leaves it running; open Send right after a cold launch, while the node is still starting, as the description says. |
 | Accepted result | `xcrun simctl openurl`; confirm change before the Max leg, use Manual coin selection and restore Autopilot afterward. The existing Autopilot Max limitation is not claimed fixed. |
 | Hardware Shop proof | The sign screen uses `HardwareSendSign` and `HardwareSendSignAmount`; verify the original issuer destination under "To address (confirm on device)". iOS Bridge setup and extra durable returning-payer and later tag-edit replay checks are in the description. |
 
@@ -168,13 +183,14 @@ Known naming differences:
 | Pubky Ring choice row | `PubkyChoiceIdentity` (the same tag on every row; tell rows apart by their key caption) | `PubkyChoiceRing_<pubky>` (bare z32 key) |
 | Pubky Ring choice row lookup spinner | `PubkyChoiceIdentityLookup` (the same tag on every row) | `PubkyChoiceRingLookup_<pubky>` (bare z32 key) |
 | Contact import overview profile and friend count | — *(no tag; read the "Import" title and the "N friends" text)* | `ContactImportOverviewProfile`, `ContactImportOverviewSummary` |
+| Lightning Connections add connection | `add_connection_button` | `NavigationAction` |
 
 `SubscriptionRow-<paymentRequestId>` matches Android exactly. `PaymentRequestRow` keeps that prefix
 but appends the billing period (`-one-time` for a one-off), because every recurring payment of one
 subscription carries the same `paymentRequestId` and they can list together — Android stops at the id
 and lets those rows collide. Match on the prefix when a journey needs to work on both platforms.
 
-Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `SpendingAmount*`, `SpendingAdvanced*`,
+Everything else — `N0`–`N9`, `N000`, `NDecimal`, `NRemove`, `TransferUnavailable*`, `Fund*`,
 `External*`, `Hardware*`, `Widget*` — matches Android exactly.
 
 ## Capabilities
@@ -189,13 +205,12 @@ journey PR, which is what made this file conflict on every merge.
 
 | Capability | Provided by |
 | --- | --- |
-| USDT wallet navigation without funding | an onboarded build with USDT configured; provider errors may remain visible while offline — [USDT QA](../Docs/USDT-QA.md) |
+| USDT wallet navigation without funding | an onboarded build with USDT configured; wallet syncing remains silent while offline; payment-action errors remain available — [USDT QA](../Docs/USDT-QA.md) |
 | Controlled USDT quotes, provider history, funded submission and recovery | an explicitly configured local USDT gateway/RPC/bundler fixture with owned test accounts and funds; absent from the standard journey environment. Report these steps as blocked unless that setup and transfer authorization are supplied — [USDT QA](../Docs/USDT-QA.md) |
 | On-chain funds and blocks on regtest | `../bitkit-android/lsp` deposit and mine, borrowed from the sibling Android checkout until #694 lands an iOS copy — [Backend preconditions](#backend-preconditions) |
-| Lightning channels, CJIT orders and quoted maxima | the LSP the `E2E_BUILD` app targets, plus its node as an external LN peer — [Backend preconditions](#backend-preconditions), [amount-limits](amount-limits/README.md) |
+| Lightning channels | a channel opened through Manual Setup to the node of the LSP the `E2E_BUILD` app targets, as an external LN peer — [Backend preconditions](#backend-preconditions) |
 | A hardware wallet to pair, watch and sign with | the deterministic Trezor emulator from `bitkit-docker`, reached through Trezor Bridge on the host; the simulator has no Bluetooth LE and iOS cannot do WebUSB, so BLE pairing and USB are not covered — [hardware-wallet](hardware-wallet/README.md) |
-| Push notifications to a backgrounded or killed app | a real APNs round trip on an attached physical device, never the simulator, read back from Notification Center — [cjit-notifications](cjit-notifications/README.md) |
-| The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild — [notification-permission](notification-permission/README.md) |
+| The OS notification-permission dialog | the one-shot `UNUserNotificationCenter` alert, reset with `xcrun simctl uninstall <device> to.bitkit` and a rebuild |
 | An incoming Payment Request from a linked issuer | the fixture issuer, saved as a contact and linked as identities — [payment-requests](payment-requests/README.md) |
 | A Pubky identity and a two-wallet marketplace purchase | a Bitkit-generated Pubky profile, plus the integration fixture runtime: Pubky testnet, Paykit Server, regtest bitcoind and Fulcrum — [pubky-auth](pubky-auth/README.md), [pubky-marketplace](pubky-marketplace/README.md) |
 | LNURL pay, withdraw, channel and auth, and Lightning Addresses | the `bitkit-docker` `lnurl-server` on local regtest, reached by a simulator app built with `E2E_BUILD`, whose default `E2E_BACKEND=local` targets the host at `127.0.0.1`; it issues memo invoices, so a check that needs a description-hash invoice needs another endpoint |
@@ -215,6 +230,10 @@ and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs,
 and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
 
+**`pubky-auth/loading-toast-long-locale.xml`.** It covers the close-button inset on Android's "Loading Your
+Pubky Profile" toast, which iOS does not show. `settings/applying-toast-close-button.xml` checks the same
+inset on the address-type toast, on both platforms.
+
 **`subscriptions` Discover.** The subscriptions suite covers create, review, cancel/delete and
 the Payments tab, but not Discover — it is unimplemented on iOS. Two linked Bitkit instances are
 required to run the suite.
@@ -223,9 +242,7 @@ required to run the suite.
 
 When you port an Android feature, port its journeys too — see the Journeys section in `AGENTS.md`.
 
-Some suites are adapted rather than ported verbatim: `amount-limits` because iOS snaps to the
-spending maximum differently, `cjit-notifications` because the notification copy differs, and
-`pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
+Some suites are adapted rather than ported verbatim: `pubky-marketplace` because the two-wallet payment runs on regtest here. In `pubky-auth`, the
 watch-only OS handoff journey is iOS-only; `grant-signup.xml` and
 `grant-signup-existing-identity.xml` are shared with Android.
 
@@ -235,6 +252,10 @@ after staging signup. Android also supports this signup flow, but this journey h
 `contacts/contacts-entry-points.xml` covers onboarding without an identity and the
 authenticated Contacts list. It has not yet been ported to Android.
 
+`receive/receive-tabs-wraparound.xml` has a matching Android journey with the same name and actions.
+On Android a swipe that starts at the screen edge is the system back gesture, which closes the sheet on
+every tab; start the swipes away from the edge.
+
 `payment-requests/success-dismissal.xml` has a matching Android journey with the same name and
 actions. Successful dismissal without a toast or duplicate payment is shared behavior, not an
 iOS-only feature.
@@ -242,6 +263,10 @@ iOS-only feature.
 `usdt-payment-restoration.xml` has the same file name, journey name and actions on both platforms.
 Android restores an unpaid amount draft after process death, while iOS may return to the wallet.
 A submitted payment must return to the wallet without reopening the paid draft on either platform.
+
+`usdt-send-review-and-details.xml` is adapted: on iOS the Swipe To Pay knob stays at the end of the
+track while a USDT send warning is open and returns to the start on Cancel. Android master returns the
+knob to the start as soon as the warning opens, so its fee-warning action has no knob assertion.
 
 `coin-selection/manual-wallet-switch.xml` is shared with Android, with the same file name, journey
 name and actions. iOS can open the picker on the wallet switch; Android opens it on the next swipe.
@@ -270,3 +295,5 @@ a bug report. `AGENTS.md` has the commands.
 `payment-requests/minimum-onchain-amount.xml` is shared with Android: minimum amount
 feedback, preparation cleanup, and manual retry use the same actions and
 `PaymentRequestAmountTooLowToast` identifier on both platforms.
+
+`usdt-independent-recovery.xml` shares its journey name and seven recovery actions with Android; Android adds a deadline-transition action. It covers independent acknowledged recovery, Pubky lock contention, backup failure, same-operation retry, restart, migration and concurrent writers. It requires disposable local USDT and fault-injection endpoints; the standard staging environment does not supply those fixtures. A missing fixture is a verification gap, not a passed journey.

@@ -21,8 +21,6 @@ enum SettingsBackupConfig {
         "hasSeenNotificationsIntro",
         "hasSeenQuickpayIntro",
         "hasSeenShopIntro",
-        "hasSeenTransferIntro",
-        "hasSeenTransferToSpendingIntro",
         "hasSeenTransferToSavingsIntro",
         "hasSeenWidgetsIntro",
         "hasDismissedWidgetsOnboardingHint",
@@ -33,7 +31,6 @@ enum SettingsBackupConfig {
         "dismissedSuggestions",
         "lastUsedTags",
         "quickPayLedger",
-        BlocktankRefundAddressStore.key,
     ]
 
     static let settingsKeyTypes: [String: SettingKeyType] = [

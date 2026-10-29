@@ -166,7 +166,7 @@ struct LnurlPayConfirm: View {
                     ? t("subscriptions__swipe_to_subscribe_and_pay")
                     : t("wallet__send_swipe"),
                 accentColor: .greenAccent,
-                isLoading: hasStartedAutomaticPayment,
+                isLoading: hasStartedAutomaticPayment || isSubmittingPayment,
                 isSubmitted: hasStartedAutomaticPayment
             ) {
                 try await submitPayment()
@@ -209,7 +209,21 @@ struct LnurlPayConfirm: View {
         }
     }
 
+    @MainActor
+    static func withSubmissionLock(isSubmitting: Binding<Bool>, operation: () async throws -> Void) async throws {
+        guard !isSubmitting.wrappedValue else { return }
+        isSubmitting.wrappedValue = true
+        defer { isSubmitting.wrappedValue = false }
+        try await operation()
+    }
+
     private func submitPayment() async throws {
+        try await Self.withSubmissionLock(isSubmitting: $isSubmittingPayment) {
+            try await authorizeAndPerformPayment()
+        }
+    }
+
+    private func authorizeAndPerformPayment() async throws {
         // Check if we need to show warning for amounts over $100 USD
         if settings.warnWhenSendingOver100 {
             let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
@@ -219,17 +233,15 @@ struct LnurlPayConfirm: View {
             }
 
             // Convert to USD to check if over $100
-            if let usdAmount = currency.convert(sats: sats, to: "USD") {
-                if usdAmount.value > 100.0 {
-                    showWarningAlert = true
-                    // Wait for the alert to be dismissed
-                    let shouldProceed = try await waitForAlertDismissal()
-                    if !shouldProceed {
-                        // User cancelled, throw error to reset SwipeButton
-                        throw CancellationError()
-                    }
-                    // User confirmed, continue with authentication if needed
+            if let usdAmount = currency.convert(sats: sats, to: "USD"), usdAmount.value > 100.0 {
+                showWarningAlert = true
+                // Wait for the alert to be dismissed
+                let shouldProceed = try await waitForAlertDismissal()
+                if !shouldProceed {
+                    // User cancelled, throw error to reset SwipeButton
+                    throw CancellationError()
                 }
+                // User confirmed, continue with authentication if needed
             }
         }
 
@@ -265,8 +277,6 @@ struct LnurlPayConfirm: View {
     }
 
     private func performPayment() async throws {
-        isSubmittingPayment = true
-        defer { isSubmittingPayment = false }
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }

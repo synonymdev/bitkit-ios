@@ -8,7 +8,6 @@ enum SheetID: String, CaseIterable {
     case connectionClosed
     case forceTransfer
     case forgotPin
-    case gift
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
@@ -25,6 +24,7 @@ enum SheetID: String, CaseIterable {
     case security
     case send
     case tagFilter
+    case transferUnavailable
     case dateRangeSelector
     case widgets
     case hardwareConnect
@@ -36,13 +36,35 @@ struct SheetConfiguration {
     let id: SheetID
     let data: Any?
     let presentationID = UUID()
+    let sendState: SendPresentationState?
+
+    init(id: SheetID, data: Any?) {
+        self.id = id
+        self.data = data
+        if id == .send {
+            let item = data as? SendSheetItem
+            let route = (data as? SendConfig)?.initialRoute ?? item?.initialRoute ?? .options
+            sendState = item?.state ?? SendPresentationState(initialRoute: route)
+        } else {
+            sendState = nil
+        }
+    }
 }
 
 class SheetViewModel: ObservableObject {
     /// How long a closing sheet animates out before the next sheet may be shown.
     static let replacementDelaySeconds: TimeInterval = 0.7
 
-    @Published var activeSheetConfiguration: SheetConfiguration? = nil
+    @Published var activeSheetConfiguration: SheetConfiguration? = nil {
+        didSet {
+            if oldValue?.presentationID != activeSheetConfiguration?.presentationID {
+                let cleanup = oldValue?.sendState?.onDismiss
+                oldValue?.sendState?.onDismiss = nil
+                cleanup?()
+            }
+        }
+    }
+
     @Published var hardwareConnectHandlesPairing = false
     @Published private(set) var isReplacingSheet = false
     @Published private(set) var replacingSheetID: SheetID?
@@ -185,8 +207,7 @@ class SheetViewModel: ObservableObject {
 
     var addTagSheetItem: AddTagSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .addTag else { return nil }
-            guard let addTagConfig = config.data as? AddTagConfig else { return nil }
+            guard let config = activeSheetConfiguration, config.id == .addTag, let addTagConfig = config.data as? AddTagConfig else { return nil }
             return AddTagSheetItem(activityId: addTagConfig.activityId, walletId: addTagConfig.walletId)
         }
         set {
@@ -236,6 +257,18 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var transferUnavailableSheetItem: TransferUnavailableSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .transferUnavailable else { return nil }
+            return TransferUnavailableSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
     var connectionClosedSheetItem: ConnectionClosedSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .connectionClosed else { return nil }
@@ -252,20 +285,6 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .forgotPin else { return nil }
             return ForgotPinSheetItem()
-        }
-        set {
-            if newValue == nil {
-                activeSheetConfiguration = nil
-            }
-        }
-    }
-
-    var giftSheetItem: GiftSheetItem? {
-        get {
-            guard let config = activeSheetConfiguration, config.id == .gift else { return nil }
-            let giftConfig = config.data as? GiftConfig
-            guard let code = giftConfig?.code, let amount = giftConfig?.amount else { return nil }
-            return GiftSheetItem(code: code, amount: amount)
         }
         set {
             if newValue == nil {
@@ -392,7 +411,7 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
             let receiveConfig = config.data as? ReceiveConfig
-            let initialRoute = receiveConfig?.initialRoute ?? .qr(cjitInvoice: nil, tab: nil)
+            let initialRoute = receiveConfig?.initialRoute ?? .qr(tab: nil)
             return ReceiveSheetItem(id: config.presentationID, initialRoute: initialRoute, hardwareWalletId: receiveConfig?.hardwareWalletId)
         }
         set {
@@ -442,8 +461,8 @@ class SheetViewModel: ObservableObject {
 
     var renameHardwareWalletSheetItem: RenameHardwareWalletSheetItem? {
         get {
-            guard let config = activeSheetConfiguration, config.id == .renameHardwareWallet else { return nil }
-            guard let data = config.data as? RenameHardwareWalletConfig else { return nil }
+            guard let config = activeSheetConfiguration, config.id == .renameHardwareWallet,
+                  let data = config.data as? RenameHardwareWalletConfig else { return nil }
             return RenameHardwareWalletSheetItem(walletId: data.walletId, currentName: data.currentName)
         }
         set {
@@ -499,6 +518,8 @@ class SheetViewModel: ObservableObject {
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
             return SendSheetItem(
+                presentationID: config.presentationID,
+                state: config.sendState,
                 initialRoute: initialRoute,
                 hardwareWalletId: sendConfig?.hardwareWalletId,
                 preparation: sendConfig?.preparation

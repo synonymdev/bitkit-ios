@@ -161,11 +161,11 @@ struct RecoveryScreen: View {
         let supportLink = createSupportLink()
         let success = openURL(supportLink)
 
-        if !success {
-            // Fallback to web contact page
-            if let fallbackURL = URL(string: "https://synonym.to/contact") {
-                UIApplication.shared.open(fallbackURL)
-            }
+        if !success,
+           // Fallback to web contact page
+           let fallbackURL = URL(string: "https://synonym.to/contact")
+        {
+            UIApplication.shared.open(fallbackURL)
         }
     }
 

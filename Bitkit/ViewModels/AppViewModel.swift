@@ -37,6 +37,23 @@ struct ContactPaymentContext: Equatable {
             incomingPaymentRequest.map { $0.amount.asset != .btc || $0.pricing.conversion != nil } == true
     }
 
+    func initialUsdtSubscriptionPayment(at date: Date = Date()) -> PaykitRequestPricing.Payment? {
+        guard isInitialSubscriptionPayment, let request = incomingPaymentRequest, request.billingPeriod != nil,
+              Set(request.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue],
+              !endpoints.isEmpty, endpoints.allSatisfy({ $0.methodId == .usdtArbitrum }),
+              !request.isExpired(at: date)
+        else { return nil }
+        switch (request.amount.asset, request.pricing.conversion) {
+        case (.usdt, nil): break
+        case let (.usd, .fixed(rates)):
+            let rate = rates.first { $0.asset == "usdt-arbitrum" } ?? rates.first { $0.asset == "usdt" }
+            guard let rate, Decimal(string: rate.value, locale: Locale(identifier: "en_US_POSIX")) == 1 else { return nil }
+        default: return nil
+        }
+        guard let payment = try? request.payment(using: .usdtArbitrum, at: date), payment.isValid(at: date) else { return nil }
+        return payment
+    }
+
     func prefersUsdt(
         onchainBalanceSats: UInt64,
         canSendLightning: Bool = false,
@@ -94,6 +111,7 @@ struct ScanPaymentState {
 struct ScanPaymentOperations {
     let state: () -> ScanPaymentState
     let canSendLightning: (_ amountSats: UInt64) -> Bool
+    var decodeInvoice: (String) async throws -> BitkitCore.Scanner = { try await decode(invoice: $0) }
 
     @MainActor
     static func live(lightningService: LightningService) -> ScanPaymentOperations {
@@ -159,6 +177,9 @@ class AppViewModel: ObservableObject {
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
+    @Published private(set) var sendStateGeneration = UUID()
+    // Only a scan started inside this presentation may transfer cleanup ownership to it.
+    private(set) var sendStateOwnerID: UUID?
 
     @Published private(set) var pendingDeepLinkURL: URL?
     /// The next link, held while a Pubky sign-in link waits or its approval sheet is open, so it cannot drop the sign-in.
@@ -183,8 +204,6 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
-    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
-    @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
@@ -229,6 +248,7 @@ class AppViewModel: ObservableObject {
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
     @Published private(set) var paykitOnchainPaymentResolution: PaykitOnchainPaymentResolution?
+    private var handlingPaykitOnchainResolutions: Set<PaykitOnchainPaymentResolution> = []
 
     /// App status init - shows "ready" until node is actually running
     /// This prevents flashing error status during startup/background transitions
@@ -358,7 +378,11 @@ class AppViewModel: ObservableObject {
     private let navigationViewModel: NavigationViewModel
     private let scanPaymentOperations: ScanPaymentOperations
     private let usdtBalance: () -> UInt64?
-    private var scannedDataHandlingId: UUID?
+    @Published private var scannedDataHandlingId: UUID?
+    var isHandlingScannedData: Bool {
+        scannedDataHandlingId != nil
+    }
+
     private var manualEntryValidationSequence: UInt64 = 0
 
     // Combine infrastructure for debounced validation
@@ -387,7 +411,6 @@ class AppViewModel: ObservableObject {
         setupManualEntryValidationDebounce()
 
         Task {
-            await checkGeoStatus()
             // Check for app updates on startup
             await AppUpdateService.shared.checkForAppUpdate()
         }
@@ -526,18 +549,12 @@ class AppViewModel: ObservableObject {
 
     deinit {}
 
-    func checkGeoStatus() async {
-        // Delegate to GeoService singleton for centralized geo-blocking management
-        await GeoService.shared.checkGeoStatus()
-    }
-
     func wipe() async throws {
         hasSeenContactsIntro = false
         hasSeenProfileIntro = false
         hasSeenNotificationsIntro = false
         hasSeenQuickpayIntro = false
         hasSeenShopIntro = false
-        hasSeenTransferToSpendingIntro = false
         hasSeenTransferToSavingsIntro = false
         hasSeenWidgetsIntro = false
         hasDismissedWidgetsOnboardingHint = false
@@ -560,6 +577,8 @@ extension AppViewModel {
         visibilityTime: Double = 4.0,
         accessibilityIdentifier: String? = nil
     ) {
+        guard !ToastWindowManager.areToastsDisabled() else { return }
+
         switch type {
         case .error:
             Haptics.notify(.error)
@@ -690,9 +709,16 @@ extension AppViewModel {
 
     func retainPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, identity: String?) {
         guard PubkyPublicKeyFormat.matches(resolution.identity, identity),
-              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId
+              contactPaymentContext?.incomingPaymentRequest?.id == resolution.requestId,
+              paykitOnchainPaymentResolution != resolution
         else { return }
         paykitOnchainPaymentResolution = resolution
+    }
+
+    func withPaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution, operation: () async -> Void) async {
+        guard handlingPaykitOnchainResolutions.insert(resolution).inserted else { return }
+        defer { handlingPaykitOnchainResolutions.remove(resolution) }
+        await operation()
     }
 
     func consumePaykitOnchainPaymentResolution(_ resolution: PaykitOnchainPaymentResolution) {
@@ -738,8 +764,15 @@ extension AppViewModel {
         _ uri: String,
         claimedContactPaymentContext: ContactPaymentContext? = nil,
         scope: ScanHandlingScope = .unrestricted,
-        alternativeOnchainBalanceSats: UInt64 = 0
+        alternativeOnchainBalanceSats: UInt64 = 0,
+        sendPresentationID: UUID? = nil,
+        isCurrentScan: () -> Bool = { true }
     ) async throws {
+        guard isCurrentScan(), !Task.isCancelled else { throw CancellationError() }
+        var expectedGeneration = sendStateGeneration
+        func isCurrentScanGeneration() -> Bool {
+            isCurrentScan() && sendStateGeneration == expectedGeneration
+        }
         let handlingId = claimedContactPaymentContext?.id ?? UUID()
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext), scannedDataHandlingId == nil else {
@@ -755,15 +788,17 @@ extension AppViewModel {
         }
 
         if let context = claimedContactPaymentContext, context.requiresAssetSelection, scope != .onchainPayments {
-            resetSendState(preservingContactPaymentContext: true)
+            resetSendState(preservingContactPaymentContext: true, ownerID: sendPresentationID)
+            expectedGeneration = sendStateGeneration
             for endpoint in context.endpoints where endpoint.methodId != .usdtArbitrum {
-                switch try await decode(invoice: endpoint.paymentRequest) {
+                let data = try await scanPaymentOperations.decodeInvoice(endpoint.paymentRequest)
+                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context, isCurrentScan: isCurrentScanGeneration)
+                switch data {
                 case let .onChain(invoice): scannedOnchainInvoice = invoice
                 case let .lightning(invoice): scannedLightningInvoice = invoice
                 case let .lnurlPay(data): lnurlPayData = data
                 default: break
                 }
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: context)
             }
             let state = scanPaymentOperations.state()
             let lightningMethod: PublicPaykitService.MethodId = lnurlPayData == nil ? .bitcoinLightningBolt11 : .bitcoinLightningLnurl
@@ -818,8 +853,12 @@ extension AppViewModel {
                 )
                 return
             }
-            let data = try await decode(invoice: uri)
-            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            let data = try await scanPaymentOperations.decodeInvoice(uri)
+            try ensureScannedDataHandlingOwnership(
+                handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScanGeneration
+            )
             guard ShopPaymentRequest.isSupported(data) else { throw ScanHandlingError.unsupportedRequest }
             prevalidatedPaymentRequest = data
         } else {
@@ -827,7 +866,8 @@ extension AppViewModel {
         }
 
         // Reset send state before handling new data
-        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil)
+        resetSendState(preservingContactPaymentContext: claimedContactPaymentContext != nil, ownerID: sendPresentationID)
+        expectedGeneration = sendStateGeneration
 
         if scope == .unrestricted, let samRockSetup = SamRockSetupRequest.parse(uri) {
             handleBTCPayConnection(samRockSetup)
@@ -871,8 +911,12 @@ extension AppViewModel {
         if let prevalidatedPaymentRequest {
             data = prevalidatedPaymentRequest
         } else {
-            data = try await decode(invoice: uri)
-            try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+            data = try await scanPaymentOperations.decodeInvoice(uri)
+            try ensureScannedDataHandlingOwnership(
+                handlingId,
+                claimedContactPaymentContext: claimedContactPaymentContext,
+                isCurrentScan: isCurrentScanGeneration
+            )
         }
         let paymentState = scanPaymentOperations.state()
 
@@ -901,8 +945,12 @@ extension AppViewModel {
 
             if scope != .onchainPayments, let lnInvoice = invoice.params?["lightning"] {
                 // Lightning invoice param found, prefer lightning payment if invoice is valid
-                let lightningData = try await decode(invoice: lnInvoice)
-                try ensureScannedDataHandlingOwnership(handlingId, claimedContactPaymentContext: claimedContactPaymentContext)
+                let lightningData = try await scanPaymentOperations.decodeInvoice(lnInvoice)
+                try ensureScannedDataHandlingOwnership(
+                    handlingId,
+                    claimedContactPaymentContext: claimedContactPaymentContext,
+                    isCurrentScan: isCurrentScanGeneration
+                )
                 if case let .lightning(lightningInvoice) = lightningData {
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
@@ -910,7 +958,7 @@ extension AppViewModel {
 
                     if lnNetworkMatch, !lightningInvoice.isExpired,
                        contactPaymentContext?.incomingPaymentRequest?
-                       .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
+                           .acceptsLightningInvoiceAmount(satoshis: lightningInvoice.amountSatoshis) != false
                     {
                         let nodeIsRunning = paymentState.isNodeRunning
 
@@ -965,8 +1013,7 @@ extension AppViewModel {
             }
 
             // Fallback to on-chain if address is available
-            guard !invoice.address.isEmpty else { return }
-            guard validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
+            guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
@@ -1068,8 +1115,13 @@ extension AppViewModel {
                 return
             }
             await handlePubkyAuthApproval(sourceURI)
-        case let .gift(code, amount):
-            sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
+        case .gift:
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
@@ -1078,9 +1130,10 @@ extension AppViewModel {
 
     private func ensureScannedDataHandlingOwnership(
         _ handlingId: UUID,
-        claimedContactPaymentContext: ContactPaymentContext?
+        claimedContactPaymentContext: ContactPaymentContext?,
+        isCurrentScan: () -> Bool
     ) throws {
-        guard scannedDataHandlingId == handlingId else { throw CancellationError() }
+        guard scannedDataHandlingId == handlingId, isCurrentScan(), !Task.isCancelled else { throw CancellationError() }
         if let claimedContactPaymentContext {
             guard ownsContactPaymentContext(claimedContactPaymentContext) else { throw CancellationError() }
         }
@@ -1123,9 +1176,9 @@ extension AppViewModel {
         guard ownsContactPaymentContext(context), let request = context.incomingPaymentRequest,
               context.publicKey == request.counterparty,
               PrivatePaykitService.retainedHardwarePaymentLaunchResult(proof: proof, request: request) != nil,
-              let address = proof.onchainAddress, let amount = proof.onchainAmountSats
-        else { throw PaykitPaymentRequestError.requestUnavailable }
-        guard let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier) else {
+              let address = proof.onchainAddress, let amount = proof.onchainAmountSats,
+              let method = PublicPaykitService.MethodId(rawValue: proof.paymentEndpointIdentifier)
+        else {
             throw PaykitPaymentRequestError.requestUnavailable
         }
         paykitPaymentTerms = try request.payment(using: method, quoteId: proof.conversionQuoteId)
@@ -1302,7 +1355,9 @@ extension AppViewModel {
         paykitUsesUsdt || scannedLightningInvoice != nil || scannedOnchainInvoice != nil || lnurlPayData != nil
     }
 
-    func resetSendState(preservingContactPaymentContext: Bool = false) {
+    func resetSendState(preservingContactPaymentContext: Bool = false, ownerID: UUID? = nil) {
+        sendStateOwnerID = ownerID
+        sendStateGeneration = UUID()
         paykitUsesUsdt = false
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
@@ -1531,8 +1586,7 @@ extension AppViewModel {
     ) async {
         defer { isCompletingRestoreHold = false }
         let restoreStartedAt = SettingsViewModel.shared.pendingRestoreActivitySeenSince
-        guard restoreStartedAt > 0 else { return }
-        guard await markAllSeen(restoreStartedAt) else { return }
+        guard restoreStartedAt > 0, await markAllSeen(restoreStartedAt) else { return }
         SettingsViewModel.shared.restoreSyncedBlockHeight = syncedBlockHeight
         SettingsViewModel.shared.pendingRestoreActivitySeenSince = 0
 
@@ -1603,8 +1657,7 @@ extension AppViewModel {
         isMigrating: Bool = MigrationsService.shared.isShowingMigrationLoading || MigrationsService.shared.needsPostMigrationSync,
         restoreSyncedBlockHeight: UInt32? = nil
     ) -> Bool {
-        guard !isMigrating else { return false }
-        guard blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
+        guard !isMigrating, blockHeight > (restoreSyncedBlockHeight ?? SettingsViewModel.shared.restoreSyncedBlockHeight) else { return false }
         let age = abs(now.timeIntervalSince1970 - TimeInterval(confirmationTime))
         return age <= maxConfirmedOnlyReceiveAge
     }
@@ -1717,7 +1770,7 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-            Task {
+            _ = Task {
                 // Use channelCache instead of cachedChannels array, as it's updated immediately
                 if let channel = await lightningService.getChannelFromCache(channelId: channelId) {
                     let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
@@ -1776,8 +1829,10 @@ extension AppViewModel {
             Task {
                 await PaykitPaymentProofService.shared.completeLightningPayment(
                     paymentHash: paymentHash,
-                    preimage: paymentPreimage
+                    preimage: paymentPreimage,
+                    priority: .interactive
                 )
+                await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: true)
             }
             let outcome = QuickPayPaymentCoordinator.shared.complete(
                 paymentId: paymentId,
@@ -1811,7 +1866,10 @@ extension AppViewModel {
             )
             let hash = paymentHash ?? outcome.invoicePaymentHash ?? paymentId
             if let paymentHash = paymentHash ?? paymentId {
-                Task { await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash) }
+                Task {
+                    await PaykitPaymentProofService.shared.failLightningPayment(paymentHash: paymentHash)
+                    await PaykitAllowanceExecutor.shared.lightningPaymentSettled(paymentHash: paymentHash, succeeded: false)
+                }
             }
             let awaitingSheet = hash.map { pendingPaymentHashes.contains($0) } ?? false
             if let hash, awaitingSheet {

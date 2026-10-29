@@ -32,7 +32,7 @@ jobs:
   trezor-emu:
     if: inputs.suite == 'trezor-emu'
     name: Trezor emulator dashboard
-    runs-on: [self-hosted, macOS]
+    runs-on: namespace-profile-mac
     timeout-minutes: 90
 
     steps:
@@ -46,6 +46,11 @@ jobs:
           ref: main
           path: bitkit-docker
 
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+
       - name: Install xcbeautify
         run: |
           if ! command -v xcbeautify >/dev/null 2>&1; then
@@ -56,25 +61,41 @@ jobs:
         run: |
           sw_vers
           xcodebuild -version
-          docker version
-          docker compose version
 
       - name: Resolve Swift packages
         run: |
           xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
 
+      - name: Start remote Docker
+        run: |
+          awk '{ print } /^  trezor-user-env-mac:$/ { print "    extra_hosts:\n      - \"host.docker.internal:host-gateway\"" }' \
+            bitkit-docker/docker-compose.yml > /tmp/docker-compose.yml
+          mv /tmp/docker-compose.yml bitkit-docker/docker-compose.yml
+          mkdir -p bitkit-docker/lnd bitkit-docker/.trezor-user-env/{trezor-suite,logs/screens,logs/mcp-screenshots,firmware/user_downloaded}
+          .github/scripts/namespace-stack.sh up bitkit-docker
+          .github/scripts/namespace-stack.sh forward 43782 39388 60001 21325 21328 9001 23902
+
       - name: Start regtest and Trezor emulator
         working-directory: bitkit-docker
         run: |
-          docker compose up -d
+          docker compose up -d bitcoind bitcoinsetup electrs darkhttpd lnd ldk-backup-server
+          until docker exec bitcoin bitcoin-cli -regtest -rpcport=43782 -rpcuser=polaruser -rpcpassword=polarpass -generate 101; do sleep 2; done
           ./scripts/trezor-emulator start
           ./scripts/trezor-emulator status
 
       - name: Boot simulator
         env:
           SIMULATOR_NAME: ${{ inputs.simulator_name }}
+          SIMULATOR_OS: ${{ inputs.simulator_os }}
         run: |
-          xcrun simctl boot "$SIMULATOR_NAME" || true
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["SIMULATOR_OS"].replace(".", "-")
+          devices = json.load(sys.stdin)["devices"].get(runtime, [])
+          print(next(d["udid"] for d in devices if d["name"] == os.environ["SIMULATOR_NAME"]))
+          ')
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
 
       - name: Run Trezor emulator UI tests
         env:
@@ -86,7 +107,6 @@ jobs:
           E2E: "true"
           E2E_BACKEND: "local"
           E2E_NETWORK: "regtest"
-          GEO: "false"
           SIMULATOR_NAME: ${{ inputs.simulator_name }}
           SIMULATOR_OS: ${{ inputs.simulator_os }}
         run: |
@@ -128,9 +148,6 @@ jobs:
           path: ai-device-artifacts/trezor
           if-no-files-found: warn
 
-      - name: Stop emulator services
+      - name: Tear down emulator stack
         if: always()
-        working-directory: bitkit-docker
-        run: |
-          ./scripts/trezor-emulator stop || true
-          docker compose down || true
+        run: .github/scripts/namespace-stack.sh down

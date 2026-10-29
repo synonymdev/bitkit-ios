@@ -468,16 +468,21 @@ final class ContactsManagerTests: XCTestCase {
         let cached = contactRecord(key: contactProfileKey, name: "Saved")
         let gate = HeldProfileLookups(profiles: ["owner": "Owner"])
         let manager = ContactsManager(observedContactRecords: { owner in
+            if owner == "payment-active" {
+                throw PaykitPaymentRequestError.operationInProgress
+            }
             _ = try await gate.fetch(owner)
             return []
         }, fetchRemoteProfile: { _, _ in nil })
         try await manager.loadContacts(for: "owner", fetchContactRecords: { [cached] }, fetchRemoteProfile: { _ in nil })
 
-        do {
-            try await manager.refreshContacts(for: "unavailable")
-            XCTFail("A failed fresh read must not succeed from cached contacts")
-        } catch {
-            XCTAssertEqual(manager.contacts.map(\.publicKey), [cached.publicKey])
+        for owner in ["unavailable", "payment-active"] {
+            do {
+                try await manager.refreshContacts(for: owner)
+                XCTFail("A failed fresh read must not succeed from cached contacts")
+            } catch {
+                XCTAssertEqual(manager.contacts.map(\.publicKey), [cached.publicKey])
+            }
         }
         try await manager.refreshContacts(for: "owner")
         XCTAssertTrue(manager.contacts.isEmpty)
@@ -524,7 +529,11 @@ final class ContactsManagerTests: XCTestCase {
             while await gate.heldCount == 0 {
                 await Task.yield()
             }
-            if reset { manager.reset() } else { refresh.cancel() }
+            if reset {
+                manager.reset()
+            } else {
+                refresh.cancel()
+            }
             await gate.release()
             let result = await refresh.result
             XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }

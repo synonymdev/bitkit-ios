@@ -4,7 +4,7 @@ import SwiftUI
 
 @MainActor
 class WalletViewModel: ObservableObject {
-    let usdtWallet = UsdtWalletManager()
+    let usdtWallet: UsdtWalletManager
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
@@ -53,8 +53,7 @@ class WalletViewModel: ObservableObject {
     /// - Parameter amountSats: The amount the user intends to send (on-chain invoice amount or current entered amount).
     /// - Returns: True when the amount is >= dust and can be paid from both on-chain (spendable) and Lightning (max send).
     func canSwitchWalletForUnifiedInvoice(amountSats: UInt64) -> Bool {
-        guard amountSats >= UInt64(Env.dustLimit) else { return false }
-        guard spendableOnchainBalanceSats >= 0, maxSendLightningSats >= 0 else { return false }
+        guard amountSats >= UInt64(Env.dustLimit), spendableOnchainBalanceSats >= 0, maxSendLightningSats >= 0 else { return false }
 
         return amountSats <= UInt64(spendableOnchainBalanceSats) && amountSats <= UInt64(maxSendLightningSats)
     }
@@ -97,14 +96,6 @@ class WalletViewModel: ObservableObject {
     private let feeEstimatesManager: FeeEstimatesManager
     private let pubkyProfile: PubkyProfileManager?
 
-    enum BlocktankPeerSimulation: String, CaseIterable {
-        case none = "None"
-        case apiFailure = "API Failure"
-        case unreachablePeers = "Unreachable Peers"
-    }
-
-    static var peerSimulation: BlocktankPeerSimulation = .none
-
     @Published var isRestoringWallet = false
     @Published var balanceInTransferToSavings: Int = 0
     @Published var balanceInTransferToSpending: Int = 0
@@ -121,8 +112,10 @@ class WalletViewModel: ObservableObject {
         sheetViewModel: SheetViewModel,
         feeEstimatesManager: FeeEstimatesManager,
         onchainAttemptService: OnchainSendAttemptService = .shared,
-        pubkyProfile: PubkyProfileManager? = nil
+        pubkyProfile: PubkyProfileManager? = nil,
+        usdtWallet: UsdtWalletManager? = nil
     ) {
+        self.usdtWallet = usdtWallet ?? UsdtWalletManager()
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
@@ -131,7 +124,7 @@ class WalletViewModel: ObservableObject {
         self.sheetViewModel = sheetViewModel
         self.feeEstimatesManager = feeEstimatesManager
         self.pubkyProfile = pubkyProfile
-        BackupService.shared.usdtWallet = usdtWallet
+        BackupService.shared.usdtWallet = self.usdtWallet
         balanceManager = BalanceManager(
             lightningService: lightningService,
             transferService: transferService,
@@ -140,7 +133,7 @@ class WalletViewModel: ObservableObject {
         Task {
             do {
                 _ = try await onchainAttemptService.resumeAcceptedTransfer(
-                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex), using: transferService
+                    walletId: OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
                 )
             } catch {
                 Logger.warn("Accepted order local follow-up remains guarded: \(error)", context: "WalletViewModel")
@@ -151,7 +144,7 @@ class WalletViewModel: ObservableObject {
             do {
                 guard try await onchainAttemptService.observeTransaction(txid: txid, walletId: walletId, isConfirmed: isConfirmed) else { return }
                 _ = try await onchainAttemptService.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
-                _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId, using: transferService)
+                _ = try await onchainAttemptService.resumeAcceptedTransfer(walletId: walletId)
                 await PaykitPaymentProofService.shared.reconcile()
             } catch {
                 Logger.warn("Observed payment local follow-up remains guarded: \(error)", context: "WalletViewModel")
@@ -162,14 +155,13 @@ class WalletViewModel: ObservableObject {
     }
 
     /// Convenience initializer for previews and testing
-    convenience init(pubkyProfile: PubkyProfileManager? = nil) {
+    convenience init(pubkyProfile: PubkyProfileManager? = nil, usdtWallet: UsdtWalletManager? = nil) {
         let transferService = TransferService(
-            lightningService: .shared,
-            blocktankService: CoreService.shared.blocktank
+            lightningService: .shared
         )
         self.init(
             transferService: transferService, sheetViewModel: SheetViewModel(),
-            feeEstimatesManager: FeeEstimatesManager(), pubkyProfile: pubkyProfile
+            feeEstimatesManager: FeeEstimatesManager(), pubkyProfile: pubkyProfile, usdtWallet: usdtWallet
         )
     }
 
@@ -269,7 +261,6 @@ class WalletViewModel: ObservableObject {
                         Task {
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21(reportsError: false)
-                            await self.reconnectTrustedPeers()
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
                             try? await Task.sleep(nanoseconds: Self.paykitChannelUsabilityRefreshDelay)
                             guard !Task.isCancelled else { return }
@@ -361,7 +352,11 @@ class WalletViewModel: ObservableObject {
 
         syncState()
 
-        await reconnectTrustedPeers()
+        do {
+            try await lightningService.disconnectIdlePeers()
+        } catch {
+            Logger.error("Failed to disconnect idle peers: \(error)")
+        }
 
         // Migration only: fetch peers from remote backup (once) and persist in ldk-node
         let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
@@ -375,12 +370,12 @@ class WalletViewModel: ObservableObject {
         }
 
         Task { @MainActor in
-            try await refreshBip21(syncPublicPaykit: false)
+            try? await refreshBip21(syncPublicPaykit: false)
         }
 
         // Always sync on start but don't need to wait for this
         Task { @MainActor in
-            try await sync()
+            try? await sync()
         }
     }
 
@@ -418,54 +413,6 @@ class WalletViewModel: ObservableObject {
         } catch {
             Logger.error("Pre-startup channel monitor fetch failed: \(error)", context: "WalletViewModel")
             return (nil, false)
-        }
-    }
-
-    private func fetchTrustedPeersFromBlocktank() async -> [LnPeer]? {
-        switch Self.peerSimulation {
-        case .apiFailure:
-            Logger.warn("⚠️ [DEBUG] Simulating Blocktank API failure — returning nil")
-            return nil
-        case .unreachablePeers:
-            Logger.warn("⚠️ [DEBUG] Simulating unreachable API peers")
-            return [
-                LnPeer(
-                    nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
-                    host: "192.0.2.1",
-                    port: 9735
-                ),
-            ]
-        case .none:
-            break
-        }
-
-        var info: IBtInfo?
-        do {
-            info = try await coreService.blocktank.info(refresh: true)
-        } catch {
-            Logger.warn("Blocktank API refresh failed, trying cache: \(error)")
-        }
-        if info == nil {
-            info = try? await coreService.blocktank.info(refresh: false)
-        }
-        guard let nodes = info?.nodes, !nodes.isEmpty else { return nil }
-        let peers = nodes.compactMap { node -> LnPeer? in
-            guard let connString = node.connectionStrings.first else { return nil }
-            let address = connString.contains("@") ? String(connString.split(separator: "@").last ?? "") : connString
-            let parts = address.split(separator: ":")
-            guard parts.count == 2, let port = UInt16(parts[1]) else { return nil }
-            return LnPeer(nodeId: node.pubkey, host: String(parts[0]), port: port)
-        }
-        Logger.info("Fetched \(peers.count) trusted peers from Blocktank API")
-        return peers.isEmpty ? nil : peers
-    }
-
-    func reconnectTrustedPeers() async {
-        do {
-            let remotePeers = await fetchTrustedPeersFromBlocktank()
-            try await lightningService.connectToTrustedPeers(remotePeers: remotePeers)
-        } catch {
-            Logger.error("Failed to connect to trusted peers")
         }
     }
 
@@ -684,21 +631,17 @@ class WalletViewModel: ObservableObject {
 
         if case .accepted = result {
             Task {
-                try await sync()
+                try? await sync()
             }
         }
 
         return result
     }
 
-    func resumeAcceptedOnchainTransfer(walletId: String, attempts: OnchainSendAttemptService) async throws -> Bool {
-        try await attempts.resumeAcceptedTransfer(walletId: walletId, using: transferService)
-    }
-
     func resolvedAcceptedOnchainTransfer(context: OnchainSendPendingContext, attempts: OnchainSendAttemptService) async throws
         -> OnchainSendLocalResolution?
     {
-        try await attempts.resolvedAcceptedTransfer(context: context, using: transferService)
+        try await attempts.resolvedAcceptedTransfer(context: context)
     }
 
     /// Sets the fee rate for the send flow
@@ -723,7 +666,7 @@ class WalletViewModel: ObservableObject {
     }
 
     static let feeRateLoadAttempts = 2
-    static let feeRateRetryDelay: Duration = .seconds(2)
+    nonisolated static let feeRateRetryDelay: Duration = .seconds(2)
 
     /// Loads the send flow's fee rate, retrying a failed fetch once. Sets `feeRateLoadFailed` when it still fails.
     func loadFeeRateWithRetry(
@@ -995,9 +938,7 @@ class WalletViewModel: ObservableObject {
 
     private func consumeProbeOutcomeIfReady(paymentIds: Set<PaymentId>) -> ProbeOutcome? {
         let matched = paymentIds.compactMap { probeOutcomes[$0] }
-        guard !matched.isEmpty else { return nil }
-
-        guard matched.count == paymentIds.count else { return nil }
+        guard !matched.isEmpty, matched.count == paymentIds.count else { return nil }
 
         for paymentId in paymentIds {
             probeOutcomes.removeValue(forKey: paymentId)
@@ -1295,7 +1236,6 @@ class WalletViewModel: ObservableObject {
         await lightningService.refreshCache()
 
         do {
-            await MigrationsService.shared.cleanupInvalidMigrationTransfers()
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
@@ -1354,10 +1294,6 @@ class WalletViewModel: ObservableObject {
     /// Returns true if there's at least one channel that is ready
     var hasReadyChannels: Bool {
         return channels?.contains(where: \.isChannelReady) ?? false
-    }
-
-    var hasExistingChannels: Bool {
-        channelCount > 0 || channels?.isEmpty == false
     }
 
     /// Returns true if there's at least one usable channel (ready AND peer connected)
@@ -1521,10 +1457,8 @@ class WalletViewModel: ObservableObject {
     }
 
     private func hasReusablePublicPaykitInvoice() async -> Bool {
-        guard !publicPaykitBolt11.isEmpty else { return false }
-        guard publicPaykitBolt11ExpiresAt > Date().timeIntervalSince1970 + Self.publicPaykitInvoiceRefreshBufferSeconds else { return false }
-
-        guard case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) else { return false }
+        guard !publicPaykitBolt11.isEmpty, publicPaykitBolt11ExpiresAt > Date().timeIntervalSince1970 + Self.publicPaykitInvoiceRefreshBufferSeconds,
+              case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) else { return false }
         return !lightningInvoice.isExpired &&
             lightningInvoice.amountSatoshis == 0 &&
             (lightningInvoice.description ?? "").isEmpty &&
@@ -1544,6 +1478,7 @@ class WalletViewModel: ObservableObject {
             throw PublicPaykitError.routeHintsUnavailable
         }
 
+        PublicPaykitService.setCleanupPending(true)
         publicPaykitBolt11 = invoice
         publicPaykitBolt11PaymentHash = lightningInvoice.paymentHash.hex
         publicPaykitBolt11ExpiresAt = Double(lightningInvoice.timestampSeconds + lightningInvoice.expirySeconds)
@@ -1567,7 +1502,9 @@ class WalletViewModel: ObservableObject {
         else { return }
 
         invalidatePublicPaykitInvoice()
-        if sharesPublicPaykitEndpoints { PublicPaykitService.setCleanupPending(true) }
+        if sharesPublicPaykitEndpoints {
+            PublicPaykitService.setCleanupPending(true)
+        }
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true, reportsError: Bool = true) async throws {
@@ -1624,21 +1561,25 @@ class WalletViewModel: ObservableObject {
             components.scheme = "bitcoin"
             components.path = address
             var query: [URLQueryItem] = []
-            if !invoice.isEmpty { query.append(URLQueryItem(name: "lightning", value: invoice)) }
-            if let amountSats { query.append(URLQueryItem(name: "amount", value: Self.formatBitcoinAmount(sats: amountSats))) }
-            if !note.isEmpty { query.append(URLQueryItem(name: "message", value: note)) }
+            if !invoice.isEmpty {
+                query.append(URLQueryItem(name: "lightning", value: invoice))
+            }
+            if let amountSats {
+                query.append(URLQueryItem(name: "amount", value: Self.formatBitcoinAmount(sats: amountSats)))
+            }
+            if !note.isEmpty {
+                query.append(URLQueryItem(name: "message", value: note))
+            }
             components.queryItems = query.isEmpty ? nil : query
 
             try Task.checkCancellation()
-            guard receiveRefreshID == refreshID else { return }
-            guard invoice != cachedInvoice || bolt11 == cachedInvoice else { return }
+            guard receiveRefreshID == refreshID, invoice != cachedInvoice || bolt11 == cachedInvoice else { return }
             let hash = await receiveInvoicePaymentHash(invoice: invoice)
             try Task.checkCancellation()
             guard receiveRefreshID == refreshID else { return }
             await persistPreActivityMetadata(paymentId: hash ?? address, paymentHash: hash, address: address, tags: tagsToMigrate)
             try Task.checkCancellation()
-            guard receiveRefreshID == refreshID else { return }
-            guard invoice != cachedInvoice || bolt11 == cachedInvoice else { return }
+            guard receiveRefreshID == refreshID, invoice != cachedInvoice || bolt11 == cachedInvoice else { return }
             onchainAddress = address
             bolt11 = invoice
             bip21 = components.string ?? ""
@@ -1656,7 +1597,9 @@ class WalletViewModel: ObservableObject {
             }
         } catch {
             guard receiveRefreshID == refreshID else {
-                if error is CancellationError { throw error }
+                if error is CancellationError {
+                    throw error
+                }
                 return
             }
             if !reportsError, hasMatchingInputs, bolt11 == cachedInvoice, hasCoherentReceiveInvoice,
@@ -1664,12 +1607,16 @@ class WalletViewModel: ObservableObject {
             {
                 let reusable = await (try? isReceiveInvoiceReusable(cachedInvoice)) == true
                 guard receiveRefreshID == refreshID else {
-                    if error is CancellationError { throw error }
+                    if error is CancellationError {
+                        throw error
+                    }
                     return
                 }
                 if reusable, bolt11 == cachedInvoice, hasCoherentReceiveInvoice,
                    invoiceAmountSats == (amountSats ?? 0), invoiceNote == note
-                { throw error }
+                {
+                    throw error
+                }
             }
             receiveInvoiceError = error.localizedDescription
             throw error
@@ -1722,8 +1669,7 @@ class WalletViewModel: ObservableObject {
 
     /// Payment hash from the current bolt11 invoice, if available
     private func paymentHash() async -> String? {
-        guard !bolt11.isEmpty else { return nil }
-        guard case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
+        guard !bolt11.isEmpty, case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
         return lightningInvoice.paymentHash.hex
     }
 
@@ -1823,12 +1769,10 @@ class WalletViewModel: ObservableObject {
             var channelBalance = channelLightningBalance?.amountSats ?? 0
 
             // If no balance found in lightningBalances, get from closed channel record
-            if channelBalance == 0 {
-                if let closedChannels = try? await coreService.activity.closedChannels(sortDirection: .desc),
-                   let closedChannel = closedChannels.first(where: { $0.channelId == channelIdString })
-                {
-                    channelBalance = closedChannel.channelValueSats
-                }
+            if channelBalance == 0, let closedChannels = try? await coreService.activity.closedChannels(sortDirection: .desc),
+               let closedChannel = closedChannels.first(where: { $0.channelId == channelIdString })
+            {
+                channelBalance = closedChannel.channelValueSats
             }
 
             // For force closes, get the timelock height

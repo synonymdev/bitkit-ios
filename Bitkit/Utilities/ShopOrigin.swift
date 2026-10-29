@@ -12,8 +12,7 @@ enum ShopOrigin {
     }
 
     static func isAllowed(_ url: URL?) -> Bool {
-        guard let url else { return false }
-        guard url.scheme?.lowercased() == "https" else { return false }
+        guard let url, url.scheme?.lowercased() == "https" else { return false }
         return isAllowedHost(url.host)
     }
 

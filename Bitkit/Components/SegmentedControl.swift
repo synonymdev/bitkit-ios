@@ -21,7 +21,7 @@ struct TabItem<T: Hashable & CustomStringConvertible> {
     }
 
     var resolvedAccessibilityIdentifier: String {
-        accessibilityIdentifier ?? "Tab-\(title.lowercased())"
+        accessibilityIdentifier ?? "Tab-\((label ?? LocalizationHelper.inEnglish { tab.description }).lowercased())"
     }
 }
 

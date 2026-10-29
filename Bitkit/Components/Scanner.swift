@@ -239,7 +239,7 @@ struct Scanner: View {
         ZStack {
             if cameraManager.hasPermission {
                 #if targetEnvironment(simulator)
-                    Color.black
+                    Color.black.allowsHitTesting(false)
                 #else
                     ScannerCamera(
                         isTorchOn: isTorchOn,
@@ -247,6 +247,7 @@ struct Scanner: View {
                             await onScan(payload)
                         }
                     )
+                    .allowsHitTesting(false)
                 #endif
 
                 ScannerCornerButtons(
@@ -264,6 +265,7 @@ struct Scanner: View {
             }
         }
         .cornerRadius(16)
+        .contentShape(Rectangle())
         .onAppear {
             guard !cameraManager.hasPermission else { return }
             cameraManager.requestPermissionIfNeeded()
@@ -277,23 +279,22 @@ struct ScannerPermissionRequest: View {
     let onRequestPermission: () -> Void
 
     var body: some View {
-        Color.black
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                VStack(spacing: 0) {
-                    DisplayText(t("other__camera_no_title"), accentColor: accentColor)
-                        .padding(.bottom, 8)
-                    BodyMText(description)
-                        .padding(.bottom, 32)
-                    CustomButton(
-                        title: t("other__camera_no_button"),
-                        icon: Image("camera").foregroundColor(.textPrimary)
-                    ) {
-                        onRequestPermission()
-                    }
-                }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 16)
+        VStack(spacing: 0) {
+            DisplayText(t("other__camera_no_title"), accentColor: accentColor)
+                .padding(.bottom, 8)
+            BodyMText(description)
+                .padding(.bottom, 32)
+            CustomButton(
+                title: t("other__camera_no_button"),
+                icon: Image("camera").foregroundColor(.textPrimary)
+            ) {
+                onRequestPermission()
             }
+        }
+        .padding(.horizontal, 32)
+        .padding(.vertical, 16)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 }

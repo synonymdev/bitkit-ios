@@ -12,6 +12,10 @@ struct SubscriptionSheetItem: SheetItem {
         case details(PaykitSubscription)
         case cancel(PaykitSubscription)
         case payment(SendRoute)
+        case allowanceContact
+        case allowanceSet(PubkyContact)
+        case allowanceReview(PaykitAllowanceEntry)
+        case allowanceDetail(PaykitAllowanceEntry)
     }
 
     let route: Route
@@ -22,11 +26,13 @@ struct SubscriptionSheetItem: SheetItem {
 struct SubscriptionsView: View {
     private enum Tab: String, CustomStringConvertible {
         case overview
+        case allowances
         case payments
 
         var description: String {
             switch self {
             case .overview: t("subscriptions__overview")
+            case .allowances: t("subscriptions__allowances")
             case .payments: t("subscriptions__payments")
             }
         }
@@ -74,6 +80,8 @@ struct SubscriptionsView: View {
                     Group {
                         if selectedTab == .payments {
                             PaymentRequestsView()
+                        } else if selectedTab == .allowances {
+                            AllowancesTab()
                         } else if !hasVisibleSubscriptions {
                             emptyState
                         } else {
@@ -119,6 +127,7 @@ struct SubscriptionsView: View {
                 selectedTab: $selectedTab,
                 tabItems: [
                     TabItem(.overview),
+                    TabItem(.allowances),
                     TabItem(.payments, badge: paymentRequests.pendingRequests.count),
                 ],
                 inactiveColor: .white.opacity(0.5)
@@ -149,6 +158,11 @@ struct SubscriptionsView: View {
                     sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .create))
                 }
                 .accessibilityIdentifier("SubscriptionCreate")
+            } else if selectedTab == .allowances {
+                CustomButton(title: t("subscriptions__allowance_add")) {
+                    sheets.showSheet(.subscription, data: SubscriptionSheetItem(route: .allowanceContact))
+                }
+                .accessibilityIdentifier("AllowanceAdd")
             } else {
                 PaymentRequestsFooterButton()
             }
@@ -228,6 +242,12 @@ struct SubscriptionsView: View {
             }
         }
     }
+}
+
+func subscriptionPayments(subscription: PaykitSubscription, history: [PaykitPaymentRequest]) -> [PaykitPaymentRequest] {
+    subscription.isCreatedByUser
+        ? subscription.receivedPaymentRequests()
+        : history.filter { $0.belongs(to: subscription) && $0.lifecycleState == .proofSubmitted }
 }
 
 func subscriptionMonthlyCostSats(amounts: [PaykitAmount], rate: PaykitExchangeRate?, now: Date = Date()) -> Int? {
@@ -509,9 +529,7 @@ struct SubscriptionDetailView: View {
 
     @ViewBuilder
     private func payments(_ subscription: PaykitSubscription) -> some View {
-        let payments = subscription.isCreatedByUser
-            ? subscription.receivedPaymentRequests()
-            : paymentRequests.historyRequests.filter { $0.belongs(to: subscription) }
+        let payments = subscriptionPayments(subscription: subscription, history: paymentRequests.historyRequests)
         if !payments.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 CaptionMText(t("subscriptions__payments").localizedUppercase, textColor: .white64)
@@ -592,7 +610,9 @@ struct SubscriptionSheet: View {
                     initialAmount: creationDraft.amount,
                     onBack: { route = .create },
                     onContinue: {
-                        if creationDraft.amount.asset != $0.asset { creationDraft.acceptedPaymentEndpointIdentifiers = nil }
+                        if creationDraft.amount.asset != $0.asset {
+                            creationDraft.acceptedPaymentEndpointIdentifiers = nil
+                        }
                         creationDraft.amount = $0
                         route = .create
                     }
@@ -615,7 +635,22 @@ struct SubscriptionSheet: View {
             case let .cancel(subscription):
                 cancel(subscription)
             case let .payment(sendRoute):
-                SendSheet(config: SendSheetItem(initialRoute: sendRoute), isEmbedded: true)
+                SendSheet(
+                    config: SendSheetItem(presentationID: sheets.activeSheetConfiguration?.presentationID, initialRoute: sendRoute),
+                    isEmbedded: true
+                )
+            case .allowanceContact:
+                AllowanceContactView { route = .allowanceSet($0) }
+            case let .allowanceSet(contact):
+                SetAllowanceView(
+                    contact: contact,
+                    onBack: { route = .allowanceContact },
+                    onSaved: { sheets.hideSheet(reason: "Allowance proposed") }
+                )
+            case let .allowanceReview(entry):
+                AllowanceReviewView(entry: entry)
+            case let .allowanceDetail(entry):
+                AllowanceDetailView(entry: entry)
             }
         }
         .task {
@@ -684,7 +719,9 @@ struct SubscriptionSheet: View {
         isAccepting = true
         defer { isAccepting = false }
 
-        guard let dueRequest = try await paymentRequests.accept(subscription) else {
+        let dueRequest = try await paymentRequests.accept(subscription)
+        PushNotificationManager.shared.requestPermissionIfUndecided()
+        guard let dueRequest else {
             guard paymentRequests.subscriptions.contains(where: {
                 $0.id == subscription.id && $0.lifecycleState == .activeRecurring
             }) else {
@@ -754,8 +791,16 @@ struct SubscriptionSheet: View {
             return
         }
 
-        let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
-        route = .payment(sendRoute)
+        if app.paykitUsesUsdt, let terms = context.initialUsdtSubscriptionPayment(),
+           let recipient = context.endpoints.first?.value
+        {
+            app.paykitPaymentTerms = terms
+            app.paykitReviewedAmount = terms.amount
+            route = .payment(.usdt(recipient: recipient, amount: terms.amount.value))
+        } else {
+            let sendRoute: SendRoute = context.requiresAssetSelection ? .amount : app.lnurlPayData == nil ? .confirm : .lnurlPayConfirm
+            route = .payment(sendRoute)
+        }
     }
 
     @MainActor
@@ -891,7 +936,9 @@ struct SubscriptionSuccessView: View {
 
     var body: some View {
         ZStack {
-            if let animation = confettiAnimation {
+            if paymentProofKind == .usdt {
+                PaymentCelebration(isOnchain: true, isReceived: false, confettiColor: .usdtAccent, isUsdt: true)
+            } else if let animation = confettiAnimation {
                 LottieView(animation: animation)
                     .playing(loopMode: .loop)
                     .scaleEffect(1.9)

@@ -163,7 +163,6 @@
 				Extensions/PaymentDetails.swift,
 				"Extensions/PaymentFailureReason+UserMessage.swift",
 				Models/BlocksWidgetOptions.swift,
-				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
@@ -171,7 +170,6 @@
 				Models/TransferType.swift,
 				Services/BackupFieldMigration.swift,
 				Services/CoreService.swift,
-				Services/GeoService.swift,
 				Services/HwActivityTagBackup.swift,
 				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
@@ -200,12 +198,10 @@
 				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				"Extensions/PaymentFailureReason+UserMessage.swift",
-				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
 				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
-				Services/GeoService.swift,
 				Services/HwActivityTagBackup.swift,
 				Services/HwSnapshotMerge.swift,
 				Services/LightningService.swift,
@@ -702,7 +698,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 202;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -714,7 +710,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 3.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -735,7 +731,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 202;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -747,7 +743,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 3.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -767,7 +763,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 202;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -779,7 +775,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 3.0.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -800,7 +796,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 202;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -812,7 +808,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 3.0.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -885,7 +881,8 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG CHECK_GEOBLOCK $(inherited)";
+				OTHER_SWIFT_FLAGS = "$(inherited) -warnings-as-errors -Wwarning DeprecatedDeclaration";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -939,7 +936,8 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CHECK_GEOBLOCK $(inherited)";
+				OTHER_SWIFT_FLAGS = "$(inherited) -warnings-as-errors -Wwarning DeprecatedDeclaration";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -951,7 +949,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 202;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -978,7 +976,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 3.0.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -1004,7 +1002,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 202;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -1031,7 +1029,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.5.0;
+				MARKETING_VERSION = 3.0.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					CoreBluetooth,
@@ -1202,7 +1200,7 @@
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
 				kind = exactVersion;
-				version = "0.1.0";
+				version = "0.1.1-rc2";
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
@@ -1210,7 +1208,7 @@
 			repositoryURL = "https://github.com/synonymdev/vss-rust-client-ffi";
 			requirement = {
 				kind = exactVersion;
-				version = 0.5.23;
+				version = "0.5.26-rc1";
 			};
 		};
 		4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
@@ -1226,7 +1224,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = exactVersion;
-				version = "0.7.0-rc.76";
+				version = "0.7.0-rc.78";
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
@@ -1234,7 +1232,7 @@
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
 				kind = exactVersion;
-				version = "0.8.0-rc6";
+				version = "0.8.0-rc11";
 			};
 		};
 		96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */ = {

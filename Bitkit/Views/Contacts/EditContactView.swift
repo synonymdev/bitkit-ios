@@ -29,7 +29,7 @@ struct EditContactView: View {
             isSaving: isSaving,
             footerNote: t("contacts__edit_public_note"),
             deleteLabel: t("contacts__delete_label"),
-            deleteActionStyle: .buttonWithIcon,
+            deleteActionStyle: .buttonWithIcon(),
             onSave: { await saveContact() },
             onCancel: { navigation.navigateBack() },
             onDelete: { showDeleteConfirmation = true }

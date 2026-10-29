@@ -71,26 +71,6 @@ struct HwFundingSigner {
         return balanceSats > reserve ? balanceSats - reserve : 0
     }
 
-    /// Reconnects, composes and signs the funding transaction without broadcasting it.
-    /// `onConnectingDevice` brackets every reconnect, as in `prepareSignedPayment`.
-    func prepareSignedFunding(
-        order: IBtOrder,
-        walletId: String,
-        address: String,
-        onComposed: (HwFundingTransaction) -> Void = { _ in },
-        onConnectingDevice: (Bool) -> Void = { _ in }
-    ) async throws -> HwFundingSignedTx {
-        let satsPerVByte = await resolvedSatsPerVByte()
-        return try await prepareSignedPayment(
-            walletId: walletId,
-            address: address,
-            sats: order.feeSat,
-            satsPerVByte: satsPerVByte,
-            onComposed: onComposed,
-            onConnectingDevice: onConnectingDevice
-        )
-    }
-
     /// Reconnects, composes and signs a normal on-chain payment without broadcasting it.
     /// `onConnectingDevice` brackets every reconnect (true before it, false once it returns or throws),
     /// including the one before a sign retry: the phases a caller may abandon because nothing is on the
@@ -126,12 +106,6 @@ struct HwFundingSigner {
             feeRate: UInt64(signed.feeRate.rounded(.up)),
             totalSpent: signed.totalSpent
         )
-    }
-
-    /// Best-effort pre-connect of the device before signing (fire-and-forget). Delegates to the
-    /// device-session capability, which no-ops unless it's a known BLE device that isn't connected.
-    func warmUp(walletId: String) {
-        connecting.warmUpConnection(walletId: walletId)
     }
 
     /// Offline compose for the exact payment amount; does not require a connected device.
@@ -430,8 +404,7 @@ final class HwSendCoordinator {
         initialAvailableSats: UInt64 = 0,
         showsLoading: Bool = false
     ) {
-        guard self.walletId != walletId else { return }
-        guard operationTask == nil, !isBroadcastUnresolved else { return }
+        guard self.walletId != walletId, operationTask == nil, !isBroadcastUnresolved else { return }
 
         availabilityRequestId += 1
         previewRequestId += 1
@@ -669,11 +642,10 @@ final class HwSendCoordinator {
                             try? await markSignedPaymentRefused(signed, true)
                         }
                         // A queued retry can expire without changing the uncertainty of an earlier attempt.
-                        let cleared: Bool
-                        if hadPriorBroadcastAttempt {
-                            cleared = false
+                        let cleared: Bool = if hadPriorBroadcastAttempt {
+                            false
                         } else {
-                            cleared = await clearSignedPaymentBeforeDispatch(signed)
+                            await clearSignedPaymentBeforeDispatch(signed)
                         }
                         let retainsBroadcastAttempt = hadPriorBroadcastAttempt || !cleared
                         isBroadcastUnresolved = hadPriorBroadcastAttempt ? priorBroadcastWasUnresolved : !cleared
@@ -833,3 +805,87 @@ final class HwSendCoordinator {
         let connecting: HwTransferConnecting
     }
 }
+
+/// A recoverable failure surfaced by the hardware-wallet transfer flow. The Sign screen maps each
+/// case to the matching localized toast.
+enum HwTransferError: Error, Equatable {
+    /// Reconnect failed. `isBluetooth` selects the softer INFO toast for a known BLE device
+    /// (advertises intermittently — "check that it is unlocked and try again") vs the ERROR toast.
+    case reconnect(isBluetooth: Bool)
+    case signingTimeout
+    case broadcastUncertain
+    /// Signed tx is retained but Electrum/network is unreachable — retry broadcast later.
+    case broadcastConnectivity
+    /// The device is locked or otherwise busy before signing can start. Carries the vendor so the
+    /// toast can name the device.
+    case deviceBusy(HwWalletVendor)
+    /// Firmware error (code 99) — user must reconnect the device.
+    case firmwareReconnect
+    /// The entered passphrase opened a different wallet than the one being spent from.
+    case passphraseMismatch
+    /// The device holds another wallet than the one being spent from, so reconnecting cannot help.
+    case walletMismatch
+    case funding(String?)
+    case generic(String?)
+}
+
+/// The hardware-wallet funding capability the transfer flow needs. Implemented by `HwWalletManager`;
+/// declared as a protocol so the flow stays testable.
+@MainActor
+protocol HwTransferFunding: Sendable {
+    func getFundingAccount(walletId: String, addressType: AddressScriptType) throws -> HwFundingAccount
+    func maxSpendableFunding(
+        walletId: String,
+        destinationAddress: String,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func composeFundingTransaction(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> HwFundingTransaction
+    /// Offline coin-selection estimate for the exact funding amount (`fingerprint: nil`); fee only.
+    func estimateOfflineFundingMiningFee(
+        walletId: String,
+        address: String,
+        sats: UInt64,
+        satsPerVByte: UInt64,
+        addressType: AddressScriptType
+    ) async throws -> UInt64
+    func signFunding(walletId: String, funding: HwFundingTransaction) async throws -> HwFundingSignedTx
+    func broadcastFunding(
+        serializedTx: String,
+        paymentDeadline: PaykitPreciseInstant?,
+        beforeDispatch: @escaping @MainActor @Sendable () async throws -> Void
+    ) async throws -> String
+}
+
+/// The device-session capability the transfer flow needs for on-device signing, addressed by wallet
+/// identity: a device holds one wallet open at a time, so reaching a given wallet is more than
+/// reaching its transport. Implemented by `HwWalletManager`.
+@MainActor
+protocol HwTransferConnecting: Sendable {
+    func ensureConnected(walletId: String) async throws
+    /// How long `ensureConnected` may take for this wallet's device before the flow gives up.
+    func reconnectTimeout(walletId: String) -> Double
+    func disconnectStaleSession(walletId: String) async
+    func scheduleStaleSessionCleanup(walletId: String)
+    /// Whether the wallet is reachable over a known Bluetooth device, so a reconnect failure can show
+    /// the softer BLE "check that it is unlocked and try again" toast instead of the generic error.
+    func isKnownBluetoothDevice(walletId: String) -> Bool
+    /// Best-effort pre-connect when the sign screen appears, so tapping Open Trezor Connect is less
+    /// likely to hit a cold reconnect. Fire-and-forget.
+    func warmUpConnection(walletId: String)
+    /// Whether the wallet's passphrase has to be collected again before the device can sign for it.
+    func needsPassphrase(walletId: String) -> Bool
+    /// Reopens a hidden wallet for signing, refusing a session that resolves to a different wallet.
+    func reconnectWithPassphrase(walletId: String, passphrase: String) async throws
+}
+
+// MARK: - Hardware transfer capability conformances
+
+extension HwWalletManager: HwTransferFunding {}
+extension HwWalletManager: HwTransferConnecting {}

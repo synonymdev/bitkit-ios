@@ -374,7 +374,7 @@ struct Suggestions: View {
         case .hardware:
             sheets.showSheet(.hardwareConnect)
         case .transferToSpending:
-            route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
+            sheets.showSheet(.transferUnavailable)
         }
 
         if let route {

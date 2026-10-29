@@ -130,7 +130,27 @@ correctly prevents it from entering the presentation queue.
 
 ## Request summary
 
+`review-refresh.xml` checks that an unpaid Bitcoin review resumes after app unlock without
+dismissing and reopening the sheet. iOS recreates the send view on app lock; Android keeps
+its content beneath the lock overlay. The iOS journey therefore explicitly checks the
+restored fee, ready swipe control and Show Details before authorizing. Its additional iOS
+app-lock steps start from amount and method selection for a fixed USD request, select Bitcoin,
+and lock both confirmation and payment PIN entry. Unlock must return to unpaid Bitcoin
+confirmation with the reviewed conversion amount and require fresh payment authorization.
+These steps need a conversion-capable linked issuer with current local endpoints; mark them
+blocked when unavailable. They do not make a USDT payment.
+
 `request-summary.xml` is ported alongside Android's matching journey.
+The USDT history step in `request-summary.xml` requires both instances opted in, a payer funded with
+local test USDT, and two completed requests (one USD-denominated and one BTC-denominated), each paid
+in USDT with a verified receipt. Establish these using the local USDT fixture before the journey and
+record the USD request amount and each payer activity detail's rounded Payment value. The USD
+receipt matches the request amount. The BTC request's receipt retains up to six decimals and rounds
+to that Payment value (shown as less than 0.01 below one cent), not the fee-inclusive activity total.
+The two payments need not have equal amounts. The iOS layout
+check uses a supported 375-point-wide device with enlarged Dynamic Type, while Android uses 320 dp.
+`contact-request-or-pay.xml` also needs a third linked contact that publishes no payment endpoints,
+so the failure and retry steps are reproducible.
 
 `success-dismissal.xml` matches Android's journey: after paying a Lightning request, closing success
 must leave no error toast or duplicate payment; closing a later unpaid request must not send it.

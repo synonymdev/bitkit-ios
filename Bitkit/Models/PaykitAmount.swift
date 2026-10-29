@@ -75,6 +75,13 @@ struct PaykitAmount: Codable, Hashable {
         NSDecimalNumber(decimal: Decimal(atomic) / Self.scale(asset)).stringValue
     }
 
+    var inputValue: String {
+        guard asset != .btc else { return value }
+        return (Decimal(atomic) / Self.scale(asset)).formatted(
+            .number.grouping(.never).precision(.fractionLength(2 ... asset.decimals)).locale(Locale(identifier: "en_US_POSIX"))
+        )
+    }
+
     func converted(to paymentAsset: PaykitAsset, rate: PaykitExchangeRate?, at date: Date) throws -> PaykitAmount {
         let value = try value(in: paymentAsset, rate: rate, at: date)
         return try PaykitAmount(asset: paymentAsset, atomic: Self.integer(value * Self.scale(paymentAsset), rounding: .up))

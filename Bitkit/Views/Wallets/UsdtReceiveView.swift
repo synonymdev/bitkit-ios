@@ -12,13 +12,15 @@ struct UsdtReceiveView: View {
     @State private var networks: [UsdtDepositNetwork] = []
     @State private var network: UsdtDepositNetwork?
     @State private var page = Page.address
+    @State private var isGoingBack = false
+    @State private var pageAfterDirectionChange: Page?
     @State private var amount = ""
     @State private var draftAmount = ""
     @State private var deposit: UsdtDepositAddress?
     @State private var busy = false
     @State private var error: String?
 
-    private enum Page { case address, networks, amount, fees }
+    private enum Page: Comparable { case address, networks, amount, fees }
 
     private var networkName: String {
         network?.label ?? "Arbitrum One"
@@ -39,38 +41,22 @@ struct UsdtReceiveView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            SheetHeader(title: title, showBackButton: page != .address, action: page == .address ? contactAction : nil,
-                        topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8,
-                        onBack: {
-                            if page == .amount { draftAmount = amount; error = nil }
-                            if page == .fees { page = .amount }
-                            else if page == .amount, network != nil, deposit == nil { page = .networks }
-                            else { if deposit == nil { network = nil }; page = .address }
-                        })
-                        .disabled(busy)
-            switch page {
-            case .address:
-                SegmentedControl(selectedTab: Binding(get: { .usdt }, set: onSelectTab), tabItems: tabs)
-                    .padding(.bottom, 16)
-                UsdtReceiveAddressContent(
-                    address: deposit?.address ?? usdt.address,
-                    uri: deposit?.uri ?? receiveUri,
-                    network: networkName,
-                    amount: amount,
-                    error: error ?? usdt.errorMessage,
-                    onEdit: { draftAmount = amount; page = .amount },
-                    onNetwork: { page = .networks }
-                )
-            case .networks:
-                networkList
-            case .amount:
-                amountEntry
-            case .fees:
-                if let deposit { feeEstimate(deposit) }
+        ZStack {
+            pageContent
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(Color.gray7)
+                .geometryGroup()
+                .id(page)
+                .transition(isGoingBack ? popTransition : pushTransition)
+        }
+        .animation(.easeInOut(duration: 0.3), value: page)
+        .onChange(of: isGoingBack) {
+            if let next = pageAfterDirectionChange {
+                pageAfterDirectionChange = nil
+                page = next
             }
         }
-        .padding(.horizontal, 16)
         .background(Color.gray7)
         .preference(key: SheetBackgroundPreferenceKey.self, value: .gray7)
         .task(id: scenePhase) {
@@ -86,13 +72,85 @@ struct UsdtReceiveView: View {
         }
     }
 
+    private var pageContent: some View {
+        VStack(spacing: 0) {
+            SheetHeader(title: title, showBackButton: page != .address, action: page == .address ? contactAction : nil,
+                        topPadding: 28, bottomPadding: 22, dragIndicatorTopPadding: 8, onBack: goBack)
+                .disabled(busy)
+            switch page {
+            case .address:
+                SegmentedControl(selectedTab: Binding(get: { .usdt }, set: onSelectTab), tabItems: tabs)
+                    .padding(.bottom, 16)
+                VStack(spacing: 0) {
+                    UsdtReceiveAddressContent(
+                        address: deposit?.address ?? usdt.address,
+                        uri: deposit?.uri ?? receiveUri,
+                        network: networkName,
+                        amount: amount,
+                        error: error ?? usdt.errorMessage,
+                        onEdit: { draftAmount = amount; show(.amount) },
+                        onNetwork: { show(.networks) }
+                    )
+                }
+                .contentShape(Rectangle())
+                .swipeSegmentedTabs(selection: Binding(get: { .usdt }, set: onSelectTab), tabs: tabs.map(\.tab), wrapAround: true, simultaneous: true)
+            case .networks:
+                networkList
+            case .amount:
+                amountEntry
+            case .fees:
+                if let deposit {
+                    feeEstimate(deposit)
+                }
+            }
+        }
+    }
+
+    private var pushTransition: AnyTransition {
+        .asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))
+    }
+
+    private var popTransition: AnyTransition {
+        .asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .trailing))
+    }
+
+    /// A page leaving the screen keeps the transition of its last render, so a change of direction is rendered on its own
+    /// before the page changes; otherwise the outgoing page slides out on the side the incoming one comes from.
+    private func show(_ next: Page) {
+        let isBack = next < page
+        if isBack == isGoingBack {
+            page = next
+        } else {
+            pageAfterDirectionChange = next
+            isGoingBack = isBack
+        }
+    }
+
+    private func goBack() {
+        if page == .amount {
+            error = nil
+        }
+        if page == .fees {
+            show(.amount)
+        } else if page == .amount, network != nil, deposit == nil {
+            show(.networks)
+        } else {
+            if deposit == nil {
+                network = nil
+            }
+            show(.address)
+        }
+    }
+
     private var networkList: some View {
         VStack(spacing: 16) {
             UsdtNetworkPicker(note: t("usdt__receive_network_note")) {
                 networkRow(nil)
                 ForEach(networks, id: \.self) { networkRow($0) }
             }
-            if let error { BodySText(error, textColor: .textSecondary) }
+            if let error {
+                BodySText(error, textColor: .textSecondary)
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 16) {
             if usdt.depositsConfigured {
@@ -110,22 +168,25 @@ struct UsdtReceiveView: View {
         UsdtNetworkRow(title: item?.label ?? "Arbitrum One", selected: network == item,
                        identifier: "UsdtNetwork-\(item?.label ?? "Arbitrum")")
         {
-            if network != item { deposit = nil; amount = ""; draftAmount = ""; error = nil }
+            if network != item {
+                deposit = nil; amount = ""; draftAmount = ""; error = nil
+            }
             network = item
-            page = item == nil || deposit != nil ? .address : .amount
+            draftAmount = amount
+            show(item == nil || deposit != nil ? .address : .amount)
         }
     }
 
     private var amountEntry: some View {
         UsdtReceiveAmountView(amount: $draftAmount, busy: busy, error: error, allowEmpty: network == nil) {
-            guard let network else { amount = draftAmount; page = .address; return }
+            guard let network else { amount = draftAmount; show(.address); return }
             busy = true
             error = nil
             defer { busy = false }
             do {
                 deposit = try await usdt.prepareDeposit(network: network, amount: draftAmount)
                 amount = draftAmount
-                page = .fees
+                show(.fees)
             } catch {
                 self.error = usdtDepositAmountMessage(error, amount: draftAmount)
             }
@@ -145,7 +206,7 @@ struct UsdtReceiveView: View {
                 feeRow(t("usdt__receive_estimate"), amount: deposit.estimatedReceived)
             }
             Spacer()
-            CustomButton(title: t("common__continue"), titleKerning: 0, titleLineHeight: 20) { page = .address }
+            CustomButton(title: t("common__continue"), titleKerning: 0, titleLineHeight: 20) { show(.address) }
                 .accessibilityIdentifier("UsdtReceiveFeesContinue")
         }
     }
@@ -180,26 +241,31 @@ struct UsdtReceiveAddressContent: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            if !uri.isEmpty {
-                if showDetails {
+        if !uri.isEmpty, !showDetails {
+            QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
+                   copyValue: address, shareText: shareText, copyMessage: t("usdt__receive_copied"), onEdit: onEdit)
+        } else {
+            ScrollView(showsIndicators: false) {
+                if !uri.isEmpty {
                     CopyAddressCard(
                         addresses: [CopyAddressPair(title: network + " " + t("wallet__activity_address"), address: address, type: .onchain,
                                                     shareText: shareText)],
                         navigationPath: .constant([]),
                         editRoute: nil,
                         accentColor: .usdtAccent,
+                        copyMessage: t("usdt__receive_copied"),
                         onShare: { showShareSheet = true }
                     )
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtReceiveAddress")
+                } else if let error {
+                    BodySText(error, textColor: .brandAccent)
                 } else {
-                    QrArea(uri: uri, imageAsset: "tether-circle", accentColor: .usdtAccent,
-                           copyValue: address, shareText: shareText, onEdit: onEdit)
+                    ProgressView()
                 }
-            } else if let error { BodySText(error, textColor: .brandAccent) }
-            else { ProgressView() }
+            }
         }
+        Spacer(minLength: 0)
         CustomButton(
             title: networkTitle,
             variant: .secondary,

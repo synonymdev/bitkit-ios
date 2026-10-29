@@ -1,0 +1,53 @@
+name: Swift packages
+description: >
+  Resolves the Swift packages into $SOURCE_PACKAGES and caches them. Pass
+  -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" -disableAutomaticPackageResolution
+  -skipPackageUpdates to every later xcodebuild call, or it resolves and clones everything again.
+
+# SwiftPM keeps a full bare clone of every package and looks each one up on every resolve, so
+# the clones have to be cached too. bitkit-core's history alone is over 13 GB, past the
+# repository cache limit, so on a miss the clones are cut down to the pinned commits first.
+runs:
+  using: composite
+  steps:
+    - name: Locate Swift packages
+      id: locate
+      shell: bash
+      run: |
+        echo "SOURCE_PACKAGES=$GITHUB_WORKSPACE/SourcePackages" >> "$GITHUB_ENV"
+        echo "xcode=$(xcodebuild -version | head -1 | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Swift packages
+      id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ github.workspace }}/SourcePackages
+        key: ${{ runner.os }}-xcode-${{ steps.locate.outputs.xcode }}-source-packages-v2-${{ hashFiles('Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+    - name: Resolve Swift packages
+      shell: bash
+      run: |
+        echo "⏱️  Starting dependency resolution at $(date)"
+        set -o pipefail && xcodebuild -resolvePackageDependencies \
+          -scheme Bitkit \
+          -clonedSourcePackagesDirPath "$SOURCE_PACKAGES" \
+          -disablePackageRepositoryCache \
+          -onlyUsePackageVersionsFromResolvedFile \
+          -skipPackageUpdates \
+          | xcbeautify
+        echo "✅ Dependencies resolved at $(date)"
+
+    - name: Shrink package clones
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        "$GITHUB_WORKSPACE/scripts/shallow-source-packages.sh" "$SOURCE_PACKAGES"
+        du -sh "$SOURCE_PACKAGES"
+
+    # Saved right after resolving so a failing job still warms the cache.
+    - name: Save Swift packages
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ github.workspace }}/SourcePackages
+        key: ${{ steps.cache.outputs.cache-primary-key }}

@@ -4,12 +4,12 @@ import UIKit
 struct DevSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
+    @AppStorage(ToastWindowManager.disableAllToastsKey) private var disableAllToasts = false
     @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
-    @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
@@ -58,6 +58,18 @@ struct DevSettingsView: View {
                         SettingsRow(title: "Trezor Hardware Wallet")
                     }
                     .accessibilityIdentifier("Trezor")
+
+                    SettingsRow(
+                        title: "Disable All Toasts",
+                        rightIcon: nil,
+                        toggle: $disableAllToasts,
+                        testIdentifier: "DisableAllToastsToggle"
+                    )
+                    .onChange(of: disableAllToasts) { _, isDisabled in
+                        if isDisabled {
+                            app.hideToast()
+                        }
+                    }
 
                     SettingsSectionHeader("SWAPS")
                         .padding(.top, 16)
@@ -163,23 +175,6 @@ struct DevSettingsView: View {
                         }
                     } label: {
                         SettingsRow(title: "Export Logs", rightIcon: nil)
-                    }
-
-                    Button {
-                        Task {
-                            do {
-                                try await notificationManager.sendTestNotification()
-                            } catch {
-                                Logger.error(error, context: "failed to test push notification")
-                                app.toast(
-                                    type: .error,
-                                    title: "Error",
-                                    description: "Failed to send test notification: \(error)"
-                                )
-                            }
-                        }
-                    } label: {
-                        SettingsRow(title: "Test Push Notification", rightIcon: nil)
                     }
 
                     Button {

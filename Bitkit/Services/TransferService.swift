@@ -4,24 +4,19 @@ import LDKNode
 
 /// Service for managing transfer operations
 class TransferService {
+    /// `TransferStorage.insert` rewrites the whole list, so concurrent creations must not interleave.
     private static let creationLock = NSLock()
     private let storage: TransferStorage
     private let lightningService: LightningService
-    private let blocktankService: BlocktankService
-    private let isGeoBlocked: () -> Bool
     private let coreService: CoreService
 
     init(
         storage: TransferStorage = TransferStorage.shared,
         lightningService: LightningService,
-        blocktankService: BlocktankService,
-        coreService: CoreService = .shared,
-        isGeoBlocked: @escaping () -> Bool = { GeoService.shared.isGeoBlocked }
+        coreService: CoreService = .shared
     ) {
-        self.isGeoBlocked = isGeoBlocked
         self.storage = storage
         self.lightningService = lightningService
-        self.blocktankService = blocktankService
         self.coreService = coreService
     }
 
@@ -37,38 +32,10 @@ class TransferService {
         amountSats: UInt64,
         channelId: String? = nil,
         fundingTxId: String? = nil,
-        lspOrderId: String? = nil,
         claimableAtHeight: UInt32? = nil,
         txTotalSats: UInt64? = nil,
         preTransferOnchainSats: UInt64? = nil
     ) async throws -> String {
-        try createTransferRecord(type: type, amountSats: amountSats, channelId: channelId,
-                                 fundingTxId: fundingTxId, lspOrderId: lspOrderId, claimableAtHeight: claimableAtHeight,
-                                 txTotalSats: txTotalSats, preTransferOnchainSats: preTransferOnchainSats)
-    }
-
-    private func createTransferRecord(
-        type: TransferType, amountSats: UInt64, channelId: String?, fundingTxId: String?,
-        lspOrderId: String?, claimableAtHeight: UInt32?, txTotalSats: UInt64?, preTransferOnchainSats: UInt64?
-    ) throws -> String {
-        // Lookup and insert belong to one original paid-order operation, including across service instances.
-        Self.creationLock.lock()
-        defer { Self.creationLock.unlock() }
-        if let lspOrderId, let existing = try storage.getAll().first(where: { $0.lspOrderId == lspOrderId }) {
-            guard existing.fundingTxId == fundingTxId else { throw OnchainSendAttemptError.duplicate }
-            return existing.id
-        }
-        // When geoblocked, block transfers to spending that involve LSP (Blocktank)
-        // toSpending with lspOrderId means it's a Blocktank LSP channel order
-        let isGeoblocked = isGeoBlocked()
-        if isGeoblocked && type.isToSpending() && lspOrderId != nil {
-            Logger.error("Cannot create LSP transfer when geoblocked", context: "TransferService")
-            throw AppError(
-                message: "Transfer unavailable",
-                debugMessage: "Transfer to spending via Blocktank is not available in your region."
-            )
-        }
-
         let id = UUID().uuidString
         let createdAt = UInt64(Date().timeIntervalSince1970)
 
@@ -78,7 +45,6 @@ class TransferService {
             amountSats: amountSats,
             channelId: channelId,
             fundingTxId: fundingTxId,
-            lspOrderId: lspOrderId,
             isSettled: false,
             createdAt: createdAt,
             settledAt: nil,
@@ -87,36 +53,10 @@ class TransferService {
             preTransferOnchainSats: preTransferOnchainSats
         )
 
-        try storage.insert(transfer)
+        try Self.creationLock.withLock { try storage.insert(transfer) }
         Logger.info("Created transfer: id=\(id) type=\(type) channelId=\(channelId ?? "nil")", context: "TransferService")
 
         return id
-    }
-
-    /// Create the pending on-chain activity for a hardware-wallet transfer to spending. The funding
-    /// tx is broadcast externally (on-device signing), so LDK's own activity sync won't surface it;
-    /// this makes it appear immediately, marked as a transfer and scoped to the hardware wallet that
-    /// funded it, so it reads as one hardware-owned transfer row.
-    func createPendingToSpendingActivity(
-        order: IBtOrder,
-        txId: String,
-        fee: UInt64,
-        feeRate: UInt64,
-        walletId: String = WalletScope.default
-    ) async {
-        guard let address = order.payment?.onchain?.address, !address.isEmpty else {
-            Logger.error("Order '\(order.id)' has no on-chain payment address", context: "TransferService")
-            return
-        }
-        await coreService.activity.createSentOnchainActivityFromSendResult(
-            txid: txId,
-            address: address,
-            amount: order.feeSat,
-            fee: fee,
-            feeRate: UInt32(feeRate),
-            isTransfer: true,
-            walletId: walletId
-        )
     }
 
     /// Mark a transfer as settled
@@ -150,27 +90,12 @@ class TransferService {
         let toSpending = activeTransfers.filter { $0.type.isToSpending() }
 
         for transfer in toSpending {
-            if let channelId = try await resolveChannelId(for: transfer, channels: channels) {
-                // Update transfer with channelId if not set yet
-                if transfer.channelId == nil {
-                    let updatedTransfer = Transfer(
-                        id: transfer.id,
-                        type: transfer.type,
-                        amountSats: transfer.amountSats,
-                        channelId: channelId,
-                        fundingTxId: transfer.fundingTxId,
-                        lspOrderId: transfer.lspOrderId,
-                        isSettled: transfer.isSettled,
-                        createdAt: transfer.createdAt,
-                        settledAt: transfer.settledAt,
-                        claimableAtHeight: transfer.claimableAtHeight,
-                        txTotalSats: transfer.txTotalSats,
-                        preTransferOnchainSats: transfer.preTransferOnchainSats
-                    )
-                    try storage.update(updatedTransfer)
-                    Logger.debug("Updated transfer \(transfer.id) with channelId: \(channelId)", context: "TransferService")
-                }
-
+            // Blocktank no longer opens channels for paid orders, so an order's transfer is no longer tracked.
+            if transfer.lspOrderId != nil {
+                try await markSettled(id: transfer.id)
+                continue
+            }
+            if let channelId = transfer.channelId {
                 // Associate the funding tx's on-chain activity with the resolved channel so it reads
                 // as a transfer (e.g. the hardware-wallet funding tx created before the channel opened).
                 if let fundingTxId = transfer.fundingTxId {
@@ -186,22 +111,6 @@ class TransferService {
                 } else {
                     Logger.debug("Channel \(channelId) exists but not yet usable for transfer: \(transfer.id)", context: "TransferService")
                 }
-            } else {
-                // No channel ID resolved - check if order is expired/terminal
-                if let orderId = transfer.lspOrderId {
-                    if let orders = try? await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false),
-                       let order = orders.first,
-                       order.state2 == .expired
-                    {
-                        try await markSettled(id: transfer.id)
-                        Logger.info("Order \(orderId) expired, settled transfer: \(transfer.id)", context: "TransferService")
-                        continue
-                    }
-                }
-                Logger.debug(
-                    "Could not resolve channel for transfer: \(transfer.id) orderId: \(transfer.lspOrderId ?? "none")",
-                    context: "TransferService"
-                )
             }
         }
 
@@ -209,7 +118,7 @@ class TransferService {
         let toSavings = activeTransfers.filter { $0.type.isToSavings() }
 
         for transfer in toSavings {
-            if let channelId = try await resolveChannelId(for: transfer, channels: channels) {
+            if let channelId = transfer.channelId {
                 let hasBalance = balances?.lightningBalances.contains(where: { balance in
                     balance.channelIdString == channelId
                 }) ?? false
@@ -275,45 +184,5 @@ class TransferService {
                 }
             }
         }
-    }
-
-    /// Resolve channel ID for a transfer
-    /// For LSP orders: match via order->fundingTx, for manual: use directly
-    func resolveChannelId(for transfer: Transfer, channels: [ChannelDetails]) async throws -> String? {
-        // If there's an LSP order ID, resolve via Blocktank
-        if let orderId = transfer.lspOrderId {
-            // Get orders from Blocktank (returns [IBtOrder])
-            var orders: [IBtOrder]? = nil
-
-            do {
-                orders = try await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
-            } catch {
-                Logger.error("Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
-                // Fall back to the persisted channel id (same BOLT `channelId.description` format the
-                // success path returns) so a transient Blocktank failure doesn't drop a known channel
-                // and double-count the transfer in the balance calc.
-                return transfer.channelId
-            }
-
-            if let order = orders?.first {
-                if let fundingTxId = order.channel?.fundingTx.id {
-                    // Find channel matching the funding transaction
-                    if let channel = channels.first(where: { channel in
-                        channel.fundingTxo?.txid.description == fundingTxId
-                    }) {
-                        return channel.channelId.description
-                    } else {
-                        Logger.debug("Order \(orderId) has fundingTx \(fundingTxId) but no matching channel found", context: "TransferService")
-                    }
-                } else {
-                    Logger.debug("Order \(orderId) exists but has no fundingTx yet (state: \(order.state))", context: "TransferService")
-                }
-            } else {
-                Logger.debug("Order \(orderId) not found in Blocktank response", context: "TransferService")
-            }
-        }
-
-        // Otherwise use the channel ID directly
-        return transfer.channelId
     }
 }

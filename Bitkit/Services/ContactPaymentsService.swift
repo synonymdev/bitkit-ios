@@ -106,7 +106,9 @@ enum ContactPaymentsService {
                 let error = await operations.preparePrivateEndpoints(snapshot.publicKeys, immediate) {
                     isCurrent() && snapshot.isCurrent()
                 }
-                if snapshot.isCurrent() { return error }
+                if snapshot.isCurrent() {
+                    return error
+                }
             }
             return Task.isCancelled && isCurrent() ? CancellationError() : nil
         }
@@ -204,8 +206,12 @@ enum ContactPaymentsService {
         defaults.removeObject(forKey: "publicPaykitBolt11")
         defaults.removeObject(forKey: "publicPaykitBolt11PaymentHash")
         defaults.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
-        if hadPublicState { operations.setPublicCleanupPending(true) }
-        if hadPrivateState { operations.setPrivateCleanupPending(true) }
+        if hadPublicState {
+            operations.setPublicCleanupPending(true)
+        }
+        if hadPrivateState {
+            operations.setPrivateCleanupPending(true)
+        }
 
         await acquireOperation()
         defer { releaseOperation() }
@@ -222,7 +228,9 @@ enum ContactPaymentsService {
                 operations.setPublicCleanupPending(false)
             } catch {
                 try Task.checkCancellation()
-                if error is CancellationError { throw error }
+                if error is CancellationError {
+                    throw error
+                }
                 guard isChangeCurrent() else { return false }
                 cleanupError = error
             }
@@ -237,20 +245,26 @@ enum ContactPaymentsService {
                 operations.setPrivateCleanupPending(false)
             } catch {
                 try Task.checkCancellation()
-                if error is CancellationError { throw error }
+                if error is CancellationError {
+                    throw error
+                }
                 guard isChangeCurrent() else { return false }
                 cleanupError = cleanupError ?? error
             }
         }
-        if let cleanupError { throw cleanupError }
+        if let cleanupError {
+            throw cleanupError
+        }
         return isChangeCurrent()
     }
 
     @MainActor
-    static func reconcilePendingEndpoints(_ reconcile: () async -> Void) async {
+    static func reconcilePendingEndpoints(reconcilePrivate: () async -> Void = {}, _ reconcile: () async -> Void) async {
         guard !isOperationActive, !Task.isCancelled else { return }
         isOperationActive = true
         defer { releaseOperation() }
+        await reconcilePrivate()
+        guard await !PrivatePaykitService.shared.isDeletingProfile, !Task.isCancelled else { return }
         await reconcile()
     }
 

@@ -33,7 +33,6 @@ struct UsdtWalletScreen: View {
                     .balanceVisibilityToggle()
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("UsdtBalance")
-                    if let error = usdt.errorMessage { BodySText(error, textColor: .brandAccent) }
                     activityList
                 }
             }
@@ -88,9 +87,15 @@ struct UsdtWalletScreen: View {
         }
         .navigationDestination(isPresented: Binding(
             get: { selectedTransferId != nil },
-            set: { if !$0 { selectedTransferId = nil } }
+            set: {
+                if !$0 {
+                    selectedTransferId = nil
+                }
+            }
         )) {
-            if let id = selectedTransferId { UsdtActivityDetail(transferId: id) }
+            if let id = selectedTransferId {
+                UsdtActivityDetail(transferId: id)
+            }
         }
     }
 
@@ -107,7 +112,6 @@ struct UsdtWalletScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("UsdtActivity-\(index)")
             }
-            if !usdt.historyComplete { BodySText(t("usdt__history_sync"), textColor: .textSecondary) }
         }
     }
 }
@@ -139,7 +143,7 @@ struct UsdtAmountHeader: View {
                 CaptionMText("USDT", textColor: .textSecondary, lineHeight: 18)
             }
             DisplayText(
-                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : displayAmount ?? usdtInputAmount(amount)),
+                "<accent>\(prefix)$</accent> " + (hideBalance ? " • • • • •" : displayAmount ?? amount),
                 accentColor: .textSecondary, accentFont: Fonts.extraBold
             )
             .lineLimit(1).minimumScaleFactor(0.5)
@@ -190,16 +194,12 @@ func usdtDisplaySats(amount: String, rate: PaykitExchangeRate?, now: Date = Date
 }
 
 func usdtOverviewAmount(_ amount: UInt64, locale: Locale = .current) -> String {
-    let format = Decimal.FormatStyle.number.precision(.fractionLength(2))
-        .rounded(rule: .toNearestOrAwayFromZero).locale(locale)
-    if amount > 0, amount < 10000 { return "<" + (Decimal(1) / 100).formatted(format) }
-    return (Decimal(amount) / 1_000_000).formatted(format)
+    if amount > 0, amount < 10000 {
+        return "<" + formatFiatAmount(Decimal(1) / 100, locale: locale)
+    }
+    return formatFiatAmount(Decimal(amount) / 1_000_000, roundingMode: .halfUp, locale: locale)
 }
 
 func usdtExactAmount(_ amount: UInt64, locale: Locale = .current) -> String {
-    (Decimal(amount) / 1_000_000).formatted(.number.precision(.fractionLength(2 ... 6)).locale(locale))
-}
-
-func usdtInputAmount(_ amount: String, locale: Locale = .current) -> String {
-    amount.replacingOccurrences(of: ".", with: locale.decimalSeparator ?? ".")
+    formatFiatAmount(Decimal(amount) / 1_000_000, maximumFractionDigits: 6, locale: locale)
 }

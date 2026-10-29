@@ -9,6 +9,184 @@ This file is symlinked for cross-agents compatibility to the following paths:
 
 Durable shared agent command specs live in `.agents/commands/`. For PR creation, follow `.agents/commands/pr.md`; `.claude/commands` is a compatibility symlink and Cursor command entries under `.cursor/commands/` resolve to the same files.
 
+## Agent workflow
+
+### Verification
+
+- For code changes, build and run the unit suite before reporting completion or the final PR
+  creation/update/push. Use the test selection in `.github/workflows/unit-tests.yml` to separate unit
+  tests from integration tests; use an available concrete simulator. A successful test invocation
+  also builds its targets; build separately when changed targets are not covered by that invocation.
+- For Swift changes, run SwiftFormat in lint mode on the changed Swift files using `.swiftformat`.
+  For translation changes, also run `node scripts/validate-translations.js`.
+- Run the relevant integration tests when changing their covered behavior, using the prerequisites
+  and test selection in `.github/workflows/integration-tests.yml`. Do not treat skipped tests as
+  evidence that the behavior passed.
+- Batch validation after a coherent change set. Use targeted checks during development and rerun the
+  narrowest checks that prove a validation fix; broaden the rerun when production changes affect
+  other behavior.
+- Fix relevant local check failures caused by the change and rerun the affected checks before
+  reporting work as complete, asking the user to run those checks, pushing, or creating/updating a PR.
+- If a check is blocked by missing prerequisites or fails for an unrelated reason, investigate and
+  report the command, cause, and remaining verification. Do not mark blocked, skipped, or unrun
+  checks as passed or describe validation as complete.
+- For user-visible changes, run the relevant journeys when their prerequisites are available; report
+  any missing prerequisites and untested flows explicitly.
+- In the final handoff, report the commands run and their results, including failures and blockers.
+  Documentation-only changes need documentation checks such as `git diff --check` and validation of
+  changed references, not an application build or device run.
+
+### Device-test setup
+
+When requesting journeys or manual device tests, give the reviewer enough setup instructions to
+reproduce their required environment. Under `#### Setup` in PR QA Notes, provide executable steps
+or a reproducible shared recipe and describe PR-specific deviations. Include only relevant details:
+service/library versions or pinned revisions, staging versus local backend/network, configuration
+and flags, prerequisites, fixture accounts/identities, preparation and reset steps. For a recipe on
+a branch, record its resolved commit. Do not assume a required Shop/Marketplace, Pubky Ring,
+homeserver or library version is available in standard staging; state how to obtain/configure the
+compatible version, or identify the missing prerequisite. Keep setup proportional to the requested
+cases; documentation-only/no-runtime changes can use `N/A — no device testing required.` with the
+reason. Preserve existing authored QA notes when updating a description.
+
+### Stable QA case IDs
+
+Assign explicit IDs to PR QA cases: manual tests `1.`, `2.`, etc., sub-cases `2a`,
+`2b`, and journeys `J1`, `J2`, etc. IDs are scoped to the PR and remain fixed once
+it is open, including while in draft. Use literal labels inside task-list items
+(for example `- [ ] 1. ...` and `- [ ] J1: new ...`), not automatically renumbered
+ordered lists.
+
+When updating the description, preserve IDs for the same cases even if their order
+changes. Append new IDs after the highest previously assigned ID in that category;
+do not fill gaps or reuse removed IDs. Record retired IDs and why the cases were
+removed, without leaving them as runnable unchecked tasks. A replacement testing a
+different behavior gets a new ID; clarify edits to an existing case so earlier
+results are not treated as evidence for changed expectations. Adding or renaming
+an ID is not execution evidence. `N/A` sections do not need IDs.
+
+Reviews, author Evidence/Gaps notes and test reports should refer to these IDs,
+together with the tested revision and relevant environment. Preserve historical
+results at their original revisions; an unchanged ID does not make a result fresh.
+
+### Author verification
+
+Authors are strongly encouraged to run the tests they ask reviewers to perform before requesting
+review. In PR QA Notes, briefly record what was verified, on which app commit/build and environment,
+the observed results, and supporting evidence where useful. For anything not verified, identify the
+affected cases, why they were not run, and any missing prerequisites. Report failures honestly;
+partial verification must not be presented as a complete pass. This recommendation complements
+mandatory checks above and does not make them optional. For documentation-only changes, report
+documentation checks and a justified runtime `N/A`.
+
+### Draft status and review readiness
+
+Open work-in-progress PRs as drafts. Mark ready for review only when the change is ready after
+applicable verification; draft status does not waive the checks above. For an already-ready PR,
+do not cycle draft/ready merely to suppress automated reviews while addressing feedback. Returning
+to ready can trigger an additional review even when an ordinary push to a ready PR would not;
+check the configured review triggers. Return to draft when the change is no longer ready for review
+or the user requests it. Preserve an explicit request to keep a PR draft; a description update
+alone must not undraft it.
+
+AI PR reviewers should check the current draft status before starting and before publishing a
+review, skip drafts, and wait until ready for review. This does not prevent author-requested local
+validation or an independent pre-publication review of a frozen local candidate.
+
+Draft is a readiness signal, not a guarantee that every automation stops. The manually dispatched
+`.github/workflows/claude-code-review.yml` has no workflow-level draft guard, and its comment
+minimization step runs before the review plugin. A hard skip before those steps needs a separate
+workflow change; external reviewers also need to honor draft status in their own configuration.
+
+### Independent review (recommended)
+
+Before marking a PR ready for human review, preferably run an independent review using a subagent
+with fresh context. Give the reviewer the requirements, scope, acceptance criteria, applicable
+repository guidelines, and base/head revisions (or the working-tree diff for uncommitted changes).
+Include intentional platform differences, but do not pass the implementation conversation or its
+justification of the solution. The reviewer should inspect the diff, callers, and surrounding code
+independently. Address actionable findings and recheck the affected changes.
+
+The reviewer may use the same model as the implementation agent. A separate context is the
+recommendation; using a different model is not required. If subagents are unavailable, use a separate
+review session when practical. Do not describe a self-review as an independent review.
+
+### Resolving model metadata
+
+Resolve the actual model and reasoning effort for each contributing session before writing a review
+footer or updating Models used. This applies to any agent, model provider or runner. Missing values
+in the prompt or a reviewer's reply do not establish that metadata is unavailable.
+
+- Check authoritative metadata tied to the actual execution: the host's run/session details,
+  provider response metadata, a recorded reviewer invocation, or structured execution logs. Use
+  whichever sources the environment exposes; no particular product, file path or log schema is
+  required. A configuration default or requested model alias alone does not prove what ran.
+- Match records to the contributing run/session and relevant turns using their recorded identity,
+  timestamps and parent/reviewer linkage where available. Record the reported model identifier and
+  reasoning setting for that work. Do not apply current settings retroactively; list each distinct
+  model/effort pair when they changed across contributing turns.
+- Ask independent reviewers/subagents to include their own model, reasoning effort and the metadata
+  source in their internal handoff. If a reply omits metadata or reports a fallback, the parent
+  should check accessible records for that reviewer before final reporting. Do not assume the
+  reviewer used the parent's or implementation agent's model or effort. A self-reported model
+  identity without supporting run metadata is not verification.
+- Read only the identifiers, linkage, timestamps, model and effort needed for this lookup. Do not
+  dump session logs, prompts, private reasoning, credentials or unrelated sessions into outputs.
+- Use `Unknown` only when the value is absent from relevant accessible records, or those records
+  cannot be located/read. Use `Not exposed` for reasoning only after checking the available sources
+  and establishing that they do not expose a setting. Add a brief metadata note explaining the
+  missing field or unavailable source; do not claim values are unexposed merely because the prompt
+  did not supply them. Never infer identity/effort from a tool name or invent a value to avoid a
+  fallback. This lookup does not require new access permissions or exposing private records.
+- Preserve verified historical pairs. Replace an earlier fallback only when records establish the
+  model/effort for that earlier work; otherwise keep it and add newly verified pairs separately.
+
+### Review summary metadata
+
+AI reviewers should end each review summary with `Reviewer model: <model name>` and
+`Reasoning effort: <effort>` on separate lines, including reviews with no findings. Include this
+footer once per review, not on each inline comment. It describes that review round and complements
+the PR's Models used section; it is informational, not an approval or quality claim.
+
+Use the model and effort actually used for the review, following Resolving model metadata above,
+including its lookup and fallback-note requirements. Never copy the implementation model or infer
+settings from tool names. If multiple model/effort combinations contributed, list each pair in the
+footer. Unassisted human
+reviews do not need it; AI-assisted human reviews should identify the AI model and effort used.
+
+### PR relationships
+
+Use optional `Twin:`, `Companion:`, and `Dependency:` lines for confirmed related PRs, following
+`.agents/commands/pr.md`. A twin is the matching change in the other native Bitkit app; a companion
+is related coordinated work such as E2E coverage; a dependency is a prerequisite. Omit absent
+relationships and use repository-qualified PR references so cross-repository numbers are unambiguous.
+
+### Models used
+
+Include `### Models used` in the PR body with `Planning/scoping`, `Implementation`, and a single
+`Review` entry. Record the model names reported by the tools as work proceeds, including subagent
+reviews. For each phase, list each distinct model/effort pair once, separated by commas; repeated
+reviews with the same pair do not add entries. The same model may appear in all three phases.
+Do not add per-round model rows. Optionally add `Review rounds: N` when the number of completed
+review passes is known; omit the count when unknown and do not count parallel reviewers as rounds.
+
+Record reasoning effort alongside each model as `` `model-name` (reasoning: `medium`) ``. Follow
+Resolving model metadata above before using `Unknown` or `reasoning: Not exposed`, and include its
+brief metadata note when a fallback remains. Do not infer effort from the model name or apply the
+current setting to earlier work. Preserve all known model/effort pairs when
+updating the section; collapse older per-round rows into the single Review entry.
+
+This section is informational, not a quality score, verification result, or approval requirement.
+Use `Not used` when a phase had no AI involvement and `Unknown` when the model was not recorded;
+never infer a model from a tool name. If no review occurred, write `Review: Not performed`.
+`Not used` and `Not performed` need no reasoning value. See `.agents/commands/pr.md` for formatting.
+
+### Review Findings
+
+When addressing review feedback on any PR, release PRs included, PR babysitters and the author's agent keep the PR in scope:
+- Fix in the PR only critical and HIGH findings and reachable correctness bugs. MEDIUM findings are a judgment call.
+- PR babysitters re-triage each LOW or non-blocking finding. If it is still LOW and not a reachable correctness bug, they defer it and leave the code unchanged: file an issue in the next release's milestone, add an Out of Scope bullet linking the issue and the thread (see `.agents/commands/pr.md`), reply in the thread `out of scope: tracked in #N, because …`, and resolve it.
+
 ## Project Overview
 
 Bitkit iOS is a native Swift implementation of a Bitcoin and Lightning Network wallet. This is a work-in-progress repository that is **NOT** the live production app. The production app uses React Native and is at github.com/synonymdev/bitkit.
@@ -133,11 +311,14 @@ Bumping `bitkit-core`, `ldk-node`, `paykit` or `vss-rust-client-ffi` changes the
 
 ### Code Formatting
 ```bash
-# Install SwiftFormat
+# Install SwiftFormat (CI pins 0.64.0; `.swiftformat` sets it as the minimum version)
 brew install swiftformat
 
 # Format all Swift code
 swiftformat .
+
+# Check formatting the way the CI `lint` workflow does
+swiftformat --lint .
 
 # Setup git hooks for automatic formatting on commits
 npm install -g git-format-staged
@@ -150,7 +331,9 @@ npm install -g git-format-staged
 node scripts/validate-translations.js
 ```
 
-**Note:** Localization files are synced from Transifex using [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync).
+**Note:** Translations live in this repository. When adding or changing an English string, add or update its translation in every `*.lproj/Localizable.strings` in the same PR.
+
+**Rail-specific copy:** when a shared message needs wording for one payment rail, add a new key with the rail as suffix (`wallet__send_dialog2_usdt` next to `wallet__send_dialog2`) and leave the shared key unchanged.
 
 ### Testing
 
@@ -162,8 +345,8 @@ xcodebuildmcp simulator test
 ```
 
 Separately from the test suites, `journeys/` holds XML walkthroughs of app behaviour that an agent
-evaluates by driving a running simulator — number pad caps, notification permission, widget flows,
-hardware wallet pairing and transfers. Nothing in `.github/workflows` runs them; reviewers drive the
+evaluates by driving a running simulator — number pad caps, widget flows, hardware wallet pairing
+and the Transfer Unavailable sheet. Nothing in `.github/workflows` runs them; reviewers drive the
 ones a PR lists. Read `journeys/README.md` before running or writing one, and see the Journeys
 section under Code Style & Conventions.
 
@@ -260,7 +443,7 @@ While the project is transitioning away from traditional ViewModels, these still
 - `ActivityListViewModel`: Transaction/payment history
 - `TransferViewModel`: Transfer flows (send/receive)
 - `NavigationViewModel`, `SheetViewModel`: UI navigation state
-- `BlocktankViewModel`: Lightning channel ordering via Blocktank
+- `BlocktankViewModel`: Reads existing Blocktank channel orders and CJIT entries
 
 **Key Directories:**
 - `Components/`: Reusable UI components (buttons, sliders, widgets)
@@ -357,7 +540,8 @@ Ensure accessibility modifiers and labels are added to custom components.
 
 ## Code Style & Conventions
 
-- **SwiftFormat** configuration in `.swiftformat`
+- **SwiftFormat** configuration in `.swiftformat`. RUN `swiftformat --lint .` before pushing: the `lint` workflow fails a PR with unformatted Swift
+- **Warnings are errors**: every target builds with `-warnings-as-errors -Wwarning DeprecatedDeclaration` in the project-level `OTHER_SWIFT_FLAGS`, locally and in CI. FIX a new warning rather than silencing it; deprecations stay warnings so an SDK bump does not break the build. KEEP the flags in `OTHER_SWIFT_FLAGS` rather than `SWIFT_TREAT_WARNINGS_AS_ERRORS`: Xcode appends that setting's flag last, which turns deprecations back into errors
 - Max line width: 150 characters
 - Swift version: 5.10
 - Use descriptive names: `isLoadingUsers` not `loading`
@@ -377,7 +561,7 @@ Ensure accessibility modifiers and labels are added to custom components.
   two platforms stay diffable. Change only what the platform forces: `adb` becomes `xcodebuildmcp`,
   and Android `testTag`s become iOS `accessibilityIdentifier`s.
 - MATCH the Android identifier string when adding an `accessibilityIdentifier` for a journey — the
-  vocabulary is deliberately shared (`N9`, `NRemove`, `SpendingAmountContinue`, `HardwareTransferSign`).
+  vocabulary is deliberately shared (`N9`, `NRemove`, `TransferUnavailableContinue`, `HardwareTransferToSpending`).
   Record any name that cannot match in the table in `journeys/README.md`.
 - PAIR a container identifier with `.accessibilityElement(children: .contain)` so it is queryable.
 - ADAPT rather than transcribe when iOS genuinely behaves differently, and say so in the journey's
@@ -470,4 +654,4 @@ investigate, not a bug report on its own.
 
 1. Update translation keys in code
 2. Run `node scripts/validate-translations.js` to check for issues
-3. Sync with Transifex using `bitkit-transifex-sync` tool
+3. Add or update the translation in every `*.lproj/Localizable.strings` in the same PR

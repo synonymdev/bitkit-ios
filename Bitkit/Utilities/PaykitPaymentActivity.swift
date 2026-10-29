@@ -18,11 +18,15 @@ struct PaykitPaymentProofRefreshState {
     }
 
     mutating func complete(_ request: Request) {
-        if pending == request { pending = nil }
+        if pending == request {
+            pending = nil
+        }
     }
 
     mutating func discard(unlessSession session: PubkyProfileManager.SignedInSession?) {
-        if pending?.session != session { pending = nil }
+        if pending?.session != session {
+            pending = nil
+        }
     }
 }
 
@@ -35,12 +39,30 @@ final class PaykitPaymentActivity {
     static let shared = PaykitPaymentActivity()
 
     private var payments: Set<UUID> = []
+    private var reviews: Set<UUID> = []
     private var idleWaiters: [UUID: AsyncStream<Void>.Continuation] = [:]
     private var deferredOperations: [DeferredWork: @MainActor () async -> Void] = [:]
     private var deferredTasks: [DeferredWork: Task<Void, Never>] = [:]
 
     var isActive: Bool {
         !payments.isEmpty
+    }
+
+    var shouldDeferRefresh: Bool {
+        isActive || !reviews.isEmpty
+    }
+
+    func beginReview() -> UUID {
+        let id = UUID()
+        reviews.insert(id)
+        return id
+    }
+
+    func endReview(_ id: UUID) {
+        reviews.remove(id)
+        if reviews.isEmpty {
+            resumeIdleWaiters()
+        }
     }
 
     func begin() -> UUID {
@@ -51,14 +73,18 @@ final class PaykitPaymentActivity {
 
     func end(_ id: UUID) {
         payments.remove(id)
+        resumeIdleWaiters()
+    }
+
+    private func resumeIdleWaiters() {
         guard payments.isEmpty else { return }
         let waiters = idleWaiters.values
         idleWaiters.removeAll()
         waiters.forEach { $0.finish() }
     }
 
-    func waitUntilIdle() async throws {
-        while isActive {
+    func waitUntilIdle(includingReviews: Bool = false) async throws {
+        while isActive || (includingReviews && !reviews.isEmpty) {
             try Task.checkCancellation()
             let id = UUID()
             let (stream, continuation) = AsyncStream<Void>.makeStream()
@@ -72,7 +98,9 @@ final class PaykitPaymentActivity {
     @discardableResult
     func runWhenIdle(_ key: DeferredWork, operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         deferredOperations[key] = operation
-        if let task = deferredTasks[key] { return task }
+        if let task = deferredTasks[key] {
+            return task
+        }
         let task = Task {
             do {
                 try await waitUntilIdle()
