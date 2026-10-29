@@ -28,6 +28,12 @@ on:
       retarget_run:
         description: "Retarget status owner (set by e2e-retarget.yml)"
         default: ""
+      workflow_ref:
+        description: "Pinned workflow source for retarget recovery"
+        default: master
+      helper_ref:
+        description: "Recovery helper branch or tag"
+        default: master
   # PRs stacked on another branch run no E2E until they target master; e2e-retarget.yml starts it on retarget
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -110,6 +116,8 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_WORKFLOW_REF: ${{ inputs.workflow_ref }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
         with:
           script: |
             const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
@@ -245,6 +253,8 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_WORKFLOW_REF: ${{ inputs.workflow_ref }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
         with:
           script: |
             const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
@@ -421,6 +431,8 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_WORKFLOW_REF: ${{ inputs.workflow_ref }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
           TEST_RESULTS: ${{ toJSON(needs) }}
         with:
           script: |

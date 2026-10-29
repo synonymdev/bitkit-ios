@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {dispatchRetargetTests, reportRetargetResult, e2eRetargetResult} = require('./retarget-tests.cjs');
+const {executionFixture} = require('./test-fixtures/retarget-execution.cjs');
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'b'.repeat(40);
@@ -10,6 +11,7 @@ const INTEGRATION = 'Run Integration Tests';
 const inputs = (id = 1, generation = '200-1') => ({RETARGET_CHECK_RUN_ID: String(id), RETARGET_RUN: generation, RETARGET_HEAD_SHA: HEAD, RETARGET_MERGE_COMMIT: MERGE, RETARGET_PR: '7'});
 
 function fixture() {
+  const execution = executionFixture();
   const pr = {number: 7, state: 'open', draft: false, head: {sha: HEAD, ref: 'feature', repo: {full_name: 'owner/repo'}}, base: {sha: BASE, ref: 'master'}, mergeable: true, merge_commit_sha: MERGE};
   const context = {repo: {owner: 'owner', repo: 'repo'}, eventName: 'pull_request', runId: 200, serverUrl: 'https://github.com', payload: {changes: {base: {}}, pull_request: structuredClone(pr)}};
   const checks = new Map();
@@ -18,8 +20,8 @@ function fixture() {
   const commits = {parents: [{sha: BASE}, {sha: HEAD}]};
   const rest = {
     pulls: {get: async () => ({data: pr})},
-    git: {getCommit: async () => ({data: commits})},
-    repos: {compareCommits: async ({base, head}) => {
+    git: {...execution.github.rest.git, getCommit: async () => ({data: commits})},
+    repos: {...execution.github.rest.repos, compareCommits: async ({base, head}) => {
       assert.equal(head, 'master');
       return {data: {status: base === BASE ? 'identical' : 'diverged'}};
     }},
@@ -34,9 +36,9 @@ function fixture() {
     },
     actions: {createWorkflowDispatch: async value => {dispatches.push(value);}},
   };
-  const github = {rest};
+  const github = {rest, graphql: execution.github.graphql};
   const core = {setFailed: value => failures.push(value), info: () => {}};
-  return {pr, context, checks, dispatches, failures, commits, github, core, attempt: '1', sleep: async () => {}};
+  return {pr, context, checks, dispatches, failures, commits, github, core, execution, attempt: '1', sleep: async () => {}};
 }
 const start = async f => {await dispatchRetargetTests(f); return f;};
 
@@ -48,16 +50,17 @@ test('retarget creates canonical queued checks and dispatches a pinned merge wit
   const f = await start(fixture());
   assert.deepEqual([...f.checks.values()].map(c => [c.name, c.status]), [[E2E, 'queued'], [INTEGRATION, 'queued']]);
   assert.deepEqual(f.dispatches.map(d => d.workflow_id), ['e2e-tests.yml', 'integration-tests.yml']);
-  for (const [index, dispatch] of f.dispatches.entries()) assert.deepEqual(dispatch.inputs, {pr: '7', merge_commit: MERGE, head_sha: HEAD, retarget_run: '200-1', check_run_id: String(index + 1), ...(index === 0 ? {app_branch: 'feature'} : {})});
-  assert.deepEqual(f.dispatches.map(d => d.ref), ['master', 'master']);
+  for (const [index, dispatch] of f.dispatches.entries()) assert.deepEqual(dispatch.inputs, {pr: '7', merge_commit: MERGE, head_sha: HEAD, retarget_run: '200-1', check_run_id: String(index + 1), workflow_ref: f.execution.SOURCE, helper_ref: 'master', ...(index === 0 ? {app_branch: 'feature'} : {})});
+  assert.deepEqual(f.dispatches.map(d => d.ref), ['ci/retarget-execution/pr-7-200-1', 'ci/retarget-execution/pr-7-200-1']);
   assert.deepEqual(f.failures, []);
 });
 
 test('manual recovery can validate a PR with workflow definitions from a specified branch', async () => {
   const f = fixture(); f.context.eventName = 'workflow_dispatch';
+  f.context.ref = 'refs/heads/ci/fix';
   f.context.payload = {inputs: {pr: '7', workflow_ref: 'ci/fix'}};
   await start(f);
-  assert.deepEqual(f.dispatches.map(d => d.ref), ['ci/fix', 'ci/fix']);
+  assert.ok(f.dispatches.every(d => d.ref === 'ci/retarget-execution/pr-7-200-1' && d.inputs.workflow_ref === f.execution.SOURCE && d.inputs.helper_ref === 'ci/fix'));
 });
 
 test('a later helper attempt owns distinct checks that its reporter can complete', async () => {
@@ -255,4 +258,33 @@ test('only E2E can report not required, with an explicit check explanation', asy
   assert.equal(f.checks.get(1).output.title, 'No E2E code changes');
   await report(f, {name: INTEGRATION, inputs: inputs(2), result: 'not_required'});
   assert.equal(f.checks.get(2).conclusion, 'failure');
+});
+
+test('retry recovery uses the stable source, never the disposable execution ref', async () => {
+  const f = await start(fixture());
+  f.context.ref = 'refs/heads/ci/retarget-execution/pr-7-200-1';
+  await report(f, {result: 'failure'});
+  await report(f, {phase: 'start', inputs: {...inputs(), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'ci/fix'}});
+  assert.equal(f.dispatches[2].ref, 'ci/fix');
+  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: f.execution.SOURCE, suite: 'e2e'});
+});
+
+test('unsigned execution preparation fails both PR checks and never dispatches tests on master', async () => {
+  const f = fixture(); const request = f.github.graphql;
+  f.github.graphql = async (query, variables) => {
+    const result = await request(query, variables);
+    if (query.includes('createCommitOnBranch')) f.execution.commits.get(result.createCommitOnBranch.commit.oid).commit.verification.verified = false;
+    return result;
+  };
+  await start(f);
+  assert.equal(f.dispatches.length, 0);
+  assert.deepEqual([...f.checks.values()].map(c => c.conclusion), ['failure', 'failure']);
+});
+
+test('a deleted pre-merge helper branch falls back to master while retaining the pinned workflow source', async () => {
+  const f = await start(fixture());
+  await report(f, {result: 'failure'});
+  await report(f, {phase: 'start', inputs: {...inputs(), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'deleted-branch'}});
+  assert.equal(f.dispatches[2].ref, 'master');
+  assert.equal(f.dispatches[2].inputs.workflow_ref, f.execution.SOURCE);
 });
