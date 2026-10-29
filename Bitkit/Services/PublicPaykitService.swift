@@ -538,9 +538,8 @@ enum PublicPaykitService {
         isSessionCurrent: (@MainActor () -> Bool)? = nil,
         sdkService: PaykitSdkService = .shared
     ) async throws {
-        let privateSharing = privateSharingEnabled ?? UserDefaults.standard.bool(forKey: PrivatePaykitService.publishingEnabledKey)
         try await sdkService.syncPaykitApp(
-            privatePaymentsEnabled: privateSharing, priority: priority, isSessionCurrent: isSessionCurrent
+            privatePaymentsEnabled: privateSharingEnabled, priority: priority, isSessionCurrent: isSessionCurrent
         )
     }
 

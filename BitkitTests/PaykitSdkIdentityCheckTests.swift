@@ -86,6 +86,35 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testBackgroundReadsRecheckPaymentAdmissionBeforeContentionRetry() async throws {
+        let operations: [(PaykitSdkService) async throws -> Void] = [
+            { _ = try await $0.identityStatus(priority: .background) },
+            { _ = try await $0.linkedPeers(priority: .background) },
+            { _ = try await $0.privateMessageSchedulingSnapshot(priority: .background) },
+        ]
+        for operation in operations {
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.readErrors = [sharedStateBusy]
+            sdk.schedulingRead = {
+                await sdk.reads.record()
+                throw sharedStateBusy
+            }
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let read = Task { try await operation(service) }
+            try await sdk.reads.waitForEntries(count: 1)
+            let payment = PaykitPaymentActivity.shared.begin()
+            defer { PaykitPaymentActivity.shared.end(payment) }
+            do {
+                try await read.value
+                XCTFail("A new payment must prevent the delayed acquisition retry")
+            } catch PaykitPaymentRequestError.operationInProgress {}
+            let attempts = await sdk.reads.count
+            XCTAssertEqual(attempts, 1)
+            XCTAssertTrue(sdk.writes.isEmpty)
+        }
+    }
+
     func testPaymentRequestReadRetainsItsRuntimeThroughContentionAndFiltersRecords() async throws {
         let sdk = IdentitySwitchingSdk(noPointer: .init())
         let freshSdk = IdentitySwitchingSdk(noPointer: .init())
@@ -611,6 +640,44 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
     }
 
     @MainActor
+    func testImplicitRegistryPublicationUsesPrivateConsentAfterIdentityLookup() async throws {
+        snapshotAppDefaultsDomain()
+        for initiallyEnabled in [false, true] {
+            UserDefaults.standard.set(initiallyEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.supportsPrivatePayments = true
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            await sdk.identityStatusGate.close()
+            defer { Task { await sdk.identityStatusGate.open() } }
+            let publication = Task { try await PublicPaykitService.syncPaykitApp(sdkService: service) }
+            try await sdk.reads.waitForEntries(count: 1)
+
+            UserDefaults.standard.set(!initiallyEnabled, forKey: PrivatePaykitService.publishingEnabledKey)
+            await sdk.identityStatusGate.open()
+            try await publication.value
+
+            XCTAssertEqual(sdk.privatePaymentsAtWrites, [!initiallyEnabled])
+        }
+    }
+
+    @MainActor
+    func testExplicitRegistryConsentOverridesTheStoredPreference() async throws {
+        snapshotAppDefaultsDomain()
+        for enabled in [false, true] {
+            UserDefaults.standard.set(!enabled, forKey: PrivatePaykitService.publishingEnabledKey)
+            let sdk = IdentitySwitchingSdk(noPointer: .init())
+            sdk.identity = identityA
+            sdk.supportsPrivatePayments = true
+            let service = PaykitSdkService(sdkFactory: { sdk })
+
+            try await PublicPaykitService.syncPaykitApp(privateSharingEnabled: enabled, sdkService: service)
+
+            XCTAssertEqual(sdk.privatePaymentsAtWrites, [enabled])
+        }
+    }
+
+    @MainActor
     func testSharingWritesRecheckTheOriginalSessionAfterWaitingForTheSdkLock() async throws {
         for registry in [false, true] {
             for replacementIdentity in [identityA, identityB] {
@@ -926,6 +993,9 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     private var completedLinkedPeersRead = false
     private var recordedProfileReads = 0
     private var storedProfileExists = false
+    private var privateIdentity = false
+    private var recordedPrivateCapabilities: [Bool] = []
+    let identityStatusGate = IdentityCheckGate()
     let linkedPeersGate = IdentityCheckGate()
     let linkedPeersStarted = IdentityCheckCallLog()
     private var pendingReadErrors: [PaykitError] = []
@@ -956,6 +1026,15 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
     var hasLiveSession: Bool {
         get { lock.withLock { liveSession } }
         set { lock.withLock { liveSession = newValue } }
+    }
+
+    var supportsPrivatePayments: Bool {
+        get { lock.withLock { privateIdentity } }
+        set { lock.withLock { privateIdentity = newValue } }
+    }
+
+    var privatePaymentsAtWrites: [Bool] {
+        lock.withLock { recordedPrivateCapabilities }
     }
 
     var readErrors: [PaykitError] {
@@ -1011,11 +1090,13 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
 
     override func identityStatus() async throws -> IdentityStatus? {
         await reads.record()
+        await identityStatusGate.wait()
         let error = lock.withLock { pendingReadErrors.isEmpty ? nil : pendingReadErrors.removeFirst() }
         if let error {
             throw error
         }
-        return IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? .publicOnly : .signedOut)
+        let capability: PubkyIdentityCapability = supportsPrivatePayments ? .privateLinkCapable : .publicOnly
+        return IdentityStatus(publicKey: identity, capability: identity != nil && hasLiveSession ? capability : .signedOut)
     }
 
     override func linkedPeers() async throws -> [LinkedPeerRecord] {
@@ -1118,9 +1199,10 @@ private final class IdentitySwitchingSdk: PaykitSdk, @unchecked Sendable {
         )
     }
 
-    override func publishPaykitApp(displayName _: String, capabilities _: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+    override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
         await sharingStarted.record()
         await sharingGate.wait()
+        lock.withLock { recordedPrivateCapabilities.append(capabilities.privatePayments) }
         recordWrite("registry")
         return PaykitAppRegistry(keyGeneration: 1, noisePublicKey: nil, apps: [], defaultAppId: nil, defaultAppsByEndpoint: [:])
     }

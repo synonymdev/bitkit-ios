@@ -1,4 +1,6 @@
 name: integration-tests
+run-name: >-
+  ${{ inputs.retarget_run && format('Retarget integration for PR #{0}', inputs.pr) || github.event.pull_request.title || github.event.head_commit.message || github.workflow }}
 
 on:
   push:
@@ -7,21 +9,51 @@ on:
     branches: [master]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to test as merged into master"
+        default: ""
+      merge_commit:
+        description: "Pinned PR merge commit for retarget validation"
+        default: ""
+      head_sha:
+        description: "PR head verified by the retarget dispatcher"
+        default: ""
+      check_run_id:
+        description: "PR check owned by this retarget validation"
+        default: ""
+      retarget_run:
+        description: "Retarget status owner (set by e2e-retarget.yml)"
+        default: ""
+      workflow_ref:
+        description: "Workflow source recorded for this validation generation"
+        default: master
+      helper_ref:
+        description: "Recovery helper branch or tag"
+        default: master
 
 env:
   GIT_LFS_SKIP_SMUDGE: "1"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: integration-tests-${{ github.event.pull_request.number || inputs.pr || github.ref }}
   cancel-in-progress: true
 
 jobs:
 
   test:
+    # PR code must not publish dependency caches into the dispatch ref's scope.
+    cache-mode: read
     if: github.event.pull_request.draft == false
     name: Run Integration Tests
     runs-on: macos-15
     timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: read
+      checks: write
+      actions: write
     env:
       DERIVED_DATA: ${{ github.workspace }}/DerivedData
       RESULT_BUNDLE: ${{ github.workspace }}/IntegrationTests.xcresult
@@ -29,6 +61,30 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.merge_commit || (inputs.pr && format('refs/pull/{0}/merge', inputs.pr)) || '' }}
+
+      - name: Checkout retarget reporter
+        if: inputs.retarget_run != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - name: Report retarget tests running
+        if: inputs.retarget_run != ''
+        uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'start'});
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -115,3 +171,32 @@ jobs:
         with:
           name: integration-test-results
           path: ${{ env.RESULT_BUNDLE }}
+
+  report-retarget-result:
+    name: Report retarget integration result
+    if: always() && inputs.retarget_run != ''
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: retarget-ci
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v9
+        env:
+          RETARGET_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          RETARGET_RUN: ${{ inputs.retarget_run }}
+          RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
+          RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
+          RETARGET_PR: ${{ inputs.pr }}
+          RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
+          TEST_RESULT: ${{ needs.test.result }}
+        with:
+          script: |
+            const {reportRetargetResult} = require('./retarget-ci/.github/scripts/retarget-tests.cjs');
+            await reportRetargetResult({github, context, core, name: 'Run Integration Tests', phase: 'complete', result: process.env.TEST_RESULT});

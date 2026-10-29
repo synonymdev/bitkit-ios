@@ -120,6 +120,7 @@ final class IncomingPaykitPaymentRequestPreparation {
     private(set) var resolvedRoute: SendRoute?
     private let session: PubkyProfileManager.SignedInSession?
     var paymentContext: ContactPaymentContext?
+    var isSuspendedForAppLock = false
 
     init(request: PaykitPaymentRequest, session: PubkyProfileManager.SignedInSession?) {
         self.request = request
@@ -147,11 +148,51 @@ final class IncomingPaykitPaymentRequestPreparation {
     func clear() {
         request = nil
         resolvedRoute = nil
+        isSuspendedForAppLock = false
+    }
+
+    func dismiss(app: AppViewModel, wallet: WalletViewModel, speed: TransactionSpeed) {
+        if isSuspendedForAppLock, let paymentContext, app.ownsContactPaymentContext(paymentContext) {
+            app.resetSendState()
+            wallet.resetSendState(speed: speed)
+        }
+        clear()
     }
 
     func ownsSheet(_ sheets: SheetViewModel) -> Bool {
         sheets.activeSheetConfiguration?.id == .send &&
             (sheets.activeSheetConfiguration?.data as? SendConfig)?.preparation === self && !sheets.isReplacingSheet
+    }
+
+    func ownsResolvedContext(session: PubkyProfileManager.SignedInSession?, app: AppViewModel, sheets: SheetViewModel) -> Bool {
+        guard resolvedRoute != nil, let request, let paymentContext else { return false }
+        return matchesSession(session) && ownsSheet(sheets) &&
+            app.contactPaymentContext == paymentContext &&
+            paymentContext.incomingPaymentRequest?.id == request.id
+    }
+
+    func suspendForAppLock(sheets: SheetViewModel) {
+        guard resolvedRoute != nil, ownsSheet(sheets) else { return }
+        isSuspendedForAppLock = true
+    }
+
+    func retainReviewOnAppLock(
+        root: SendRoute,
+        path: [SendRoute],
+        isSubmittingPayment: Bool,
+        isHardwarePayment: Bool,
+        session: PubkyProfileManager.SignedInSession?,
+        app: AppViewModel,
+        sheets: SheetViewModel
+    ) -> Bool {
+        let route = path.last ?? root
+        let reviewRoute = route == .pin ? path.dropLast().last ?? root : route
+        guard isSuspendedForAppLock, reviewRoute == .confirm,
+              !isSubmittingPayment, !isHardwarePayment, !app.paykitUsesUsdt,
+              ownsResolvedContext(session: session, app: app, sheets: sheets)
+        else { return false }
+        resolvedRoute = .confirm
+        return true
     }
 
     func complete(
@@ -365,6 +406,7 @@ struct AppScene: View {
         activityChanges: CoreService.shared.activity.activitiesChangedPublisher
     )
     @State private var paykitAllowanceManager = PaykitAllowanceManager()
+    @State private var activatedAutomaticPaykitIdentity: String?
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -601,31 +643,21 @@ struct AppScene: View {
                 receivedPaymentBackfillCache.invalidate()
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     paykitPaymentRequestManager.activate(identity: pk)
-                    Task {
-                        guard let session = pubkyProfile.automaticPaykitSession,
-                              PubkyPublicKeyFormat.matches(pk, session.publicKey)
-                        else { return }
-                        await paykitAllowanceManager.activate(identity: pk)
-                        await handlePendingPaykitSubscriptionNotification()
-                        guard pubkyProfile.automaticPaykitSession == session else { return }
-                        try? await contactsManager.loadContacts(for: pk)
-                        if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
-                            await retryPendingPaykitEndpointRemoval()
-                        }
-                        guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
-                              PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
-                        else { return }
-                        await refreshPrivateOnlyPaykitApp()
-                        await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
-                        if PaykitSubscriptionNotificationTargetStore.load() == nil {
-                            await presentNextIncomingPaykitItem()
-                        }
-                    }
+                    startAutomaticPaykitSession()
                 } else if authState == .idle {
+                    activatedAutomaticPaykitIdentity = nil
                     contactsManager.reset()
                     paykitPaymentRequestManager.clear()
                     paykitAllowanceManager.deactivate()
                     hasPendingExpiryToast = false
+                }
+            }
+            // A sign-in, or a session that was still changing or being deleted, has no automatic session yet when
+            // authState turns authenticated; activate allowances and load contacts once it appears.
+            .onReceive(PubkyProfileManager.sessionSettledPublisher) { startAutomaticPaykitSession() }
+            .onChange(of: pubkyProfile.isDeletingProfile) { _, isDeleting in
+                if !isDeleting {
+                    startAutomaticPaykitSession()
                 }
             }
             .onReceive(contactsManager.savedContactsChangedPublisher) { contacts in
@@ -1257,7 +1289,9 @@ struct AppScene: View {
                 if !PaykitFeatureFlags.isUIEnabled {
                     await retryPendingPaykitEndpointRemoval()
                 }
-                guard PaykitFeatureFlags.isUIEnabled, isPaykitSceneActive else { return }
+                guard PaykitFeatureFlags.isUIEnabled else { return }
+                await paykitAllowanceManager.recoverOpenAttempts()
+                guard isPaykitSceneActive else { return }
                 await refreshPrivateOnlyPaykitApp()
                 await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
                 await prepareSavedPaykitContacts()
@@ -1291,6 +1325,7 @@ struct AppScene: View {
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
+                incomingPaymentRequestPreparation?.suspendForAppLock(sheets: sheets)
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()
@@ -1647,7 +1682,7 @@ struct AppScene: View {
                             {
                                 paykitPaymentRequestManager.dismissPreparingRequest(request)
                             }
-                            preparation.clear()
+                            preparation.dismiss(app: app, wallet: wallet, speed: settings.defaultTransactionSpeed)
                         }
                     ))
                 }
@@ -1842,7 +1877,9 @@ struct AppScene: View {
     private var isIncomingPaymentRequestPreparationInvalid: Bool {
         guard let preparation = incomingPaymentRequestPreparation else { return false }
         if preparation.resolvedRoute != nil {
-            return !preparation.ownsSheet(sheets)
+            return !preparation.ownsSheet(sheets) ||
+                (preparation.isSuspendedForAppLock &&
+                    !preparation.ownsResolvedContext(session: pubkyProfile.currentSession, app: app, sheets: sheets))
         }
         return !isCurrentIncomingPaymentRequestPreparation(preparation)
     }
@@ -2021,14 +2058,54 @@ struct AppScene: View {
         }
     }
 
-    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
-        for offer in offers {
-            let title = t("subscriptions__allowance_offer_accepted_title")
-            let description = t("subscriptions__allowance_offer_accepted_description", variables: ["name": contactName(offer.counterparty)])
-            PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
-                app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
-            })
+    private func startAutomaticPaykitSession() {
+        guard let session = pubkyProfile.automaticPaykitSession,
+              !PubkyPublicKeyFormat.matches(session.publicKey, activatedAutomaticPaykitIdentity)
+        else { return }
+        let pk = session.publicKey
+        activatedAutomaticPaykitIdentity = pk
+        Task {
+            await paykitAllowanceManager.activate(identity: pk)
+            await handlePendingPaykitSubscriptionNotification()
+            guard pubkyProfile.automaticPaykitSession == session else {
+                // A deletion or session change cut this start short; let the session's next appearance run it again.
+                if activatedAutomaticPaykitIdentity == pk {
+                    activatedAutomaticPaykitIdentity = nil
+                }
+                // A new session for the same key may already have appeared while this one waited.
+                startAutomaticPaykitSession()
+                return
+            }
+            try? await contactsManager.loadContacts(for: pk)
+            if !PaykitFeatureFlags.isUIEnabled, wallet.walletExists == true {
+                await retryPendingPaykitEndpointRemoval()
+            }
+            guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
+                  PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
+            else { return }
+            await refreshPrivateOnlyPaykitApp()
+            await refreshIncomingPaykitPaymentRequests(presentItems: false, onlyWhileActive: true)
+            if PaykitSubscriptionNotificationTargetStore.load() == nil {
+                await presentNextIncomingPaykitItem()
+            }
         }
+    }
+
+    /// One announcement for all offers accepted in a refresh, since each fallback toast would replace the one before it.
+    private func announceAcceptedAllowanceOffers(_ offers: [PaykitAllowanceEntry]) {
+        var counterparties: [String] = []
+        for offer in offers where !counterparties.contains(where: { PubkyPublicKeyFormat.matches($0, offer.counterparty) }) {
+            counterparties.append(offer.counterparty)
+        }
+        let names = counterparties.map(contactName)
+        guard let first = names.first else { return }
+        let title = t("subscriptions__allowance_offer_accepted_title")
+        let description = names.count == 1
+            ? t("subscriptions__allowance_offer_accepted_description", variables: ["name": first])
+            : t("subscriptions__allowance_offers_accepted_description", variables: ["names": ListFormatter.localizedString(byJoining: names)])
+        PaykitAllowanceNotifier.post(title: title, body: description, fallback: {
+            app.toast(type: .success, title: title, description: description, accessibilityIdentifier: "AllowanceOfferAcceptedToast")
+        })
     }
 
     private func contactName(_ publicKey: String) -> String {

@@ -87,6 +87,8 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
     var groups: [Group] = []
     var journal: [JournalEntry] = []
     var presentedProposalIds: Set<String> = []
+    /// Offers this wallet accepts by itself, marked before the accept, until "Allowance Added" is shown for them.
+    var unannouncedOfferIds: Set<String> = []
     var notifiedRequestIds: Set<String> = []
     var lastTrustedTime: Date?
 
@@ -104,14 +106,58 @@ protocol PaykitAllowanceStoring: Sendable {
 struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
     private typealias Stored = [String: PaykitAllowanceLocalState]
 
+    private static let backupChanged = PassthroughSubject<Void, Never>()
+    static var walletBackupDataChangedPublisher: AnyPublisher<Void, Never> {
+        backupChanged.eraseToAnyPublisher()
+    }
+
     func load(identity: String) throws -> PaykitAllowanceLocalState {
         try loadAll()[identity] ?? PaykitAllowanceLocalState()
     }
 
     func save(_ state: PaykitAllowanceLocalState, identity: String) throws {
         var all = try loadAll()
+        let previous = all[identity]
         all[identity] = state
         try Keychain.upsert(key: .paykitAllowanceState, data: JSONEncoder().encode(all))
+        // The trusted-time watermark moves on every eligibility check; only a change to the rest needs a new backup.
+        var unchanged = state
+        unchanged.lastTrustedTime = previous?.lastTrustedTime
+        if unchanged != previous {
+            Self.backupChanged.send()
+        }
+    }
+
+    /// Nil when the state can't be read, so the rest of the wallet backup still goes out.
+    func backupSnapshot() -> PaykitAllowanceStateBackups? {
+        do {
+            var byIdentity: [String: PaykitAllowanceStateBackup] = [:]
+            for (identity, state) in try loadAll() {
+                byIdentity[PubkyPublicKeyFormat.normalized(identity) ?? identity] = PaykitAllowanceStateBackup(state)
+            }
+            return PaykitAllowanceStateBackups(byIdentity)
+        } catch {
+            Logger.warn("Left allowance state out of the wallet backup: \(error)", context: "PaykitAllowance")
+            return nil
+        }
+    }
+
+    /// Restores each identity's state it can read over the local one; identities the backup lacks keep theirs. A failure
+    /// here never stops the rest of the wallet restore.
+    func restoreBackup(_ snapshot: PaykitAllowanceStateBackups) {
+        var all = (try? loadAll()) ?? [:]
+        for (identity, backup) in snapshot.byIdentity {
+            do {
+                all[PubkyPublicKeyFormat.normalized(identity) ?? identity] = try backup.restored()
+            } catch {
+                Logger.warn("Skipped an unreadable allowance state in a backup: \(error)", context: "PaykitAllowance")
+            }
+        }
+        do {
+            try Keychain.upsert(key: .paykitAllowanceState, data: JSONEncoder().encode(all))
+        } catch {
+            Logger.warn("Failed to restore allowance state: \(error)", context: "PaykitAllowance")
+        }
     }
 
     private func loadAll() throws -> Stored {
@@ -128,13 +174,21 @@ struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
 /// The side effects of paying one request, behind a protocol so the admission logic is testable without a node.
 protocol PaykitAllowancePaying: Sendable {
     func resolve(_ request: PaykitPaymentRequest, eligibleIdentifiers: [String]) async throws -> PrivatePaykitAllowancePayment?
-    func consumePaymentList(publicKey: String, context: PrivatePaykitPaymentContext, attemptId: UUID) async throws
+    /// Consumes the list for the journaled attempt `owner`, only while the list consumed so far is `expectedPreviousVersion`.
+    func consumePaymentList(
+        publicKey: String,
+        context: PrivatePaykitPaymentContext,
+        attemptId: UUID,
+        owner: String,
+        expectedPreviousVersion: UInt64?
+    ) async throws
     func resolvePaymentList(publicKey: String, context: PrivatePaykitPaymentContext, attemptId: UUID, outcome: PrivatePaymentListSendOutcome) async
     func claimForExecution(_ request: PaykitPaymentRequest) async throws
-    /// The list version a consumption replaced, read while its in-memory record still exists.
-    func previousPaymentListVersion(publicKey: String, attemptId: UUID) async -> UInt64?
-    /// Rolls back a list a failed automatic payment consumed, when it is still the contact's consumed version.
-    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) async
+    /// The contact's list version consumed so far.
+    func consumedPaymentListVersion(publicKey: String) async -> UInt64?
+    /// Rolls back a list a failed automatic payment consumed, when `owner` consumed the contact's current version.
+    /// Returns false only when the rollback could not be saved, so recovery tries it again.
+    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?, owner: String) async -> Bool
     /// Keeps this device the local owner of the request across the automatic Acceptance, as the manual flow does, so a
     /// request that was accepted but never paid comes back to the payer as an ordinary Payment Request.
     /// Returns whether this call added the intent, so a refused acceptance never drops one the manual flow saved.
@@ -155,8 +209,20 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         try await PrivatePaykitService.shared.resolveAllowancePayment(request, eligibleIdentifiers: eligibleIdentifiers)
     }
 
-    func consumePaymentList(publicKey: String, context: PrivatePaykitPaymentContext, attemptId: UUID) async throws {
-        try await PrivatePaykitService.shared.consumePrivatePaymentList(publicKey: publicKey, context: context, attemptId: attemptId)
+    func consumePaymentList(
+        publicKey: String,
+        context: PrivatePaykitPaymentContext,
+        attemptId: UUID,
+        owner: String,
+        expectedPreviousVersion: UInt64?
+    ) async throws {
+        try await PrivatePaykitService.shared.consumePrivatePaymentList(
+            publicKey: publicKey,
+            context: context,
+            attemptId: attemptId,
+            owner: owner,
+            expectedPreviousVersion: .some(expectedPreviousVersion)
+        )
     }
 
     func resolvePaymentList(
@@ -181,15 +247,22 @@ struct PaykitAllowanceLivePayer: PaykitAllowancePaying {
         try await PaykitPaymentRequestService().claimForPayment(request)
     }
 
-    func previousPaymentListVersion(publicKey: String, attemptId: UUID) async -> UInt64? {
-        await PrivatePaykitService.shared.consumedPaymentListVersion(publicKey: publicKey, attemptId: attemptId)
+    func consumedPaymentListVersion(publicKey: String) async -> UInt64? {
+        await PrivatePaykitService.shared.consumedPaymentListVersion(publicKey: publicKey)
     }
 
-    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?) async {
+    func releaseConsumedPaymentList(publicKey: String, version: UInt64, previousVersion: UInt64?, owner: String) async -> Bool {
         do {
-            try await PrivatePaykitService.shared.releaseConsumedPaymentList(publicKey: publicKey, version: version, previousVersion: previousVersion)
+            try await PrivatePaykitService.shared.releaseConsumedPaymentList(
+                publicKey: publicKey,
+                version: version,
+                previousVersion: previousVersion,
+                owner: owner
+            )
+            return true
         } catch {
             Logger.warn("Failed to release a payment list a failed automatic payment consumed: \(error)", context: "PaykitAllowance")
+            return false
         }
     }
 
@@ -339,6 +412,12 @@ actor PaykitAllowanceExecutor {
         }
     }
 
+    func checkedUpdateLocalState(identity: String, _ change: (inout PaykitAllowanceLocalState) throws -> Void) throws {
+        var state = try store.load(identity: identity)
+        try change(&state)
+        try store.save(state, identity: identity)
+    }
+
     func isHandling(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         inFlightRequestIds.contains(requestId)
     }
@@ -370,7 +449,8 @@ actor PaykitAllowanceExecutor {
         let history = current?.history ?? Paykit.AllowanceAccountingHistory(associations: [], occurrences: [], watermarks: [])
         var outcomes: [Paykit.PaymentOutcomeReport] = []
         for attempt in history.occurrences.flatMap(\.attempts) {
-            if let outcome = await verifiedOutcome(for: attempt, identity: identity) {
+            // Throws until the node has its payment history, so a restore reconciles only once the node can answer.
+            if let outcome = try await verifiedOutcome(for: attempt, identity: identity) {
                 outcomes.append(Paykit.PaymentOutcomeReport(attemptId: attempt.attemptId, outcome: outcome))
             }
         }
@@ -392,35 +472,52 @@ actor PaykitAllowanceExecutor {
         do {
             // No ledger means nothing was ever admitted, so there is nothing to recover and no reason to create one at launch.
             guard try await sdk.allowanceAccountingState() != nil else { return }
+            // Needs no node, so it runs before reconciliation, which waits for the node's payment history.
+            await retryPaymentListReleases(identity: identity)
             let state = try await ensureReconciled(identity: identity)
             // One journal read for the whole pass: each attempt appears once, so a stage changed below is never read again.
             let journalStages = Dictionary(
                 localState(identity: identity).journal.map { ($0.attemptId, $0.stage) },
                 uniquingKeysWith: { first, _ in first }
             )
-            for attempt in state.history.occurrences.flatMap(\.attempts) {
-                switch attempt.status {
-                case .prepared:
-                    guard attempt.epoch == state.epoch else { continue }
-                    try await record(attemptId: attempt.attemptId, outcome: .failed, identity: identity)
-                case .submitted, .unknown:
-                    guard let outcome = await verifiedOutcome(for: attempt, identity: identity) else {
-                        if attempt.status == .submitted {
-                            try await record(attemptId: attempt.attemptId, outcome: .unknown, identity: identity)
+            for occurrence in state.history.occurrences {
+                let requestId = PaykitPaymentRequest.ID(
+                    paymentRequestId: occurrence.key.request.paymentRequestId,
+                    counterparty: occurrence.key.request.counterparty
+                )
+                // A payment in progress owns its attempts; checked per occurrence, since one can start while this loop awaits.
+                guard !inFlightRequestIds.contains(requestId) else { continue }
+                for attempt in occurrence.attempts {
+                    switch attempt.status {
+                    case .prepared:
+                        guard attempt.epoch == state.epoch else { continue }
+                        try await record(attemptId: attempt.attemptId, outcome: .failed, identity: identity)
+                    case .submitted, .unknown:
+                        let verified: Paykit.PaymentOutcome?
+                        do {
+                            verified = try await verifiedOutcome(for: attempt, identity: identity)
+                        } catch {
+                            // Left as it is until the node can answer; recovery runs again once it is running.
+                            continue
                         }
-                        continue
-                    }
-                    try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
-                case .succeeded, .failed:
-                    // Reconciliation can settle an attempt the journal still shows as open.
-                    let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
-                    // The cached stage only skips settled attempts cheaply; a settlement while this loop awaited may have
-                    // settled one since, so the move itself checks the current stage.
-                    if let stage = journalStages[attempt.attemptId], !stage.isTerminal,
-                       let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity, onlyIfOpen: true),
-                       outcome == .failed
-                    {
-                        await releaseConsumedPaymentList(of: entry)
+                        guard let outcome = verified else {
+                            if attempt.status == .submitted {
+                                try await record(attemptId: attempt.attemptId, outcome: .unknown, identity: identity)
+                            }
+                            continue
+                        }
+                        try await record(attemptId: attempt.attemptId, outcome: outcome, identity: identity)
+                    case .succeeded, .failed:
+                        // Reconciliation can settle an attempt the journal still shows as open.
+                        let outcome: Paykit.PaymentOutcome = attempt.status == .succeeded ? .succeeded : .failed
+                        // The cached stage only skips settled attempts cheaply; a settlement while this loop awaited may have
+                        // settled one since, so the move itself checks the current stage.
+                        if let stage = journalStages[attempt.attemptId], !stage.isTerminal,
+                           let entry = applyJournalOutcome(attemptId: attempt.attemptId, outcome: outcome, identity: identity, onlyIfOpen: true),
+                           outcome == .failed
+                        {
+                            await releaseConsumedPaymentList(of: entry, identity: identity)
+                        }
                     }
                 }
             }
@@ -453,7 +550,10 @@ actor PaykitAllowanceExecutor {
         return true
     }
 
-    private func verifiedOutcome(for attempt: Paykit.PaymentAttemptRecord, identity: String) async -> Paykit.PaymentOutcome? {
+    private struct NodeHistoryUnavailable: Error {}
+
+    /// Throws `NodeHistoryUnavailable` when the answer depends on a node that has no payment history yet.
+    private func verifiedOutcome(for attempt: Paykit.PaymentAttemptRecord, identity: String) async throws -> Paykit.PaymentOutcome? {
         switch attempt.status {
         case .prepared:
             return .failed
@@ -468,8 +568,19 @@ actor PaykitAllowanceExecutor {
         }
         switch entry.stage {
         case .prepared, .submitted:
-            // The journal is written before the node call, so no payment left this wallet.
-            return .failed
+            // The live journal is written before the node call, but a restored snapshot may predate the send,
+            // so a node that knows the payment decides.
+            guard let paymentHash = entry.paymentHash else { return .failed }
+            switch await lightningLookup.status(paymentHash: paymentHash) {
+            case .succeeded:
+                return .succeeded
+            case .pending:
+                return nil
+            case .failed, .unknown:
+                return .failed
+            case .unavailable:
+                throw NodeHistoryUnavailable()
+            }
         case .succeeded:
             return .succeeded
         case .failed:
@@ -486,6 +597,8 @@ actor PaykitAllowanceExecutor {
                 return .failed
             case .pending, .unknown:
                 return nil
+            case .unavailable:
+                throw NodeHistoryUnavailable()
             }
         }
         return entry.transactionId == nil ? nil : .succeeded
@@ -493,24 +606,40 @@ actor PaykitAllowanceExecutor {
 
     private func record(attemptId: String, outcome: Paykit.PaymentOutcome, identity: String) async throws {
         try await sdk.recordPaymentOutcome(Paykit.PaymentOutcomeReport(attemptId: attemptId, outcome: outcome))
-        let entry = applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity)
+        // A settlement and recovery can both record one failure; only the call that ends the attempt releases its list.
+        let entry = applyJournalOutcome(attemptId: attemptId, outcome: outcome, identity: identity, onlyIfOpen: outcome == .failed)
         if outcome == .failed {
-            await releaseConsumedPaymentList(of: entry)
+            await releaseConsumedPaymentList(of: entry, identity: identity)
         }
     }
 
-    /// A failed automatic payment leaves the payee's list usable for the manual payment that follows.
-    private func releaseConsumedPaymentList(of entry: PaykitAllowanceLocalState.JournalEntry?) async {
+    /// A failed automatic payment leaves the payee's list usable for the manual payment that follows. The journal keeps
+    /// the version until the release is saved, so recovery retries one that could not be.
+    private func releaseConsumedPaymentList(of entry: PaykitAllowanceLocalState.JournalEntry?, identity: String) async {
         guard let entry, entry.isAutomatic, let version = entry.paymentListVersion else { return }
-        await payer.releaseConsumedPaymentList(
+        let released = await payer.releaseConsumedPaymentList(
             publicKey: entry.requestId.counterparty,
             version: version,
-            previousVersion: entry.previousPaymentListVersion
+            previousVersion: entry.previousPaymentListVersion,
+            owner: entry.attemptId
         )
+        guard released else { return }
+        updateLocalState(identity: identity) { state in
+            guard let index = state.journal.firstIndex(where: { $0.attemptId == entry.attemptId }) else { return }
+            state.journal[index].paymentListVersion = nil
+            state.journal[index].previousPaymentListVersion = nil
+        }
+    }
+
+    private func retryPaymentListReleases(identity: String) async {
+        for entry in localState(identity: identity).journal where entry.stage == .failed && entry.paymentListVersion != nil {
+            await releaseConsumedPaymentList(of: entry, identity: identity)
+        }
     }
 
     /// Moves the journal entry to the outcome, and announces an automatic payment only from the call that settles it,
-    /// so a settlement event and recovery never both raise Payment Executed.
+    /// so a settlement event and recovery never both raise Payment Executed. Returns nil when the move can't be saved:
+    /// the entry stays open, so a later settlement or recovery acts on it once instead of twice.
     @discardableResult
     private func applyJournalOutcome(
         attemptId: String,
@@ -520,19 +649,26 @@ actor PaykitAllowanceExecutor {
     ) -> PaykitAllowanceLocalState.JournalEntry? {
         var entry: PaykitAllowanceLocalState.JournalEntry?
         var settledEntry: PaykitAllowanceLocalState.JournalEntry?
-        updateLocalState(identity: identity) { state in
-            guard let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
-                  !onlyIfOpen || !state.journal[index].stage.isTerminal
-            else { return }
-            entry = state.journal[index]
-            if outcome == .succeeded, state.journal[index].stage != .succeeded {
-                settledEntry = state.journal[index]
+        do {
+            var state = try store.load(identity: identity)
+            if let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
+               !onlyIfOpen || !state.journal[index].stage.isTerminal
+            {
+                entry = state.journal[index]
+                if outcome == .succeeded, state.journal[index].stage != .succeeded {
+                    settledEntry = state.journal[index]
+                }
+                switch outcome {
+                case .succeeded: state.journal[index].stage = .succeeded
+                case .failed: state.journal[index].stage = .failed
+                case .unknown: state.journal[index].stage = .unknown
+                }
+                try store.save(state, identity: identity)
             }
-            switch outcome {
-            case .succeeded: state.journal[index].stage = .succeeded
-            case .failed: state.journal[index].stage = .failed
-            case .unknown: state.journal[index].stage = .unknown
-            }
+        } catch {
+            Logger.warn("Failed to save an allowance attempt's outcome: \(error)", context: "PaykitAllowance")
+            entry = nil
+            settledEntry = nil
         }
         Self.eventSubject.send(.ledgerChanged)
         if let entry = settledEntry, entry.isAutomatic, let paymentHash = entry.paymentHash {
@@ -548,8 +684,37 @@ actor PaykitAllowanceExecutor {
         return PaykitAllowanceCapacity.attempts(from: state.history)
     }
 
-    func succeededAutomaticPayments(identity: String) -> [PaykitAllowanceLocalState.JournalEntry] {
-        localState(identity: identity).journal.filter { $0.isAutomatic && $0.stage == .succeeded }
+    struct AutomaticPayment: Equatable {
+        let requestId: PaykitPaymentRequest.ID
+        let allowanceId: String
+        let amountSats: UInt64
+    }
+
+    /// Read from the SDK ledger, which keeps every attempt, rather than the journal, which keeps only the newest ones.
+    /// Nil when the ledger can't be read, so the caller keeps what it showed.
+    func succeededAutomaticPayments(identity: String) async -> [AutomaticPayment]? {
+        let state: Paykit.AllowanceAccountingState?
+        do {
+            state = try await sdk.allowanceAccountingState()
+        } catch {
+            Logger.warn("Failed to read allowance accounting for automatic payments: \(error)", context: "PaykitAllowance")
+            return nil
+        }
+        guard let state else { return [] }
+        return state.history.occurrences.filter {
+            PubkyPublicKeyFormat.matches($0.key.request.localPublicKey, identity)
+        }.flatMap { occurrence in
+            occurrence.attempts.compactMap { attempt in
+                guard attempt.mode == .automatic, attempt.status == .succeeded, let allowanceId = attempt.allowanceId,
+                      let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
+                else { return nil }
+                let requestId = PaykitPaymentRequest.ID(
+                    paymentRequestId: occurrence.key.request.paymentRequestId,
+                    counterparty: occurrence.key.request.counterparty
+                )
+                return AutomaticPayment(requestId: requestId, allowanceId: allowanceId, amountSats: amountSats)
+            }
+        }
     }
 
     // MARK: Automatic payment
@@ -720,15 +885,26 @@ actor PaykitAllowanceExecutor {
 
         let listAttemptId = UUID()
         do {
-            try await payer.consumePaymentList(publicKey: request.counterparty, context: payment.context, attemptId: listAttemptId)
-            if let consumedVersion = payment.context.paymentListVersion {
-                let previousVersion = await payer.previousPaymentListVersion(publicKey: request.counterparty, attemptId: listAttemptId)
-                updateLocalState(identity: identity) { state in
-                    guard let index = state.journal.firstIndex(where: { $0.attemptId == submitted.attemptId }) else { return }
-                    state.journal[index].paymentListVersion = consumedVersion
+            let previousVersion = await payer.consumedPaymentListVersion(publicKey: request.counterparty)
+            if let listVersion = payment.context.paymentListVersion {
+                // Journaled before the list is consumed, so recovery gives it back after a restart at any point; the list
+                // records this attempt as its owner, so recovery never gives back one this attempt did not consume.
+                try checkedUpdateLocalState(identity: identity) { state in
+                    // An attempt whose journal entry was never saved could not be recovered, so its list is not consumed.
+                    guard let index = state.journal.firstIndex(where: { $0.attemptId == submitted.attemptId }) else {
+                        throw JournalEntryMissing()
+                    }
+                    state.journal[index].paymentListVersion = listVersion
                     state.journal[index].previousPaymentListVersion = previousVersion
                 }
             }
+            try await payer.consumePaymentList(
+                publicKey: request.counterparty,
+                context: payment.context,
+                attemptId: listAttemptId,
+                owner: submitted.attemptId,
+                expectedPreviousVersion: previousVersion
+            )
             try await payer.ensurePaymentAllowed(request)
             try await payer.prepareProof(
                 request,
@@ -738,10 +914,7 @@ actor PaykitAllowanceExecutor {
             )
         } catch {
             await payer.cancelProofPreparation(request)
-            await releasePaymentList(
-                request, payment: payment, attemptId: listAttemptId, journalAttemptId: submitted.attemptId, identity: identity,
-                outcome: .definitePreBroadcastFailure
-            )
+            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
             try await record(attemptId: submitted.attemptId, outcome: .failed, identity: identity)
             throw error
         }
@@ -760,19 +933,8 @@ actor PaykitAllowanceExecutor {
         _ request: PaykitPaymentRequest,
         payment: PrivatePaykitAllowancePayment,
         attemptId: UUID,
-        journalAttemptId: String,
-        identity: String,
         outcome: PrivatePaymentListSendOutcome
     ) async {
-        if outcome == .definitePreBroadcastFailure {
-            // Released here, so recording the attempt failed must not release it again: by then another payment may
-            // have consumed the same list version.
-            updateLocalState(identity: identity) { state in
-                guard let index = state.journal.firstIndex(where: { $0.attemptId == journalAttemptId }) else { return }
-                state.journal[index].paymentListVersion = nil
-                state.journal[index].previousPaymentListVersion = nil
-            }
-        }
         await payer.resolvePaymentList(publicKey: request.counterparty, context: payment.context, attemptId: attemptId, outcome: outcome)
     }
 
@@ -789,10 +951,7 @@ actor PaykitAllowanceExecutor {
             try await payer.associateLightningPayment(request, paymentHash: paymentHash)
         } catch {
             await payer.cancelProofPreparation(request)
-            await releasePaymentList(
-                request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity,
-                outcome: .definitePreBroadcastFailure
-            )
+            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
             try await record(attemptId: attemptId, outcome: .failed, identity: identity)
             throw error
         }
@@ -807,24 +966,17 @@ actor PaykitAllowanceExecutor {
             guard await payer.failLightningPayment(paymentHash: paymentHash, submissionError: error) else {
                 // The node may have started the payment; its settlement event records the outcome.
                 Logger.warn("Automatic Lightning allowance payment outcome is uncertain: \(error)", context: "PaykitAllowance")
-                await releasePaymentList(
-                    request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity, outcome: .uncertain
-                )
+                await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
                 if !hasTerminalStage(attemptId: attemptId, identity: identity) {
                     try await record(attemptId: attemptId, outcome: .unknown, identity: identity)
                 }
                 return .started
             }
-            await releasePaymentList(
-                request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity,
-                outcome: .definitePreBroadcastFailure
-            )
+            await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .definitePreBroadcastFailure)
             try await record(attemptId: attemptId, outcome: .failed, identity: identity)
             throw error
         }
-        await releasePaymentList(
-            request, payment: payment, attemptId: listAttemptId, journalAttemptId: attemptId, identity: identity, outcome: .uncertain
-        )
+        await releasePaymentList(request, payment: payment, attemptId: listAttemptId, outcome: .uncertain)
         setStage(.sent, attemptId: attemptId, identity: identity)
         Logger.info("Handed an allowance payment to the node", context: "PaykitAllowance")
         return .started
@@ -952,6 +1104,8 @@ actor PaykitAllowanceExecutor {
             recurrenceEligible: true
         )
     }
+
+    private struct JournalEntryMissing: Error {}
 
     private func journal(_ entry: PaykitAllowanceLocalState.JournalEntry, identity: String) {
         updateLocalState(identity: identity) { state in

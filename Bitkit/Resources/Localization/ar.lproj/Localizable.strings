@@ -483,6 +483,7 @@
 "security__pin_forgot_text" = "هل نسيت رمز PIN؟ أعد التعيين واستعد محفظة Bitkit باستخدام عبارة الاسترداد. قم بتعيين رمز PIN جديد بعد إكمال الاستعادة.";
 "security__pin_forgot_reset" = "إعادة التعيين (يتطلب عبارة الاسترداد)";
 "security__pin_send" = "يرجى إدخال رمز PIN الخاص بك لتأكيد وإرسال هذه الدفعة.";
+"security__pin_allowance" = "يرجى إدخال رمز PIN الخاص بك لتأكيد هذا التغيير في المخصص.";
 "security__pin_send_title" = "أدخل رمز PIN";
 "security__pin_use_biometrics" = "استخدام {biometricsName}";
 "security__bio" = "المقاييس الحيوية";
@@ -990,6 +991,7 @@
 "wallet__send_from" = "من";
 "wallet__send_sync_title" = "<accent>جارٍ الاتصال</accent>\nبالشبكة";
 "wallet__send_sync_description" = "يرجى الانتظار حتى يتصل Bitkit بشبكة الدفع (±10 ثوانٍ).";
+"wallet__send_sync_description_onchain" = "يرجى الانتظار حتى يتصل Bitkit بشبكة البيتكوين (±10 ثوانٍ).";
 "wallet__send_sync_long_title" = "مشاكل\n<accent>الاتصال</accent>";
 "wallet__send_sync_long_description" = "يبدو أنك غير متصل. يرجى التحقق من اتصالك. سيحاول Bitkit إعادة الاتصال كل بضع ثوانٍ.";
 "wallet__send_to" = "إلى";
@@ -1559,6 +1561,7 @@
 "subscriptions__allowance_executed_description" = "أرسل الدفع التلقائي {amount} إلى {name}";
 "subscriptions__allowance_offer_accepted_title" = "تمت إضافة مخصص";
 "subscriptions__allowance_offer_accepted_description" = "أعدّ {name} مخصصًا لك";
+"subscriptions__allowance_offers_accepted_description" = "أعدّ {names} مخصصات لك";
 "subscriptions__allowance_limit_title" = "تم بلوغ الحد";
 "subscriptions__allowance_limit_description" = "طلب بقيمة {amount} من {name} يتجاوز مخصصك. راجعه للدفع.";
 "subscriptions__allowance_auto_paid" = "مدفوع تلقائيًا";

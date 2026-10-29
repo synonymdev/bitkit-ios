@@ -140,6 +140,33 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await service.stopObservingBackups()
     }
 
+    func testObservationRestartRetainsAndRecoversPendingBackup() async throws {
+        let fixture = try Fixture(categories: [.settings])
+        defer { fixture.removeDefaults() }
+        let uploads = UploadRecorder()
+        let service = fixture.service(uploadBackup: { key, _ in await uploads.record(key) })
+
+        for _ in 0 ..< 8 {
+            await startAfterPendingJobsSettle(service, categories: fixture.categories)
+            await service.stopObservingBackups()
+
+            let status = service.getBackupStatus(category: .settings)
+            XCTAssertTrue(status.isRequired)
+            XCTAssertEqual(status.required, fixture.required)
+            XCTAssertFalse(status.running)
+        }
+
+        await startAfterPendingJobsSettle(service, categories: fixture.categories)
+        await service.setAppActive(true)?.value
+
+        let recorded = await uploads.counts
+        XCTAssertEqual(recorded[BackupCategory.settings.rawValue], 1)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).isRequired)
+        XCTAssertFalse(service.getBackupStatus(category: .settings).running)
+        service.setAppActive(false)
+        await service.stopObservingBackups()
+    }
+
     func testStoppingRecoveryRetainsPendingBackupAndDoesNotUpload() async throws {
         let fixture = try Fixture(categories: [.settings])
         defer { fixture.removeDefaults() }
