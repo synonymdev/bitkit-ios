@@ -264,7 +264,7 @@ test('retry recovery selects the stable helper without forwarding the old pinned
   const f = await start(fixture());
   f.context.ref = 'refs/heads/ci/retarget-execution/pr-7-200-1';
   await report(f, {result: 'failure'});
-  await report(f, {phase: 'start', inputs: {...inputs(), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'ci/fix'}});
+  await report(f, {phase: 'start', inputs: {...inputs(), RETARGET_HELPER_REF: 'ci/fix'}});
   assert.equal(f.dispatches[2].ref, 'ci/fix');
   assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite: 'e2e'});
 });
@@ -292,7 +292,7 @@ for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', IN
       if (value.ref === 'deleted-branch' && status === 404) throw Object.assign(new Error('Not found'), {status});
       return getCommit(value);
     };
-    await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'deleted-branch'}});
+    await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_HELPER_REF: 'deleted-branch'}});
     assert.equal(f.dispatches[2].ref, 'master');
     assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite});
     assert.equal(f.checks.get(id).conclusion, 'failure');
@@ -319,7 +319,7 @@ for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', IN
     const helperSha = 'd'.repeat(40);
     f.execution.commits.set(helperSha, {sha: helperSha, commit: {tree: {sha: '1'.repeat(40)}}});
     f.execution.aliases.set('master', helperSha);
-    await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'master'}});
+    await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_HELPER_REF: 'master'}});
     assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite});
     f.context.eventName = 'workflow_dispatch'; f.context.runId = 201;
     f.context.ref = 'refs/heads/master'; f.context.sha = helperSha;

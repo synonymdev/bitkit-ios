@@ -80,7 +80,6 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_WORKFLOW_REF: ${{ inputs.workflow_ref }}
           RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
         with:
           script: |
@@ -195,7 +194,6 @@ jobs:
           RETARGET_HEAD_SHA: ${{ inputs.head_sha }}
           RETARGET_MERGE_COMMIT: ${{ inputs.merge_commit }}
           RETARGET_PR: ${{ inputs.pr }}
-          RETARGET_WORKFLOW_REF: ${{ inputs.workflow_ref }}
           RETARGET_HELPER_REF: ${{ inputs.helper_ref }}
           TEST_RESULT: ${{ needs.test.result }}
         with:
