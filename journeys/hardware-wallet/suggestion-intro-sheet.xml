@@ -11,13 +11,13 @@
     <action>Tap the forget-device (trash) icon next to the known device (id "TrezorForgetDevice-bridge"), confirming any dialog</action>
     <action>Navigate back to the wallet home screen</action>
     <action>Verify no hardware wallet tile (id "ActivityHardware") is shown beneath the SAVINGS and SPENDING tiles</action>
-    <action>Scroll the suggestion cards horizontally until a card titled "Hardware" with the text "Connect device" is visible</action>
+    <action>Scroll the home screen until a card titled "Hardware" with the text "Connect device" is visible, and verify by screenshot that its artwork shows a Trezor Safe 7 (touchscreen device), not the Trezor Model One</action>
     <action>Tap the "Hardware" suggestion card</action>
-    <action>Verify a sheet opens titled "Hardware Wallet" (id "HardwareWalletIntroScreen") showing hardware device illustrations</action>
+    <action>Verify a sheet opens titled "Hardware Wallet" (id "HardwareWalletIntroScreen") showing hardware device illustrations, and verify by screenshot that the left illustration is a Trezor Safe 7 bleeding off the left edge</action>
     <action>Verify the headline reads "ADD YOUR HARDWARE WALLET" — iOS renders it uppercase — with the words "HARDWARE WALLET" in blue</action>
     <action>Tap the "Continue" button (id "HardwareWalletIntroContinue") and verify the sheet advances to the "Connect Device" step (id "HardwareWalletSearchingScreen") headed "Searching for devices", showing a loading animation and a "Cancel" button (id "HardwareWalletSearchingCancel")</action>
     <action>If iOS shows a Bluetooth or Local Network permission prompt, allow it and continue waiting on the Searching step</action>
-    <action>Verify the sheet advances to the "Found Device" step (id "HardwareWalletFoundScreen") within 15 seconds, headed "Found Trezor" with a "Connect" button</action>
+    <action>Verify the sheet advances to the "Found Device" step (id "HardwareWalletFoundScreen") within 15 seconds, headed "Found Trezor" with a "Connect" button, and verify by screenshot that the device artwork is a Trezor Safe 7</action>
     <action>Tap the "Connect" button (id "HardwareWalletFoundConnect")</action>
     <action>Verify the sheet advances to the "Device Connected" step (id "HardwareWalletPairedScreen") headed "Paired Trezor" within 15 seconds, showing a balance and an editable "Label Funds" field (id "HardwareWalletLabelInput") defaulting to the device name, with no PIN or pairing prompt</action>
     <action>Tap the "Finish" button (id "HardwareWalletPairedFinish") and verify the sheet closes back to the home screen</action>
