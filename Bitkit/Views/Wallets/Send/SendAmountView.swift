@@ -403,6 +403,15 @@ struct SendAmountView: View {
             }
 
             // Onchain transaction
+            if let address = app.scannedOnchainInvoice?.address, let feeRate = wallet.selectedFeeRateSatsPerVByte,
+               await wallet.paysFromPrimaryChannel(address: address, sats: amountSats, feeRate: feeRate)
+            {
+                // Savings can't cover it, so the primary channel pays it with a splice-out; no UTXOs to select.
+                wallet.selectedUtxos = nil
+                navigationPath.append(.confirm)
+                return
+            }
+
             if settings.coinSelectionMethod == .manual {
                 try await wallet.loadAvailableUtxos()
 

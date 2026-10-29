@@ -27,20 +27,20 @@ final class PrimaryNodeTests: XCTestCase {
     func testFundingPlanMovesConfirmedSavingsMinusMiningFee() throws {
         let plan = try XCTUnwrap(PrimaryFundingPlan.plan(spendableSats: 50000, inputs: 1, feeRate: 2, hasChannel: true))
 
-        XCTAssertEqual(plan.feeSats, 1200)
-        XCTAssertEqual(plan.amountSats, 48800)
+        XCTAssertEqual(plan.feeSats, 540)
+        XCTAssertEqual(plan.amountSats, 49460)
         XCTAssertFalse(plan.opensChannel)
         XCTAssertTrue(plan.isAutomatic)
     }
 
     func testAutomaticFundingWaitsBelowMinimumOrAboveFeeLimit() throws {
         let small = try XCTUnwrap(PrimaryFundingPlan.plan(spendableSats: 24999, inputs: 1, feeRate: 1, hasChannel: true))
-        let expensive = try XCTUnwrap(PrimaryFundingPlan.plan(spendableSats: 30000, inputs: 1, feeRate: 3, hasChannel: false))
+        let expensive = try XCTUnwrap(PrimaryFundingPlan.plan(spendableSats: 30000, inputs: 1, feeRate: 6, hasChannel: false))
 
         XCTAssertFalse(small.isAutomatic)
         XCTAssertFalse(expensive.isAutomatic)
         XCTAssertTrue(expensive.opensChannel)
-        XCTAssertNil(PrimaryFundingPlan.plan(spendableSats: 500, inputs: 1, feeRate: 1, hasChannel: true))
+        XCTAssertNil(PrimaryFundingPlan.plan(spendableSats: 200, inputs: 1, feeRate: 1, hasChannel: true))
     }
 
     func testLiquidityErrorsMapToWhatTheUserIsTold() {

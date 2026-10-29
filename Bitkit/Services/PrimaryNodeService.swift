@@ -12,10 +12,11 @@ struct PrimaryFundingPlan: Equatable {
     static let minFundingSats: UInt64 = 25000
     /// Automatic funding waits while its mining fee is above this share of the amount moved.
     static let maxFundingFeePercent: UInt64 = 5
-    /// Virtual size of a splice or channel funding before its inputs, for fee estimates.
-    static let fundingBaseVbytes: UInt64 = 300
-    /// Virtual size each wallet input adds to a funding transaction.
-    static let fundingInputVbytes: UInt64 = 300
+    /// Virtual size of a splice before its wallet inputs, for fee estimates: the channel's shared input and
+    /// output plus one more output, with a margin over the 180 vB a splice-out to one address takes.
+    static let fundingBaseVbytes: UInt64 = 200
+    /// Virtual size each wallet input adds to a funding transaction, with a margin, change included.
+    static let fundingInputVbytes: UInt64 = 70
 
     /// Plans moving `spendableSats` of savings, held in `inputs` outputs, into the primary channel at `feeRate`.
     /// ldk-node leaves outputs of a channel's own funding transaction out of `inputs`, such as savings from a
@@ -45,6 +46,8 @@ final class PrimaryNodeService {
     private var spliceWaiters: [String: CheckedContinuation<String, Error>] = [:]
     private let waitersLock = NSLock()
     private var isFunding = false
+    /// Splice-outs made this session; their channel-ready event moves funds out of spending, not into it.
+    private var spliceOutTxids: Set<String> = []
 
     /// How long a splice may take to reach its pending funding transaction.
     private static let spliceTimeoutSecs: UInt64 = 60
@@ -170,11 +173,19 @@ final class PrimaryNodeService {
         isFunding = true
         defer { isFunding = false }
         do {
-            guard let plan = try await fundingPlan(), plan.isAutomatic else { return }
+            guard await !hasUnconfirmedDeposit(), let plan = try await fundingPlan(), plan.isAutomatic else { return }
             Logger.info("Funding primary channel with \(plan.amountSats) sats, fee \(plan.feeSats)", context: "PrimaryNodeService")
             try await executeFunding(plan)
         } catch {
             Logger.warn("Failed to fund primary channel: \(error)", context: "PrimaryNodeService")
+        }
+    }
+
+    private func hasUnconfirmedDeposit() async -> Bool {
+        let payments = await lightningService.listPayments() ?? []
+        return payments.contains {
+            guard $0.direction == .inbound, case .onchain(_, .unconfirmed) = $0.kind else { return false }
+            return true
         }
     }
 
@@ -210,7 +221,7 @@ final class PrimaryNodeService {
     @MainActor
     func spliceOutFee(amountSats: UInt64, feeRate: UInt64) -> UInt64? {
         guard let channel = primaryChannel(), channel.isUsable else { return nil }
-        let fee = feeRate * PrimaryFundingPlan.fundingBaseVbytes
+        let fee = spliceOutFeeAt(feeRate: feeRate)
         return amountSats + fee <= channel.outboundCapacityMsat / 1000 ? fee : nil
     }
 
@@ -219,8 +230,19 @@ final class PrimaryNodeService {
     func maxSpliceOutSats(feeRate: UInt64) -> UInt64 {
         guard let channel = primaryChannel(), channel.isUsable else { return 0 }
         let outbound = channel.outboundCapacityMsat / 1000
-        let fee = feeRate * PrimaryFundingPlan.fundingBaseVbytes
+        let fee = spliceOutFeeAt(feeRate: feeRate)
         return outbound > fee ? outbound - fee : 0
+    }
+
+    /// True for a splice-out this wallet made, whose locking is no new spending balance.
+    @MainActor
+    func isSpliceOut(txid: String) -> Bool {
+        spliceOutTxids.contains(txid)
+    }
+
+    /// Estimated fee of a splice-out paying one address at `feeRate` sat/vB.
+    func spliceOutFeeAt(feeRate: UInt64) -> UInt64 {
+        feeRate * PrimaryFundingPlan.fundingBaseVbytes
     }
 
     /// Pays `amountSats` to `address` from the primary channel by splicing it out; returns the splice txid.
@@ -240,6 +262,7 @@ final class PrimaryNodeService {
                 try await lightningService.spliceOut(channel: channel, address: address, amountSats: amountSats, feeRateSatsPerVByte: feeRate)
                 let txid = try await group.next() ?? ""
                 group.cancelAll()
+                spliceOutTxids.insert(txid)
                 return txid
             } catch {
                 group.cancelAll()

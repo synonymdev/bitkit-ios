@@ -1770,8 +1770,11 @@ extension AppViewModel {
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
-        case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
+        case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: let fundingTxo):
             _ = Task {
+                if let txid = fundingTxo?.txid, PrimaryNodeService.shared.isSpliceOut(txid: txid) {
+                    return
+                }
                 // Use channelCache instead of cachedChannels array, as it's updated immediately
                 if let channel = await lightningService.getChannelFromCache(channelId: channelId) {
                     let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)

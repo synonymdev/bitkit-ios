@@ -260,9 +260,12 @@ class WalletViewModel: ObservableObject {
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21(reportsError: false)
                         }
-                    case .channelReady:
+                    case let .channelReady(_, _, _, fundingTxo):
                         self.invalidateReceiveInvoice()
                         Task {
+                            if let txid = fundingTxo?.txid {
+                                await self.confirmPrimaryChannelSend(fundingTxid: txid)
+                            }
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21(reportsError: false)
                             await self.refreshPaykitEndpointsAfterChannelAvailabilityChanged(reason: "channel-ready refresh")
@@ -622,12 +625,20 @@ class WalletViewModel: ObservableObject {
         }
 
         let hasPaymentContext = requestId != nil || paymentIdentity != nil || followupContext != nil || paymentDeadline != nil
-        if !hasPaymentContext, await shouldSendFromPrimaryChannel(address: address, sats: sats, feeRate: selectedFeeRateSatsPerVByte) {
+        if !hasPaymentContext, await paysFromPrimaryChannel(address: address, sats: sats, feeRate: selectedFeeRateSatsPerVByte) {
             try await beforeBroadcastAttempt()
             let txid = try await PrimaryNodeService.shared.sendOnchain(
                 address: address,
                 amountSats: sats,
                 feeRate: UInt64(selectedFeeRateSatsPerVByte)
+            )
+            // ldk-node records no payment for a splice-out to an address outside the wallet, so the send is added here.
+            await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+                txid: txid,
+                address: address,
+                amount: sats,
+                fee: PrimaryNodeService.shared.spliceOutFeeAt(feeRate: UInt64(selectedFeeRateSatsPerVByte)),
+                feeRate: selectedFeeRateSatsPerVByte
             )
             Task {
                 try? await sync()
@@ -665,8 +676,20 @@ class WalletViewModel: ObservableObject {
         return result
     }
 
+    /// A splice locks in once its transaction confirms, which confirms a send made out of the primary channel.
+    private func confirmPrimaryChannelSend(fundingTxid: String) async {
+        guard var activity = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: fundingTxid),
+              !activity.confirmed, activity.txType == .sent
+        else { return }
+        let now = UInt64(Date().timeIntervalSince1970)
+        activity.confirmed = true
+        activity.confirmTimestamp = now
+        activity.updatedAt = now
+        try? await CoreService.shared.activity.upsert(.onchain(activity))
+    }
+
     /// True when savings can't cover `sats` and its fee, but the primary channel can.
-    private func shouldSendFromPrimaryChannel(address: String, sats: UInt64, feeRate: UInt32) async -> Bool {
+    func paysFromPrimaryChannel(address: String, sats: UInt64, feeRate: UInt32) async -> Bool {
         guard selectedUtxos == nil, PrimaryNodeService.shared.primaryChannel() != nil else { return false }
         let spendable = lightningService.balances?.spendableOnchainBalanceSats ?? 0
         if let fee = try? await lightningService.calculateTotalFee(address: address, amountSats: sats, satsPerVByte: feeRate),
@@ -823,6 +846,9 @@ class WalletViewModel: ObservableObject {
         satsPerVByte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil
     ) async throws -> UInt64 {
+        if utxosToSpend == nil, await paysFromPrimaryChannel(address: address, sats: amountSats, feeRate: satsPerVByte) {
+            return PrimaryNodeService.shared.spliceOutFeeAt(feeRate: UInt64(satsPerVByte))
+        }
         return try await lightningService.calculateTotalFee(
             address: address,
             amountSats: amountSats,
