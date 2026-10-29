@@ -384,7 +384,8 @@ struct SendConfirmationView: View {
                     hasStartedAutomaticPayment: hasStartedAutomaticPayment,
                     isFeeRateMissing: isFeeRateMissing,
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
-                    isPreparingRequest: preparingRequest != nil
+                    isPreparingRequest: preparingRequest != nil,
+                    isSubmittingPayment: isSubmittingPayment
                 ),
                 isSubmitted: hasStartedAutomaticPayment,
                 swipeProgress: $swipeProgress
@@ -827,6 +828,7 @@ struct SendConfirmationView: View {
     }
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
+        guard !isSubmittingPayment else { return }
         guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
             guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
@@ -1033,9 +1035,10 @@ struct SendConfirmationView: View {
         hasStartedAutomaticPayment: Bool,
         isFeeRateMissing: Bool,
         feeRateLoadFailed: Bool,
-        isPreparingRequest: Bool = false
+        isPreparingRequest: Bool = false,
+        isSubmittingPayment: Bool = false
     ) -> Bool {
-        isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
+        isSubmittingPayment || isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
     }
 
     private func openManualCoinSelection() async throws {

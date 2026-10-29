@@ -120,6 +120,7 @@ final class IncomingPaykitPaymentRequestPreparation {
     private(set) var resolvedRoute: SendRoute?
     private let session: PubkyProfileManager.SignedInSession?
     var paymentContext: ContactPaymentContext?
+    var isSuspendedForAppLock = false
 
     init(request: PaykitPaymentRequest, session: PubkyProfileManager.SignedInSession?) {
         self.request = request
@@ -147,11 +148,51 @@ final class IncomingPaykitPaymentRequestPreparation {
     func clear() {
         request = nil
         resolvedRoute = nil
+        isSuspendedForAppLock = false
+    }
+
+    func dismiss(app: AppViewModel, wallet: WalletViewModel, speed: TransactionSpeed) {
+        if isSuspendedForAppLock, let paymentContext, app.ownsContactPaymentContext(paymentContext) {
+            app.resetSendState()
+            wallet.resetSendState(speed: speed)
+        }
+        clear()
     }
 
     func ownsSheet(_ sheets: SheetViewModel) -> Bool {
         sheets.activeSheetConfiguration?.id == .send &&
             (sheets.activeSheetConfiguration?.data as? SendConfig)?.preparation === self && !sheets.isReplacingSheet
+    }
+
+    func ownsResolvedContext(session: PubkyProfileManager.SignedInSession?, app: AppViewModel, sheets: SheetViewModel) -> Bool {
+        guard resolvedRoute != nil, let request, let paymentContext else { return false }
+        return matchesSession(session) && ownsSheet(sheets) &&
+            app.contactPaymentContext == paymentContext &&
+            paymentContext.incomingPaymentRequest?.id == request.id
+    }
+
+    func suspendForAppLock(sheets: SheetViewModel) {
+        guard resolvedRoute != nil, ownsSheet(sheets) else { return }
+        isSuspendedForAppLock = true
+    }
+
+    func retainReviewOnAppLock(
+        root: SendRoute,
+        path: [SendRoute],
+        isSubmittingPayment: Bool,
+        isHardwarePayment: Bool,
+        session: PubkyProfileManager.SignedInSession?,
+        app: AppViewModel,
+        sheets: SheetViewModel
+    ) -> Bool {
+        let route = path.last ?? root
+        let reviewRoute = route == .pin ? path.dropLast().last ?? root : route
+        guard isSuspendedForAppLock, reviewRoute == .confirm,
+              !isSubmittingPayment, !isHardwarePayment, !app.paykitUsesUsdt,
+              ownsResolvedContext(session: session, app: app, sheets: sheets)
+        else { return false }
+        resolvedRoute = .confirm
+        return true
     }
 
     func complete(
@@ -1284,6 +1325,7 @@ struct AppScene: View {
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
+                incomingPaymentRequestPreparation?.suspendForAppLock(sheets: sheets)
                 isPinVerified = false
             }
             hwWalletManager.onAppBackgrounded()
@@ -1640,7 +1682,7 @@ struct AppScene: View {
                             {
                                 paykitPaymentRequestManager.dismissPreparingRequest(request)
                             }
-                            preparation.clear()
+                            preparation.dismiss(app: app, wallet: wallet, speed: settings.defaultTransactionSpeed)
                         }
                     ))
                 }
@@ -1839,7 +1881,9 @@ struct AppScene: View {
     private var isIncomingPaymentRequestPreparationInvalid: Bool {
         guard let preparation = incomingPaymentRequestPreparation else { return false }
         if preparation.resolvedRoute != nil {
-            return !preparation.ownsSheet(sheets)
+            return !preparation.ownsSheet(sheets) ||
+                (preparation.isSuspendedForAppLock &&
+                    !preparation.ownsResolvedContext(session: pubkyProfile.currentSession, app: app, sheets: sheets))
         }
         return !isCurrentIncomingPaymentRequestPreparation(preparation)
     }
