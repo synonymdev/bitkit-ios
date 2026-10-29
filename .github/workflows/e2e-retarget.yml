@@ -7,8 +7,8 @@ on:
         description: "Ready PR into master to validate"
         required: true
       workflow_ref:
-        description: "Workflow definitions to use (master after merge)"
-        default: master
+        description: "Optional compatible workflow source override (default: this helper revision)"
+        default: ""
       suite:
         description: "Suite to recover (automatic retarget validates both)"
         type: choice

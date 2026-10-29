@@ -13,7 +13,7 @@ const inputs = (id = 1, generation = '200-1') => ({RETARGET_CHECK_RUN_ID: String
 function fixture() {
   const execution = executionFixture();
   const pr = {number: 7, state: 'open', draft: false, head: {sha: HEAD, ref: 'feature', repo: {full_name: 'owner/repo'}}, base: {sha: BASE, ref: 'master'}, mergeable: true, merge_commit_sha: MERGE};
-  const context = {repo: {owner: 'owner', repo: 'repo'}, eventName: 'pull_request', runId: 200, serverUrl: 'https://github.com', payload: {changes: {base: {}}, pull_request: structuredClone(pr)}};
+  const context = {repo: {owner: 'owner', repo: 'repo'}, sha: execution.SOURCE, eventName: 'pull_request', runId: 200, serverUrl: 'https://github.com', payload: {changes: {base: {}}, pull_request: structuredClone(pr)}};
   const checks = new Map();
   const dispatches = [];
   const failures = [];
@@ -150,7 +150,7 @@ test('rerunning a completed suite requests fresh validation instead of reopening
   assert.equal(f.checks.get(1).conclusion, 'failure');
   assert.equal(f.checks.size, 2);
   assert.equal(f.dispatches[2].workflow_id, 'e2e-retarget.yml');
-  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: 'master', suite: 'e2e'});
+  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite: 'e2e'});
   assert.equal(f.failures.length, 1);
   await report(f);
   assert.equal(f.checks.get(1).conclusion, 'failure');
@@ -260,13 +260,13 @@ test('only E2E can report not required, with an explicit check explanation', asy
   assert.equal(f.checks.get(2).conclusion, 'failure');
 });
 
-test('retry recovery uses the stable source, never the disposable execution ref', async () => {
+test('retry recovery selects the stable helper without forwarding the old pinned child source', async () => {
   const f = await start(fixture());
   f.context.ref = 'refs/heads/ci/retarget-execution/pr-7-200-1';
   await report(f, {result: 'failure'});
   await report(f, {phase: 'start', inputs: {...inputs(), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'ci/fix'}});
   assert.equal(f.dispatches[2].ref, 'ci/fix');
-  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: f.execution.SOURCE, suite: 'e2e'});
+  assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite: 'e2e'});
 });
 
 test('unsigned execution preparation fails both PR checks and never dispatches tests on master', async () => {
@@ -282,7 +282,7 @@ test('unsigned execution preparation fails both PR checks and never dispatches t
 });
 
 for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', INTEGRATION, 2, 1]]) {
-  for (const status of [404, 422]) test(`a deleted helper (${status}) recovers only ${suite} on master with the pinned workflow source`, async () => {
+  for (const status of [404, 422]) test(`a deleted helper (${status}) recovers only ${suite} with the current master helper`, async () => {
     const f = await start(fixture());
     await report(f, {name: otherId === 1 ? E2E : INTEGRATION, inputs: inputs(otherId)});
     const other = structuredClone(f.checks.get(otherId));
@@ -294,7 +294,7 @@ for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', IN
     };
     await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'deleted-branch'}});
     assert.equal(f.dispatches[2].ref, 'master');
-    assert.deepEqual(f.dispatches[2].inputs, {pr: '7', workflow_ref: f.execution.SOURCE, suite});
+    assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite});
     assert.equal(f.checks.get(id).conclusion, 'failure');
     assert.deepEqual(f.checks.get(otherId), other);
     assert.equal(f.checks.size, 2);
@@ -308,4 +308,59 @@ for (const status of [403, 429, 500]) test(`helper lookup failure (${status}) do
   await assert.rejects(report(f, {phase: 'start'}), error => error.status === status);
   assert.equal(f.dispatches.length, 2);
   assert.equal(f.checks.get(1).conclusion, 'failure');
+});
+
+for (const [suite, name, id, otherId] of [['e2e', E2E, 1, 2], ['integration', INTEGRATION, 2, 1]]) {
+  test(`${suite} retry uses its new helper's definitions despite an old child source and a later branch move`, async () => {
+    const f = await start(fixture());
+    await report(f, {name: otherId === 1 ? E2E : INTEGRATION, inputs: inputs(otherId)});
+    const other = structuredClone(f.checks.get(otherId));
+    await report(f, {name, inputs: inputs(id), result: 'failure'});
+    const helperSha = 'd'.repeat(40);
+    f.execution.commits.set(helperSha, {sha: helperSha, commit: {tree: {sha: '1'.repeat(40)}}});
+    f.execution.aliases.set('master', helperSha);
+    await report(f, {name, phase: 'start', inputs: {...inputs(id), RETARGET_WORKFLOW_REF: f.execution.SOURCE, RETARGET_HELPER_REF: 'master'}});
+    assert.deepEqual(f.dispatches[2].inputs, {pr: '7', suite});
+    f.context.eventName = 'workflow_dispatch'; f.context.runId = 201;
+    f.context.ref = 'refs/heads/master'; f.context.sha = helperSha;
+    f.context.payload = {inputs: f.dispatches[2].inputs};
+    const laterSha = '9'.repeat(40);
+    f.execution.commits.set(laterSha, {sha: laterSha, commit: {tree: {sha: '2'.repeat(40)}}});
+    f.execution.aliases.set('master', laterSha);
+    await start(f);
+    const child = f.dispatches[3];
+    const execution = f.execution.commits.get(f.execution.refs.get(`heads/${child.ref}`));
+    assert.equal(execution.parents[0].sha, helperSha);
+    assert.equal(execution.commit.tree.sha, '1'.repeat(40));
+    assert.equal(child.inputs.workflow_ref, helperSha);
+    assert.equal(child.inputs.head_sha, HEAD);
+    assert.equal(child.inputs.merge_commit, MERGE);
+    assert.equal(child.workflow_id, suite === 'e2e' ? 'e2e-tests.yml' : 'integration-tests.yml');
+    assert.deepEqual(f.checks.get(otherId), other);
+    assert.equal(f.checks.size, 3);
+    assert.deepEqual(f.failures, ['Started a fresh retarget validation; completed checks cannot be reopened.']);
+  });
+}
+
+test('manual backfills retain an explicit compatible source override', async () => {
+  const f = fixture();
+  f.context.eventName = 'workflow_dispatch'; f.context.ref = 'refs/heads/ci/fix';
+  f.context.sha = 'd'.repeat(40);
+  f.context.payload = {inputs: {pr: '7', workflow_ref: f.execution.SOURCE}};
+  await start(f);
+  assert.equal(f.execution.mutations[0].expectedHeadOid, f.execution.SOURCE);
+  assert.equal(f.dispatches.length, 2);
+  assert.deepEqual(f.failures, []);
+});
+
+test('a legacy helper-ref override uses that helper run revision if its branch has moved', async () => {
+  const f = fixture(); f.context.eventName = 'workflow_dispatch';
+  f.context.ref = 'refs/heads/master';
+  f.context.payload = {inputs: {pr: '7', workflow_ref: 'master'}};
+  const laterSha = 'd'.repeat(40);
+  f.execution.commits.set(laterSha, {sha: laterSha, commit: {tree: {sha: '1'.repeat(40)}}});
+  f.execution.aliases.set('master', laterSha);
+  await start(f);
+  assert.equal(f.execution.mutations[0].expectedHeadOid, f.context.sha);
+  assert.deepEqual(f.failures, []);
 });

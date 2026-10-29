@@ -65,9 +65,12 @@ async function dispatchRetargetTests({github, context, core, attempt = process.e
       await sleep(2000);
     }
     if (!merge) throw new Error('No verified PR merge commit is available');
-    const execution = await prepareExecutionRef({github, context, number: original.number, generation,
-      sourceRef: manual && event.inputs.workflow_ref || 'master'});
     const helperRef = manual ? context.ref?.replace(/^refs\/(heads|tags)\//, '') || 'master' : 'master';
+    const requestedSource = manual && event.inputs.workflow_ref;
+    let sourceRef = 'master';
+    // Keep a manual generation on the helper's queued revision if its branch advances.
+    if (manual) sourceRef = requestedSource && requestedSource !== helperRef ? requestedSource : context.sha;
+    const execution = await prepareExecutionRef({github, context, number: original.number, generation, sourceRef});
     for (const check of selected) {
       try {
         await github.rest.actions.createWorkflowDispatch({
@@ -111,7 +114,6 @@ async function reportRetargetResult({github, context, core, name, phase, result,
   if (check.status === 'completed') {
     if (phase === 'start') {
       // Completed checks cannot reopen; the helper owns creation of fresh checks.
-      const workflowRef = inputs.RETARGET_WORKFLOW_REF || 'master';
       let helperRef = inputs.RETARGET_HELPER_REF || 'master';
       if (helperRef.replace(/^refs\/heads\//, '').startsWith('ci/retarget-execution/')) throw new Error('Recovery helper cannot use an execution ref');
       try {
@@ -123,7 +125,7 @@ async function reportRetargetResult({github, context, core, name, phase, result,
       }
       await github.rest.actions.createWorkflowDispatch({
         ...context.repo, workflow_id: 'e2e-retarget.yml', ref: helperRef,
-        inputs: {pr: number, workflow_ref: workflowRef, suite: CHECKS.find(check => check.context === name).suite},
+        inputs: {pr: number, suite: CHECKS.find(check => check.context === name).suite},
       });
       core.setFailed('Started a fresh retarget validation; completed checks cannot be reopened.');
     }

@@ -29,7 +29,7 @@ on:
         description: "Retarget status owner (set by e2e-retarget.yml)"
         default: ""
       workflow_ref:
-        description: "Pinned workflow source for retarget recovery"
+        description: "Workflow source recorded for this validation generation"
         default: master
       helper_ref:
         description: "Recovery helper branch or tag"
