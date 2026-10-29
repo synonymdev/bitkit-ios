@@ -164,6 +164,7 @@ Their descriptions record extra iOS manual checks and necessary platform mechani
 | --- | --- |
 | Original payment retry | Max retains its original rate; custom fees use `getFeeLimits()`. Additional channel funding, payer/wallet race and backup checks are in the description. |
 | `send/prepared-fee-recovery.md` | Same four manual fault cases and file on both platforms; the recipe records original-send versus replacement fee retention and iOS Max/identity-flow adaptations. These faults are not journey capabilities. |
+| `send/onchain-connecting-view.xml` | The LDK Debug Restart route does not bring the view up on iOS, since the restart keeps the node in the running state, and returning from the background leaves it running; open Send right after a cold launch, while the node is still starting, as the description says. |
 | Accepted result | `xcrun simctl openurl`; confirm change before the Max leg, use Manual coin selection and restore Autopilot afterward. The existing Autopilot Max limitation is not claimed fixed. |
 | Hardware Shop proof | The sign screen uses `HardwareSendSign` and `HardwareSendSignAmount`; verify the original issuer destination under "To address (confirm on device)". iOS Bridge setup and extra durable returning-payer and later tag-edit replay checks are in the description. |
 
@@ -228,6 +229,10 @@ dev-mode gate and a cold-start replay. iOS registers the `bitkit` URL scheme (`B
 and retains external URLs in `AppScene`, but `MainNavView` only routes web URLs, Pubky contacts, auth requests and callbacks,
 and payment URIs — there is no screen or sheet deeplink router, and no dev-mode gate to test. These
 journeys are blocked on the feature existing, not on the harness.
+
+**`pubky-auth/loading-toast-long-locale.xml`.** It covers the close-button inset on Android's "Loading Your
+Pubky Profile" toast, which iOS does not show. `settings/applying-toast-close-button.xml` checks the same
+inset on the address-type toast, on both platforms.
 
 **`subscriptions` Discover.** The subscriptions suite covers create, review, cancel/delete and
 the Payments tab, but not Discover — it is unimplemented on iOS. Two linked Bitkit instances are
