@@ -302,6 +302,18 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("resolve"))
     }
 
+    func testRecoveryLeavesALedgerBehindTheFloorUnwritten() async {
+        let harness = AllowanceHarness()
+        harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 5), identity: Fixtures.identityKey)
+        await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, requiresReconciliation: true))
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        XCTAssertFalse(harness.log.entries.contains("reconcileAllowanceAccounting"))
+        let floor = await harness.executor.localState(identity: Fixtures.identityKey).ledgerRevisionFloor
+        XCTAssertEqual(floor, 5)
+    }
+
     func testAMissingLedgerAfterOneWasReadKeepsTheRequestManual() async throws {
         let harness = AllowanceHarness()
         harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 5), identity: Fixtures.identityKey)
