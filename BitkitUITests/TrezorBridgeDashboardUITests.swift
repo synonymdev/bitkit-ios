@@ -43,18 +43,23 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         app.buttons["TrezorTestHook-Pin"].tap()
         XCTAssertTrue(app.otherElements["TrezorPinSheet"].waitForExistence(timeout: 5))
         app.buttons["TrezorPinCancel"].tap()
+        XCTAssertTrue(app.otherElements["TrezorPinSheet"].waitForNonExistence(timeout: 5))
 
         app.buttons["TrezorTestHook-Passphrase"].tap()
         XCTAssertTrue(app.otherElements["TrezorPassphraseSheet"].waitForExistence(timeout: 5))
         app.buttons["TrezorPassphraseCancel"].tap()
+        XCTAssertTrue(app.otherElements["TrezorPassphraseSheet"].waitForNonExistence(timeout: 5))
 
         app.buttons["TrezorTestHook-Pairing"].tap()
-        XCTAssertTrue(app.otherElements["TrezorPairingSheet"].waitForExistence(timeout: 5))
-        app.buttons["TrezorPairingCancel"].tap()
+        let pairingSheet = app.descendants(matching: .any)["HwPairSheet"]
+        XCTAssertTrue(pairingSheet.waitForExistence(timeout: 5))
+        pairingSheet.swipeDown(velocity: .fast)
+        XCTAssertTrue(pairingSheet.waitForNonExistence(timeout: 5))
 
         app.buttons["TrezorTestHook-Confirm"].tap()
         XCTAssertTrue(app.otherElements["TrezorConfirmOnDeviceOverlay"].waitForExistence(timeout: 5))
         app.buttons["TrezorConfirmOnDeviceCancel"].tap()
+        XCTAssertTrue(app.otherElements["TrezorConfirmOnDeviceOverlay"].waitForNonExistence(timeout: 5))
 
         app.buttons["TrezorDebugLogToggle"].tap()
         XCTAssertTrue(app.buttons["TrezorDebugLogClear"].waitForExistence(timeout: 5))
@@ -434,10 +439,8 @@ final class TrezorBridgeDashboardUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 10), "Missing text input \(element)")
         scrollTo(element)
         element.tap()
-        if let currentValue = element.value as? String, !currentValue.isEmpty {
-            element.press(forDuration: 1.0)
-            app.menuItems["Select All"].tapIfExists()
-            element.typeText(XCUIKeyboardKey.delete.rawValue)
+        if let currentValue = element.value as? String, !currentValue.isEmpty, currentValue != element.placeholderValue {
+            element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count))
         }
         element.typeText(text)
     }
@@ -585,13 +588,5 @@ private final class RegtestRpcClient {
         case http
         case invalidResponse
         case rpc([String: Any])
-    }
-}
-
-private extension XCUIElement {
-    func tapIfExists() {
-        if waitForExistence(timeout: 2), isHittable {
-            tap()
-        }
     }
 }
