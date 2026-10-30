@@ -672,7 +672,7 @@ struct AppScene: View {
                     guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
                           PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
                     else { return }
-                    await refreshIncomingPaykitPaymentRequests(forceFresh: true, onlyWhileActive: true)
+                    await refreshIncomingPaykitPaymentRequests(forceFresh: true, refreshPriority: .background, onlyWhileActive: true)
                 }
             }
             .onReceive(PrivatePaykitService.contactLinkCompletedPublisher.receive(on: DispatchQueue.main)) { completion in
