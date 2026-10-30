@@ -105,23 +105,43 @@ final class PaykitAllowanceTests: XCTestCase {
     }
 
     func testStateSavedBeforeTheAutomaticPaymentChecksStillDecodes() throws {
-        var current = try JSONSerialization.jsonObject(with: JSONEncoder().encode(PaykitAllowanceLocalState(
-            journal: [],
+        let earlier = PaykitAllowanceLocalState(
+            groups: [.init(
+                id: "group-1",
+                counterparty: Fixtures.counterpartyKey,
+                limits: Fixtures.limits,
+                allowanceIds: [Fixtures.walletAllowanceId],
+                createdAt: Fixtures.now
+            )],
+            journal: [.init(
+                attemptId: "attempt-1",
+                isAutomatic: true,
+                requestId: PaykitPaymentRequest.ID(paymentRequestId: "req-1", counterparty: Fixtures.counterpartyKey),
+                allowanceId: Fixtures.walletAllowanceId,
+                amountSats: 1000,
+                paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+                paymentHash: "hash-1",
+                stage: .sending,
+                createdAt: Fixtures.now,
+                paymentListVersion: 4,
+                previousPaymentListVersion: 3
+            )],
             presentedProposalIds: ["presented"],
-            notifiedRequestIds: ["notified"]
-        ))) as? [String: Any] ?? [:]
+            unannouncedOfferIds: ["contact/offer"],
+            notifiedRequestIds: ["notified"],
+            lastTrustedTime: Fixtures.now
+        )
+        var current = try JSONSerialization.jsonObject(with: JSONEncoder().encode(earlier)) as? [String: Any] ?? [:]
         for key in ["ledgerRevisionFloor", "automaticSpends", "endedAllowanceIds"] {
             current.removeValue(forKey: key)
         }
         let previous = try JSONSerialization.data(withJSONObject: current)
 
         let state = try JSONDecoder().decode(PaykitAllowanceLocalState.self, from: previous)
+        let reloaded = try JSONDecoder().decode(PaykitAllowanceLocalState.self, from: JSONEncoder().encode(state))
 
-        XCTAssertEqual(state.presentedProposalIds, ["presented"])
-        XCTAssertEqual(state.notifiedRequestIds, ["notified"])
-        XCTAssertNil(state.ledgerRevisionFloor)
-        XCTAssertTrue(state.automaticSpends.isEmpty)
-        XCTAssertTrue(state.endedAllowanceIds.isEmpty)
+        XCTAssertEqual(state, earlier)
+        XCTAssertEqual(reloaded, earlier)
     }
 
     func testABackupWrittenBeforeTheAutomaticPaymentChecksStillRestores() throws {
