@@ -6,6 +6,7 @@ limit falls back to the normal Payment Request sheet, and either side ends it. T
 pins the one rule that must never break: a payment interrupted mid-flight is never paid twice.
 The PIN journey checks that the payer's grant, accept and end ask for the payment PIN when the
 user requires one, while automatic payments never prompt.
+The restore journey checks that a payer restored from its recovery phrase keeps its allowance history.
 
 ## Setup
 
@@ -21,9 +22,16 @@ Allow notifications for Bitkit on both instances when it asks: the payer's "Paym
 "Limit Reached" events and the payee's "Allowance Added" event post a local notification when they can, and fall back to an in-app toast that the
 UI snapshot cannot see.
 
+"Limit Reached" posts nothing while Bitkit is in the foreground and unlocked, because the Payment
+Request sheet for the same request opens at the same time; behind the PIN screen the sheet waits, so
+the notification is posted.
+
 The journeys set $5 a payment and $50 a month, the second stop on each slider, and the cap journey
 sets $5 a payment and $10 a month, the first monthly stop. Requests are one-time Payment Requests
-created from the Payments tab of the payee, in the fiat unit. Dollar amounts on screen are converted
+created from the Payments tab of the payee, priced in bitcoin. On Android, enter the amount in sats:
+a request entered in the fiat unit is priced in USD, and allowances pay only bitcoin-priced requests, so it
+stays manual. iOS converts a dollar entry to a bitcoin amount when it creates the request, so the fiat unit
+works there. Dollar amounts on screen are converted
 at the current rate, so a sats amount next to them will differ between runs.
 
 ## Reference evidence

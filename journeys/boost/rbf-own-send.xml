@@ -1,0 +1,23 @@
+<journey name="boost own onchain send by replacement">
+  <description>
+    Verifies that Boost replaces an unconfirmed Savings send this wallet made: the boosted send keeps
+    its amount, pays a higher fee and gets a new transaction ID, and confirms after a block.
+    Preconditions: a synced wallet with at least 100,000 confirmed sats in Savings, a regtest address
+    the wallet does not own (for example a fresh Savings address from a second wallet), and access to
+    the configured regtest backend's block-mining helper.
+  </description>
+  <actions>
+    <action>Hand the app the address as a URI with xcrun simctl openurl &lt;UDID&gt; "bitcoin:ADDRESS?amount=0.0001", which opens the amount screen at 10,000 sats</action>
+    <action>Verify the amount screen shows 10,000 sats, tap Continue (id "ContinueAmount") and verify the review screen (id "SendConfirm") is visible</action>
+    <action>Swipe the send handle (id "GRAB") fully to the right and wait for the success screen (id "SendSuccess"), then tap Close</action>
+    <action>Tap the newest outgoing activity entry (id "ActivityShort-0") and verify it shows 10,000 sats; record the fee from id "ActivityFee"</action>
+    <action>Tap Transaction details (id "ActivityTxDetails"), record the TXID, then go back</action>
+    <action>Tap Boost (id "BoostButton") and verify the replacement boost sheet (id "RBFBoost") is visible</action>
+    <action>Swipe the boost handle (id "GRAB") fully to the right and verify the boost success toast (id "BoostSuccessToast") appears</action>
+    <action>Verify the activity list shows the boosting icon (id "BoostingIcon") and still exactly one outgoing entry for this send</action>
+    <action>Open that entry and verify Boosted (id "BoostedButton") and the Boosting status (id "StatusBoosting"), 10,000 sats, and a fee higher than the recorded one</action>
+    <action>Tap Transaction details (id "ActivityTxDetails") and verify the TXID differs from the recorded one and the replaced transaction is listed (id "RBFBoosted")</action>
+    <action>Mine one regtest block with ../bitkit-android/lsp POST /regtest/chain/mine '{"count":1}', borrowed from the sibling Android checkout; a successful command exits with status 0 and prints nothing</action>
+    <action>Return to the activity list, open the send again and verify its status is Confirmed (id "StatusConfirmed")</action>
+  </actions>
+</journey>
