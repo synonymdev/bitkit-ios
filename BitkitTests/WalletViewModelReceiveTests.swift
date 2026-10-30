@@ -28,6 +28,7 @@ final class WalletViewModelReceiveTests: XCTestCase {
 
     func testReceiveRefreshCanSkipPublicSyncWithoutChangingReceiveDetails() async throws {
         snapshotAppDefaultsDomain()
+        PublicPaykitService.setCleanupPending(false)
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
         UserDefaults.standard.set(true, forKey: PublicPaykitService.publishingEnabledKey)
         let profile = PubkyProfileManager()
@@ -53,14 +54,17 @@ final class WalletViewModelReceiveTests: XCTestCase {
 
         XCTAssertEqual(wallet.bip21, expectedBip21)
         XCTAssertEqual(wallet.metadataPersistenceCount, 2)
-        XCTAssertEqual(wallet.publicEndpointRefreshCount, 1)
+        XCTAssertEqual(wallet.publicEndpointRefreshCount, 0)
+        XCTAssertTrue(PublicPaykitService.isCleanupPending)
 
+        PublicPaykitService.setCleanupPending(false)
         profile.authState = .idle
         try await wallet.refreshBip21()
 
         XCTAssertEqual(wallet.bip21, expectedBip21)
         XCTAssertEqual(wallet.metadataPersistenceCount, 3)
-        XCTAssertEqual(wallet.publicEndpointRefreshCount, 1)
+        XCTAssertEqual(wallet.publicEndpointRefreshCount, 0)
+        XCTAssertFalse(PublicPaykitService.isCleanupPending)
     }
 
     private final class ReceiveWalletSpy: WalletViewModel {

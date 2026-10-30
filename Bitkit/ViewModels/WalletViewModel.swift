@@ -251,15 +251,12 @@ class WalletViewModel: ObservableObject {
                         )
                     case let .paymentReceived(_, paymentHash, _, _):
                         self.invalidateReceiveInvoice()
-                        if self.isPaykitUIActive {
-                            self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
-                        }
+                        let rotatedPublicInvoice = self.isPaykitUIActive && self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
+                        let isSessionCurrent = self.publicPaykitPublicationAdmission()
                         Task {
-                            if self.isPaykitUIActive {
-                                await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
-                            }
-                            await self.refreshAndSyncState()
-                            try? await self.refreshBip21(reportsError: false)
+                            await self.refreshAfterPaymentReceived(
+                                paymentHash: paymentHash, rotatedPublicInvoice: rotatedPublicInvoice, isSessionCurrent: isSessionCurrent
+                            )
                         }
                     case .channelReady:
                         self.invalidateReceiveInvoice()
@@ -1553,15 +1550,29 @@ class WalletViewModel: ObservableObject {
         clearPublicPaykitBolt11()
     }
 
-    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
+    @discardableResult
+    func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) -> Bool {
         guard !publicPaykitBolt11PaymentHash.isEmpty,
               publicPaykitBolt11PaymentHash == paymentHash
-        else { return }
+        else { return false }
 
         invalidatePublicPaykitInvoice()
         if sharesPublicPaykitEndpoints {
             PublicPaykitService.setCleanupPending(true)
         }
+        return true
+    }
+
+    func refreshAfterPaymentReceived(
+        paymentHash: String, rotatedPublicInvoice: Bool, isSessionCurrent: @escaping @MainActor () -> Bool
+    ) async {
+        if isPaykitUIActive {
+            await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
+        }
+        await refreshAndSyncState()
+        try? await refreshBip21(reportsError: false)
+        guard rotatedPublicInvoice else { return }
+        try? await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false, syncPublicPaykit: Bool = true, reportsError: Bool = true) async throws {
@@ -1643,14 +1654,8 @@ class WalletViewModel: ObservableObject {
             receiveCommitID = UUID()
             isReceiveInvoiceUpdating = false
 
-            if syncPublicPaykit, isPaykitUIActive, sharesPublicPaykitEndpoints,
-               await !PrivatePaykitService.shared.isDeletingProfile
-            {
-                do {
-                    try await syncReceivePublicPaykitEndpoints(isSessionCurrent: isSessionCurrent)
-                } catch {
-                    Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
-                }
+            if syncPublicPaykit, isSessionCurrent() {
+                PublicPaykitService.queueEndpointReconciliation()
             }
         } catch {
             guard receiveRefreshID == refreshID else {
