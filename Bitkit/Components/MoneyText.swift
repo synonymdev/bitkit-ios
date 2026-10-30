@@ -87,6 +87,20 @@ struct MoneyText: View {
     }
 
     var body: some View {
+        labeledText
+            // Outside the identifier above, so this element keeps its own identifier.
+            .overlay {
+                if shimmer == true {
+                    Color.clear
+                        .accessibilityElement()
+                        .accessibilityLabel(t("wallet__balance_updating"))
+                        .accessibilityIdentifier("TotalBalanceUpdating")
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var labeledText: some View {
         let base = shimmering(textComponent(displayText).foregroundColor(color))
 
         if let testIdentifier {
@@ -361,14 +375,6 @@ private struct AmountShimmer: ViewModifier {
                     Color.white
                 }
                 .padding(-maskOutset)
-            }
-            .overlay {
-                if isActive {
-                    Color.clear
-                        .accessibilityElement()
-                        .accessibilityLabel(t("wallet__balance_updating"))
-                        .accessibilityIdentifier("TotalBalanceUpdating")
-                }
             }
             .onAppear {
                 intensity = isActive ? 1 : 0
