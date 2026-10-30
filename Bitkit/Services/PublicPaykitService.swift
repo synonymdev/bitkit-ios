@@ -439,9 +439,14 @@ enum PublicPaykitService {
         else { return }
         let publishedCurrentInvoice = !isLightningPaymentOptionEnabled() ||
             (wallet.publicPaykitInvoiceRevision == invoiceRevision && wallet.publicPaykitBolt11 ==
-                (endpoints.first { $0.methodId == .bitcoinLightningBolt11 }?.value ?? ""))
+                (endpoints.first { $0.methodId == .bitcoinLightningBolt11 || $0.methodId == .bitcoinLightningLnurl }?.value ?? ""))
         let publishedUsdt = !isUsdtPaymentOptionEnabled() || endpoints.contains { $0.methodId == .usdtArbitrum }
         setCleanupPending(!publishedCurrentInvoice || !publishedUsdt)
+    }
+
+    /// Whether a receive's Lightning request is an LNURL, which Arkade gives for an amountless receive.
+    static func isLnurl(_ paymentRequest: String) -> Bool {
+        paymentRequest.lowercased().hasPrefix("lnurl")
     }
 
     static func removePublishedEndpoints() async throws {
@@ -619,7 +624,7 @@ enum PublicPaykitService {
         if includeLightning, !bolt11.isEmpty {
             try endpoints.append(
                 Endpoint(
-                    methodId: .bitcoinLightningBolt11,
+                    methodId: isLnurl(bolt11) ? .bitcoinLightningLnurl : .bitcoinLightningBolt11,
                     value: bolt11,
                     min: nil,
                     max: nil,

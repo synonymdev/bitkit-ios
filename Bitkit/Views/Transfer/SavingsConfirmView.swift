@@ -39,7 +39,7 @@ struct SavingsConfirmView: View {
     }
 
     private var headlineSats: UInt64 {
-        swapState.quote?.amountSat ?? totalSats
+        (swapState.quote?.amountSat ?? totalSats) + ArkadeManager.shared.balanceSats
     }
 
     var body: some View {

@@ -82,8 +82,7 @@ struct AdvancedSettingsView: View {
                     NavigationLink(value: Route.connections) {
                         SettingsRow(
                             title: t("settings__adv__lightning_connections"),
-                            iconName: "bolt-hollow",
-                            rightText: String(wallet.channels?.count ?? 0)
+                            iconName: "bolt-hollow"
                         )
                     }
                     .accessibilityIdentifier("Channels")

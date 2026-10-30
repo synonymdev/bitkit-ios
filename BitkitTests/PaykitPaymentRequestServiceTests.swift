@@ -4990,6 +4990,40 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
         XCTAssertTrue(manager.requestPresentation(request))
     }
 
+    func testResolutionFailureEndsARequestedPresentationWithAToast() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.pendingRequests.first)
+        XCTAssertTrue(manager.requestPresentation(request))
+
+        let feedback = try XCTUnwrap(
+            IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                for: request,
+                with: manager
+            )
+        )
+
+        XCTAssertNil(manager.requestedPresentationId)
+        XCTAssertFalse(manager.isWaitingForPresentationRetry(request))
+        XCTAssertEqual(manager.pendingRequests, [request])
+        XCTAssertNotNil(feedback.toast)
+    }
+
+    func testResolutionFailureLeavesAutomaticPresentationToRetry() async throws {
+        let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
+        let manager = paymentRequestManager(sdk: sdk)
+        await manager.refresh()
+        let request = try XCTUnwrap(manager.requestsForPresentation().first)
+
+        XCTAssertNil(
+            IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                for: request,
+                with: manager
+            )
+        )
+    }
+
     func testPendingPrivateLinkRecoveryStopsAutomaticPresentationWithoutToast() async throws {
         let sdk = try PaymentRequestSdkMock(records: [paymentRequestRecord()])
         let manager = paymentRequestManager(sdk: sdk)

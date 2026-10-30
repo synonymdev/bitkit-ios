@@ -44,6 +44,9 @@ enum Route: Hashable {
     case fundManualAmount(lnPeer: LnPeer)
     case fundManualConfirm(lnPeer: LnPeer, amountSats: UInt64)
     case fundManualSuccess
+    case arkadeFundingAmount
+    case arkadeFundingConfirm(amountSats: UInt64, isMaxAmount: Bool)
+    case arkadeFundingDeposit(txid: String)
     case lnurlChannel(channelData: LnurlChannelData)
     case savingsIntro
     case savingsAvailability
@@ -93,6 +96,7 @@ enum Route: Hashable {
     case addressTypePreference
     case connections
     case connectionDetail(channelId: String)
+    case arkadeConnectionDetail
     case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings

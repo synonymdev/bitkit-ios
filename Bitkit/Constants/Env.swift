@@ -272,6 +272,26 @@ enum Env {
             .appendingPathComponent("wallet\(walletIndex)/ldk")
     }
 
+    static func arkadeStorage(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/arkade")
+    }
+
+    /// A restored Arkade wallet data backup waiting to be imported when the Arkade wallet next starts.
+    static func arkadeExitRestore(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/arkade-restore/wallet-state.json")
+    }
+
+    /// Written after the Arkade wallet's first start on this install; until then it scans the operator for funds.
+    static func arkadeStartedMarker(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/arkade-restore/started")
+    }
+
     static func bitkitCoreStorage(walletIndex: Int) -> URL {
         appStorageUrl
             .appendingPathComponent(networkName)

@@ -152,6 +152,12 @@ class WalletViewModel: ObservableObject {
         }
         lightningService.onchainTransactionReceived = { await onchainObservation($0, false) }
         lightningService.onchainTransactionConfirmed = { await onchainObservation($0, true) }
+        ArkadeManager.shared.onStateChanged = { [weak self] in
+            Task { @MainActor in
+                await self?.updateBalanceState()
+                try? await self?.refreshBip21(reportsError: false)
+            }
+        }
     }
 
     /// Convenience initializer for previews and testing
@@ -198,6 +204,8 @@ class WalletViewModel: ObservableObject {
         }
 
         syncState()
+        // Arkade needs no node, so it starts alongside it and keeps running while the node stops.
+        Task { await ArkadeManager.shared.start(walletIndex: walletIndex) }
         do {
             let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
@@ -1036,11 +1044,30 @@ class WalletViewModel: ObservableObject {
                 }
 
                 syncState()
+                Task { [weak self] in
+                    await self?.finishWatchSendIfRailAlreadySettled(hash: hash, eventId: eventId)
+                }
             }
         } onCancel: {
             Task { @MainActor [weak self] in
                 self?.finishWatchSend(id: eventId, result: .failure(CancellationError()))
             }
+        }
+    }
+
+    /// An Arkade payment can settle before `watchSend` starts listening, so its completion event can fire unseen; the
+    /// rail's own payment list still has the outcome.
+    private func finishWatchSendIfRailAlreadySettled(hash: String, eventId: String) async {
+        let payment = await lightningService.channelFreeRailPayments().first {
+            $0.direction == .outbound && $0.paymentHash.caseInsensitiveCompare(hash) == .orderedSame
+        }
+        switch payment?.status {
+        case .succeeded:
+            finishWatchSend(id: eventId, result: .success(SettledLightningPayment(paymentHash: hash, feePaidSats: 0)))
+        case .failed:
+            finishWatchSend(id: eventId, result: .failure(AppError(paymentFailureReason: nil)))
+        case .pending, nil:
+            break
         }
     }
 
@@ -1238,14 +1265,16 @@ class WalletViewModel: ObservableObject {
         do {
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
+            let arkade = ArkadeManager.shared
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
-            balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
+            balanceInTransferToSpending = Int(state.balanceInTransferToSpending + arkade.pendingDepositSats)
 
             // Update display values with adjusted balances
             totalOnchainSats = Int(state.totalOnchainSats)
-            totalLightningSats = Int(state.totalLightningSats)
-            totalBalanceSats = Int(state.totalBalanceSats)
-            maxSendLightningSats = Int(state.maxSendLightningSats)
+            totalLightningSats = Int(state.totalLightningSats + arkade.balanceSats)
+            totalBalanceSats = Int(state.totalBalanceSats + arkade.balanceSats + arkade.pendingDepositSats)
+            // A payment goes over one rail, so the larger of the two balances caps it.
+            maxSendLightningSats = Int(max(state.maxSendLightningSats, arkade.balanceSats))
 
             // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
@@ -1301,13 +1330,18 @@ class WalletViewModel: ObservableObject {
         return channels?.contains(where: \.isUsable) ?? false
     }
 
+    /// Whether Lightning can be received, through a usable channel or Arkade; Paykit publishes a Lightning endpoint only then.
+    var canReceiveLightning: Bool {
+        hasUsableChannels || ArkadeManager.shared.isReady
+    }
+
     var canCreateReceiveLightningInvoice: Bool {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         return canCreateReceiveLightningInvoice(amountSats: amountSats)
     }
 
     func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
-        ReceiveLiquidityDecision.canCreateLightningInvoice(
+        ArkadeManager.shared.isReady || ReceiveLiquidityDecision.canCreateLightningInvoice(
             hasReadyChannels: hasReadyChannels,
             inboundCapacitySats: totalReadyInboundLightningSats,
             invoiceAmountSats: amountSats
@@ -1363,7 +1397,7 @@ class WalletViewModel: ObservableObject {
             if attempt > 0 {
                 guard try await canCommitInvoice() else { continue }
             }
-            if includeLightning, hasUsableChannels {
+            if includeLightning, canReceiveLightning {
                 let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
                 guard try await canCommitInvoice() else { continue }
                 let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
@@ -1429,7 +1463,7 @@ class WalletViewModel: ObservableObject {
 
         if sharesPublicPaykitEndpoints {
             do {
-                try await publishPublicPaykitEndpoints(refreshIfNeeded: hasUsableChannels, isSessionCurrent: isSessionCurrent)
+                try await publishPublicPaykitEndpoints(refreshIfNeeded: canReceiveLightning, isSessionCurrent: isSessionCurrent)
             } catch {
                 Logger.warn("Failed to refresh public Paykit endpoints after channel availability changed: \(error)", context: "WalletViewModel")
             }
@@ -1467,6 +1501,15 @@ class WalletViewModel: ObservableObject {
 
     private func refreshPublicPaykitBolt11(canCommitInvoice: () async throws -> Bool) async throws -> Bool {
         let invoice = try await createInvoice(amountSats: nil, note: "")
+        // Arkade has no amountless invoice: it answers with its Lightning address, which also takes payments offline.
+        if PublicPaykitService.isLnurl(invoice) {
+            guard try await canCommitInvoice() else { return false }
+            PublicPaykitService.setCleanupPending(true)
+            publicPaykitBolt11 = invoice
+            publicPaykitBolt11PaymentHash = ""
+            publicPaykitBolt11ExpiresAt = 0
+            return true
+        }
         let decodedInvoice = try await decode(invoice: invoice)
         guard try await canCommitInvoice() else { return false }
         guard case let .lightning(lightningInvoice) = decodedInvoice else {
@@ -1662,14 +1705,17 @@ class WalletViewModel: ObservableObject {
         await (try? coreService.activity.getPreActivityMetadata(searchKey: paymentId, searchByAddress: searchByAddress))?.tags
     }
 
+    /// Arkade answers an amountless receive with its Lightning address's LNURL, which has no payment hash.
     func receiveInvoicePaymentHash(invoice: String) async -> String? {
-        guard !invoice.isEmpty, case let .lightning(decoded) = try? await decode(invoice: invoice) else { return nil }
+        guard !invoice.isEmpty, !PublicPaykitService.isLnurl(invoice),
+              case let .lightning(decoded) = try? await decode(invoice: invoice) else { return nil }
         return decoded.paymentHash.hex
     }
 
     /// Payment hash from the current bolt11 invoice, if available
     private func paymentHash() async -> String? {
-        guard !bolt11.isEmpty, case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
+        guard !bolt11.isEmpty, !PublicPaykitService.isLnurl(bolt11),
+              case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
         return lightningInvoice.paymentHash.hex
     }
 
@@ -1830,6 +1876,7 @@ class WalletViewModel: ObservableObject {
         }
 
         try await lightningService.wipeStorage(walletIndex: 0)
+        await ArkadeManager.shared.wipe(walletIndex: 0)
 
         probeOutcomes.removeAll()
 
