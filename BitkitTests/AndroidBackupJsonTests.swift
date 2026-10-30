@@ -32,6 +32,13 @@ final class AndroidBackupJsonTests: XCTestCase {
         XCTAssertEqual(backup.orders.first?.state2, .executed)
         XCTAssertEqual(backup.orders.first?.channel?.state, .open)
         XCTAssertEqual(backup.cjitEntries.first?.state, .created)
+
+        let payment = try XCTUnwrap(backup.orders.last?.payment)
+        XCTAssertEqual(backup.orders.last?.state2, .paid)
+        XCTAssertEqual(payment.state, .partiallyPaid)
+        XCTAssertEqual(payment.state2, .refundAvailable)
+        XCTAssertEqual(payment.bolt11Invoice?.state, .paid)
+        XCTAssertEqual(payment.manualRefunds?.first?.state, .approved)
     }
 
     func testIosEnvelopePassesThroughUnchanged() throws {

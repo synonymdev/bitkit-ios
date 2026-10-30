@@ -876,7 +876,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Restores settings dictionary to UserDefaults
     /// Writes a SETTINGS backup from either app into `defaults` under the iOS keys and value forms.
     nonisolated static func writeRestoredSettings(_ dict: [String: Any], to defaults: UserDefaults) {
         if let coinSelectAuto = dict["coinSelectAuto"] as? Bool {
@@ -931,6 +930,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Restores settings dictionary to UserDefaults
     func restoreSettingsDictionary(_ dict: [String: Any]) {
         Self.writeRestoredSettings(dict, to: defaults)
 

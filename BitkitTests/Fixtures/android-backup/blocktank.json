@@ -45,6 +45,73 @@
             "discount": null,
             "updatedAt": "2026-10-30T09:15:00.000Z",
             "createdAt": "2026-10-30T09:12:00.000Z"
+        },
+        {
+            "id": "4f1d2c3b-9a8e-4d7c-b6a5-0e1f2a3b4c5d",
+            "state": "CREATED",
+            "state2": "PAID",
+            "feeSat": 2100,
+            "networkFeeSat": 600,
+            "serviceFeeSat": 1500,
+            "lspBalanceSat": 500000,
+            "clientBalanceSat": 0,
+            "zeroConf": true,
+            "zeroReserve": true,
+            "clientNodeId": null,
+            "channelExpiryWeeks": 6,
+            "channelExpiresAt": "2026-12-11T09:12:00.000Z",
+            "orderExpiresAt": "2026-10-31T09:12:00.000Z",
+            "channel": {
+                "state": "OPEN",
+                "lspNodePubkey": "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc",
+                "clientNodePubkey": "03d1b0b1b5ac0a5d3f3c7e3c6e9e2f9c8a3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f",
+                "announceChannel": false,
+                "fundingTx": {
+                    "id": "a3f1c2d4e5b6a7980f1e2d3c4b5a69788796a5b4c3d2e1f0a9b8c7d6e5f4a3b2",
+                    "vout": 0
+                },
+                "closingTxId": null,
+                "close": null,
+                "shortChannelId": "103x1x0"
+            },
+            "lspNode": {
+                "alias": "LSP",
+                "pubkey": "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc",
+                "connectionStrings": [
+                    "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@127.0.0.1:9735"
+                ],
+                "readonly": null
+            },
+            "lnurl": null,
+            "payment": {
+                "state": "PARTIALLY_PAID",
+                "state2": "REFUND_AVAILABLE",
+                "paidSat": 1000,
+                "bolt11Invoice": {
+                    "request": "lnbcrt21u1pnexample",
+                    "state": "PAID",
+                    "expiresAt": "2026-10-31T09:12:00.000Z",
+                    "updatedAt": "2026-10-30T09:13:00.000Z"
+                },
+                "onchain": null,
+                "isManuallyPaid": true,
+                "manualRefunds": [
+                    {
+                        "amountSat": 1000,
+                        "target": "bcrt1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+                        "state": "APPROVED",
+                        "createdByName": "support",
+                        "votedByName": null,
+                        "reason": null,
+                        "targetType": "address"
+                    }
+                ]
+            },
+            "couponCode": null,
+            "source": "bitkit-ios",
+            "discount": null,
+            "updatedAt": "2026-10-30T09:15:00.000Z",
+            "createdAt": "2026-10-30T09:12:00.000Z"
         }
     ],
     "cjitEntries": [
