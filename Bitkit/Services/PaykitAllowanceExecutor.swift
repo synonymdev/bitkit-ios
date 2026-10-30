@@ -91,6 +91,30 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
     var unannouncedOfferIds: Set<String> = []
     var notifiedRequestIds: Set<String> = []
     var lastTrustedTime: Date?
+    /// The highest ledger revision this wallet has read; automatic payments stop while the ledger is below it.
+    var ledgerRevisionFloor: UInt64?
+    /// Automatic payments admitted by this wallet, counted against each monthly limit next to the ledger's own.
+    var automaticSpends: [AutomaticSpend] = []
+    /// Scoped ids of allowances seen ended or declined, which never pay automatically again.
+    var endedAllowanceIds: Set<String> = []
+
+    struct AutomaticSpend: Codable, Equatable {
+        let attemptId: String
+        let counterparty: String
+        let allowanceId: String
+        let amountSats: UInt64
+        let admittedAt: Date
+    }
+
+    /// Keeps the higher floor, every spend and every ended allowance of both states, so a restore never lowers them.
+    func withChecks(from other: PaykitAllowanceLocalState) -> PaykitAllowanceLocalState {
+        var merged = self
+        merged.ledgerRevisionFloor = [ledgerRevisionFloor, other.ledgerRevisionFloor].compactMap { $0 }.max()
+        let knownAttemptIds = Set(automaticSpends.map(\.attemptId))
+        merged.automaticSpends += other.automaticSpends.filter { !knownAttemptIds.contains($0.attemptId) }
+        merged.endedAllowanceIds.formUnion(other.endedAllowanceIds)
+        return merged
+    }
 
     /// Allowance ids are unique only within one link, so a group also matches its counterparty.
     func group(containing allowanceId: String, counterparty: String) -> Group? {
@@ -142,13 +166,16 @@ struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
         }
     }
 
-    /// Restores each identity's state it can read over the local one; identities the backup lacks keep theirs. A failure
-    /// here never stops the rest of the wallet restore.
+    /// Restores each identity's state it can read over the local one; identities the backup lacks keep theirs. The automatic
+    /// payment checks merge with the local ones, so a restore never weakens them. A failure here never stops the rest of the
+    /// wallet restore.
     func restoreBackup(_ snapshot: PaykitAllowanceStateBackups) {
         var all = (try? loadAll()) ?? [:]
         for (identity, backup) in snapshot.byIdentity {
             do {
-                all[PubkyPublicKeyFormat.normalized(identity) ?? identity] = try backup.restored()
+                let key = PubkyPublicKeyFormat.normalized(identity) ?? identity
+                let restored = try backup.restored()
+                all[key] = all[key].map(restored.withChecks(from:)) ?? restored
             } catch {
                 Logger.warn("Skipped an unreadable allowance state in a backup: \(error)", context: "PaykitAllowance")
             }
@@ -364,6 +391,9 @@ enum PaykitAllowanceManualPaymentError: LocalizedError {
 actor PaykitAllowanceExecutor {
     static let shared = PaykitAllowanceExecutor()
 
+    /// Spends kept for the monthly limit: two of the longest windows.
+    private static let spendRetention: TimeInterval = 62 * 24 * 60 * 60
+
     private static let eventSubject = PassthroughSubject<PaykitAllowanceEvent, Never>()
 
     nonisolated static var eventPublisher: AnyPublisher<PaykitAllowanceEvent, Never> {
@@ -416,6 +446,30 @@ actor PaykitAllowanceExecutor {
         var state = try store.load(identity: identity)
         try change(&state)
         try store.save(state, identity: identity)
+    }
+
+    /// Remembers every ended or declined allowance in `allowances`, so it never pays automatically again.
+    func rememberEndedAllowances(identity: String, allowances: [PaykitAllowance]) {
+        let ended = Set(allowances.filter { [.ended, .rejected].contains($0.lifecycleState) }.map(\.scopedId))
+        guard !ended.isSubset(of: localState(identity: identity).endedAllowanceIds) else { return }
+        updateLocalState(identity: identity) { $0.endedAllowanceIds.formUnion(ended) }
+    }
+
+    /// Like `rememberEndedAllowances`, before the End is sent; a failed save throws, so the End is not sent.
+    func rememberEnding(identity: String, allowances: [PaykitAllowance]) throws {
+        try checkedUpdateLocalState(identity: identity) { $0.endedAllowanceIds.formUnion(allowances.map(\.scopedId)) }
+    }
+
+    /// False when `ledger` is older than one this wallet has read, or missing after one was read; otherwise raises the floor to it.
+    @discardableResult
+    private func acceptsLedger(_ ledger: Paykit.AllowanceAccountingState?, identity: String) -> Bool {
+        let floor = localState(identity: identity).ledgerRevisionFloor
+        guard let ledger else { return floor == nil }
+        if let floor, ledger.revision <= floor {
+            return ledger.revision == floor
+        }
+        updateLocalState(identity: identity) { $0.ledgerRevisionFloor = max($0.ledgerRevisionFloor ?? 0, ledger.revision) }
+        return true
     }
 
     func isHandling(_ requestId: PaykitPaymentRequest.ID) -> Bool {
@@ -471,10 +525,16 @@ actor PaykitAllowanceExecutor {
     func recover(identity: String) async {
         do {
             // No ledger means nothing was ever admitted, so there is nothing to recover and no reason to create one at launch.
-            guard try await sdk.allowanceAccountingState() != nil else { return }
+            guard let current = try await sdk.allowanceAccountingState() else { return }
+            // A ledger behind this wallet stays as it is until it catches up; recovery would write over it.
+            guard acceptsLedger(current, identity: identity) else {
+                Logger.info("Skipped allowance recovery: the ledger is behind this wallet", context: "PaykitAllowance")
+                return
+            }
             // Needs no node, so it runs before reconciliation, which waits for the node's payment history.
             await retryPaymentListReleases(identity: identity)
             let state = try await ensureReconciled(identity: identity)
+            guard acceptsLedger(state, identity: identity) else { return }
             // One journal read for the whole pass: each attempt appears once, so a stage changed below is never read again.
             let journalStages = Dictionary(
                 localState(identity: identity).journal.map { ($0.attemptId, $0.stage) },
@@ -543,8 +603,15 @@ actor PaykitAllowanceExecutor {
         }
         guard !covering.isEmpty else { return false }
         let attempts = await automaticAttempts()
+        let localAttempts = PaykitAllowanceCapacity.attempts(from: localState(identity: identity).automaticSpends)
         guard !covering.contains(where: {
-            PaykitAllowanceCapacity.fits(amountSats: request.allowanceAmountSats, allowance: $0, attempts: attempts, now: now())
+            PaykitAllowanceCapacity.fits(
+                amountSats: request.allowanceAmountSats,
+                allowance: $0,
+                attempts: attempts,
+                now: now(),
+                localAttempts: localAttempts
+            )
         }) else { return false }
         notifyLimitReached(request, identity: identity)
         return true
@@ -651,6 +718,12 @@ actor PaykitAllowanceExecutor {
         var settledEntry: PaykitAllowanceLocalState.JournalEntry?
         do {
             var state = try store.load(identity: identity)
+            var isChanged = false
+            // A failed attempt paid nothing, so it no longer counts against its limit.
+            if outcome == .failed, state.automaticSpends.contains(where: { $0.attemptId == attemptId }) {
+                state.automaticSpends.removeAll { $0.attemptId == attemptId }
+                isChanged = true
+            }
             if let index = state.journal.firstIndex(where: { $0.attemptId == attemptId }),
                !onlyIfOpen || !state.journal[index].stage.isTerminal
             {
@@ -663,6 +736,9 @@ actor PaykitAllowanceExecutor {
                 case .failed: state.journal[index].stage = .failed
                 case .unknown: state.journal[index].stage = .unknown
                 }
+                isChanged = true
+            }
+            if isChanged {
                 try store.save(state, identity: identity)
             }
         } catch {
@@ -739,7 +815,15 @@ actor PaykitAllowanceExecutor {
         defer { inFlightRequestIds.remove(request.id) }
 
         do {
-            try await ensureReconciled(identity: identity)
+            var isLedgerCurrent = try await acceptsLedger(sdk.allowanceAccountingState(), identity: identity)
+            if isLedgerCurrent {
+                let reconciled = try await ensureReconciled(identity: identity)
+                isLedgerCurrent = acceptsLedger(reconciled, identity: identity)
+            }
+            guard isLedgerCurrent else {
+                Logger.info("Kept an incoming request manual: the ledger is behind this wallet", context: "PaykitAllowance")
+                return .manual
+            }
             // An unstructured task survives a cancelled caller: stopping after the acceptance would leave the request unpaid.
             let payment = Task { try await admitAndPay(request, allowances: allowances, identity: identity) }
             return try await payment.value
@@ -760,7 +844,16 @@ actor PaykitAllowanceExecutor {
         )
         let selectionTime = trustedTime(identity: identity)
         let candidates = try await sdk.evaluateAllowanceCandidates(scope: scope, trustedTime: selectionTime)
-        guard let candidate = candidates.first(where: { $0.blocked == nil }),
+        let local = localState(identity: identity)
+        let unblocked = candidates.filter { $0.blocked == nil }
+        let unended = unblocked.filter {
+            !local.endedAllowanceIds.contains(PaykitAllowance.scopedId(counterparty: request.counterparty, allowanceId: $0.allowanceId))
+        }
+        if unended.isEmpty, !unblocked.isEmpty {
+            Logger.info("Kept an incoming request manual: its allowance has ended", context: "PaykitAllowance")
+            return .manual
+        }
+        guard let candidate = unended.first,
               let allowance = allowances.first(where: {
                   $0.allowanceId == candidate.allowanceId && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
               })
@@ -777,8 +870,18 @@ actor PaykitAllowanceExecutor {
             return .manual
         }
 
-        let attempts = await automaticAttempts()
-        guard PaykitAllowanceCapacity.fits(amountSats: request.allowanceAmountSats, allowance: allowance, attempts: attempts, now: now()) else {
+        let ledger = try await sdk.allowanceAccountingState()
+        guard acceptsLedger(ledger, identity: identity) else {
+            Logger.info("Kept an incoming request manual: the ledger is behind this wallet", context: "PaykitAllowance")
+            return .manual
+        }
+        guard PaykitAllowanceCapacity.fits(
+            amountSats: request.allowanceAmountSats,
+            allowance: allowance,
+            attempts: ledger.map { PaykitAllowanceCapacity.attempts(from: $0.history) } ?? [],
+            now: now(),
+            localAttempts: PaykitAllowanceCapacity.attempts(from: local.automaticSpends)
+        ) else {
             Logger.info("Allowance monthly limit reached; the request stays on the manual flow", context: "PaykitAllowance")
             notifyLimitReached(request, identity: identity)
             return .manual
@@ -847,6 +950,22 @@ actor PaykitAllowanceExecutor {
             return .manual
         }
 
+        do {
+            try rememberSpend(
+                PaykitAllowanceLocalState.AutomaticSpend(
+                    attemptId: prepared.attemptId,
+                    counterparty: request.counterparty,
+                    allowanceId: prepared.allowanceId ?? candidate.allowanceId,
+                    amountSats: request.allowanceAmountSats,
+                    admittedAt: PaykitAllowanceTime.parse(prepared.admittedAt) ?? now()
+                ),
+                identity: identity
+            )
+        } catch {
+            try? await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
+            throw error
+        }
+
         journal(
             PaykitAllowanceLocalState.JournalEntry(
                 attemptId: prepared.attemptId,
@@ -863,6 +982,14 @@ actor PaykitAllowanceExecutor {
             ),
             identity: identity
         )
+
+        // An End saved while this attempt was admitted stops it before the handoff.
+        let scopedId = PaykitAllowance.scopedId(counterparty: request.counterparty, allowanceId: prepared.allowanceId ?? candidate.allowanceId)
+        if localState(identity: identity).endedAllowanceIds.contains(scopedId) {
+            Logger.info("Kept an incoming request manual: its allowance has ended", context: "PaykitAllowance")
+            try await record(attemptId: prepared.attemptId, outcome: .failed, identity: identity)
+            return .manual
+        }
 
         // Begin fetches nothing, so pull the link first: an End or a cancellation must be seen before the handoff.
         _ = try? await sdk.receivePrivateMessages(counterparty: request.counterparty)
@@ -1111,6 +1238,15 @@ actor PaykitAllowanceExecutor {
     }
 
     private struct JournalEntryMissing: Error {}
+
+    /// Saved before the handoff: a failed save throws, so no automatic payment leaves uncounted.
+    private func rememberSpend(_ spend: PaykitAllowanceLocalState.AutomaticSpend, identity: String) throws {
+        let retainedSince = now().addingTimeInterval(-Self.spendRetention)
+        try checkedUpdateLocalState(identity: identity) { state in
+            state.automaticSpends.removeAll { $0.admittedAt < retainedSince || $0.attemptId == spend.attemptId }
+            state.automaticSpends.append(spend)
+        }
+    }
 
     private func journal(_ entry: PaykitAllowanceLocalState.JournalEntry, identity: String) {
         updateLocalState(identity: identity) { state in

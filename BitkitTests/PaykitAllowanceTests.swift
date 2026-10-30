@@ -42,7 +42,16 @@ final class PaykitAllowanceTests: XCTestCase {
             presentedProposalIds: ["presented"],
             unannouncedOfferIds: ["unannounced"],
             notifiedRequestIds: ["notified"],
-            lastTrustedTime: Fixtures.now
+            lastTrustedTime: Fixtures.now,
+            ledgerRevisionFloor: 12,
+            automaticSpends: [.init(
+                attemptId: "attempt-1",
+                counterparty: Fixtures.counterpartyKey,
+                allowanceId: Fixtures.walletAllowanceId,
+                amountSats: 1000,
+                admittedAt: Fixtures.now
+            )],
+            endedAllowanceIds: ["\(Fixtures.counterpartyKey)/ended"]
         )
 
         let data = try JSONEncoder().encode(PaykitAllowanceStateBackup(state))
@@ -59,6 +68,11 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertEqual(json["lastTrustedTime"] as? String, "2026-09-24T12:00:00.000Z")
         XCTAssertTrue(entry["onchainAddress"] is NSNull, "Android requires every key, so an absent value is written as null")
         XCTAssertTrue(entry["transactionId"] is NSNull)
+        XCTAssertEqual(json["ledgerRevisionFloor"] as? Int, 12)
+        let spend = try XCTUnwrap((json["automaticSpends"] as? [[String: Any]])?.first)
+        XCTAssertEqual(spend["admittedAt"] as? String, "2026-09-24T12:00:00.000Z")
+        XCTAssertEqual(spend["amountSats"] as? Int, 1000)
+        XCTAssertEqual(json["endedAllowanceIds"] as? [String], ["\(Fixtures.counterpartyKey)/ended"])
 
         let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: data).restored()
         XCTAssertEqual(restored, state)
@@ -88,6 +102,27 @@ final class PaykitAllowanceTests: XCTestCase {
             XCTAssertTrue(entry[key] is NSNull, "\(key) is written as null for Android")
         }
         XCTAssertTrue(json["lastTrustedTime"] is NSNull)
+    }
+
+    func testRestoreNeverLowersTheAutomaticPaymentChecksAlreadyStored() {
+        let spend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "attempt-1", counterparty: "contact", allowanceId: "allowance-1", amountSats: 1000, admittedAt: Fixtures.now
+        )
+        let restoredSpend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "attempt-2", counterparty: "contact", allowanceId: "allowance-1", amountSats: 1000, admittedAt: Fixtures.now
+        )
+        let stored = PaykitAllowanceLocalState(ledgerRevisionFloor: 9, automaticSpends: [spend], endedAllowanceIds: ["contact/allowance-1"])
+        let restored = PaykitAllowanceLocalState(
+            ledgerRevisionFloor: 4,
+            automaticSpends: [restoredSpend, spend],
+            endedAllowanceIds: ["contact/allowance-2"]
+        )
+
+        let merged = restored.withChecks(from: stored)
+
+        XCTAssertEqual(merged.ledgerRevisionFloor, 9)
+        XCTAssertEqual(merged.automaticSpends, [restoredSpend, spend])
+        XCTAssertEqual(merged.endedAllowanceIds, ["contact/allowance-1", "contact/allowance-2"])
     }
 
     func testAnUnreadableAllowanceStateLeavesTheRestOfTheBackupReadable() throws {

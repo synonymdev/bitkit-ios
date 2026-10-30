@@ -302,7 +302,8 @@ enum PaykitAllowanceCapacity {
             .reduce(0) { $0 + $1.amountSats }
     }
 
-    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date) -> Bool {
+    /// Spending counts the higher of the ledger's `attempts` and this wallet's own `localAttempts`.
+    static func fits(amountSats: UInt64, allowance: PaykitAllowance, attempts: [Attempt], now: Date, localAttempts: [Attempt] = []) -> Bool {
         if let perPaymentMaxSats = allowance.perPaymentMaxSats, amountSats > perPaymentMaxSats {
             return false
         }
@@ -310,8 +311,16 @@ enum PaykitAllowanceCapacity {
         guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
             return false
         }
-        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: attempts, anchor: anchor, now: now)
+        let used = [attempts, localAttempts].map {
+            usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: $0, anchor: anchor, now: now)
+        }.max() ?? 0
         return used + amountSats <= monthlyLimitSats
+    }
+
+    static func attempts(from spends: [PaykitAllowanceLocalState.AutomaticSpend]) -> [Attempt] {
+        spends.map {
+            Attempt(counterparty: $0.counterparty, allowanceId: $0.allowanceId, amountSats: $0.amountSats, admittedAt: $0.admittedAt, isLive: true)
+        }
     }
 
     static func attempts(from history: Paykit.AllowanceAccountingHistory) -> [Attempt] {
