@@ -360,6 +360,7 @@ struct PaymentRequestsFooterButton: View {
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var sheets: SheetViewModel
+    @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
 
     var body: some View {
         CustomButton(title: t("wallet__payment_request_request_payment")) {
@@ -375,6 +376,8 @@ struct PaymentRequestsFooterButton: View {
                     .receive,
                     data: ReceiveConfig(view: .paymentRequestRecipient(ReceiveSheet.defaultPaymentRequestDraft))
                 )
+                let savedPublicKeys = contactsManager.contacts.map(\.publicKey)
+                Task { await paymentRequests.refreshEligibleTargets(savedPublicKeys: savedPublicKeys) }
             }
         }
         .accessibilityIdentifier("PaymentRequestRequestPayment")
