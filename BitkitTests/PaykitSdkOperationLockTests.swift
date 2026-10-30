@@ -68,6 +68,237 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         }
     }
 
+    func testInboxObservationPrecedesQueuedPublicationAndTracksOnlyReceive() async throws {
+        for changed in [false, true] {
+            for observeFails in [false, true] {
+                let sdk = PublicReadSdk(noPointer: .init())
+                let service = PaykitSdkService(sdkFactory: { sdk })
+                let recorder = Recorder()
+                let gate = AsyncGate()
+                defer { gate.open() }
+                let started = expectation(description: "Receive started")
+                let received = expectation(description: "Receive reported once")
+                received.assertForOverFulfill = true
+                let identity = String(repeating: "y", count: 52)
+                let synchronizationDate = Date(timeIntervalSince1970: 1_800_000_000)
+                sdk.inboxReceive = {
+                    await recorder.record("receive")
+                    started.fulfill()
+                    await gate.wait()
+                    if changed {
+                        sdk.backupRevision = "changed"
+                    }
+                    return []
+                }
+                sdk.inboxObservation = {
+                    await recorder.record("observe")
+                    let version = await service.backupStateVersion
+                    XCTAssertEqual(version, changed ? 1 : 0)
+                    if observeFails {
+                        throw PaymentMutationReached.reached
+                    }
+                    return PaykitStateObservation(
+                        publicKey: identity, keyGeneration: 1, observedAt: "2027-01-15T08:00:00Z",
+                        contacts: [], linkedPeers: [], paymentRequests: [], receipts: []
+                    )
+                }
+                sdk.publication = { _ in await recorder.record("publish") }
+                let refresh = Task {
+                    try await service.receiveAndObserveState(expectedIdentity: identity) { reports in
+                        XCTAssertTrue(reports.isEmpty)
+                        received.fulfill()
+                        return synchronizationDate
+                    }
+                }
+                await fulfillment(of: [started], timeout: 2)
+                let publication = Task { try await service.syncPaykitApp(privatePaymentsEnabled: false, priority: .background) }
+                try await Task.sleep(for: .milliseconds(50))
+                let heldEvents = await recorder.events
+                XCTAssertEqual(heldEvents, ["receive"])
+                gate.open()
+                do {
+                    let result = try await refresh.value
+                    XCTAssertFalse(observeFails)
+                    XCTAssertEqual(result.observation.publicKey, identity)
+                    XCTAssertEqual(result.synchronizationDate, synchronizationDate)
+                } catch PaymentMutationReached.reached {
+                    XCTAssertTrue(observeFails)
+                }
+                try await publication.value
+                await fulfillment(of: [received], timeout: 2)
+                let events = await recorder.events
+                let version = await service.backupStateVersion
+                XCTAssertEqual(events, ["receive", "observe", "publish"])
+                XCTAssertEqual(version, changed ? 1 : 0)
+            }
+        }
+    }
+
+    @MainActor
+    func testInboxObservationYieldsAfterReceiveToPaymentReviewCancellationAndWipe() async throws {
+        for boundary in ["payment", "review", "cancellation", "wipe"] {
+            let sdk = PublicReadSdk(noPointer: .init())
+            let service = PaykitSdkService(sdkFactory: { sdk })
+            let recorder = Recorder()
+            let gate = AsyncGate()
+            defer { gate.open() }
+            let started = expectation(description: "Receive started")
+            let received = expectation(description: "Receive reported once")
+            received.assertForOverFulfill = true
+            sdk.inboxReceive = {
+                await recorder.record("receive")
+                started.fulfill()
+                await gate.wait()
+                sdk.backupRevision = "changed"
+                return []
+            }
+            sdk.inboxObservation = {
+                XCTFail("Observation must yield at the second boundary")
+                throw PaymentMutationReached.reached
+            }
+            sdk.lockedRead = {
+                XCTAssertEqual(sdk.backupRevision, "changed")
+                await recorder.record("authority")
+            }
+            let refresh = Task {
+                try await service.receiveAndObserveState(expectedIdentity: String(repeating: "y", count: 52)) { _ in
+                    received.fulfill()
+                    return Date()
+                }
+            }
+            await fulfillment(of: [started], timeout: 2)
+            let payment = boundary == "payment" ? PaykitPaymentActivity.shared.begin() : nil
+            let review = boundary == "review" ? PaykitPaymentActivity.shared.beginReview() : nil
+            defer {
+                if let payment {
+                    PaykitPaymentActivity.shared.end(payment)
+                }
+                if let review {
+                    PaykitPaymentActivity.shared.endReview(review)
+                }
+            }
+            if boundary == "cancellation" {
+                refresh.cancel()
+            }
+            let wipe = boundary == "wipe" ? Task { try await service.withWalletWipe {} } : nil
+            if wipe != nil {
+                let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                while await (try? service.backupIdentity()) != nil, ContinuousClock.now < deadline {
+                    await Task.yield()
+                }
+                let identity = try? await service.backupIdentity()
+                XCTAssertNil(identity, "Wipe must close admission before receive resumes")
+            }
+            let authority = wipe == nil ? Task { try await service.contactRecords() } : nil
+            if boundary == "cancellation" {
+                do {
+                    _ = try await authority?.value
+                    XCTFail("New ordinary work entered before the cancelled receive finished")
+                } catch ProfileRemovalStore.StoreError.changed {}
+                let heldEvents = await recorder.events
+                XCTAssertEqual(heldEvents, ["receive"])
+            }
+            gate.open()
+            do {
+                _ = try await refresh.value
+                XCTFail("Expected the refresh to stop after receive")
+            } catch is CancellationError {
+                XCTAssertEqual(boundary, "cancellation")
+            } catch PaykitPaymentRequestError.operationInProgress {
+                XCTAssertTrue(["payment", "review"].contains(boundary))
+            } catch let PaykitError.Storage(code, _) {
+                XCTAssertEqual(boundary, "wipe")
+                XCTAssertEqual(code, "wallet_wipe_in_progress")
+            }
+            try await wipe?.value
+            await fulfillment(of: [received], timeout: 2)
+            if boundary == "cancellation" {
+                _ = try await service.contactRecords()
+            } else {
+                _ = try await authority?.value
+            }
+            let events = await recorder.events
+            let version = await service.backupStateVersion
+            XCTAssertEqual(events, boundary == "wipe" ? ["receive"] : ["receive", "authority"])
+            XCTAssertEqual(version, 1)
+        }
+    }
+
+    func testInboxReceiveFailureDoesNotObserveOrReplay() async throws {
+        let sdk = PublicReadSdk(noPointer: .init())
+        let recorder = Recorder()
+        sdk.inboxReceive = {
+            await recorder.record("receive")
+            throw PaymentMutationReached.reached
+        }
+        sdk.inboxObservation = {
+            XCTFail("A failed receive must not be observed")
+            throw PaymentMutationReached.reached
+        }
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        do {
+            _ = try await service.receiveAndObserveState(expectedIdentity: String(repeating: "y", count: 52)) { _ in
+                XCTFail("A failed receive has no report")
+                return Date()
+            }
+            XCTFail("Expected receive failure")
+        } catch PaymentMutationReached.reached {}
+        let events = await recorder.events
+        let version = await service.backupStateVersion
+        XCTAssertEqual(events, ["receive"])
+        XCTAssertEqual(version, 1)
+    }
+
+    func testInboxRefreshRejectsQueuedRuntimeReplacementAndAnotherObservedIdentity() async throws {
+        let sdk = PublicReadSdk(noPointer: .init())
+        let service = PaykitSdkService(sdkFactory: { sdk })
+        let gate = AsyncGate()
+        defer { gate.open() }
+        let started = expectation(description: "Holder started")
+        sdk.lockedRead = {
+            started.fulfill()
+            await gate.wait()
+        }
+        sdk.inboxReceive = {
+            XCTFail("A replaced queued runtime must not receive")
+            return []
+        }
+        let holder = Task { try await service.contactRecords() }
+        await fulfillment(of: [started], timeout: 2)
+        let reset = Task { await service.clearState() }
+        try await Task.sleep(for: .milliseconds(50))
+        let identity = String(repeating: "y", count: 52)
+        let refresh = Task {
+            try await service.receiveAndObserveState(expectedIdentity: identity) { _ in Date() }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        gate.open()
+        _ = try await holder.value
+        await reset.value
+        do {
+            _ = try await refresh.value
+            XCTFail("Expected old-runtime refresh rejection")
+        } catch PubkyServiceError.identityChanged {}
+
+        sdk.inboxReceive = { [] }
+        sdk.inboxObservation = {
+            PaykitStateObservation(
+                publicKey: String(repeating: "b", count: 52), keyGeneration: 1, observedAt: "2027-01-15T08:00:00Z",
+                contacts: [], linkedPeers: [], paymentRequests: [], receipts: []
+            )
+        }
+        let received = expectation(description: "Current receive retained despite mismatched observation")
+        received.assertForOverFulfill = true
+        do {
+            _ = try await service.receiveAndObserveState(expectedIdentity: identity) { _ in
+                received.fulfill()
+                return Date()
+            }
+            XCTFail("Another identity must not reach the projection")
+        } catch PubkyServiceError.identityChanged {}
+        await fulfillment(of: [received], timeout: 2)
+    }
+
     func testInteractiveWorkOvertakesOnlyQueuedPublicationWithBoundedFairness() async throws {
         try await assertQueuedOrder(
             priorities: [.background, .background, .interactive, .interactive, .interactive, .interactive],
@@ -1065,6 +1296,9 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     var lockedRead: () async -> Void = {}
     var publicRead: () async -> Void = {}
     var intake: () async -> Void = {}
+    var inboxReceive: (() async throws -> [PrivateStreamCounterpartyIntakeReport])?
+    var inboxObservation: (() async throws -> PaykitStateObservation)?
+    var backupRevision = "revision"
     var publication: (PaykitAppCapabilities) async -> Void = { _ in }
     var paymentMutation: (String) async -> Void = { _ in }
     var backupExport: () async -> Void = {}
@@ -1146,7 +1380,7 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
 
     override func backupStateRevision() async throws -> String {
         await backupRevisionRead()
-        return "revision"
+        return backupRevision
     }
 
     override func observedBackupStateRevision() throws -> ObservedBackupStateRevision? {
@@ -1159,6 +1393,9 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func observeState() async throws -> PaykitStateObservation {
+        if let inboxObservation {
+            return try await inboxObservation()
+        }
         await intake()
         return PaykitStateObservation(
             publicKey: "identity", keyGeneration: 0, observedAt: "2026-10-19T00:00:00Z",
@@ -1167,6 +1404,9 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func receivePrivateMessagesFromLinkedPeers() async throws -> [PrivateStreamCounterpartyIntakeReport] {
+        if let inboxReceive {
+            return try await inboxReceive()
+        }
         await intake()
         return []
     }

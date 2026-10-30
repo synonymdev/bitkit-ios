@@ -151,10 +151,12 @@ final class PrivatePaymentReceiptTests: XCTestCase {
         ]
         try defaults.set(JSONSerialization.data(withJSONObject: original), forKey: PrivatePaykitAddressReservationStore.defaultsKey)
         let addresses = try nativeAddresses(directory: database.appendingPathComponent("node"))
-        let reservations = PrivatePaykitAddressReservationStore(defaults: defaults, addressLookup: { type, index in
+        var addressOperations = PrivatePaykitAddressReservationStore.AddressOperations.live
+        addressOperations.resolve = { type, index in
             XCTAssertEqual(type, .nativeSegwit)
             return try XCTUnwrap(addresses[index])
-        })
+        }
+        let reservations = PrivatePaykitAddressReservationStore(defaults: defaults, operations: addressOperations)
         let activity = Bitkit.ActivityService(coreService: .shared, channelLookup: { _, _, _ in nil })
         activity.setPrivatePaykitContactResolvers(invoice: nil, onchainAddresses: { address, outputs in
             let revision = await reservations.attributionRevision
@@ -339,13 +341,15 @@ final class PrivatePaymentReceiptTests: XCTestCase {
         try defaults.set(JSONSerialization.data(withJSONObject: original), forKey: PrivatePaykitAddressReservationStore.defaultsKey)
         let captured = expectation(description: "Assignment snapshot captured before derivation")
         let gate = ReceiptGate()
-        let reservations = PrivatePaykitAddressReservationStore(defaults: defaults, addressLookup: { _, index in
+        var addressOperations = PrivatePaykitAddressReservationStore.AddressOperations.live
+        addressOperations.resolve = { _, index in
             if await gate.shouldWait() {
                 captured.fulfill()
                 await gate.wait()
             }
             return try XCTUnwrap(addresses[index])
-        })
+        }
+        let reservations = PrivatePaykitAddressReservationStore(defaults: defaults, operations: addressOperations)
         let admission = ProfileOperationAdmission.shared
         let activity = Bitkit.ActivityService(coreService: .shared, channelLookup: { _, _, _ in nil })
         activity.setPrivatePaykitContactResolvers(invoice: nil, onchainAddresses: { address, outputs in

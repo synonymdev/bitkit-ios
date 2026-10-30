@@ -666,13 +666,21 @@ final class PaykitSdkClientConfigTests: XCTestCase {
         try Keychain.delete(key: .paykitKeyGeneration(publicKey: publicKey))
         let republishStarted = expectation(description: "Republish started")
         let republishFinished = expectation(description: "Republish finished")
+        let republishFinishedBeforeGateOpened = expectation(description: "Republish finished before gate opened")
+        republishFinishedBeforeGateOpened.isInverted = true
         let activationReturned = expectation(description: "Activation returned")
         let gate = AsyncStream<Void>.makeStream()
+        defer { gate.continuation.finish() }
         let bootstrap = CacheActivationBootstrap(noPointer: .init())
         bootstrap.republishOperation = {
             republishStarted.fulfill()
+            var gateOpened = false
             for await _ in gate.stream {
+                gateOpened = true
                 break
+            }
+            if !gateOpened {
+                republishFinishedBeforeGateOpened.fulfill()
             }
             republishFinished.fulfill()
             return true
@@ -692,13 +700,24 @@ final class PaykitSdkClientConfigTests: XCTestCase {
             ))
             activationReturned.fulfill()
         }
-        // Shorter than the republish timeout, so an activation that awaited the publication would miss it.
-        await fulfillment(of: [activationReturned, republishStarted], timeout: 2)
-        XCTAssertEqual(bootstrap.republishedKeys, [result.publicKey])
+        defer { activation.cancel() }
+        try await withTaskCancellationHandler {
+            let setup = await XCTWaiter.fulfillment(of: [republishStarted], timeout: 10)
+            XCTAssertEqual(setup, .completed, "Identity activation must reach the gated publication")
+            if setup == .completed {
+                // Measure the return after credential preparation, below the unchanged five-second publication cap.
+                await fulfillment(of: [activationReturned, republishFinishedBeforeGateOpened], timeout: 2)
+                XCTAssertEqual(bootstrap.republishedKeys, [result.publicKey])
+            }
 
-        gate.continuation.yield()
-        await fulfillment(of: [republishFinished], timeout: 1)
-        try await activation.value
+            gate.continuation.yield()
+            gate.continuation.finish()
+            await fulfillment(of: [republishFinished], timeout: 1)
+            try await activation.value
+        } onCancel: {
+            gate.continuation.finish()
+            activation.cancel()
+        }
     }
 
     func testSessionImportDoesNotCreateRuntimeBeforeBootstrapSucceeds() async throws {

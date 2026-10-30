@@ -240,12 +240,29 @@ final class PublicPaykitServiceTests: XCTestCase {
     func testBuildAvailabilityMarksPublicCleanupPendingForPublishedPublicState() throws {
         try withIsolatedDefaults { defaults in
             defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+            defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
 
             PaykitFeatureFlags.enforceBuildAvailability(defaults: defaults, isUIEnabled: false)
 
             XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
             XCTAssertFalse(defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey))
             XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
+    func testPrivateConfirmationDoesNotImplyPublishedPublicState() throws {
+        for sharesPrivateEndpoints in [false, true] {
+            try withIsolatedDefaults { defaults in
+                defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+                defaults.set(sharesPrivateEndpoints, forKey: PrivatePaykitService.publishingEnabledKey)
+
+                XCTAssertFalse(PaykitFeatureFlags.hasPublicPublishedState(defaults: defaults))
+                PaykitFeatureFlags.enforceBuildAvailability(defaults: defaults, isUIEnabled: false)
+
+                XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
+                XCTAssertEqual(defaults.bool(forKey: PrivatePaykitService.cleanupPendingKey), sharesPrivateEndpoints)
+                XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+            }
         }
     }
 
@@ -264,6 +281,64 @@ final class PublicPaykitServiceTests: XCTestCase {
 
                 XCTAssertEqual(PublicPaykitService.pendingReconciliationMode(defaults: defaults), expected.mode)
             }
+        }
+    }
+
+    @MainActor
+    func testRegistryReconciliationWithPublicConsentRetainsNewerInvoiceRefresh() async throws {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
+        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+        defaults.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
+        defaults.set(true, forKey: PublicPaykitService.lightningPaymentOptionEnabledKey)
+        defaults.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        let wallet = EndpointPublicationWallet()
+        for invalidatesInvoice in [false, true] {
+            PublicPaykitService.setCleanupPending(true)
+            var appSyncs = 0
+            var published = [[PublicPaykitService.Endpoint]]()
+            try await PublicPaykitService.retryPendingEndpointReconciliation(
+                wallet: wallet, isSessionCurrent: { true }, syncApp: { appSyncs += 1 },
+                applyEndpoints: { endpoints in
+                    published.append(endpoints)
+                    if invalidatesInvoice {
+                        let revision = wallet.publicPaykitInvoiceRevision
+                        XCTAssertFalse(wallet.publicPaykitBolt11PaymentHash.isEmpty)
+                        wallet.rotatePublicPaykitInvoiceIfNeeded(paymentHash: wallet.publicPaykitBolt11PaymentHash)
+                        XCTAssertNotEqual(wallet.publicPaykitInvoiceRevision, revision)
+                    }
+                }
+            )
+            XCTAssertEqual(appSyncs, 1)
+            XCTAssertEqual(published.first?.first?.value, EndpointPublicationWallet.invoice)
+            XCTAssertEqual(PublicPaykitService.isCleanupPending, invalidatesInvoice)
+            XCTAssertTrue(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        }
+    }
+
+    @MainActor
+    func testRegistryReconciliationDoesNotAcknowledgeAnEndedSessionOrChangedConsent() async throws {
+        let defaults = UserDefaults.standard
+        let wallet = WalletViewModel()
+        for changesConsent in [false, true] {
+            defaults.set(false, forKey: PublicPaykitService.publishingEnabledKey)
+            PublicPaykitService.setCleanupPending(true)
+            var isCurrent = true
+            var appSyncs = 0
+            try await PublicPaykitService.retryPendingEndpointReconciliation(
+                wallet: wallet, isSessionCurrent: { isCurrent },
+                syncApp: {
+                    appSyncs += 1
+                    if changesConsent {
+                        defaults.set(true, forKey: PublicPaykitService.publishingEnabledKey)
+                    } else {
+                        isCurrent = false
+                    }
+                },
+                applyEndpoints: { XCTAssertTrue($0.isEmpty) }
+            )
+            XCTAssertEqual(appSyncs, 1)
+            XCTAssertTrue(PublicPaykitService.isCleanupPending)
         }
     }
 
@@ -321,8 +396,38 @@ final class PublicPaykitServiceTests: XCTestCase {
             do {
                 try await publication.value
                 XCTFail("Expected the ended session to stop the next write")
-            } catch PubkyServiceError.sessionNotActive {}
+            } catch PubkyServiceError.sessionNotActive {
+                XCTAssertFalse(cancelTask)
+            } catch is CancellationError {
+                XCTAssertTrue(cancelTask)
+            }
             XCTAssertEqual(calls, ["app", "app-finished"])
+        }
+    }
+
+    @MainActor
+    func testWithdrawalStopsBeforeRegistryWriteWhenTheOriginalSessionEnds() async throws {
+        for withdrawalFails in [false, true] {
+            var isCurrent = true
+            var withdrawals = 0
+            do {
+                try await PublicPaykitService.syncPublishedEndpoints(
+                    publish: false,
+                    isSessionCurrent: { isCurrent },
+                    buildEndpoints: { XCTFail("Withdrawal does not prepare endpoints"); return [] },
+                    syncApp: { XCTFail("The old change must not update the next session's registry") },
+                    applyEndpoints: { endpoints in
+                        XCTAssertTrue(endpoints.isEmpty)
+                        withdrawals += 1
+                        isCurrent = false
+                        if withdrawalFails {
+                            throw PublicPaykitError.publicationFailed
+                        }
+                    }
+                )
+                XCTFail("Expected the original session check to refuse the second write")
+            } catch PubkyServiceError.sessionNotActive {}
+            XCTAssertEqual(withdrawals, 1)
         }
     }
 

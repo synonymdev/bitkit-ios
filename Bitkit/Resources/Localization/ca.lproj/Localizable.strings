@@ -1080,8 +1080,10 @@
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar contactes";
 "profile__pay_contacts_title" = "Deixa que els teus contactes\n<accent>et paguin</accent>";
-"profile__pay_contacts_description" = "Utilitza Bitkit amb els teus contactes per enviar pagaments directament, en qualsevol moment i a qualsevol lloc.";
-"profile__pay_contacts_toggle" = "Pagaments amb contactes";
+"profile__pay_contacts_description" = "Comparteix les dades de pagament en privat amb els teus contactes. Els pagaments públics continuen desactivats fins que els activis a Configuració.";
+"profile__private_payments_toggle" = "Pagaments privats a contactes";
+"profile__public_payments_toggle" = "Pagaments públics";
+"profile__payments_pending" = "Hi ha canvis pendents. Les dades de pagament compartides anteriorment poden continuar disponibles.";
 "profile__add_link_title" = "Afegir enllaç";
 "profile__add_link_label" = "ETIQUETA";
 "profile__add_link_label_placeholder" = "Per exemple 'Website'";

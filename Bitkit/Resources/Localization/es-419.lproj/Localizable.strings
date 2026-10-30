@@ -1188,8 +1188,10 @@
 "profile__edit" = "Editar";
 "profile__pay_contacts_nav_title" = "Pagar a contactos";
 "profile__pay_contacts_title" = "Deje que sus contactos\n<accent>le paguen</accent>";
-"profile__pay_contacts_description" = "Use Bitkit con sus contactos para enviar pagos directamente, en cualquier momento y lugar.";
-"profile__pay_contacts_toggle" = "Activar pagos con contactos";
+"profile__pay_contacts_description" = "Comparte datos de pago de forma privada con tus contactos. Los pagos públicos permanecen desactivados hasta que los actives en Configuración.";
+"profile__private_payments_toggle" = "Pagos privados con contactos";
+"profile__public_payments_toggle" = "Pagos públicos";
+"profile__payments_pending" = "Hay cambios pendientes. Los datos de pago compartidos anteriormente pueden seguir disponibles.";
 "profile__add_link_title" = "Añadir enlace";
 "profile__add_link_label" = "ETIQUETA";
 "profile__add_link_label_placeholder" = "Por ejemplo \"Sitio web\"";

@@ -106,6 +106,12 @@ struct WalletBackupRestoreGate {
 class BackupService {
     static let shared = BackupService()
 
+    private enum MetadataBackupError: Error {
+        case deferred
+        case walletBackupFailed
+        case walletTemporarilyUnavailable
+    }
+
     enum BackupOutcome {
         case completed
         case snapshotChanged
@@ -144,7 +150,7 @@ class BackupService {
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
     private let waitForForegroundRecoveryTimeout: () async throws -> Void
-    private let backupStatusesKey = "backupStatuses"
+    private static let backupStatusesKey = "backupStatuses"
     private var backupVersions: [BackupCategory: UInt64] = [:]
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
@@ -362,25 +368,33 @@ class BackupService {
         await triggerBackup(category: category, isScheduled: false)
     }
 
-    private func triggerBackup(category: BackupCategory, isScheduled: Bool) async -> BackupOutcome {
+    private func triggerBackup(category: BackupCategory, isScheduled: Bool, waitForExisting: Bool = false) async -> BackupOutcome {
         while !Task.isCancelled {
-            let admission = try? await ServiceQueue.background(.backup) { [self] () -> (Task<BackupOutcome, Never>?, Bool) in
-                guard !isStoppingBackups else { return (nil, true) }
-                guard runningBackupTasks[category] == nil else { return (nil, false) }
+            let admission = try? await ServiceQueue.background(.backup) { [self] () -> (
+                task: Task<BackupOutcome, Never>?,
+                owned: Bool,
+                stopping: Bool
+            ) in
+                guard !isStoppingBackups else { return (nil, false, true) }
+                if let existing = runningBackupTasks[category] {
+                    return (waitForExisting ? existing : nil, false, false)
+                }
                 let task = Task { await self.runBackup(category: category, isScheduled: isScheduled) }
                 runningBackupTasks[category] = task
-                return (task, false)
+                return (task, true, false)
             }
-            guard let (backupTask, isStopping) = admission else { return .failed }
-            if isStopping, !isScheduled {
+            guard let admission else { return .failed }
+            if admission.stopping, !isScheduled {
                 await waitForObservationTransition()
                 continue
             }
-            guard let backupTask else { return .busy }
+            guard let backupTask = admission.task else { return .busy }
             return await withTaskCancellationHandler {
                 await backupTask.value
             } onCancel: {
-                backupTask.cancel()
+                if admission.owned {
+                    backupTask.cancel()
+                }
             }
         }
         return .failed
@@ -419,7 +433,13 @@ class BackupService {
                     try await persistWalletBackup()
                 }
             } else {
+                if category == .metadata {
+                    try await prepareMetadataBackup()
+                }
                 let data = try await getBackupDataBytes(category: category)
+                if category == .metadata {
+                    try requireMetadataBackupReady()
+                }
                 try Task.checkCancellation()
                 if isScheduled, shouldSkipBackup(category: category) {
                     throw CancellationError()
@@ -448,7 +468,10 @@ class BackupService {
             updateBackupStatus(category: category) { status in
                 BackupItemStatus(synced: status.synced, required: status.required, running: false)
             }
-            if error is WalletBackupSnapshotError {
+            if case MetadataBackupError.deferred = error {
+                outcome = .busy
+                Logger.debug("Metadata backup deferred until wallet restoration and backup complete", context: "BackupService")
+            } else if error is WalletBackupSnapshotError {
                 outcome = .snapshotChanged
                 Logger.warn("Wallet backup deferred after three changing snapshots", context: "BackupService")
             } else if Self.isTemporaryBackupFailure(error) ||
@@ -465,9 +488,36 @@ class BackupService {
         return outcome
     }
 
+    private func prepareMetadataBackup() async throws {
+        try Task.checkCancellation()
+        guard !shouldSkipBackup(), !hasPendingWalletRestore() else { throw MetadataBackupError.deferred }
+        if getBackupStatus(category: .wallet).isRequired {
+            let outcome = await triggerBackup(category: .wallet, isScheduled: true, waitForExisting: true)
+            try Task.checkCancellation()
+            if outcome == .temporarilyUnavailable {
+                throw MetadataBackupError.walletTemporarilyUnavailable
+            }
+            guard outcome == .completed else {
+                if outcome == .busy || outcome == .snapshotChanged {
+                    throw MetadataBackupError.deferred
+                }
+                throw MetadataBackupError.walletBackupFailed
+            }
+        }
+        try requireMetadataBackupReady()
+    }
+
+    private func requireMetadataBackupReady() throws {
+        try Task.checkCancellation()
+        guard !shouldSkipBackup(), !hasPendingWalletRestore(), !getBackupStatus(category: .wallet).isRequired else {
+            throw MetadataBackupError.deferred
+        }
+    }
+
     static func isTemporaryBackupFailure(_ error: Error) -> Bool {
         switch error {
-        case PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
+        case MetadataBackupError.walletTemporarilyUnavailable,
+             PaykitError.ConcurrentUpdate, PaykitError.SharedStateBusy, PaykitError.Transport,
              VssError.ConnectionError, VssError.NetworkError, VssError.StoreError, VssError.PutError:
             true
         case let VssError.UnknownError(details):
@@ -573,15 +623,10 @@ class BackupService {
             try await restoreUsdtRecoveryAfterLegacyMigration()
             return
         }
-        stateQueue.sync {
-            isRestoring = true
-        }
-
         defer {
-            stateQueue.sync {
-                isRestoring = false
-            }
+            setRestoring(false)
         }
+        try await prepareForRestore()
 
         Logger.debug("Full restore starting", context: "BackupService")
 
@@ -610,6 +655,24 @@ class BackupService {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
             throw error
         }
+    }
+
+    private func prepareForRestore() async throws {
+        let metadataTask = try await ServiceQueue.background(.backup) {
+            self.setRestoring(true)
+            return self.runningBackupTasks[.metadata]
+        }
+        // An admitted metadata upload must finish before imported exclusions can change its wallet dependency.
+        _ = await metadataTask?.value
+        try Task.checkCancellation()
+    }
+
+    func restoreAppCacheData(_ cache: AppCacheData) async throws {
+        try await prepareForRestore()
+        if let address = cache.onchainAddress, !address.isEmpty {
+            markBackupRequired(category: .wallet, schedule: false)
+        }
+        await SettingsViewModel.shared.restoreAppCacheData(cache)
     }
 
     func restoreUsdtRecoveryAfterLegacyMigration() async throws {
@@ -684,7 +747,10 @@ class BackupService {
                     try await PaykitPaymentProofService.shared.restoreBackup(paymentState, wallet: backupWallet)
                 }
                 try TransferStorage.shared.upsertList(payload.transfers)
-                await PrivatePaykitAddressReservationStore.shared.restoreBackup(payload.privatePaykitHighestReservedReceiveIndexByAddressType)
+                await PrivatePaykitAddressReservationStore.shared.restoreBackup(
+                    payload.privatePaykitHighestReservedReceiveIndexByAddressType,
+                    legacyPublicAddresses: payload.publicPaykitLegacyAddresses
+                )
                 try await WatchOnlyAccountManager.shared.restore(
                     payload.watchOnlyAccounts,
                     allocationState: payload.watchOnlyAccountAllocationState
@@ -700,7 +766,7 @@ class BackupService {
                     "activities": migrateBackupActivitiesJson,
                     "activityTags": migrateBackupActivityTagsJson,
                 ])
-                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: migration.data)
+                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: AndroidBackupJson.normalized(migration.data))
 
                 try await CoreService.shared.activity.upsertList(payload.activities)
                 try await CoreService.shared.activity.upsertTags(payload.activityTags)
@@ -722,13 +788,12 @@ class BackupService {
                 ])
                 let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: migration.data)
 
+                try await restoreAppCacheData(payload.cache)
                 try await CoreService.shared.activity.upsertPreActivityMetadata(payload.tagMetadata)
 
                 if migration.changed {
                     categoriesNeedingRewrite.insert(.metadata)
                 }
-
-                await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
                 try await Self.restoreProfileMetadata {
                     try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
@@ -756,7 +821,7 @@ class BackupService {
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
-                let payload = try JSONDecoder().decode(BlocktankBackupV1.self, from: dataBytes)
+                let payload = try JSONDecoder().decode(BlocktankBackupV1.self, from: AndroidBackupJson.normalized(dataBytes))
 
                 try await CoreService.shared.blocktank.upsertOrdersList(payload.orders)
                 try await CoreService.shared.blocktank.upsertCjitEntriesList(payload.cjitEntries)
@@ -771,12 +836,8 @@ class BackupService {
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
-            // Runs while `isRestoring` is still true, which is safe only because `triggerBackup` is
-            // the one upload entry point that does not consult `shouldSkipBackup()` — adding a guard
-            // there would silently strand legacy envelopes on the server. Do not clear the flag here
-            // to sidestep that: it belongs to the caller (`AppScene.restoreFromMostRecentBackup`
-            // wraps this in its own set/defer pair), so clearing it early would reopen that
-            // suppression window and let the restore's own change traffic schedule uploads.
+            // Other category rewrites can run during restore. Metadata remains required until the
+            // wallet restore and any imported reservation backup complete; keep restore observers suppressed.
             await rewriteMigratedBackups(categoriesNeedingRewrite)
 
             return didRestoreWalletBackup
@@ -990,6 +1051,18 @@ class BackupService {
         }
     }
 
+    /// Startup migrations run before change listeners, so their backup requirement must survive until observation starts.
+    static func markWalletBackupRequiredBeforeObservation(defaults: UserDefaults) {
+        var statuses = loadBackupStatuses(defaults: defaults)
+        let status = statuses[.wallet] ?? BackupItemStatus()
+        statuses[.wallet] = BackupItemStatus(
+            synced: status.synced,
+            required: max(status.required, status.synced + 1, UInt64(Date().timeIntervalSince1970)),
+            running: status.running
+        )
+        _ = persistBackupStatuses(statuses, defaults: defaults)
+    }
+
     private func runScheduledBackup(category: BackupCategory, generation: UInt64, initialOutcome: BackupOutcome) async {
         var outcome = initialOutcome
         var retryDelay: UInt64 = 10_000_000_000
@@ -1145,6 +1218,10 @@ class BackupService {
     // MARK: - Private Helpers
 
     func getAllBackupStatuses() -> [BackupCategory: BackupItemStatus] {
+        Self.loadBackupStatuses(defaults: defaults)
+    }
+
+    private static func loadBackupStatuses(defaults: UserDefaults) -> [BackupCategory: BackupItemStatus] {
         guard let data = defaults.data(forKey: backupStatusesKey) else {
             return [:]
         }
@@ -1161,15 +1238,22 @@ class BackupService {
     }
 
     private func saveBackupStatuses(_ statuses: [BackupCategory: BackupItemStatus]) {
+        if Self.persistBackupStatuses(statuses, defaults: defaults) {
+            backupStatusesSubject.send(statuses)
+        }
+    }
+
+    private static func persistBackupStatuses(_ statuses: [BackupCategory: BackupItemStatus], defaults: UserDefaults) -> Bool {
         let encoded = Dictionary(uniqueKeysWithValues: statuses.map { ($0.key.rawValue, $0.value) })
 
         do {
             let data = try JSONEncoder().encode(encoded)
             defaults.set(data, forKey: backupStatusesKey)
 
-            backupStatusesSubject.send(statuses)
+            return true
         } catch {
             Logger.error("Failed to encode backup statuses: \(error)", context: "BackupService")
+            return false
         }
     }
 
@@ -1227,7 +1311,7 @@ class BackupService {
                     wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet.backupNamespace(index: 0)
                 )
                 paymentState.usdt = try await PaykitUsdtPaymentService.shared.backupSnapshot()
-                let payload = WalletBackupV1(
+                let payload = await WalletBackupV1(
                     version: 1,
                     createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                     transfers: transfers,
@@ -1236,7 +1320,8 @@ class BackupService {
                     watchOnlyAccounts: watchOnlyAccountSnapshot.accounts,
                     watchOnlyAccountAllocationState: watchOnlyAccountSnapshot.allocationState,
                     usdtWallet: usdtSnapshot,
-                    paykitPaymentState: paymentState
+                    paykitPaymentState: paymentState,
+                    publicPaykitLegacyAddresses: PrivatePaykitAddressReservationStore.shared.legacyPublicAddressesSnapshot()
                 )
                 let data = try JSONEncoder().encode(payload)
                 // Proof/attempt locks have been released before reacquiring the SDK lock.
@@ -1390,10 +1475,13 @@ class BackupService {
         markRestoreComplete(category: category)
     }
 
-    private func markRestoreComplete(category: BackupCategory) {
+    func markRestoreComplete(category: BackupCategory) {
         let currentTime = UInt64(Date().timeIntervalSince1970)
-        updateBackupStatus(category: category) { _ in
-            BackupItemStatus(
+        updateBackupStatus(category: category) { status in
+            if category == .wallet, status.isRequired {
+                return BackupItemStatus(synced: status.synced, required: status.required, running: false)
+            }
+            return BackupItemStatus(
                 synced: currentTime,
                 required: currentTime,
                 running: false
@@ -1452,6 +1540,32 @@ final class WalletBackupChangeTracker {
             }
         }
         throw WalletBackupSnapshotError.changed
+    }
+}
+
+/// The lock owns every access to subscription storage; no mutable collection escapes.
+final class BackupObservationSubscriptions: @unchecked Sendable {
+    private let lock = NSLock()
+    private var subscriptions = Set<AnyCancellable>()
+
+    func store(_ subscription: AnyCancellable) {
+        lock.withLock { _ = subscriptions.insert(subscription) }
+    }
+
+    func cancelAll() {
+        let cancelled = lock.withLock {
+            let cancelled = subscriptions
+            subscriptions.removeAll()
+            return cancelled
+        }
+        // Cancellation can re-enter subscription storage; do not hold its lock across callbacks.
+        cancelled.forEach { $0.cancel() }
+    }
+}
+
+private extension AnyCancellable {
+    func store(in subscriptions: BackupObservationSubscriptions) {
+        subscriptions.store(self)
     }
 }
 
