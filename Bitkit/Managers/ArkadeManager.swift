@@ -66,27 +66,50 @@ final class ArkadeManager: ChannelFreeLightningRail {
         Env.network == .bitcoin ? ArkadeConfig(network: "bitcoin") : nil
     }
 
+    /// Waits between attempts to connect the Arkade wallet when the operator or chain source is slow.
+    private static let startRetryDelays: [Duration] = [.seconds(10), .seconds(30), .seconds(60)]
+
     func start(walletIndex: Int) async {
         guard Self.config != nil else { return }
+        if info == nil {
+            var connected = await tryConnect(walletIndex: walletIndex)
+            for delay in Self.startRetryDelays where !connected {
+                try? await Task.sleep(for: delay)
+                connected = await tryConnect(walletIndex: walletIndex)
+            }
+            guard connected else {
+                Logger.error("Failed to start Arkade wallet", context: "ArkadeManager")
+                return
+            }
+        }
+        // A connected wallet is ready even when its first refresh times out; the next event or refresh catches up.
+        isReady = true
+        LightningService.shared.channelFreeRail = self
         do {
-            if info == nil {
-                if connectTask == nil {
-                    connectTask = Task { try await connect(walletIndex: walletIndex) }
-                }
-                try await connectTask?.value
-                connectTask = nil
-            }
             try await refresh()
-            await syncActivities()
-            LightningService.shared.channelFreeRail = self
-            do {
-                lightningAddress = try await bridge.lightningAddress()?.lightningAddress
-            } catch {
-                Logger.warn("Failed to get the Arkade Lightning address: \(error)", context: "ArkadeManager")
+        } catch {
+            Logger.warn("Failed to refresh Arkade state: \(error)", context: "ArkadeManager")
+        }
+        await syncActivities()
+        do {
+            lightningAddress = try await bridge.lightningAddress()?.lightningAddress
+        } catch {
+            Logger.warn("Failed to get the Arkade Lightning address: \(error)", context: "ArkadeManager")
+        }
+    }
+
+    private func tryConnect(walletIndex: Int) async -> Bool {
+        do {
+            if connectTask == nil {
+                connectTask = Task { try await connect(walletIndex: walletIndex) }
             }
+            try await connectTask?.value
+            connectTask = nil
+            return true
         } catch {
             connectTask = nil
-            Logger.error("Failed to start Arkade wallet: \(error)", context: "ArkadeManager")
+            Logger.warn("Failed to connect the Arkade wallet: \(error)", context: "ArkadeManager")
+            return false
         }
     }
 
