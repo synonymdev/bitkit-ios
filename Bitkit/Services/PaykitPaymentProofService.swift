@@ -306,7 +306,11 @@ actor PaykitPaymentProofService {
         }
     }
 
-    func restoreBackup(_ state: PaykitPaymentStateBackup, wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet) async throws {
+    func restoreBackup(
+        _ state: PaykitPaymentStateBackup,
+        wallet: PaykitPaymentStateBackup.ActiveOnchainAttempt.Wallet,
+        hasLedger: Bool = true
+    ) async throws {
         let proofs = try state.pendingProofs.map { try $0.restored() }
         let restored = try state.activeOnchainAttempt.map { try $0.restored(wallet: wallet, proofs: proofs) }
         // Persist the block first. A later proof/SDK restore failure leaves the original guard intact.
@@ -315,7 +319,7 @@ actor PaykitPaymentProofService {
         try PaykitSubscriptionStateStore().restoreBackup(state.subscriptions)
         try PaykitPaymentRequestIdStore(key: .paykitAcceptedPaymentRequests).restoreBackup(state.acceptedOneTimeRequests ?? [:])
         if let allowances = state.allowances {
-            PaykitAllowanceKeychainStore().restoreBackup(allowances)
+            PaykitAllowanceKeychainStore().restoreBackup(allowances, keepsLedgerFloors: hasLedger)
         }
     }
 

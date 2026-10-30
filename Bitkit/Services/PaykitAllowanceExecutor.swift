@@ -184,13 +184,16 @@ struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
 
     /// Restores each identity's state it can read over the local one; identities the backup lacks keep theirs. The automatic
     /// payment checks merge with the local ones, so a restore never weakens them. A failure here never stops the rest of the
-    /// wallet restore.
-    func restoreBackup(_ snapshot: PaykitAllowanceStateBackups) {
+    /// wallet restore. A ledger revision floor only holds next to the ledger it was read from, so a backup without one drops it.
+    func restoreBackup(_ snapshot: PaykitAllowanceStateBackups, keepsLedgerFloors: Bool = true) {
         var all = (try? loadAll()) ?? [:]
         for (identity, backup) in snapshot.byIdentity {
             do {
                 let key = PubkyPublicKeyFormat.normalized(identity) ?? identity
-                let restored = try backup.restored()
+                var restored = try backup.restored()
+                if !keepsLedgerFloors {
+                    restored.ledgerRevisionFloor = nil
+                }
                 all[key] = all[key].map(restored.withChecks(from:)) ?? restored
             } catch {
                 Logger.warn("Skipped an unreadable allowance state in a backup: \(error)", context: "PaykitAllowance")

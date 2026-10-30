@@ -159,6 +159,26 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertTrue(restored.endedAllowanceIds.isEmpty)
     }
 
+    func testARestoreWithoutTheLedgerDropsTheLedgerFloor() throws {
+        try? Keychain.delete(key: .paykitAllowanceState)
+        defer { try? Keychain.delete(key: .paykitAllowanceState) }
+        let store = PaykitAllowanceKeychainStore()
+        let backup = PaykitAllowanceStateBackups([
+            Fixtures.identityKey: PaykitAllowanceStateBackup(
+                PaykitAllowanceLocalState(ledgerRevisionFloor: 5, endedAllowanceIds: ["contact/ended"])
+            ),
+        ])
+
+        store.restoreBackup(backup, keepsLedgerFloors: false)
+        let withoutLedger = try store.load(identity: Fixtures.identityKey)
+        store.restoreBackup(backup)
+        let withLedger = try store.load(identity: Fixtures.identityKey)
+
+        XCTAssertNil(withoutLedger.ledgerRevisionFloor)
+        XCTAssertEqual(withoutLedger.endedAllowanceIds, ["contact/ended"])
+        XCTAssertEqual(withLedger.ledgerRevisionFloor, 5)
+    }
+
     func testRestoreNeverLowersTheAutomaticPaymentChecksAlreadyStored() {
         let spend = PaykitAllowanceLocalState.AutomaticSpend(
             attemptId: "attempt-1", counterparty: "contact", allowanceId: "allowance-1", amountSats: 1000, admittedAt: Fixtures.now
