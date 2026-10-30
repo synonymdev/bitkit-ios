@@ -51,15 +51,21 @@ final class AndroidBackupJsonTests: XCTestCase {
         XCTAssertEqual(backup.pubkyContactProfileOverrides?.values.first?.name, "Contact Wallet")
     }
 
-    func testAndroidSettingsKeepTheirValues() throws {
+    func testAndroidSettingsRestoreUnderIosKeysAndValues() throws {
+        let suiteName = "AndroidBackupJsonTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = try SettingsBackupV1.decode(from: fixture("settings")).settings
 
-        XCTAssertEqual(
-            SettingsViewModel.iosSettingString(settings["addressTypesToMonitor"] as Any, forKey: "addressTypesToMonitor"),
-            "nativeSegwit,taproot"
-        )
-        XCTAssertEqual(SettingsViewModel.iosSettingString(settings["primaryDisplay"] as Any, forKey: "primaryDisplay"), "Fiat")
-        XCTAssertEqual(SettingsViewModel.iosSettingString(settings["displayUnit"] as Any, forKey: "bitcoinDisplayUnit"), "classic")
+        SettingsViewModel.writeRestoredSettings(settings, to: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "addressTypesToMonitor"), "nativeSegwit,taproot")
+        XCTAssertEqual(defaults.string(forKey: "selectedAddressType"), "nativeSegwit")
+        XCTAssertEqual(defaults.string(forKey: "primaryDisplay"), "Fiat")
+        XCTAssertEqual(defaults.string(forKey: "bitcoinDisplayUnit"), "classic")
+        XCTAssertEqual(defaults.string(forKey: "defaultTransactionSpeed"), "fast")
+        XCTAssertEqual(defaults.string(forKey: "coinSelectionMethod"), "manual")
+        XCTAssertEqual(defaults.string(forKey: "coinSelectionAlgorithm"), "largestFirst")
     }
 
     func testAndroidMediumSpeedReadsAsNormal() {

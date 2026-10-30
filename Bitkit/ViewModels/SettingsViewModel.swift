@@ -877,7 +877,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     /// Restores settings dictionary to UserDefaults
-    func restoreSettingsDictionary(_ dict: [String: Any]) {
+    /// Writes a SETTINGS backup from either app into `defaults` under the iOS keys and value forms.
+    nonisolated static func writeRestoredSettings(_ dict: [String: Any], to defaults: UserDefaults) {
         if let coinSelectAuto = dict["coinSelectAuto"] as? Bool {
             let methodString = coinSelectAuto ? "autopilot" : "manual"
             defaults.set(methodString, forKey: "coinSelectionMethod")
@@ -928,6 +929,10 @@ class SettingsViewModel: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    func restoreSettingsDictionary(_ dict: [String: Any]) {
+        Self.writeRestoredSettings(dict, to: defaults)
 
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty,
            let server = parseElectrumServerUrlForRestore(electrumServerUrl)
