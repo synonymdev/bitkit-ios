@@ -1948,7 +1948,7 @@
 
 "usdt__disable_unavailable" = "USDT must stay enabled while you have a balance or a pending transfer. Please wait for transfers to finish and check your balance before turning it off.";
 "usdt__enable" = "Enable USDT";
-"usdt__intro_description" = "Bitcoin at heart. Dollars when you need them. Enable USDT (Tether) to send and receive digital dollars with Bitkit.";
+"usdt__intro_description" = "Bitcoin at heart. Dollars when you need them. Enable USDT (Tether) to quickly send and receive digital dollars with Bitkit.";
 "usdt__intro_headline" = "<accent>DOLLARS?</accent>\nYOUR CALL";
 "usdt__intro_title" = "New: USDT";
 "usdt__no_thanks" = "No Thanks";
