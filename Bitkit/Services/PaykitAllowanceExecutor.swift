@@ -1002,7 +1002,12 @@ actor PaykitAllowanceExecutor {
 
     /// Reports a user-approved payment of an incoming request to the shared ledger before it leaves the wallet.
     /// Throws `alreadyRecorded` when another live attempt exists for the request, so the same request is never paid twice.
-    func beginManualPayment(_ request: PaykitPaymentRequest, paymentEndpointIdentifier: String) async throws -> String? {
+    /// A Lightning payment passes its `paymentHash`, so a backup taken before the send still lets the node settle it.
+    func beginManualPayment(
+        _ request: PaykitPaymentRequest,
+        paymentEndpointIdentifier: String,
+        paymentHash: String? = nil
+    ) async throws -> String? {
         // The ledger counts bitcoin only, so a payment made over another rail stays out of it.
         guard let identity = activeIdentity, request.billingPeriod == nil, request.direction == .incoming,
               request.isAllowancePayable, PublicPaykitService.MethodId(rawValue: paymentEndpointIdentifier).map({ $0 != .usdtArbitrum }) == true
@@ -1033,7 +1038,7 @@ actor PaykitAllowanceExecutor {
                     allowanceId: nil,
                     amountSats: request.allowanceAmountSats,
                     paymentEndpointIdentifier: paymentEndpointIdentifier,
-                    paymentHash: nil,
+                    paymentHash: paymentHash?.lowercased(),
                     onchainAddress: nil,
                     transactionId: nil,
                     stage: .prepared,
