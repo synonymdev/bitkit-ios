@@ -495,6 +495,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         wallet?.syncState()
         if !enabled, let wallet {
             await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: wallet, reason: "address type monitoring changed")
+            await wallet.refreshPublicPaykitAddressIfNeeded()
         }
         return true
     }
@@ -1005,6 +1006,12 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Restores app cache data from backup
     func restoreAppCacheData(_ cache: AppCacheData) {
+        if let address = cache.onchainAddress, !address.isEmpty {
+            var addresses = Set(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey) ?? [])
+            addresses.insert(address)
+            defaults.set(addresses.sorted(), forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+        }
+
         defaults.set(cache.hasSeenContactsIntro, forKey: "hasSeenContactsIntro")
         defaults.set(cache.hasSeenProfileIntro, forKey: "hasSeenProfileIntro")
         defaults.set(cache.hasSeenNotificationsIntro, forKey: "hasSeenNotificationsIntro")

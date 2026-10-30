@@ -1181,8 +1181,10 @@
 "profile__edit" = "Bearbeiten";
 "profile__pay_contacts_nav_title" = "Kontakte bezahlen";
 "profile__pay_contacts_title" = "Lass deine Kontakte\n<accent>dich bezahlen</accent>";
-"profile__pay_contacts_description" = "Nutze Bitkit mit deinen Kontakten, um Zahlungen direkt zu senden, jederzeit und überall.";
-"profile__pay_contacts_toggle" = "Kontaktzahlungen aktivieren";
+"profile__pay_contacts_description" = "Teile Zahlungsdetails privat mit deinen Kontakten. Öffentliche Zahlungen bleiben aus, bis du sie in den Einstellungen aktivierst.";
+"profile__private_payments_toggle" = "Private Kontaktzahlungen";
+"profile__public_payments_toggle" = "Öffentliche Zahlungen";
+"profile__payments_pending" = "Änderungen stehen noch aus. Zuvor geteilte Zahlungsdetails sind möglicherweise weiterhin verfügbar.";
 "profile__add_link_title" = "Link hinzufügen";
 "profile__add_link_label" = "BEZEICHNUNG";
 "profile__add_link_label_placeholder" = "Zum Beispiel 'Webseite'";
