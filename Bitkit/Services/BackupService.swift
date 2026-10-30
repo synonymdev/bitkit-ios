@@ -629,7 +629,7 @@ class BackupService {
                     "activities": migrateBackupActivitiesJson,
                     "activityTags": migrateBackupActivityTagsJson,
                 ])
-                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: migration.data)
+                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: AndroidBackupJson.normalized(migration.data))
 
                 try await CoreService.shared.activity.upsertList(payload.activities)
                 try await CoreService.shared.activity.upsertTags(payload.activityTags)
@@ -686,7 +686,7 @@ class BackupService {
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
-                let payload = try JSONDecoder().decode(BlocktankBackupV1.self, from: dataBytes)
+                let payload = try JSONDecoder().decode(BlocktankBackupV1.self, from: AndroidBackupJson.normalized(dataBytes))
 
                 try await CoreService.shared.blocktank.upsertOrdersList(payload.orders)
                 try await CoreService.shared.blocktank.upsertCjitEntriesList(payload.cjitEntries)
