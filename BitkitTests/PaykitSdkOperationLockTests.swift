@@ -1028,6 +1028,49 @@ final class PaykitSdkOperationLockTests: XCTestCase {
         } catch is CancellationError {}
     }
 
+    func testWipeRejectsPreviouslyAdmittedOuterOwnerBeforeQueueInsertion() async throws {
+        for cancellable in [false, true] {
+            let outer = PaykitSdkOperationLock()
+            let admitted = expectation(description: "Ordinary operation admitted before SDK enqueue")
+            let finished = expectation(description: "Old outer owner rejected without waiting behind wipe")
+            let wipeEntered = expectation(description: "Wipe waits on original outer owner")
+            let (gate, release) = AsyncStream<Void>.makeStream()
+            let sdk = PaykitSdkOperationLock(beforeAcquireForTesting: {
+                admitted.fulfill()
+                for await _ in gate {}
+            })
+            let ordinary = Task {
+                defer { finished.fulfill() }
+                do {
+                    try await outer.withLock {
+                        if cancellable {
+                            try await sdk.withCancellableLock { XCTFail("Stale SDK operation executed") }
+                        } else {
+                            try await sdk.withLock { XCTFail("Stale SDK operation executed") }
+                        }
+                    }
+                    XCTFail("Expected wipe rejection")
+                } catch let PaykitError.Storage(code, _) {
+                    XCTAssertEqual(code, "wallet_wipe_in_progress")
+                }
+            }
+            await fulfillment(of: [admitted], timeout: 2)
+            let wipe = Task {
+                try await sdk.withWalletWipe {
+                    wipeEntered.fulfill()
+                    // Allow cleanup after a failed assertion without leaving either task suspended.
+                    try await outer.withCancellableLock {}
+                }
+            }
+            await fulfillment(of: [wipeEntered], timeout: 2)
+            release.finish()
+            await fulfillment(of: [finished], timeout: 1)
+            wipe.cancel()
+            do { try await wipe.value } catch is CancellationError {}
+            try await ordinary.value
+        }
+    }
+
     func testWipeDrainsActiveWorkRejectsQueuedWorkAndAllowsCleanupAndFreshWork() async throws {
         let lock = PaykitSdkOperationLock()
         let recorder = Recorder()

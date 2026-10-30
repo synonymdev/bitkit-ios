@@ -2096,7 +2096,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     }
 
     private enum Waiter {
-        case uncancellable(Priority, CheckedContinuation<Void, Never>)
+        case uncancellable(Priority, CheckedContinuation<Bool, Never>)
         case cancellable(UUID, Priority, CheckedContinuation<Void, Error>)
 
         var priority: Priority {
@@ -2116,6 +2116,14 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     private var activeWipeID: UUID?
     @TaskLocal private static var walletWipeOwner: UUID?
 
+    #if DEBUG
+        private let beforeAcquireForTesting: (@Sendable () async -> Void)?
+
+        init(beforeAcquireForTesting: (@Sendable () async -> Void)? = nil) {
+            self.beforeAcquireForTesting = beforeAcquireForTesting
+        }
+    #endif
+
     func withLock<T>(
         priority: Priority = .ordered,
         generation expectedGeneration: Int? = nil,
@@ -2125,7 +2133,10 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             return try await operation()
         }
         let admittedGeneration = try admit()
-        await acquire(priority: priority)
+        #if DEBUG
+            await beforeAcquireForTesting?()
+        #endif
+        guard await acquire(priority: priority, generation: admittedGeneration) else { throw wipeError() }
         defer { release() }
         try validate(expectedGeneration ?? admittedGeneration)
         try Task.checkCancellation()
@@ -2154,7 +2165,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
     func withWalletWipe<T>(_ operation: () async throws -> T) async throws -> T {
         let wipeID = try beginWipe()
         defer { endWipe() }
-        await acquire(priority: .ordered)
+        _ = await acquire(priority: .ordered)
         defer { release() }
         try Task.checkCancellation()
         return try await Self.$walletWipeOwner.withValue(wipeID) {
@@ -2210,28 +2221,35 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
             return try await operation()
         }
         let admittedGeneration = try admit()
-        try await acquireCancellable()
+        #if DEBUG
+            await beforeAcquireForTesting?()
+        #endif
+        try await acquireCancellable(generation: admittedGeneration)
         defer { release() }
         try validate(admittedGeneration)
         try Task.checkCancellation()
         return try await operation()
     }
 
-    private func acquire(priority: Priority) async {
+    private func acquire(priority: Priority, generation expectedGeneration: Int? = nil) async -> Bool {
         await withCheckedContinuation { continuation in
             lock.lock()
-            if isLocked {
+            // Recheck while inserting: an old outer owner must not queue behind a wipe draining it.
+            if let expectedGeneration, isWiping || generation != expectedGeneration {
+                lock.unlock()
+                continuation.resume(returning: false)
+            } else if isLocked {
                 waiters.append(.uncancellable(priority, continuation))
                 lock.unlock()
             } else {
                 isLocked = true
                 lock.unlock()
-                continuation.resume()
+                continuation.resume(returning: true)
             }
         }
     }
 
-    private func acquireCancellable() async throws {
+    private func acquireCancellable(generation admittedGeneration: Int) async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -2239,6 +2257,9 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
                 if Task.isCancelled {
                     lock.unlock()
                     continuation.resume(throwing: CancellationError())
+                } else if isWiping || generation != admittedGeneration {
+                    lock.unlock()
+                    continuation.resume(throwing: wipeError())
                 } else if isLocked {
                     waiters.append(.cancellable(id, .ordered, continuation))
                     lock.unlock()
@@ -2284,7 +2305,7 @@ final class PaykitSdkOperationLock: @unchecked Sendable {
         lock.unlock()
         switch nextWaiter {
         case let .uncancellable(_, continuation):
-            continuation.resume()
+            continuation.resume(returning: true)
         case let .cancellable(_, _, continuation):
             continuation.resume()
         case nil:
