@@ -1217,9 +1217,11 @@ struct SendConfirmationView: View {
             }
 
             if let incomingPaymentRequest, let preparedPaymentProof {
+                let lightningPaymentHash = app.selectedWalletToPayFrom == .lightning ? app.scannedLightningInvoice?.paymentHash.hex : nil
                 manualAllowanceAttemptId = try await PaykitAllowanceExecutor.shared.beginManualPayment(
                     incomingPaymentRequest,
-                    paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier
+                    paymentEndpointIdentifier: preparedPaymentProof.endpointIdentifier,
+                    paymentHash: lightningPaymentHash
                 )
             }
 
