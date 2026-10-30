@@ -1,4 +1,5 @@
 @testable import Bitkit
+import Combine
 import enum Paykit.PaykitError
 import class Paykit.PubkySessionAccess
 import struct Paykit.PubkySessionBootstrapResult
@@ -276,6 +277,29 @@ final class PubkyProfileManagerTests: XCTestCase {
                 } catch PubkyServiceError.authFailed {}
                 XCTAssertTrue(readSecret, "Identity admission resumes after deletion drains")
             }
+        }
+    }
+
+    @MainActor
+    func testAutomaticPaykitSessionAppearsWhenTheSessionChangeEndsAndIsAnnounced() async throws {
+        try await withEmptyIdentityStorage {
+            let secret = String(repeating: "01", count: 32)
+            let manager = PubkyProfileManager()
+            manager.publicKey = try PubkyProfileManager.publicKeyFromSecretKey(secret)
+            manager.authState = .authenticated
+            var sessionsWhenSettled: [PubkyProfileManager.SignedInSession?] = []
+            let subscription = PubkyProfileManager.sessionSettledPublisher.sink { sessionsWhenSettled.append(manager.automaticPaykitSession) }
+            defer { subscription.cancel() }
+            var sessionDuringChange: PubkyProfileManager.SignedInSession?
+
+            _ = try? await manager.adoptRingIdentity(pubky: XCTUnwrap(manager.publicKey), loadSecret: { _, _ in
+                sessionDuringChange = manager.automaticPaykitSession
+                return nil
+            })
+
+            XCTAssertNil(sessionDuringChange, "No automatic session while a session change is in flight, though authState reads authenticated")
+            XCTAssertEqual(sessionsWhenSettled.count, 1)
+            XCTAssertNotNil(sessionsWhenSettled.first ?? nil, "The session is readable when the change is announced as settled")
         }
     }
 
@@ -4075,8 +4099,6 @@ final class PubkyProfileManagerTests: XCTestCase {
             hasSeenNotificationsIntro: false,
             hasSeenQuickpayIntro: false,
             hasSeenShopIntro: false,
-            hasSeenTransferIntro: false,
-            hasSeenTransferToSpendingIntro: false,
             hasSeenTransferToSavingsIntro: false,
             hasSeenWidgetsIntro: false,
             hasDismissedWidgetsOnboardingHint: false,

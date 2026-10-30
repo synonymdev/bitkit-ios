@@ -113,6 +113,7 @@ class ActivityService {
 
     private let addressSearchCoordinator: AddressSearchCoordinator
     private let channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)?
+    private let nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)?
 
     // MARK: - BoostTxIds Cache
 
@@ -193,7 +194,9 @@ class ActivityService {
 
     private func fetchTransactionDetails(txid: String) async -> BitkitCore.TransactionDetails? {
         do {
-            return try await getTransactionDetails(txid: txid)
+            return try await ServiceQueue.background(.core) {
+                try BitkitCore.getTransactionDetails(walletId: WalletScope.default, txId: txid)
+            }
         } catch {
             Logger.warn("Failed to fetch stored transaction details for \(txid): \(error)", context: "ActivityService")
             return nil
@@ -201,9 +204,25 @@ class ActivityService {
     }
 
     func getTransactionDetails(txid: String, walletId: String = WalletScope.default) async throws -> BitkitCore.TransactionDetails? {
-        try await ServiceQueue.background(.core) {
+        if let stored = try await ServiceQueue.background(.core, {
             try BitkitCore.getTransactionDetails(walletId: walletId, txId: txid)
+        }) {
+            return stored
         }
+
+        guard walletId == WalletScope.default,
+              txid.utf8.count == 64,
+              txid.utf8.allSatisfy({ (48 ... 57).contains($0) || (65 ... 70).contains($0) || (97 ... 102).contains($0) })
+        else { return nil }
+
+        // Restored history can outlive the cached details written by payment events.
+        // Read the matching node's local wallet without adding network work or a delayed database write.
+        let details = if let nodeTransactionLookup {
+            await nodeTransactionLookup(txid)
+        } else {
+            await LightningService.shared.getTransactionDetails(txid: txid, walletIndex: coreService.walletIndex)
+        }
+        return details.map { mapToCoreTransactionDetails(txid: txid, $0) }
     }
 
     // MARK: - Seen Tracking
@@ -406,10 +425,12 @@ class ActivityService {
 
     init(
         coreService: CoreService,
-        channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil
+        channelLookup: ((String, PaymentDirection, BitkitCore.TransactionDetails?) async -> String?)? = nil,
+        nodeTransactionLookup: ((String) async -> LDKNode.TransactionDetails?)? = nil
     ) {
         self.coreService = coreService
         self.channelLookup = channelLookup
+        self.nodeTransactionLookup = nodeTransactionLookup
         addressSearchCoordinator = AddressSearchCoordinator()
     }
 
@@ -2207,30 +2228,6 @@ class BlocktankService {
         try await info(refresh: refresh)?.onchain.feeRates
     }
 
-    func createCjit(
-        channelSizeSat: UInt64,
-        invoiceSat: UInt64,
-        invoiceDescription: String,
-        nodeId: String,
-        channelExpiryWeeks: UInt32,
-        options: CreateCjitOptions
-    ) async throws -> IcJitEntry {
-        Logger.info("Creating CJIT invoice with channel size: \(channelSizeSat) and invoice amount: \(invoiceSat)", context: "BlocktankService")
-
-        return try await ServiceQueue.background(.core) {
-            let entry = try await createCjitEntry(
-                channelSizeSat: channelSizeSat,
-                invoiceSat: invoiceSat,
-                invoiceDescription: invoiceDescription,
-                nodeId: nodeId,
-                channelExpiryWeeks: channelExpiryWeeks,
-                options: options
-            )
-            self.stateChangedSubject.send()
-            return entry
-        }
-    }
-
     func cjitOrders(entryIds: [String]? = nil, filter: CJitStateEnum? = nil, refresh: Bool = true) async throws -> [IcJitEntry] {
         try await ServiceQueue.background(.core) {
             try await getCjitEntries(entryIds: entryIds, filter: filter, refresh: refresh)
@@ -2245,36 +2242,6 @@ class BlocktankService {
             }
         } catch {
             return nil
-        }
-    }
-
-    func newOrder(
-        lspBalanceSat: UInt64,
-        channelExpiryWeeks: UInt32,
-        options: CreateOrderOptions
-    ) async throws -> IBtOrder {
-        try await ServiceQueue.background(.core) {
-            let order = try await createOrder(
-                lspBalanceSat: lspBalanceSat,
-                channelExpiryWeeks: channelExpiryWeeks,
-                options: options
-            )
-            self.stateChangedSubject.send()
-            return order
-        }
-    }
-
-    func estimateFee(
-        lspBalanceSat: UInt64,
-        channelExpiryWeeks: UInt32,
-        options: CreateOrderOptions? = nil
-    ) async throws -> IBtEstimateFeeResponse2 {
-        try await ServiceQueue.background(.core) {
-            try await estimateOrderFeeFull(
-                lspBalanceSat: lspBalanceSat,
-                channelExpiryWeeks: channelExpiryWeeks,
-                options: options
-            )
         }
     }
 
@@ -2305,55 +2272,6 @@ class BlocktankService {
     /// Notifies that blocktank state has changed (e.g., after refreshing data)
     func notifyStateChanged() {
         stateChangedSubject.send()
-    }
-
-    @discardableResult
-    func open(orderId: String) async throws -> IBtOrder {
-        guard let nodeId = LightningService.shared.nodeId else {
-            throw AppError(serviceError: .nodeNotStarted)
-        }
-
-        let latestOrder = try await ServiceQueue.background(.core) {
-            try await getOrders(orderIds: [orderId], filter: nil, refresh: true).first
-        }
-
-        guard latestOrder?.state2 == .paid else {
-            throw AppError(message: "Order not paid", debugMessage: "Order state: \(String(describing: latestOrder?.state2))")
-        }
-
-        return try await ServiceQueue.background(.core) {
-            try await openChannel(orderId: orderId, connectionString: nodeId)
-        }
-    }
-
-    // MARK: Notifications
-
-    func registerDeviceForNotifications(
-        deviceToken: String, publicKey: String, features: [String], nodeId: String, isoTimestamp: String, signature: String
-    ) async throws -> String {
-        try await ServiceQueue.background(.core) {
-            try await registerDevice(
-                deviceToken: deviceToken,
-                publicKey: publicKey,
-                features: features,
-                nodeId: nodeId,
-                isoTimestamp: isoTimestamp,
-                signature: signature,
-                isProduction: !Env.isDebug,
-                customUrl: Env.blocktankPushNotificationServer
-            )
-        }
-    }
-
-    func pushNotificationTest(deviceToken: String, secretMessage: String, notificationType: String?) async throws -> String {
-        try await ServiceQueue.background(.core) {
-            try await testNotification(
-                deviceToken: deviceToken,
-                secretMessage: secretMessage,
-                notificationType: notificationType,
-                customUrl: Env.blocktankPushNotificationServer
-            )
-        }
     }
 
     // MARK: Regtest only methods
@@ -2605,7 +2523,7 @@ class UtilityService {
 
 class CoreService {
     static let shared = CoreService()
-    private let walletIndex: Int
+    fileprivate let walletIndex: Int
 
     lazy var activity: ActivityService = .init(coreService: self)
     lazy var blocktank: BlocktankService = .init(coreService: self)
@@ -2637,37 +2555,6 @@ class CoreService {
             case let .failure(error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
-        }
-    }
-
-    func checkGeoStatus() async throws -> Bool? {
-        if !Env.isGeoblockingEnabled {
-            return false
-        }
-
-        return try await ServiceQueue.background(.core) {
-            Logger.info("Checking geo status...", context: "GeoCheck")
-            guard let url = URL(string: Env.geoCheckUrl) else {
-                Logger.error("Invalid geocheck URL: \(Env.geoCheckUrl)", context: "GeoCheck")
-                return nil as Bool?
-            }
-
-            let (_, response) = try await URLSession.shared.data(from: url)
-            if let httpResponse = response as? HTTPURLResponse {
-                Logger.debug("Received geo status response: \(httpResponse.statusCode)", context: "GeoCheck")
-                switch httpResponse.statusCode {
-                case 200:
-                    Logger.info("Region allowed", context: "GeoCheck")
-                    return false
-                case 403:
-                    Logger.warn("Region blocked", context: "GeoCheck")
-                    return true
-                default:
-                    Logger.warn("Unexpected status code: \(httpResponse.statusCode)", context: "GeoCheck")
-                    return nil as Bool?
-                }
-            }
-            return nil as Bool?
         }
     }
 }
