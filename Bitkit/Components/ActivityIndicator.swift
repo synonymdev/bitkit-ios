@@ -35,8 +35,9 @@ struct ActivityIndicator: View {
                     style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
                 )
                 .frame(width: size, height: size)
-                .rotationEffect(.degrees(isRotating ? 360 : 0))
-                .animation(.linear(duration: 1.2).repeatForever(autoreverses: false), value: isRotating)
+                .animation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { content in
+                    content.rotationEffect(.degrees(isRotating ? 360 : 0))
+                }
         }
         .opacity(opacity)
         .onAppear {

@@ -18,7 +18,6 @@ enum PaykitFeatureFlags {
 
     static func hasPublicPublishedState(defaults: UserDefaults = .standard) -> Bool {
         defaults.bool(forKey: PublicPaykitService.publishingEnabledKey) ||
-            defaults.bool(forKey: ContactPaymentsService.confirmedPreferenceKey) ||
             !(defaults.string(forKey: "publicPaykitBolt11") ?? "").isEmpty
     }
 
