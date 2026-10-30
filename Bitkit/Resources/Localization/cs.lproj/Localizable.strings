@@ -1168,6 +1168,7 @@
 "profile__edit_delete_section" = "SMAZAT";
 "profile__edit_unlink_section" = "ZRUŠIT PROPOJENÍ";
 "profile__edit_public_note" = "Upozorňujeme, že informace o profilu jsou uloženy ve veřejných souborech.";
+"profile__delete_active_subscription" = "Aktivní předplatná brání odstranění tohoto profilu.";
 "profile__delete_title" = "Smazat profil?";
 "profile__delete_description" = "Smazáním profilu ho odstraníte z Pubky. Kontakty si mohou ponechat informace o profilu a platbách, které jste s nimi dříve sdíleli.";
 "profile__delete_confirm" = "Ano, smazat";

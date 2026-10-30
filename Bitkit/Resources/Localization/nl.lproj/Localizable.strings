@@ -1174,6 +1174,7 @@
 "profile__edit_delete_section" = "VERWIJDEREN";
 "profile__edit_unlink_section" = "ONTKOPPELEN";
 "profile__edit_public_note" = "Let op: profielgegevens worden opgeslagen in openbare bestanden.";
+"profile__delete_active_subscription" = "Actieve abonnementen verhinderen het verwijderen van dit profiel.";
 "profile__delete_title" = "Profiel verwijderen?";
 "profile__delete_description" = "Als u uw profiel verwijdert, wordt het van Pubky verwijderd. Contacten kunnen eerder gedeelde profiel- en betaalgegevens nog bewaren.";
 "profile__delete_confirm" = "Ja, verwijderen";

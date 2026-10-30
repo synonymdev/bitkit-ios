@@ -1164,6 +1164,7 @@
 "profile__edit_delete_section" = "УДАЛЕНИЕ";
 "profile__edit_unlink_section" = "ОТВЯЗКА";
 "profile__edit_public_note" = "Обратите внимание: данные профиля хранятся в публичных файлах.";
+"profile__delete_active_subscription" = "Активные подписки не позволяют удалить этот профиль.";
 "profile__delete_title" = "Удалить Профиль?";
 "profile__delete_description" = "Удаление профиля удалит его из Pubky. У контактов могут остаться данные профиля и платёжные данные, которыми вы делились ранее.";
 "profile__delete_confirm" = "Да, Удалить";

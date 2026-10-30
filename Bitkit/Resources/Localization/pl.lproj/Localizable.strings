@@ -1178,6 +1178,7 @@
 "profile__edit_delete_section" = "USUWANIE";
 "profile__edit_unlink_section" = "ODŁĄCZANIE";
 "profile__edit_public_note" = "Pamiętaj, że dane profilu są przechowywane w publicznych plikach.";
+"profile__delete_active_subscription" = "Aktywne subskrypcje uniemożliwiają usunięcie tego profilu.";
 "profile__delete_title" = "Usunąć profil?";
 "profile__delete_description" = "Usunięcie profilu usuwa go z Pubky. Kontakty mogą nadal przechowywać udostępnione im wcześniej dane profilu i płatności.";
 "profile__delete_confirm" = "Tak, usuń";

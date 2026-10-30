@@ -193,7 +193,7 @@ class ContactsManager: ObservableObject {
             _ = try await PubkyService.removeContact(publicKey: $0)
         },
         removeContactRecords: @escaping @Sendable (_ publicKeys: [String]) async throws -> [ContactRecord] = {
-            try await PubkyService.removeContacts(publicKeys: $0)
+            try await PubkyService.removeContactsForProfile(publicKeys: $0)
         },
         forgetRemovedContacts: @escaping @Sendable (_ publicKeys: [String]) async -> Void = {
             await PrivatePaykitService.shared.removeSavedContacts(publicKeys: $0)
@@ -972,22 +972,7 @@ class ContactsManager: ObservableObject {
         stopPendingProfileLookups()
         let contactRecords = contactRecords
         let removeContactRecords = removeContactRecords
-        let records: [ContactRecord]
-        do {
-            records = try await Task.detached {
-                try await contactRecords()
-            }.value
-        } catch {
-            guard Self.isMissingContactsDataError(error) else {
-                throw error
-            }
-
-            Self.clearContactProfileOverrides()
-            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-            contacts.removeAll()
-            Logger.info("Contacts storage missing, treating delete-all as empty", context: "ContactsManager")
-            return
-        }
+        let records = try await Task.detached { try await contactRecords() }.value
 
         let keys = records.compactMap { PubkyPublicKeyFormat.normalized($0.publicKey) }
         let removed = try await Task.detached { try await removeContactRecords(keys) }.value
@@ -1004,17 +989,6 @@ class ContactsManager: ObservableObject {
         await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
         contacts.removeAll()
         Logger.info("Deleted all contacts", context: "ContactsManager")
-    }
-
-    func deleteAllContactsBestEffort() async {
-        do {
-            try await deleteAllContacts()
-        } catch {
-            Logger.warn("Continuing after contact cleanup failed: \(error)", context: "ContactsManager")
-            Self.clearContactProfileOverrides()
-            await PrivatePaykitService.shared.pruneUnsavedContactState(savedPublicKeys: [])
-            contacts.removeAll()
-        }
     }
 
     // MARK: - Remote Contact Discovery

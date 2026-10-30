@@ -2248,6 +2248,28 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertTrue(manager.contacts.isEmpty)
     }
 
+    func testDeleteAllContactsPreservesEvidenceWhenTheContactReadFails() async throws {
+        snapshotAppDefaults("pubkyContactProfileOverrides")
+        let contact = makeContact(publicKey: contactProfileKey)
+        ContactsManager.restoreContactProfileOverrides([contact.publicKey: PubkyProfileData.from(profile: contact.profile)])
+        let unavailable = AppError(message: "App Error", debugMessage: "Fetch failed: 404 missing session")
+        let manager = ContactsManager(contactRecords: { throw unavailable }, removeContactRecords: { _ in
+            XCTFail("An unavailable read must not authorize a removal")
+            return []
+        })
+        manager.contacts = [contact]
+
+        do {
+            try await manager.deleteAllContacts()
+            XCTFail("An unavailable read is not an empty contact list")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, unavailable.localizedDescription)
+        }
+
+        XCTAssertEqual(manager.contacts, [contact])
+        XCTAssertNotNil(ContactsManager.backupContactProfileOverrides()?[contact.publicKey])
+    }
+
     func testDeleteAllContactsPreservesContactsNotRemovedByTheBulkOperation() async throws {
         snapshotAppDefaults("pubkyContactProfileOverrides")
         let removed = contactRecord(key: contactProfileKey, name: "Removed")
