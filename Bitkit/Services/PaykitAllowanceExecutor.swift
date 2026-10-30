@@ -578,6 +578,10 @@ actor PaykitAllowanceExecutor {
                         {
                             await releaseConsumedPaymentList(of: entry, identity: identity)
                         }
+                        // The journal is trimmed, but a failed attempt's spend must not keep counting.
+                        if outcome == .failed, journalStages[attempt.attemptId] == nil {
+                            forgetSpend(attemptId: attempt.attemptId, identity: identity)
+                        }
                     }
                 }
             }
@@ -1238,6 +1242,11 @@ actor PaykitAllowanceExecutor {
     }
 
     private struct JournalEntryMissing: Error {}
+
+    private func forgetSpend(attemptId: String, identity: String) {
+        guard localState(identity: identity).automaticSpends.contains(where: { $0.attemptId == attemptId }) else { return }
+        updateLocalState(identity: identity) { $0.automaticSpends.removeAll { $0.attemptId == attemptId } }
+    }
 
     /// Saved before the handoff: a failed save throws, so no automatic payment leaves uncounted.
     private func rememberSpend(_ spend: PaykitAllowanceLocalState.AutomaticSpend, identity: String) throws {

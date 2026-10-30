@@ -356,6 +356,26 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testRecoveryDropsTheSpendOfAFailedAttemptTheJournalNoLongerHolds() async throws {
+        let harness = AllowanceHarness()
+        let spend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "trimmed-1",
+            counterparty: Fixtures.counterpartyKey,
+            allowanceId: Fixtures.walletAllowanceId,
+            amountSats: 1000,
+            admittedAt: Fixtures.now
+        )
+        harness.store.seed(PaykitAllowanceLocalState(automaticSpends: [spend]), identity: Fixtures.identityKey)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(occurrences: [
+            Fixtures.occurrence(requestId: "trimmed-1", attempts: [Fixtures.attemptRecord(id: "trimmed-1", status: .failed)]),
+        ]))
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let spends = await harness.executor.localState(identity: Fixtures.identityKey).automaticSpends
+        XCTAssertTrue(spends.isEmpty)
+    }
+
     func testAnAllowanceSeenEndedNeverPaysAutomaticallyAgain() async throws {
         let harness = AllowanceHarness()
         await harness.executor.rememberEndedAllowances(identity: Fixtures.identityKey, allowances: [Fixtures.allowance(state: .ended)])
