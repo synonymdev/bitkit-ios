@@ -43,6 +43,7 @@ struct MoneyText: View {
     @State private var leadingWidth: CGFloat = 0
     @State private var amountWidth: CGFloat = 0
     @State private var amountHeight: CGFloat = 0
+    @State private var amountTop: CGFloat = 0
 
     // MARK: - Computed Properties
 
@@ -132,14 +133,25 @@ extension MoneyText {
     private func shimmering(_ content: some View) -> some View {
         if let shimmer {
             content
-                .modifier(AmountShimmer(isActive: shimmer, leadingWidth: leadingWidth, amountWidth: amountWidth, amountHeight: amountHeight))
+                .modifier(AmountShimmer(
+                    isActive: shimmer,
+                    leadingWidth: leadingWidth,
+                    amountWidth: amountWidth,
+                    amountHeight: amountHeight,
+                    amountTop: amountTop
+                ))
                 .background(amountMeasurer)
                 .onPreferenceChange(AmountMetricsKey.self) { metrics in
                     let total = metrics[.totalWidth] ?? 0
                     let amount = metrics[.amountWidth] ?? 0
-                    leadingWidth = max(0, total - amount)
+                    let height = metrics[.amountHeight] ?? 0
+                    let totalHeight = metrics[.totalHeight] ?? 0
+                    // A leading symbol that wraps puts the amount on its own line below it.
+                    let symbolWraps = height > 0 && totalHeight > height * 1.5
+                    leadingWidth = symbolWraps ? 0 : max(0, total - amount)
                     amountWidth = amount
-                    amountHeight = metrics[.amountHeight] ?? 0
+                    amountHeight = height
+                    amountTop = symbolWraps ? totalHeight - height : 0
                 }
         } else {
             content
@@ -150,7 +162,10 @@ extension MoneyText {
     private var amountMeasurer: some View {
         ZStack(alignment: .leading) {
             textComponent(leadingText + formattedValue, fillsWidth: false)
-                .background(GeometryReader { Color.clear.preference(key: AmountMetricsKey.self, value: [.totalWidth: $0.size.width]) })
+                .background(GeometryReader { Color.clear.preference(
+                    key: AmountMetricsKey.self,
+                    value: [.totalWidth: $0.size.width, .totalHeight: $0.size.height]
+                ) })
             textComponent(formattedValue, fillsWidth: false)
                 .background(GeometryReader {
                     Color.clear.preference(key: AmountMetricsKey.self, value: [.amountWidth: $0.size.width, .amountHeight: $0.size.height])
@@ -330,6 +345,7 @@ private extension MoneyText {
 
 private enum AmountMetric: Hashable {
     case totalWidth
+    case totalHeight
     case amountWidth
     case amountHeight
 }
@@ -348,8 +364,10 @@ private struct AmountShimmer: ViewModifier {
     let isActive: Bool
     let leadingWidth: CGFloat
     let amountWidth: CGFloat
-    /// One line of the amount: when the text wraps, only that line shimmers, so a symbol wrapped below it stays steady.
+    /// One line of the amount: when the text wraps, only that line shimmers, so a symbol on another line stays steady.
     let amountHeight: CGFloat
+    /// Where the amount's line starts when a leading symbol wraps above it; 0 when the amount starts the text.
+    let amountTop: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var intensity: Double = 0
@@ -367,10 +385,13 @@ private struct AmountShimmer: ViewModifier {
         content
             .mask {
                 GeometryReader { proxy in
-                    let wraps = proxy.size.height - 2 * maskOutset > amountHeight * 1.5
+                    let height = proxy.size.height
+                    let wraps = amountHeight > 0 && height - 2 * maskOutset > amountHeight * 1.5
+                    let top = wraps && amountTop > 0 ? maskOutset + amountTop : 0
                     VStack(spacing: 0) {
+                        Color.white.frame(height: top)
                         shimmerRow
-                            .frame(height: wraps ? maskOutset + amountHeight : proxy.size.height)
+                            .frame(height: !wraps ? height : amountTop > 0 ? height - top : maskOutset + amountHeight)
                         Color.white
                     }
                 }
@@ -403,7 +424,9 @@ private struct AmountShimmer: ViewModifier {
                 Color.white.opacity(minOpacity)
                 if !reduceMotion {
                     TimelineView(.animation(paused: !isSweeping)) { context in
-                        band(at: context.date)
+                        GeometryReader { proxy in
+                            band(at: context.date, in: proxy.size)
+                        }
                     }
                 }
                 Color.white.opacity(1 - intensity)
@@ -414,16 +437,20 @@ private struct AmountShimmer: ViewModifier {
         }
     }
 
-    /// The band travels from fully before the amount to fully past it, so each pass starts and ends off the digits.
-    private func band(at date: Date) -> some View {
+    /// A diagonal band, as on Android: its edges slope by one line of the amount over the band's width, and it travels
+    /// from fully before the amount to fully past it, so each pass starts and ends off the digits.
+    private func band(at date: Date, in size: CGSize) -> some View {
         let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: sweepDuration) / sweepDuration
+        let half = bandWidth / 2
+        let rise = amountHeight > 0 ? amountHeight : size.height
+        let overshoot = half + size.height * rise / (2 * half)
+        let center = -overshoot + phase * (size.width + 2 * overshoot)
+        let width = max(size.width, 1)
+        let height = max(size.height, 1)
         return LinearGradient(
             colors: [.clear, .white, .clear],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            startPoint: UnitPoint(x: (center - half) / width, y: 0),
+            endPoint: UnitPoint(x: (center + half) / width, y: rise / height)
         )
-        .frame(width: bandWidth)
-        .offset(x: -bandWidth + phase * (amountWidth + bandWidth))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
