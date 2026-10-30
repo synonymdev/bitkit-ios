@@ -1619,14 +1619,6 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    func refreshSessionIfPossible(after error: Error) async -> Bool {
-        await Self.refreshSessionIfPossible(
-            after: error,
-            loadKeychainString: { try Keychain.loadString(key: $0) },
-            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) }
-        )
-    }
-
     // MARK: - Cached Profile Metadata
 
     private static let cachedNameKey = "pubky_profile_name"
@@ -2002,50 +1994,6 @@ class PubkyProfileManager: ObservableObject {
         }
 
         return false
-    }
-
-    nonisolated static func isSessionRefreshableError(_ error: Error) -> Bool {
-        let errorText = [
-            (error as? AppError)?.debugMessage,
-            error.localizedDescription,
-            String(describing: error),
-        ]
-        .compactMap { $0?.lowercased() }
-
-        return errorText.contains {
-            ($0.contains("authfailed") || $0.contains("authentication failed") || $0.contains("sessionnotactive"))
-                || ($0.contains("transport error") && $0.contains("/session"))
-        }
-    }
-
-    nonisolated static func refreshSessionIfPossible(
-        after error: Error,
-        loadKeychainString: (KeychainEntryType) throws -> String? = {
-            try Keychain.loadString(key: $0)
-        },
-        signInWithSecretKey: (String) async throws -> String,
-        publicKeyFromSecretKey: (String) throws -> String = {
-            try PubkyProfileManager.publicKeyFromSecretKey($0)
-        }
-    ) async -> Bool {
-        guard isSessionRefreshableError(error) else {
-            return false
-        }
-
-        guard let secretKeyHex = activeSecretKeyHex(loadKeychainString: loadKeychainString) else {
-            Logger.warn("Cannot refresh pubky session without a secret key", context: "PubkyProfileManager")
-            return false
-        }
-
-        do {
-            _ = try await signInWithSecretKey(secretKeyHex)
-            _ = try publicKeyFromSecretKey(secretKeyHex)
-            Logger.info("Refreshed pubky session from local secret key", context: "PubkyProfileManager")
-            return true
-        } catch {
-            Logger.warn("Failed to refresh pubky session: \(error)", context: "PubkyProfileManager")
-            return false
-        }
     }
 
     nonisolated static func resolveSessionInitialization(

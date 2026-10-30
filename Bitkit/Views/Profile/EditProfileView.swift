@@ -158,33 +158,18 @@ struct EditProfileView: View {
         defer { isDeleting = false }
         do {
             try await pubkyProfile.performProfileDeletion {
-                await deleteProfileWithSessionRetry(session: session)
+                do {
+                    try await performDeleteProfile(session: session)
+                } catch {
+                    guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
+                    Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
+                    showDeleteFailureOptions = true
+                }
             }
         } catch {
             guard !Task.isCancelled, pubkyProfile.currentSession == session else { return }
+            Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
             showDeleteFailureOptions = true
-        }
-    }
-
-    private func deleteProfileWithSessionRetry(session: PubkyProfileManager.SignedInSession) async {
-        do {
-            try await performDeleteProfile(session: session)
-        } catch {
-            guard !Task.isCancelled, pubkyProfile.publicKey == session.publicKey else { return }
-            if pubkyProfile.currentSession == session, await pubkyProfile.refreshSessionIfPossible(after: error) {
-                do {
-                    try await performDeleteProfile(session: session)
-                    return
-                } catch {
-                    Logger.error("Failed to delete profile after session refresh: \(error)", context: "EditProfileView")
-                }
-            } else {
-                Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
-            }
-
-            if !Task.isCancelled, pubkyProfile.publicKey == session.publicKey {
-                showDeleteFailureOptions = true
-            }
         }
     }
 
