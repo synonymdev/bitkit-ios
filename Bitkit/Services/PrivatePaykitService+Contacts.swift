@@ -501,15 +501,15 @@ extension PrivatePaykitService {
             }
             try profileAdmission.checkCurrent()
             do {
-                if let report = try await operations.clearPaymentLists(cleanupKeys) {
-                    logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
-                    failedPublicKeys.formUnion((report.failedToQueue.map(\.counterparty) + report.failedToDeliver.map(\.counterparty))
-                        .compactMap { PubkyPublicKeyFormat.normalized($0) })
-                    clearedRetryKeys = report.cleared.compactMap { PubkyPublicKeyFormat.normalized($0.counterparty) }
-                        .filter { !failedPublicKeys.contains($0) }
-                    if !failedPublicKeys.isEmpty {
-                        firstError = PrivatePaykitError.privateUnavailable
-                    }
+                guard let report = try await operations.clearPaymentLists(cleanupKeys) else {
+                    throw PrivatePaykitError.privateUnavailable
+                }
+                logPrivatePaymentListDeliveryFailures(report, reason: "cleanup")
+                let acknowledged = Self.acknowledgedCleanupKeys(in: report, requestedKeys: cleanupKeys)
+                failedPublicKeys.formUnion(Set(cleanupKeys).subtracting(acknowledged))
+                clearedRetryKeys = cleanupKeys.filter { acknowledged.contains($0) }
+                if !failedPublicKeys.isEmpty || !report.failedToQueue.isEmpty || !report.failedToDeliver.isEmpty {
+                    firstError = PrivatePaykitError.privateUnavailable
                 }
             } catch {
                 if let isSessionCurrent, await !isSessionCurrent() {
@@ -586,6 +586,21 @@ extension PrivatePaykitService {
         publicKeys.filter {
             linkedPublicKeys.contains($0) || state.contacts[$0]?.hasPublishedPrivatePaymentList == true
         }
+    }
+
+    private static func acknowledgedCleanupKeys(in report: PrivatePaymentListDeliveryReport, requestedKeys: [String]) -> Set<String> {
+        let failed = Set((report.failedToQueue.map(\.counterparty) + report.failedToDeliver.map(\.counterparty) + report.queued.map(\.counterparty))
+            .compactMap { PubkyPublicKeyFormat.normalized($0) })
+        return Set(requestedKeys.filter { key in
+            guard !failed.contains(key) else { return false }
+            let cleared = report.cleared.filter { PubkyPublicKeyFormat.normalized($0.counterparty) == key }
+            guard cleared.count == 1, let change = cleared.first, change.error == nil,
+                  let messageID = change.outboundMessageId else { return false }
+            // Queue emptiness and a stored Sent row cannot establish delivery of this exact withdrawal.
+            return report.acknowledged.contains {
+                PubkyPublicKeyFormat.normalized($0.counterparty) == key && $0.outboundMessageId == messageID
+            }
+        })
     }
 
     func removeSavedContact(publicKey: String) async {

@@ -25,6 +25,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     private var duringLocalCleanup: (() throws -> Void)?
     private var duringEligibility: (() async throws -> Void)?
     private var duringRevocation: (() async throws -> Void)?
+    private var duringPrivateWithdrawal: (() async throws -> Void)?
     private var duringPause: (() -> Void)?
     private var duringResume: (() async -> Void)?
 
@@ -45,7 +46,7 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         let services = PubkyProfileManager.RemovalServices(
             readProfile: { [self] key in try await record(key: key) },
             deleteProfile: delete ?? { [self] key, revision in try await acknowledgeDelete(key: key, revision: revision) },
-            withdrawPrivate: { [self] in try step("private") },
+            withdrawPrivate: { [self] in try step("private"); try await duringPrivateWithdrawal?() },
             withdrawPublic: { [self] in try step("public") },
             validateSubscriptions: { [self] expectedOwner in
                 XCTAssertEqual(expectedOwner, owner)
@@ -66,6 +67,44 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         manager.publicKey = owner
         manager.authState = .authenticated
         return manager
+    }
+
+    func testMissingPrivateAcknowledgementStopsRemovalAndLeavesOnlyLocalRecovery() async throws {
+        for action in [PubkyProfileManager.RemovalAction.disconnect, .deleteProfile, .unlink] {
+            steps = []
+            watermark = 42
+            let privateService = PrivatePaykitService(profileAdmission: admission)
+            var withdrawals = 0
+            duringPrivateWithdrawal = { [self] in
+                try await privateService.removePublishedEndpoints(for: [owner], deferAppSync: true, operations: .init(
+                    linkedPeers: { [self] in
+                        [.init(counterparty: owner, state: .linked, lastSyncAt: nil, lastPrivateReceiveAt: nil, failureCount: 0,
+                               localRecoveryAttemptId: nil, localRecoveryMarkerCreatedAt: nil, localRecoveryMarkerLastError: nil,
+                               remoteRecoveryAttemptId: nil, remoteRecoveryMarkerObservedAt: nil)]
+                    }, clearPaymentLists: { [self] _ in
+                        withdrawals += 1
+                        return .init(queued: [], cleared: [.init(counterparty: owner, outboundMessageId: 41, error: nil)],
+                                     acknowledged: [], failedToQueue: [], failedToDeliver: [])
+                    }, drainMessages: { _ in XCTFail("Unknown delivery must not be replayed") },
+                    pendingDrainKeys: { _ in [] }, syncApp: { XCTFail("Incomplete withdrawal must stop registry cleanup") }
+                ))
+            }
+            let manager = makeManager()
+            let confirmation = try await manager.prepareRemoval(action: action, contacts: contacts())
+            do {
+                _ = try await manager.confirmRemoval(confirmation)
+                XCTFail("Missing acknowledgement must stop removal")
+            } catch PrivatePaykitError.privateUnavailable {}
+            XCTAssertEqual(steps, ["private"])
+            XCTAssertTrue(deleted.isEmpty)
+            XCTAssertEqual(contactRemovals, 0)
+            XCTAssertEqual(watermark, 42)
+            XCTAssertEqual(try store.pending()?.id, confirmation.id)
+            _ = try await manager.finishPendingRemoval(id: confirmation.id)
+            XCTAssertEqual(steps, ["private", "credentials"])
+            XCTAssertEqual(withdrawals, 1)
+            XCTAssertNil(try store.pending())
+        }
     }
 
     private func record(key: String) throws -> PaykitProfileRecord? {

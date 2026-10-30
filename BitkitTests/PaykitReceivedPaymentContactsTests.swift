@@ -345,7 +345,7 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
         try PaymentRequestRecord(
             counterparty: counterparty, paymentRequestId: "550e8400-e29b-41d4-a716-446655440000", localRole: .payee,
             state: .proposed, proposalStreamItemId: 1, proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
-            proposalEventId: "650e8400-e29b-41d4-a716-446655440000", proposalAppId: "paykit-server", payerAppId: nil,
+            proposalEventId: "650e8400-e29b-41d4-a716-446655440000", proposalAppId: "paykit-server", proposalRecordedAt: nil, payerAppId: nil,
             executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"), paymentReference: PaymentReference(text: "invoice-123"),
@@ -353,7 +353,7 @@ final class PaykitReceivedPaymentContactsTests: XCTestCase {
                 paymentEndpoints: [identifier: PublicPaykitService.serializePayload(value: address)],
                 requiredAppId: nil, conversion: nil, paymentDeadline: nil, metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil, rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil, conversionQuotes: [], paymentProofs: [],
             lastStreamItemId: 1, lastOutboundMessageId: nil, lastOutboundStatus: nil, lastEventAt: "2027-01-15T08:00:00Z", invalidReason: nil
         )

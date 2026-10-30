@@ -1102,7 +1102,7 @@ private final class PublicReadSdk: PaykitSdk, @unchecked Sendable {
         updates _: [PrivatePaymentListReservationUpdateInput], clearUnlistedLinkedPeers _: Bool
     ) async throws -> PrivatePaymentListDeliveryReport {
         await intake()
-        return .init(queued: [], cleared: [], failedToQueue: [], failedToDeliver: [])
+        return .init(queued: [], cleared: [], acknowledged: [], failedToQueue: [], failedToDeliver: [])
     }
 
     override func submitPaymentProof(

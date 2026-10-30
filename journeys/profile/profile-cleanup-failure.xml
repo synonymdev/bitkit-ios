@@ -9,6 +9,11 @@
     disposable fixture and confirm removal again to verify it can proceed.
     Also make profile DELETE return HTTP 404 while a fresh read still confirms the profile exists.
     The pinned SDK normalizes this to a thrown HTTP 404 error; it must not count as confirmed deletion.
+    With Paykit 0.1.1-rc3, also return a cleared private list without a positive acknowledgement,
+    including a pending handshake and an empty outgoing queue, or an acknowledgement for another
+    peer or outbound message. These must remain incomplete; only the exact intended withdrawals
+    with positive acknowledgements may advance cleanup. Interrupted recovery remains local-only:
+    the SDK's ordinary sign-out can restore a newer bearer and cannot enforce original-bearer revocation.
     These controls are not available in standard staging. This journey covers stopping on incomplete
     cleanup, not cross-device conditional deletion or safe manual replay of an uncertain operation.
   </description>
@@ -18,7 +23,7 @@
     <action>After ending the subscription, explicitly confirm removal again and verify acknowledged cleanup succeeds</action>
     <action>Open Edit Profile and confirm deletion with the cleanup fault enabled</action>
     <action>Verify failure options appear without a success notification or onboarding navigation</action>
-    <action>Verify a failed private withdrawal is followed by no contact or profile deletion</action>
+    <action>Verify a failed private withdrawal or a missing or mismatched positive acknowledgement is followed by no contact or profile deletion</action>
     <action>Verify unknown contact removal keeps local contact data and prevents profile deletion</action>
     <action>Verify partial contact removal preserves contacts and overrides not acknowledged as removed</action>
     <action>Verify an uncertain profile-deletion error preserves required safety state and shows local recovery without success feedback or automatic publication</action>

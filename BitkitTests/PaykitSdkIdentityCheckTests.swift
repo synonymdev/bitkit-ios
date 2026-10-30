@@ -896,7 +896,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
             localRole: .payee, state: .proposed, proposalStreamItemId: 1,
             proposalOutboundMessageId: nil, proposalOutboundStatus: nil,
             proposalEventId: "71300000-0000-4000-8000-000000000002",
-            proposalAppId: appId, payerAppId: nil, executionClaimAppId: nil,
+            proposalAppId: appId, proposalRecordedAt: nil, payerAppId: nil, executionClaimAppId: nil,
             terms: PaymentRequestTerms(
                 amount: PaymentRequestAmount(value: "0.001", asset: "btc"),
                 paymentReference: PaymentReference(text: "invoice-123"),
@@ -904,7 +904,7 @@ final class PaykitSdkIdentityCheckTests: XCTestCase {
                 paymentEndpoints: nil, requiredAppId: "bitkit", conversion: nil, paymentDeadline: nil,
                 metadata: PrivateJsonObject(text: "{}")
             ),
-            acceptedEventId: nil, acceptedOutboundStatus: nil,
+            acceptedEventId: nil, acceptedOutboundStatus: nil, acceptanceRecordedAt: nil,
             rejectedEventId: nil, rejectedOutboundStatus: nil,
             canceledEventId: nil, canceledOutboundStatus: nil,
             conversionQuotes: [], paymentProofs: [], lastStreamItemId: 42,
