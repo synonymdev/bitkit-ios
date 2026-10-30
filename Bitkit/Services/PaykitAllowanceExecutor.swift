@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import LDKNode
+import os
 import Paykit
 
 protocol PaykitAllowanceSdkHandling: Sendable {
@@ -394,24 +395,29 @@ actor PaykitAllowanceExecutor {
         self.now = now
     }
 
-    /// False while allowances are off: no new automatic payment starts, but sent ones still settle.
-    private var isAdmitting = true
+    /// False while allowances are off: no new automatic payment starts, but sent ones still settle. Outside the actor, so
+    /// turning allowances off takes effect before the caller returns, ahead of any acceptance queued on the actor.
+    private nonisolated let isAdmitting = OSAllocatedUnfairLock(initialState: true)
 
     func activate(identity: String?) {
         activeIdentity = identity
-        isAdmitting = true
+        isAdmitting.withLock { $0 = true }
+    }
+
+    nonisolated func stopAdmitting() {
+        isAdmitting.withLock { $0 = false }
     }
 
     /// Stops new automatic payments for `identity` and settles the ones already sent, or left open by a kill.
     func pause(identity: String?) async {
-        isAdmitting = false
+        stopAdmitting()
         guard let identity, identity != activeIdentity else { return }
         activeIdentity = identity
         await recover(identity: identity)
     }
 
     private func admits(_ activation: String?) -> Bool {
-        isAdmitting && activeIdentity == activation
+        isAdmitting.withLock { $0 } && activeIdentity == activation
     }
 
     // MARK: Local state

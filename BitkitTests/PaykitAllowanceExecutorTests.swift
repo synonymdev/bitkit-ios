@@ -159,6 +159,25 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
     }
 
     @MainActor
+    func testManagerPauseRefusesAnAcceptanceAlreadyWaitingForTheSdkLock() async throws {
+        let harness = AllowanceHarness()
+        try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])
+        let manager = PaykitAllowanceManager(
+            sdk: harness.sdk,
+            executor: harness.executor,
+            now: { PaykitAllowanceFixtures.now },
+            canPayNow: { true }
+        )
+        await manager.activate(identity: Fixtures.identityKey)
+        await harness.sdk.setBeforeAcceptance { await MainActor.run { manager.pause(identity: Fixtures.identityKey) } }
+
+        _ = try await manager.processIncomingRequests([Fixtures.paymentRequest()])
+
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(harness.log.entries.contains("payLightning"))
+    }
+
+    @MainActor
     func testManagerKeepsCoveredRequestsOffTheSendSheetUntilLightningIsReady() async throws {
         let harness = AllowanceHarness()
         try await harness.sdk.setRecords([Fixtures.record(terms: Fixtures.standardTerms())])

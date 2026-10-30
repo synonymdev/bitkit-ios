@@ -149,6 +149,7 @@ final class PaykitAllowanceManager {
     }
 
     func deactivate() {
+        executor.stopAdmitting()
         Task { await executor.activate(identity: nil) }
         clear()
     }
@@ -156,6 +157,7 @@ final class PaykitAllowanceManager {
     /// Hides allowances and stops new automatic payments, while payments already sent still settle. `identity` lets the
     /// executor settle attempts left open before allowances were turned off; nil keeps its current one.
     func pause(identity: String?) {
+        executor.stopAdmitting()
         Task { await executor.pause(identity: identity) }
         clear()
     }
