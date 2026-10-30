@@ -1164,6 +1164,21 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(journal, [])
     }
 
+    func testAManualPaymentIsNotReportedToALedgerBehindThisWallet() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 5), identity: Fixtures.identityKey)
+        await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4))
+
+        let request = try Fixtures.paymentRequest()
+
+        let attemptId = try await harness.executor.beginManualPayment(request, paymentEndpointIdentifier: Fixtures.lightningIdentifier)
+
+        XCTAssertNil(attemptId)
+        XCTAssertFalse(harness.log.entries.contains("reconcileAllowanceAccounting"))
+        XCTAssertFalse(harness.log.entries.contains("reserveManualPayment"))
+    }
+
     func testManualPaymentIsJournaledAndSubmittedWhenReady() async throws {
         let harness = AllowanceHarness()
         await harness.executor.activate(identity: Fixtures.identityKey)
