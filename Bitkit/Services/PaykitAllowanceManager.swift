@@ -44,11 +44,12 @@ enum PaykitAllowanceError: LocalizedError {
     case contactNotLinked
     case unavailable
     case paymentListPending
+    case ledgerBehind
 
     var errorDescription: String? {
         switch self {
         case .contactNotLinked: t("subscriptions__allowance_error_not_linked")
-        case .unavailable, .paymentListPending: t("subscriptions__allowance_error_unavailable")
+        case .unavailable, .paymentListPending, .ledgerBehind: t("subscriptions__allowance_error_unavailable")
         }
     }
 }

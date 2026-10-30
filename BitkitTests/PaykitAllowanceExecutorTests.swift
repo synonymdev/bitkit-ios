@@ -314,6 +314,18 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("resolve"))
     }
 
+    func testAFloorThatCannotBeSavedKeepsTheRequestManual() async throws {
+        let harness = AllowanceHarness()
+        await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 7))
+        harness.store.failSaves()
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(harness.log.entries.contains("resolve"))
+    }
+
     func testAnAutomaticPaymentRaisesTheLedgerFloor() async throws {
         let harness = AllowanceHarness()
         await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 7))
@@ -405,6 +417,7 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
     func testAnUnsavedSpendStopsTheAttemptBeforeAnythingIsConsumed() async throws {
         let harness = AllowanceHarness()
+        harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 1), identity: Fixtures.identityKey)
         harness.store.failSaves()
 
         let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
