@@ -34,6 +34,8 @@ struct MoneyText: View {
     var fillsWidth: Bool = true
     var kerning: CGFloat?
     var lineHeight: CGFloat?
+    /// When set, the amount's digits (or hidden dots) shimmer while it is true; the symbol is left as is.
+    var shimmer: Bool?
 
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -76,8 +78,21 @@ struct MoneyText: View {
     }
 
     var body: some View {
-        let base = textComponent(displayText)
-            .foregroundColor(color)
+        labeledText
+            // Outside the identifier above, so this element keeps its own identifier.
+            .overlay {
+                if shimmer == true {
+                    Color.clear
+                        .accessibilityElement()
+                        .accessibilityLabel(t("wallet__balance_updating"))
+                        .accessibilityIdentifier("TotalBalanceUpdating")
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var labeledText: some View {
+        let base = shimmering
 
         if let testIdentifier {
             base
@@ -103,14 +118,42 @@ struct MoneyText: View {
 // MARK: - Helper Views
 
 extension MoneyText {
+    /// While a balance refreshes, the digits shimmer and the symbol stays steady: the same text is drawn twice with
+    /// the same layout, the shimmered copy showing only the digits and the copy on top only the symbol, so it holds
+    /// however the headline wraps.
     @ViewBuilder
-    private func textComponent(_ text: String) -> some View {
+    private var shimmering: some View {
+        if let shimmer {
+            textComponent(displayText, accentColor: .clear, fillsWidth: false)
+                .foregroundColor(color)
+                .modifier(AmountShimmer(isActive: shimmer))
+                .overlay {
+                    textComponent(displayText, textColor: .clear, fillsWidth: false)
+                        .accessibilityHidden(true)
+                }
+                // Where `DisplayText` would fill the width itself, so the sweep spans only the text.
+                .frame(maxWidth: size == .display && fillsWidth ? .infinity : nil, alignment: .leading)
+        } else {
+            textComponent(displayText)
+                .foregroundColor(color)
+        }
+    }
+
+    @ViewBuilder
+    private func textComponent(
+        _ text: String,
+        textColor: Color? = nil,
+        accentColor: Color? = nil,
+        fillsWidth: Bool? = nil
+    ) -> some View {
+        let color = textColor ?? color
+        let symbolColor = accentColor ?? symbolColor
         switch size {
         case .display:
             DisplayText(
                 // Cap symbol font weight to ExtraBold
                 text, textColor: color, accentColor: symbolColor ?? .textSecondary,
-                accentFont: Fonts.extraBold, fillsWidth: fillsWidth, kerning: kerning ?? -1, lineHeight: lineHeight
+                accentFont: Fonts.extraBold, fillsWidth: fillsWidth ?? self.fillsWidth, kerning: kerning ?? -1, lineHeight: lineHeight
             )
         case .title:
             TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary,
@@ -269,4 +312,76 @@ private extension MoneyText {
         .padding(.top)
     }
     .preferredColorScheme(.dark)
+}
+
+/// A soft diagonal sweep over the digits while the balance refreshes. They dim to 75% and the band brings them back to
+/// full, so the cached amount stays readable. With Reduce Motion on, they only dim.
+private struct AmountShimmer: ViewModifier {
+    let isActive: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var intensity: Double = 0
+    @State private var isSweeping = false
+    /// Bumped on every change, so a fade-out that finishes after a newer change leaves the sweep running.
+    @State private var changeCount = 0
+
+    private let sweepDuration: TimeInterval = 2
+    private let minOpacity = 0.75
+    private let bandWidth: CGFloat = 56
+    /// How far the band's edges slope across its width: one headline line, as on Android.
+    private let bandRise: CGFloat = 44
+    /// `DisplayText` draws glyph tops and descenders outside its frame; the mask reaches past it so they stay visible.
+    private let maskOutset: CGFloat = 24
+
+    func body(content: Content) -> some View {
+        content
+            .mask {
+                ZStack {
+                    Color.white.opacity(minOpacity)
+                    if !reduceMotion {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isSweeping)) { context in
+                            GeometryReader { proxy in
+                                band(at: context.date, in: proxy.size)
+                            }
+                        }
+                    }
+                    Color.white.opacity(1 - intensity)
+                }
+                .padding(-maskOutset)
+            }
+            .onAppear {
+                intensity = isActive ? 1 : 0
+                isSweeping = isActive
+            }
+            .onChange(of: isActive) { _, active in
+                changeCount += 1
+                let change = changeCount
+                if active {
+                    isSweeping = true
+                }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    intensity = active ? 1 : 0
+                } completion: {
+                    if !active, change == changeCount {
+                        isSweeping = false
+                    }
+                }
+            }
+    }
+
+    /// A diagonal band, as on Android, that travels from fully before the text to fully past it, so each pass starts
+    /// and ends off the digits.
+    private func band(at date: Date, in size: CGSize) -> some View {
+        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: sweepDuration) / sweepDuration
+        let half = bandWidth / 2
+        let overshoot = half + size.height * bandRise / (2 * half)
+        let center = -overshoot + phase * (size.width + 2 * overshoot)
+        let width = max(size.width, 1)
+        let height = max(size.height, 1)
+        return LinearGradient(
+            colors: [.clear, .white, .clear],
+            startPoint: UnitPoint(x: (center - half) / width, y: 0),
+            endPoint: UnitPoint(x: (center + half) / width, y: bandRise / height)
+        )
+    }
 }

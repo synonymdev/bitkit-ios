@@ -7,6 +7,8 @@ struct MoneyStack: View {
     var prefix: String?
     var showSymbol: Bool = false
     var showEyeIcon: Bool = false
+    /// Set only by headlines that can refresh: the amount then shimmers while it is true. Nil leaves the text untouched.
+    var isLoading: Bool?
     var enableSwipeGesture: Bool = false
     var enableHide: Bool = false
     var testIdPrefix: String = "TotalBalance"
@@ -52,7 +54,8 @@ struct MoneyStack: View {
                         enableHide: enableHide,
                         prefix: prefix,
                         color: .textPrimary,
-                        testIdentifier: "MoneyText"
+                        testIdentifier: "MoneyText",
+                        shimmer: isLoading
                     )
                     .contentTransition(.numericText())
 
@@ -99,7 +102,8 @@ struct MoneyStack: View {
                         enableHide: enableHide,
                         prefix: prefix,
                         color: .textPrimary,
-                        testIdentifier: "MoneyText"
+                        testIdentifier: "MoneyText",
+                        shimmer: isLoading
                     )
                     .contentTransition(.numericText())
 
