@@ -1814,7 +1814,7 @@
 "usdt__to_address" = "Zieladresse";
 "usdt__disable_unavailable" = "USDT muss aktiviert bleiben, solange du ein Guthaben oder eine ausstehende Übertragung hast. Warte, bis Übertragungen abgeschlossen sind, und prüfe dein Guthaben, bevor du USDT deaktivierst.";
 "usdt__enable" = "USDT aktivieren";
-"usdt__intro_description" = "Im Herzen Bitcoin. Dollar, wenn du sie brauchst. Aktiviere USDT (Tether), um mit Bitkit digitale Dollar zu senden und zu empfangen.";
+"usdt__intro_description" = "Im Herzen Bitcoin. Dollar, wenn du sie brauchst. Aktiviere USDT (Tether), um mit Bitkit schnell digitale Dollar zu senden und zu empfangen.";
 "usdt__intro_headline" = "<accent>DOLLAR?</accent>\nDU ENTSCHEIDEST";
 "usdt__intro_title" = "Neu: USDT";
 "usdt__no_thanks" = "Nein danke";
