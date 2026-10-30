@@ -109,6 +109,8 @@ class PubkyProfileManager: ObservableObject {
 
     private var isSignupInFlight = false
     private var initializationTask: Task<Void, Never>?
+    private var initializationRevision: UUID?
+    private var restoreInitialization: (id: UUID, revision: UUID, task: Task<Void, Never>)?
     private var completedRecoveryVersion = 0
     private var sessionRestorationDeferred = false
     private var readOnlySignOutRevision: UUID?
@@ -221,30 +223,65 @@ class PubkyProfileManager: ObservableObject {
         await initialize(mode: .userVisible, initializeSession: initializeSession)
     }
 
+    func scheduleInitializationAfterRestore(
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult = {
+            try await PubkyProfileManager.initializePersistedSession()
+        }
+    ) {
+        let revision = Self.sessionRevision
+        guard restoreInitialization?.revision != revision, Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return }
+        clearAuthenticatedState(clearCachedProfile: false)
+        let previousRevision = initializationRevision
+        let initialization = beginInitialization(mode: .userVisible, initializeSession: initializeSession)
+        let id = UUID()
+        let task = Task {
+            defer {
+                if restoreInitialization?.id == id {
+                    restoreInitialization = nil
+                }
+            }
+            guard revision == Self.sessionRevision else { return }
+            await initialization?.value
+            guard revision == Self.sessionRevision else { return }
+            if let previousRevision, previousRevision != revision {
+                await initialize(mode: .userVisible, initializeSession: initializeSession)
+            }
+        }
+        restoreInitialization = (id, revision, task)
+    }
+
     private func initialize(
         mode: SessionInitializationMode,
         initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
     ) async {
+        await beginInitialization(mode: mode, initializeSession: initializeSession)?.value
+    }
+
+    private func beginInitialization(
+        mode: SessionInitializationMode,
+        initializeSession: @escaping @Sendable () async throws -> SessionInitializationResult
+    ) -> Task<Void, Never>? {
         if let initializationTask {
-            await initializationTask.value
-            return
+            return initializationTask
         }
-        guard Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return }
+        guard Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return nil }
         isRestoringSession = true
         let revision = Self.sessionRevision
         let task = Task {
             defer {
                 initializationTask = nil
+                initializationRevision = nil
                 isRestoringSession = false
             }
-            guard Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return }
+            guard revision == Self.sessionRevision, Self.sessionMutationCount == 0, !Self.isProfileDeletionInFlight else { return }
             await initializeSessionState(mode: mode, initializeSession: initializeSession)
             if case .automaticRecovery = mode, revision == Self.sessionRevision {
                 completedRecoveryVersion += 1
             }
         }
         initializationTask = task
-        await task.value
+        initializationRevision = revision
+        return task
     }
 
     /// Retry saved credentials after startup or connectivity failures without replacing active identity work.
@@ -262,7 +299,17 @@ class PubkyProfileManager: ObservableObject {
         if completedRecoveryVersion != recoveryVersion, revision == Self.sessionRevision {
             return
         }
-        guard !Task.isCancelled, publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
+        guard !Task.isCancelled else { return }
+        if let session = automaticPaykitSession {
+            if isInitialized, profile == nil {
+                Task {
+                    guard automaticPaykitSession == session, isInitialized, profile == nil else { return }
+                    await loadProfile()
+                }
+            }
+            return
+        }
+        guard publicKey == nil, authState == .idle, Self.sessionMutationCount == 0 else { return }
         do {
             guard try hasStoredIdentity() else { return }
             await initialize(mode: .automaticRecovery, initializeSession: initializeSession)
@@ -1750,6 +1797,16 @@ class PubkyProfileManager: ObservableObject {
             return false
         }
         return PubkyPublicKeyFormat.matches(adopted.pubky, publicKey)
+    }
+
+    nonisolated static func hasStoredIdentityForBackup() throws -> Bool {
+        if AdoptedPubkyReference.current != nil {
+            return true
+        }
+        // Malformed credential bytes must not permit an identity-free replacement backup.
+        return try [KeychainEntryType.paykitSession, .pubkySecretKey].contains {
+            try Keychain.load(key: $0)?.isEmpty == false
+        }
     }
 
     nonisolated static func hasStoredIdentity(

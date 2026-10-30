@@ -1034,6 +1034,112 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testScheduledInitializationReturnsWhilePendingAndSharesAwaitedRecovery() async {
+        let manager = RecoveryProfileManager()
+        manager.publicKey = "previous-identity"
+        manager.authState = .authenticated
+        let started = expectation(description: "retained initialization started")
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        manager.scheduleInitializationAfterRestore {
+            started.fulfill()
+            for await _ in stream {}
+            return .restored(publicKey: "restored-identity")
+        }
+        XCTAssertTrue(manager.isRestoringSession)
+        XCTAssertNil(manager.currentSession)
+        XCTAssertNil(manager.automaticPaykitSession)
+        XCTAssertEqual(manager.authState, .idle)
+        await fulfillment(of: [started], timeout: 2)
+        manager.scheduleInitializationAfterRestore {
+            XCTFail("Overlapping scheduling must share the retained operation")
+            return .noSession
+        }
+        let waiting = Task {
+            await manager.initialize {
+                XCTFail("Awaited initialization must share the retained operation")
+                return .noSession
+            }
+        }
+        await Task.yield()
+        release.finish()
+        await waiting.value
+        XCTAssertEqual(manager.publicKey, "restored-identity")
+        XCTAssertFalse(manager.isRestoringSession)
+    }
+
+    @MainActor
+    func testScheduledInitializationCannotApplyAfterIdentityReplacement() async throws {
+        let manager = RecoveryProfileManager()
+        let started = expectation(description: "scheduled initialization started")
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        defer { release.finish() }
+        manager.scheduleInitializationAfterRestore {
+            started.fulfill()
+            for await _ in stream {}
+            return .restored(publicKey: "old-identity")
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let completion = Task { await manager.initialize { .noSession } }
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil,
+            deleteKeychainValue: { _ in },
+            removeOwnSharedRecords: {},
+            forgetSessionAccess: {
+                release.finish()
+                await completion.value
+            }
+        )
+        XCTAssertNil(manager.currentSession)
+        XCTAssertEqual(manager.authState, .idle)
+        XCTAssertFalse(manager.isRestoringSession)
+    }
+
+    @MainActor
+    func testRestoreSchedulingWaitsForStaleInitializationThenActivatesCurrentCredentialsOnce() async throws {
+        let manager = RecoveryProfileManager()
+        let oldStarted = expectation(description: "old initialization started")
+        let newStarted = expectation(description: "current credentials activated")
+        let (oldStream, releaseOld) = AsyncStream<Void>.makeStream()
+        defer { releaseOld.finish() }
+        let old = Task {
+            await manager.initialize {
+                oldStarted.fulfill()
+                for await _ in oldStream {}
+                return .restored(publicKey: "old-identity")
+            }
+        }
+        await fulfillment(of: [oldStarted], timeout: 2)
+        try await PubkyProfileManager.restoreSessionBackupState(
+            nil,
+            deleteKeychainValue: { _ in },
+            removeOwnSharedRecords: {},
+            forgetSessionAccess: {}
+        )
+        let (newStream, releaseNew) = AsyncStream<Void>.makeStream()
+        defer { releaseNew.finish() }
+        manager.scheduleInitializationAfterRestore {
+            newStarted.fulfill()
+            for await _ in newStream {}
+            return .restored(publicKey: "new-identity")
+        }
+        XCTAssertNil(manager.currentSession)
+        releaseOld.finish()
+        await old.value
+        await fulfillment(of: [newStarted], timeout: 2)
+        let waiting = Task {
+            await manager.initialize {
+                XCTFail("Current activation must be shared")
+                return .noSession
+            }
+        }
+        await Task.yield()
+        releaseNew.finish()
+        await waiting.value
+        XCTAssertEqual(manager.publicKey, "new-identity")
+    }
+
+    @MainActor
     func testRecoveryWaitsForStartupAndCoalescesConnectivityEvents() async {
         let manager = RecoveryProfileManager()
         let started = expectation(description: "startup started")
@@ -1715,6 +1821,67 @@ final class PubkyProfileManagerTests: XCTestCase {
             await stub.release(request: 0)
             await load.value
 
+            XCTAssertNil(manager.profile)
+            XCTAssertNil(manager.cachedName)
+        }
+    }
+
+    @MainActor
+    func testSessionRecoveryReloadsMissingProfileWithoutReauthenticationOrWaiting() async {
+        await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Recovered")])
+            await stub.makeUnreachable(ringKeyA)
+            let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            manager.isInitialized = true
+            let session = manager.currentSession
+            await manager.loadProfile()
+            XCTAssertNil(manager.profile)
+
+            await stub.makeReachable(ringKeyA)
+            await stub.setHoldsRequests(true)
+            for _ in 0 ..< 3 {
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: {
+                    XCTFail("An active identity must not inspect or import saved credentials")
+                    return false
+                })
+            }
+            await stub.waitForRequests(2)
+            XCTAssertTrue(manager.isLoadingProfile)
+            XCTAssertEqual(manager.currentSession, session)
+            let heldRequests = await stub.requests
+            XCTAssertEqual(heldRequests, [ringKeyA, ringKeyA])
+
+            await stub.release(request: 1)
+            await waitUntil("the missing profile recovers") { manager.profile?.name == "Recovered" }
+            await manager.restoreSessionIfNeeded()
+            await Task.yield()
+            let completedRequests = await stub.requests
+            XCTAssertEqual(completedRequests, [ringKeyA, ringKeyA])
+            XCTAssertEqual(manager.cachedName, "Recovered")
+        }
+    }
+
+    @MainActor
+    func testSessionRecoveryDropsMissingProfileResultFromClearedStateWithSameKey() async {
+        await withRestoredProfileDefaults {
+            let stub = RemoteProfileStub(
+                profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Stale")],
+                holdsRequests: true
+            )
+            let manager = ObservedProfileReadManager(remoteProfileResolver: { try await stub.resolve($0) })
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            manager.isInitialized = true
+
+            await manager.restoreSessionIfNeeded()
+            await stub.waitForRequests(1)
+            manager.clearAuthenticatedStateForTesting()
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            await stub.release(request: 0)
+            await waitUntil("the old profile read finishes") { manager.completedReads == 1 }
             XCTAssertNil(manager.profile)
             XCTAssertNil(manager.cachedName)
         }
@@ -4168,6 +4335,10 @@ private actor RemoteProfileStub {
         unreachableKeys.insert(key)
     }
 
+    func makeReachable(_ key: String) {
+        unreachableKeys.remove(key)
+    }
+
     func waitForRequests(_ count: Int, file: StaticString = #filePath, line: UInt = #line) async {
         guard requests.count < count else { return }
         let id = UUID()
@@ -4356,5 +4527,15 @@ private actor SessionRecoveryAttempts {
     func next() -> Int {
         count += 1
         return count
+    }
+}
+
+@MainActor
+private final class ObservedProfileReadManager: PubkyProfileManager {
+    private(set) var completedReads = 0
+
+    override func loadProfile() async {
+        await super.loadProfile()
+        completedReads += 1
     }
 }
