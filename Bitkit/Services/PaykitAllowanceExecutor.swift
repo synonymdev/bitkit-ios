@@ -604,7 +604,15 @@ actor PaykitAllowanceExecutor {
             $0.isAllower && $0.status(at: now()) == .active && PubkyPublicKeyFormat.matches($0.counterparty, request.counterparty)
         }
         guard !covering.isEmpty else { return false }
-        let attempts = await automaticAttempts()
+        var attempts: [PaykitAllowanceCapacity.Attempt] = []
+        do {
+            let ledger = try await sdk.allowanceAccountingState()
+            // A ledger behind this wallet keeps the request manual, without waiting for the node.
+            guard (try? acceptsLedger(ledger, identity: identity)) == true else { return true }
+            attempts = ledger.map { PaykitAllowanceCapacity.attempts(from: $0.history) } ?? []
+        } catch {
+            Logger.warn("Failed to read allowance accounting for the limit check: \(error)", context: "PaykitAllowance")
+        }
         let localAttempts = PaykitAllowanceCapacity.attempts(from: localState(identity: identity).automaticSpends)
         guard !covering.contains(where: {
             PaykitAllowanceCapacity.fits(
@@ -755,11 +763,6 @@ actor PaykitAllowanceExecutor {
             )
         }
         return entry
-    }
-
-    func automaticAttempts() async -> [PaykitAllowanceCapacity.Attempt] {
-        guard let state = try? await sdk.allowanceAccountingState() else { return [] }
-        return PaykitAllowanceCapacity.attempts(from: state.history)
     }
 
     struct AutomaticPayment: Equatable {

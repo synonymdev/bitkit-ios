@@ -326,6 +326,19 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertFalse(harness.log.entries.contains("resolve"))
     }
 
+    func testLimitCheckHandsBackARequestWhileTheLedgerIsBehind() async throws {
+        let harness = AllowanceHarness()
+        harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 5), identity: Fixtures.identityKey)
+        await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4))
+        let events = AllowanceEventRecorder()
+
+        let request = try Fixtures.paymentRequest()
+        let isManual = await harness.executor.exceedsLimits(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertTrue(isManual)
+        XCTAssertTrue(events.events.isEmpty, "A ledger behind the wallet raises no Limit Reached")
+    }
+
     func testAnAutomaticPaymentRaisesTheLedgerFloor() async throws {
         let harness = AllowanceHarness()
         await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 7))
