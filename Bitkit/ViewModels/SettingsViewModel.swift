@@ -867,6 +867,8 @@ class SettingsViewModel: NSObject, ObservableObject {
         switch key {
         case "primaryDisplay":
             return [PrimaryDisplay.bitcoin, .fiat].first { $0.rawValue.caseInsensitiveCompare(string) == .orderedSame }?.rawValue ?? string
+        case "defaultTransactionSpeed":
+            return string == "medium" ? TransactionSpeed.normal.rawValue : string
         case "bitcoinDisplayUnit":
             return BitcoinDisplayUnit.allCases.first { $0.rawValue.caseInsensitiveCompare(string) == .orderedSame }?.rawValue ?? string
         default:

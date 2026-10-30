@@ -58,8 +58,12 @@ final class AndroidBackupJsonTests: XCTestCase {
             SettingsViewModel.iosSettingString(settings["addressTypesToMonitor"] as Any, forKey: "addressTypesToMonitor"),
             "nativeSegwit,taproot"
         )
-        XCTAssertEqual(SettingsViewModel.iosSettingString(settings["primaryDisplay"] as Any, forKey: "primaryDisplay"), "Bitcoin")
-        XCTAssertEqual(SettingsViewModel.iosSettingString(settings["displayUnit"] as Any, forKey: "bitcoinDisplayUnit"), "modern")
+        XCTAssertEqual(SettingsViewModel.iosSettingString(settings["primaryDisplay"] as Any, forKey: "primaryDisplay"), "Fiat")
+        XCTAssertEqual(SettingsViewModel.iosSettingString(settings["displayUnit"] as Any, forKey: "bitcoinDisplayUnit"), "classic")
+    }
+
+    func testAndroidMediumSpeedReadsAsNormal() {
+        XCTAssertEqual(SettingsViewModel.iosSettingString("medium", forKey: "defaultTransactionSpeed"), "normal")
     }
 
     private func fixture(_ name: String) throws -> Data {

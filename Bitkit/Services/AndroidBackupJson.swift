@@ -8,7 +8,6 @@ import Foundation
 /// and an enum as `"REGTEST"` instead of `{"regtest":{}}`. Envelopes this app wrote pass through
 /// unchanged. Explicit nulls need nothing: `Codable` reads them as nil.
 enum AndroidBackupJson {
-    /// Fields of the Core types in the ACTIVITY and BLOCKTANK envelopes that hold an enum.
     private static let enumFields: Set<String> = ["txType", "status", "state", "state2", "network"]
 
     static func normalized(_ dataBytes: Data) -> Data {
