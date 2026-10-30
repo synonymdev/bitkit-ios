@@ -177,6 +177,7 @@ Known naming differences:
 | Send max | `SendAmountMax` | *(no button — tap `AvailableAmount`)* |
 | External amount available | — | `ExternalAmountAvailable` |
 | Payment Request details screen | `PaymentRequestDetailsScreen` | `PaymentRequestDetailScreen` |
+| Request Payment button | `PaymentRequestCreate` | `PaymentRequestRequestPayment` |
 | Hardware wallet receive tab | `Tab-hardware` (after bitkit-android#1231) | `Tab-trezor` for a Trezor wallet, `Tab-jade` for a Jade |
 | Hardware sign amount | `HardwareSendAmount` | `HardwareSendSignAmount` |
 | Hardware sign destination | `HardwareSendAddress` | *(no address identifier; read the destination under "To address (confirm on device)" inside `HardwareSendSign`)* |
