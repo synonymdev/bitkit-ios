@@ -245,8 +245,54 @@ class TransferViewModel: ObservableObject {
         savingsSwapState.quote != nil ? .swap : .close
     }
 
+    /// Whether Transfer to Savings closes channels, rather than only withdrawing Spark's balance.
+    var hasChannelsToClose: Bool {
+        !channelsToClose.isEmpty
+    }
+
     func closeSelectedChannels() async throws -> [ChannelDetails] {
+        try await withdrawSparkToSavings()
         return try await closeChannels(channels: channelsToClose)
+    }
+
+    private func withdrawSparkToSavings() async throws {
+        let spark = SparkManager.shared
+        guard spark.balanceSats > 0 else { return }
+        let address = try await lightningService.newAddress()
+        try await spark.withdrawAll(to: address)
+    }
+
+    // MARK: - Spark Funding
+
+    /// Sends `amountSats` of savings to the Spark deposit address and returns its txid. Spark claims the deposit
+    /// early when the provider offers it within the accepted fee, otherwise after 3 confirmations.
+    func fundSpark(address: String, amountSats: UInt64, satsPerVbyte: UInt32, txFee: UInt64, isMaxAmount: Bool) async throws -> String {
+        let walletId = OnchainSendAttemptService.walletId(index: lightningService.currentWalletIndex)
+        let attempts = OnchainSendAttemptService.shared
+        let result = try await attempts.send(
+            using: lightningService,
+            address: address,
+            amountSats: amountSats,
+            satsPerVbyte: satsPerVbyte,
+            utxosToSpend: nil,
+            isMaxAmount: isMaxAmount,
+            followupContext: OnchainSendFollowupContext(
+                feeSats: txFee,
+                feeRate: satsPerVbyte,
+                tags: [],
+                contact: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            )
+        )
+        guard case let .accepted(txid) = result else {
+            throw AppError(message: t("wallet__send_error_tx_failed"), debugMessage: "Spark funding outcome: \(result)")
+        }
+        _ = try? await attempts.resumeAcceptedOrdinarySend(walletId: walletId, observedTxid: txid)
+        await CoreService.shared.activity.markOnchainActivityAsTransfer(txId: txid)
+        SparkManager.shared.onDepositBroadcast(txid: txid, amountSats: amountSats)
+        Logger.info("Funded Spark wallet with \(amountSats) sats in \(txid)", context: "TransferViewModel")
+        await onBalanceRefresh?()
+        return txid
     }
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
@@ -528,6 +574,8 @@ class TransferViewModel: ObservableObject {
         }
 
         do {
+            // The confirm screen counts Spark's balance in the transfer, and the swap moves only the channel's.
+            try await withdrawSparkToSavings()
             let claimAddress = try await lightningService.newAddress()
             let swap = try await boltzService.createReverseSwap(amountSat: amount, claimAddress: claimAddress)
             Logger.info("Created savings transfer swap \(swap.id)", context: "TransferViewModel")

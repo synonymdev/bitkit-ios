@@ -297,6 +297,16 @@ enum IncomingPaykitPaymentRequestPresentationDispatcher {
         return IncomingPaykitPaymentRequestPresentationFeedback(paymentDetailsPendingWasRequested: wasRequested)
     }
 
+    /// Ends a presentation the user asked for once its payment details fail to resolve, so the send sheet stops loading
+    /// and the user sees why; the request stays in Payment Requests to try again. Automatic presentations keep retrying.
+    static func finishRequestedPresentationAfterResolutionFailure(
+        for request: PaykitPaymentRequest,
+        with manager: PaykitPaymentRequestManager
+    ) -> IncomingPaykitPaymentRequestPresentationFeedback? {
+        guard manager.requestedPresentationId == request.id else { return nil }
+        return finishPendingPrivateLink(for: request, with: manager)
+    }
+
     static func handleStateChange(
         from previous: IncomingPaykitPaymentRequestPresentationState,
         to current: IncomingPaykitPaymentRequestPresentationState,
@@ -1723,6 +1733,20 @@ struct AppScene: View {
                         return
                     }
                     guard case let .opened(paymentTarget, privatePaymentContext, endpoints) = result else {
+                        let isWaitingForUpdatedList = if case .waitingForUpdatedPaymentList = result {
+                            true
+                        } else {
+                            false
+                        }
+                        if !isWaitingForUpdatedList,
+                           let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                               for: request,
+                               with: paykitPaymentRequestManager
+                           )
+                        {
+                            presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+                            return
+                        }
                         deferIncomingPaykitPaymentRequestPresentation(
                             request,
                             reason: result.incomingPaymentRequestFailureReason ?? .resolutionFailed
@@ -1848,6 +1872,13 @@ struct AppScene: View {
                     return
                 } catch {
                     guard isCurrentIncomingPaymentRequestPreparation(preparation) else { return }
+                    if let feedback = IncomingPaykitPaymentRequestPresentationDispatcher.finishRequestedPresentationAfterResolutionFailure(
+                        for: request,
+                        with: paykitPaymentRequestManager
+                    ) {
+                        presentIncomingPaykitPaymentRequestFeedback(feedback, for: request)
+                        return
+                    }
                     deferIncomingPaykitPaymentRequestPresentation(request, reason: .resolutionFailed)
                     return
                 }

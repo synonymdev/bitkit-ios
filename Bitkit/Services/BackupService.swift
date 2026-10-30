@@ -290,16 +290,22 @@ class BackupService {
                 let settings = SettingsViewModel.shared
                 return (settings.settingsPublisher, settings.widgetsPublisher, settings.appStatePublisher)
             }
-            try? await ServiceQueue.background(.backup) {
+            let started = try? await ServiceQueue.background(.backup) {
                 guard !self.isObserving, !self.shouldSkipBackup(),
                       self.stateQueue.sync(execute: { self.foregroundObservationGeneration == generation })
-                else { return }
+                else { return false }
                 self.isObserving = true
 
                 Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
                 self.startBackupStatusObservers(generation: generation)
                 self.startDataStoreListeners(settings: publishers.0, widgets: publishers.1, appState: publishers.2)
                 self.startPeriodicBackupFailureCheck()
+                return true
+            }
+
+            // Spark's connect signal is missed when it connected before observing started.
+            if started == true, await SparkManager.shared.isConnected {
+                markBackupRequired(category: .sparkExit)
             }
         }
     }
@@ -373,6 +379,11 @@ class BackupService {
                     try await writeWalletBackup()
                 } else {
                     try await persistWalletBackup()
+                }
+            } else if category == .sparkExit {
+                // Nothing to back up until Spark connects, which marks this category required again.
+                if let data = try await sparkExitBackupData() {
+                    try await uploadBackup(category.rawValue, data)
                 }
             } else {
                 let data = try await getBackupDataBytes(category: category)
@@ -698,6 +709,11 @@ class BackupService {
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
+            try await performRestore(category: .sparkExit) { dataBytes in
+                let backup = try JSONDecoder().decode(SparkExitBackupV1.self, from: dataBytes)
+                try await SparkManager.shared.restoreExitBackup(backup, walletIndex: LightningService.shared.currentWalletIndex)
+            }
+
             // Always reset PIN settings after restore (PIN is never backed up for security)
             await SettingsViewModel.shared.resetPinSettings()
 
@@ -763,6 +779,13 @@ class BackupService {
             .sink { [weak self] _ in
                 guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .widgets)
+            }
+            .store(in: &cancellables)
+
+        SparkManager.exitStateChangedPublisher
+            .sink { [weak self] _ in
+                guard let self, !self.shouldSkipBackup() else { return }
+                markBackupRequired(category: .sparkExit)
             }
             .store(in: &cancellables)
 
@@ -1248,7 +1271,25 @@ class BackupService {
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "LIGHTNING_CONNECTIONS backup is managed by ldk-node"]
             )
+
+        case .sparkExit:
+            guard let data = try await sparkExitBackupData() else {
+                throw NSError(
+                    domain: "BackupService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "SPARK_EXIT has nothing to back up while Spark is not connected"]
+                )
+            }
+            return data
         }
+    }
+
+    private func sparkExitBackupData() async throws -> Data? {
+        if let backupData {
+            return try await backupData(.sparkExit)
+        }
+        guard let backup = try await SparkManager.shared.exitBackup() else { return nil }
+        return try JSONEncoder().encode(backup)
     }
 
     /// Re-upload the envelopes whose Core-owned fields the restore had to migrate, so later restores
