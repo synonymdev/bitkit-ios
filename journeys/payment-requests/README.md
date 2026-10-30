@@ -290,3 +290,16 @@ must explain that its payment details are unsupported and offer no Subscribe con
 `minimum-onchain-amount.xml` checks requests below the on-chain minimum, including
 manual retry and a subsequent request at the 547-sat minimum. It uses the same fixture
 setup and actions on iOS and Android, and stops before sending funds.
+
+## Automatic refresh during review
+
+`automatic-presentation.xml` starts after a foreground resume and checks that each received request
+appears once. `review-refresh.xml` sends a second request while the first confirmation is open,
+then checks that the original review remains usable and the second request arrives after cancellation.
+Allow ordinary foreground polling and synchronization to finish; these steps set no arrival deadline
+and do not require an immediate refresh when review closes.
+
+The exact overlap of a saved-contact callback, message receipt, and a queued SDK operation requires
+controlled callback timing outside the journey capabilities. Repository tests cover that ordering,
+automatic forced-refresh deferral, and later polling. These journeys check the visible request and
+payment safeguards without claiming that a specific callback race occurred.
