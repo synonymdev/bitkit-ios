@@ -1179,8 +1179,10 @@
 "profile__edit" = "Редактировать";
 "profile__pay_contacts_nav_title" = "Платежи Контактам";
 "profile__pay_contacts_title" = "Пусть ваши контакты\n<accent>платят вам</accent>";
-"profile__pay_contacts_description" = "Используйте Bitkit, чтобы отправлять платежи контактам напрямую — когда угодно и где угодно.";
-"profile__pay_contacts_toggle" = "Платежи с контактами";
+"profile__pay_contacts_description" = "Делитесь платёжными данными с контактами приватно. Публичные платежи останутся выключенными, пока вы не включите их в настройках.";
+"profile__private_payments_toggle" = "Приватные платежи контактам";
+"profile__public_payments_toggle" = "Публичные платежи";
+"profile__payments_pending" = "Изменения ожидают применения. Ранее опубликованные платёжные данные могут оставаться доступными.";
 "profile__add_link_title" = "Добавить Ссылку";
 "profile__add_link_label" = "НАЗВАНИЕ";
 "profile__add_link_label_placeholder" = "Например, 'Сайт'";
