@@ -339,7 +339,7 @@ private struct AmountShimmer: ViewModifier {
                 ZStack {
                     Color.white.opacity(minOpacity)
                     if !reduceMotion {
-                        TimelineView(.animation(paused: !isSweeping)) { context in
+                        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !isSweeping)) { context in
                             GeometryReader { proxy in
                                 band(at: context.date, in: proxy.size)
                             }
