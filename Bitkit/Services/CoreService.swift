@@ -2011,14 +2011,18 @@ actor AddressSearchCoordinator {
             (false, .external),
             (true, .internal),
         ]
-        let primaryAccounts = addressTypesToSearch.map { LDKNode.OnchainWalletAccount(addressType: $0, accountIndex: 0) }
+        var primaryAccounts = addressTypesToSearch.map { LDKNode.OnchainWalletAccount(addressType: $0, accountIndex: 0) }
         let companionAccounts: [LDKNode.OnchainWalletAccount]
         do {
-            companionAccounts = try await listAccounts().filter { $0.accountIndex > 0 }.sorted {
+            let accounts = try await listAccounts()
+            primaryAccounts = primaryAccounts.filter { primary in
+                accounts.contains { $0.accountIndex == 0 && $0.addressType == primary.addressType }
+            }
+            companionAccounts = accounts.filter { $0.accountIndex > 0 }.sorted {
                 ($0.accountIndex, $0.addressType.stringValue) < ($1.accountIndex, $1.addressType.stringValue)
             }
         } catch {
-            Logger.warn("Failed to list companion accounts for address search: \(error)", context: "CoreService.AddressSearch")
+            Logger.warn("Failed to list wallet accounts for address search: \(error)", context: "CoreService.AddressSearch")
             companionAccounts = []
         }
         // Preserve account-zero priority, including its change addresses, before searching companion accounts.

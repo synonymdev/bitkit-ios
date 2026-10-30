@@ -215,6 +215,19 @@ class NavigationViewModel: ObservableObject {
         path.removeLast()
     }
 
+    func returnToConnectionsAfterClosing(channelId: String, from expectedPath: [Route]) {
+        guard path == expectedPath, path.count >= 2,
+              case let .connectionDetail(detailChannelId) = path[path.count - 2], detailChannelId == channelId,
+              case let .closeConnection(channel) = path[path.count - 1], channel.channelIdString == channelId
+        else { return }
+
+        var remainingPath = Array(path.dropLast(2))
+        if remainingPath.last != .connections {
+            remainingPath.append(.connections)
+        }
+        path = remainingPath
+    }
+
     func returnToContactsAfterRemoving(publicKey: String) {
         let remainingPath = path.filter { route in
             switch route {
