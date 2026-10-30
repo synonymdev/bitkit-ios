@@ -40,11 +40,6 @@ struct MoneyText: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
-    @State private var leadingWidth: CGFloat = 0
-    @State private var amountWidth: CGFloat = 0
-    @State private var amountHeight: CGFloat = 0
-    @State private var amountTop: CGFloat = 0
-
     // MARK: - Computed Properties
 
     private var unit: PrimaryDisplay {
@@ -67,25 +62,19 @@ struct MoneyText: View {
     }
 
     private var displayText: String {
-        leadingText + formattedValue + trailingText
-    }
-
-    /// Markup before the amount: the prefix and a leading symbol.
-    private var leadingText: String {
         if showSymbol {
             let baseSymbol = unit == .bitcoin ? "₿" : fiatSymbol
-            if unit == .fiat && isFiatSymbolSuffix {
-                return prefix != nil ? "<accent>\(prefix!)</accent> " : ""
+            let isSuffix = unit == .fiat && isFiatSymbolSuffix
+            if isSuffix {
+                let prefixPart = prefix != nil ? "<accent>\(prefix!)</accent> " : ""
+                return "\(prefixPart)\(formattedValue) <accent>\(baseSymbol)</accent>"
+            } else {
+                let symbolPart = prefix != nil ? "<accent>\(prefix!) \(baseSymbol)</accent>" : "<accent>\(baseSymbol)</accent>"
+                return "\(symbolPart) \(formattedValue)"
             }
-            return prefix != nil ? "<accent>\(prefix!) \(baseSymbol)</accent> " : "<accent>\(baseSymbol)</accent> "
+        } else {
+            return prefix != nil ? "<accent>\(prefix!)</accent> \(formattedValue)" : formattedValue
         }
-        return prefix != nil ? "<accent>\(prefix!)</accent> " : ""
-    }
-
-    /// Markup after the amount: a trailing symbol.
-    private var trailingText: String {
-        guard showSymbol, unit == .fiat, isFiatSymbolSuffix else { return "" }
-        return " <accent>\(fiatSymbol)</accent>"
     }
 
     var body: some View {
@@ -103,7 +92,7 @@ struct MoneyText: View {
 
     @ViewBuilder
     private var labeledText: some View {
-        let base = shimmering(textComponent(displayText).foregroundColor(color))
+        let base = shimmering
 
         if let testIdentifier {
             base
@@ -129,54 +118,36 @@ struct MoneyText: View {
 // MARK: - Helper Views
 
 extension MoneyText {
+    /// While a balance refreshes, the digits shimmer and the symbol stays steady: the same text is drawn twice with
+    /// the same layout, the shimmered copy showing only the digits and the copy on top only the symbol, so it holds
+    /// however the headline wraps.
     @ViewBuilder
-    private func shimmering(_ content: some View) -> some View {
+    private var shimmering: some View {
         if let shimmer {
-            content
-                .modifier(AmountShimmer(
-                    isActive: shimmer,
-                    leadingWidth: leadingWidth,
-                    amountWidth: amountWidth,
-                    amountHeight: amountHeight,
-                    amountTop: amountTop
-                ))
-                .background(amountMeasurer)
-                .onPreferenceChange(AmountMetricsKey.self) { metrics in
-                    let total = metrics[.totalWidth] ?? 0
-                    let amount = metrics[.amountWidth] ?? 0
-                    let height = metrics[.amountHeight] ?? 0
-                    let totalHeight = metrics[.totalHeight] ?? 0
-                    // A leading symbol that wraps puts the amount on its own line below it.
-                    let symbolWraps = height > 0 && totalHeight > height * 1.5
-                    leadingWidth = symbolWraps ? 0 : max(0, total - amount)
-                    amountWidth = amount
-                    amountHeight = height
-                    amountTop = symbolWraps ? totalHeight - height : 0
+            textComponent(displayText, accentColor: .clear, fillsWidth: false)
+                .foregroundColor(color)
+                .modifier(AmountShimmer(isActive: shimmer))
+                .overlay {
+                    textComponent(displayText, textColor: .clear, fillsWidth: false)
+                        .accessibilityHidden(true)
                 }
+                // Where `DisplayText` would fill the width itself, so the sweep spans only the text.
+                .frame(maxWidth: size == .display && fillsWidth ? .infinity : nil, alignment: .leading)
         } else {
-            content
+            textComponent(displayText)
+                .foregroundColor(color)
         }
-    }
-
-    /// Hidden copies that measure where the amount sits inside the full text.
-    private var amountMeasurer: some View {
-        ZStack(alignment: .leading) {
-            textComponent(leadingText + formattedValue, fillsWidth: false)
-                .background(GeometryReader { Color.clear.preference(
-                    key: AmountMetricsKey.self,
-                    value: [.totalWidth: $0.size.width, .totalHeight: $0.size.height]
-                ) })
-            textComponent(formattedValue, fillsWidth: false)
-                .background(GeometryReader {
-                    Color.clear.preference(key: AmountMetricsKey.self, value: [.amountWidth: $0.size.width, .amountHeight: $0.size.height])
-                })
-        }
-        .hidden()
-        .accessibilityHidden(true)
     }
 
     @ViewBuilder
-    private func textComponent(_ text: String, fillsWidth: Bool? = nil) -> some View {
+    private func textComponent(
+        _ text: String,
+        textColor: Color? = nil,
+        accentColor: Color? = nil,
+        fillsWidth: Bool? = nil
+    ) -> some View {
+        let color = textColor ?? color
+        let symbolColor = accentColor ?? symbolColor
         switch size {
         case .display:
             DisplayText(
@@ -343,31 +314,10 @@ private extension MoneyText {
     .preferredColorScheme(.dark)
 }
 
-private enum AmountMetric: Hashable {
-    case totalWidth
-    case totalHeight
-    case amountWidth
-    case amountHeight
-}
-
-private struct AmountMetricsKey: PreferenceKey {
-    static let defaultValue: [AmountMetric: CGFloat] = [:]
-
-    static func reduce(value: inout [AmountMetric: CGFloat], nextValue: () -> [AmountMetric: CGFloat]) {
-        value.merge(nextValue()) { $1 }
-    }
-}
-
-/// A soft diagonal sweep over the amount while its balance refreshes. The digits dim to 75% and the band brings them
-/// back to full, so the cached amount stays readable; the symbol is not touched. With Reduce Motion on, the digits only dim.
+/// A soft diagonal sweep over the digits while the balance refreshes. They dim to 75% and the band brings them back to
+/// full, so the cached amount stays readable. With Reduce Motion on, they only dim.
 private struct AmountShimmer: ViewModifier {
     let isActive: Bool
-    let leadingWidth: CGFloat
-    let amountWidth: CGFloat
-    /// One line of the amount: when the text wraps, only that line shimmers, so a symbol on another line stays steady.
-    let amountHeight: CGFloat
-    /// Where the amount's line starts when a leading symbol wraps above it; 0 when the amount starts the text.
-    let amountTop: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var intensity: Double = 0
@@ -378,22 +328,24 @@ private struct AmountShimmer: ViewModifier {
     private let sweepDuration: TimeInterval = 2
     private let minOpacity = 0.75
     private let bandWidth: CGFloat = 56
+    /// How far the band's edges slope across its width: one headline line, as on Android.
+    private let bandRise: CGFloat = 44
     /// `DisplayText` draws glyph tops and descenders outside its frame; the mask reaches past it so they stay visible.
     private let maskOutset: CGFloat = 24
 
     func body(content: Content) -> some View {
         content
             .mask {
-                GeometryReader { proxy in
-                    let height = proxy.size.height
-                    let wraps = amountHeight > 0 && height - 2 * maskOutset > amountHeight * 1.5
-                    let top = wraps && amountTop > 0 ? maskOutset + amountTop : 0
-                    VStack(spacing: 0) {
-                        Color.white.frame(height: top)
-                        shimmerRow
-                            .frame(height: !wraps ? height : amountTop > 0 ? height - top : maskOutset + amountHeight)
-                        Color.white
+                ZStack {
+                    Color.white.opacity(minOpacity)
+                    if !reduceMotion {
+                        TimelineView(.animation(paused: !isSweeping)) { context in
+                            GeometryReader { proxy in
+                                band(at: context.date, in: proxy.size)
+                            }
+                        }
                     }
+                    Color.white.opacity(1 - intensity)
                 }
                 .padding(-maskOutset)
             }
@@ -417,40 +369,19 @@ private struct AmountShimmer: ViewModifier {
             }
     }
 
-    private var shimmerRow: some View {
-        HStack(spacing: 0) {
-            Color.white.frame(width: maskOutset + leadingWidth)
-            ZStack {
-                Color.white.opacity(minOpacity)
-                if !reduceMotion {
-                    TimelineView(.animation(paused: !isSweeping)) { context in
-                        GeometryReader { proxy in
-                            band(at: context.date, in: proxy.size)
-                        }
-                    }
-                }
-                Color.white.opacity(1 - intensity)
-            }
-            .frame(width: amountWidth)
-            .clipped()
-            Color.white
-        }
-    }
-
-    /// A diagonal band, as on Android: its edges slope by one line of the amount over the band's width, and it travels
-    /// from fully before the amount to fully past it, so each pass starts and ends off the digits.
+    /// A diagonal band, as on Android, that travels from fully before the text to fully past it, so each pass starts
+    /// and ends off the digits.
     private func band(at date: Date, in size: CGSize) -> some View {
         let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: sweepDuration) / sweepDuration
         let half = bandWidth / 2
-        let rise = amountHeight > 0 ? amountHeight : size.height
-        let overshoot = half + size.height * rise / (2 * half)
+        let overshoot = half + size.height * bandRise / (2 * half)
         let center = -overshoot + phase * (size.width + 2 * overshoot)
         let width = max(size.width, 1)
         let height = max(size.height, 1)
         return LinearGradient(
             colors: [.clear, .white, .clear],
             startPoint: UnitPoint(x: (center - half) / width, y: 0),
-            endPoint: UnitPoint(x: (center + half) / width, y: rise / height)
+            endPoint: UnitPoint(x: (center + half) / width, y: bandRise / height)
         )
     }
 }
