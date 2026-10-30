@@ -1380,9 +1380,10 @@ actor PaykitSdkService {
     func acceptPaymentRequestAutomatically(
         scope: Paykit.PaymentRequestScope,
         selection: Paykit.AllowanceSelectionInput,
-        checks: Paykit.PaymentExecutionChecks
+        checks: Paykit.PaymentExecutionChecks,
+        admit: @Sendable () async throws -> Void
     ) async throws -> Paykit.AllowanceAssociationRecord {
-        try await withStateRevisionTracking { sdk in
+        try await withStateRevisionTracking(admit: admit) { sdk in
             try await sdk.acceptPaymentRequestAutomatically(scope: scope, selection: selection, checks: checks)
         }
     }
