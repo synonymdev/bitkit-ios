@@ -121,6 +121,7 @@ final class AppDataMigrationsTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.cleanupPendingKey))
         XCTAssertNil(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey))
         XCTAssertEqual(defaults.string(forKey: "onchainAddress"), "ordinary-address")
+        XCTAssertNil(defaults.data(forKey: "backupStatuses"))
     }
 
     func testLegacyConsentOrPendingRemovalStillQueuesPublicCleanup() throws {

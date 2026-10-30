@@ -80,6 +80,7 @@ enum AppDataMigrations {
                 var addresses = Set(defaults.stringArray(forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey) ?? [])
                 addresses.insert(address)
                 defaults.set(addresses.sorted(), forKey: PrivatePaykitAddressReservationStore.legacyPublicAddressesKey)
+                BackupService.markWalletBackupRequiredBeforeObservation(defaults: defaults)
                 defaults.removeObject(forKey: "onchainAddress")
             }
         }

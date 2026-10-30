@@ -133,7 +133,7 @@ class BackupService {
     private let waitForBackupDelay: () async throws -> Void
     private let waitForTemporaryFailureDelay: (UInt64) async throws -> Void
     private let waitForForegroundRecoveryTimeout: () async throws -> Void
-    private let backupStatusesKey = "backupStatuses"
+    private static let backupStatusesKey = "backupStatuses"
     private var backupVersions: [BackupCategory: UInt64] = [:]
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
@@ -957,6 +957,18 @@ class BackupService {
         }
     }
 
+    /// Startup migrations run before change listeners, so their backup requirement must survive until observation starts.
+    static func markWalletBackupRequiredBeforeObservation(defaults: UserDefaults) {
+        var statuses = loadBackupStatuses(defaults: defaults)
+        let status = statuses[.wallet] ?? BackupItemStatus()
+        statuses[.wallet] = BackupItemStatus(
+            synced: status.synced,
+            required: max(status.required, status.synced + 1, UInt64(Date().timeIntervalSince1970)),
+            running: status.running
+        )
+        _ = persistBackupStatuses(statuses, defaults: defaults)
+    }
+
     private func scheduleBackup(category: BackupCategory, initialOutcome: BackupOutcome = .failed, foregroundGeneration: UInt64? = nil) async {
         try? await ServiceQueue.background(.backup) { [self] in
             if let foregroundGeneration {
@@ -1130,6 +1142,10 @@ class BackupService {
     // MARK: - Private Helpers
 
     func getAllBackupStatuses() -> [BackupCategory: BackupItemStatus] {
+        Self.loadBackupStatuses(defaults: defaults)
+    }
+
+    private static func loadBackupStatuses(defaults: UserDefaults) -> [BackupCategory: BackupItemStatus] {
         guard let data = defaults.data(forKey: backupStatusesKey) else {
             return [:]
         }
@@ -1146,15 +1162,22 @@ class BackupService {
     }
 
     private func saveBackupStatuses(_ statuses: [BackupCategory: BackupItemStatus]) {
+        if Self.persistBackupStatuses(statuses, defaults: defaults) {
+            backupStatusesSubject.send(statuses)
+        }
+    }
+
+    private static func persistBackupStatuses(_ statuses: [BackupCategory: BackupItemStatus], defaults: UserDefaults) -> Bool {
         let encoded = Dictionary(uniqueKeysWithValues: statuses.map { ($0.key.rawValue, $0.value) })
 
         do {
             let data = try JSONEncoder().encode(encoded)
             defaults.set(data, forKey: backupStatusesKey)
 
-            backupStatusesSubject.send(statuses)
+            return true
         } catch {
             Logger.error("Failed to encode backup statuses: \(error)", context: "BackupService")
+            return false
         }
     }
 

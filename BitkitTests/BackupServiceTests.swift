@@ -5,6 +5,58 @@ import XCTest
 
 @MainActor
 final class BackupServiceTests: XCTestCase {
+    func testPublicAddressMigrationSchedulesWalletBackupOnStartup() async throws {
+        let defaults = try makeIsolatedDefaults()
+        defaults.set(3, forKey: AppDataMigrations.versionKey)
+        defaults.set(true, forKey: ContactPaymentsService.confirmedPreferenceKey)
+        defaults.set(true, forKey: PrivatePaykitService.publishingEnabledKey)
+        defaults.set("legacy-public-address", forKey: "onchainAddress")
+        let synced = BackupItemStatus(synced: 1, required: 1, running: false)
+        try defaults.set(JSONEncoder().encode([
+            BackupCategory.wallet.rawValue: synced,
+            BackupCategory.metadata.rawValue: synced,
+        ]), forKey: "backupStatuses")
+
+        AppDataMigrations.run(defaults: defaults, hasStoredPubkyIdentity: { true })
+
+        let reservations = PrivatePaykitAddressReservationStore(defaults: defaults)
+        var uploadedAddresses: [String]?
+        let service = BackupService(defaults: defaults, backupData: { category in
+            guard category == .wallet else { return Data() }
+            let addresses = await reservations.legacyPublicAddressesSnapshot()
+            return try JSONEncoder().encode(WalletBackupV1(
+                version: 1, createdAt: 1, transfers: [],
+                privatePaykitHighestReservedReceiveIndexByAddressType: nil,
+                paykitSdkBackupState: nil, watchOnlyAccounts: nil, watchOnlyAccountAllocationState: nil,
+                publicPaykitLegacyAddresses: addresses
+            ))
+        }, uploadBackup: { key, data in
+            guard key == BackupCategory.wallet.rawValue else { return }
+            uploadedAddresses = try JSONDecoder().decode(WalletBackupV1.self, from: data).publicPaykitLegacyAddresses
+        }, waitForBackupDelay: {})
+        let status = service.getBackupStatus(category: .wallet)
+        XCTAssertEqual(status.synced, synced.synced)
+        XCTAssertTrue(status.isRequired)
+        XCTAssertEqual(service.getBackupStatus(category: .metadata), synced)
+        guard status.isRequired else { return }
+        let completed = expectation(description: "Migrated public address backed up after observation starts")
+        let subscription = service.backupStatusesPublisher
+            .filter { $0[.wallet].map { !$0.isRequired && !$0.running } == true }
+            .first().sink { _ in completed.fulfill() }
+        defer { subscription.cancel() }
+
+        service.startObservingBackups()
+        await fulfillment(of: [completed], timeout: 5)
+        service.setWiping(true)
+        await service.stopObservingBackups()
+
+        XCTAssertEqual(uploadedAddresses, ["legacy-public-address"])
+        XCTAssertFalse(service.getBackupStatus(category: .wallet).isRequired)
+        XCTAssertFalse(defaults.bool(forKey: PublicPaykitService.publishingEnabledKey))
+        XCTAssertTrue(defaults.bool(forKey: PrivatePaykitService.publishingEnabledKey))
+        XCTAssertNil(defaults.string(forKey: "onchainAddress"))
+    }
+
     func testChangesDuringCaptureAndUploadRemainRequired() async throws {
         for changeDuringCapture in [true, false] {
             let suite = "BackupServiceTests.\(UUID().uuidString)"
