@@ -1770,4 +1770,6 @@
 "subscriptions__allowance_limit_description" = "Una solicitud de {amount} de {name} supera su asignación. Revísela para pagar.";
 "subscriptions__allowance_auto_paid" = "Pagado automáticamente";
 
+"onboarding__connection_settings" = "Ajustes de conexión";
+"onboarding__connection_saved" = "Guardado. Reintenta para continuar la restauración.";
 "wallet__balance_updating" = "Actualizando saldo…";

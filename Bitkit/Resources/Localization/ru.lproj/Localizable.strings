@@ -1880,4 +1880,6 @@
 "subscriptions__allowance_limit_description" = "Запрос на {amount} от {name} превышает ваш лимит автооплаты. Проверьте его, чтобы оплатить.";
 "subscriptions__allowance_auto_paid" = "Оплачено автоматически";
 
+"onboarding__connection_settings" = "Настройки подключения";
+"onboarding__connection_saved" = "Сохранено. Повторите попытку, чтобы продолжить восстановление.";
 "wallet__balance_updating" = "Обновление баланса…";

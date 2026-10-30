@@ -1227,6 +1227,9 @@ class PubkyProfileManager: ObservableObject {
         let resolve = remoteProfileResolver
 
         do {
+            #if DEBUG
+                try ConnectionRecoveryTestFault.check("profile:load")
+            #endif
             let loadedProfile = try await Task.detached {
                 try await resolve(pk)
             }.value

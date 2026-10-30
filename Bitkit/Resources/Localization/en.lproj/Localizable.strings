@@ -1978,4 +1978,6 @@
 "usdt__error_bridge_liquidity" = "This route cannot complete the transfer right now. Try another network or try again later.";
 "usdt__receive_copied" = "Address copied to clipboard.\nMake sure USDT is only sent on the selected network.";
 
+"onboarding__connection_settings" = "Connection settings";
+"onboarding__connection_saved" = "Saved. Retry to continue restoring.";
 "wallet__balance_updating" = "Updating balance…";

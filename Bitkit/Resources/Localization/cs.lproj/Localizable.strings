@@ -1889,4 +1889,6 @@
 "subscriptions__allowance_limit_description" = "Žádost o {amount} od {name} přesahuje vaše povolení. Zkontrolujte ji a zaplaťte.";
 "subscriptions__allowance_auto_paid" = "Zaplaceno automaticky";
 
+"onboarding__connection_settings" = "Nastavení připojení";
+"onboarding__connection_saved" = "Uloženo. Zkuste to znovu a pokračujte v obnově.";
 "wallet__balance_updating" = "Aktualizace zůstatku…";

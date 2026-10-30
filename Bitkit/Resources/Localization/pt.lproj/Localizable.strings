@@ -1546,4 +1546,6 @@
 "subscriptions__allowance_limit_description" = "Um pedido de {amount} de {name} excede a sua pré-aprovação. Reveja-o para pagar.";
 "subscriptions__allowance_auto_paid" = "Pago automaticamente";
 
+"onboarding__connection_settings" = "Definições de ligação";
+"onboarding__connection_saved" = "Guardado. Tente novamente para continuar o restauro.";
 "wallet__balance_updating" = "A atualizar o saldo…";

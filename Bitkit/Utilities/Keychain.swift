@@ -19,6 +19,7 @@ enum KeychainEntryType {
     case usdtPendingBackupRestore
     case paykitAllowanceState
     case pubkySecretKey
+    case connectionRecovery
 
     var storageKey: String {
         switch self {
@@ -39,6 +40,7 @@ enum KeychainEntryType {
         case .usdtPendingBackupRestore: "usdt_pending_backup_restore"
         case .paykitAllowanceState: "paykit_allowance_state"
         case .pubkySecretKey: "pubky_secret_key"
+        case .connectionRecovery: "connection_recovery"
         }
     }
 }
@@ -58,6 +60,10 @@ class Keychain {
     }
 
     class func save(key: KeychainEntryType, data: Data) throws {
+        #if DEBUG
+            try ConnectionRecoveryTestFault.checkKeychain(key: key, operation: "write")
+        #endif
+
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
 
         let query = [
@@ -108,6 +114,10 @@ class Keychain {
     }
 
     class func update(key: KeychainEntryType, data: Data) throws {
+        #if DEBUG
+            try ConnectionRecoveryTestFault.checkKeychain(key: key, operation: "write")
+        #endif
+
         Logger.debug("Updating \(key.storageKey)", context: "Keychain")
 
         let query = [
@@ -153,6 +163,10 @@ class Keychain {
     }
 
     class func delete(key: KeychainEntryType) throws {
+        #if DEBUG
+            try ConnectionRecoveryTestFault.checkKeychain(key: key, operation: "delete")
+        #endif
+
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: account(for: key),
@@ -176,6 +190,10 @@ class Keychain {
 
     /// Atomically inserts or updates a keychain entry, avoiding the delete-then-save race window.
     class func upsert(key: KeychainEntryType, data: Data) throws {
+        #if DEBUG
+            try ConnectionRecoveryTestFault.checkKeychain(key: key, operation: "write")
+        #endif
+
         Logger.debug("Upserting \(key.storageKey)", context: "Keychain")
 
         let existingData = try load(key: key)
@@ -211,6 +229,10 @@ class Keychain {
 
     /// NOTE: throws if fails but return nil if not found
     class func load(key: KeychainEntryType) throws -> Data? {
+        #if DEBUG
+            try ConnectionRecoveryTestFault.checkKeychain(key: key, operation: "read")
+        #endif
+
         let query = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: account(for: key),
@@ -294,3 +316,48 @@ class Keychain {
         }
     }
 }
+
+#if DEBUG
+    /// Disposable simulator acceptance only. The control never changes a stored value or reports success.
+    enum ConnectionRecoveryTestFault {
+        static let allowed = Set([
+            "connection_recovery:read", "connection_recovery:write", "connection_recovery:delete",
+            "paykit_pending_backup_restore:read", "paykit_pending_backup_restore:write", "paykit_pending_backup_restore:delete",
+            "usdt_pending_backup_restore:read", "usdt_pending_backup_restore:write", "usdt_pending_backup_restore:delete",
+            "preferences:readback", "preferences:flush", "profile:load",
+        ])
+
+        private static func selected() -> String? {
+            #if targetEnvironment(simulator)
+                guard Env.isE2E, Env.network == .regtest, !Env.isUnitTest,
+                      ProcessInfo.processInfo.arguments.contains("-E2E_CONNECTION_RECOVERY_FAULTS") else { return nil }
+                let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("connection-recovery-test-fault")
+                guard let data = try? Data(contentsOf: url), data.count <= 128,
+                      let value = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      allowed.contains(value) else { return nil }
+                return value
+            #else
+                return nil
+            #endif
+        }
+
+        static func checkKeychain(key: KeychainEntryType, operation: String) throws {
+            try check("\(key.storageKey):\(operation)")
+        }
+
+        static func check(_ point: String) throws {
+            try check(point, selected: selected())
+        }
+
+        static func check(_ point: String, selected: String?) throws {
+            guard allowed.contains(point), selected == point else { return }
+            Logger.warn("Injected local recovery storage failure: \(point)", context: "ConnectionRecoveryTestFault")
+            throw NSError(
+                domain: "ConnectionRecoveryTestFault",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Local recovery storage unavailable (\(point))"]
+            )
+        }
+    }
+#endif
