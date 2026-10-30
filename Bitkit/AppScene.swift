@@ -672,7 +672,7 @@ struct AppScene: View {
                     guard isPaykitSceneActive, pubkyProfile.authState == .authenticated,
                           PubkyPublicKeyFormat.matches(pk, pubkyProfile.publicKey)
                     else { return }
-                    await refreshIncomingPaykitPaymentRequests(forceFresh: true, onlyWhileActive: true)
+                    await refreshIncomingPaykitPaymentRequests(forceFresh: true, refreshPriority: .background, onlyWhileActive: true)
                 }
             }
             .onReceive(PrivatePaykitService.contactLinkCompletedPublisher.receive(on: DispatchQueue.main)) { completion in
@@ -694,11 +694,13 @@ struct AppScene: View {
             .task(id: pendingPaykitProofRefresh) {
                 guard let request = pendingPaykitProofRefresh else { return }
                 do {
-                    try await PaykitPaymentActivity.shared.waitUntilIdle()
+                    try await PaykitPaymentActivity.shared.waitUntilIdle(includingReviews: true)
                 } catch { return }
                 guard !Task.isCancelled, request == pendingPaykitProofRefresh else { return }
-                await refreshIncomingPaykitPaymentRequests(mode: .stored, forceFresh: true, automatic: false)
-                guard !Task.isCancelled else { return }
+                let refreshed = await refreshIncomingPaykitPaymentRequests(
+                    mode: .stored, forceFresh: true, refreshPriority: .background, automatic: false
+                )
+                guard !Task.isCancelled, refreshed else { return }
                 paykitProofRefresh.complete(request)
             }
             .onReceive(PaykitAllowanceExecutor.eventPublisher.receive(on: DispatchQueue.main)) { event in
@@ -1437,6 +1439,7 @@ struct AppScene: View {
         mode: PaykitPaymentRequestRefreshMode = .full,
         forceFresh: Bool = false,
         messagePriority: PaykitSdkOperationLock.Priority = .background,
+        refreshPriority: PaykitSdkOperationLock.Priority? = nil,
         onlyWhileActive: Bool = false,
         automatic: Bool = true
     ) async -> Bool {
@@ -1468,8 +1471,10 @@ struct AppScene: View {
         guard canRefresh() else { return false }
         let identity = session.publicKey
         let refreshed = await paykitPaymentRequestManager.refresh(
-            mode: mode, forceFresh: forceFresh, messagePriority: messagePriority, canRefresh: canRefresh
+            mode: mode, forceFresh: forceFresh, messagePriority: messagePriority,
+            refreshPriority: refreshPriority, canRefresh: canRefresh
         )
+        guard refreshed else { return false }
         // Deleting the profile withdraws the payment lists an automatic payment would consume.
         if canRefresh(), pubkyProfile.automaticPaykitSession == session, !pubkyProfile.isDeletingProfile {
             await paykitAllowanceManager.refresh()
@@ -2147,9 +2152,9 @@ struct AppScene: View {
                                 PublicPaykitService.pendingReconciliationMode() == .publishEndpoints
                         }
                     case .removePublishedState:
-                        try await PublicPaykitService.removePublishedEndpoints()
-                        try await PublicPaykitService.syncPaykitApp()
-                        PublicPaykitService.setCleanupPending(false)
+                        try await PublicPaykitService.retryPendingEndpointReconciliation(
+                            wallet: wallet, isSessionCurrent: { pubkyProfile.automaticPaykitSession == session }
+                        )
                     }
                 } catch {
                     Logger.warn("Failed to reconcile public Paykit state: \(error)", context: "AppScene")

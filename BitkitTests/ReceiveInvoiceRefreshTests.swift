@@ -1,4 +1,5 @@
 @testable import Bitkit
+import os
 import XCTest
 
 @MainActor
@@ -12,8 +13,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             PublicPaykitService.cleanupPendingKey, PublicPaykitService.reconciliationRevisionKey, PaykitFeatureFlags.uiEnabledKey,
             "publicPaykitBolt11", "publicPaykitBolt11PaymentHash", "publicPaykitBolt11ExpiresAt",
             PublicPaykitService.lightningPaymentOptionEnabledKey, PublicPaykitService.usdtPaymentOptionEnabledKey,
-            PublicPaykitService.onchainPaymentOptionEnabledKey,
-            PrivatePaykitService.publishingEnabledKey,
+            PrivatePaykitService.publishingEnabledKey, PublicPaykitService.onchainPaymentOptionEnabledKey,
         ].map { (
             $0,
             UserDefaults.standard.object(forKey: $0)
@@ -22,6 +22,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: key)
         }
         UserDefaults.standard.set(false, forKey: PublicPaykitService.usdtPaymentOptionEnabledKey)
+        UserDefaults.standard.set(false, forKey: PublicPaykitService.onchainPaymentOptionEnabledKey)
     }
 
     override func tearDown() {
@@ -298,14 +299,14 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                             }
                         )
                     },
+                    syncPrivateCapability: { _, _ in },
                     preparePrivateEndpoints: { _, _, _ in nil }, removePrivateEndpoints: { _ in },
                     setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                     setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
                 )
                 do {
-                    let applied = try await ContactPaymentsService.setEnabled(
-                        true, pubkyProfile: profile, contactsManager: ContactsManager(),
-                        operations: operations, privatePaymentAccess: { _ in false }
+                    let applied = try await ContactPaymentsService.setPublicEnabled(
+                        true, pubkyProfile: profile, operations: operations
                     )
                     XCTAssertEqual(invalidations, 1)
                     XCTAssertTrue(applied)
@@ -321,7 +322,8 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                     XCTAssertTrue(published.isEmpty)
                 }
                 XCTAssertEqual(profile.currentSession, session)
-                XCTAssertEqual(ContactPaymentsService.isEnabled(), invalidations == 1)
+                XCTAssertEqual(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey), invalidations == 1)
+                XCTAssertFalse(ContactPaymentsService.isEnabled())
                 XCTAssertEqual(removals, invalidations == 1 ? 0 : 1)
                 XCTAssertEqual(endpointRefreshes, 1)
                 XCTAssertEqual(wallet.addressCallCount, 1)
@@ -456,14 +458,14 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                         applyEndpoints: { XCTAssertTrue($0.isEmpty, "Deletion must not publish replacement endpoints") }
                     )
                 },
+                syncPrivateCapability: { _, _ in },
                 preparePrivateEndpoints: { _, _, _ in nil }, removePrivateEndpoints: { _ in },
                 setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                 setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
             )
             let change = Task {
-                try await ContactPaymentsService.setEnabled(
-                    true, pubkyProfile: profile, contactsManager: ContactsManager(),
-                    operations: operations, privatePaymentAccess: { _ in false }
+                try await ContactPaymentsService.setPublicEnabled(
+                    true, pubkyProfile: profile, operations: operations
                 )
             }
             await fulfillment(of: [creation.started], timeout: 5)
@@ -479,6 +481,7 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 }
                 XCTAssertTrue(wallet.publicPaykitBolt11.isEmpty)
                 XCTAssertFalse(ContactPaymentsService.isEnabled())
+                XCTAssertFalse(UserDefaults.standard.bool(forKey: PublicPaykitService.publishingEnabledKey))
                 XCTAssertEqual(creations, heldCreation)
             }
         }
@@ -622,7 +625,6 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                 let session = try XCTUnwrap(profile.automaticPaykitSession)
                 UserDefaults.standard.set(restoresSharing, forKey: PublicPaykitService.publishingEnabledKey)
                 PublicPaykitService.setCleanupPending(!replacesInvoice)
-                let contacts = ContactsManager()
                 let preparation = PublicationGate("Explicit endpoint snapshot")
                 wallet.afterPublicEndpointSnapshot = {
                     wallet.afterPublicEndpointSnapshot = nil
@@ -644,15 +646,15 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
                             applyEndpoints: { published += $0.map(\.value) }
                         )
                     },
+                    syncPrivateCapability: { _, _ in },
                     preparePrivateEndpoints: { _, _, _ in nil },
                     removePrivateEndpoints: { _ in },
                     setPublicCleanupPending: PublicPaykitService.setCleanupPending,
                     setPrivateCleanupPending: PrivatePaykitService.setContactSharingCleanupPending
                 )
                 let change = Task {
-                    try await ContactPaymentsService.setEnabled(
-                        true, pubkyProfile: profile, contactsManager: contacts,
-                        operations: operations, privatePaymentAccess: { _ in false }
+                    try await ContactPaymentsService.setPublicEnabled(
+                        true, pubkyProfile: profile, operations: operations
                     )
                 }
                 await fulfillment(of: [preparation.started], timeout: 5)
@@ -1112,7 +1114,10 @@ final class ReceiveInvoiceRefreshTests: XCTestCase {
 
     private func assertEndpointRefreshPreservesReceiveAddress(initialAddress: String) async throws {
         UserDefaults.standard.set(true, forKey: PaykitFeatureFlags.uiEnabledKey)
-        let wallet = GatedReceiveWallet()
+        let profile = PubkyProfileManager()
+        profile.publicKey = "pubky" + String(repeating: "y", count: 52)
+        profile.authState = .authenticated
+        let wallet = GatedReceiveWallet(pubkyProfile: profile)
         wallet.onchainAddress = initialAddress
         wallet.invoiceAmountSats = 1000
         let receive = Task { try await wallet.refreshBip21(forceRefreshBolt11: true, syncPublicPaykit: false) }
@@ -1658,7 +1663,7 @@ private final class GatedReceiveWallet: WalletViewModel {
         forceRefreshBolt11: Bool = false,
         includeOnchain: Bool = true,
         includeLightning: Bool = true
-    ) async throws -> (onchainAddress: String, bolt11: String) {
+    ) async throws -> PublicPaykitEndpoints {
         await beforePublicEndpointRefresh?()
         if failPublicEndpointRefresh {
             throw TestError.failed
@@ -1670,7 +1675,13 @@ private final class GatedReceiveWallet: WalletViewModel {
             let invoice = publicPaykitBolt11
             let address = publicEndpointAddress
             await afterPublicEndpointSnapshot?()
-            return (address, invoice)
+            return PublicPaykitEndpoints(
+                onchainSnapshot: address.isEmpty ? nil : publicAddressSnapshot(
+                    address,
+                    publicKey: publicPaykitSession?.publicKey ?? ""
+                ),
+                bolt11: invoice
+            )
         }
         return try await super.refreshPublicPaykitEndpoints(
             forceRefreshBolt11: forceRefreshBolt11, includeOnchain: includeOnchain, includeLightning: includeLightning
@@ -1690,6 +1701,21 @@ private final class GatedReceiveWallet: WalletViewModel {
     override func persistPreActivityMetadata(paymentId: String, paymentHash: String?, address: String, tags: [String]) async {}
     override func canCreateReceiveLightningInvoice(amountSats: UInt64?) -> Bool {
         true
+    }
+
+    override func publicPaykitOnchainAddressSnapshot(for publicKey: String) async throws -> PrivatePaykitAddressReservationStore
+        .PublicAddressSnapshot
+    {
+        let address = try await refreshReusableOnchainAddress()
+        return publicAddressSnapshot(address, publicKey: publicKey)
+    }
+
+    private func publicAddressSnapshot(_ address: String, publicKey: String) -> PrivatePaykitAddressReservationStore.PublicAddressSnapshot {
+        let revision = UUID()
+        return .init(
+            address: address, publicKey: PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey,
+            revision: revision, revisionState: OSAllocatedUnfairLock(initialState: revision)
+        )
     }
 
     override func refreshReusableOnchainAddress() async throws -> String {
