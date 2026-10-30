@@ -86,9 +86,10 @@ struct SendConfirmationView: View {
     }
 
     var accentColor: Color {
-        if let preparingRequest {
-            return Set(preparingRequest.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue]
-                ? .usdtAccent : .textSecondary
+        if let preparingRequest,
+           Set(preparingRequest.acceptedPaymentEndpointIdentifiers) == [PublicPaykitService.MethodId.usdtArbitrum.rawValue]
+        {
+            return .usdtAccent
         }
         if hwSend.isActive {
             return .brandAccent
