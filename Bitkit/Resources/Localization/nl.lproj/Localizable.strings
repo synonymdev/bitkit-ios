@@ -1225,6 +1225,7 @@
 "wallet__send_sync_long_title" = "<accent>Verbindings</accent>\nproblemen";
 "wallet__send_sync_long_description" = "Het lijkt erop dat u niet verbonden bent. Controleer uw verbinding. Bitkit probeert om de paar seconden opnieuw verbinding te maken.";
 "wallet__send_to" = "Naar";
+"wallet__send_swap_route" = "Route";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Factuur Plakken";
 "wallet__recipient_manual" = "Handmatig Invoeren";
