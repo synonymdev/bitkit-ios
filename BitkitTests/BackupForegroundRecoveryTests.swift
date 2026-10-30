@@ -225,53 +225,55 @@ final class BackupForegroundRecoveryTests: XCTestCase {
     }
 
     func testSupersededObservationStopWaitsForActiveUpload() async throws {
-        let fixture = try Fixture(categories: [])
-        defer { fixture.removeDefaults() }
-        let uploadStarted = expectation(description: "Wallet upload is held")
-        let uploadCancelled = expectation(description: "Latest stop cancelled the held upload")
-        let stopCompleted = expectation(description: "Superseded stop must wait for the upload")
-        stopCompleted.isInverted = true
-        let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
-        let heldUpload = Task { for await _ in uploadGate {} }
-        defer {
+        for category in [BackupCategory.wallet, .metadata] {
+            let fixture = try Fixture(categories: [])
+            defer { fixture.removeDefaults() }
+            let uploadStarted = expectation(description: "Upload is held")
+            let uploadCancelled = expectation(description: "Latest stop cancelled the held upload")
+            let stopCompleted = expectation(description: "Superseded stop must wait for the upload")
+            stopCompleted.isInverted = true
+            let (uploadGate, releaseUpload) = AsyncStream<Void>.makeStream()
+            let heldUpload = Task { for await _ in uploadGate {} }
+            defer {
+                releaseUpload.finish()
+                heldUpload.cancel()
+            }
+            let service = fixture.service(uploadBackup: { key, _ in
+                XCTAssertEqual(key, category.rawValue)
+                await withTaskCancellationHandler {
+                    uploadStarted.fulfill()
+                    await heldUpload.value
+                } onCancel: {
+                    uploadCancelled.fulfill()
+                }
+            })
+            await service.startObservingBackups()?.value
+            let upload = Task { await service.triggerBackup(category: category) }
+            await fulfillment(of: [uploadStarted], timeout: 2)
+            service.setWiping(true)
+            defer { service.setWiping(false) }
+            let releaseQueue = await holdBackupQueue()
+            defer { releaseQueue.signal() }
+
+            let firstStop = service.requestStopObservingBackups()
+            let secondStop = service.requestStopObservingBackups()
+            let uploadState = HeldUploadState()
+            let firstCompletion = Task {
+                await firstStop.value
+                if uploadState.isHeld {
+                    stopCompleted.fulfill()
+                }
+            }
+            releaseQueue.signal()
+            await fulfillment(of: [uploadCancelled], timeout: 2)
+            await fulfillment(of: [stopCompleted], timeout: 0.2)
+            uploadState.isHeld = false
+
             releaseUpload.finish()
-            heldUpload.cancel()
+            _ = await upload.value
+            await firstCompletion.value
+            await secondStop.value
         }
-        let service = fixture.service(uploadBackup: { key, _ in
-            XCTAssertEqual(key, BackupCategory.wallet.rawValue)
-            await withTaskCancellationHandler {
-                uploadStarted.fulfill()
-                await heldUpload.value
-            } onCancel: {
-                uploadCancelled.fulfill()
-            }
-        })
-        await service.startObservingBackups()?.value
-        let upload = Task { await service.triggerBackup(category: .wallet) }
-        await fulfillment(of: [uploadStarted], timeout: 2)
-        service.setWiping(true)
-        defer { service.setWiping(false) }
-        let releaseQueue = await holdBackupQueue()
-        defer { releaseQueue.signal() }
-
-        let firstStop = service.requestStopObservingBackups()
-        let secondStop = service.requestStopObservingBackups()
-        let uploadState = HeldUploadState()
-        let firstCompletion = Task {
-            await firstStop.value
-            if uploadState.isHeld {
-                stopCompleted.fulfill()
-            }
-        }
-        releaseQueue.signal()
-        await fulfillment(of: [uploadCancelled], timeout: 2)
-        await fulfillment(of: [stopCompleted], timeout: 0.2)
-        uploadState.isHeld = false
-
-        releaseUpload.finish()
-        _ = await upload.value
-        await firstCompletion.value
-        await secondStop.value
     }
 
     private func holdBackupQueue() async -> DispatchSemaphore {
@@ -330,6 +332,35 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         XCTAssertTrue(service.getBackupStatus(category: .settings).isRequired)
         service.setAppActive(false)
         await service.stopObservingBackups()
+    }
+
+    func testConcurrentSubscriptionRegistrationAndCancellationRetainsEveryCancellation() {
+        let subscriptions = BackupObservationSubscriptions()
+        let cancellations = CancellationRecorder()
+
+        DispatchQueue.concurrentPerform(iterations: 256) { index in
+            subscriptions.store(AnyCancellable { cancellations.record() })
+            if index.isMultiple(of: 8) {
+                subscriptions.cancelAll()
+            }
+        }
+        subscriptions.cancelAll()
+
+        XCTAssertEqual(cancellations.count, 256)
+    }
+
+    func testSubscriptionCancellationCanRegisterAnotherSubscription() {
+        let subscriptions = BackupObservationSubscriptions()
+        let cancellations = CancellationRecorder()
+        subscriptions.store(AnyCancellable {
+            cancellations.record()
+            subscriptions.store(AnyCancellable { cancellations.record() })
+        })
+
+        subscriptions.cancelAll()
+        XCTAssertEqual(cancellations.count, 1)
+        subscriptions.cancelAll()
+        XCTAssertEqual(cancellations.count, 2)
     }
 
     func testForegroundRetriesUsdtIndependentlyOfCompleteWalletRestore() async throws {
@@ -636,6 +667,19 @@ final class BackupForegroundRecoveryTests: XCTestCase {
         await newWindowCompletion.value
         await oldWindowCompletion.value
         await service.stopObservingBackups()
+    }
+}
+
+private final class CancellationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancellations = 0
+
+    var count: Int {
+        lock.withLock { cancellations }
+    }
+
+    func record() {
+        lock.withLock { cancellations += 1 }
     }
 }
 

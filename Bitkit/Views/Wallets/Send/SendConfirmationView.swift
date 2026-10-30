@@ -58,13 +58,17 @@ struct SendConfirmationView: View {
         let hardwareWalletID: String?
     }
 
+    private var isRequestSetupPending: Bool {
+        isSetupPending && app.contactPaymentContext?.incomingPaymentRequest != nil
+    }
+
     private var confirmationContext: ConfirmationContext? {
         guard navigationPath.last == nil || navigationPath.last == .confirm else { return nil }
         return sendContext
     }
 
     private var sendContext: ConfirmationContext? {
-        guard preparingRequest == nil, !isSubmittingPayment,
+        guard preparingRequest == nil, !isRequestSetupPending, !isSubmittingPayment,
               navigationPath.last == nil || navigationPath.last == .confirm || isEditingSendDetails,
               let sheet = sheets.activeSheetConfiguration,
               sheet.presentationID == presentationID,
@@ -408,12 +412,12 @@ struct SendConfirmationView: View {
 
     private var confirmationPreparation: some View {
         confirmationPresentation
-            .task(id: preparingRequest?.id) {
+            .task(id: preparingRequest == nil && !isRequestSetupPending) {
                 // A retiring confirmation must not adopt a replacement sheet's payment state.
                 if presentationID == nil {
                     presentationID = sheets.activeSheetConfiguration?.presentationID
                 }
-                guard preparingRequest == nil, !returnToAmountReviewIfNeeded() else { return }
+                guard preparingRequest == nil, !isRequestSetupPending, !returnToAmountReviewIfNeeded() else { return }
                 ensureSendAmountFromScannedInvoicesIfNeeded()
                 if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                     showManualConfirmation(reason: "not automatic when opened")
@@ -428,7 +432,7 @@ struct SendConfirmationView: View {
                 Task { @MainActor in await startAutomaticPaymentIfNeeded() }
             }
             .onChange(of: isSetupPending) { _, isPending in
-                guard !isPending, preparingRequest == nil else { return }
+                guard !isPending, preparingRequest == nil, app.contactPaymentContext?.incomingPaymentRequest == nil else { return }
                 Task { @MainActor in
                     if app.contactPaymentContext?.isInitialSubscriptionPayment == true, !shouldAutomaticallyPay {
                         showManualConfirmation(reason: "not automatic after setup")

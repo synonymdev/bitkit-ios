@@ -167,15 +167,20 @@ final class SendConfirmationLifecycleTests: XCTestCase {
             }
             SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
             SettingsViewModel.shared.coinSelectionAlgorithm = .largestFirst
+            let setup = SendConfirmationTestSetup()
             let navigation = SendConfirmationTestNavigation()
             let window = host(
                 app: app, wallet: wallet, sheets: sheets,
-                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }), navigation: navigation, setup: setup
             )
             defer {
                 close(window)
                 ToastWindowManager.shared.hideToast()
             }
+            try await navigation.waitForAppearance(.confirm)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertEqual(wallet.preparationCount, 0)
+            setup.isPending = false
             if retryRate {
                 try await navigation.waitForAppearance(.confirm)
                 try await Task.sleep(for: .milliseconds(100))
@@ -198,6 +203,63 @@ final class SendConfirmationLifecycleTests: XCTestCase {
                 XCTAssertEqual(wallet.selectedUtxos != nil, !fails)
                 XCTAssertEqual(wallet.feeUtxos != nil, !fails)
             }
+        }
+    }
+
+    func testRequestHardwareFundingWaitsForSetupBeforePreparingCoins() async throws {
+        snapshotAppDefaultsDomain()
+        snapshotAppGroupDefaults("home_screen_display_currency_code_v1", "home_screen_display_currency_symbol_v1")
+        for (manual, quoted) in [(false, false), (true, false), (false, true), (true, true)] {
+            let request = try onchainRequest(isQuoted: quoted)
+            let wallet = ControlledSendWallet(operation: manual ? .manualUtxos : .selection, fails: !manual)
+            let app = AppViewModel()
+            let sheets = SheetViewModel()
+            sheets.activeSheetConfiguration = SheetConfiguration(id: .send, data: nil)
+            app.scannedOnchainInvoice = invoice
+            app.selectedWalletToPayFrom = .onchain
+            app.contactPaymentContext = ContactPaymentContext(publicKey: request.counterparty, incomingPaymentRequest: request)
+            app.paykitPaymentTerms = try request.payment(using: app.paykitPaymentMethod)
+            app.paykitReviewedAmount = app.paykitPaymentTerms?.amount
+            wallet.sendAmountSats = app.paykitPaymentTerms?.amount.atomic
+            SettingsViewModel.shared.coinSelectionMethod = manual ? .manual : .autopilot
+            let funding = MockHwFunding()
+            let connecting = MockHwConnecting()
+            let hwSend = HwSendCoordinator(signerFactory: { _, address, rate in
+                HwFundingSigner(funding: funding, connecting: connecting, feeRateProvider: { rate },
+                                addressProvider: { address }, timeouts: (5, 5, 5))
+            })
+            let setup = SendConfirmationTestSetup()
+            let navigation = SendConfirmationTestNavigation()
+            navigation.path = []
+            let window = host(
+                app: app, wallet: wallet, sheets: sheets,
+                path: Binding(get: { navigation.path }, set: { navigation.path = $0 }),
+                navigation: navigation, setup: setup, confirmationIsRoot: true, hwSend: hwSend
+            )
+            defer { close(window); wallet.resume(); ToastWindowManager.shared.hideToast() }
+            try await navigation.waitForAppearance(.confirm)
+            wallet.selectedFeeRateSatsPerVByte = 2
+            try await Task.sleep(for: .milliseconds(150))
+            // Finish any premature Savings operation so its navigation effect is observable.
+            wallet.resume()
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertEqual(wallet.preparationCount, 0, "Funding selection is still pending")
+            XCTAssertTrue(navigation.path.isEmpty, "Pending hardware funding must not open Amount or the Savings picker")
+
+            hwSend.selectWallet("trezor:test-wallet", initialAvailableSats: 999_890)
+            setup.isPending = false
+            let deadline = ContinuousClock.now + .seconds(3)
+            while hwSend.previewFeeSats == 0, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertEqual(hwSend.previewFeeSats, 141)
+            XCTAssertTrue(navigation.path.isEmpty)
+            XCTAssertEqual(wallet.preparationCount, 0)
+            XCTAssertEqual(app.paykitReviewedAmount, app.paykitPaymentTerms?.amount)
+            XCTAssertEqual(funding.estimateCalls.last?.sats, wallet.sendAmountSats)
+            XCTAssertEqual(funding.signCalls, 0)
+            XCTAssertEqual(funding.broadcastCalls, 0)
+            XCTAssertTrue(setup.pinChecks.isEmpty)
         }
     }
 
@@ -813,9 +875,10 @@ final class SendConfirmationLifecycleTests: XCTestCase {
         navigation: SendConfirmationTestNavigation? = nil,
         setup: SendConfirmationTestSetup? = nil,
         confirmationIsRoot: Bool = false,
-        isSubmittingPayment: Binding<Bool> = .constant(false)
+        isSubmittingPayment: Binding<Bool> = .constant(false),
+        hwSend: HwSendCoordinator? = nil
     ) -> UIWindow {
-        let hwSend = HwSendCoordinator()
+        let hwSend = hwSend ?? HwSendCoordinator()
         let makeConfirmation = { (isSetupPending: Bool) in
             SendConfirmationView(
                 navigationPath: path,
