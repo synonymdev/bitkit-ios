@@ -1019,6 +1019,35 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertNil(blocked)
     }
 
+    func testRecoverySettlesAManualLightningPaymentRestoredFromABackupTakenBeforeTheSend() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let request = try Fixtures.paymentRequest()
+        let paidHash = String(repeating: "1", count: 64)
+        let reserved = try await harness.executor.beginManualPayment(
+            request,
+            paymentEndpointIdentifier: Fixtures.lightningIdentifier,
+            paymentHash: paidHash.uppercased()
+        )
+        let attemptId = try XCTUnwrap(reserved)
+        let captured = await harness.executor.localState(identity: Fixtures.identityKey)
+        XCTAssertEqual(captured.journal.map(\.stage), [.submitted])
+        try harness.store.seed(PaykitAllowanceStateBackup(captured).restored(), identity: Fixtures.identityKey)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4, occurrences: [
+            Fixtures.occurrence(
+                requestId: request.paymentRequestId,
+                attempts: [Fixtures.attemptRecord(id: attemptId, mode: .manual, allowanceId: nil, status: .submitted)],
+                allowanceId: nil
+            ),
+        ]))
+        await harness.lookup.setStatuses([paidHash: .succeeded(preimage: String(repeating: "0", count: 64))])
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertEqual(outcomes.map(\.outcome), [.succeeded])
+    }
+
     // MARK: Trusted time and reconciliation
 
     func testTrustedTimeNeverMovesBackwards() async {
