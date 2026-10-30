@@ -13,6 +13,7 @@ struct WalletBackupV1: Codable {
     let watchOnlyAccountAllocationState: WatchOnlyAccountAllocationState?
     var usdtWallet: String? = nil
     var paykitPaymentState: PaykitPaymentStateBackup? = nil
+    var publicPaykitLegacyAddresses: [String]? = nil
 }
 
 struct MetadataBackupV1: Codable {
@@ -79,6 +80,8 @@ struct AppCacheData: Codable {
     let lastUsedTags: [String]
     let quickPayLedger: QuickPayLedger?
     let detachedActivityContacts: Set<String>
+    /// Imported cache addresses may have been public; local snapshots do not export the live receive address.
+    let onchainAddress: String?
 
     init(
         hasSeenContactsIntro: Bool,
@@ -114,6 +117,7 @@ struct AppCacheData: Codable {
         self.lastUsedTags = lastUsedTags
         self.quickPayLedger = quickPayLedger
         self.detachedActivityContacts = detachedActivityContacts
+        onchainAddress = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -134,6 +138,7 @@ struct AppCacheData: Codable {
         lastUsedTags = try c.decodeIfPresent([String].self, forKey: .lastUsedTags) ?? []
         quickPayLedger = try c.decodeIfPresent(QuickPayLedger.self, forKey: .quickPayLedger)
         detachedActivityContacts = try c.decodeIfPresent(Set<String>.self, forKey: .detachedActivityContacts) ?? []
+        onchainAddress = try c.decodeIfPresent(String.self, forKey: .onchainAddress)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -144,6 +149,7 @@ struct AppCacheData: Codable {
         case dismissedSuggestions, lastUsedTags
         case quickPayLedger
         case detachedActivityContacts
+        case onchainAddress
     }
 }
 

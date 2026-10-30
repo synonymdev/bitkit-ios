@@ -6,10 +6,20 @@ import XCTest
 /// Opt-in protocol fixture using a public seed, isolated SQLite files and real encrypted VSS transport.
 @MainActor
 final class UsdtNativeRecoveryIntegrationTests: XCTestCase {
-    private let fixture = "http://127.0.0.1:18557"
     private let mnemonic = "test test test test test test test test test test test junk"
 
     func testEncryptedRecoveryAgainstLocalProtocolFixture() async throws {
+        guard let fixture = ProcessInfo.processInfo.environment["BITKIT_USDT_RECOVERY_FIXTURE_URL"] else {
+            throw XCTSkip("Set BITKIT_USDT_RECOVERY_FIXTURE_URL to an owned local recovery protocol fixture")
+        }
+        let address = try XCTUnwrap(URLComponents(string: fixture))
+        guard address.scheme == "http", address.host == "127.0.0.1", let port = address.port,
+              (1 ... 65535).contains(port), address.path.isEmpty, address.user == nil,
+              address.password == nil, address.query == nil, address.fragment == nil
+        else {
+            XCTFail("The recovery protocol fixture must be an explicit loopback address and port")
+            return
+        }
         let driver: [String: Any]
         do { driver = try await request("\(fixture)/ios-driver/control") }
         catch { throw XCTSkip("Requires the owned local recovery protocol fixture") }
