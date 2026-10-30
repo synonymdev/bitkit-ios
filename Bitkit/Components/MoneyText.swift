@@ -42,6 +42,7 @@ struct MoneyText: View {
 
     @State private var leadingWidth: CGFloat = 0
     @State private var amountWidth: CGFloat = 0
+    @State private var amountHeight: CGFloat = 0
 
     // MARK: - Computed Properties
 
@@ -131,13 +132,14 @@ extension MoneyText {
     private func shimmering(_ content: some View) -> some View {
         if let shimmer {
             content
-                .modifier(AmountShimmer(isActive: shimmer, leadingWidth: leadingWidth, amountWidth: amountWidth))
+                .modifier(AmountShimmer(isActive: shimmer, leadingWidth: leadingWidth, amountWidth: amountWidth, amountHeight: amountHeight))
                 .background(amountMeasurer)
-                .onPreferenceChange(AmountWidthsKey.self) { widths in
-                    let total = widths[.total] ?? 0
-                    let amount = widths[.amount] ?? 0
+                .onPreferenceChange(AmountMetricsKey.self) { metrics in
+                    let total = metrics[.totalWidth] ?? 0
+                    let amount = metrics[.amountWidth] ?? 0
                     leadingWidth = max(0, total - amount)
                     amountWidth = amount
+                    amountHeight = metrics[.amountHeight] ?? 0
                 }
         } else {
             content
@@ -148,9 +150,11 @@ extension MoneyText {
     private var amountMeasurer: some View {
         ZStack(alignment: .leading) {
             textComponent(leadingText + formattedValue, fillsWidth: false)
-                .background(GeometryReader { Color.clear.preference(key: AmountWidthsKey.self, value: [.total: $0.size.width]) })
+                .background(GeometryReader { Color.clear.preference(key: AmountMetricsKey.self, value: [.totalWidth: $0.size.width]) })
             textComponent(formattedValue, fillsWidth: false)
-                .background(GeometryReader { Color.clear.preference(key: AmountWidthsKey.self, value: [.amount: $0.size.width]) })
+                .background(GeometryReader {
+                    Color.clear.preference(key: AmountMetricsKey.self, value: [.amountWidth: $0.size.width, .amountHeight: $0.size.height])
+                })
         }
         .hidden()
         .accessibilityHidden(true)
@@ -324,15 +328,16 @@ private extension MoneyText {
     .preferredColorScheme(.dark)
 }
 
-private enum AmountWidth: Hashable {
-    case total
-    case amount
+private enum AmountMetric: Hashable {
+    case totalWidth
+    case amountWidth
+    case amountHeight
 }
 
-private struct AmountWidthsKey: PreferenceKey {
-    static let defaultValue: [AmountWidth: CGFloat] = [:]
+private struct AmountMetricsKey: PreferenceKey {
+    static let defaultValue: [AmountMetric: CGFloat] = [:]
 
-    static func reduce(value: inout [AmountWidth: CGFloat], nextValue: () -> [AmountWidth: CGFloat]) {
+    static func reduce(value: inout [AmountMetric: CGFloat], nextValue: () -> [AmountMetric: CGFloat]) {
         value.merge(nextValue()) { $1 }
     }
 }
@@ -343,6 +348,8 @@ private struct AmountShimmer: ViewModifier {
     let isActive: Bool
     let leadingWidth: CGFloat
     let amountWidth: CGFloat
+    /// One line of the amount: when the text wraps, only that line shimmers, so a symbol wrapped below it stays steady.
+    let amountHeight: CGFloat
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var intensity: Double = 0
@@ -359,20 +366,13 @@ private struct AmountShimmer: ViewModifier {
     func body(content: Content) -> some View {
         content
             .mask {
-                HStack(spacing: 0) {
-                    Color.white.frame(width: maskOutset + leadingWidth)
-                    ZStack {
-                        Color.white.opacity(minOpacity)
-                        if !reduceMotion {
-                            TimelineView(.animation(paused: !isSweeping)) { context in
-                                band(at: context.date)
-                            }
-                        }
-                        Color.white.opacity(1 - intensity)
+                GeometryReader { proxy in
+                    let wraps = proxy.size.height - 2 * maskOutset > amountHeight * 1.5
+                    VStack(spacing: 0) {
+                        shimmerRow
+                            .frame(height: wraps ? maskOutset + amountHeight : proxy.size.height)
+                        Color.white
                     }
-                    .frame(width: amountWidth)
-                    .clipped()
-                    Color.white
                 }
                 .padding(-maskOutset)
             }
@@ -394,6 +394,24 @@ private struct AmountShimmer: ViewModifier {
                     }
                 }
             }
+    }
+
+    private var shimmerRow: some View {
+        HStack(spacing: 0) {
+            Color.white.frame(width: maskOutset + leadingWidth)
+            ZStack {
+                Color.white.opacity(minOpacity)
+                if !reduceMotion {
+                    TimelineView(.animation(paused: !isSweeping)) { context in
+                        band(at: context.date)
+                    }
+                }
+                Color.white.opacity(1 - intensity)
+            }
+            .frame(width: amountWidth)
+            .clipped()
+            Color.white
+        }
     }
 
     /// The band travels from fully before the amount to fully past it, so each pass starts and ends off the digits.
