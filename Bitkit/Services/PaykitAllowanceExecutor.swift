@@ -122,6 +122,22 @@ struct PaykitAllowanceLocalState: Codable, Equatable {
     }
 }
 
+extension PaykitAllowanceLocalState {
+    /// A record saved by an earlier build may lack newer keys; they start empty instead of discarding the record.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        groups = try container.decodeIfPresent([Group].self, forKey: .groups) ?? []
+        journal = try container.decodeIfPresent([JournalEntry].self, forKey: .journal) ?? []
+        presentedProposalIds = try container.decodeIfPresent(Set<String>.self, forKey: .presentedProposalIds) ?? []
+        unannouncedOfferIds = try container.decodeIfPresent(Set<String>.self, forKey: .unannouncedOfferIds) ?? []
+        notifiedRequestIds = try container.decodeIfPresent(Set<String>.self, forKey: .notifiedRequestIds) ?? []
+        lastTrustedTime = try container.decodeIfPresent(Date.self, forKey: .lastTrustedTime)
+        ledgerRevisionFloor = try container.decodeIfPresent(UInt64.self, forKey: .ledgerRevisionFloor)
+        automaticSpends = try container.decodeIfPresent([AutomaticSpend].self, forKey: .automaticSpends) ?? []
+        endedAllowanceIds = try container.decodeIfPresent(Set<String>.self, forKey: .endedAllowanceIds) ?? []
+    }
+}
+
 protocol PaykitAllowanceStoring: Sendable {
     func load(identity: String) throws -> PaykitAllowanceLocalState
     func save(_ state: PaykitAllowanceLocalState, identity: String) throws

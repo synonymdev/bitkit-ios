@@ -104,6 +104,41 @@ final class PaykitAllowanceTests: XCTestCase {
         XCTAssertTrue(json["lastTrustedTime"] is NSNull)
     }
 
+    func testStateSavedBeforeTheAutomaticPaymentChecksStillDecodes() throws {
+        var current = try JSONSerialization.jsonObject(with: JSONEncoder().encode(PaykitAllowanceLocalState(
+            journal: [],
+            presentedProposalIds: ["presented"],
+            notifiedRequestIds: ["notified"]
+        ))) as? [String: Any] ?? [:]
+        for key in ["ledgerRevisionFloor", "automaticSpends", "endedAllowanceIds"] {
+            current.removeValue(forKey: key)
+        }
+        let previous = try JSONSerialization.data(withJSONObject: current)
+
+        let state = try JSONDecoder().decode(PaykitAllowanceLocalState.self, from: previous)
+
+        XCTAssertEqual(state.presentedProposalIds, ["presented"])
+        XCTAssertEqual(state.notifiedRequestIds, ["notified"])
+        XCTAssertNil(state.ledgerRevisionFloor)
+        XCTAssertTrue(state.automaticSpends.isEmpty)
+        XCTAssertTrue(state.endedAllowanceIds.isEmpty)
+    }
+
+    func testABackupWrittenBeforeTheAutomaticPaymentChecksStillRestores() throws {
+        let state = PaykitAllowanceLocalState(notifiedRequestIds: ["notified"], ledgerRevisionFloor: 3, endedAllowanceIds: ["contact/a"])
+        var current = try JSONSerialization.jsonObject(with: JSONEncoder().encode(PaykitAllowanceStateBackup(state))) as? [String: Any] ?? [:]
+        for key in ["ledgerRevisionFloor", "automaticSpends", "endedAllowanceIds"] {
+            current.removeValue(forKey: key)
+        }
+        let previous = try JSONSerialization.data(withJSONObject: current)
+
+        let restored = try JSONDecoder().decode(PaykitAllowanceStateBackup.self, from: previous).restored()
+
+        XCTAssertEqual(restored.notifiedRequestIds, ["notified"])
+        XCTAssertNil(restored.ledgerRevisionFloor)
+        XCTAssertTrue(restored.endedAllowanceIds.isEmpty)
+    }
+
     func testRestoreNeverLowersTheAutomaticPaymentChecksAlreadyStored() {
         let spend = PaykitAllowanceLocalState.AutomaticSpend(
             attemptId: "attempt-1", counterparty: "contact", allowanceId: "allowance-1", amountSats: 1000, admittedAt: Fixtures.now
