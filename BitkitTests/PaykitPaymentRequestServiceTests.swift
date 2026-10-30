@@ -15,7 +15,15 @@ final class PaykitPaymentRequestServiceTests: XCTestCase {
     func testPreparationUsesAcceptedMethodsBeforeWalletSelection() throws {
         let usdt = PublicPaykitService.MethodId.usdtArbitrum.rawValue
         let bitcoin = PublicPaykitService.MethodId.bitcoinLightningBolt11.rawValue
-        for (endpoints, accent): ([String], Color) in [([usdt], .usdtAccent), ([usdt, bitcoin], .textSecondary)] {
+        let onchain = PublicPaykitService.MethodId.regtestOnchainP2wpkh.rawValue
+        let cases: [([String], Color)] = [
+            ([usdt], .usdtAccent),
+            ([bitcoin], .purpleAccent),
+            ([onchain], .brandAccent),
+            ([usdt, bitcoin], .textSecondary),
+            ([bitcoin, onchain], .textSecondary),
+        ]
+        for (endpoints, accent) in cases {
             let record = try paymentRequestRecord(amount: "5", asset: "usd",
                                                   conversion: .fixed(rates: [.init(asset: "btc", value: "0.00001"),
                                                                              .init(asset: "usdt", value: "1")]),
