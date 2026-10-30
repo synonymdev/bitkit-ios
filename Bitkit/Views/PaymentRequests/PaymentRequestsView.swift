@@ -364,6 +364,9 @@ struct PaymentRequestsFooterButton: View {
 
     var body: some View {
         CustomButton(title: t("wallet__payment_request_request_payment")) {
+            if paymentRequests.eligibleTargets.isEmpty, !contactsManager.contacts.isEmpty {
+                await paymentRequests.refreshEligibleTargets(savedPublicKeys: contactsManager.contacts.map(\.publicKey))
+            }
             if paymentRequests.eligibleTargets.isEmpty {
                 await ContactsIntroView.openContacts(
                     app: app,
