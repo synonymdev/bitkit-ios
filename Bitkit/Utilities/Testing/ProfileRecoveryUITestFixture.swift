@@ -135,8 +135,9 @@
                 withdrawPrivate: { try local.rejectRemote() },
                 withdrawPublic: { try local.rejectRemote() },
                 validateSubscriptions: { _ in try local.rejectRemote() },
-                revokeSession: { try local.rejectRemote() },
+                captureRevocation: { _ in try local.rejectRemote(); throw PubkyServiceError.sessionNotActive },
                 completeLocal: { try await local.complete() },
+                completeRevokedLocal: { _ in try local.rejectRemote() },
                 pause: { _ in }, resume: { _ in }
             )
             super.init(removalServices: services, removalStore: store, removalAdmission: ProfileOperationAdmission(store: store))

@@ -352,16 +352,18 @@ final class PaykitContactLifecycleTests: XCTestCase {
         XCTAssertTrue(sdk.withdrawals.isEmpty)
     }
 
-    func testDisabledPrivateCapabilityDoesNotQueueWithdrawal() async throws {
+    func testDisabledPrivateCapabilityStillAllowsEmptyWithdrawal() async throws {
         let sdk = ContactLifecycleSdk(noPointer: .init())
         sdk.capabilities.privatePayments = false
         let service = PaykitSdkService(sdkFactory: { sdk })
 
         let report = try await service.clearPrivatePaymentLists(to: [sdk.publicKey])
 
-        XCTAssertNil(report)
-        XCTAssertTrue(sdk.events.isEmpty)
+        XCTAssertEqual(report?.cleared.map(\.counterparty), [sdk.publicKey])
+        XCTAssertEqual(sdk.withdrawals.count, 1)
+        XCTAssertTrue(sdk.withdrawals.first?.allSatisfy(\.reservations.isEmpty) == true)
         XCTAssertFalse(sdk.capabilities.privatePayments)
+        XCTAssertEqual(sdk.appPublications, 0)
     }
 
     func testCleanupPendingDoesNotEnablePrivateCapability() async throws {
@@ -374,6 +376,129 @@ final class PaykitContactLifecycleTests: XCTestCase {
         try await service.syncPaykitApp(privatePaymentsEnabled: false)
 
         XCTAssertFalse(sdk.capabilities.privatePayments)
+    }
+
+    func testProfileRemovalWithdrawsLinkedListsAfterSharingIsDisabled() async throws {
+        snapshotAppDefaultsDomain()
+        for acknowledges in [true, false] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+            let admission = ProfileOperationAdmission(store: store)
+            let scope = try admission.reserve(kind: .removal, id: UUID(), expected: admission.snapshot())
+            defer { admission.release(scope) }
+            try admission.persist(scope)
+            let sdk = ContactLifecycleSdk(noPointer: .init())
+            sdk.capabilities.privatePayments = false
+            sdk.acknowledgesWithdrawal = acknowledges
+            let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk })
+            let privateService = PrivatePaykitService(profileAdmission: admission)
+            let operations = PrivatePaykitService.EndpointCleanupOperations(
+                linkedPeers: { try await service.linkedPeers() },
+                clearPaymentLists: { try await service.clearPrivatePaymentLists(to: $0) },
+                drainMessages: { _ in XCTFail("Withdrawal must not replay") }, pendingDrainKeys: { _ in [] },
+                syncApp: { XCTFail("Profile removal defers registry synchronization") }
+            )
+            do {
+                try await admission.withScope(scope) {
+                    try await privateService.removePublishedEndpoints(deferAppSync: true, operations: operations)
+                }
+                XCTAssertTrue(acknowledges, "An empty queue without the exact withdrawal acknowledgement must fail")
+            } catch PrivatePaykitError.privateUnavailable {
+                XCTAssertFalse(acknowledges, "Disabled sharing must not prevent an acknowledged profile withdrawal")
+            }
+            XCTAssertEqual(sdk.withdrawals.count, 1)
+            XCTAssertEqual(sdk.withdrawals.first?.map(\.counterparty), [sdk.publicKey])
+            XCTAssertTrue(sdk.withdrawals.first?.allSatisfy(\.reservations.isEmpty) == true)
+            XCTAssertFalse(sdk.capabilities.privatePayments)
+            XCTAssertEqual(sdk.appPublications, 0)
+            XCTAssertNotNil(sdk.record)
+            XCTAssertEqual(sdk.peers.first?.state, .linked)
+        }
+    }
+
+    func testDisabledSharingCleanupRequiresAcknowledgementWithAndWithoutPublishedState() async throws {
+        snapshotAppDefaultsDomain()
+        for hasPublishedList in [false, true] {
+            for acknowledges in [false, true] {
+                UserDefaults.standard.removeObject(forKey: PrivatePaykitService.cacheStateKey)
+                UserDefaults.standard.removeObject(forKey: PrivatePaykitService.deletedContactCleanupKeysKey)
+                let sdk = ContactLifecycleSdk(noPointer: .init())
+                sdk.capabilities.privatePayments = false
+                sdk.acknowledgesWithdrawal = acknowledges
+                let service = PaykitSdkService(sdkFactory: { sdk })
+                let privateService = PrivatePaykitService()
+                await privateService.setTestPublishedList(hasPublishedList, for: sdk.publicKey)
+                PrivatePaykitService.markDeletedContactCleanupPending([sdk.publicKey])
+                var registryUpdates = 0
+                do {
+                    try await privateService.removePublishedEndpoints(for: [sdk.publicKey], operations: .init(
+                        linkedPeers: { try await service.linkedPeers() },
+                        clearPaymentLists: { try await service.clearPrivatePaymentLists(to: $0) },
+                        drainMessages: { _ in XCTFail("Withdrawal must not replay") }, pendingDrainKeys: { _ in [] },
+                        syncApp: { registryUpdates += 1 }
+                    ))
+                    XCTAssertTrue(acknowledges)
+                } catch PrivatePaykitError.privateUnavailable {
+                    XCTAssertFalse(acknowledges)
+                }
+                XCTAssertEqual(sdk.withdrawals.count, 1)
+                XCTAssertTrue(sdk.withdrawals.first?.allSatisfy(\.reservations.isEmpty) == true)
+                XCTAssertFalse(sdk.capabilities.privatePayments)
+                XCTAssertEqual(sdk.appPublications, 0)
+                XCTAssertEqual(registryUpdates, acknowledges ? 1 : 0)
+                XCTAssertEqual(PrivatePaykitService.pendingDeletedContactCleanupKeys().contains(sdk.publicKey), !acknowledges)
+                let retained = await privateService.testHasPublishedList(for: sdk.publicKey)
+                XCTAssertEqual(retained, hasPublishedList && !acknowledges)
+                XCTAssertEqual(sdk.peers.first?.state, .linked)
+            }
+        }
+    }
+
+    func testDisabledSharingWithdrawalRejectsUnavailableRemoteAdmission() async throws {
+        for mode in ["revoked", "local-only", "local-recovery", "record-only"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = ProfileRemovalStore(url: directory.appendingPathComponent("pending.json"))
+            let admission = ProfileOperationAdmission(store: store)
+            let id = UUID()
+            let scope = try admission.reserve(kind: mode == "local-recovery" ? .localRecovery : .removal,
+                                              id: id, expected: admission.snapshot())
+            try admission.persist(scope)
+            let sdk = ContactLifecycleSdk(noPointer: .init())
+            sdk.capabilities.privatePayments = false
+            if mode == "local-only" {
+                try admission.requireLocalOnly(scope)
+            }
+            let service = PaykitSdkService(profileAdmission: admission, sdkFactory: { sdk })
+            if mode == "record-only" {
+                admission.release(scope)
+            }
+            defer {
+                if mode != "record-only" {
+                    admission.release(scope)
+                }
+            }
+            do {
+                if mode == "record-only" {
+                    _ = try await service.clearPrivatePaymentLists(to: [sdk.publicKey])
+                } else {
+                    _ = try await admission.withScope(scope, access: .local) {
+                        try await service.clearPrivatePaymentLists(to: [sdk.publicKey], isSessionCurrent: {
+                            if mode == "revoked" {
+                                admission.revoke(scope)
+                            }
+                            return true
+                        })
+                    }
+                }
+                XCTFail("\(mode) must not authorize withdrawal")
+            } catch is ProfileRemovalStore.StoreError {}
+            XCTAssertTrue(sdk.withdrawals.isEmpty)
+            XCTAssertEqual(sdk.appPublications, 0)
+            XCTAssertFalse(sdk.capabilities.privatePayments)
+            XCTAssertEqual(try store.pending()?.id, id)
+        }
     }
 
     func testWithdrawalBatchesPreflightAndDelegatesRepeatedEmptyLists() async throws {
@@ -394,8 +519,8 @@ final class PaykitContactLifecycleTests: XCTestCase {
         }
 
         XCTAssertEqual(sdk.peerReads, 3)
-        XCTAssertEqual(sdk.identityReads, 3)
-        XCTAssertEqual(sdk.registryReads, 3)
+        XCTAssertEqual(sdk.identityReads, 0)
+        XCTAssertEqual(sdk.registryReads, 0)
         XCTAssertEqual(sdk.withdrawals.count, 3)
         XCTAssertTrue(sdk.withdrawals.allSatisfy { updates in
             updates.map(\.counterparty) == [sdk.publicKey, other] && updates.allSatisfy(\.reservations.isEmpty)
@@ -426,6 +551,18 @@ final class PaykitContactLifecycleTests: XCTestCase {
     }
 }
 
+private extension PrivatePaykitService {
+    func setTestPublishedList(_ published: Bool, for publicKey: String) {
+        var contact = ContactState()
+        contact.hasPublishedPrivatePaymentList = published
+        state.contacts[publicKey] = contact
+    }
+
+    func testHasPublishedList(for publicKey: String) -> Bool {
+        state.contacts[publicKey]?.hasPublishedPrivatePaymentList == true
+    }
+}
+
 private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     let publicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
     var events: [String] = []
@@ -444,6 +581,8 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     var registryReads = 0
     var beforeLinkedPeers: (() async -> Void)?
     var withdrawals = [[PrivatePaymentListReservationUpdateInput]]()
+    var acknowledgesWithdrawal = false
+    var appPublications = 0
     var capabilities = PaykitAppCapabilities(privatePayments: true, paymentRequests: true, receipts: false, outgoingPayments: true)
     lazy var record: ContactRecord? = ContactRecord(
         publicKey: publicKey, label: "Contact", profile: nil,
@@ -480,6 +619,7 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
     }
 
     override func publishPaykitApp(displayName _: String, capabilities: PaykitAppCapabilities) async throws -> PaykitAppRegistry {
+        appPublications += 1
         self.capabilities = capabilities
         return registry
     }
@@ -535,7 +675,9 @@ private final class ContactLifecycleSdk: PaykitSdk, @unchecked Sendable {
             queued: [],
             cleared: updates.filter { update in !failed.contains { $0.counterparty == update.counterparty } }
                 .map { .init(counterparty: $0.counterparty, outboundMessageId: 1, error: nil) },
-            acknowledged: [], failedToQueue: failed.map { .init(counterparty: $0.counterparty, outboundMessageId: nil, error: nil) },
+            acknowledged: acknowledgesWithdrawal ? updates.filter { update in !failed.contains { $0.counterparty == update.counterparty } }
+                .map { .init(counterparty: $0.counterparty, outboundMessageId: 1) } : [],
+            failedToQueue: failed.map { .init(counterparty: $0.counterparty, outboundMessageId: nil, error: nil) },
             failedToDeliver: []
         )
     }

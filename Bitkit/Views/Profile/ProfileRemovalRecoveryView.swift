@@ -9,6 +9,8 @@ struct ProfileRemovalRecoveryView: View {
     @State private var isWorking = false
     @State private var confirmWipe = false
     @State private var confirmDisconnect = false
+    @State private var confirmRemoteRetry = false
+    @State private var remoteRetry: PubkyProfileManager.RemoteRemovalConfirmation?
     @State private var disconnectID: UUID?
     @State private var wipeID: UUID?
 
@@ -22,6 +24,12 @@ struct ProfileRemovalRecoveryView: View {
                 switch pubkyProfile.removalRecovery {
                 case let .pending(record) where record.scope == .profile:
                     BodyMText(t("profile__recovery_pending"))
+                    if pubkyProfile.canRetryRemoteRemoval(id: record.id) {
+                        CustomButton(title: t("common__retry")) {
+                            Task { await prepareRetry(id: record.id) }
+                        }
+                        .accessibilityIdentifier("ProfileRecoveryRetryDisconnect")
+                    }
                     CustomButton(title: t("profile__sign_out")) {
                         disconnectID = record.id; confirmDisconnect = true
                     }
@@ -47,6 +55,18 @@ struct ProfileRemovalRecoveryView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .disabled(isWorking || pubkyProfile.isDeletingProfile)
+        .onDisappear { pubkyProfile.cancelRemoteRemovalRetry(remoteRetry) }
+        .alert(t("profile__sign_out_title"), isPresented: $confirmRemoteRetry) {
+            Button(t("common__retry"), role: .destructive) {
+                if let remoteRetry {
+                    Task { await retry(remoteRetry) }
+                }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {
+                pubkyProfile.cancelRemoteRemovalRetry(remoteRetry)
+                remoteRetry = nil
+            }
+        } message: { Text(t("profile__sign_out_description")) }
         .alert(t("profile__sign_out_title"), isPresented: $confirmDisconnect) {
             Button(t("profile__sign_out"), role: .destructive) {
                 if let disconnectID {
@@ -61,6 +81,26 @@ struct ProfileRemovalRecoveryView: View {
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: { Text(t("security__reset_dialog_desc")) }
+    }
+
+    private func prepareRetry(id: UUID) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            remoteRetry = try await pubkyProfile.prepareRemoteRemovalRetry(id: id)
+            confirmRemoteRetry = true
+        } catch { show(error, expectedID: id, expectedScope: .profile) }
+    }
+
+    private func retry(_ confirmation: PubkyProfileManager.RemoteRemovalConfirmation) async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let completion = try await pubkyProfile.confirmRemoteRemovalRetry(confirmation)
+            if pubkyProfile.ownsRemovalCompletion(completion) {
+                navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+            }
+        } catch { show(error, expectedID: confirmation.removalID, expectedScope: .profile) }
     }
 
     private func disconnect(id: UUID) async {

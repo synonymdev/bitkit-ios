@@ -1386,12 +1386,6 @@ actor PaykitSdkService {
                 !blockedPeers.contains { PubkyPublicKeyFormat.matches($0.counterparty, counterparty) }
             }.map { PrivatePaymentListReservationUpdateInput(counterparty: $0, reservations: []) }
             guard !updates.isEmpty else { return nil }
-            if let publicKey = try await sdk.identityStatus()?.publicKey,
-               let app = try await sdk.paykitAppRegistry(publicKey: publicKey)?.apps.first(where: { $0.appId == "bitkit" }),
-               !app.capabilities.privatePayments
-            {
-                return nil
-            }
             for update in updates where peers.contains(where: {
                 $0.state == .recoveryRequired && PubkyPublicKeyFormat.matches($0.counterparty, update.counterparty)
             }) {
@@ -1411,6 +1405,7 @@ actor PaykitSdkService {
             if let isSessionCurrent, await !isSessionCurrent() {
                 throw PubkyServiceError.sessionNotActive
             }
+            try profileAdmission.checkCurrent()
             return try await sdk.syncPrivatePaymentListsWithReservationsAndProcessOutbound(
                 updates: updates,
                 clearUnlistedLinkedPeers: false
@@ -1856,6 +1851,72 @@ actor PaykitSdkService {
                 _ = try await sdk.signOut()
             }
             resetRuntime()
+        }
+    }
+
+    func captureProfileRevocation(expectedOwner: String) async throws -> ProfileSessionRevocation {
+        try await withLockedSdkOperation {
+            try await refreshPaykitKey()
+            let originalRuntime = runtimeGeneration
+            let originalSdk = try handle()
+            let access = try sessionProvider.captureOriginalAccess(expectedOwner: expectedOwner)
+            let logout = try await originalSdk.captureGrantLogout(expectedPublicKey: expectedOwner)
+            do {
+                try profileAdmission.checkCurrent()
+                let binding = logout.binding()
+                guard PubkyPublicKeyFormat.matches(binding.publicKey, expectedOwner), binding.clientId == Self.clientID,
+                      !binding.grantId.isEmpty, !binding.homeserver.isEmpty else { throw ProfileRemovalStore.StoreError.changed }
+                let registration = try sessionProvider.registerGrantLogout(logout, access: access)
+                let validate: @Sendable () async throws -> Void = { [self] in
+                    try await validateProfileRevocation(runtime: originalRuntime, sdk: originalSdk, access: access)
+                }
+                return ProfileSessionRevocation(validate: validate, execute: { [self] in
+                    try await executeProfileRevocation(runtime: originalRuntime, sdk: originalSdk, access: access,
+                                                       logout: logout, binding: binding)
+                }, acknowledged: { logout.acknowledged() == binding }, clearCredentials: { [self] in
+                    try await clearRevokedProfileAccess(runtime: originalRuntime, sdk: originalSdk, access: access,
+                                                        logout: logout, binding: binding)
+                }, revoke: { logout.revokeAdmission() }, release: { [sessionProvider] in
+                    sessionProvider.unregisterGrantLogout(registration)
+                })
+            } catch {
+                logout.revokeAdmission()
+                throw error
+            }
+        }
+    }
+
+    private func validateProfileRevocation(runtime: UInt64, sdk originalSdk: PaykitSdk,
+                                           access: PaykitSdkSessionProvider.OriginalAccess) throws
+    {
+        try profileAdmission.checkCurrent()
+        guard runtimeGeneration == runtime, sdk === originalSdk else { throw ProfileRemovalStore.StoreError.changed }
+        try sessionProvider.validateOriginalAccess(access)
+    }
+
+    private func executeProfileRevocation(runtime: UInt64, sdk originalSdk: PaykitSdk,
+                                          access: PaykitSdkSessionProvider.OriginalAccess,
+                                          logout: PubkyGrantLogout, binding: PubkyGrantLogoutReceipt) async throws
+    {
+        try await withLockedSdkOperation {
+            try validateProfileRevocation(runtime: runtime, sdk: originalSdk, access: access)
+            let attempt = try await logout.prepareAttempt()
+            try validateProfileRevocation(runtime: runtime, sdk: originalSdk, access: access)
+            let receipt = try await attempt.execute()
+            guard receipt == binding else { throw ProfileRemovalStore.StoreError.changed }
+        }
+    }
+
+    private func clearRevokedProfileAccess(runtime: UInt64, sdk originalSdk: PaykitSdk,
+                                           access: PaykitSdkSessionProvider.OriginalAccess,
+                                           logout: PubkyGrantLogout, binding: PubkyGrantLogoutReceipt) async throws
+    {
+        try await withLockedSdkOperation(access: .local) {
+            guard runtimeGeneration == runtime, sdk === originalSdk,
+                  logout.acknowledged() == binding else { throw ProfileRemovalStore.StoreError.changed }
+            try sessionProvider.clearOriginalAccess(access)
+            resetRuntime()
+            markWalletBackupDataChanged()
         }
     }
 
@@ -2803,9 +2864,15 @@ extension PublicPaykitService.Endpoint {
 final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendable {
     private let lock = NSLock()
     private let loadSessionSecret: () throws -> String?
+    private let loadLocalCredential: () throws -> Data?
+    private let loadAdoptedReference: () throws -> AdoptedReference?
+    private let loadAdoptedCredential: (AdoptedReference?) throws -> AdoptedCredential?
     private let deleteKeychainValue: (KeychainEntryType) throws -> Void
     private var liveSessionAccess: PubkySessionAccess?
     private var paykitIdentitySecretKey: PaykitIdentitySecretKey?
+    private var accessRevision = UUID()
+    private var grantRevision = UUID()
+    private var grantAdmissions: [UUID: PubkyGrantLogout] = [:]
     private var isStoredSessionAccessSuspended = false
     private let publicOnly: Bool
     private var admissionCheck: (() throws -> Void)?
@@ -2813,10 +2880,16 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
     init(
         publicOnly: Bool = false,
         loadSessionSecret: @escaping () throws -> String? = { try Keychain.loadString(key: .paykitSession) },
+        loadLocalCredential: @escaping () throws -> Data? = { try Keychain.load(key: .pubkySecretKey) },
+        loadAdoptedReference: @escaping () throws -> AdoptedReference? = { try AdoptedReference.load() },
+        loadAdoptedCredential: @escaping (AdoptedReference?) throws -> AdoptedCredential? = { try AdoptedCredential.load(reference: $0) },
         deleteKeychainValue: @escaping (KeychainEntryType) throws -> Void = { try Keychain.delete(key: $0) }
     ) {
         self.publicOnly = publicOnly
         self.loadSessionSecret = loadSessionSecret
+        self.loadLocalCredential = loadLocalCredential
+        self.loadAdoptedReference = loadAdoptedReference
+        self.loadAdoptedCredential = loadAdoptedCredential
         self.deleteKeychainValue = deleteKeychainValue
     }
 
@@ -2824,9 +2897,13 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
         lock.withLock { admissionCheck = check }
     }
 
-    private func validateAdmission() throws {
+    private func checkAdmission() throws {
         let check = lock.withLock { admissionCheck }
-        do { try check?() }
+        try check?()
+    }
+
+    private func validateAdmission() throws {
+        do { try checkAdmission() }
         catch {
             // UniFFI callback errors must belong to its declared error type.
             throw PaykitError.Storage(code: "profile_operation_unavailable", context: "The original profile operation is no longer admitted")
@@ -2835,6 +2912,7 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
 
     func setLiveSessionAccess(_ access: PubkySessionAccess) {
         lock.lock()
+        invalidateGrantAdmissions()
         liveSessionAccess = access
         paykitIdentitySecretKey = access.exportPaykitIdentitySecretKey()
         lock.unlock()
@@ -2842,6 +2920,7 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
 
     func clearLiveSessionAccess() {
         lock.lock()
+        invalidateGrantAdmissions()
         liveSessionAccess = nil
         paykitIdentitySecretKey = nil
         lock.unlock()
@@ -2870,6 +2949,7 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
                 localSecretKey: readLocalSecretKey(),
                 paykitIdentitySecretKey: paykitIdentitySecretKey
             )
+            invalidateGrantAdmissions()
             liveSessionAccess = access
             return access
         }
@@ -2886,6 +2966,7 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
 
     func suspendStoredSessionAccess() {
         lock.lock()
+        invalidateGrantAdmissions()
         liveSessionAccess = nil
         isStoredSessionAccessSuspended = true
         lock.unlock()
@@ -2925,10 +3006,215 @@ final class PaykitSdkSessionProvider: SdkPubkySessionProvider, @unchecked Sendab
     func setPaykitIdentitySecretKey(_ key: PaykitIdentitySecretKey) {
         lock.lock()
         defer { lock.unlock() }
-        if paykitIdentitySecretKey?.keyGeneration() != key.keyGeneration() {
-            liveSessionAccess = nil
-        }
+        invalidateGrantAdmissions()
+        liveSessionAccess = liveSessionAccess?.withPaykitIdentitySecretKey(key: key)
         paykitIdentitySecretKey = key
+    }
+
+    private func invalidateGrantAdmissions() {
+        accessRevision = UUID()
+        revokeRemoteCaptures()
+    }
+
+    private func revokeRemoteCaptures() {
+        grantRevision = UUID()
+        let admissions = Array(grantAdmissions.values)
+        grantAdmissions.removeAll()
+        // Native revocation only changes its cancellation flag; it does not call this provider.
+        admissions.forEach { $0.revokeAdmission() }
+    }
+
+    struct AdoptedReference: Equatable, Sendable {
+        let sourceApp: String
+        let publicKey: String
+
+        static func load(defaults: UserDefaults = .standard) throws -> AdoptedReference? {
+            let source = defaults.object(forKey: AdoptedPubkyReference.sourceAppKey)
+            let key = defaults.object(forKey: AdoptedPubkyReference.pubkyKey)
+            guard source != nil || key != nil else { return nil }
+            guard let source = source as? String, !source.isEmpty, let key = key as? String, !key.isEmpty
+            else { throw ProfileRemovalStore.StoreError.changed }
+            return AdoptedReference(sourceApp: source, publicKey: key)
+        }
+    }
+
+    struct AdoptedCredential: Equatable, Sendable {
+        let sourceApp: String
+        let publicKey: String
+        let secret: String
+        var reference: AdoptedReference {
+            AdoptedReference(sourceApp: sourceApp, publicKey: publicKey)
+        }
+
+        static func load(defaults: UserDefaults = .standard,
+                         readSecret: (String, String) throws -> String? = { try SharedPubkyKeychain.readSecret(sourceApp: $0, pubky: $1) }) throws
+            -> AdoptedCredential?
+        {
+            try load(reference: AdoptedReference.load(defaults: defaults), readSecret: readSecret)
+        }
+
+        static func load(reference: AdoptedReference?,
+                         readSecret: (String, String) throws -> String? = { try SharedPubkyKeychain.readSecret(sourceApp: $0, pubky: $1) }) throws
+            -> AdoptedCredential?
+        {
+            guard let reference else { return nil }
+            guard let secret = try readSecret(reference.sourceApp, reference.publicKey) else { throw ProfileRemovalStore.StoreError.changed }
+            return AdoptedCredential(sourceApp: reference.sourceApp, publicKey: reference.publicKey, secret: secret)
+        }
+    }
+
+    final class OriginalAccess: @unchecked Sendable {
+        fileprivate var revision: UUID
+        fileprivate let grantRevision: UUID
+        fileprivate var session: String?
+        fileprivate var localCredential: Data?
+        fileprivate let adoptedCredential: AdoptedCredential?
+
+        fileprivate init(revision: UUID, grantRevision: UUID, session: String, localCredential: Data?, adoptedCredential: AdoptedCredential?) {
+            self.revision = revision
+            self.grantRevision = grantRevision
+            self.session = session
+            self.localCredential = localCredential
+            self.adoptedCredential = adoptedCredential
+        }
+    }
+
+    func captureOriginalAccess(expectedOwner: String) throws -> OriginalAccess {
+        try validateAdmission()
+        return try lock.withLock {
+            guard !publicOnly, !isStoredSessionAccessSuspended, let secret = try loadSessionSecret(), !secret.isEmpty,
+                  liveSessionAccess?.exportSessionSecret() == secret else { throw ProfileRemovalStore.StoreError.changed }
+            let local = try loadLocalCredential()
+            let reference = try loadAdoptedReference()
+            let adopted = try loadAdoptedCredential(reference)
+            guard reference == adopted?.reference else { throw ProfileRemovalStore.StoreError.changed }
+            let selectedSecret: String?
+            if let local, !local.isEmpty {
+                guard let value = String(data: local, encoding: .utf8), !value.isEmpty else { throw ProfileRemovalStore.StoreError.changed }
+                selectedSecret = value
+            } else {
+                selectedSecret = adopted?.secret
+            }
+            if let selectedSecret {
+                let owner = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: selectedSecret)
+                guard PubkyPublicKeyFormat.matches(owner, expectedOwner) else { throw ProfileRemovalStore.StoreError.changed }
+            }
+            return OriginalAccess(revision: accessRevision, grantRevision: grantRevision, session: secret,
+                                  localCredential: local, adoptedCredential: adopted)
+        }
+    }
+
+    func validateOriginalAccess(_ access: OriginalAccess) throws {
+        try validateOriginalAdmission(access)
+        try lock.withLock { try requireOriginalAccess(access) }
+    }
+
+    private func validateOriginalAdmission(_ access: OriginalAccess) throws {
+        do { try checkAdmission() }
+        catch {
+            if !(error is CancellationError) {
+                lock.withLock { invalidateOriginalGrant(access) }
+            }
+            throw error
+        }
+    }
+
+    /// Called with the provider lock held. An old failure cannot retire captures from a newer epoch.
+    private func invalidateOriginalAccess(_ access: OriginalAccess) {
+        if accessRevision == access.revision {
+            invalidateGrantAdmissions()
+        }
+    }
+
+    private func invalidateOriginalGrant(_ access: OriginalAccess) {
+        if accessRevision == access.revision, grantRevision == access.grantRevision {
+            revokeRemoteCaptures()
+        }
+    }
+
+    private func requireOriginalAccess(_ access: OriginalAccess) throws {
+        try requireOwnedOriginalAccess(access)
+        do {
+            guard grantRevision == access.grantRevision else { throw ProfileRemovalStore.StoreError.changed }
+            let adopted = try loadAdoptedCredential(access.adoptedCredential?.reference)
+            guard adopted?.reference == access.adoptedCredential?.reference else {
+                invalidateOriginalAccess(access)
+                throw ProfileRemovalStore.StoreError.changed
+            }
+            guard adopted == access.adoptedCredential else { throw ProfileRemovalStore.StoreError.changed }
+        } catch {
+            if !(error is CancellationError) {
+                invalidateOriginalGrant(access)
+            }
+            throw error
+        }
+    }
+
+    private func requireOwnedOriginalAccess(_ access: OriginalAccess) throws {
+        do {
+            guard !publicOnly, !isStoredSessionAccessSuspended, accessRevision == access.revision,
+                  try loadSessionSecret() == access.session, try loadLocalCredential() == access.localCredential,
+                  try loadAdoptedReference() == access.adoptedCredential?.reference else { throw ProfileRemovalStore.StoreError.changed }
+        } catch {
+            if !(error is CancellationError) {
+                invalidateOriginalAccess(access)
+            }
+            throw error
+        }
+    }
+
+    func registerGrantLogout(_ logout: PubkyGrantLogout, access: OriginalAccess) throws -> UUID {
+        try lock.withLock {
+            try requireOriginalAccess(access)
+            let id = UUID()
+            grantAdmissions[id] = logout
+            return id
+        }
+    }
+
+    func unregisterGrantLogout(_ id: UUID) {
+        _ = lock.withLock { grantAdmissions.removeValue(forKey: id) }
+    }
+
+    func clearOriginalAccess(_ access: OriginalAccess) throws {
+        try validateOriginalAdmission(access)
+        try lock.withLock {
+            try requireOwnedOriginalAccess(access)
+            invalidateGrantAdmissions()
+            access.revision = accessRevision
+            liveSessionAccess = nil
+            paykitIdentitySecretKey = nil
+            do { try deleteKeychainValue(.paykitSession) }
+            catch {
+                access.session = failedEraseValue(access, expected: access.session, load: loadSessionSecret)
+                throw error
+            }
+            access.session = nil
+            try requireOwnedOriginalAccess(access)
+            do { try deleteKeychainValue(.pubkySecretKey) }
+            catch {
+                access.localCredential = failedEraseValue(access, expected: access.localCredential, load: loadLocalCredential)
+                throw error
+            }
+            access.localCredential = nil
+            try requireOwnedOriginalAccess(access)
+        }
+    }
+
+    private func failedEraseValue<T: Equatable>(_ access: OriginalAccess, expected: T?, load: () throws -> T?) -> T? {
+        do {
+            let observed = try load()
+            guard observed == nil || observed == expected else {
+                invalidateOriginalAccess(access)
+                return expected
+            }
+            return observed
+        } catch {
+            if !(error is CancellationError) {
+                invalidateOriginalAccess(access)
+            }
+            return expected
+        }
     }
 }
 

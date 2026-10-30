@@ -903,8 +903,11 @@ final class ContactPaymentsServiceTests: XCTestCase {
                         }
                     },
                     validateSubscriptions: { _ in XCTFail("Disconnect does not remove contacts") },
-                    revokeSession: { XCTFail("Failed endpoint withdrawal cannot revoke the session") },
+                    captureRevocation: { _ in
+                        ProfileRevocationTestDouble(execute: { XCTFail("Failed endpoint withdrawal cannot revoke the session") }).handle()
+                    },
                     completeLocal: { completeLocalCount += 1 },
+                    completeRevokedLocal: { _ in XCTFail("Failed endpoint withdrawal cannot finish remote cleanup") },
                     pause: {
                         _ in pauseCount += 1; if pauseCount == 1 {
                             paused.fulfill()

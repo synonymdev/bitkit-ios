@@ -28,6 +28,8 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     private var duringPrivateWithdrawal: (() async throws -> Void)?
     private var duringPause: (() -> Void)?
     private var duringResume: (() async -> Void)?
+    private var revocations: [ProfileRevocationTestDouble] = []
+    private var duringRevocationValidation: (() throws -> Void)?
 
     override func setUpWithError() throws {
         snapshotAppDefaultsDomain()
@@ -53,13 +55,19 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
                 eligibilityChecks += 1
                 try await duringEligibility?()
             },
-            revokeSession: { [self] in try step("revoke"); try await duringRevocation?() },
-            completeLocal: { [self] in
-                try duringLocalCleanup?()
-                try step("credentials")
-                watermark = 0
-                cleanupCount += 1
+            captureRevocation: { [self] expectedOwner in
+                XCTAssertEqual(expectedOwner, owner)
+                let revocation = ProfileRevocationTestDouble(execute: { [self] in
+                    try step("revoke"); try await duringRevocation?()
+                }, clear: { [self] in try completeLocal() }, validate: { [self] in
+                    try admission.checkCurrent()
+                    try duringRevocationValidation?()
+                })
+                revocations.append(revocation)
+                return revocation.handle()
             },
+            completeLocal: { [self] in try completeLocal() },
+            completeRevokedLocal: { try await $0.clearCredentials() },
             pause: { [self] in pauseID = $0; duringPause?() }, resume: { [self] in resumeID = $0; await duringResume?() }
         )
         let manager = PubkyProfileManager(removalServices: services, removalStore: store, removalAdmission: admission,
@@ -67,6 +75,13 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         manager.publicKey = owner
         manager.authState = .authenticated
         return manager
+    }
+
+    private func completeLocal() throws {
+        try duringLocalCleanup?()
+        try step("credentials")
+        watermark = 0
+        cleanupCount += 1
     }
 
     func testMissingPrivateAcknowledgementStopsRemovalAndLeavesOnlyLocalRecovery() async throws {
@@ -768,6 +783,226 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
         XCTAssertEqual(watermark, 42)
         XCTAssertEqual(try store.pending()?.id, confirmation.id)
         XCTAssertEqual(manager.publicKey, "replacement")
+    }
+
+    func testConfirmedRetryUsesOriginalGrantAndNeverRepeatsAcknowledgedCleanup() async throws {
+        for action in [PubkyProfileManager.RemovalAction.disconnect, .deleteProfile, .unlink] {
+            steps = []
+            failStep = "revoke"
+            let manager = makeManager()
+            let confirmation = try await manager.prepareRemoval(action: action, contacts: contacts())
+            do { _ = try await manager.confirmRemoval(confirmation); XCTFail("First logout response is unknown") }
+            catch TestError.failure("revoke") {}
+            let counts = [profileReads, contactReads, contactRemovals, eligibilityChecks, deleted.count, revocations.count]
+            let completed = steps
+            XCTAssertTrue(manager.canRetryRemoteRemoval(id: confirmation.id))
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: UUID()))
+            let cancelled = try await manager.prepareRemoteRemovalRetry(id: confirmation.id)
+            manager.cancelRemoteRemovalRetry(cancelled)
+            do { _ = try await manager.confirmRemoteRemovalRetry(cancelled); XCTFail("Cancelled confirmation was accepted") }
+            catch PubkyProfileManager.RemovalError.confirmationRequired {}
+            let stale = try await manager.prepareRemoteRemovalRetry(id: confirmation.id)
+            let fresh = try await manager.prepareRemoteRemovalRetry(id: confirmation.id)
+            XCTAssertNotEqual(stale.id, fresh.id)
+            XCTAssertEqual(fresh.removalID, confirmation.id)
+            do { _ = try await manager.confirmRemoteRemovalRetry(stale); XCTFail("Superseded confirmation was accepted") }
+            catch PubkyProfileManager.RemovalError.confirmationRequired {}
+            XCTAssertEqual(steps, completed, "Preparing and cancelling a dialog cannot negotiate or execute logout")
+            failStep = nil
+            let result = try await manager.confirmRemoteRemovalRetry(fresh)
+            XCTAssertEqual(result.remoteProfileDeleted, action == .deleteProfile)
+            XCTAssertEqual(steps, completed + ["revoke", "credentials"])
+            XCTAssertEqual([profileReads, contactReads, contactRemovals, eligibilityChecks, deleted.count, revocations.count], counts)
+            XCTAssertNil(try store.pending())
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
+            do { _ = try await manager.confirmRemoteRemovalRetry(fresh); XCTFail("Confirmation was consumed twice") }
+            catch PubkyProfileManager.RemovalError.confirmationRequired {}
+        }
+    }
+
+    func testRetiredCapturedGrantStopsBeforeAnyCleanup() async throws {
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
+        let captured = try XCTUnwrap(revocations.last)
+        captured.handle().revoke()
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Original grant admission ended") }
+        catch ProfileRemovalStore.StoreError.changed {}
+        XCTAssertTrue(steps.isEmpty, "Discovering a retired grant after cleanup is too late")
+        XCTAssertTrue(deleted.isEmpty)
+        XCTAssertEqual(contactRemovals, 0)
+        XCTAssertEqual(cleanupCount, 0)
+    }
+
+    func testWipeWaitsForRemovalResumeTailBeforeCompletingDrain() async throws {
+        try await assertWipeWaitsForResume(retry: false)
+    }
+
+    func testWipeWaitsForRetryResumeTailBeforeCompletingDrain() async throws {
+        try await assertWipeWaitsForResume(retry: true)
+    }
+
+    private func assertWipeWaitsForResume(retry: Bool) async throws {
+        failStep = "revoke"
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .disconnect)
+        var retryConfirmation: PubkyProfileManager.RemoteRemovalConfirmation?
+        if retry {
+            do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Expected unknown logout") }
+            catch TestError.failure("revoke") {}
+            retryConfirmation = try await manager.prepareRemoteRemovalRetry(id: confirmation.id)
+        }
+        let resuming = expectation(description: "Removal resume is still active")
+        let barrier = NativeCompletion()
+        duringResume = { await barrier.wait { resuming.fulfill() } }
+        let removal = Task {
+            if let retryConfirmation {
+                return try await manager.confirmRemoteRemovalRetry(retryConfirmation)
+            }
+            return try await manager.confirmRemoval(confirmation)
+        }
+        await fulfillment(of: [resuming], timeout: 2)
+        let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+        defer { admission.release(wipe) }
+        let waiting = expectation(description: "Successor wipe starts draining")
+        var drained = false
+        let successor = Task {
+            waiting.fulfill()
+            try await admission.drain(before: wipe)
+            drained = true
+        }
+        await fulfillment(of: [waiting], timeout: 2)
+        XCTAssertFalse(drained, "Resume and acknowledgement reconciliation remain part of the original operation")
+        XCTAssertTrue(manager.isDeletingProfile)
+        await barrier.finish()
+        do { _ = try await removal.value; XCTFail("Expected original unknown result") }
+        catch TestError.failure("revoke") {}
+        try await successor.value
+        XCTAssertTrue(drained)
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
+    }
+
+    func testCapturedGrantRetirementDuringCleanupStopsFollowingStages() async throws {
+        let manager = makeManager()
+        let confirmation = try await manager.prepareRemoval(action: .deleteProfile, contacts: contacts())
+        duringPrivateWithdrawal = { [self] in try XCTUnwrap(revocations.last).handle().revoke() }
+        do { _ = try await manager.confirmRemoval(confirmation); XCTFail("Original grant admission ended during withdrawal") }
+        catch ProfileRemovalStore.StoreError.changed {}
+        XCTAssertEqual(steps, ["private"])
+        XCTAssertTrue(deleted.isEmpty)
+        XCTAssertEqual(contactRemovals, 0)
+        XCTAssertEqual(cleanupCount, 0)
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: confirmation.id))
+    }
+
+    func testUnknownRetryNeedsAnotherConfirmationAndDrainsBeforeOfferingIt() async throws {
+        failStep = "revoke"
+        let manager = makeManager()
+        let initial = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
+        catch TestError.failure("revoke") {}
+        let retry = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+        failStep = nil
+        let entered = expectation(description: "Retry attempt entered")
+        let barrier = NativeCompletion()
+        duringRevocation = {
+            await barrier.wait { entered.fulfill() }
+            throw TestError.failure("unknown")
+        }
+        let operation = Task { try await manager.confirmRemoteRemovalRetry(retry) }
+        await fulfillment(of: [entered], timeout: 2)
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+        do { _ = try await manager.confirmRemoteRemovalRetry(retry); XCTFail("Duplicate tap started an overlapping attempt") }
+        catch PubkyProfileManager.RemovalError.confirmationRequired {}
+        do { _ = try await manager.finishPendingRemoval(id: initial.id); XCTFail("Local cleanup overtook the native tail") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        XCTAssertEqual(steps, ["private", "public", "revoke", "revoke"])
+        await barrier.finish()
+        do { _ = try await operation.value; XCTFail("Expected unknown retry result") }
+        catch TestError.failure("unknown") {}
+        XCTAssertTrue(manager.canRetryRemoteRemoval(id: initial.id))
+        do { _ = try await manager.confirmRemoteRemovalRetry(retry); XCTFail("Consumed nonce confirmation was reused") }
+        catch PubkyProfileManager.RemovalError.confirmationRequired {}
+        let next = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+        XCTAssertNotEqual(next.id, retry.id)
+        duringRevocation = nil
+        _ = try await manager.confirmRemoteRemovalRetry(next)
+        XCTAssertEqual(steps, ["private", "public", "revoke", "revoke", "revoke", "credentials"])
+        XCTAssertEqual(revocations.count, 1)
+    }
+
+    func testFailedRetryValidationCannotReviveAfterTheOriginalValuesReturn() async throws {
+        failStep = "revoke"
+        let manager = makeManager()
+        let initial = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
+        catch TestError.failure("revoke") {}
+        duringRevocationValidation = { throw TestError.failure("changed-credentials") }
+        do { _ = try await manager.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Changed binding must refuse confirmation") }
+        catch TestError.failure("changed-credentials") {}
+        duringRevocationValidation = nil
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+        XCTAssertTrue(try XCTUnwrap(revocations.last).revoked)
+        do { _ = try await manager.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Restored values cannot revive the same removal") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        XCTAssertEqual(steps, ["private", "public", "revoke"])
+        _ = try await manager.finishPendingRemoval(id: initial.id)
+        XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+    }
+
+    func testAcknowledgementAfterFailedResponsePermitsOnlyLocalCompletion() async throws {
+        let manager = makeManager()
+        duringRevocation = { [self] in
+            revocations.last?.acknowledge()
+            throw TestError.failure("lost-response")
+        }
+        let initial = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(initial); XCTFail("Response failed") }
+        catch TestError.failure("lost-response") {}
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+        XCTAssertTrue(try XCTUnwrap(revocations.last).revoked)
+        do { _ = try await manager.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Known logout cannot be retried") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        _ = try await manager.finishPendingRemoval(id: initial.id)
+        XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+    }
+
+    func testUnknownLogoutCannotRestoreRetryFromPersistentRecordOrReplacementOwner() async throws {
+        failStep = "revoke"
+        let manager = makeManager()
+        let initial = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
+        catch TestError.failure("revoke") {}
+        let restarted = makeManager()
+        XCTAssertFalse(restarted.canRetryRemoteRemoval(id: initial.id))
+        do { _ = try await restarted.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Record cannot recreate remote authority") }
+        catch PubkyProfileManager.RemovalError.confirmationChanged {}
+        let retry = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+        manager.publicKey = "replacement"
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+        do { _ = try await manager.confirmRemoteRemovalRetry(retry); XCTFail("Old owner cannot act on replacement access") }
+        catch PubkyProfileManager.RemovalError.confirmationRequired {}
+        XCTAssertEqual(steps, ["private", "public", "revoke"])
+        XCTAssertEqual(cleanupCount, 0)
+        failStep = nil
+        _ = try await manager.finishPendingRemoval(id: initial.id)
+    }
+
+    func testWipeAfterUnknownLogoutRetiresIdleIntentWithoutWaitingForAnotherConfirmation() async throws {
+        failStep = "revoke"
+        let manager = makeManager()
+        let initial = try await manager.prepareRemoval(action: .disconnect)
+        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
+        catch TestError.failure("revoke") {}
+        let retry = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+        let wipe = try admission.reserve(kind: .walletWipe, id: UUID())
+        defer { admission.release(wipe) }
+        try await admission.drain(before: wipe)
+        XCTAssertTrue(try XCTUnwrap(revocations.last).revoked)
+        XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+        admission.revoke(wipe)
+        do { _ = try await manager.confirmRemoteRemovalRetry(retry); XCTFail("Cancelled successor wipe cannot revive logout") }
+        catch PubkyProfileManager.RemovalError.confirmationRequired {}
+        XCTAssertEqual(steps, ["private", "public", "revoke"])
     }
 
     func testCancelledRevocationCannotEnterLocalFinalization() async throws {

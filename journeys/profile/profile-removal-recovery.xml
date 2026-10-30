@@ -5,14 +5,16 @@
     Keep a redacted operation counter. Recreate the fixture separately for each failure checkpoint.
     Local Disconnect does not assert remote deletion. Conditional contact deletion across devices is
     not proved by local ownership, and requires the separate native CAS fixture.
-    This journey covers local Disconnect after an uncertain attempt. Its pinned native contact
-    read can reconcile writes, so remote Review/reconfirmation is deliberately unavailable until a
-    native observation API can enforce read-only reconciliation. This differs from the Android UI.
+    Failures before logout offer local Disconnect only: contact reads can reconcile writes and must
+    not be used for remote Review. Separately lose the logout response after all preceding cleanup
+    was acknowledged under a genuinely live grant. That case permits a freshly confirmed logout-only
+    retry while its original process, owner and grant remain current. Record proof-request counts
+    without retaining credentials or nonce values. An old bearer observer does not authorize retry.
   </description>
   <actions>
     <action>Open Edit Profile, request deletion and verify preparation opens a confirmation without destructive profile or contact mutation</action>
     <action>Confirm once, lose a mutation acknowledgement and verify failure feedback without success or automatic replay</action>
-    <action>Verify no remote Retry or Review action is offered after the uncertain attempt</action>
+    <action>Verify no remote Retry or Review action is offered after uncertain contact or profile cleanup</action>
     <action>In separate fixtures, edit the remote profile or change or add a contact after the failure; verify the app starts no further remote cleanup</action>
     <action>Choose Disconnect from the failure options and verify a separate local-only confirmation appears</action>
     <action>Cancel local Disconnect and verify neither local cleanup nor remote mutation runs</action>
@@ -23,5 +25,13 @@
     <action>Confirm local Disconnect and verify all required local cleanup finishes before leaving Profile</action>
     <action>In a fresh fixture, replace the sign-in before an old confirmation or completion is delivered and verify it cannot act on or navigate away from the replacement</action>
     <action>Open ordinary receive and verify address accounting remains available while profile cleanup is pending</action>
+    <action>In the separate lost-logout-response fixture, verify Retry appears only after the prior native attempt and local tail return</action>
+    <action>Open Retry, cancel its fresh Disconnect Profile confirmation and verify no proof negotiation or remote mutation occurs</action>
+    <action>Confirm Retry once and tap again while its response is held; verify exactly one fresh proof attempt, the original removal UUID and grant, and no repeated private-list, public-endpoint, app, contact or profile cleanup or reads</action>
+    <action>Allow a same-grant bearer refresh and verify confirmed proof logout can still complete; replace the grant, identity, client, signer or same-seed process lifecycle and verify the old intent cannot act or erase replacement credentials</action>
+    <action>Lose another logout response without an acknowledgement and verify a new confirmation is required; record an acknowledgement before cancellation or local-storage failure and verify only local completion remains available</action>
+    <action>Restart after unknown logout and verify the persistent record offers only local Disconnect, with no grant recapture or SDK restoration for retry</action>
+    <action>Choose local Disconnect after unknown logout and verify it can retire the idle retry intent and finish; cancel during an active attempt and verify cleanup waits for its actual native tail</action>
+    <action>In a fresh controlled fixture, change stored credentials or the adopted source after unknown logout, attempt Retry to observe the mismatch, then restore the original values; verify the original retry remains unavailable, no native logout is dispatched and local Disconnect still works</action>
   </actions>
 </journey>

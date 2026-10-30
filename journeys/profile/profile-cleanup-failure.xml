@@ -12,8 +12,12 @@
     With Paykit 0.1.1-rc3, also return a cleared private list without a positive acknowledgement,
     including a pending handshake and an empty outgoing queue, or an acknowledgement for another
     peer or outbound message. These must remain incomplete; only the exact intended withdrawals
-    with positive acknowledgements may advance cleanup. Interrupted recovery remains local-only:
-    the SDK's ordinary sign-out can restore a newer bearer and cannot enforce original-bearer revocation.
+    with positive acknowledgements may advance cleanup. In another fresh fixture, disable Pay Contacts
+    after establishing a saved linked contact and verify the own app registry has privatePayments=false.
+    Retain the saved contact and encrypted link, then test first-attempt profile deletion both with
+    an acknowledged empty list and with its acknowledgement withheld. Sharing must stay disabled.
+    Failures before grant logout remain local-only. A confirmed logout retry requires the captured
+    original live grant and must not adopt a replacement grant, identity, client or signer.
     These controls are not available in standard staging. This journey covers stopping on incomplete
     cleanup, not cross-device conditional deletion or safe manual replay of an uncertain operation.
   </description>
@@ -29,5 +33,7 @@
     <action>Verify an uncertain profile-deletion error preserves required safety state and shows local recovery without success feedback or automatic publication</action>
     <action>Cancel the local Disconnect confirmation and verify the app starts no second deletion</action>
     <action>Restart the app and verify no profile deletion is automatically replayed</action>
+    <action>In the fresh sharing-disabled fixture, confirm profile deletion and verify an empty private list is acknowledged before contact or profile deletion; verify no app registration or sharing re-enable occurs</action>
+    <action>Repeat with another fresh sharing-disabled fixture and withhold the exact withdrawal acknowledgement; verify contact and profile deletion stop and only local recovery remains available</action>
   </actions>
 </journey>

@@ -1278,6 +1278,7 @@ private final class CacheActivationBootstrap: PubkySessionBootstrap, @unchecked 
 
 private final class CacheActivationSession: PubkySessionAccess, @unchecked Sendable {
     var localSecretKey: PubkyLocalSecretKey?
+    var paykitKey: PaykitIdentitySecretKey?
 
     override func exportSessionSecret() -> String {
         "new-session"
@@ -1288,7 +1289,14 @@ private final class CacheActivationSession: PubkySessionAccess, @unchecked Senda
     }
 
     override func exportPaykitIdentitySecretKey() -> PaykitIdentitySecretKey? {
-        nil
+        paykitKey
+    }
+
+    override func withPaykitIdentitySecretKey(key: PaykitIdentitySecretKey) -> PubkySessionAccess {
+        let attached = CacheActivationSession(noPointer: .init())
+        attached.localSecretKey = localSecretKey
+        attached.paykitKey = key
+        return attached
     }
 }
 
