@@ -1184,8 +1184,10 @@
 "profile__edit" = "Upravit";
 "profile__pay_contacts_nav_title" = "Platby kontaktům";
 "profile__pay_contacts_title" = "Nechte své kontakty\n<accent>platit vám</accent>";
-"profile__pay_contacts_description" = "Používejte Bitkit se svými kontakty a posílejte platby přímo, kdykoli a kdekoli.";
-"profile__pay_contacts_toggle" = "Povolit platby s kontakty";
+"profile__pay_contacts_description" = "Sdílejte platební údaje soukromě se svými kontakty. Veřejné platby zůstanou vypnuté, dokud je nepovolíte v nastavení.";
+"profile__private_payments_toggle" = "Soukromé platby s kontakty";
+"profile__public_payments_toggle" = "Veřejné platby";
+"profile__payments_pending" = "Změny čekají na dokončení. Dříve sdílené platební údaje mohou být stále dostupné.";
 "profile__add_link_title" = "Vložit odkaz";
 "profile__add_link_label" = "ŠTÍTEK";
 "profile__add_link_label_placeholder" = "Například „webová stránka“";

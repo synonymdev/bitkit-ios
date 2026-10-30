@@ -963,8 +963,10 @@
 "profile__edit" = "تعديل";
 "profile__pay_contacts_nav_title" = "الدفع لجهات الاتصال";
 "profile__pay_contacts_title" = "دع جهات اتصالك\n<accent>تدفع لك</accent>";
-"profile__pay_contacts_description" = "استخدم Bitkit مع جهات اتصالك لإرسال المدفوعات مباشرةً، في أي وقت وفي أي مكان.";
-"profile__pay_contacts_toggle" = "تفعيل المدفوعات مع جهات الاتصال";
+"profile__pay_contacts_description" = "شارك تفاصيل الدفع بشكل خاص مع جهات اتصالك. تبقى المدفوعات العامة معطلة ما لم تفعّلها في الإعدادات.";
+"profile__private_payments_toggle" = "مدفوعات خاصة لجهات الاتصال";
+"profile__public_payments_toggle" = "مدفوعات عامة";
+"profile__payments_pending" = "التغييرات قيد الانتظار. قد تظل تفاصيل الدفع التي تمت مشاركتها سابقًا متاحة.";
 "profile__add_link_title" = "إضافة رابط";
 "profile__add_link_label" = "التسمية";
 "profile__add_link_label_placeholder" = "مثلاً «الموقع الإلكتروني»";
