@@ -399,18 +399,21 @@ extension PrivatePaykitService {
     }
 
     func removePublishedEndpoints(
-        for publicKeys: [String]? = nil, isSessionCurrent: (@MainActor () -> Bool)? = nil, deferAppSync: Bool = false
+        for publicKeys: [String]? = nil,
+        isSessionCurrent: (@MainActor () -> Bool)? = nil,
+        deferAppSync: Bool = false,
+        sdkService: PaykitSdkService = .shared
     ) async throws {
         try await removePublishedEndpoints(
             for: publicKeys,
             isSessionCurrent: isSessionCurrent,
             deferAppSync: deferAppSync,
             operations: EndpointCleanupOperations(
-                linkedPeers: { try await PaykitSdkService.shared.linkedPeers() },
-                clearPaymentLists: { try await PaykitSdkService.shared.clearPrivatePaymentLists(to: $0, isSessionCurrent: isSessionCurrent) },
+                linkedPeers: { try await sdkService.linkedPeers() },
+                clearPaymentLists: { try await sdkService.clearPrivatePaymentLists(to: $0, isSessionCurrent: isSessionCurrent) },
                 drainMessages: { _ = await self.drainPendingPrivateMessages(reason: "cleanup", advancing: $0) },
                 pendingDrainKeys: { await self.pendingPrivateMessageDrainKeys($0) },
-                syncApp: { try await PublicPaykitService.syncPaykitApp() }
+                syncApp: { try await PublicPaykitService.syncPaykitApp(isSessionCurrent: isSessionCurrent, sdkService: sdkService) }
             )
         )
     }
