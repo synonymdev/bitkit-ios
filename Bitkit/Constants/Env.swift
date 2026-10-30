@@ -272,6 +272,12 @@ enum Env {
             .appendingPathComponent("wallet\(walletIndex)/ldk")
     }
 
+    static func arkadeStorage(walletIndex: Int) -> URL {
+        appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet\(walletIndex)/arkade")
+    }
+
     /// A restored Arkade wallet data backup waiting to be imported when the Arkade wallet next starts.
     static func arkadeExitRestore(walletIndex: Int) -> URL {
         appStorageUrl

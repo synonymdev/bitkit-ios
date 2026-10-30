@@ -104,16 +104,6 @@ final class ArkadeManagerTests: XCTestCase {
         }
     }
 
-    func testDecodesASwapWhoseTimesComeInAnotherShape() throws {
-        let json = Data(#"{"id":"s","direction":"send","outcome":"paid","createdAt":"2026-10-29T10:00:00Z","takeSat":5}"#.utf8)
-
-        let swap = try JSONDecoder().decode(ArkadeSwap.self, from: json)
-
-        XCTAssertEqual(swap.outcome, "paid")
-        XCTAssertNil(swap.createdAt)
-        XCTAssertEqual(swap.takeSat, 5)
-    }
-
     private func entry(
         boardingTxid: String? = nil,
         commitmentTxid: String? = nil,

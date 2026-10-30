@@ -5,8 +5,8 @@ import Observation
 
 /// Lightning without channels, through Arkade (Ark Labs) and Arkade Intents. Savings to Spending boards on-chain funds
 /// into the Arkade wallet, receives fall back to it when no channel has the inbound capacity, and sends fall back to it
-/// when no channel has the outbound capacity. The wallet runs in Ark Labs' TypeScript stack inside `ArkadeBridge`'s
-/// hidden web view and derives its keys from the Bitkit seed on its own BIP86 account (`m/86'/<coin>'/1'`).
+/// when no channel has the outbound capacity. The wallet runs in bitkit-core's Arkade module through `ArkadeBridge`
+/// and derives its keys from the Bitkit seed on its own BIP86 account (`m/86'/<coin>'/1'`).
 /// Its payments reach the app as LDK events through `LightningService.emitChannelFreeRailEvent`, so the receive and
 /// send flows built on node events work for both rails.
 @Observable @MainActor
@@ -47,16 +47,13 @@ final class ArkadeManager: ChannelFreeLightningRail {
         bridge.onEvent = { [weak self] event in
             Task { await self?.onEvent(event) }
         }
-        bridge.onTerminated = { [weak self] in
-            Task { await self?.restartAfterTermination() }
-        }
         return bridge
     }()
 
     private init() {}
 
     var isSupported: Bool {
-        ArkadeBridge.isAvailable && Self.config != nil
+        Self.config != nil
     }
 
     var isConnected: Bool {
@@ -64,24 +61,12 @@ final class ArkadeManager: ChannelFreeLightningRail {
     }
 
     /// Arkade runs on mainnet against Ark Labs' operator, and on mutinynet, Arkade's test network, for dev builds.
+    /// bitkit-core holds each network's endpoints.
     nonisolated static var config: ArkadeConfig? {
         switch Env.network {
-        case .bitcoin:
-            ArkadeConfig(
-                network: "bitcoin",
-                arkServerUrl: "https://arkade.computer",
-                delegateUrl: "https://delegate.arkade.money",
-                lnurlUrl: "https://lnurl.arkade.sh"
-            )
-        case .regtest:
-            ArkadeConfig(
-                network: "mutinynet",
-                arkServerUrl: "https://mutinynet.arkade.sh",
-                delegateUrl: "https://delegator.mutinynet.arkade.sh",
-                lnurlUrl: nil
-            )
-        default:
-            nil
+        case .bitcoin: ArkadeConfig(network: "bitcoin")
+        case .regtest: ArkadeConfig(network: "mutinynet")
+        default: nil
         }
     }
 
@@ -122,12 +107,10 @@ final class ArkadeManager: ChannelFreeLightningRail {
         let backup = FileManager.default.contents(atPath: restoreFile.path).map { String(decoding: $0, as: UTF8.self) }
         let startedMarker = Env.arkadeStartedMarker(walletIndex: walletIndex)
         let params = ArkadeStartParams(
+            dataDir: Env.arkadeStorage(walletIndex: walletIndex).path,
             mnemonic: mnemonic,
             passphrase: passphrase,
             network: config.network,
-            arkServerUrl: config.arkServerUrl,
-            delegateUrl: config.delegateUrl,
-            lnurlUrl: config.lnurlUrl,
             restore: !FileManager.default.fileExists(atPath: startedMarker.path),
             backup: backup
         )
@@ -143,21 +126,12 @@ final class ArkadeManager: ChannelFreeLightningRail {
         Self.exitStateChanged.send()
     }
 
-    /// The web content process took the wallet with it: start it again, without a restore scan or backup import.
-    private func restartAfterTermination() async {
-        guard info != nil else { return }
-        Logger.warn("Restarting Arkade wallet after its web content process stopped", context: "ArkadeManager")
-        info = nil
-        isReady = false
-        await start(walletIndex: walletIndex)
-    }
-
     func wipe(walletIndex: Int) async {
         if LightningService.shared.channelFreeRail === self {
             LightningService.shared.channelFreeRail = nil
         }
         do {
-            try await bridge.wipe()
+            try await bridge.wipe(dataDir: Env.arkadeStorage(walletIndex: walletIndex).path)
         } catch {
             Logger.warn("Failed to wipe Arkade storage: \(error)", context: "ArkadeManager")
         }
@@ -533,9 +507,6 @@ final class ArkadeManager: ChannelFreeLightningRail {
 
 struct ArkadeConfig {
     let network: String
-    let arkServerUrl: String
-    let delegateUrl: String?
-    let lnurlUrl: String?
 }
 
 /// An on-chain deposit into Arkade: pending until it confirms and the wallet boards it into a batch.
