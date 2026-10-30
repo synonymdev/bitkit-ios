@@ -363,7 +363,7 @@ struct PaymentRequestsFooterButton: View {
 
     var body: some View {
         CustomButton(title: t("wallet__payment_request_request_payment")) {
-            if contactsManager.contacts.isEmpty {
+            if !pubkyProfile.isAuthenticated || (contactsManager.hasLoaded && contactsManager.contacts.isEmpty) {
                 await ContactsIntroView.openContacts(
                     app: app,
                     navigation: navigation,
