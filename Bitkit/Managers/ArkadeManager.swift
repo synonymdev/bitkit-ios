@@ -60,14 +60,10 @@ final class ArkadeManager: ChannelFreeLightningRail {
         info != nil
     }
 
-    /// Arkade runs on mainnet against Ark Labs' operator, and on mutinynet, Arkade's test network, for dev builds.
-    /// bitkit-core holds each network's endpoints.
+    /// Arkade runs on mainnet against Ark Labs' operator; bitkit-core holds its endpoints. Its test network has no
+    /// Lightning solver or LNURL server in bitkit-core, so dev builds keep Arkade off and use channels.
     nonisolated static var config: ArkadeConfig? {
-        switch Env.network {
-        case .bitcoin: ArkadeConfig(network: "bitcoin")
-        case .regtest: ArkadeConfig(network: "mutinynet")
-        default: nil
-        }
+        Env.network == .bitcoin ? ArkadeConfig(network: "bitcoin") : nil
     }
 
     func start(walletIndex: Int) async {
