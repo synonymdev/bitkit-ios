@@ -113,6 +113,15 @@ enum Env {
         configValue("E2E_LOCAL_HOST") ?? "127.0.0.1"
     }
 
+    /// The solver key of a local Arkade regtest stack; set, it turns Arkade on in dev builds.
+    static var arkadeRegtestSolverPubkey: String? {
+        configValue("ARKADE_REGTEST_SOLVER_PUBKEY")
+    }
+
+    static var arkadeRegtestHost: String {
+        configValue("ARKADE_REGTEST_HOST") ?? "localhost"
+    }
+
     private static var e2eHomegateUrl: String {
         infoPlistValue("E2E_HOMEGATE_URL") ?? "http://\(e2eLocalHost):6288"
     }

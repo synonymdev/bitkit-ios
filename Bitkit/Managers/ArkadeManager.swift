@@ -1,3 +1,4 @@
+import BitkitCore
 import Combine
 import Foundation
 import LDKNode
@@ -60,10 +61,23 @@ final class ArkadeManager: ChannelFreeLightningRail {
         info != nil
     }
 
-    /// Arkade runs on mainnet against Ark Labs' operator; bitkit-core holds its endpoints. Its test network has no
-    /// Lightning solver or LNURL server in bitkit-core, so dev builds keep Arkade off and use channels.
+    /// Arkade runs on mainnet against Ark Labs' operator, whose endpoints bitkit-core holds, and in dev builds against
+    /// a local regtest stack (ArkLabsHQ/arkade-regtest) when `ARKADE_REGTEST_SOLVER_PUBKEY` is set. Otherwise dev
+    /// builds keep Arkade off and use channels: Arkade's test network has no Lightning solver or LNURL server.
     nonisolated static var config: ArkadeConfig? {
-        Env.network == .bitcoin ? ArkadeConfig(network: "bitcoin") : nil
+        if Env.network == .bitcoin {
+            return ArkadeConfig(network: "bitcoin", regtest: nil)
+        }
+        guard Env.network == .regtest, let solver = Env.arkadeRegtestSolverPubkey else { return nil }
+        let host = Env.arkadeRegtestHost
+        return ArkadeConfig(network: "regtest", regtest: ArkadeRegtestEndpoints(
+            arkServerUrl: "http://\(host):7070",
+            esploraUrl: "http://\(host):3000/api",
+            lnurlUrl: "http://\(host):9090",
+            delegateUrl: "http://\(host):7012",
+            solverPubkey: solver,
+            solverRelays: ["ws://\(host):7777"]
+        ))
     }
 
     /// Waits between attempts to connect the Arkade wallet when the operator or chain source is slow.
@@ -130,6 +144,7 @@ final class ArkadeManager: ChannelFreeLightningRail {
             mnemonic: mnemonic,
             passphrase: passphrase,
             network: config.network,
+            regtest: config.regtest,
             restore: !FileManager.default.fileExists(atPath: startedMarker.path),
             backup: backup
         )
@@ -526,6 +541,8 @@ final class ArkadeManager: ChannelFreeLightningRail {
 
 struct ArkadeConfig {
     let network: String
+    /// The local stack's endpoints when `network` is `regtest`.
+    let regtest: ArkadeRegtestEndpoints?
 }
 
 /// An on-chain deposit into Arkade: pending until it confirms and the wallet boards it into a batch.

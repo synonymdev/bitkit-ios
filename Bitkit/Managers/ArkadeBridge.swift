@@ -17,9 +17,10 @@ final class ArkadeBridge {
     }
 
     func start(_ params: ArkadeStartParams) async throws -> ArkadeInfo {
-        let network: ArkadeNetwork = switch params.network {
-        case "bitcoin": .bitcoin
-        case "mutinynet": .mutinynet
+        let network: ArkadeNetwork = switch (params.network, params.regtest) {
+        case ("bitcoin", _): .bitcoin
+        case ("mutinynet", _): .mutinynet
+        case let ("regtest", endpoints?): .regtest(endpoints: endpoints)
         default: throw ArkadeError.unsupported
         }
         let info = try await arkadeStart(params: BitkitCore.ArkadeStartParams(
@@ -120,8 +121,10 @@ struct ArkadeStartParams {
     let dataDir: String
     let mnemonic: String
     let passphrase: String?
-    /// `bitcoin` or `mutinynet`.
+    /// `bitcoin`, `mutinynet` or `regtest`.
     let network: String
+    /// The local stack's endpoints when `network` is `regtest`.
+    let regtest: ArkadeRegtestEndpoints?
     let restore: Bool
     let backup: String?
 }
