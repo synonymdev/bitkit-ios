@@ -1787,7 +1787,7 @@
 "usdt__to_address" = "Indirizzo destinazione";
 "usdt__disable_unavailable" = "USDT deve restare attivo finché hai un saldo o un trasferimento in sospeso. Attendi il completamento dei trasferimenti e controlla il saldo prima di disattivarlo.";
 "usdt__enable" = "Attiva USDT";
-"usdt__intro_description" = "Bitcoin nel cuore. Dollari quando ti servono. Attiva USDT (Tether) per inviare e ricevere dollari digitali con Bitkit.";
+"usdt__intro_description" = "Bitcoin nel cuore. Dollari quando ti servono. Attiva USDT (Tether) per inviare e ricevere rapidamente dollari digitali con Bitkit.";
 "usdt__intro_headline" = "<accent>DOLLARI?</accent>\nDECIDI TU";
 "usdt__intro_title" = "Novità: USDT";
 "usdt__no_thanks" = "No Grazie";
