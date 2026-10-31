@@ -357,6 +357,40 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
         XCTAssertEqual(floor, 5)
     }
 
+    func testResumingTakesTheLedgerReadNowWhileThisWalletsOwnSpendingStillCounts() async throws {
+        let harness = AllowanceHarness()
+        await harness.executor.activate(identity: Fixtures.identityKey)
+        let spend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "local-1",
+            counterparty: Fixtures.counterpartyKey,
+            allowanceId: Fixtures.walletAllowanceId,
+            amountSats: 49500,
+            admittedAt: Fixtures.now
+        )
+        harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 5, automaticSpends: [spend]), identity: Fixtures.identityKey)
+        await harness.sdk.setAccountingState(Fixtures.accountingState(revision: 4))
+
+        let pausedBefore = await harness.executor.isLedgerBehind(identity: Fixtures.identityKey)
+        try await harness.executor.acceptCurrentLedger(identity: Fixtures.identityKey)
+        let pausedAfter = await harness.executor.isLedgerBehind(identity: Fixtures.identityKey)
+        let overLimit = try await harness.executor.autoPay(
+            Fixtures.paymentRequest(),
+            allowances: [Fixtures.allowance()],
+            identity: Fixtures.identityKey
+        )
+        await harness.executor.updateLocalState(identity: Fixtures.identityKey) { $0.automaticSpends = [] }
+        let underLimit = try await harness.executor.autoPay(
+            Fixtures.paymentRequest(),
+            allowances: [Fixtures.allowance()],
+            identity: Fixtures.identityKey
+        )
+
+        XCTAssertTrue(pausedBefore)
+        XCTAssertFalse(pausedAfter)
+        XCTAssertEqual(overLimit, .manual)
+        XCTAssertEqual(underLimit, .started)
+    }
+
     func testALedgerThatGoesBehindThisWalletDuringAdmissionKeepsTheRequestManual() async throws {
         let harness = AllowanceHarness()
         harness.store.seed(PaykitAllowanceLocalState(ledgerRevisionFloor: 5), identity: Fixtures.identityKey)
@@ -478,6 +512,79 @@ final class PaykitAllowanceExecutorTests: XCTestCase {
 
         let spends = await harness.executor.localState(identity: Fixtures.identityKey).automaticSpends
         XCTAssertTrue(spends.isEmpty)
+    }
+
+    func testSpendingTheLedgerLacksAddsToTheLedgersOwn() async throws {
+        let harness = AllowanceHarness()
+        let spend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: "local-1",
+            counterparty: Fixtures.counterpartyKey,
+            allowanceId: Fixtures.walletAllowanceId,
+            amountSats: 25000,
+            admittedAt: Fixtures.now
+        )
+        harness.store.seed(PaykitAllowanceLocalState(automaticSpends: [spend]), identity: Fixtures.identityKey)
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(occurrences: [
+            Fixtures.occurrence(requestId: "other-install", attempts: [
+                Fixtures.attemptRecord(id: "other-1", amount: "0.00025", status: .succeeded),
+            ]),
+        ]))
+
+        let result = try await harness.executor.autoPay(Fixtures.paymentRequest(), allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+    }
+
+    func testARequestThisWalletAlreadyPaidNeverPaysAutomaticallyAgain() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        harness.store.seed(
+            PaykitAllowanceLocalState(journal: [Self.journalEntry(
+                attemptId: AllowanceSdkMock.automaticAttemptId, request: request, stage: .sent, paymentHash: AllowanceHarness.paymentHash
+            )]),
+            identity: Fixtures.identityKey
+        )
+
+        let result = await harness.executor.autoPay(request, allowances: [Fixtures.allowance()], identity: Fixtures.identityKey)
+
+        XCTAssertEqual(result, .manual)
+        XCTAssertFalse(harness.log.entries.contains("acceptPaymentRequestAutomatically"))
+        XCTAssertFalse(harness.log.entries.contains("resolve"))
+    }
+
+    func testRecoveryKeepsASentAttemptTheLedgerStillHoldsAsPrepared() async throws {
+        let harness = AllowanceHarness()
+        let request = try Fixtures.paymentRequest()
+        let spend = PaykitAllowanceLocalState.AutomaticSpend(
+            attemptId: AllowanceSdkMock.automaticAttemptId,
+            counterparty: Fixtures.counterpartyKey,
+            allowanceId: Fixtures.walletAllowanceId,
+            amountSats: 1000,
+            admittedAt: Fixtures.now
+        )
+        harness.store.seed(
+            PaykitAllowanceLocalState(
+                journal: [Self.journalEntry(
+                    attemptId: AllowanceSdkMock.automaticAttemptId, request: request, stage: .sent, paymentHash: AllowanceHarness.paymentHash
+                )],
+                automaticSpends: [spend]
+            ),
+            identity: Fixtures.identityKey
+        )
+        try await harness.sdk.setAccountingState(Fixtures.accountingState(occurrences: [
+            Fixtures.occurrence(requestId: request.paymentRequestId, attempts: [
+                Fixtures.attemptRecord(id: AllowanceSdkMock.automaticAttemptId, status: .prepared),
+            ]),
+        ]))
+
+        await harness.executor.recover(identity: Fixtures.identityKey)
+
+        let outcomes = await harness.sdk.recordedOutcomes
+        XCTAssertTrue(outcomes.isEmpty)
+        let local = await harness.executor.localState(identity: Fixtures.identityKey)
+        XCTAssertEqual(local.automaticSpends, [spend])
+        XCTAssertEqual(local.journal.map(\.stage), [.sent])
     }
 
     func testAnAllowanceSeenEndedNeverPaysAutomaticallyAgain() async throws {

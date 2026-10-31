@@ -5,6 +5,7 @@ import SwiftUI
 struct AllowancesTab: View {
     @Environment(PaykitAllowanceManager.self) private var allowances
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var app: AppViewModel
 
     var body: some View {
         Group {
@@ -22,6 +23,9 @@ struct AllowancesTab: View {
     private var list: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             LazyVStack(spacing: 12) {
+                if allowances.isAutomaticPaymentPaused {
+                    pausedNotice
+                }
                 ForEach(allowances.entries) { entry in
                     Button {
                         // An allower's offer is accepted in the background, so only an ask opens the review sheet.
@@ -37,6 +41,34 @@ struct AllowancesTab: View {
             .padding(.top, 32)
             .padding(.bottom, ScreenLayout.floatingFooterClearance)
         }
+    }
+
+    private var pausedNotice: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            BodyMSBText(t("subscriptions__allowances_paused_title"))
+            BodySText(t("subscriptions__allowances_paused_description"), textColor: .white64)
+                .padding(.top, 4)
+            CustomButton(
+                title: t("subscriptions__allowances_paused_resume"),
+                variant: .secondary,
+                size: .small,
+                isLoading: allowances.isWorking
+            ) {
+                do {
+                    try await allowances.resumeAutomaticPayments()
+                } catch {
+                    app.toast(error)
+                }
+            }
+            .accessibilityIdentifier("AllowancesResume")
+            .padding(.top, 16)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.gray6)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("AllowancesPaused")
     }
 
     private var emptyState: some View {

@@ -60,6 +60,8 @@ final class PaykitAllowanceManager {
     private(set) var allowances: [PaykitAllowance] = []
     private(set) var localState = PaykitAllowanceLocalState()
     private(set) var isWorking = false
+    /// True while the allowance ledger is behind one this wallet has read, until `resumeAutomaticPayments()`.
+    private(set) var isAutomaticPaymentPaused = false
     private(set) var autoPaidRequestIds: Set<PaykitPaymentRequest.ID> = []
     /// Keyed by `PaykitAllowance.scopedId`, since another contact can reuse an allowance id.
     private(set) var autoPaidSatsByScopedId: [String: UInt64] = [:]
@@ -170,6 +172,7 @@ final class PaykitAllowanceManager {
         localState = PaykitAllowanceLocalState()
         autoPaidRequestIds = []
         autoPaidSatsByScopedId = [:]
+        isAutomaticPaymentPaused = false
         manualRequestIds = [:]
         announcedOfferIds = []
     }
@@ -192,8 +195,10 @@ final class PaykitAllowanceManager {
             Logger.warn("Failed to list Paykit allowances: \(error)", context: "PaykitAllowance")
         }
         let state = await executor.localState(identity: identity)
+        let isPaused = await executor.isLedgerBehind(identity: identity)
         guard activation == refreshActivation else { return }
         localState = state
+        isAutomaticPaymentPaused = isPaused
         guard let paid = await executor.succeededAutomaticPayments(identity: identity), activation == refreshActivation else { return }
         autoPaidRequestIds = Set(paid.map(\.requestId))
         autoPaidSatsByScopedId = paid.reduce(into: [:]) { totals, payment in
@@ -276,6 +281,16 @@ final class PaykitAllowanceManager {
         try await respond(to: entry) { allowance in
             try await self.sdk.rejectAllowance(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId)
         }
+    }
+
+    /// Resumes automatic payments from the ledger read now; see `PaykitAllowanceExecutor.acceptCurrentLedger(identity:)`.
+    func resumeAutomaticPayments() async throws {
+        isWorking = true
+        defer { isWorking = false }
+        guard let identity else { throw PaykitAllowanceError.unavailable }
+        try await executor.acceptCurrentLedger(identity: identity)
+        await executor.recover(identity: identity)
+        await refresh()
     }
 
     func end(_ entry: PaykitAllowanceEntry) async throws {

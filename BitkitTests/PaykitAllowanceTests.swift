@@ -375,6 +375,7 @@ final class PaykitAllowanceTests: XCTestCase {
         let beforeMarchAnchor = PaykitAllowanceTime.monthlyWindow(anchor: marchAnchor, containing: Fixtures.utc("2026-01-15T00:00:00Z"))
         let allowance = Fixtures.allowance(monthlyAnchor: anchor)
         let lateMarchAttempt = PaykitAllowanceCapacity.Attempt(
+            attemptId: "late-march",
             counterparty: Fixtures.counterpartyKey,
             allowanceId: allowance.allowanceId,
             amountSats: 50000,
@@ -512,6 +513,48 @@ final class PaykitAllowanceTests: XCTestCase {
         ))
     }
 
+    func testCapacityCountsTheLedgersAndThisWalletsOwnPaymentsTogether() {
+        let ledger = [Fixtures.capacityAttempt(sats: 25000, at: "2026-09-05T10:00:00Z", attemptId: "a")]
+        let local = [Fixtures.capacityAttempt(sats: 21000, at: "2026-09-12T10:00:00Z", attemptId: "b")]
+
+        XCTAssertTrue(PaykitAllowanceCapacity.fits(
+            amountSats: 4000,
+            allowance: Fixtures.allowance(),
+            attempts: ledger,
+            now: Fixtures.now,
+            localAttempts: local
+        ))
+        XCTAssertFalse(PaykitAllowanceCapacity.fits(
+            amountSats: 4001,
+            allowance: Fixtures.allowance(),
+            attempts: ledger,
+            now: Fixtures.now,
+            localAttempts: local
+        ))
+    }
+
+    func testCapacityCountsAPaymentBothSidesHoldOnce() {
+        let ledger = [Fixtures.capacityAttempt(sats: 45000, at: "2026-09-05T10:00:00Z", attemptId: "a")]
+        let local = [Fixtures.capacityAttempt(sats: 45000, at: "2026-09-05T10:00:00Z", attemptId: "a")]
+
+        XCTAssertTrue(PaykitAllowanceCapacity.fits(
+            amountSats: 5000,
+            allowance: Fixtures.allowance(),
+            attempts: ledger,
+            now: Fixtures.now,
+            localAttempts: local
+        ))
+    }
+
+    func testASaveNeverReplacesStateThisBuildCannotRead() throws {
+        let unreadable = Data(#"{"other":{"journal":[{"stage":"from-a-newer-build"}]}}"#.utf8)
+        try Keychain.upsert(key: .paykitAllowanceState, data: unreadable)
+        defer { try? Keychain.delete(key: .paykitAllowanceState) }
+
+        XCTAssertThrowsError(try PaykitAllowanceKeychainStore().save(PaykitAllowanceLocalState(), identity: Fixtures.identityKey))
+        XCTAssertEqual(try Keychain.load(key: .paykitAllowanceState), unreadable)
+    }
+
     func testAttemptsFromHistoryKeepAutomaticAllowanceAttempts() throws {
         let history = try Paykit.AllowanceAccountingHistory(
             associations: [],
@@ -533,6 +576,7 @@ final class PaykitAllowanceTests: XCTestCase {
 
         XCTAssertEqual(attempts, [
             PaykitAllowanceCapacity.Attempt(
+                attemptId: "failed",
                 counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 10000,
@@ -540,6 +584,7 @@ final class PaykitAllowanceTests: XCTestCase {
                 isLive: false
             ),
             PaykitAllowanceCapacity.Attempt(
+                attemptId: "paid",
                 counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 10000,
@@ -547,6 +592,7 @@ final class PaykitAllowanceTests: XCTestCase {
                 isLive: true
             ),
             PaykitAllowanceCapacity.Attempt(
+                attemptId: "open",
                 counterparty: Fixtures.counterpartyKey,
                 allowanceId: Fixtures.walletAllowanceId,
                 amountSats: 2000,
@@ -735,10 +781,16 @@ enum PaykitAllowanceFixtures {
         counterparty: String = counterpartyKey,
         sats: UInt64,
         at timestamp: String,
-        isLive: Bool = true
+        isLive: Bool = true,
+        attemptId: String = UUID().uuidString
     ) -> PaykitAllowanceCapacity.Attempt {
         PaykitAllowanceCapacity.Attempt(
-            counterparty: counterparty, allowanceId: allowanceId, amountSats: sats, admittedAt: utc(timestamp), isLive: isLive
+            attemptId: attemptId,
+            counterparty: counterparty,
+            allowanceId: allowanceId,
+            amountSats: sats,
+            admittedAt: utc(timestamp),
+            isLive: isLive
         )
     }
 

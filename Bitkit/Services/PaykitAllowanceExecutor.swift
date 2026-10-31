@@ -214,8 +214,9 @@ struct PaykitAllowanceKeychainStore: PaykitAllowanceStoring {
         do {
             return try JSONDecoder().decode(Stored.self, from: data)
         } catch {
-            Logger.warn("Discarding invalid Paykit allowance state: \(error)", context: "PaykitAllowance")
-            return [:]
+            // Never replaced by a save: a record this build can't read keeps every identity's journal for a later one.
+            Logger.warn("Failed to read Paykit allowance state: \(error)", context: "PaykitAllowance")
+            throw error
         }
     }
 }
@@ -415,6 +416,7 @@ actor PaykitAllowanceExecutor {
 
     /// Spends kept for the monthly limit: two of the longest windows.
     private static let spendRetention: TimeInterval = 62 * 24 * 60 * 60
+    private static let sentStages: Set<PaykitAllowanceLocalState.Stage> = [.submitted, .sending, .sent, .succeeded, .unknown]
 
     private static let eventSubject = PassthroughSubject<PaykitAllowanceEvent, Never>()
 
@@ -515,6 +517,24 @@ actor PaykitAllowanceExecutor {
         return true
     }
 
+    /// True while the ledger read is older than one this wallet has read, which keeps automatic payments paused.
+    func isLedgerBehind(identity: String) async -> Bool {
+        guard let floor = localState(identity: identity).ledgerRevisionFloor else { return false }
+        do {
+            guard let ledger = try await sdk.allowanceAccountingState() else { return true }
+            return ledger.revision < floor
+        } catch {
+            return false
+        }
+    }
+
+    /// Takes the ledger read now as current, so automatic payments resume from it. This wallet's own spends, paid requests and
+    /// ended allowances still apply, so the limits it already used stay used.
+    func acceptCurrentLedger(identity: String) async throws {
+        let ledger = try await sdk.allowanceAccountingState()
+        try checkedUpdateLocalState(identity: identity) { $0.ledgerRevisionFloor = ledger?.revision }
+    }
+
     func isHandling(_ requestId: PaykitPaymentRequest.ID) -> Bool {
         inFlightRequestIds.contains(requestId)
     }
@@ -595,7 +615,9 @@ actor PaykitAllowanceExecutor {
                 for attempt in occurrence.attempts {
                     switch attempt.status {
                     case .prepared:
-                        guard attempt.epoch == state.epoch else { continue }
+                        // A ledger saved before the handoff still says prepared; the journal knows it was sent.
+                        guard attempt.epoch == state.epoch, !(journalStages[attempt.attemptId].map(Self.sentStages.contains) ?? false)
+                        else { continue }
                         try await record(attemptId: attempt.attemptId, outcome: .failed, identity: identity)
                     case .submitted, .unknown:
                         let verified: Paykit.PaymentOutcome?
@@ -880,6 +902,13 @@ actor PaykitAllowanceExecutor {
         identity: String,
         activation: String?
     ) async throws -> PaykitAllowanceAutoPayResult {
+        if localState(identity: identity).journal.contains(where: {
+            $0.stage != .failed && $0.requestId.paymentRequestId == request.paymentRequestId &&
+                PubkyPublicKeyFormat.matches($0.requestId.counterparty, request.counterparty)
+        }) {
+            Logger.info("Kept an incoming request manual: this wallet already paid it", context: "PaykitAllowance")
+            return .manual
+        }
         let scope = Paykit.PaymentRequestScope(
             counterparty: request.counterparty,
             paymentRequestId: request.paymentRequestId

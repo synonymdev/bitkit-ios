@@ -284,6 +284,7 @@ enum PaykitAllowanceTime {
 /// Allowance's live automatic attempts in the current month first and keeps an over-cap request on the manual flow.
 enum PaykitAllowanceCapacity {
     struct Attempt: Equatable {
+        let attemptId: String
         let counterparty: String
         let allowanceId: String
         let amountSats: UInt64
@@ -311,15 +312,23 @@ enum PaykitAllowanceCapacity {
         guard allowance.perPaymentMaxSats != nil, let monthlyLimitSats = allowance.monthlyLimitSats, let anchor = allowance.monthlyAnchor else {
             return false
         }
-        let used = [attempts, localAttempts].map {
-            usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: $0, anchor: anchor, now: now)
-        }.max() ?? 0
+        // Every attempt of the ledger and of this wallet counts once, so neither side's missing attempts hide the other's.
+        let ledgerIds = Set(attempts.map(\.attemptId))
+        let all = attempts + localAttempts.filter { !ledgerIds.contains($0.attemptId) }
+        let used = usedSats(counterparty: allowance.counterparty, allowanceId: allowance.allowanceId, attempts: all, anchor: anchor, now: now)
         return used + amountSats <= monthlyLimitSats
     }
 
     static func attempts(from spends: [PaykitAllowanceLocalState.AutomaticSpend]) -> [Attempt] {
         spends.map {
-            Attempt(counterparty: $0.counterparty, allowanceId: $0.allowanceId, amountSats: $0.amountSats, admittedAt: $0.admittedAt, isLive: true)
+            Attempt(
+                attemptId: $0.attemptId,
+                counterparty: $0.counterparty,
+                allowanceId: $0.allowanceId,
+                amountSats: $0.amountSats,
+                admittedAt: $0.admittedAt,
+                isLive: true
+            )
         }
     }
 
@@ -333,6 +342,7 @@ enum PaykitAllowanceCapacity {
                   let amountSats = PaykitAllowance.sats(fromBitcoinAmount: attempt.amount.value())
             else { return nil }
             return Attempt(
+                attemptId: attempt.attemptId,
                 counterparty: counterparty,
                 allowanceId: allowanceId,
                 amountSats: amountSats,
