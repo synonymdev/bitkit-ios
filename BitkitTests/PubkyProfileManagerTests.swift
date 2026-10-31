@@ -1949,6 +1949,7 @@ final class PubkyProfileManagerTests: XCTestCase {
     @MainActor
     func testSessionRecoveryReloadsMissingProfileWithoutReauthenticationOrWaiting() async {
         await withRestoredProfileDefaults {
+            UserDefaults.standard.set(false, forKey: "pubky_profile_setup_pending")
             let stub = RemoteProfileStub(profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Recovered")])
             await stub.makeUnreachable(ringKeyA)
             let manager = PubkyProfileManager(remoteProfileResolver: { try await stub.resolve($0) })
@@ -1984,8 +1985,41 @@ final class PubkyProfileManagerTests: XCTestCase {
     }
 
     @MainActor
+    func testSessionRecoveryDoesNotRefetchProfileWhileSetupIsPending() async {
+        await withRestoredProfileDefaults {
+            UserDefaults.standard.set(true, forKey: "pubky_profile_setup_pending")
+            let unexpectedRead = expectation(description: "An unfinished profile does not need a remote read")
+            unexpectedRead.isInverted = true
+            let stub = RemoteProfileStub()
+            let manager = PubkyProfileManager(remoteProfileResolver: {
+                unexpectedRead.fulfill()
+                return try await stub.resolve($0)
+            })
+            manager.publicKey = ringKeyA
+            manager.authState = .authenticated
+            manager.isInitialized = true
+            let session = manager.currentSession
+            XCTAssertTrue(manager.isProfileSetupPending)
+            XCTAssertNotNil(manager.automaticPaykitSession)
+
+            for _ in 0 ..< 3 {
+                await manager.restoreSessionIfNeeded(hasStoredIdentity: {
+                    XCTFail("An active identity must not reload saved credentials")
+                    return false
+                })
+            }
+            await fulfillment(of: [unexpectedRead], timeout: 0.2)
+            let requests = await stub.requests
+            XCTAssertTrue(requests.isEmpty)
+            XCTAssertEqual(manager.currentSession, session)
+            XCTAssertTrue(manager.isProfileSetupPending)
+        }
+    }
+
+    @MainActor
     func testSessionRecoveryDropsMissingProfileResultFromClearedStateWithSameKey() async {
         await withRestoredProfileDefaults {
+            UserDefaults.standard.set(false, forKey: "pubky_profile_setup_pending")
             let stub = RemoteProfileStub(
                 profiles: [ringKeyA: makeProfile(publicKey: ringKeyA, name: "Stale")],
                 holdsRequests: true
