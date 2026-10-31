@@ -1211,8 +1211,10 @@
 "profile__edit" = "Edytuj";
 "profile__pay_contacts_nav_title" = "Płać kontaktom";
 "profile__pay_contacts_title" = "Pozwól kontaktom\n<accent>płacić Ci</accent>";
-"profile__pay_contacts_description" = "Używaj Bitkit ze swoimi kontaktami, aby wysyłać płatności bezpośrednio, zawsze i wszędzie.";
-"profile__pay_contacts_toggle" = "Włącz płatności z kontaktami";
+"profile__pay_contacts_description" = "Udostępniaj dane płatności prywatnie swoim kontaktom. Płatności publiczne pozostają wyłączone, dopóki nie włączysz ich w Ustawieniach.";
+"profile__private_payments_toggle" = "Prywatne płatności z kontaktami";
+"profile__public_payments_toggle" = "Płatności publiczne";
+"profile__payments_pending" = "Zmiany oczekują na zastosowanie. Wcześniej udostępnione dane płatności mogą nadal być dostępne.";
 "profile__add_link_title" = "Dodaj link";
 "profile__add_link_label" = "ETYKIETA";
 "profile__add_link_label_placeholder" = "Na przykład 'Strona internetowa'";
@@ -1843,7 +1845,7 @@
 "usdt__to_address" = "Na adres";
 "usdt__disable_unavailable" = "USDT musi pozostać włączone, dopóki masz saldo lub oczekujący transfer. Poczekaj na zakończenie transferów i sprawdź saldo, zanim je wyłączysz.";
 "usdt__enable" = "Włącz USDT";
-"usdt__intro_description" = "Bitcoin w sercu. Dolary, gdy ich potrzebujesz. Włącz USDT (Tether), aby wysyłać i otrzymywać cyfrowe dolary w Bitkit.";
+"usdt__intro_description" = "Bitcoin w sercu. Dolary, gdy ich potrzebujesz. Włącz USDT (Tether), aby szybko wysyłać i otrzymywać cyfrowe dolary w Bitkit.";
 "usdt__intro_headline" = "<accent>DOLARY?</accent>\nTWÓJ WYBÓR";
 "usdt__intro_title" = "Nowość: USDT";
 "usdt__no_thanks" = "Nie, dzięki";

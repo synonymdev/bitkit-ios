@@ -1201,8 +1201,10 @@
 "profile__edit" = "Upravit";
 "profile__pay_contacts_nav_title" = "Platby kontaktům";
 "profile__pay_contacts_title" = "Nechte své kontakty\n<accent>platit vám</accent>";
-"profile__pay_contacts_description" = "Používejte Bitkit se svými kontakty a posílejte platby přímo, kdykoli a kdekoli.";
-"profile__pay_contacts_toggle" = "Povolit platby s kontakty";
+"profile__pay_contacts_description" = "Sdílejte platební údaje soukromě se svými kontakty. Veřejné platby zůstanou vypnuté, dokud je nepovolíte v nastavení.";
+"profile__private_payments_toggle" = "Soukromé platby s kontakty";
+"profile__public_payments_toggle" = "Veřejné platby";
+"profile__payments_pending" = "Změny čekají na dokončení. Dříve sdílené platební údaje mohou být stále dostupné.";
 "profile__add_link_title" = "Vložit odkaz";
 "profile__add_link_label" = "ŠTÍTEK";
 "profile__add_link_label_placeholder" = "Například „webová stránka“";
@@ -1833,7 +1835,7 @@
 "usdt__to_address" = "Na adresu";
 "usdt__disable_unavailable" = "USDT musí zůstat zapnuté, dokud máte zůstatek nebo čekající převod. Před vypnutím počkejte na dokončení převodů a zkontrolujte zůstatek.";
 "usdt__enable" = "Zapnout USDT";
-"usdt__intro_description" = "V srdci bitcoin. Dolary, když je potřebujete. Zapněte USDT (Tether) a posílejte a přijímejte digitální dolary s Bitkit.";
+"usdt__intro_description" = "V srdci bitcoin. Dolary, když je potřebujete. Zapněte USDT (Tether) a rychle posílejte a přijímejte digitální dolary s Bitkit.";
 "usdt__intro_headline" = "<accent>DOLARY?</accent>\nVAŠE VOLBA";
 "usdt__intro_title" = "Novinka: USDT";
 "usdt__no_thanks" = "Ne, děkuji";

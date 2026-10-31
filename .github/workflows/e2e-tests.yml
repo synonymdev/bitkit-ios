@@ -136,6 +136,23 @@ jobs:
           echo "Xcode Version:"
           xcodebuild -version
 
+      - name: Verify current PR merge checkout
+        if: github.event_name == 'pull_request' || inputs.pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          [[ "$PR_NUMBER" =~ ^[0-9]+$ ]] || exit 1
+          tested=$(git rev-parse HEAD)
+          head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'select(.base.ref == "master") | .head.sha')
+          base=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq '.object.sha')
+          expected="$base $head"
+          actual=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tested" --jq '[.parents[].sha] | join(" ")')
+          if [[ ! "$expected" =~ ^[0-9a-f]{40}\ [0-9a-f]{40}$ || "$actual" != "$expected" ]]; then
+            echo "::error::Checked-out merge does not match the PR's current base and head"
+            exit 1
+          fi
+
       - name: Install xcbeautify
         run: |
           brew install xcbeautify
@@ -372,11 +389,13 @@ jobs:
           ATTEMPT: 3
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
-        if: failure()
+        # Preserve failed-attempt evidence even when a retry passes.
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
+          retention-days: 7
 
       - name: Tear down regtest stack
         if: always()
