@@ -1822,7 +1822,7 @@
 "usdt__to_address" = "Naar adres";
 "usdt__disable_unavailable" = "USDT moet ingeschakeld blijven zolang u saldo of een lopende overboeking heeft. Wacht tot overboekingen zijn voltooid en controleer uw saldo voordat u USDT uitschakelt.";
 "usdt__enable" = "USDT inschakelen";
-"usdt__intro_description" = "Bitcoin in hart en nieren. Dollars wanneer u ze nodig heeft. Schakel USDT (Tether) in om digitale dollars te verzenden en ontvangen met Bitkit.";
+"usdt__intro_description" = "Bitcoin in hart en nieren. Dollars wanneer u ze nodig heeft. Schakel USDT (Tether) in om snel digitale dollars te verzenden en ontvangen met Bitkit.";
 "usdt__intro_headline" = "<accent>DOLLARS?</accent>\nU BESLIST";
 "usdt__intro_title" = "Nieuw: USDT";
 "usdt__no_thanks" = "Nee, bedankt";
