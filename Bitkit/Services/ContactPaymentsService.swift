@@ -222,9 +222,9 @@ enum ContactPaymentsService {
         operations: Operations,
         defaults: UserDefaults = .standard
     ) async throws -> Bool {
+        latestPublicChange += 1
+        let change = latestPublicChange
         return try await ProfileOperationAdmission.shared.withOperation {
-            latestPublicChange += 1
-            let change = latestPublicChange
             guard let session = pubkyProfile.currentSession else { return false }
             let callerIsCurrent: ChangeCheck = { Self.latestPublicChange == change && pubkyProfile.currentSession == session }
             let isChangeCurrent = try ownedChange(callerIsCurrent)
