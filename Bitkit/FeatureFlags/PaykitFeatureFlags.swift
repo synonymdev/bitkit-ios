@@ -3,6 +3,18 @@ import Foundation
 enum PaykitFeatureFlags {
     static let uiEnabledKey = "paykitUiEnabled"
     static let uiEnabledByDefault = true
+    /// Only the Dev Settings switch stores this key, and it counts only while dev mode is on.
+    static let allowancesEnabledKey = "allowancesEnabled"
+    static let allowancesEnabledByDefault = true
+
+    /// A dev flag: the Dev Settings `override` counts only while dev mode is on.
+    static func areAllowancesEnabled(
+        isDevModeEnabled: Bool,
+        override: Bool?,
+        default defaultValue: Bool = allowancesEnabledByDefault
+    ) -> Bool {
+        isDevModeEnabled ? override ?? defaultValue : defaultValue
+    }
 
     static var isUIAvailable: Bool {
         #if FEATURE_PAYKIT_UI_DISABLED

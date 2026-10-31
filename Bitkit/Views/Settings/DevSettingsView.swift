@@ -3,6 +3,7 @@ import UIKit
 
 struct DevSettingsView: View {
     @AppStorage(PaykitFeatureFlags.uiEnabledKey) private var isPaykitUIEnabled = PaykitFeatureFlags.uiEnabledByDefault
+    @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
     @AppStorage(BoltzService.savingsSwapEnabledKey) private var isSavingsSwapEnabled = false
     @AppStorage(ToastWindowManager.disableAllToastsKey) private var disableAllToasts = false
     @AppStorage(SubscriptionClock.offsetDaysKey) private var subscriptionClockOffsetDays = 0
@@ -113,6 +114,16 @@ struct DevSettingsView: View {
                                 }
                             ),
                             testIdentifier: "PaykitUiToggle"
+                        )
+
+                        SettingsRow(
+                            title: "Enable Allowances",
+                            rightIcon: nil,
+                            toggle: Binding(
+                                get: { allowancesOverride ?? PaykitFeatureFlags.allowancesEnabledByDefault },
+                                set: { allowancesOverride = $0 }
+                            ),
+                            testIdentifier: "AllowancesToggle"
                         )
 
                         if SubscriptionClock.isAvailable {
