@@ -1231,6 +1231,7 @@
 "wallet__send_sync_long_title" = "<accent>Problemy</accent>\nz połączeniem";
 "wallet__send_sync_long_description" = "Wygląda na to, że nie masz połączenia. Sprawdź połączenie. Bitkit będzie próbował połączyć się ponownie co kilka sekund.";
 "wallet__send_to" = "Do";
+"wallet__send_swap_route" = "Trasa";
 "wallet__recipient_contact" = "Kontakt";
 "wallet__recipient_invoice" = "Wklej fakturę";
 "wallet__recipient_manual" = "Wprowadź ręcznie";

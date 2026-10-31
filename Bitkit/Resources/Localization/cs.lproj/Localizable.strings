@@ -1221,6 +1221,7 @@
 "wallet__send_sync_long_title" = "<accent>Problémy</accent>\ns připojením";
 "wallet__send_sync_long_description" = "Zdá se, že jste odpojeni. Zkontrolujte prosím připojení. Bitkit se bude každých několik sekund pokoušet znovu připojit.";
 "wallet__send_to" = "Komu";
+"wallet__send_swap_route" = "Trasa";
 "wallet__recipient_contact" = "Kontakt";
 "wallet__recipient_invoice" = "Vložit fakturu";
 "wallet__recipient_manual" = "Zadat ručně";

@@ -1114,6 +1114,7 @@
 "wallet__send_sync_long_title" = "Problemes de\n<accent>connexió</accent>";
 "wallet__send_sync_long_description" = "Sembla que estàs desconnectat. Comprova la connexió. Bitkit intentarà tornar a connectar-se cada pocs segons.";
 "wallet__send_to" = "A";
+"wallet__send_swap_route" = "Ruta";
 "wallet__recipient_contact" = "Contacte";
 "wallet__recipient_invoice" = "Enganxa factura";
 "wallet__recipient_manual" = "Introdueix manualment";

@@ -10,6 +10,7 @@ enum SendFundingSource: Equatable {
 struct SendAmountView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -42,6 +43,9 @@ struct SendAmountView: View {
            PaykitUsdtPaymentService.shared.hasBinding(for: request.id)
         {
             return [.usdt]
+        }
+        if app.paykitSwapRoute != nil {
+            return [.spending]
         }
         var sources: [SendFundingSource] = []
         if app.scannedLightningInvoice != nil || app.lnurlPayData != nil {
@@ -398,6 +402,12 @@ struct SendAmountView: View {
                     return
                 }
 
+                if let route = app.paykitSwapRoute {
+                    guard await quoteSwapRoute(route) else { return }
+                    navigationPath.append(.confirm)
+                    return
+                }
+
                 navigationPath.append(app.lnurlPayData != nil && app.scannedLightningInvoice == nil ? .lnurlPayConfirm : .confirm)
                 return
             }
@@ -444,6 +454,36 @@ struct SendAmountView: View {
             Logger.error(error, context: "Failed to set fee rate or send amount")
             app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
         }
+    }
+
+    private func quoteSwapRoute(_ route: PaykitSwapRoute) async -> Bool {
+        do {
+            let paykitRoute = try await PubkySwapsRouteService.quote(
+                amountSats: amountSats,
+                endpoint: route.endpoint,
+                lightningSpendableSats: UInt64(wallet.maxSendLightningSats),
+                onchainSpendableSats: UInt64(wallet.spendableOnchainBalanceSats),
+                contacts: contactsManager.contacts.map(\.publicKey)
+            )
+            switch paykitRoute {
+            case let .swap(quote):
+                var quoted = route
+                quoted.quote = quote
+                quoted.providerName = contactsManager.contacts
+                    .first { PubkyPublicKeyFormat.matches($0.publicKey, quote.providerPubky) }?.displayName
+                app.paykitSwapRoute = quoted
+                return true
+            case let .none(reason):
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: reason)
+            case .direct:
+                app.paykitSwapRoute = nil
+                app.toast(type: .error, title: t("slashtags__error_pay_title"), description: t("common__error_body"))
+            }
+        } catch {
+            Logger.error("Failed to route Paykit payment through Pubky Swaps: \(error)", context: "SendAmountView")
+            app.toast(type: .error, title: t("slashtags__error_pay_title"), description: error.localizedDescription)
+        }
+        return false
     }
 
     private func updateInputCap() {

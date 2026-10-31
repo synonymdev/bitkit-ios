@@ -163,6 +163,7 @@ class AppViewModel: ObservableObject {
     @Published var contactPaymentContext: ContactPaymentContext?
     private(set) var didRejectScannedPayment = false
     @Published var paykitUsesUsdt = false
+    @Published var paykitSwapRoute: PaykitSwapRoute?
     @Published var paykitReviewedAmount: PaykitAmount?
     @Published var paykitPaymentTerms: PaykitRequestPricing.Payment?
 
@@ -1015,6 +1016,18 @@ extension AppViewModel {
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty, validateIncomingOnchainPaymentRequestAmount(requestedAmount ?? invoice.amountSatoshis) else { return }
 
+            if let context = contactPaymentContext, let route = PubkySwapsRouteService.route(
+                for: context,
+                address: invoice.address,
+                onchainBalanceSats: max(paymentState.spendableOnchainBalanceSats, alternativeOnchainBalanceSats),
+                lightningBalanceSats: paymentState.totalLightningBalanceSats
+            ) {
+                handleScannedOnchainInvoice(invoice)
+                paykitSwapRoute = route
+                selectedWalletToPayFrom = .lightning
+                return
+            }
+
             // If node is running, validate balance immediately
             if paymentState.isNodeRunning {
                 let onchainBalance = max(
@@ -1359,6 +1372,7 @@ extension AppViewModel {
         sendStateOwnerID = ownerID
         sendStateGeneration = UUID()
         paykitUsesUsdt = false
+        paykitSwapRoute = nil
         paykitReviewedAmount = nil
         paykitPaymentTerms = nil
         scannedLightningInvoice = nil
