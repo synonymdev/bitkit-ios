@@ -1661,9 +1661,11 @@ class PubkyProfileManager: ObservableObject {
         let id = confirmation.removalID
         let scope = live.lease.scope
         var completion: RemovalCompletion?
+        var didValidateOriginalBinding = false
         do {
             try await withRemovalWork(lease: live.lease, id: id, live: live) {
                 try await validateRemoteRemovalOwner(live.plan)
+                didValidateOriginalBinding = true
                 // Endpoint, contact and profile cleanup already completed under this same live intent.
                 try await revocation.execute()
                 live.logoutAcknowledged = await revocation.acknowledged()
@@ -1672,7 +1674,9 @@ class PubkyProfileManager: ObservableObject {
                 completion = try await completeRemoval(scope: scope, plan: live.plan, remoteDeleted: live.remoteProfileDeleted)
             }
         } catch {
-            if live.logoutAcknowledged || Task.isCancelled || !live.lease.canResume || (try? validateRemovalOwner(live.plan)) == nil {
+            if (!didValidateOriginalBinding && !(error is CancellationError)) || live.logoutAcknowledged || Task.isCancelled ||
+                !live.lease.canResume || (try? validateRemovalOwner(live.plan)) == nil
+            {
                 live.lease.retire()
             }
             if let completion {

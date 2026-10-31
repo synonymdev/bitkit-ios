@@ -931,22 +931,36 @@ final class ProfileRemovalCoordinatorTests: XCTestCase {
     }
 
     func testFailedRetryValidationCannotReviveAfterTheOriginalValuesReturn() async throws {
-        failStep = "revoke"
-        let manager = makeManager()
-        let initial = try await manager.prepareRemoval(action: .disconnect)
-        do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
-        catch TestError.failure("revoke") {}
-        duringRevocationValidation = { throw TestError.failure("changed-credentials") }
-        do { _ = try await manager.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Changed binding must refuse confirmation") }
-        catch TestError.failure("changed-credentials") {}
-        duringRevocationValidation = nil
-        XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
-        XCTAssertTrue(try XCTUnwrap(revocations.last).revoked)
-        do { _ = try await manager.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Restored values cannot revive the same removal") }
-        catch PubkyProfileManager.RemovalError.confirmationChanged {}
-        XCTAssertEqual(steps, ["private", "public", "revoke"])
-        _ = try await manager.finishPendingRemoval(id: initial.id)
-        XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+        for confirmationOpen in [false, true] {
+            steps = []
+            failStep = "revoke"
+            let manager = makeManager()
+            let initial = try await manager.prepareRemoval(action: .disconnect)
+            do { _ = try await manager.confirmRemoval(initial); XCTFail("Expected unknown logout") }
+            catch TestError.failure("revoke") {}
+            var retry: PubkyProfileManager.RemoteRemovalConfirmation?
+            if confirmationOpen {
+                retry = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+            }
+            duringRevocationValidation = { throw TestError.failure("changed-credentials") }
+            do {
+                if let retry {
+                    _ = try await manager.confirmRemoteRemovalRetry(retry)
+                } else {
+                    _ = try await manager.prepareRemoteRemovalRetry(id: initial.id)
+                }
+                XCTFail("Changed binding must refuse retry")
+            } catch TestError.failure("changed-credentials") {}
+            duringRevocationValidation = nil
+            XCTAssertFalse(manager.canRetryRemoteRemoval(id: initial.id))
+            XCTAssertTrue(try XCTUnwrap(revocations.last).revoked)
+            XCTAssertEqual(try store.pending()?.id, initial.id)
+            do { _ = try await manager.prepareRemoteRemovalRetry(id: initial.id); XCTFail("Restored values cannot revive the same removal") }
+            catch PubkyProfileManager.RemovalError.confirmationChanged {}
+            XCTAssertEqual(steps, ["private", "public", "revoke"])
+            _ = try await manager.finishPendingRemoval(id: initial.id)
+            XCTAssertEqual(steps, ["private", "public", "revoke", "credentials"])
+        }
     }
 
     func testAcknowledgementAfterFailedResponsePermitsOnlyLocalCompletion() async throws {

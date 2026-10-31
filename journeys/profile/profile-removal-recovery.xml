@@ -10,6 +10,10 @@
     was acknowledged under a genuinely live grant. That case permits a freshly confirmed logout-only
     retry while its original process, owner and grant remain current. Record proof-request counts
     without retaining credentials or nonce values. An old bearer observer does not authorize retry.
+    Repeat the credential-mismatch case both before Retry preparation and while its fresh confirmation
+    is open; the first observed mismatch must retire Retry even after the original values return.
+    Separately refuse preparation before any recovery marker for owned Delete and Ring Unlink;
+    verify the error title matches Delete Profile or Unlink pubky respectively.
   </description>
   <actions>
     <action>Open Edit Profile, request deletion and verify preparation opens a confirmation without destructive profile or contact mutation</action>

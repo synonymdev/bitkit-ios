@@ -194,7 +194,7 @@ struct EditProfileView: View {
             showRemovalConfirmation = true
         } catch {
             guard !Task.isCancelled, pubkyProfile.ownsRemovalPresentation(presentationOwner) else { return }
-            showRemovalError(error, owner: presentationOwner)
+            showRemovalError(error, action: action, owner: presentationOwner)
         }
     }
 
@@ -211,12 +211,14 @@ struct EditProfileView: View {
             pubkyProfile.refreshRemovalRecovery()
             guard !Task.isCancelled, pubkyProfile.ownsRemovalFailure(confirmation, owner: presentationOwner) else { return }
             if pubkyProfile.pendingProfileRemovalID != confirmation.id {
-                showRemovalError(error, owner: presentationOwner)
+                showRemovalError(error, action: confirmation.action, owner: presentationOwner)
             }
         }
     }
 
-    private func showRemovalError(_ error: Error, owner: PubkyProfileManager.RemovalPresentationOwner) {
+    private func showRemovalError(_ error: Error, action: PubkyProfileManager.RemovalAction,
+                                  owner: PubkyProfileManager.RemovalPresentationOwner)
+    {
         if case let PubkyServiceError.activeSubscription(endsAt) = error {
             localDisconnectOwner = owner
             let description = endsAt.map {
@@ -224,7 +226,12 @@ struct EditProfileView: View {
             }
             app.toast(type: .error, title: t("profile__delete_active_subscription"), description: description)
         } else {
-            app.toast(type: .error, title: t("profile__sign_out_title"), description: error.localizedDescription)
+            let title: String = switch action {
+            case .deleteProfile: RemovalCopy.delete.title
+            case .unlink: RemovalCopy.unlink.title
+            case .disconnect, .disconnectLocally: t("profile__sign_out_title")
+            }
+            app.toast(type: .error, title: title, description: error.localizedDescription)
         }
     }
 
