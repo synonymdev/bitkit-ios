@@ -389,6 +389,7 @@ struct SendConfirmationView: View {
                     isFeeRateMissing: isFeeRateMissing,
                     feeRateLoadFailed: wallet.feeRateLoadFailed,
                     isPreparingRequest: preparingRequest != nil,
+                    isSetupPending: isRequestSetupPending,
                     isSubmittingPayment: isSubmittingPayment
                 ),
                 isSubmitted: hasStartedAutomaticPayment,
@@ -833,7 +834,8 @@ struct SendConfirmationView: View {
 
     private func submitPayment(isAutomatic: Bool = false) async throws {
         guard !isSubmittingPayment else { return }
-        guard preparingRequest == nil, walletSwitchContext == nil else { throw CancellationError() }
+        guard preparingRequest == nil, !isRequestSetupPending, walletSwitchContext == nil,
+              isAutomatic || !prepareRequestCoinsIfNeeded() else { throw CancellationError() }
         if isAutomatic, isFeeRateMissing {
             guard !Self.automaticPaymentAwaitsFeeRate(isFeeRateMissing: isFeeRateMissing, feeRateLoadFailed: wallet.feeRateLoadFailed) else {
                 // The rate is still loading; the automatic start runs again when send setup finishes.
@@ -1040,9 +1042,10 @@ struct SendConfirmationView: View {
         isFeeRateMissing: Bool,
         feeRateLoadFailed: Bool,
         isPreparingRequest: Bool = false,
+        isSetupPending: Bool = false,
         isSubmittingPayment: Bool = false
     ) -> Bool {
-        isSubmittingPayment || isPreparingRequest || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
+        isSubmittingPayment || isPreparingRequest || isSetupPending || hasStartedAutomaticPayment || (isFeeRateMissing && !feeRateLoadFailed)
     }
 
     private func openManualCoinSelection() async throws {
@@ -1117,9 +1120,10 @@ struct SendConfirmationView: View {
         isHardwareConfirmationUnavailable: Bool,
         feeRate: UInt32?,
         isPreparingRequest: Bool = false,
+        isSetupPending: Bool = false,
         isPreparingWallet: Bool = false
     ) -> Bool {
-        isPreparingRequest || isPreparingWallet || isHardwareConfirmationUnavailable
+        isPreparingRequest || isSetupPending || isPreparingWallet || isHardwareConfirmationUnavailable
             || isFeeRateMissing(walletType: walletType, isHardwarePayment: isHardwarePayment, feeRate: feeRate)
     }
 
@@ -1138,6 +1142,7 @@ struct SendConfirmationView: View {
             isHardwareConfirmationUnavailable: isHardwareConfirmationUnavailable,
             feeRate: wallet.selectedFeeRateSatsPerVByte,
             isPreparingRequest: preparingRequest != nil,
+            isSetupPending: isRequestSetupPending,
             isPreparingWallet: walletSwitchContext != nil
         )
     }
