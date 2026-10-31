@@ -1257,7 +1257,7 @@
 "usdt__to_address" = "إلى العنوان";
 "usdt__disable_unavailable" = "يجب أن يبقى USDT مفعّلًا ما دام لديك رصيد أو تحويل معلق. يرجى انتظار اكتمال التحويلات والتحقق من رصيدك قبل إيقافه.";
 "usdt__enable" = "تفعيل USDT";
-"usdt__intro_description" = "Bitcoin في الصميم. ودولارات عندما تحتاجها. فعّل USDT (Tether) لإرسال الدولارات الرقمية واستلامها باستخدام Bitkit.";
+"usdt__intro_description" = "Bitcoin في الصميم. ودولارات عندما تحتاجها. فعّل USDT (Tether) لإرسال الدولارات الرقمية واستلامها بسرعة باستخدام Bitkit.";
 "usdt__intro_headline" = "<accent>دولارات؟</accent>\nالقرار لك";
 "usdt__intro_title" = "جديد: USDT";
 "usdt__no_thanks" = "لا، شكرًا";

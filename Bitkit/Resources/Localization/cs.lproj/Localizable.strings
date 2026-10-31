@@ -1817,7 +1817,7 @@
 "usdt__to_address" = "Na adresu";
 "usdt__disable_unavailable" = "USDT musí zůstat zapnuté, dokud máte zůstatek nebo čekající převod. Před vypnutím počkejte na dokončení převodů a zkontrolujte zůstatek.";
 "usdt__enable" = "Zapnout USDT";
-"usdt__intro_description" = "V srdci bitcoin. Dolary, když je potřebujete. Zapněte USDT (Tether) a posílejte a přijímejte digitální dolary s Bitkit.";
+"usdt__intro_description" = "V srdci bitcoin. Dolary, když je potřebujete. Zapněte USDT (Tether) a rychle posílejte a přijímejte digitální dolary s Bitkit.";
 "usdt__intro_headline" = "<accent>DOLARY?</accent>\nVAŠE VOLBA";
 "usdt__intro_title" = "Novinka: USDT";
 "usdt__no_thanks" = "Ne, děkuji";

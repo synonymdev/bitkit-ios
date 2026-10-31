@@ -42,6 +42,8 @@ struct SubscriptionsView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @Environment(PaykitPaymentRequestManager.self) private var paymentRequests
+    @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
+    @AppStorage(PaykitFeatureFlags.allowancesEnabledKey) private var allowancesOverride: Bool?
 
     @State private var selectedTab = Tab.overview
     @State private var now = SubscriptionClock.subscriptionNow()
@@ -105,6 +107,11 @@ struct SubscriptionsView: View {
         .onChange(of: showPayments) { _, showPayments in
             selectedTab = showPayments ? .payments : .overview
         }
+        .onChange(of: areAllowancesEnabled) { _, enabled in
+            if !enabled, selectedTab == .allowances {
+                selectedTab = .overview
+            }
+        }
         .task(id: nextTransitionDate) {
             guard let nextTransitionDate else { return }
             do {
@@ -114,6 +121,10 @@ struct SubscriptionsView: View {
             }
             now = SubscriptionClock.subscriptionNow()
         }
+    }
+
+    private var areAllowancesEnabled: Bool {
+        PaykitFeatureFlags.areAllowancesEnabled(isDevModeEnabled: showDevSettings, override: allowancesOverride)
     }
 
     private var nextTransitionDate: Date? {
@@ -126,10 +137,10 @@ struct SubscriptionsView: View {
             SegmentedControl(
                 selectedTab: $selectedTab,
                 tabItems: [
-                    TabItem(.overview),
-                    TabItem(.allowances),
-                    TabItem(.payments, badge: paymentRequests.pendingRequests.count),
-                ],
+                    TabItem(Tab.overview),
+                    TabItem(Tab.allowances),
+                    TabItem(Tab.payments, badge: paymentRequests.pendingRequests.count),
+                ].filter { areAllowancesEnabled || $0.tab != .allowances },
                 inactiveColor: .white.opacity(0.5)
             )
         }
