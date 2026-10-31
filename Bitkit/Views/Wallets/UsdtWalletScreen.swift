@@ -119,9 +119,9 @@ struct UsdtWalletScreen: View {
 struct UsdtCoinIllustration: View {
     var body: some View {
         Image("tether-coin")
-            .resizable().scaledToFill()
-            .frame(width: 304.76, height: 228.57).clipped()
+            .resizable().scaledToFit()
             .frame(width: 256, height: 256)
+            .offset(y: 32)
             .accessibilityHidden(true)
     }
 }
