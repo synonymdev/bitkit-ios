@@ -1677,7 +1677,7 @@
 "usdt__to_address" = "A l'adreça";
 "usdt__disable_unavailable" = "USDT ha de continuar activat mentre tinguis saldo o una transferència pendent. Espera que finalitzin les transferències i comprova el saldo abans de desactivar-lo.";
 "usdt__enable" = "Activar USDT";
-"usdt__intro_description" = "Bitcoin de cor. Dòlars quan els necessitis. Activa USDT (Tether) per enviar i rebre dòlars digitals amb Bitkit.";
+"usdt__intro_description" = "Bitcoin de cor. Dòlars quan els necessitis. Activa USDT (Tether) per enviar i rebre dòlars digitals ràpidament amb Bitkit.";
 "usdt__intro_headline" = "<accent>DÒLARS?</accent>\nTU DECIDEIXES";
 "usdt__intro_title" = "Novetat: USDT";
 "usdt__no_thanks" = "No, gràcies";
