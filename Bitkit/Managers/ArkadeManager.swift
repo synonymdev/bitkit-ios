@@ -419,6 +419,12 @@ final class ArkadeManager: ChannelFreeLightningRail {
         for swap in await listSwaps() {
             await recordSwap(swap)
         }
+        // The history watch reports only what arrives while the wallet runs, so record what arrived while it was off.
+        do {
+            try await recordReceives(bridge.history())
+        } catch {
+            Logger.warn("Failed to record Arkade receives from history: \(error)", context: "ArkadeManager")
+        }
     }
 
     private func onEvent(_ event: ArkadeBridgeEvent) async {
@@ -443,6 +449,10 @@ final class ArkadeManager: ChannelFreeLightningRail {
     /// payment straight to the Arkade address. Boarding and swap claims show up through their own records.
     private func onHistory(_ entries: [ArkadeHistoryEntry]) async throws {
         try await refresh()
+        try await recordReceives(entries)
+    }
+
+    private func recordReceives(_ entries: [ArkadeHistoryEntry]) async throws {
         let swapClaims = await Set(listSwaps().filter(\.isReceive).compactMap(\.takeSat))
         for entry in Self.offlineReceives(entries, swapClaims: swapClaims) {
             guard let arkTxid = entry.arkTxid else { continue }
@@ -492,7 +502,8 @@ final class ArkadeManager: ChannelFreeLightningRail {
             id: hash,
             kind: .bolt11(hash: hash, preimage: nil, secret: nil, description: nil, bolt11: swap.bolt11),
             amountMsat: UInt64(max(0, swap.takeSat ?? 0)) * 1000,
-            feePaidMsat: UInt64(max(0, swap.feeSat ?? 0)) * 1000,
+            // A receive's solver fee is already out of `takeSat`; the activity row adds the fee to the amount.
+            feePaidMsat: swap.isSend ? UInt64(max(0, swap.feeSat ?? 0)) * 1000 : 0,
             direction: swap.isSend ? .outbound : .inbound,
             status: status,
             latestUpdateTimestamp: UInt64(max(0, timestamp))

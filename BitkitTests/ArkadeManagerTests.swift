@@ -81,6 +81,13 @@ final class ArkadeManagerTests: XCTestCase {
         guard case .paymentFailed = ArkadeManager.nodeEvent(for: refunded) else { return XCTFail("Expected a failed payment") }
     }
 
+    func testListsAClaimedReceiveAtWhatReachedTheWallet() throws {
+        let claimed = ArkadeSwap(direction: "receive", outcome: "claimed", takeSat: 995, feeSat: 5, paymentHash: "ab")
+        let details = try XCTUnwrap(ArkadeManager.paymentDetails(for: claimed))
+        XCTAssertEqual(details.amountMsat, 995_000)
+        XCTAssertEqual(details.feePaidMsat, 0)
+    }
+
     func testRecordsASendAtOnceButAReceiveOnlyOnceClaimed() throws {
         let pendingSend = ArkadeSwap(direction: "send", outcome: "funded", takeSat: 1000, feeSat: 7, bolt11: "lnbc1", paymentHash: "dd")
         let details = try XCTUnwrap(ArkadeManager.paymentDetails(for: pendingSend))
